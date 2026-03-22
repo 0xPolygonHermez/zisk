@@ -511,21 +511,13 @@ impl ZiskPublics {
         bytes.to_vec()
     }
 
+    /// Returns the 256 bytes of public output data for Solidity verification.
+    ///
+    /// Bytes are returned in the same order the guest wrote them via [`io::write()`],
+    /// making `write()` a natural pass-through for raw byte sequences such as
+    /// ABI-encoded structs.
     pub fn public_bytes_solidity(&self) -> Vec<u8> {
-        let mut bytes = [0u8; ZISK_PUBLICS * 4];
-
-        for i in 0..ZISK_PUBLICS {
-            let start = i * 4;
-            let val32 = u32::from_le_bytes([
-                self.data[start],
-                self.data[start + 1],
-                self.data[start + 2],
-                self.data[start + 3],
-            ]);
-            bytes[i * 4..(i + 1) * 4].copy_from_slice(&val32.to_be_bytes());
-        }
-
-        bytes.to_vec()
+        self.data.clone()
     }
 
     pub fn hash_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
