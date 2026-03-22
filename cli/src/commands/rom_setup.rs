@@ -67,9 +67,9 @@ impl ZiskRomSetup {
             false,
             &params_gpu,
             &[],
-        ));
+        )?);
         let setups_vadcop =
-            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &params_gpu, &[]));
+            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &params_gpu, &[])?);
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, &params_gpu)?;
         let pctx = Arc::new(pctx);
 
