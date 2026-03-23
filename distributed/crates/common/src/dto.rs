@@ -66,11 +66,11 @@ pub struct SystemStatusDto {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
-    // No inputs are provided
+    /// No inputs are provided.
     InputsNone,
     /// Inputs are provided as a complete payload referenced by a URI.
     InputsPath(String),
-    /// Inputs are provided directly as data.
+    /// Inputs are provided directly as data referenced by a URI (coordinator reads the file).
     InputsData(String),
 }
 
@@ -82,6 +82,8 @@ pub enum HintsModeDto {
     HintsPath(String),
     /// Hints will be streamed from the given URI endpoint.
     HintsStream(String),
+    /// Hints bytes are embedded directly in the request; coordinator wraps them as a hints stream.
+    HintsInline(Vec<u8>),
 }
 
 pub struct LaunchProofRequestDto {

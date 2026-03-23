@@ -72,6 +72,7 @@ pub async fn handle(
         hints_mode: hints_mode.into(),
         hints_uri,
         simulated_node,
+        hints_inline: None,
     };
 
     // Make the RPC call

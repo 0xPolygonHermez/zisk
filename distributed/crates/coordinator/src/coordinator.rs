@@ -53,6 +53,7 @@ use std::{
 };
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
+use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
 use zisk_common::ZiskExecutorTime;
@@ -71,6 +72,29 @@ use zisk_distributed_common::{
 };
 
 use zisk_sdk::ZiskProofWithPublicValues;
+
+/// Encodes raw input bytes into hints wire format suitable for `StreamSource::Memory`.
+///
+/// Format: `CTRL_START` | `HINT_INPUT` header | data (padded to 8-byte alignment) | `CTRL_END`
+/// Each element is a little-endian u64. Header layout: `(hint_code as u64) << 32 | length_bytes`.
+fn encode_input_as_hints_stream(input_bytes: &[u8]) -> Vec<u8> {
+    let len = input_bytes.len();
+    let padding = if len % 8 == 0 { 0 } else { 8 - len % 8 };
+    let mut buf = Vec::with_capacity(8 + 8 + len + padding + 8);
+
+    let ctrl_start: u64 = (CTRL_START as u64) << 32;
+    buf.extend_from_slice(&ctrl_start.to_le_bytes());
+
+    let hint_input_header: u64 = ((HINT_INPUT as u64) << 32) | (len as u64);
+    buf.extend_from_slice(&hint_input_header.to_le_bytes());
+    buf.extend_from_slice(input_bytes);
+    buf.extend(std::iter::repeat(0u8).take(padding));
+
+    let ctrl_end: u64 = (CTRL_END as u64) << 32;
+    buf.extend_from_slice(&ctrl_end.to_le_bytes());
+
+    buf
+}
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -691,11 +715,9 @@ impl Coordinator {
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
-            HintsModeDto::HintsStream(hints_uri) => {
-                // Hints will be streamed separately
-                HintsSourceDto::HintsStream(hints_uri.clone())
-            }
-            HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
+            HintsModeDto::HintsStream(hints_uri) => HintsSourceDto::HintsStream(hints_uri.clone()),
+            // Inline bytes are relayed via StreamSource::Memory after workers are dispatched.
+            HintsModeDto::HintsInline(_) | HintsModeDto::HintsNone => HintsSourceDto::HintsNull,
         };
 
         // Use Arc to avoid expensive clones
@@ -762,8 +784,12 @@ impl Coordinator {
             })?;
         }
 
-        if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
-            self.initialize_stream(job, cloned_active_workers)?;
+        match &job.hints_mode {
+            HintsModeDto::HintsStream(_) => self.initialize_stream(job, cloned_active_workers)?,
+            HintsModeDto::HintsInline(bytes) => {
+                self.initialize_stream_inline(job, cloned_active_workers, bytes.clone())?
+            }
+            _ => {}
         }
 
         Ok(())
@@ -836,6 +862,77 @@ impl Coordinator {
         stream.start_stream().map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to start hints stream for job {}: {}",
+                job.job_id, e
+            ))
+        })?;
+        Ok(())
+    }
+
+    /// Encodes raw input bytes as a complete hints wire stream and relays it to workers via
+    /// `StreamSource::Memory`, using the same `PrecompileHintsRelay` pipeline as `HintsStream`.
+    ///
+    /// Wire format: CTRL_START (u64) | HINT_INPUT header (u64) | data (aligned to 8 bytes) | CTRL_END (u64)
+    fn initialize_stream_inline(
+        &self,
+        job: &Job,
+        cloned_active_workers: Vec<WorkerId>,
+        input_bytes: Vec<u8>,
+    ) -> Result<(), CoordinatorError> {
+        let hints_bytes = encode_input_as_hints_stream(&input_bytes);
+        let stream_reader = StreamSource::from_vec(hints_bytes);
+
+        let job_id_clone = job.job_id.clone();
+        let workers_clone = Arc::new(cloned_active_workers);
+        let workers_pool = Arc::clone(&self.workers_pool);
+
+        let dispatcher =
+            move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
+                use futures::future::join_all;
+                use zisk_distributed_common::{StreamDataDto, StreamPayloadDto};
+
+                let job_id = job_id_clone.clone();
+                let workers = Arc::clone(&workers_clone);
+                let pool = Arc::clone(&workers_pool);
+
+                Box::pin(async move {
+                    let sends = workers.iter().map(|worker_id| {
+                        let job_id = job_id.clone();
+                        let worker_id = worker_id.clone();
+                        let payload = payload.clone();
+                        let pool = Arc::clone(&pool);
+                        let stream_type = stream_type.clone();
+
+                        async move {
+                            let msg = CoordinatorMessageDto::StreamData(StreamDataDto {
+                                job_id: job_id.clone(),
+                                stream_type,
+                                stream_payload: Some(StreamPayloadDto { sequence_number, payload }),
+                            });
+
+                            if let Err(e) = pool.send_message(&worker_id, msg).await {
+                                error!(
+                                    "Failed to send inline hints to worker {} for job {}: {}",
+                                    worker_id, job_id, e
+                                );
+                            }
+                        }
+                    });
+
+                    join_all(sends).await;
+                })
+            };
+
+        let hints_relay = PrecompileHintsRelay::new(dispatcher);
+        let mut stream = ZiskStream::new(hints_relay);
+        stream.set_hints_stream_src(stream_reader).map_err(|e| {
+            CoordinatorError::Internal(format!(
+                "Failed to set inline hints stream for job {}: {}",
+                job.job_id, e
+            ))
+        })?;
+        stream.start_stream().map_err(|e| {
+            CoordinatorError::Internal(format!(
+                "Failed to start inline hints stream for job {}: {}",
                 job.job_id, e
             ))
         })?;

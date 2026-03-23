@@ -99,6 +99,19 @@ pub struct NodeVersionInfo {
 
 // ── Job types ─────────────────────────────────────────────────────────────────
 
+pub enum ProofInputSource {
+    Path(String),    // file path or http(s):// URL
+    Inline(Vec<u8>), // bytes embedded directly in the request
+    Stream(String),  // socket:// quic:// URI; coordinator connects to stream input
+}
+
+pub struct LaunchProofParams {
+    pub program_id: String,
+    pub compute_capacity: u32,
+    pub minimal_compute_capacity: u32,
+    pub input: ProofInputSource,
+}
+
 pub enum JobKind {
     Prove(ProofKind),
 }
@@ -128,6 +141,8 @@ impl TryFrom<&str> for JobPhase {
             "Contributions" => Ok(Self::Contributions),
             "Prove" => Ok(Self::Prove),
             "Aggregate" => Ok(Self::Aggregate),
+            // Internal coordinator sub-phases — map to Contributions from the user's perspective.
+            "ContributionsInputsStream" | "ContributionsHintsStream" => Ok(Self::Contributions),
             _ => {
                 tracing::error!(phase = s, "received unknown job phase from coordinator");
                 Err(crate::errors::NodeError::InvalidCoordinatorResponse(format!(

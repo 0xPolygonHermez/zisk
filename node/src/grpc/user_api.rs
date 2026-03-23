@@ -1,10 +1,15 @@
+use crate::grpc::conversions::coord_state_to_job_event;
 use crate::grpc::user::zisk_user_api_server::ZiskUserApi;
 use crate::grpc::user::*;
+use crate::service::types::{LaunchProofParams, ProofInputSource};
 use crate::service::{ProgramLookup, ProgramOrHashLookup, ZiskNodeService};
+use async_stream::stream;
+use futures::StreamExt;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status, Streaming};
+use zisk_distributed_grpc_api as coord;
 
 pub type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
@@ -16,6 +21,51 @@ impl UserApiService {
     pub fn new(node_service: Arc<ZiskNodeService>) -> Self {
         Self { node_service }
     }
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+/// Relays a coordinator `JobStateEvent` stream as a user `JobEvent` stream.
+///
+/// Deduplicates consecutive `Running` events with the same phase, and closes
+/// the stream after the first terminal event (Completed / Failed / Cancelled).
+fn relay_coord_stream(
+    mut coord_stream: tonic::Streaming<coord::JobStateEvent>,
+) -> BoxStream<JobEvent> {
+    Box::pin(stream! {
+        let mut last_phase: Option<String> = None;
+
+        while let Some(item) = coord_stream.next().await {
+            match item {
+                Err(e) => { yield Err(e); return; }
+                Ok(state_event) => {
+                    // Deduplicate consecutive Running events with the same phase.
+                    if state_event.state == "Running" {
+                        if state_event.phase == last_phase { continue; }
+                        last_phase = state_event.phase.clone();
+                    }
+
+                    match coord_state_to_job_event(state_event) {
+                        Err(e) => { yield Err(e); return; }
+                        Ok(None) => {}
+                        Ok(Some(ev)) => {
+                            let terminal = matches!(
+                                ev.event,
+                                Some(job_event::Event::Completed(_)
+                                    | job_event::Event::Failed(_)
+                                    | job_event::Event::Cancelled(_))
+                            );
+                            yield Ok(ev);
+                            if terminal { return; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Coordinator stream closed without a terminal event.
+        yield Err(Status::internal("coordinator watch stream ended without terminal state"));
+    })
 }
 
 // ── ZiskUserApi implementation ────────────────────────────────────────────────
@@ -107,13 +157,56 @@ impl ZiskUserApi for UserApiService {
 
     // ── Proof jobs ────────────────────────────────────────────────────────────
 
-    type ProveStream = BoxStream<JobEvent>;
-
     async fn prove(
         &self,
-        _request: Request<Streaming<ProveClientMessage>>,
-    ) -> Result<Response<Self::ProveStream>, Status> {
-        Err(Status::unimplemented("prove not yet implemented"))
+        request: Request<ProveRequest>,
+    ) -> Result<Response<ProveResponse>, Status> {
+        let req = request.into_inner();
+
+        if req.program_id.is_empty() {
+            return Err(Status::invalid_argument("program_id is required"));
+        }
+
+        let input = req.input.ok_or_else(|| Status::invalid_argument("input field is required"))?;
+
+        let proof_input = match input.input {
+            Some(input_kind::Input::Inputs(path_or_url)) => ProofInputSource::Path(path_or_url),
+            Some(input_kind::Input::Inline(chunk)) => {
+                if !chunk.is_last {
+                    // TODO: create a UnixSocketStreamWriter, pass socket URI to
+                    // coordinator, and relay PushJobInput chunks to that socket.
+                    return Err(Status::unimplemented("multi-chunk inline input not yet supported"));
+                }
+                ProofInputSource::Inline(chunk.data)
+            }
+            Some(input_kind::Input::Stream(uri)) => ProofInputSource::Stream(uri),
+            None => return Err(Status::invalid_argument("input.input field is required")),
+        };
+
+        let job_id = self
+            .node_service
+            .launch_proof(LaunchProofParams {
+                program_id: req.program_id,
+                compute_capacity: 1, // TODO: wire to NodeConfig
+                minimal_compute_capacity: 1,
+                input: proof_input,
+            })
+            .await
+            .map_err(Status::from)?;
+
+        Ok(Response::new(ProveResponse { job_id }))
+    }
+
+    type WatchJobStream = BoxStream<JobEvent>;
+
+    async fn watch_job(
+        &self,
+        request: Request<WatchJobRequest>,
+    ) -> Result<Response<Self::WatchJobStream>, Status> {
+        let job_id = request.into_inner().job_id;
+        let coord_stream =
+            self.node_service.watch_job_stream(job_id).await.map_err(Status::from)?;
+        Ok(Response::new(relay_coord_stream(coord_stream)))
     }
 
     async fn list_jobs(
@@ -134,8 +227,14 @@ impl ZiskUserApi for UserApiService {
         &self,
         request: Request<WaitJobResultRequest>,
     ) -> Result<Response<JobInfo>, Status> {
-        let job_id = request.into_inner().job_id;
-        let info = self.node_service.wait_job(job_id).await.map_err(Status::from)?;
+        const MIN_SECS: u32 = 1;
+        const DEFAULT_SECS: u32 = 5;
+
+        let req = request.into_inner();
+        let timeout_seconds = req.timeout_seconds.unwrap_or(DEFAULT_SECS).max(MIN_SECS);
+
+        let info =
+            self.node_service.wait_job(req.job_id, timeout_seconds).await.map_err(Status::from)?;
         Ok(Response::new(info.into()))
     }
 

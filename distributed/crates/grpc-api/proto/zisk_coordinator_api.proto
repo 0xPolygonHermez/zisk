@@ -61,6 +61,13 @@ service ZiskCoordinatorApi {
   // returns after 5 seconds with the current status so the caller can re-issue.
   // Clients MUST set a gRPC deadline > 5 s (recommended: 30 s).
   rpc WaitJob(WaitJobRequest) returns (JobStatusResponse);
+
+  // Subscribe to state events for an existing job. Sends the current state
+  // immediately on connect, then streams each transition until a terminal state
+  // (Completed, Failed, or Cancelled) is reached, then closes the stream.
+  // Safe to call after the job has already finished — the terminal event is
+  // synthesised from stored state and the stream closes immediately.
+  rpc WatchJob(WatchJobRequest) returns (stream JobStateEvent);
 }
 
 // ── Requests ─────────────────────────────────────────────────────────────────
@@ -112,6 +119,7 @@ message LaunchProofRequest {
   HintsMode hints_mode = 6;
   optional string hints_uri = 7;
   optional uint32 simulated_node = 8;
+  optional bytes hints_inline = 9; // present when hints_mode == HINTS_MODE_INLINE
 }
 
 // ── Responses ────────────────────────────────────────────────────────────────
@@ -210,9 +218,10 @@ enum InputMode {
 }
 
 enum HintsMode {
-  HINTS_MODE_NONE = 0;
-  HINTS_MODE_PATH = 1;
+  HINTS_MODE_NONE   = 0;
+  HINTS_MODE_PATH   = 1;
   HINTS_MODE_STREAM = 2;
+  HINTS_MODE_INLINE = 3; // bytes embedded directly in LaunchProofRequest.hints_inline
 }
 
 // ── Programs ──────────────────────────────────────────────────────────────────
@@ -296,6 +305,20 @@ message WaitProgramRequest {
 
 message WaitJobRequest {
   string job_id = 1;
+  // How long the server should hold the connection waiting for a terminal state.
+  // Enforced server-side minimum of 1 second. No upper bound. Defaults to 5 s if absent.
+  optional uint32 timeout_seconds = 2;
+}
+
+message WatchJobRequest {
+  string job_id = 1;
+}
+
+message JobStateEvent {
+  string                    job_id    = 1;
+  string                    state     = 2;  // "Created"|"Running"|"Completed"|"Failed"|"Cancelled"
+  optional string           phase     = 3;  // present only when state == "Running"
+  google.protobuf.Timestamp timestamp = 4;
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────

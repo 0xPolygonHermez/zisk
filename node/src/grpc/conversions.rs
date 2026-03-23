@@ -1,12 +1,14 @@
 use crate::grpc::user;
-use crate::util::ms_to_timestamp;
 use crate::service::types::{
     CancelJobResult, JobInfo, JobKind, JobPhase, JobStatus, JobSummary, NodeVersionInfo,
     ProgramLookup, ProgramOrHashLookup, ProgramStatus, ProgramSummary, Proof, ProofKind,
     RegisterProgramParams, RegisterProgramResult, SetupInfo, UpdateProgramParams,
     UpdateProgramResult,
 };
+use crate::util::ms_to_timestamp;
+use zisk_distributed_grpc_api as coord;
 
+use crate::util::now_timestamp;
 
 impl From<JobPhase> for user::JobPhase {
     fn from(p: JobPhase) -> Self {
@@ -22,7 +24,9 @@ impl From<JobStatus> for user::JobStatus {
     fn from(status: JobStatus) -> Self {
         let (code, phase) = match status {
             JobStatus::Queued => (user::JobStatusCode::Queued, None),
-            JobStatus::Running(p) => (user::JobStatusCode::Running, Some(user::JobPhase::from(p) as i32)),
+            JobStatus::Running(p) => {
+                (user::JobStatusCode::Running, Some(user::JobPhase::from(p) as i32))
+            }
             JobStatus::WaitingForInput => (user::JobStatusCode::WaitingForInput, None),
             JobStatus::Completed => (user::JobStatusCode::Completed, None),
             JobStatus::Failed => (user::JobStatusCode::Failed, None),
@@ -221,4 +225,60 @@ impl From<CancelJobResult> for user::CancelJobResponse {
     fn from(r: CancelJobResult) -> Self {
         Self { job_id: r.job_id, job_status: Some(r.previous_status.into()) }
     }
+}
+
+/// Converts a coordinator [`coord::JobStateEvent`] to a user-facing [`user::JobEvent`].
+///
+/// Returns `Ok(None)` for states that should be silently skipped (e.g. `Created`
+/// or unknown states). Returns `Err` for malformed events.
+pub(crate) fn coord_state_to_job_event(
+    event: coord::JobStateEvent,
+) -> Result<Option<user::JobEvent>, tonic::Status> {
+    let ts = event.timestamp.or_else(|| Some(now_timestamp()));
+    let job_id = event.job_id;
+
+    let job_event = match event.state.as_str() {
+        "Created" => return Ok(None),
+        "Running" => {
+            let phase_str = event.phase.as_deref().unwrap_or("");
+            let domain_phase = JobPhase::try_from(phase_str)
+                .map_err(|e| tonic::Status::internal(e.to_string()))?;
+            user::JobEvent {
+                event: Some(user::job_event::Event::Progress(user::JobEventProgress {
+                    job_id,
+                    phase: user::JobPhase::from(domain_phase) as i32,
+                    timestamp: ts,
+                })),
+            }
+        }
+        "Completed" => user::JobEvent {
+            event: Some(user::job_event::Event::Completed(user::JobEventCompleted {
+                job_id,
+                result: None, // coordinator JobStatus does not carry proof data yet
+                timestamp: ts,
+            })),
+        },
+        "Failed" => user::JobEvent {
+            event: Some(user::job_event::Event::Failed(user::JobEventFailed {
+                job_id,
+                error: String::new(), // coordinator JobStatus does not carry error details yet
+                timestamp: ts,
+            })),
+        },
+        "Cancelled" => user::JobEvent {
+            event: Some(user::job_event::Event::Cancelled(user::JobEventCancelled {
+                job_id,
+                timestamp: ts,
+            })),
+        },
+        other => {
+            tracing::warn!(
+                state = other,
+                "unknown job state from coordinator watch stream; skipping"
+            );
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(job_event))
 }

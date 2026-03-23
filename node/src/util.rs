@@ -1,3 +1,7 @@
+pub(crate) fn now_timestamp() -> prost_types::Timestamp {
+    prost_types::Timestamp::from(std::time::SystemTime::now())
+}
+
 pub(crate) fn ms_to_timestamp(ms: u64) -> prost_types::Timestamp {
     prost_types::Timestamp { seconds: (ms / 1000) as i64, nanos: ((ms % 1000) * 1_000_000) as i32 }
 }

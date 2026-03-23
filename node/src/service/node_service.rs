@@ -184,6 +184,51 @@ impl ZiskNodeService {
         Ok(())
     }
 
+    pub async fn launch_proof(&self, params: LaunchProofParams) -> NodeResult<String> {
+        let mut client = self.coordinator()?;
+
+        let (inputs_mode, inputs_uri, hints_mode, hints_uri, hints_inline) = match params.input {
+            ProofInputSource::Path(uri) => {
+                (coord::InputMode::Path as i32, Some(uri), coord::HintsMode::None as i32, None, None)
+            }
+            ProofInputSource::Inline(bytes) => {
+                (coord::InputMode::None as i32, None, coord::HintsMode::Inline as i32, None, Some(bytes))
+            }
+            ProofInputSource::Stream(uri) => {
+                (coord::InputMode::None as i32, None, coord::HintsMode::Stream as i32, Some(uri), None)
+            }
+        };
+
+        let resp = client
+            .launch_proof(coord::LaunchProofRequest {
+                data_id: params.program_id,
+                compute_capacity: params.compute_capacity,
+                minimal_compute_capacity: params.minimal_compute_capacity,
+                inputs_mode,
+                inputs_uri,
+                hints_mode,
+                hints_uri,
+                simulated_node: None,
+                hints_inline,
+            })
+            .await?
+            .into_inner();
+
+        match resp.result {
+            Some(coord::launch_proof_response::Result::JobId(id)) => Ok(id),
+            Some(coord::launch_proof_response::Result::Error(e)) => Err(NodeError::from(e)),
+            None => Err(NodeError::InvalidCoordinatorResponse("empty LaunchProof response".into())),
+        }
+    }
+
+    pub async fn watch_job_stream(
+        &self,
+        job_id: String,
+    ) -> NodeResult<tonic::Streaming<coord::JobStateEvent>> {
+        let mut client = self.coordinator()?;
+        Ok(client.watch_job(coord::WatchJobRequest { job_id }).await?.into_inner())
+    }
+
     pub async fn list_jobs(&self) -> NodeResult<Vec<JobSummary>> {
         let mut client = self.coordinator()?;
         let resp =
@@ -204,9 +249,12 @@ impl ZiskNodeService {
         handle_job_status_response(resp)
     }
 
-    pub async fn wait_job(&self, job_id: String) -> NodeResult<JobInfo> {
+    pub async fn wait_job(&self, job_id: String, timeout_seconds: u32) -> NodeResult<JobInfo> {
         let mut client = self.coordinator()?;
-        let resp = client.wait_job(coord::WaitJobRequest { job_id }).await?.into_inner();
+        let resp = client
+            .wait_job(coord::WaitJobRequest { job_id, timeout_seconds: Some(timeout_seconds) })
+            .await?
+            .into_inner();
         handle_job_status_response(resp)
     }
 

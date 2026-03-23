@@ -15,11 +15,12 @@ gRPC protocol buffer definition: [`zisk_user_api.proto`](../../distributed/crate
 | [`WaitGuestProgram`](#waitguestprogram) | Program | Block until a program reaches a terminal state and return the result |
 | [`UpdateGuestProgram`](#updateguestprogram) | Program | Update mutable fields of an existing program |
 | [`DeleteGuestProgram`](#deleteguestprogram) | Program | Remove a program from the cluster |
-| [`Prove`](#prove) | Proof | Submit a `prove` job |
+| [`Prove`](#prove) | Proof | Submit a `prove` job; returns `job_id` immediately |
+| [`WatchJob`](#watchjob) | Runtime | Subscribe to state events for a job (reconnectable) |
 | [`ListJobs`](#listjobs) | Runtime | List jobs with optional filters |
 | [`GetJob`](#getjob) | Runtime | Get full details and current status of a job |
 | [`WaitJobResult`](#waitjobresult) | Runtime | Block until a job reaches a terminal state and return the result |
-| [`PushJobInput`](#pushjobinput) | Runtime | Push the next input chunk to a job waiting for input |
+| [`PushJobInput`](#pushjobinput) | Runtime | Push input data to a job waiting for input |
 | [`CancelJob`](#canceljob) | Runtime | Cancel a queued or running job |
 
 ## Node Management
@@ -209,23 +210,24 @@ struct DeleteGuestProgramRequest {
 
 ### `Prove`
 
-Submit a proof job against a registered program. Streams `JobEvent` values back to the caller
-until the job reaches a terminal state: `Completed`,
-  `Cancelled`, or `Failed`.
+Submit a proof job against a registered program. Returns immediately with a `job_id`; proof
+generation runs independently on workers regardless of client connectivity. Use `WatchJob`,
+`GetJob`, or `WaitJobResult` to observe the job.
 
 ```
-ProveRequest → stream JobEvent
+ProveRequest → ProveResponse
 ```
 
 ```rust
 struct ProveRequest {
     program_id:    String,             // GuestProgram ID
-    setup:         Option<ProveSetup>, // setup to use; if not provided, the server uses its default
+    setup:         Option<ProveSetup>, // if not provided, the server uses its default
     input:         InputKind,
     job_kind:      JobKind,
-    webhook_url:   Option<String>,     // if set, the server POSTs JobEventCompleted, JobEventFailed, or JobEventCancelled
-                                       // to this URL when the job reaches a terminal state.
-    proof_timeout: Option<Duration>,   // max duration to generate the proof; server default applies if omitted
+    webhook_url:   Option<String>,     // if set, the server POSTs JobEventCompleted,
+                                       // JobEventFailed, or JobEventCancelled to this URL when the
+                                       // job reaches a terminal state.
+    proof_timeout: Option<Duration>,   // max duration to generate the proof; server default if omitted
 }
 
 enum ProveSetup {
@@ -236,17 +238,45 @@ enum ProveSetup {
 
 enum InputKind {
     Inline(InputChunk), // first chunk; if is_last=true no further PushJobInput calls needed
-    Inputs(String), // file path or http(s):// URL
-    Stream(String), // file:// socket:// quic://
+    Inputs(String),     // file path or http(s):// URL
+    Stream(String),     // file:// socket:// quic://
 }
 
 struct InputChunk {
     data:    Vec<u8>,
-    is_last: bool,  // true on the final chunk
+    is_last: bool, // if true, input is complete; if false, send remaining chunks via PushJobInput
 }
 
 enum JobKind {
-    Prove(ProofKind),  // generate a proof
+    Prove(ProofKind), // generate a proof
+}
+
+struct ProveResponse {
+    job_id: String,
+}
+```
+
+## Runtime Management
+
+### `WatchJob`
+
+Subscribe to state events for an existing job. The server sends the current state immediately
+on connect, then streams each transition until a terminal state (`Completed`, `Failed`, or
+`Cancelled`), then closes.
+
+Safe to call after a job has already finished — the server synthesises the terminal event from
+stored state and the stream closes immediately. This makes `WatchJob` reconnectable: call it
+any time after `Prove` returns `job_id`, even after a network gap or client restart.
+
+Consecutive `Running` events with the same phase are deduplicated server-side.
+
+```
+WatchJobRequest → stream JobEvent
+```
+
+```rust
+struct WatchJobRequest {
+    job_id: String,
 }
 
 enum JobEvent {
@@ -288,7 +318,7 @@ struct JobEventFailed {
 enum JobPhase {
     Contributions,
     Prove,
-    Aggregate
+    Aggregate,
 }
 
 enum JobResult {
@@ -299,15 +329,14 @@ struct Proof {
     proof_id:         String,        // unique proof identifier (UUID)
     program_id:       String,        // GuestProgram ID used to generate this proof
     verification_key: Vec<u8>,       // raw verification key
+    program_verification_key: Vec<u8>,
     proof_kind:       ProofKind,
-    data:             Vec<u8>,       // serialized proof
+    data:             Vec<u8>,       // serialized proof bytes
     public_inputs:    Vec<u8>,
     started_at:       DateTime<Utc>,
     completed_at:     DateTime<Utc>,
 }
 ```
-
-## Runtime Management
 
 ### `ListJobs`
 
@@ -369,12 +398,14 @@ struct JobInfo {
 ### `WaitJobResult`
 
 The intended primitive for polling a proof to completion. The server holds the response for
-up to 5 seconds: if the job reaches a terminal state (Completed, Failed, or Cancelled)
-within that window, it returns immediately with the final `JobInfo`; if the 5 seconds elapse
-first, it returns with the current status (e.g. Running) and the client can re-issue.
+up to `timeout_seconds` (default 5s, minimum 1s): if the job reaches a terminal state
+(Completed, Failed, or Cancelled) within that window, it returns immediately with the final
+`JobInfo`; otherwise it returns with the current status and the client can re-issue.
 
 This design means the caller can loop on `WaitJobResult` without any sleep or rate-limiting
 logic.
+
+Clients **must** set a gRPC deadline greater than `timeout_seconds`.
 
 ```
 WaitJobResultRequest → JobInfo
@@ -382,17 +413,19 @@ WaitJobResultRequest → JobInfo
 
 ```rust
 struct WaitJobResultRequest {
-    job_id: String,
+    job_id:          String,
+    timeout_seconds: Option<u32>, // server-side hold duration; min 1s
 }
 ```
 
 ### `PushJobInput`
 
-Push the next chunk of raw input data to a job that is in `WaitingForInput` status. Only valid for jobs 
-submitted with `InputKind::Inline`. Set `is_last` to `true` on the final chunk to signal end of input.
+Push raw input data to a job that is in `WaitingForInput` status. Only valid for jobs
+submitted with `InputKind::Inline`. Set
+`is_last: true` on the final chunk to signal end of input.
 
 ```
-PushJobInputRequest → ()
+stream PushJobInputRequest → ()
 ```
 
 ```rust

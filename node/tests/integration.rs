@@ -219,7 +219,10 @@ async fn user_api_wait_job_result_returns_unavailable_without_coordinator() {
     let mut client = ZiskUserApiClient::new(channel(addr));
 
     let err = client
-        .wait_job_result(WaitJobResultRequest { job_id: "nonexistent".to_string() })
+        .wait_job_result(WaitJobResultRequest {
+            job_id: "nonexistent".to_string(),
+            timeout_seconds: None,
+        })
         .await
         .unwrap_err();
 

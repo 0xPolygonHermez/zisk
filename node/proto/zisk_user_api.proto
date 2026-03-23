@@ -39,21 +39,28 @@ service ZiskUserApi {
   // Remove a program from the cluster.
   rpc DeleteGuestProgram   (DeleteGuestProgramRequest)   returns (google.protobuf.Empty);
 
-  // Submit a proof job against a registered program.
+  // Submit a proof job against a registered program. Returns immediately with
+  // a job_id; proof generation runs independently on workers regardless of
+  // client connectivity. Use WatchJob, GetJob, WaitJobResult, or CancelJob
+  // to observe and interact with the job.
   //
-  // Bidirectional streaming: the client sends a ProveClientMessage stream;
-  // the server sends a JobEvent stream back on the same connection.
-  //   - The first client message must be ProveRequest.
-  //   - If InputKind is Inline, subsequent client messages carry InputChunk
-  //     until is_last=true.
-  //   - The server emits JobEventStarted, then JobEventProgress as phases
-  //     advance, and finally one of JobEventCompleted, JobEventCancelled,
-  //     or JobEventFailed. The stream is closed after the terminal event.
+  // If InputKind is Inline the input bytes are embedded in the request (up
+  // to the gRPC message size limit). For larger inputs use InputKind::inputs
+  // (file path or URL) or InputKind::stream (socket/QUIC URI); the latter
+  // accepts subsequent PushJobInput calls to stream data after submission.
+  rpc Prove              (ProveRequest)               returns (ProveResponse);
+
+  // Subscribe to state events for an existing job.
   //
-  // Proof generation runs independently on workers regardless of client
-  // connectivity. If the client disconnects the proof continues; use GetJob,
-  // WaitJobResult, or CancelJob to reconnect and interact with the job.
-  rpc Prove              (stream ProveClientMessage)  returns (stream JobEvent);
+  // Server-streaming: the server sends the current job state immediately on
+  // connect, then streams each transition until a terminal state (Completed,
+  // Failed, or Cancelled) is reached, then closes the stream.
+  //
+  // Safe to call after a job has already finished — the terminal event is
+  // synthesised from stored state and the stream closes immediately. This
+  // makes WatchJob reconnectable: call it any time after Prove returns
+  // job_id, even if there was a network gap.
+  rpc WatchJob           (WatchJobRequest)            returns (stream JobEvent);
 
   // List jobs.
   rpc ListJobs           (ListJobsRequest)            returns (ListJobsResponse);
@@ -191,19 +198,8 @@ message DeleteGuestProgramRequest {
 
 // ─── Proof ────────────────────────────────────────────────────────────────────
 
-// Multiplexed client message for the Prove bidirectional stream.
-// The first message sent by the client must be ProveRequest.
-// Subsequent messages may only be InputChunk, and only when InputKind is Inline.
-message ProveClientMessage {
-  oneof message {
-    ProveRequest request     = 1;
-    InputChunk   input_chunk = 2;
-  }
-}
-
-// A chunk of raw input data streamed via the Prove bidi stream.
-// Send chunks sequentially; set is_last=true on the final chunk to signal
-// end of input.
+// A chunk of raw input data pushed via PushJobInput.
+// Send chunks sequentially; set is_last=true on the final chunk.
 message InputChunk {
   bytes data    = 1;
   bool  is_last = 2; // set true on the final chunk
@@ -229,10 +225,14 @@ message ProveSetup {
 
 message InputKind {
   oneof input {
-    InputChunk inline = 1; // first chunk; if is_last=true no further PushJobInput calls needed
+    InputChunk inline = 1; // first chunk; if is_last=true, input is complete
     string     inputs = 2; // file path or http(s):// URL
-    string     stream = 3; // file:// socket:// quic://
+    string     stream = 3; // socket:// quic:// URI; push data via PushJobInput
   }
+}
+
+message ProveResponse {
+  string job_id = 1;
 }
 
 message JobKind {
@@ -358,6 +358,14 @@ message JobInfo {
 }
 
 message WaitJobResultRequest {
+  string job_id = 1;
+  // How long the server should hold the connection waiting for a terminal state.
+  // Enforced server-side minimum of 1 second. No upper bound. Defaults to 5 s if absent.
+  // Clients MUST set a gRPC deadline > this value (recommended: timeout_seconds + 10 s).
+  optional uint32 timeout_seconds = 2;
+}
+
+message WatchJobRequest {
   string job_id = 1;
 }
 

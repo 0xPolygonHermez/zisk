@@ -256,6 +256,26 @@ impl CoordinatorGrpc {
     }
 }
 
+/// Converts a coordinator `JobState` to a `JobStateEvent` proto message.
+fn job_state_to_event(job_id: &JobId, state: &JobState) -> JobStateEvent {
+    JobStateEvent {
+        job_id: job_id.as_string(),
+        state: match state {
+            JobState::Created => "Created",
+            JobState::Running(_) => "Running",
+            JobState::Completed => "Completed",
+            JobState::Failed => "Failed",
+            JobState::Cancelled => "Cancelled",
+        }
+        .to_string(),
+        phase: match state {
+            JobState::Running(p) => Some(p.to_string()),
+            _ => None,
+        },
+        timestamp: Some(prost_types::Timestamp::from(std::time::SystemTime::now())),
+    }
+}
+
 /// Implements the external coordinator API (operator + node gateway access).
 #[tonic::async_trait]
 impl ZiskCoordinatorApi for CoordinatorGrpc {
@@ -517,7 +537,12 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
         request: Request<WaitJobRequest>,
     ) -> Result<Response<JobStatusResponse>, Status> {
         self.validate_admin_request(&request)?;
-        let job_id = JobId::from(request.into_inner().job_id);
+        let req = request.into_inner();
+        let job_id = JobId::from(req.job_id);
+
+        const MIN_SECS: u32 = 1;
+        const DEFAULT_SECS: u32 = 5;
+        let timeout_secs = req.timeout_seconds.unwrap_or(DEFAULT_SECS).max(MIN_SECS);
 
         let mut rx = self
             .coordinator
@@ -525,7 +550,7 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
             .ok_or_else(|| Status::not_found("job not found"))?;
 
         let _ = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(timeout_secs as u64),
             rx.wait_for(|s| s.is_terminal()),
         )
         .await;
@@ -535,6 +560,49 @@ impl ZiskCoordinatorApi for CoordinatorGrpc {
             .await
             .map(|dto| Response::new(dto.into()))
             .map_err(Status::from)
+    }
+
+    type WatchJobStream = Pin<Box<dyn Stream<Item = Result<JobStateEvent, Status>> + Send>>;
+
+    /// Subscribes to state events for an existing job. Sends the current state
+    /// immediately on connect, then streams each transition until a terminal state
+    /// (Completed, Failed, or Cancelled) is reached, then closes the stream.
+    ///
+    /// Safe to call after the job has already finished — the terminal event is
+    /// synthesised from stored state and the stream closes immediately.
+    async fn watch_job(
+        &self,
+        request: Request<WatchJobRequest>,
+    ) -> Result<Response<Self::WatchJobStream>, Status> {
+        self.validate_admin_request(&request)?;
+        let job_id = JobId::from(request.into_inner().job_id);
+
+        let mut rx = self
+            .coordinator
+            .subscribe_job_status(&job_id)
+            .ok_or_else(|| Status::not_found(format!("job {job_id} not found")))?;
+
+        let initial = rx.borrow().clone();
+        let jid = job_id.clone();
+
+        let stream = Box::pin(stream! {
+            yield Ok(job_state_to_event(&jid, &initial));
+            if initial.is_terminal() { return; }
+
+            loop {
+                match rx.changed().await {
+                    Err(_) => break, // sender dropped (coordinator shutdown / job GC)
+                    Ok(()) => {
+                        let state = rx.borrow().clone();
+                        let terminal = state.is_terminal();
+                        yield Ok(job_state_to_event(&jid, &state));
+                        if terminal { break; }
+                    }
+                }
+            }
+        });
+
+        Ok(Response::new(stream))
     }
 }
 
