@@ -14,7 +14,8 @@ use std::{
 };
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
-    ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, SRC_IMM, SRC_REG,
+    InstContext, ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, SRC_IMM, SRC_REG,
+    STORE_IND, UART_ADDR,
 };
 
 use crate::{
@@ -85,6 +86,11 @@ pub struct Stats {
     use_colors: bool,
     ram_size: u64,
     ram_used: u64,
+    sys_write_addr: u64,
+    #[cfg(feature = "handle_stdout")]
+    stdout_data: String,
+    #[cfg(feature = "handle_stdout")]
+    stdout_step: u64,
     #[cfg(feature = "debug_stats_trace")]
     debug_step_stack: Vec<u64>,
     #[cfg(feature = "debug_stats_trace")]
@@ -131,6 +137,11 @@ impl Default for Stats {
             use_colors: std::io::stdout().is_terminal(),
             ram_size: 0,
             ram_used: 0,
+            sys_write_addr: 0,
+            #[cfg(feature = "handle_stdout")]
+            stdout_data: String::with_capacity(256),
+            #[cfg(feature = "handle_stdout")]
+            stdout_step: 0,
             #[cfg(feature = "debug_stats_trace")]
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
@@ -522,11 +533,41 @@ impl Stats {
         }
         mark.arguments[index as usize] = value;
     }
+
+    #[cfg(feature = "handle_stdout")]
+    pub fn handle_stdout(&mut self) {}
+
+    #[cfg(feature = "handle_stdout")]
+    #[inline(always)]
+    pub fn check_stdout(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
+        if instruction.store == STORE_IND
+            && (instruction.store_offset + inst_ctx.a as i64) as u64 == UART_ADDR
+        {
+            if (inst_ctx.step - self.stdout_step) > 16 {
+                self.stdout_data.clear();
+            }
+            let _ch = inst_ctx.c as u8 as char;
+            if _ch == '\n' {
+                if !self.stdout_data.is_empty() {
+                    handle_stdout();
+                }
+                self.stdout_data.clear();
+            } else {
+                if self.stdout_data.len() < 256 {
+                    self.stdout_data.push(_ch);
+                }
+                self.stdout_step = inst_ctx.step;
+            }
+        }
+    }
     /// Called every time an operation is executed, if statistics are enabled
-    pub fn on_op(&mut self, instruction: &ZiskInst, a: u64, b: u64, pc: u64, regs: &[u64]) {
+    pub fn on_op(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
         // println!("##PC## 0x{pc:08X}");
+        let pc = inst_ctx.pc;
         self.costs.steps += 1;
-        self.check_roi(pc as u32, regs);
+        #[cfg(feature = "handle_stdout")]
+        self.check_stdout(instruction, inst_ctx);
+        self.check_roi(pc as u32, &inst_ctx.regs);
         #[cfg(feature = "debug_stats_trace")]
         self.debug_stats_trace(pc);
         // If the operation is a usual operation, then increase the usual counter
@@ -548,11 +589,11 @@ impl Stats {
                     1..2 => self.on_argument_mark(
                         instruction.b_offset_imm0 & 0xFF,
                         flags - 1,
-                        regs[instruction.a_offset_imm0 as usize],
+                        inst_ctx.regs[instruction.a_offset_imm0 as usize],
                     ),
                     4 => self.on_value_mark(
                         instruction.b_offset_imm0 & 0xFF,
-                        regs[instruction.a_offset_imm0 as usize],
+                        inst_ctx.regs[instruction.a_offset_imm0 as usize],
                     ),
                     _ => (),
                 }
@@ -565,9 +606,9 @@ impl Stats {
                 || instruction.op_type == ZiskOperationType::BinaryE)
         {
             // store op, a and b values in file
-            self.store_op_data(instruction.op, a, b);
+            self.store_op_data(instruction.op, inst_ctx.a, inst_ctx.b);
         }
-        if self.is_frops(instruction, a, b) {
+        if self.is_frops(instruction, inst_ctx.a, inst_ctx.b) {
             self.frops += 1;
             self.costs.frops_ops[instruction.op as usize] += 1;
         }
@@ -1080,6 +1121,10 @@ impl Stats {
     }
     pub fn set_top_rois_filter(&mut self, value: bool) {
         self.top_rois_filter = value;
+    }
+    pub fn set_sys_write_addr(&mut self, addr: u64) {
+        println!("SYS_WRITE_ADDR: 0x{addr:08X}");
+        self.sys_write_addr = addr;
     }
     pub fn set_ram_usage(&mut self, ram_size: u64, ram_used: u64) {
         self.ram_size = ram_size;

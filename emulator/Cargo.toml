@@ -51,6 +51,7 @@ harness = false
 default = []
 debug_stats_trace = []
 minimal_trace_index_debug = []
+handle_stdout = []
 debug_call_stack = []
 gpu = ["packed"]
 packed = []
