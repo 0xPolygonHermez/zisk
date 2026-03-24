@@ -20,12 +20,6 @@ pub struct ZiskBuild {
 
     #[arg(short, long)]
     name: Option<String>,
-
-    #[clap(short = 'z', long)]
-    zisk_path: Option<String>,
-
-    #[clap(long)]
-    hints: bool,
 }
 
 impl ZiskBuild {

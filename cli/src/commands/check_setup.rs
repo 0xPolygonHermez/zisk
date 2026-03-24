@@ -1,5 +1,5 @@
 // extern crate env_logger;
-use crate::commands::{get_proving_key, get_proving_key_snark};
+use crate::common::{get_proving_key, get_proving_key_snark};
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;

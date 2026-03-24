@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute, ZiskPlonk, ZiskProve,
-    ZiskRomSetup, ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
+    ZiskRomSetup, ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -28,7 +28,6 @@ pub enum Cargo {
     Sdk(ZiskSdk),
     Stats(ZiskStats),
     Verify(ZiskVerify),
-    VerifySnark(ZiskVerifySnark),
     VerifyConstraints(ZiskVerifyConstraints),
 }
 
@@ -72,9 +71,6 @@ fn main() -> Result<()> {
         }
         Cargo::Verify(cmd) => {
             cmd.run().map_err(|e| anyhow!("Error executing Verify command: {}", e))?;
-        }
-        Cargo::VerifySnark(cmd) => {
-            cmd.run().context("Error executing VerifySnark command")?;
         }
         Cargo::VerifyConstraints(mut cmd) => {
             cmd.run().context("Error executing VerifyConstraints command")?;

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::{commands::get_proving_key, ux::print_banner};
+use cargo_zisk::{common::get_proving_key, ux::print_banner};
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;

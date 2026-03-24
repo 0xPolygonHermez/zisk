@@ -5,7 +5,7 @@ use colored::Colorize;
 use fields::Goldilocks;
 use std::path::PathBuf;
 
-use crate::ux::{print_banner, print_banner_command, print_banner_field};
+use crate::ux::{print_banner, print_banner_command};
 use proofman::SnarkWrapper;
 use zisk_common::ZiskProofWithPublicValues;
 
@@ -15,12 +15,6 @@ use zisk_common::ZiskProofWithPublicValues;
 pub struct ZiskPlonk {
     #[clap(short = 'p', long)]
     pub proof: String,
-
-    /// ELF file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
-    pub elf: PathBuf,
 
     /// Setup folder path
     #[clap(short = 'k', long)]
@@ -40,8 +34,6 @@ impl ZiskPlonk {
         print_banner();
 
         print_banner_command("Prove SNARK");
-
-        print_banner_field("Elf", self.elf.display());
 
         let zisk_proof = ZiskProofWithPublicValues::load(&self.proof).map_err(|e| {
             anyhow::anyhow!(

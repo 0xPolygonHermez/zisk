@@ -49,14 +49,6 @@ pub fn execute_build_program(
     let program_dir: Utf8PathBuf =
         program_dir.try_into().expect("Failed to convert PathBuf to Utf8PathBuf");
 
-    // Check for ZISK_HINTS environment variables if not set in args
-    let mut args = args.clone();
-    if args.hints.is_none() {
-        if let Ok(env_hints) = std::env::var("ZISK_HINTS") {
-            args.hints = env_hints.parse().ok();
-        }
-    }
-
     // Get the program metadata.
     let program_metadata_file = program_dir.join("Cargo.toml");
     let mut program_metadata_cmd = cargo_metadata::MetadataCommand::new();
@@ -76,7 +68,6 @@ pub fn execute_build_program(
     // Generate assembly for all ELF files (only if not already generated)
     let asm = args.asm.unwrap_or(false);
     let hints = args.hints.unwrap_or(false);
-    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
 
     let output_path = get_output_path(&None)?;
     for (_, elf_path) in target_elf_paths.iter() {
@@ -184,8 +175,6 @@ pub fn generate_elf_paths(
     vec![(bin_target.name.to_owned(), target_elf_path)]
 }
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], hints: bool) {
-    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
-
     for (target_name, elf_path) in target_elf_paths.iter() {
         // Only set env var if the ELF file actually exists
         if elf_path.exists() {

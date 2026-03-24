@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::commands::get_proving_key;
+use cargo_zisk::common::get_proving_key;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
 use std::fs;

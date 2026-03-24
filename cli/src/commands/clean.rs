@@ -8,7 +8,7 @@ use proofman_common::VerboseMode;
 use zisk_prover_backend::setup_logger;
 
 use crate::{
-    commands::get_home_zisk_path,
+    common::get_home_zisk_path,
     ux::{print_banner, print_banner_command},
 };
 

@@ -3,7 +3,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use crate::ux::print_banner_field;
-use crate::{commands::get_proving_key, ux::print_banner};
+use crate::{common::get_proving_key, ux::print_banner};
 use colored::Colorize;
 use fields::Goldilocks;
 use proofman_common::{MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVadcop};

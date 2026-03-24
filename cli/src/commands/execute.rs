@@ -75,9 +75,6 @@ pub struct ZiskExecute {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub shared_tables: bool,
 }
 
 impl ZiskExecute {
@@ -141,7 +138,6 @@ impl ZiskExecute {
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
             .print_command_info()
             .build()?;
 
@@ -161,7 +157,6 @@ impl ZiskExecute {
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
             .asm_path_opt(self.asm.clone())
             .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)
