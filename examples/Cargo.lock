@@ -4700,6 +4700,7 @@ dependencies = [
  "asm-runner",
  "bincode",
  "blake3",
+ "borsh",
  "colored",
  "executor",
  "fields",

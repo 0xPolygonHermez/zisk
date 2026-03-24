@@ -39,7 +39,7 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
     ///
     /// # Example
     /// ```ignore
-    /// let result = prover.prove(&pk, stdin).compressed().run()?;
+    /// let result = prover.prove(&pk, stdin).reduced().run()?;
     /// ```
     pub fn prove<'a>(&'a self, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
         self.inner.prove(pk, stdin)

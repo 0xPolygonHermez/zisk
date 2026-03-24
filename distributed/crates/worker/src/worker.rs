@@ -745,7 +745,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(agg_params.compressed);
+        let options = self.get_proof_options(agg_params.reduced);
 
         let agg_proofs_register: Vec<AggProofsRegister> = agg_params
             .agg_proofs
@@ -821,7 +821,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    fn get_proof_options(&self, compressed: bool) -> ProofOptions {
+    fn get_proof_options(&self, reduced: bool) -> ProofOptions {
         ProofOptions {
             verify_constraints: self.prover_config.verify_constraints,
             aggregation: self.prover_config.aggregation,
@@ -831,7 +831,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             output_dir_path: None,
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,
-            compressed,
+            compressed: reduced,
         }
     }
 

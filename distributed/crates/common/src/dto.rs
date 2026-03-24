@@ -245,7 +245,7 @@ pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub compressed: bool,
+    pub reduced: bool,
 }
 
 pub struct ProofDto {

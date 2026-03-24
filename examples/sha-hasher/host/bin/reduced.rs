@@ -6,7 +6,7 @@ use zisk_sdk::{
 pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
 
 fn main() -> Result<()> {
-    println!("Starting ZisK Prover Client (Compressed proof mode)...");
+    println!("Starting ZisK Prover Client (Reduced proof mode)...");
 
     // Create an input stream and write '1000' to it.
     let n = 1000u32;

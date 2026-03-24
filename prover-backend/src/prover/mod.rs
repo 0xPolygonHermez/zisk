@@ -579,7 +579,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// # Example
     /// ```ignore
-    /// let result = prover.prove(&pk, stdin).compressed().run()?;
+    /// let result = prover.prove(&pk, stdin).reduced().run()?;
     /// ```
     pub fn prove<'a>(&'a self, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
         ProveBuilder::new(&self.prover, pk, stdin)
@@ -660,7 +660,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
 ///
 /// # Example
 /// ```ignore
-/// let result = prover.prove(stdin).compressed().run()?;
+/// let result = prover.prove(stdin).reduced().run()?;
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
@@ -681,7 +681,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Enable compressed proof generation.
+    /// Enable reduced proof generation.
     pub fn reduced(mut self) -> Self {
         self.mode = ProofMode::VadcopFinalReduced;
         self

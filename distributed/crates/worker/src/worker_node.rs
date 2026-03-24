@@ -755,7 +755,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            compressed: agg_params.compressed,
+            reduced: agg_params.reduced,
         };
         self.worker.set_current_computation(self.worker.handle_aggregate(
             job,

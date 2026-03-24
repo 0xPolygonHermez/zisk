@@ -465,7 +465,7 @@ pub struct AggregationParams {
     pub agg_proofs: Vec<AggProofData>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub compressed: bool,
+    pub reduced: bool,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]

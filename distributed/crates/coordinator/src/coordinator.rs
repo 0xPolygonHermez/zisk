@@ -443,7 +443,7 @@ impl Coordinator {
 
             let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
                 &final_proof.unwrap(),
-                self.config.coordinator.compressed_proofs,
+                self.config.coordinator.reduced_proofs,
                 Vec::new(), // LATER
             )
             .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
@@ -1941,7 +1941,7 @@ impl Coordinator {
                 agg_proofs: proofs,
                 last_proof: all_done,
                 final_proof: all_done,
-                compressed: self.config.coordinator.compressed_proofs,
+                reduced: self.config.coordinator.reduced_proofs,
             }),
         };
 

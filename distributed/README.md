@@ -144,7 +144,7 @@ The table below lists the available configuration options for the Coordinator:
 | `server.port` | `--port` | - | Number | 50051 | Server port |
 | `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs (conflicts with `--no-save-proofs`) |
 | - | `--no-save-proofs` | - | Boolean | false | Disable saving proofs (conflicts with `--proofs-dir`) |
-| - | `-c`, `--compressed-proofs` | - | Boolean | false | Generate compressed proofs |
+| - | `-c`, `--reduced-proofs` | - | Boolean | false | Generate reduced proofs |
 | `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
 | `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
 | `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
