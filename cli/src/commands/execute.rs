@@ -36,11 +36,11 @@ pub struct ZiskExecute {
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    #[clap(short = 'i', long, alias = "input")]
     pub inputs: Option<String>,
 
     /// Precompiles Hints path
-    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    #[clap(short = 'H', long)]
     pub hints: Option<String>,
 
     /// Force ROM setup

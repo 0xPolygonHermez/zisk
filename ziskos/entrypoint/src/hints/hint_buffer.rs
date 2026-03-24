@@ -5,9 +5,9 @@ use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
                                                // TODO: Set MAX_WRITE_LEN based on writer type (file or socket)
-pub const MAX_WRITER_LEN: usize = 128 * 1024; // 128KB is the max write size for Unix sockets
+pub const MAX_WRITER_LEN: usize = MAX_HINTS_MESSAGE_BYTES; // 128KB is the max write size for Unix sockets
 pub const WRITE_BUFFER_FLUSH_LEN: usize = 64 * 1024; // Flush writer buffer once it exceeds 64KB
-const MAX_INPUT_DATA_CHUNK: usize = 128 * 1024 - 8; // Max input data chunk size is 128KB minus 8 bytes for the header (length)
+const MAX_INPUT_DATA_CHUNK: usize = MAX_HINTS_MESSAGE_BYTES - 8; // Max input data chunk size is 128KB minus 8 bytes for the header (length)
 pub const HEADER_LEN: usize = 8;
 
 pub struct HintBuffer {

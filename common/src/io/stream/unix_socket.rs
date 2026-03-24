@@ -11,6 +11,8 @@ use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result};
 
+use crate::io::MAX_HINTS_MESSAGE_BYTES;
+
 use super::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
@@ -151,8 +153,8 @@ impl StreamRead for UnixSocketStreamReader {
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("UnixSocketStreamReader: Socket not connected"))?;
 
-        // Buffer for receiving messages (128KB max for SOCK_SEQPACKET)
-        let mut buffer = vec![0u8; 128 * 1024];
+        // Buffer for receiving messages
+        let mut buffer = vec![0u8; MAX_HINTS_MESSAGE_BYTES];
 
         // Use raw recv to detect MSG_TRUNC
         use std::os::unix::io::AsRawFd;
@@ -342,6 +344,21 @@ impl UnixSocketStreamWriter {
         }
 
         self.listener_fd = Some(sock_fd);
+        Ok(())
+    }
+
+    /// Block until a client connects.
+    ///
+    /// No-op if a client is already connected.
+    pub fn wait_for_client(&mut self) -> Result<()> {
+        if self.socket.is_some() {
+            return Ok(());
+        }
+        self.open()?;
+        if let Some(rx) = self.socket_receiver.take() {
+            let stream = rx.recv().map_err(|_| anyhow::anyhow!("Accept thread terminated"))?;
+            self.socket = Some(stream);
+        }
         Ok(())
     }
 

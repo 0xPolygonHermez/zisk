@@ -1,13 +1,10 @@
-use tracing::warn;
-
-use crate::io::ZiskIO;
+use crate::io::ZiskIORead;
 use anyhow::Result;
-use serde::{de::DeserializeOwned, Serialize};
-use std::path::Path;
+use serde::de::DeserializeOwned;
 
 pub struct ZiskNullStdin;
 
-impl ZiskIO for ZiskNullStdin {
+impl ZiskIORead for ZiskNullStdin {
     fn read_raw_bytes(&self) -> Vec<u8> {
         Vec::new()
     }
@@ -21,17 +18,33 @@ impl ZiskIO for ZiskNullStdin {
     fn read<T: DeserializeOwned>(&self) -> Result<T> {
         Err(anyhow::anyhow!("NullStdin does not support reading"))
     }
-    fn write<T: Serialize>(&self, _data: &T) {
-        warn!("NullStdin does not support writing");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_raw_bytes_is_empty() {
+        assert!(ZiskNullStdin.read_raw_bytes().is_empty());
     }
-    fn write_slice(&self, _data: &[u8]) {
-        warn!("NullStdin does not support writing");
+
+    #[test]
+    fn read_bytes_is_empty() {
+        assert!(ZiskNullStdin.read_bytes().is_empty());
     }
-    fn write_proof(&self, _proof: &[u8]) {
-        warn!("NullStdin does not support writing");
+
+    #[test]
+    fn read_typed_returns_error() {
+        assert!(ZiskNullStdin.read::<u64>().is_err());
     }
-    fn save(&self, _path: &Path) -> Result<()> {
-        warn!("NullStdin does not support saving");
-        Ok(())
+
+    #[test]
+    fn read_slice_leaves_buffer_unchanged() {
+        // ZiskNullStdin::read_slice is a no-op — documents the known behaviour
+        // that the caller's buffer is not filled.
+        let mut buf = vec![0xFFu8; 4];
+        ZiskNullStdin.read_slice(&mut buf);
+        assert_eq!(buf, vec![0xFFu8; 4]);
     }
 }

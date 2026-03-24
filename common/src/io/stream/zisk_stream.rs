@@ -8,6 +8,10 @@ use std::thread::{self, JoinHandle};
 
 use crate::io::{StreamRead, StreamSource};
 
+/// Maximum number of bytes read from the stream in a single batch.
+/// Is aligned with the maximum size of `SOCK_SEQPACKET` in Unix domain sockets.
+pub const MAX_HINTS_MESSAGE_BYTES: usize = 128 * 1024;
+
 pub trait StreamProcessor: Send + Sync + 'static {
     /// Process a batch of hint data.
     ///

@@ -2,20 +2,18 @@
 //! This module provides functionality to read input data from a file.
 
 use anyhow::Result;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 use std::fs::{self, File};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::io::ZiskIO;
+use crate::io::ZiskIORead;
 
 /// A file-based implementation of ZiskStdin that reads from a file.
 pub struct ZiskFileStdin {
-    /// The path to the input file.
+    /// Path to the input file.
     path: PathBuf,
-
-    /// Buffered reader for the file.
     reader: Mutex<BufReader<File>>,
 }
 
@@ -34,28 +32,26 @@ impl ZiskFileStdin {
         Ok(ZiskFileStdin { path: path_buf, reader: Mutex::new(BufReader::new(file)) })
     }
 
+    /// Read the next framed entry from the `BufReader`.
+    ///
+    /// On any I/O error the reader is seeked back to the position it held
+    /// before this call, leaving it in a consistent state for the next attempt.
     fn read_raw_data(&self) -> std::io::Result<Vec<u8>> {
         let mut reader = self.reader.lock().unwrap();
+        let start = reader.stream_position()?;
 
-        let mut len_bytes = [0u8; 8];
-        reader.read_exact(&mut len_bytes)?;
-        let len = usize::from_le_bytes(len_bytes);
+        let result = super::framing::read_frame(&mut *reader);
 
-        let mut data = vec![0u8; len];
-        reader.read_exact(&mut data)?;
-
-        let total_len = 8 + len;
-        let padding = (8 - (total_len % 8)) % 8;
-        if padding > 0 {
-            let mut padding_bytes = vec![0u8; padding];
-            reader.read_exact(&mut padding_bytes)?;
+        if result.is_err() {
+            // Best-effort seek back; ignore secondary errors.
+            let _ = reader.seek(SeekFrom::Start(start));
         }
 
-        Ok(data)
+        result
     }
 }
 
-impl ZiskIO for ZiskFileStdin {
+impl ZiskIORead for ZiskFileStdin {
     fn read_raw_bytes(&self) -> Vec<u8> {
         fs::read(&self.path).expect("Could not read inputs file")
     }
@@ -84,28 +80,126 @@ impl ZiskIO for ZiskFileStdin {
         bincode::deserialize(&data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize from file: {}", e))
     }
+}
 
-    fn write<T: Serialize>(&self, _data: &T) {
-        // This is a read-only stdin implementation
-        // Writing is not supported for file-based stdin
-        panic!("Write operations are not supported for FileStdin");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+    use std::io::Write;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Point {
+        x: i32,
+        y: i32,
     }
 
-    fn write_slice(&self, _data: &[u8]) {
-        // This is a read-only stdin implementation
-        // Writing is not supported for file-based stdin
-        panic!("Write operations are not supported for FileStdin");
+    /// Write a framed payload into a `Vec<u8>` (mirrors the memory impl).
+    fn framed(payload: &[u8]) -> Vec<u8> {
+        let data_len = payload.len();
+        let total_len = 8 + data_len;
+        let padding = (8 - (total_len % 8)) % 8;
+        let mut out = Vec::with_capacity(total_len + padding);
+        out.extend_from_slice(&data_len.to_le_bytes());
+        out.extend_from_slice(payload);
+        out.extend_from_slice(&vec![0u8; padding]);
+        out
     }
 
-    fn write_proof(&self, _proof: &[u8]) {
-        // This is a read-only stdin implementation
-        // Writing is not supported for file-based stdin
-        panic!("Write operations are not supported for FileStdin");
+    /// Write bytes into a uniquely-named temp file and return its path.
+    fn tmp_file_with(content: &[u8]) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("zisk_file_stdin_{}_{}.bin", std::process::id(), id));
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(content).unwrap();
+        path
     }
 
-    fn save(&self, _path: &Path) -> Result<()> {
-        // This is a read-only stdin implementation
-        // Saving is not supported for file-based stdin
-        panic!("Save operations are not supported for FileStdin");
+    #[test]
+    fn read_raw_bytes_returns_full_file_contents() {
+        let content = framed(b"hello");
+        let path = tmp_file_with(&content);
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+        assert_eq!(stdin.read_raw_bytes(), content);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn read_raw_bytes_is_independent_of_cursor() {
+        let content = framed(b"data");
+        let path = tmp_file_with(&content);
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+
+        let _ = stdin.read_bytes(); // advance BufReader cursor
+                                    // read_raw_bytes should still return the full file
+        assert_eq!(stdin.read_raw_bytes(), content);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn read_bytes_decodes_single_framed_entry() {
+        let path = tmp_file_with(&framed(b"payload"));
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+        assert_eq!(stdin.read_bytes(), b"payload");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn read_bytes_sequential_entries() {
+        let mut content = framed(b"first");
+        content.extend(framed(b"second"));
+        let path = tmp_file_with(&content);
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+        assert_eq!(stdin.read_bytes(), b"first");
+        assert_eq!(stdin.read_bytes(), b"second");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn read_typed_roundtrip() {
+        let value = Point { x: 10, y: -3 };
+        let serialized = bincode::serialize(&value).unwrap();
+        let path = tmp_file_with(&framed(&serialized));
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+        let got: Point = stdin.read().unwrap();
+        assert_eq!(got, value);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn read_slice_fills_buffer() {
+        let path = tmp_file_with(&framed(b"slicedata"));
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+        let mut buf = vec![0u8; 9];
+        stdin.read_slice(&mut buf);
+        assert_eq!(&buf, b"slicedata");
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn cursor_recovers_after_truncated_read() {
+        // Write a valid frame followed by a truncated one (missing payload bytes).
+        let mut content = framed(b"good");
+        // Truncated: length header says 100 bytes but we only write 3.
+        content.extend_from_slice(&100u64.to_le_bytes());
+        content.extend_from_slice(b"BAD");
+        let path = tmp_file_with(&content);
+
+        let stdin = ZiskFileStdin::new(&path).unwrap();
+
+        // First read succeeds.
+        assert_eq!(stdin.read_bytes(), b"good");
+
+        // Second read fails (truncated frame).
+        assert!(stdin.read_raw_data().is_err());
+
+        // Cursor should have been restored — a retry of the same position
+        // still fails, but does NOT advance past the bad frame.
+        assert!(stdin.read_raw_data().is_err());
+
+        std::fs::remove_file(&path).unwrap();
     }
 }

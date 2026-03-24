@@ -16,4 +16,4 @@ pub use stream_writer::*;
 pub use zisk_stream::*;
 
 #[cfg(unix)]
-pub use unix_socket::{UnixSocketStreamReader, UnixSocketStreamWriter};
+pub use unix_socket::{UnixSocketError, UnixSocketStreamReader, UnixSocketStreamWriter};
