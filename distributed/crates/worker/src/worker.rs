@@ -10,7 +10,7 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
-use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
+use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{Asm, Emu, ProverClientBuilder, ZiskBackend, ZiskProgramPK, ZiskProver};
@@ -644,9 +644,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
                 })?;
 
-                if let Some(r) = self.pk.asm_resources.as_ref() {
-                    r.set_active_services(is_first_partition)?;
-                }
+                self.pk.set_active_services(is_first_partition);
 
                 // Replace any existing actor (handles reconnect / job restart)
                 self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
@@ -854,31 +852,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
-            if let Some(r) = pk.asm_resources.as_ref() {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                if let Err(e) = r.submit_hint_direct(&message.data) {
-                    tracing::error!("Failed to submit hints: {}", e);
-                }
-            } else {
-                tracing::error!("Hints sink is not configured for ContributionsHintsStream");
-            }
+            pk.submit_hint(&bytes)?;
         } else if phase == JobPhase::ContributionsInputsStream {
-            if let Some(inputs_shmem_writer) =
-                pk.asm_resources.as_ref().map(|r| r.inputs_shmem_writer.clone())
-            {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                let reinterpreted_data = unsafe {
-                    std::slice::from_raw_parts(
-                        message.data.as_ptr() as *const u8,
-                        message.data.len() * std::mem::size_of::<u64>(),
-                    )
-                };
-                if let Err(e) = inputs_shmem_writer.append_input(reinterpreted_data) {
-                    tracing::error!("Failed to submit inputs: {}", e);
-                }
-            } else {
-                tracing::error!("Inputs sink is not configured for ContributionsInputsStream");
-            }
+            pk.submit_input(&bytes)?;
         } else {
             tokio::task::spawn_blocking(move || match phase {
                 JobPhase::Contributions => {

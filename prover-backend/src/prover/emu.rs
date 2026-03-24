@@ -88,17 +88,7 @@ impl ProverEngine for EmuProver {
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
-        Ok((
-            ZiskProgramPK {
-                zisk_rom,
-                elf_bin_path: rom_bin_path,
-                asm_resources: None,
-                asm_services: None,
-                rank_info: self.core_prover.rank_info.clone(),
-                use_hints: false,
-            },
-            ZiskProgramVK { vk },
-        ))
+        Ok((ZiskProgramPK::new_emu(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
     }
 
     fn executed_steps(&self) -> u64 {

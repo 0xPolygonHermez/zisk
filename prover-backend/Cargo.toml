@@ -23,6 +23,7 @@ rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
 fields = { workspace = true }
+borsh = { workspace = true }
 
 # Optional dependencies
 ziskemu = { workspace = true }

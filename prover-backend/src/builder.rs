@@ -304,18 +304,17 @@ impl<X> ProverClientBuilder<EmuB, X> {
             Self::print_emu_command_info(&proving_key, &proving_key_snark);
         }
 
-        let emu = 
-            EmuProver::new(
-                self.verify_constraints || self.witness,
-                self.aggregation,
-                self.snark_wrapper,
-                proving_key,
-                proving_key_snark,
-                self.verbose,
-                self.shared_tables,
-                self.gpu_params,
-                self.logging_config,
-            )?;
+        let emu = EmuProver::new(
+            self.verify_constraints || self.witness,
+            self.aggregation,
+            self.snark_wrapper,
+            proving_key,
+            proving_key_snark,
+            self.verbose,
+            self.shared_tables,
+            self.gpu_params,
+            self.logging_config,
+        )?;
 
         Ok(ZiskProver::<Emu>::new(emu))
     }
@@ -401,24 +400,22 @@ impl<X> ProverClientBuilder<AsmB, X> {
             Self::print_asm_command_info(&proving_key, &proving_key_snark);
         }
 
-        let asm = 
-            AsmProver::new(
-                self.verify_constraints || self.witness,
-                self.aggregation,
-                self.snark_wrapper,
-                proving_key,
-                proving_key_snark,
-                self.verbose,
-                self.shared_tables,
-                self.base_port,
-                self.unlock_mapped_memory,
-                self.asm_out_file,
-                self.no_auto_setup,
-                self.gpu_params,
-                self.is_distributed,
-                self.logging_config,
-            )?;
-        
+        let asm = AsmProver::new(
+            self.verify_constraints || self.witness,
+            self.aggregation,
+            self.snark_wrapper,
+            proving_key,
+            proving_key_snark,
+            self.verbose,
+            self.shared_tables,
+            self.base_port,
+            self.unlock_mapped_memory,
+            self.asm_out_file,
+            self.no_auto_setup,
+            self.gpu_params,
+            self.is_distributed,
+            self.logging_config,
+        )?;
 
         Ok(ZiskProver::<Asm>::new(asm))
     }

@@ -114,7 +114,6 @@ impl ProverEngine for AsmProver {
         let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
-        let rank_info = self.core_prover.rank_info.clone();
         let base_port = Some(AsmServices::port_base_offset(
             self.core_prover.asm_info.base_port,
             n_processes,
@@ -200,21 +199,12 @@ impl ProverEngine for AsmProver {
             with_hints,
             mpi_broadcast_fn,
             init_rom,
+            asm_services,
         )?;
 
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
-        Ok((
-            ZiskProgramPK {
-                zisk_rom,
-                elf_bin_path: rom_bin_path,
-                asm_services: Some(asm_services),
-                asm_resources: Some(asm_resources),
-                rank_info,
-                use_hints: with_hints,
-            },
-            ZiskProgramVK { vk },
-        ))
+        Ok((ZiskProgramPK::new_asm(zisk_rom, rom_bin_path, asm_resources), ZiskProgramVK { vk }))
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {

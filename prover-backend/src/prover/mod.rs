@@ -9,10 +9,10 @@ use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
-use proofman_common::{ProofOptions, RankInfo, RowInfo};
+use proofman_common::{ProofOptions, RowInfo};
 
 use anyhow::Result;
-use asm_runner::{AsmServices, HintsShmem};
+use asm_runner::HintsShmem;
 use executor::AsmResources;
 use proofman::PlanningInfo;
 use std::{
@@ -20,13 +20,13 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tracing::info;
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, ExecutorStatsHandle, ProofMode, StatsCostPerType,
     ZiskExecutorSummary, ZiskExecutorTime, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues,
     ZiskPublics, ZiskVK, ZiskVerifyBuilder,
 };
 use zisk_core::ZiskRom;
+use zisk_distributed_common::StreamMessage;
 
 pub struct ZiskExecuteResult {
     pub total_duration: Duration,
@@ -118,42 +118,76 @@ impl ZiskVerifyConstraintsResult {
 
 #[derive(Debug, Clone)]
 pub struct ZiskProgramPK {
-    pub zisk_rom: Arc<ZiskRom>,
-    pub elf_bin_path: PathBuf,
-    pub asm_resources: Option<AsmResources>,
-    pub asm_services: Option<AsmServices>,
-    pub rank_info: RankInfo,
-    use_hints: bool,
+    zisk_rom: Arc<ZiskRom>,
+    rom_bin_path: PathBuf,
+    asm_resources: Option<AsmResources>,
 }
 
 impl ZiskProgramPK {
-    pub fn use_hints(&self) -> bool {
-        self.use_hints
+    pub fn new_emu(zisk_rom: Arc<ZiskRom>, rom_bin_path: PathBuf) -> Self {
+        Self { zisk_rom, rom_bin_path, asm_resources: None }
+    }
+
+    pub fn new_asm(
+        zisk_rom: Arc<ZiskRom>,
+        rom_bin_path: PathBuf,
+        asm_resources: AsmResources,
+    ) -> Self {
+        Self { zisk_rom, rom_bin_path, asm_resources: Some(asm_resources) }
+    }
+
+    pub fn get_rom_path(&self) -> &Path {
+        &self.rom_bin_path
+    }
+
+    pub fn get_zisk_rom(&self) -> Arc<ZiskRom> {
+        self.zisk_rom.clone()
+    }
+
+    pub fn set_active_services(&self, is_first_partition: bool) {
+        self.asm_resources.as_ref().map(|r| r.set_active_services(is_first_partition));
     }
 
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
-        if self.use_hints() {
-            if let Some(asm_resources) = &self.asm_resources {
-                asm_resources
-                    .set_hints_stream_src(stream)
-                    .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))?;
-            } else {
-                return Err(anyhow::anyhow!(
-                    "ASM resources not initialized, cannot register hints stream"
-                ));
-            }
+        if let Some(asm_resources) = &self.asm_resources {
+            asm_resources
+                .set_hints_stream_src(stream)
+                .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))?;
         } else {
             return Err(anyhow::anyhow!(
-                "Hints not enabled for this program, cannot register hints stream"
+                "ASM resources not initialized, cannot register hints stream"
             ));
         }
         Ok(())
     }
 
-    pub fn is_asm(&self) -> bool {
-        self.asm_services.is_some()
+    pub fn submit_input(&self, bytes: &[u8]) -> Result<()> {
+        if let Some(asm_resources) = &self.asm_resources {
+            let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+            let reinterpreted_data = unsafe {
+                std::slice::from_raw_parts(
+                    message.data.as_ptr() as *const u8,
+                    message.data.len() * std::mem::size_of::<u64>(),
+                )
+            };
+            asm_resources.inputs_shmem_writer.append_input(reinterpreted_data)?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("ASM resources not initialized, cannot append input data"))
+        }
     }
 
+    pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
+        if let Some(asm_resources) = &self.asm_resources {
+            let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+            asm_resources
+                .submit_hint_direct(&message.data)
+                .map_err(|e| anyhow::anyhow!("Failed to submit hint data: {}", e))?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("ASM resources not initialized, cannot submit hint data"))
+        }
+    }
     pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
         self.asm_resources.as_ref().and_then(|r| r.get_hints_processor())
     }
@@ -161,22 +195,6 @@ impl ZiskProgramPK {
     pub fn reset(&self) {
         if let Some(asm_resources) = &self.asm_resources {
             asm_resources.reset();
-        }
-    }
-}
-
-impl Drop for ZiskProgramPK {
-    fn drop(&mut self) {
-        // Shut down ASM microservices
-        if let Some(asm_services) = &self.asm_services {
-            info!(">>> [{}] Stopping ASM microservices.", self.rank_info.world_rank);
-            if let Err(e) = asm_services.stop_asm_services() {
-                tracing::error!(
-                    ">>> [{}] Failed to stop ASM microservices: {}",
-                    self.rank_info.world_rank,
-                    e
-                );
-            }
         }
     }
 }

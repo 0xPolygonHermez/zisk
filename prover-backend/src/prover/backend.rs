@@ -68,14 +68,16 @@ impl ProverBackend {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
+        let mut use_hints = false;
         if let Some(asm_resources) = &program_pk.asm_resources {
             executor.set_asm_resources(asm_resources.clone());
+            use_hints = asm_resources.use_hints();
         }
 
-        executor.set_rom(program_pk.zisk_rom.clone(), program_pk.use_hints());
+        executor.set_rom(program_pk.get_zisk_rom(), use_hints);
 
         let custom_commits_map =
-            HashMap::from([("rom".to_string(), program_pk.elf_bin_path.clone())]);
+            HashMap::from([("rom".to_string(), program_pk.get_rom_path().to_path_buf())]);
         proofman
             .register_custom_commits(custom_commits_map)
             .map_err(|e| anyhow::anyhow!(e.to_string()))

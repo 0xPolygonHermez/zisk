@@ -39,6 +39,8 @@ pub struct AsmResources {
     /// Configuration for assembly resources.
     config: AsmResourcesConfig,
 
+    asm_services: AsmServices,
+
     /// Shared memory for writing inputs to the assembly microservices.
     pub inputs_shmem_writer: Arc<InputsShmemWriter>,
 
@@ -51,6 +53,8 @@ pub struct AsmResources {
     pub mo_shmem_reader: Arc<Mutex<MOShMemReader>>,
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub rh_shmem_reader: Arc<Mutex<Option<RHShMemReader>>>,
+
+    use_hints: bool,
 }
 
 impl std::fmt::Debug for AsmResources {
@@ -70,9 +74,10 @@ impl AsmResources {
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
-        with_hints: bool,
+        use_hints: bool,
         mpi_broadcast_fn: Option<MpiBroadcastFn>,
         init_rom: bool,
+        asm_services: AsmServices,
     ) -> Result<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let asm_shmem_mt = MTShMemReader::new(local_rank, base_port, unlock_mapped_memory)?;
@@ -92,7 +97,7 @@ impl AsmResources {
             control_writer.clone(),
         )?);
 
-        let hints_stream = if with_hints {
+        let hints_stream = if use_hints {
             let active_services =
                 if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
 
@@ -129,7 +134,13 @@ impl AsmResources {
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             rh_shmem_reader: Arc::new(Mutex::new(None)),
             inputs_shmem_writer,
+            asm_services,
+            use_hints,
         })
+    }
+
+    pub fn use_hints(&self) -> bool {
+        self.use_hints
     }
 
     /// Returns the concrete hints processor for passing to `StreamOrderingActor`.
@@ -202,5 +213,19 @@ impl AsmResources {
         let inputs = stdin.read_raw_bytes();
 
         self.inputs_shmem_writer.write_input(&inputs)
+    }
+}
+
+impl Drop for AsmResources {
+    fn drop(&mut self) {
+        // Shut down ASM microservices
+        tracing::info!(">>> [{}] Stopping ASM microservices.", self.config.world_rank);
+        if let Err(e) = self.asm_services.stop_asm_services() {
+            tracing::error!(
+                ">>> [{}] Failed to stop ASM microservices: {}",
+                self.config.world_rank,
+                e
+            );
+        }
     }
 }
