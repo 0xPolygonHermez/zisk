@@ -28,7 +28,7 @@ pub struct ZiskExecute {
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
+    #[clap(short = 's', long, hide = true)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -44,7 +44,7 @@ pub struct ZiskExecute {
     pub hints: Option<String>,
 
     /// Force ROM setup
-    #[clap(short = 'n', long, default_value_t = false)]
+    #[clap(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
     /// Setup folder path
@@ -69,14 +69,14 @@ pub struct ZiskExecute {
 
     /// Redirect ASM emulator output to file
     /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    #[clap(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
     pub asm_out_file: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'j', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 }
 

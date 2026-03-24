@@ -29,7 +29,7 @@ pub struct ZiskProve {
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
+    #[clap(short = 's', long, hide = true)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -59,13 +59,13 @@ pub struct ZiskProve {
     #[clap(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'c', long, default_value_t = false)]
+    #[clap(short = 'c', long, default_value_t = false, conflicts_with = "snark")]
     pub compressed: bool,
 
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
-    #[clap(short = 'z', long, default_value_t = false)]
+    #[clap(short = 'z', long, default_value_t = false, hide = true)]
     pub preallocate: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -86,38 +86,38 @@ pub struct ZiskProve {
 
     /// Redirect ASM emulator output to file
     /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    #[clap(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
     pub asm_out_file: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 't', long)]
+    #[clap(short = 't', long, hide = true)]
     pub max_streams: Option<usize>,
 
-    #[clap(short = 'h', long)]
+    #[clap(short = 'h', long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'b', long, default_value_t = false)]
+    #[clap(short = 'b', long, default_value_t = false, hide = true)]
     pub save_proofs: bool,
 
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'j', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 
     #[clap(short = 'r', long, default_value_t = false)]
     pub rma: bool,
 
-    #[clap(short = 'n', long, default_value_t = false)]
+    #[clap(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
-    #[clap(long, default_value_t = false)]
+    #[clap(long, default_value_t = false, conflicts_with = "compressed")]
     pub snark: bool,
 }
 

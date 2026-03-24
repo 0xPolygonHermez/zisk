@@ -91,7 +91,7 @@ pub struct ZiskStats {
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'j', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 
     #[clap(short = 'n', long, default_value_t = false)]

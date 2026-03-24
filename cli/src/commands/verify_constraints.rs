@@ -28,7 +28,7 @@ pub struct ZiskVerifyConstraints {
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
+    #[clap(short = 's', long, hide = true)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -65,20 +65,20 @@ pub struct ZiskVerifyConstraints {
 
     /// Redirect ASM emulator output to file
     /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    #[clap(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
     pub asm_out_file: bool,
 
-    #[clap(short = 'n', long, default_value_t = false)]
+    #[clap(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'd', long)]
+    #[clap(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 
-    #[clap(short = 'j', long, default_value_t = false)]
+    #[clap(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 }
 

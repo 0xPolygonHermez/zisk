@@ -26,7 +26,7 @@ pub struct ZiskRomSetup {
     pub proving_key: Option<PathBuf>,
 
     /// Output dir path
-    #[clap(short = 'o', long)]
+    #[clap(short = 'o', long, hide = true)]
     pub output_dir: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
