@@ -18,7 +18,7 @@ use std::collections::HashMap;
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 26] = [
+const CSR_PRECOMPILED: [&str; 27] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -45,6 +45,7 @@ const CSR_PRECOMPILED: [&str; 26] = [
     "secp256r1_add",
     "secp256r1_dbl",
     "blake2",
+    "profile",
 ];
 const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
 const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;

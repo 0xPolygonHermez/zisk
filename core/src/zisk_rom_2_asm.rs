@@ -7602,6 +7602,9 @@ impl ZiskRom2Asm {
             ZiskOp::DmaPost => {
                 unimplemented!("Internal opcode DmaPost");
             }
+            ZiskOp::Profile => {
+                unimplemented!("Internal opcode Profile");
+            }
         }
     }
 

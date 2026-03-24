@@ -15,8 +15,10 @@ use std::{
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, SRC_IMM, SRC_REG,
-    STORE_IND, UART_ADDR,
 };
+
+#[cfg(feature = "handle_stdout")]
+use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
     get_ops_costs, get_ops_ranks, RegionsOfInterest, StatsCostMark, StatsCosts,
@@ -86,7 +88,7 @@ pub struct Stats {
     use_colors: bool,
     ram_size: u64,
     ram_used: u64,
-    sys_write_addr: u64,
+    profile_stack: Vec<(String, u64)>,
     #[cfg(feature = "handle_stdout")]
     stdout_data: String,
     #[cfg(feature = "handle_stdout")]
@@ -137,7 +139,7 @@ impl Default for Stats {
             use_colors: std::io::stdout().is_terminal(),
             ram_size: 0,
             ram_used: 0,
-            sys_write_addr: 0,
+            profile_stack: Vec::new(),
             #[cfg(feature = "handle_stdout")]
             stdout_data: String::with_capacity(256),
             #[cfg(feature = "handle_stdout")]
@@ -184,8 +186,7 @@ impl Stats {
             .iter()
             .rev()
             .skip(1)
-            .find(|entry| entry.called_roi_index.unwrap_or(NO_ROI_ID) == roi)
-            .is_some()
+            .any(|entry| entry.called_roi_index.unwrap_or(NO_ROI_ID) == roi)
     }
     pub fn print_call_stack(&self) {
         println!("CALL STACK DUMP (top to bottom):");
@@ -549,7 +550,7 @@ impl Stats {
             let _ch = inst_ctx.c as u8 as char;
             if _ch == '\n' {
                 if !self.stdout_data.is_empty() {
-                    handle_stdout();
+                    self.handle_stdout();
                 }
                 self.stdout_data.clear();
             } else {
@@ -1121,10 +1122,6 @@ impl Stats {
     }
     pub fn set_top_rois_filter(&mut self, value: bool) {
         self.top_rois_filter = value;
-    }
-    pub fn set_sys_write_addr(&mut self, addr: u64) {
-        println!("SYS_WRITE_ADDR: 0x{addr:08X}");
-        self.sys_write_addr = addr;
     }
     pub fn set_ram_usage(&mut self, ram_size: u64, ram_used: u64) {
         self.ram_size = ram_size;

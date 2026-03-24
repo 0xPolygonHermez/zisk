@@ -22,12 +22,7 @@ use zisk_core::{
 };
 
 pub const ZISK_PUBLICS: usize = 64;
-const LOAD_SYMBOLS: [&str; 4] = [
-    "_kernel_heap_bottom",
-    "_kernel_heap_top",
-    "ZISK_BUMP_HEAP_POS",
-    "_RNvNtCs9sX5DrS8I8v_4core3fmt5write", /* "core::fmt::write"*/
-];
+const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1605,7 +1600,6 @@ impl<'a> Emu<'a> {
                     heap_bottom = address[0];
                     heap_top = address[1];
                     heap_pos_address = address[2];
-                    self.ctx.stats.set_sys_write_addr(address[3]);
                 }
                 let mut count = 0;
                 let mut roi_count = 0;
@@ -1678,7 +1672,6 @@ impl<'a> Emu<'a> {
                     heap_bottom = address[0];
                     heap_top = address[1];
                     heap_pos_address = address[2];
-                    self.ctx.stats.set_sys_write_addr(address[3]);
                 }
             }
         }
@@ -2025,7 +2018,7 @@ impl<'a> Emu<'a> {
                     inst.call_stats(&self.ctx.inst_ctx, &mut self.ctx.stats);
                 }
             }
-            self.ctx.stats.on_op(&instruction, &self.ctx.inst_ctx);
+            self.ctx.stats.on_op(instruction, &self.ctx.inst_ctx);
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction

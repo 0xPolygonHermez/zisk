@@ -59,6 +59,31 @@ macro_rules! ziskos_syscall {
             );
         }
     }};
+    ($csr_addr:expr, $imm: ty, $arg0:expr) => {{
+        unsafe {
+            asm!(
+                concat!("csrs {port}, {p0}"),
+                "addi x0, x0, {imm}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                imm = const $imm,
+                options(nostack)
+            );
+        }
+    }};
+    ($csr_addr:expr, $imm: ty, $arg0:expr, $arg1:expr) => {{
+        unsafe {
+            asm!(
+                concat!("csrs {port}, {p0}"),
+                "addi x0, {p1}, {imm}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                p1 = in(reg) $arg1,  // {1}
+                imm = const $imm,
+                options(nostack)
+            );
+        }
+    }};
     ($csr_addr:expr, $arg0:expr, $arg1:expr, $arg2: expr) => {{
         unsafe {
             asm!(
@@ -88,5 +113,19 @@ macro_rules! ziskos_syscall_ret_u64 {
             );
         }
         v
+    }};
+    ($csr_addr:expr, $arg0:expr, $arg1:expr, $arg2: expr) => {{
+        let v: u64;
+        unsafe {
+            asm!(
+                concat!("csrs {port}, {p0}"),
+                "add x0, {p1}, {p2}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                p1 = in(reg) $arg1,  // {1}
+                p2 = in(reg) $arg2,  // {2}
+                options(nostack)
+            );
+        }
     }};
 }

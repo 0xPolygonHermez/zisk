@@ -57,6 +57,7 @@ pub mod fcall;
 pub mod helpers;
 pub mod inst_context;
 pub mod mem;
+mod operations;
 pub mod riscv2zisk;
 pub mod riscv2zisk_context;
 mod utils;
