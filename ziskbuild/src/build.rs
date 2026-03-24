@@ -24,36 +24,6 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     // Activate the build command if the dependencies change.
     cargo_rerun_if_changed(&metadata, program_dir);
 
-    // Check if RUSTC_WORKSPACE_WRAPPER is set to clippy-driver (i.e. if `cargo clippy` is the
-    // current compiler). If so, don't execute `cargo prove build` because it breaks
-    // rust-analyzer's `cargo clippy` feature.
-    let is_clippy_driver = std::env::var("RUSTC_WORKSPACE_WRAPPER")
-        .map(|val| val.contains("clippy-driver"))
-        .unwrap_or(false);
-
-    // Check if this is a cargo check (when ELF files don't exist yet)
-    let is_cargo_check = std::env::var("CARGO_CFG_CHECK").is_ok();
-
-    if is_clippy_driver || is_cargo_check {
-        // For cargo check, skip setting env vars to avoid include_bytes! errors
-        if !is_cargo_check {
-            // Still need to set ELF env vars for clippy
-            let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
-            let hints = args
-                .as_ref()
-                .and_then(|a| a.hints)
-                .or_else(|| std::env::var("ZISK_HINTS").ok().and_then(|v| v.parse().ok()))
-                .unwrap_or(false);
-            print_elf_paths_cargo_directives(&target_elf_paths, hints);
-        }
-
-        println!(
-            "cargo:warning=Skipping build due to {} invocation.",
-            if is_cargo_check { "cargo check" } else { "clippy" }
-        );
-        return;
-    }
-
     // Build the program with the given arguments.
     let path_output = if let Some(args) = &args {
         execute_build_program(args, Some(program_dir.to_path_buf()))

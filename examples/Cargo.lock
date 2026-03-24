@@ -2706,7 +2706,6 @@ dependencies = [
  "proofman-common",
  "sm-rom",
  "tracing",
- "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]
@@ -4624,11 +4623,13 @@ dependencies = [
  "proofman",
  "proofman-common",
  "proofman-util",
+ "proofman-verifier",
  "quinn",
  "rcgen",
  "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4692,12 +4693,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-sdk"
+name = "zisk-prover-backend"
 version = "0.17.0"
 dependencies = [
  "anyhow",
  "asm-runner",
  "bincode",
+ "blake3",
  "colored",
  "executor",
  "fields",
@@ -4710,11 +4712,27 @@ dependencies = [
  "serde",
  "sha2",
  "tracing",
- "zisk-build",
  "zisk-common",
  "zisk-core",
  "zisk-distributed-common",
  "ziskemu",
+]
+
+[[package]]
+name = "zisk-sdk"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "colored",
+ "fields",
+ "proofman-common",
+ "rom-setup",
+ "serde",
+ "tracing",
+ "zisk-build",
+ "zisk-common",
+ "zisk-distributed-common",
+ "zisk-prover-backend",
 ]
 
 [[package]]

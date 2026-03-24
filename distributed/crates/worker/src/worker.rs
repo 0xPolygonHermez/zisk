@@ -7,13 +7,13 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
-use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{Asm, Emu, ProverClientBuilder, ZiskBackend, ZiskProgramPK, ZiskProver};
 
 use crate::stream_ordering::StreamOrderingActor;
 
@@ -159,10 +159,12 @@ impl ProverConfig {
                         prover_service_config.elf.display()
                     )
                 })?;
-            let elf =
-                ElfBinaryFromFile::new(&prover_service_config.elf, prover_service_config.hints)?;
+            let elf = GuestProgram::from_uri(
+                prover_service_config.elf.to_str().unwrap(),
+                "zisk-worker".to_string(),
+            )?;
 
-            let hash = get_elf_data_hash(&elf)
+            let hash = get_elf_data_hash(elf.elf())
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
             let stem = if prover_service_config.hints {
                 format!("{stem}-hints")
@@ -261,7 +263,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover_config: ProverConfig,
     ) -> Result<Worker<Emu>> {
         let prover = Arc::new(
-            ProverClient::builder()
+            ProverClientBuilder::new()
                 .emu()
                 .prove()
                 .aggregation(true)
@@ -272,8 +274,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -294,7 +297,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         prover_config: ProverConfig,
     ) -> Result<Worker<Asm>> {
         let prover = Arc::new(
-            ProverClient::builder()
+            ProverClientBuilder::new()
                 .asm()
                 .prove()
                 .aggregation(true)
@@ -310,8 +313,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,

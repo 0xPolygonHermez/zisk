@@ -18,14 +18,7 @@ pub struct EmulatorAsm {}
 
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        _world_rank: i32,
-        _local_rank: i32,
-        _unlock_mapped_memory: bool,
-        _chunk_size: u64,
-        _rom_sm: Option<Arc<RomSM>>,
-        _verbose_mode: proofman_common::VerboseMode,
-    ) -> Self {
+    pub fn new(_chunk_size: u64) -> Self {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -52,10 +45,6 @@ impl EmulatorAsm {
     }
 
     pub fn set_asm_resources(&self, _asm_resources: AsmResources) {
-        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
-    }
-
-    pub fn set_rh_data(&self, _rh_data: AsmRunnerRH) {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 

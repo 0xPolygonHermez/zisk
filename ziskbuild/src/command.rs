@@ -52,7 +52,10 @@ pub(crate) fn create_command(
         PathBuf::from(stdout_string.trim()).join("bin/rustc")
     };
 
-    command.env_remove("RUSTC").env("RUSTC", rustc_bin.display().to_string());
+    command
+        .env_remove("RUSTC")
+        .env("RUSTC", rustc_bin.display().to_string())
+        .env_remove("RUSTC_WORKSPACE_WRAPPER");
 
     let canonicalized_program_dir =
         program_dir.canonicalize().expect("Failed to canonicalize program directory");

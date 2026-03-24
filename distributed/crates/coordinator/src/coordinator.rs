@@ -54,6 +54,7 @@ use tracing::{error, info, warn};
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
 use zisk_common::ZiskExecutorTime;
+use zisk_common::ZiskProofWithPublicValues;
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
@@ -64,8 +65,6 @@ use zisk_distributed_common::{
     ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
 };
-
-use zisk_sdk::ZiskProofWithPublicValues;
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -445,6 +444,7 @@ impl Coordinator {
             let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
                 &final_proof.unwrap(),
                 self.config.coordinator.compressed_proofs,
+                Vec::new(), // LATER
             )
             .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
             fs::create_dir_all(&folder).map_err(|e| {

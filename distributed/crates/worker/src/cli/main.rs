@@ -7,7 +7,7 @@ use zisk_distributed_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
-use zisk_sdk::{Asm, Emu};
+use zisk_prover_backend::{Asm, Emu};
 
 #[derive(Parser)]
 #[command(name = "zisk-worker")]

@@ -1,8 +1,10 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{
+    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient, ZiskStdin,
+};
 
-pub const ELF: ElfBinary = include_elf!("guest");
-pub const ELF2: ElfBinary = include_elf!("guest-agg");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("guest");
+pub const ELF2: EmbeddedGuestElf = include_guest_elf!("guest-agg");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
@@ -16,10 +18,10 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up first program...");
-    let (pk, vkey) = client.setup(&ELF)?;
+    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
 
     println!("Setting up second program...");
-    let (pk2, vkey2) = client.setup(&ELF2)?;
+    let (pk2, _vkey2) = client.setup(&GuestProgram::from_elf(ELF2))?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
@@ -46,26 +48,15 @@ fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    let proof1 = client.prepare_send_proof(
-        &vadcop_result1.get_proof(),
-        &vadcop_result1.get_publics(),
-        &vkey,
-    )?;
-    let proof2 = client.prepare_send_proof(
-        &vadcop_result2.get_proof(),
-        &vadcop_result2.get_publics(),
-        &vkey,
-    )?;
-
-    stdin_aggregation.write_proof(&proof1);
-    stdin_aggregation.write_proof(&proof2);
+    stdin_aggregation.write_proof(vadcop_result1.get_proof_with_publics());
+    stdin_aggregation.write_proof(vadcop_result2.get_proof_with_publics());
 
     let proof_opts = ProofOpts::default().minimal_memory();
 
     let result_aggregation =
         client.prove(&pk2, stdin_aggregation).with_proof_options(proof_opts).run()?;
 
-    client.verify(result_aggregation.get_proof(), result_aggregation.get_publics(), &vkey2)?;
+    result_aggregation.verify()?;
 
     Ok(())
 }

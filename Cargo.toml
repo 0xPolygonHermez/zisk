@@ -18,6 +18,7 @@ members = [
     "emulator",
     "executor",
     "pil",
+    "prover-backend",
     "riscv",
     "rom-setup",
     "state-machines/arith",
@@ -100,6 +101,7 @@ ziskos = { path = "ziskos/entrypoint" }
 ziskos-hints = { path = "ziskos-hints" }
 circuit = { path = "tools/circuit" }
 zisk-sdk = { path = "sdk" }
+zisk-prover-backend = { path = "prover-backend" }
 zisk-build = { path = "ziskbuild" }
 precompiles-hints = { path = "precompiles/hints" }
 zisk-verifier = { path = "verifier" }

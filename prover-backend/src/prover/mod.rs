@@ -1,7 +1,7 @@
 mod asm;
 mod backend;
 mod emu;
-use crate::GuestProgram;
+use crate::guest::GuestProgram;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
@@ -390,17 +390,11 @@ pub trait ProverEngine {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
-    fn verify_constraints_debug(
-        &self,
-        pk: &ZiskProgramPK,
-        stdin: ZiskStdin,
-        debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult>;
-
     fn verify_constraints(
         &self,
         pk: &ZiskProgramPK,
         stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
 
     fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK>;
@@ -413,14 +407,14 @@ pub trait ProverEngine {
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult>;
 
-    fn prove_snark(
+    fn plonk(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues>;
 
-    fn compress(
+    fn reduce(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
@@ -548,22 +542,14 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Verify the constraints with the given standard input and debug information.
-    pub fn verify_constraints_debug(
+    /// Verify the constraints with the given standard input and optional debug information.
+    pub fn verify_constraints(
         &self,
         pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints_debug(pk, stdin, debug_info)
-    }
-
-    /// Verify the constraints with the given standard input.
-    pub fn verify_constraints(
-        &self,
-        pk: &ZiskProgramPK,
-        stdin: ZiskStdin,
-    ) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints(pk, stdin)
+        self.prover.verify_constraints(pk, stdin, debug_info)
     }
 
     pub fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
@@ -581,22 +567,34 @@ impl<C: ZiskBackend> ZiskProver<C> {
         ProveBuilder::new(&self.prover, pk, stdin)
     }
 
-    pub fn prove_snark(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
-        self.prover.prove_snark(proof, publics, vk)
+    /// Generate a PLONK/SNARK proof from an existing proof.
+    /// Returns a `PlonkBuilder` that allows overriding publics or program_vk.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let snark = prover.plonk(&proof_with_publics).run()?;
+    /// let snark = prover.plonk(&proof_with_publics).program_vk(&custom_vk).run()?;
+    /// ```
+    pub fn plonk<'a>(
+        &'a self,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+    ) -> PlonkBuilder<'a, C> {
+        PlonkBuilder::new(&self.prover, proof_with_publics)
     }
 
-    pub fn compress(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
-        self.prover.compress(proof, publics, vk)
+    /// Reduce/compress a proof to a smaller representation.
+    /// Returns a `ReduceBuilder` that allows overriding publics or program_vk.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let reduced = prover.reduce(&proof_with_publics).run()?;
+    /// let reduced = prover.reduce(&proof_with_publics).publics(&custom_publics).run()?;
+    /// ```
+    pub fn reduce<'a>(
+        &'a self,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+    ) -> ReduceBuilder<'a, C> {
+        ReduceBuilder::new(&self.prover, proof_with_publics)
     }
 
     pub fn prove_phase(
@@ -665,7 +663,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Enable reduced proof generation.
+    /// Enable compressed proof generation.
     pub fn reduced(mut self) -> Self {
         self.mode = ProofMode::VadcopFinalReduced;
         self
@@ -684,5 +682,91 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ZiskProveResult> {
         self.prover.prove(self.pk, self.stdin, self.mode, self.proof_options)
+    }
+}
+
+/// Builder for reducing/compressing a proof.
+///
+/// This builder allows optionally overriding the publics or program verification key
+/// from the original proof before reducing it.
+///
+/// # Example
+/// ```ignore
+/// let reduced = prover.reduce(&proof_with_publics).run()?;
+/// // Or override publics:
+/// let reduced = prover.reduce(&proof_with_publics).publics(&custom_publics).run()?;
+/// ```
+pub struct ReduceBuilder<'a, C: ZiskBackend> {
+    prover: &'a C::Prover,
+    proof_with_publics: &'a ZiskProofWithPublicValues,
+    override_publics: Option<&'a ZiskPublics>,
+    override_program_vk: Option<&'a ZiskProgramVK>,
+}
+
+impl<'a, C: ZiskBackend> ReduceBuilder<'a, C> {
+    fn new(prover: &'a C::Prover, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
+        Self { prover, proof_with_publics, override_publics: None, override_program_vk: None }
+    }
+
+    /// Override the publics from the original proof.
+    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+        self.override_publics = Some(publics);
+        self
+    }
+
+    /// Override the program verification key from the original proof.
+    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+        self.override_program_vk = Some(program_vk);
+        self
+    }
+
+    /// Execute the proof reduction with the configured options.
+    pub fn run(self) -> Result<ZiskProofWithPublicValues> {
+        let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
+        let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
+        self.prover.reduce(&self.proof_with_publics.proof, publics, program_vk)
+    }
+}
+
+/// Builder for generating a PLONK/SNARK proof from an existing proof.
+///
+/// This builder allows optionally overriding the publics or program verification key
+/// from the original proof before generating the SNARK.
+///
+/// # Example
+/// ```ignore
+/// let snark = prover.plonk(&proof_with_publics).run()?;
+/// // Or override verification key:
+/// let snark = prover.plonk(&proof_with_publics).program_vk(&custom_vk).run()?;
+/// ```
+pub struct PlonkBuilder<'a, C: ZiskBackend> {
+    prover: &'a C::Prover,
+    proof_with_publics: &'a ZiskProofWithPublicValues,
+    override_publics: Option<&'a ZiskPublics>,
+    override_program_vk: Option<&'a ZiskProgramVK>,
+}
+
+impl<'a, C: ZiskBackend> PlonkBuilder<'a, C> {
+    fn new(prover: &'a C::Prover, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
+        Self { prover, proof_with_publics, override_publics: None, override_program_vk: None }
+    }
+
+    /// Override the publics from the original proof.
+    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+        self.override_publics = Some(publics);
+        self
+    }
+
+    /// Override the program verification key from the original proof.
+    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+        self.override_program_vk = Some(program_vk);
+        self
+    }
+
+    /// Execute the SNARK proof generation with the configured options.
+    pub fn run(self) -> Result<ZiskProofWithPublicValues> {
+        let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
+        let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
+        self.prover.plonk(&self.proof_with_publics.proof, publics, program_vk)
     }
 }

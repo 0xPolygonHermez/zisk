@@ -1,7 +1,10 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskProofWithPublicValues, ZiskStdin};
+use zisk_sdk::{
+    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProverClient, ZiskProofWithPublicValues,
+    ZiskStdin,
+};
 
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client (SNARK mode)...");
@@ -17,7 +20,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     println!("Setting up program and generating verification key...");
-    let (pk, vkey) = client.setup(&ELF)?;
+    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
@@ -30,7 +33,7 @@ fn main() -> Result<()> {
     // let snark_proof = client.prove_snark(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
 
     println!("Verifying PLONK proof...");
-    client.verify(snark_proof.get_proof(), snark_proof.get_publics(), &vkey)?;
+    snark_proof.verify()?;
     println!("PLONK proof verification successful!");
 
     println!("Saving PLONK proof to disk...");
@@ -39,8 +42,7 @@ fn main() -> Result<()> {
 
     println!("Loading and verifying saved PLONK proof...");
     let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark_with_publics.bin")?;
-    let vk = client.vk(&ELF)?;
-    client.verify(proof.get_proof(), proof.get_publics(), &vk)?;
+    proof.program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified PLONK proof!");

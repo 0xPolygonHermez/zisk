@@ -30,13 +30,9 @@ name = "plonk"
 path = "bin/plonk.rs"
 
 [[bin]]
-name = "compressed"
-path = "bin/compressed.rs"
+name = "reduced"
+path = "bin/reduced.rs"
 
 [[bin]]
-name = "verify-constraints"
-path = "bin/verify-constraints.rs"
-
-[[bin]]
-name = "ziskemu"
-path = "bin/ziskemu.rs"
+name = "run"
+path = "bin/run.rs"

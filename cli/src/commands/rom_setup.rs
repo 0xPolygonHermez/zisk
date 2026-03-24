@@ -10,8 +10,8 @@ use proofman_common::{MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVa
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use std::sync::Arc;
-use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::setup_logger;
+use zisk_prover_backend::setup_logger;
+use zisk_prover_backend::GuestProgram;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -76,8 +76,9 @@ impl ZiskRomSetup {
         tracing::info!("Computing setup for ROM {}", self.elf.display());
 
         tracing::info!("Computing merkle root");
-        let elf = ElfBinaryFromFile::new(&self.elf, self.hints)?;
-        rom_merkle_setup::<Goldilocks>(&pctx, &elf, &self.output_dir)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
 
         gen_assembly(&self.elf, &self.output_dir, self.hints, self.verbose > 0)?;
 

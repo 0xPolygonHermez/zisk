@@ -108,7 +108,7 @@ impl EmulatorRust {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = sm_bundle.build_data_bus_counters();
+                let mut data_bus = sm_bundle.build_data_bus_counters(false);
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,

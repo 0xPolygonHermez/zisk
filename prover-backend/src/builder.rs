@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use crate::{get_proving_key, get_proving_key_snark, PublicZiskProver};
+use crate::{get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, ZiskProver};
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_common::ParamsGPU;
 use zisk_distributed_common::LoggingConfig;
-use zisk_prover_backend::{Asm, AsmProver, Emu, EmuProver, ZiskProver};
 
 use anyhow::Result;
 
@@ -87,7 +86,7 @@ impl ProverClientBuilder<(), ()> {
         self.into()
     }
 
-    pub fn build(self) -> Result<PublicZiskProver<Emu>> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
         let builder: ProverClientBuilder<EmuB, Prove> = self.emu().into();
         builder.build_emu()
     }
@@ -267,13 +266,13 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     ///     .verify_constraints()
     ///     .build();
     /// ```
-    pub fn build(self) -> Result<PublicZiskProver<Emu>> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu()
     }
 }
 
 impl ProverClientBuilder<EmuB, ()> {
-    pub fn build(self) -> Result<PublicZiskProver<Emu>> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
         let builder: ProverClientBuilder<EmuB, Prove> = self.into();
         builder.build_emu()
     }
@@ -291,13 +290,13 @@ impl ProverClientBuilder<EmuB, Prove> {
     ///    .prove()
     ///    .build();
     /// ```
-    pub fn build(self) -> Result<PublicZiskProver<Emu>> {
+    pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu()
     }
 }
 
 impl<X> ProverClientBuilder<EmuB, X> {
-    fn build_emu(self) -> Result<PublicZiskProver<Emu>> {
+    fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let proving_key = get_proving_key(self.proving_key.as_ref());
         let proving_key_snark = get_proving_key_snark(self.proving_key_snark.as_ref());
 
@@ -305,7 +304,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
             Self::print_emu_command_info(&proving_key, &proving_key_snark);
         }
 
-        let emu =
+        let emu = 
             EmuProver::new(
                 self.verify_constraints || self.witness,
                 self.aggregation,
@@ -318,7 +317,7 @@ impl<X> ProverClientBuilder<EmuB, X> {
                 self.logging_config,
             )?;
 
-        Ok(PublicZiskProver::new(ZiskProver::<Emu>::new(emu)))
+        Ok(ZiskProver::<Emu>::new(emu))
     }
 
     fn print_emu_command_info(proving_key: &Path, proving_key_snark: &Path) {
@@ -348,7 +347,7 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     ///     .verify_constraints()
     ///     .build();
     /// ```
-    pub fn build<F>(self) -> Result<PublicZiskProver<Asm>>
+    pub fn build<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
@@ -358,7 +357,7 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
 }
 
 impl ProverClientBuilder<AsmB, ()> {
-    pub fn build<F>(self) -> Result<PublicZiskProver<Asm>>
+    pub fn build<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
@@ -380,7 +379,7 @@ impl ProverClientBuilder<AsmB, Prove> {
     ///     .prove()
     ///     .build();
     /// ```
-    pub fn build<F>(self) -> Result<PublicZiskProver<Asm>>
+    pub fn build<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
@@ -390,7 +389,7 @@ impl ProverClientBuilder<AsmB, Prove> {
 }
 
 impl<X> ProverClientBuilder<AsmB, X> {
-    fn build_asm<F>(self) -> Result<PublicZiskProver<Asm>>
+    fn build_asm<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
@@ -402,7 +401,7 @@ impl<X> ProverClientBuilder<AsmB, X> {
             Self::print_asm_command_info(&proving_key, &proving_key_snark);
         }
 
-        let asm =
+        let asm = 
             AsmProver::new(
                 self.verify_constraints || self.witness,
                 self.aggregation,
@@ -419,8 +418,9 @@ impl<X> ProverClientBuilder<AsmB, X> {
                 self.is_distributed,
                 self.logging_config,
             )?;
+        
 
-        Ok(PublicZiskProver::new(ZiskProver::<Asm>::new(asm)))
+        Ok(ZiskProver::<Asm>::new(asm))
     }
 
     fn print_asm_command_info(proving_key: &Path, proving_key_snark: &Path) {

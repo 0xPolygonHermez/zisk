@@ -14,6 +14,7 @@ zisk-core = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+proofman-verifier = { workspace = true }
 proofman = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true }
@@ -22,6 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+sha2 = { workspace = true }
 libc = "0.2"
 
 # QUIC networking

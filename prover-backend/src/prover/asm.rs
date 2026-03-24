@@ -1,14 +1,14 @@
 use crate::get_asm_paths;
+use crate::GuestProgram;
+use crate::ProofOpts;
 use crate::{
     check_paths_exist, ensure_custom_commits,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProgramVK,
-    ZiskProof, ZiskProofWithPublicValues, ZiskProveResult, ZiskPublics,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
-use crate::{ProofMode, ProofOpts};
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use executor::{get_packed_info, init_executor_asm, AsmResources};
+use executor::{get_packed_info, initialize_executor, AsmResources};
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
@@ -19,9 +19,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ElfBinaryLike;
 use zisk_common::ExecutorStatsHandle;
 use zisk_common::ZiskExecutorTime;
+use zisk_common::{ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_core::Riscv2zisk;
 use zisk_distributed_common::LoggingConfig;
 
@@ -74,12 +74,6 @@ impl AsmProver {
 
         Ok(Self { core_prover })
     }
-
-    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
-        let core_prover = AsmCoreProver::new_verifier(proving_key, proving_key_snark)?;
-
-        Ok(Self { core_prover })
-    }
 }
 
 impl ProverEngine for AsmProver {
@@ -107,7 +101,9 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn setup(&self, elf: &impl ElfBinaryLike) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup(&self, elf: &GuestProgram) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+        let with_hints = false;
+
         let pctx = self.core_prover.backend.get_pctx()?;
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
 
@@ -135,7 +131,7 @@ impl ProverEngine for AsmProver {
             .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
             .join(DEFAULT_CACHE_PATH);
 
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf)?;
+        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
 
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
@@ -159,7 +155,7 @@ impl ProverEngine for AsmProver {
                     elf.elf(),
                     elf.name(),
                     &output_path,
-                    elf.with_hints(),
+                    with_hints,
                     self.core_prover.asm_info.verbose != VerboseMode::Info,
                 )?;
                 timer_stop_and_log_info!(ROM_SETUP);
@@ -185,7 +181,7 @@ impl ProverEngine for AsmProver {
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && elf.with_hints()).then(|| {
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
             let pctx = pctx.clone();
             Arc::new(move |data: &mut Vec<u8>| {
                 pctx.mpi_ctx.broadcast(data);
@@ -196,11 +192,12 @@ impl ProverEngine for AsmProver {
         let init_rom = !is_distributed && world_rank == 0;
 
         let asm_resources = AsmResources::new(
+            world_rank,
             local_rank,
             base_port,
             unlock_mapped_memory,
             verbose_mode,
-            elf.with_hints(),
+            with_hints,
             mpi_broadcast_fn,
             init_rom,
         )?;
@@ -214,7 +211,7 @@ impl ProverEngine for AsmProver {
                 asm_services: Some(asm_services),
                 asm_resources: Some(asm_resources),
                 rank_info,
-                use_hints: elf.with_hints(),
+                use_hints: with_hints,
             },
             ZiskProgramVK { vk },
         ))
@@ -268,29 +265,17 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
-    fn verify_constraints_debug(
+    fn verify_constraints(
         &self,
         pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints_debug(pk, stdin, debug_info)
+        self.core_prover.backend.verify_constraints(pk, stdin, debug_info)
     }
 
-    fn verify_constraints(
-        &self,
-        pk: &ZiskProgramPK,
-        stdin: ZiskStdin,
-    ) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints(pk, stdin)
-    }
-
-    fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
+    fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
         self.core_prover.backend.vk(elf)
-    }
-
-    fn verify(&self, proof: &ZiskProof, publics: &ZiskPublics, vk: &ZiskProgramVK) -> Result<()> {
-        self.core_prover.backend.verify(proof, publics, vk)
     }
 
     fn prove(
@@ -303,22 +288,22 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.prove(pk, stdin, mode, proof_options)
     }
 
-    fn prove_snark(
+    fn plonk(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.prove_snark(proof, publics, vk)
+        self.core_prover.backend.plonk(proof, publics, vk)
     }
 
-    fn compress(
+    fn reduce(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.compress(proof, publics, vk)
+        self.core_prover.backend.reduce(proof, publics, vk)
     }
 
     fn prove_phase(
@@ -355,15 +340,6 @@ impl ProverEngine for AsmProver {
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.core_prover.backend.mpi_broadcast(data)
-    }
-
-    fn prepare_send_proof(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        program_vk: &ZiskProgramVK,
-    ) -> Result<Vec<u8>> {
-        self.core_prover.backend.prepare_send_proof(proof, publics, program_vk)
     }
 }
 
@@ -435,12 +411,8 @@ impl AsmCoreProver {
             )?);
         }
 
-        let executor = init_executor_asm(
-            verbose.into(),
-            shared_tables,
-            unlock_mapped_memory,
-            &proofman.get_wcm(),
-        )?;
+        let executor =
+            initialize_executor(verbose.into(), shared_tables, true, &proofman.get_wcm())?;
 
         let core = ProverBackend::new(
             proofman,
@@ -460,25 +432,6 @@ impl AsmCoreProver {
                 asm_out_file,
                 verbose: verbose.into(),
                 no_auto_setup,
-                n_setups: AtomicU64::new(0),
-            },
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_verifier(proving_key: PathBuf, proving_key_snark: PathBuf) -> Result<Self> {
-        let core_prover = ProverBackend::new_verifier(proving_key, Some(proving_key_snark));
-
-        Ok(Self {
-            backend: core_prover,
-            rank_info: RankInfo { world_rank: 0, local_rank: 0, n_processes: 1 },
-            asm_info: AsmInfo {
-                is_distributed: false,
-                base_port: None,
-                unlock_mapped_memory: false,
-                asm_out_file: false,
-                verbose: VerboseMode::Info,
-                no_auto_setup: false,
                 n_setups: AtomicU64::new(0),
             },
         })

@@ -7,12 +7,12 @@ use std::path::PathBuf;
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 use proofman::SnarkWrapper;
-use zisk_sdk::ZiskProofWithPublicValues;
+use zisk_common::ZiskProofWithPublicValues;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
-pub struct ZiskProveSnark {
+pub struct ZiskPlonk {
     #[clap(short = 'p', long)]
     pub proof: String,
 
@@ -35,7 +35,7 @@ pub struct ZiskProveSnark {
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
-impl ZiskProveSnark {
+impl ZiskPlonk {
     pub fn run(&self) -> Result<()> {
         print_banner();
 

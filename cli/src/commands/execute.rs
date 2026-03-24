@@ -4,8 +4,8 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::{ProverClient, ZiskExecuteResult};
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{ProverClientBuilder, ZiskExecuteResult};
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -136,7 +136,7 @@ impl ZiskExecute {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .emu()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
@@ -145,8 +145,9 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
         prover.execute(&pk, stdin)
     }
 
@@ -155,7 +156,7 @@ impl ZiskExecute {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<ZiskExecuteResult> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .asm()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
@@ -169,8 +170,9 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
         if let Some(hints_stream) = hints_stream {
             pk.register_hints_stream(hints_stream)?;
         }

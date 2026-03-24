@@ -3,6 +3,7 @@
 //! This module handles the logic for witness computation, coordinating between collectors and
 //! witness generators
 
+use crate::AsmRunnerRH;
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
@@ -36,6 +37,8 @@ pub struct WitnessContext<'a, F: PrimeField64> {
 
     /// Statistics scope.
     pub stats_scope: &'a StatsScope,
+
+    pub is_asm_emulator: bool,
 }
 
 impl<'a, F: PrimeField64> WitnessContext<'a, F> {
@@ -46,8 +49,9 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
         state: &'a ExecutionState<F>,
         buffer_pool: &'a dyn BufferPool<F>,
         stats_scope: &'a StatsScope,
+        is_asm_emulator: bool,
     ) -> Self {
-        Self { pctx, sctx, state, buffer_pool, stats_scope }
+        Self { pctx, sctx, state, buffer_pool, stats_scope, is_asm_emulator }
     }
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
@@ -63,9 +67,6 @@ pub struct WitnessOrchestrator<F: PrimeField64> {
 
     /// Witness computer for all instance types.
     witness_generator: WitnessGenerator,
-
-    /// Whether using ASM emulator (cached to avoid passing through all calls).
-    is_asm_emulator: bool,
 }
 
 impl<F: PrimeField64> WitnessOrchestrator<F> {
@@ -74,16 +75,19 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
     /// # Arguments
     /// * `chunk_size` - Chunk size for trace processing.
     /// * `sm_bundle` - Static state machine bundle for collector initialization.
-    /// * `is_asm_emulator` - Whether using ASM emulator.
-    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>, is_asm_emulator: bool) -> Self {
+    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
 
-        Self { collector, witness_generator, is_asm_emulator }
+        Self { collector, witness_generator }
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
         self.collector.set_rom(zisk_rom.clone());
+    }
+
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        self.collector.set_rh_data(rh_data);
     }
 
     /// Computes witness for a single global ID.
@@ -119,6 +123,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                 air_id,
                 ctx.buffer_pool,
                 ctx.stats_scope,
+                ctx.is_asm_emulator,
             )
         }
     }
@@ -173,6 +178,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         air_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope: &StatsScope,
+        is_asm_emulator: bool,
     ) -> ProofmanResult<()> {
         let secn_instances = state.secn_instances.read().unwrap();
         let secn_instance = &secn_instances[&global_id];
@@ -182,7 +188,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                 !state.collectors_by_instance.read().unwrap().contains_key(&global_id);
 
             if needs_collection {
-                if AirClassifier::is_rom(air_id) && self.is_asm_emulator {
+                if AirClassifier::is_rom(air_id) && is_asm_emulator {
                     // ROM with ASM emulator: skip collection
                     self.register_empty_collector(state, global_id, airgroup_id, air_id);
                 } else {
@@ -276,6 +282,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         global_ids: &[usize],
+        is_asm_emulator: bool,
     ) -> ProofmanResult<()> {
         let secn_instances_guard = state.secn_instances.read().unwrap();
 
@@ -296,6 +303,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                     global_id,
                     airgroup_id,
                     air_id,
+                    is_asm_emulator,
                 );
             } else {
                 self.handle_secondary_pre_calculate(
@@ -328,8 +336,9 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
+        is_asm_emulator: bool,
     ) {
-        if self.is_asm_emulator {
+        if is_asm_emulator {
             pctx.set_witness_ready(global_id, false);
         } else {
             let secn_instance = &secn_instances[&global_id];

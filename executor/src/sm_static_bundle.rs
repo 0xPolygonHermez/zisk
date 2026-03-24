@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::AsmRunnerRH;
 use crate::{NestedDeviceMetricsList, StaticDataBusCollect};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -87,11 +88,11 @@ impl<F: PrimeField64> StateMachines<F> {
         }
     }
 
-    fn build_planner(&self, process_only_operation_bus: bool) -> Box<dyn zisk_common::Planner> {
+    fn build_planner(&self, is_asm_emulator: bool) -> Box<dyn zisk_common::Planner> {
         match self {
             StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
             StateMachines::MemSM(sm) => {
-                if process_only_operation_bus {
+                if is_asm_emulator {
                     (**sm).build_dummy_planner()
                 } else {
                     (**sm).build_planner()
@@ -148,20 +149,14 @@ impl<F: PrimeField64> StateMachines<F> {
 }
 
 pub struct StaticSMBundle<F: PrimeField64> {
-    process_only_operation_bus: bool,
     sm: BTreeMap<usize, SMType<F>>,
     std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        std: Arc<Std<F>>,
-        sm: Vec<(SMAirType, StateMachines<F>)>,
-    ) -> Self {
+    pub fn new(std: Arc<Std<F>>, sm: Vec<(SMAirType, StateMachines<F>)>) -> Self {
         Self {
-            process_only_operation_bus,
             sm: BTreeMap::from_iter(
                 sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
@@ -177,6 +172,15 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        for (_, sm) in self.sm.values() {
+            if let StateMachines::RomSM(rom_sm) = sm {
+                rom_sm.set_rh_data(rh_data);
+                break;
+            }
+        }
+    }
+
     pub fn get_std(&self) -> Arc<Std<F>> {
         self.std.clone()
     }
@@ -188,13 +192,14 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut NestedDeviceMetricsList,
+        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();
 
         // Iterate over vec_counters BTreeMap
         for (id, (_, sm)) in self.sm.iter() {
             if let Some(counters) = vec_counters.remove(id) {
-                plans.insert(*id, sm.build_planner(self.process_only_operation_bus).plan(counters));
+                plans.insert(*id, sm.build_planner(is_asm_emulator).plan(counters));
             }
         }
 
@@ -230,6 +235,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
 
     pub fn build_data_bus_counters(
         &self,
+        is_asm_emulator: bool,
     ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
         // Extract counters from each state machine type
         let mut mem_counter = None;
@@ -247,7 +253,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         for (_, sm) in self.sm.values() {
             match sm {
                 StateMachines::MemSM(mem_sm) => {
-                    if !self.process_only_operation_bus {
+                    if !is_asm_emulator {
                         mem_counter = Some((sm.type_id(), Some(mem_sm.build_mem_counter())));
                     } else {
                         mem_counter = Some((sm.type_id(), None));
@@ -260,59 +266,44 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_counter = Some((sm.type_id(), arith_sm.build_arith_counter()));
                 }
                 StateMachines::KeccakfManager(keccak_sm) => {
-                    keccakf_counter = Some((
-                        sm.type_id(),
-                        keccak_sm.build_keccakf_counter(self.process_only_operation_bus),
-                    ));
+                    keccakf_counter =
+                        Some((sm.type_id(), keccak_sm.build_keccakf_counter(is_asm_emulator)));
                 }
                 StateMachines::Sha256fManager(sha256_sm) => {
-                    sha256f_counter = Some((
-                        sm.type_id(),
-                        sha256_sm.build_sha256f_counter(self.process_only_operation_bus),
-                    ));
+                    sha256f_counter =
+                        Some((sm.type_id(), sha256_sm.build_sha256f_counter(is_asm_emulator)));
                 }
                 StateMachines::Poseidon2Manager(poseidon2_sm) => {
-                    poseidon2_counter = Some((
-                        sm.type_id(),
-                        poseidon2_sm.build_poseidon2_counter(self.process_only_operation_bus),
-                    ));
+                    poseidon2_counter =
+                        Some((sm.type_id(), poseidon2_sm.build_poseidon2_counter(is_asm_emulator)));
                 }
                 StateMachines::Blake2Manager(blake2_sm) => {
-                    blake2_counter = Some((
-                        sm.type_id(),
-                        blake2_sm.build_blake2_counter(self.process_only_operation_bus),
-                    ));
+                    blake2_counter =
+                        Some((sm.type_id(), blake2_sm.build_blake2_counter(is_asm_emulator)));
                 }
                 StateMachines::ArithEqManager(arith_eq_sm) => {
-                    arith_eq_counter = Some((
-                        sm.type_id(),
-                        arith_eq_sm.build_arith_eq_counter(self.process_only_operation_bus),
-                    ));
+                    arith_eq_counter =
+                        Some((sm.type_id(), arith_eq_sm.build_arith_eq_counter(is_asm_emulator)));
                 }
                 StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
                     arith_eq_384_counter = Some((
                         sm.type_id(),
-                        arith_eq_384_sm.build_arith_eq_384_counter(self.process_only_operation_bus),
+                        arith_eq_384_sm.build_arith_eq_384_counter(is_asm_emulator),
                     ));
                 }
                 StateMachines::Add256Manager(add256_sm) => {
-                    add256_counter = Some((
-                        sm.type_id(),
-                        add256_sm.build_add256_counter(self.process_only_operation_bus),
-                    ));
+                    add256_counter =
+                        Some((sm.type_id(), add256_sm.build_add256_counter(is_asm_emulator)));
                 }
                 StateMachines::DmaManager(dma_sm) => {
-                    dma_counter = Some((
-                        sm.type_id(),
-                        dma_sm.build_dma_counter(self.process_only_operation_bus),
-                    ));
+                    dma_counter = Some((sm.type_id(), dma_sm.build_dma_counter(is_asm_emulator)));
                 }
                 StateMachines::RomSM(_) => {}
             }
         }
 
         StaticDataBus::new(
-            self.process_only_operation_bus,
+            is_asm_emulator,
             mem_counter.expect("Mem counter not found"),
             binary_counter.expect("Binary counter not found"),
             arith_counter.expect("Arith counter not found"),

@@ -1,11 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{
-    get_proving_key, setup_logger, verify_zisk_proof_with_proving_key, ZiskProofWithPublicValues,
-};
+use zisk_common::ZiskProofWithPublicValues;
+use zisk_prover_backend::setup_logger;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -17,9 +15,6 @@ pub struct ZiskVerify {
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    #[clap(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
 }
 
 impl ZiskVerify {
@@ -38,12 +33,7 @@ impl ZiskVerify {
             anyhow::anyhow!("Error loading VADCoP final proof from {}: {}", &self.proof, e)
         })?;
 
-        let result = verify_zisk_proof_with_proving_key(
-            proof.get_proof(),
-            proof.get_publics(),
-            proof.get_program_vk(),
-            get_proving_key(self.proving_key.as_ref()),
-        );
+        let result = proof.verify();
 
         let elapsed = start.elapsed();
 

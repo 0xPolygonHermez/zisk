@@ -1,7 +1,9 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{
+    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient, ZiskStdin,
+};
 
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -14,7 +16,7 @@ fn main() -> Result<()> {
     // Create a `ProverClient` method.
     let client = ProverClient::builder().asm().build().unwrap();
 
-    let (pk, vkey) = client.setup(&ELF)?;
+    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(&pk, stdin.clone())?;
@@ -27,7 +29,7 @@ fn main() -> Result<()> {
 
     let proof_opts = ProofOpts::default().minimal_memory();
     let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
-    client.verify(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
+    vadcop_result.program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");
 

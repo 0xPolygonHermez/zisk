@@ -1,4 +1,5 @@
 use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
+use crate::ZiskProofWithPublicValues;
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
@@ -23,7 +24,7 @@ pub trait ZiskIO: Send + Sync {
     fn write_slice(&self, data: &[u8]);
 
     /// Write proof
-    fn write_proof(&self, proof: &[u8]);
+    fn write_proof(&self, proof: &ZiskProofWithPublicValues);
 
     fn save(&self, path: &Path) -> Result<()>;
 }
@@ -83,7 +84,7 @@ impl ZiskIO for ZiskIOVariant {
         }
     }
 
-    fn write_proof(&self, proof: &[u8]) {
+    fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.write_proof(proof),
             ZiskIOVariant::Null(null_stdin) => null_stdin.write_proof(proof),
@@ -130,7 +131,7 @@ impl ZiskIO for ZiskStdin {
         self.io.write_slice(data)
     }
 
-    fn write_proof(&self, proof: &[u8]) {
+    fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
         self.io.write_proof(proof)
     }
 
@@ -226,7 +227,7 @@ impl ZiskStdin {
     }
 
     /// Write proof
-    pub fn write_proof(&self, proof: &[u8]) {
+    pub fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
         ZiskIO::write_proof(self, proof)
     }
 

@@ -1,4 +1,4 @@
-use crate::{EmulatorAsm, EmulatorKind, EmulatorRust, StateMachines, StaticSMBundle, ZiskExecutor};
+use crate::{StateMachines, StaticSMBundle, ZiskExecutor};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
@@ -11,16 +11,13 @@ use precomp_poseidon2::Poseidon2Manager;
 use precomp_sha256f::Sha256fManager;
 use proofman::register_std;
 use proofman_common::PackedInfo;
-use proofman_common::VerboseMode;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;
 use sm_rom::RomSM;
 use std::{collections::HashMap, sync::Arc};
-use tracing::debug;
 use witness::WitnessManager;
 
-use zisk_core::CHUNK_SIZE;
 #[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
 use zisk_pil::{
@@ -63,11 +60,10 @@ pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
 /// 2. Initializes core and secondary state machines for witness generation.
 /// 3. Registers the state machines with the `ZiskExecutor`.
 /// 4. Registers the `ZiskExecutor` as a component in the `WitnessManager`.
-fn initialize_executor<F: PrimeField64>(
+pub fn initialize_executor<F: PrimeField64>(
     verbose_mode: proofman_common::VerboseMode,
     shared_tables: bool,
     is_asm_emulator: bool,
-    unlock_mapped_memory: Option<bool>,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
     let rank_info = wcm.get_rank_info();
@@ -124,7 +120,6 @@ fn initialize_executor<F: PrimeField64>(
     ];
 
     let sm_bundle = StaticSMBundle::new(
-        is_asm_emulator,
         std.clone(),
         vec![
             (vec![(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])], StateMachines::RomSM(rom_sm.clone())),
@@ -164,22 +159,7 @@ fn initialize_executor<F: PrimeField64>(
         ],
     );
 
-    let emulator = if is_asm_emulator {
-        debug!("Using ASM emulator");
-        EmulatorKind::Asm(EmulatorAsm::new(
-            rank_info.world_rank,
-            rank_info.local_rank,
-            unlock_mapped_memory.unwrap_or(false),
-            CHUNK_SIZE,
-            Some(rom_sm.clone()),
-            verbose_mode,
-        ))
-    } else {
-        debug!("Using Rust emulator");
-        EmulatorKind::Rust(EmulatorRust::new(CHUNK_SIZE))
-    };
-
-    let executor = Arc::new(ZiskExecutor::new(sm_bundle, emulator));
+    let executor = Arc::new(ZiskExecutor::new(sm_bundle));
 
     // Step 7: Register the executor as a component in the Witness Manager
     wcm.register_component(executor.clone());
@@ -187,22 +167,4 @@ fn initialize_executor<F: PrimeField64>(
     wcm.set_witness_initialized();
 
     Ok(executor)
-}
-
-pub fn init_executor_emu<F: PrimeField64>(
-    verbose: VerboseMode,
-    shared_tables: bool,
-    wcm: &WitnessManager<F>,
-) -> Result<Arc<ZiskExecutor<F>>> {
-    initialize_executor(verbose, shared_tables, false, None, wcm)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn init_executor_asm<F: PrimeField64>(
-    verbose: VerboseMode,
-    shared_tables: bool,
-    unlock_mapped_memory: bool,
-    wcm: &WitnessManager<F>,
-) -> Result<Arc<ZiskExecutor<F>>> {
-    initialize_executor(verbose, shared_tables, true, Some(unlock_mapped_memory), wcm)
 }

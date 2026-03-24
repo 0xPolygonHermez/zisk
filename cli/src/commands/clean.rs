@@ -5,7 +5,7 @@ use colored::Colorize;
 
 use anyhow::{Context, Result};
 use proofman_common::VerboseMode;
-use zisk_sdk::setup_logger;
+use zisk_prover_backend::setup_logger;
 
 use crate::{
     commands::get_home_zisk_path,

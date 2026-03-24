@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::ux::print_banner;
 use crate::ux::print_banner_field;
-use zisk_sdk::{setup_logger, ZiskStdin};
+use zisk_common::io::ZiskStdin;
+use zisk_prover_backend::setup_logger;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

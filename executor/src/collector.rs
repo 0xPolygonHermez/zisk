@@ -31,6 +31,7 @@ use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
+use crate::AsmRunnerRH;
 use crate::{state::ChunkCollector, ExecutionState, StaticSMBundle};
 
 pub struct ChunkDataCollector<F: PrimeField64> {
@@ -49,6 +50,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
         self.sm_bundle.set_rom(zisk_rom);
+    }
+
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        self.sm_bundle.set_rh_data(rh_data);
     }
 
     /// Computes which chunks need to be executed for each instance.

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use crate::io::ZiskIO;
+use crate::{ZiskProof, ZiskProofWithPublicValues, ZISK_PUBLICS};
 
 /// A memory-based implementation of ZiskStdin that reads from in-memory data.
 pub struct ZiskMemoryStdin {
@@ -132,8 +133,27 @@ impl ZiskIO for ZiskMemoryStdin {
         }
     }
 
-    fn write_proof(&self, proof: &[u8]) {
-        self.write_slice(proof);
+    fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
+        if let ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) =
+            &proof.proof
+        {
+            let minimal = matches!(proof.proof, ZiskProof::VadcopFinalReduced(_));
+
+            let mut pubs = proof.program_vk.vk.clone();
+            pubs.extend(proof.publics.public_bytes());
+
+            // Format: [minimal(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
+            let mut zisk_proof = Vec::new();
+            zisk_proof.extend_from_slice(&(minimal as u64).to_le_bytes());
+            zisk_proof.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
+            zisk_proof.extend_from_slice(&pubs);
+            zisk_proof.extend_from_slice(proof_bytes);
+            zisk_proof.extend_from_slice(&proof.zisk_vk.vk);
+
+            self.write_slice(&zisk_proof);
+        } else {
+            panic!("Proof not suitable for preparing to send. Only VadcopFinal and VadcopFinalReduced proofs can be prepared for sending.");
+        };
     }
 
     fn save(&self, path: &Path) -> Result<()> {

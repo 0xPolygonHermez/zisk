@@ -9,7 +9,6 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use zisk_common::ElfBinaryLike;
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
@@ -86,8 +85,8 @@ pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
     Ok(hash)
 }
 
-pub fn get_elf_data_hash(elf: &impl ElfBinaryLike) -> Result<String> {
-    let hash = blake3::hash(elf.elf()).to_hex().to_string();
+pub fn get_elf_data_hash(elf: &[u8]) -> Result<String> {
+    let hash = blake3::hash(elf).to_hex().to_string();
     Ok(hash)
 }
 

@@ -1,12 +1,10 @@
 use crate::create_debug_info;
 use crate::GuestProgram;
-use crate::ZiskProofWithPublicValues;
-use crate::ZiskPublics;
+use crate::ProofOpts;
 use crate::{
-    PlonkVkey, ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK,
-    ZiskProgramVK, ZiskProof, ZiskProveResult, ZiskVK, ZiskVerifyConstraintsResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
+    ZiskVerifyConstraintsResult,
 };
-use crate::{ProofMode, ProofOpts};
 use anyhow::Result;
 use colored::Colorize;
 use executor::ZiskExecutor;
@@ -25,6 +23,9 @@ use std::sync::Arc;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_common::{
+    PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
+};
 
 pub(crate) struct ProverBackend {
     proofman: Option<ProofMan<Goldilocks>>,
@@ -235,7 +236,7 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error getting instance fixed: {}", e))
     }
 
-    pub(crate) fn verify_constraints_debug(
+    pub(crate) fn verify_constraints(
         &self,
         pk: &ZiskProgramPK,
         stdin: ZiskStdin,
@@ -273,14 +274,6 @@ impl ProverBackend {
         let publics = proofman.get_publics();
 
         Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
-    }
-
-    pub(crate) fn verify_constraints(
-        &self,
-        pk: &ZiskProgramPK,
-        stdin: ZiskStdin,
-    ) -> Result<ZiskVerifyConstraintsResult> {
-        self.verify_constraints_debug(pk, stdin, None)
     }
 
     pub(crate) fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
@@ -420,7 +413,7 @@ impl ProverBackend {
         }
     }
 
-    pub(crate) fn compress(
+    pub(crate) fn reduce(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
@@ -457,7 +450,7 @@ impl ProverBackend {
         })
     }
 
-    pub(crate) fn prove_snark(
+    pub(crate) fn plonk(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,

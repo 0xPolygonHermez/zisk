@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use fields::Goldilocks;
 
 use proofman::{check_setup_snark, ProofMan};
-use zisk_sdk::setup_logger;
+use zisk_prover_backend::setup_logger;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

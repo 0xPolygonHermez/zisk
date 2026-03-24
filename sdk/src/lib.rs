@@ -1,34 +1,31 @@
 mod builder;
 mod client;
-mod prover;
+mod public_prover;
 mod utils;
-mod verifier;
-mod ziskemu;
 
 pub use builder::*;
 pub use client::ProverClient;
-pub use prover::*;
+pub use public_prover::PublicZiskProver;
 pub use utils::*;
-pub use verifier::*;
 
-pub use ziskemu::*;
+// Re-export guest types from backend (public API for loading programs)
+pub use zisk_prover_backend::{
+    include_guest_elf, Elf, EmbeddedGuestElf, EmuOptions, GuestProgram, ProgramId,
+};
 
+// Re-export result and data types from backend (public outputs)
+pub use zisk_prover_backend::{
+    PlonkBuilder, ProofOpts, ProveBuilder, ReduceBuilder, ZiskExecuteResult, ZiskProgramPK,
+    ZiskProveResult, ZiskVerifyConstraintsResult,
+};
+
+// Re-export common types
 pub use proofman_common::VerboseMode;
 
-pub use zisk_common::{io::*, ElfBinary, ElfBinaryFromFile};
+// Re-export types from zisk_common
+pub use zisk_common::{
+    io::*, PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics,
+    ZiskVK,
+};
 
 pub use zisk_build::*;
-
-#[macro_export]
-macro_rules! include_elf {
-    ($arg:literal) => {{
-        const WITH_HINTS: bool = option_env!(concat!("ZISK_ELF_", $arg, "_WITH_HINTS")).is_some();
-
-        ElfBinary {
-            elf: include_bytes!(env!(concat!("ZISK_ELF_", $arg))),
-            name: $arg,
-            with_hints: WITH_HINTS,
-            path: Some(env!(concat!("ZISK_ELF_", $arg))),
-        }
-    }};
-}

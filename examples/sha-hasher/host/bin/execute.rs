@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskStdin};
+use zisk_sdk::{include_guest_elf, EmbeddedGuestElf, GuestProgram, ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Output {
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&ELF)?;
+    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF))?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.

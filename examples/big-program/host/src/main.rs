@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskStdin};
+use zisk_sdk::{include_guest_elf, EmbeddedGuestElf, GuestProgram, ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("big-program-guest");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("big-program-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let (pk, _vkey) = client.setup(&ELF)?;
+    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(&pk, stdin.clone())?;
@@ -37,10 +37,10 @@ fn main() -> Result<()> {
         result.executor_summary.steps, result.total_duration
     );
 
-    println!("Verifying constraints (no proof generation)...");
-    client.verify_constraints(&pk, stdin.clone())?;
+    println!("Generating proof...");
+    client.prove(&pk, stdin.clone()).run()?;
 
-    println!("\u{2713} VerifyConstraints completed successfully!");
+    println!("\u{2713} Prove completed successfully!");
 
     Ok(())
 }

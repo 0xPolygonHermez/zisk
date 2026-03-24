@@ -1,8 +1,10 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{
+    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient, ZiskStdin,
+};
 
-pub const ELF: ElfBinary = include_elf!("multiple-program-guest");
-pub const ELF2: ElfBinary = include_elf!("multiple-program-guest-2");
+pub const ELF: EmbeddedGuestElf = include_guest_elf!("multiple-program-guest");
+pub const ELF2: EmbeddedGuestElf = include_guest_elf!("multiple-program-guest-2");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
@@ -16,10 +18,10 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up first program...");
-    let (pk, vkey) = client.setup(&ELF)?;
+    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
 
     println!("Setting up second program...");
-    let (pk2, vkey2) = client.setup(&ELF2)?;
+    let (pk2, vkey2) = client.setup(&GuestProgram::from_elf(ELF2))?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
@@ -36,8 +38,7 @@ fn main() -> Result<()> {
     let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
-
+    vadcop_result.program_vk(&vkey).verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
     let n = 2000u32;
@@ -59,8 +60,7 @@ fn main() -> Result<()> {
     let vadcop_result2 = client.prove(&pk2, stdin2).with_proof_options(proof_opts).run()?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result2.get_proof(), vadcop_result2.get_publics(), &vkey2)?;
-
+    vadcop_result2.program_vk(&vkey2).verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 
     println!("All proofs generated and verified successfully!");

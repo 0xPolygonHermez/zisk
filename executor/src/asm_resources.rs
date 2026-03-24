@@ -13,6 +13,9 @@ pub struct AsmResourcesConfig {
     /// Optional baseline port to communicate with assembly microservices.
     pub base_port: Option<u16>,
 
+    /// Global world rank for distributed execution.
+    pub world_rank: i32,
+
     /// Local rank for distributed execution.
     pub local_rank: i32,
 
@@ -60,7 +63,9 @@ impl std::fmt::Debug for AsmResources {
 }
 
 impl AsmResources {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        world_rank: i32,
         local_rank: i32,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
@@ -78,7 +83,7 @@ impl AsmResources {
         let control_writer =
             Arc::new(ControlShmem::new(base_port, local_rank, unlock_mapped_memory)?);
 
-        let config = AsmResourcesConfig { base_port, local_rank, unlock_mapped_memory };
+        let config = AsmResourcesConfig { base_port, world_rank, local_rank, unlock_mapped_memory };
 
         let inputs_shmem_writer = Arc::new(InputsShmemWriter::new(
             base_port,

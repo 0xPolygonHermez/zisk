@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::{ProofOpts, ProverClient, ZiskProof, ZiskProveResult};
+use zisk_common::ZiskProof;
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{ProofOpts, ProverClientBuilder, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -60,7 +61,7 @@ pub struct ZiskProve {
     pub aggregation: bool,
 
     #[clap(short = 'c', long, default_value_t = false)]
-    pub compressed: bool,
+    pub reduced: bool,
 
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
@@ -144,6 +145,12 @@ impl ZiskProve {
             if let Some(max_witness_stored) = self.max_witness_stored {
                 gpu_params_new.with_max_witness_stored(max_witness_stored);
             }
+            if let Some(number_threads_witness) = self.number_threads_witness {
+                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
+            }
+            if let Some(max_streams) = self.max_streams {
+                gpu_params_new.with_max_number_streams(max_streams);
+            }
             gpu_params = Some(gpu_params_new);
         }
 
@@ -154,8 +161,8 @@ impl ZiskProve {
             print_banner_field("Prec. Hints", hints);
         }
 
-        if self.snark && self.compressed {
-            anyhow::bail!("Compressed proofs are not supported for SNARK generation.");
+        if self.snark && self.reduced {
+            anyhow::bail!("Reduced proofs are not supported for SNARK generation.");
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -191,12 +198,10 @@ impl ZiskProve {
 
             if let Some(proof_id) = &result.get_proof_id() {
                 let output_dir = match result.get_proof() {
-                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalCompressed(_) => {
+                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalReduced(_) => {
                         self.output_dir.join("vadcop_final_proof.bin")
                     }
-                    ZiskProof::Plonk(_) | ZiskProof::Fflonk(_) => {
-                        self.output_dir.join("final_snark_proof.bin")
-                    }
+                    ZiskProof::Plonk(_) => self.output_dir.join("final_snark_proof.bin"),
                     _ => {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }
@@ -220,7 +225,7 @@ impl ZiskProve {
         stdin: ZiskStdin,
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .aggregation(self.aggregation)
             .proving_key_path_opt(self.proving_key.clone())
             .proving_key_snark_path_opt(self.proving_key_snark.clone())
@@ -231,8 +236,9 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -249,8 +255,8 @@ impl ZiskProve {
         if self.snark {
             prover = prover.plonk();
         }
-        if self.compressed {
-            prover = prover.compressed();
+        if self.reduced {
+            prover = prover.reduced();
         }
         let result = prover.run()?;
 
@@ -263,7 +269,7 @@ impl ZiskProve {
         hints_stream: Option<StreamSource>,
         gpu_params: Option<ParamsGPU>,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .aggregation(self.aggregation)
             .asm()
             .proving_key_path_opt(self.proving_key.clone())
@@ -280,8 +286,9 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -302,8 +309,8 @@ impl ZiskProve {
         if self.snark {
             prover = prover.plonk();
         }
-        if self.compressed {
-            prover = prover.compressed();
+        if self.reduced {
+            prover = prover.reduced();
         }
 
         let result = prover.run()?;

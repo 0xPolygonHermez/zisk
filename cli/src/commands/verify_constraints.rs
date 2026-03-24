@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{ProverClientBuilder, ZiskVerifyConstraintsResult};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -152,7 +152,7 @@ impl ZiskVerifyConstraints {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .emu()
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
@@ -161,10 +161,11 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
-        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
+        prover.verify_constraints(&pk, stdin, self.debug.clone())
     }
 
     pub fn run_asm(
@@ -172,7 +173,7 @@ impl ZiskVerifyConstraints {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .asm()
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
@@ -186,12 +187,13 @@ impl ZiskVerifyConstraints {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         if let Some(hints_stream) = hints_stream {
             pk.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
+        prover.verify_constraints(&pk, stdin, self.debug.clone())
     }
 }

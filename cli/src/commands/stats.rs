@@ -6,10 +6,10 @@ use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
-use zisk_sdk::ProverClient;
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::ProverClientBuilder;
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
@@ -162,7 +162,7 @@ impl ZiskStats {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .emu()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
@@ -171,8 +171,9 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         prover.stats(
             &pk,
@@ -188,7 +189,7 @@ impl ZiskStats {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let prover = ProverClient::builder()
+        let prover = ProverClientBuilder::new()
             .asm()
             .witness()
             .proving_key_path_opt(self.proving_key.clone())
@@ -202,8 +203,9 @@ impl ZiskStats {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program =
+            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let (pk, _) = prover.setup(&guest_program)?;
 
         if let Some(hints_stream) = hints_stream {
             pk.register_hints_stream(hints_stream)?;

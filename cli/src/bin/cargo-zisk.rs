@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
-    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute, ZiskProve, ZiskProveSnark,
+    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute, ZiskPlonk, ZiskProve,
     ZiskRomSetup, ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
 };
 use clap::Parser;
@@ -21,8 +21,8 @@ pub enum Cargo {
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
     Execute(ZiskExecute),
+    Plonk(ZiskPlonk),
     Prove(ZiskProve),
-    ProveSnark(ZiskProveSnark),
     RomSetup(ZiskRomSetup),
     Run(ZiskRun),
     Sdk(ZiskSdk),
@@ -52,8 +52,8 @@ fn main() -> Result<()> {
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
-        Cargo::ProveSnark(cmd) => {
-            cmd.run().context("Error executing ProveSnark command")?;
+        Cargo::Plonk(cmd) => {
+            cmd.run().context("Error executing Plonk command")?;
         }
         Cargo::RomSetup(cmd) => {
             cmd.run().context("Error executing RomSetup command")?;

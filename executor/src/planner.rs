@@ -72,8 +72,9 @@ impl InstancePlanner {
         &self,
         sm_bundle: &StaticSMBundle<F>,
         secn_count: &mut NestedDeviceMetricsList,
+        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
-        sm_bundle.plan_sec(secn_count)
+        sm_bundle.plan_sec(secn_count, is_asm_emulator)
     }
 
     /// Assigns main instances to the proof context.

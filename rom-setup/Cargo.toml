@@ -11,7 +11,6 @@ categories = { workspace = true }
 sm-rom = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-zisk-common = { workspace = true }
 
 tracing = { workspace = true }
 fields = { workspace = true }

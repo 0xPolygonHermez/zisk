@@ -1,7 +1,4 @@
-use anyhow::Result;
 use std::fmt;
-use std::fs;
-use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -262,104 +259,6 @@ impl Stats {
             witness_duration: witness_start_time.elapsed().as_millis(),
             num_chunks: 0,
         }
-    }
-}
-
-pub trait ElfBinaryLike {
-    fn elf(&self) -> &[u8];
-    fn name(&self) -> &str;
-    fn with_hints(&self) -> bool;
-    fn path(&self) -> Option<String>;
-}
-
-pub struct ElfBinaryFromFile {
-    pub elf: Vec<u8>,
-    pub name: String,
-    pub with_hints: bool,
-    pub path: Option<String>,
-}
-
-impl ElfBinaryFromFile {
-    pub fn new(elf: &Path, with_hints: bool) -> Result<Self> {
-        let elf_bin = fs::read(elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", elf.display(), e))?;
-        Ok(Self {
-            elf: elf_bin,
-            name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            with_hints,
-            path: Some(elf.to_str().unwrap().to_string()),
-        })
-    }
-
-    pub fn elf(&self) -> &[u8] {
-        &self.elf
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-
-    pub fn path(&self) -> Option<String> {
-        self.path.clone()
-    }
-}
-
-impl ElfBinaryLike for ElfBinaryFromFile {
-    fn elf(&self) -> &[u8] {
-        &self.elf
-    }
-    fn name(&self) -> &str {
-        &self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.clone()
-    }
-}
-
-pub struct ElfBinary {
-    pub elf: &'static [u8],
-    pub name: &'static str,
-    pub with_hints: bool,
-    pub path: Option<&'static str>,
-}
-
-impl ElfBinary {
-    pub fn elf(&self) -> &[u8] {
-        self.elf
-    }
-
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    pub fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-
-    pub fn path(&self) -> Option<String> {
-        self.path.map(|s| s.to_string())
-    }
-}
-
-impl ElfBinaryLike for ElfBinary {
-    fn elf(&self) -> &[u8] {
-        self.elf
-    }
-    fn name(&self) -> &str {
-        self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.map(|s| s.to_string())
     }
 }
 

@@ -20,8 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorKind, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
-    WitnessOrchestrator,
+    InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle, WitnessOrchestrator,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
@@ -36,7 +35,7 @@ use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
     StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
 };
-use zisk_core::ZiskRom;
+use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_pil::ZiskPublicValues;
 use zisk_pil::{
     SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
@@ -71,20 +70,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `std` - Standard library instance.
     /// * `sm_bundle` - State machine bundle.
     /// * `chunk_size` - Chunk size for processing.
-    /// * `emulator` - Emulator backend to use.
     /// * `hints_stream` - Optional hints stream for processing precompile hints.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(sm_bundle: StaticSMBundle<F>, emulator: EmulatorKind) -> Self {
+    pub fn new(sm_bundle: StaticSMBundle<F>) -> Self {
         let sm_bundle = Arc::new(sm_bundle);
-        let is_asm_emulator = emulator.is_asm_emulator();
-        let chunk_size = emulator.get_chunk_size();
+        let chunk_size = CHUNK_SIZE;
 
         Self {
             state: ExecutionState::new(),
-            rom_executor: RomExecutor::new(emulator),
+            rom_executor: RomExecutor::new(chunk_size),
             planner: InstancePlanner::new(chunk_size),
             registry: InstanceRegistry::new(sm_bundle.clone()),
-            orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle, is_asm_emulator),
+            orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
         }
     }
 
@@ -180,8 +177,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         stats_begin!(self.state.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut secn_count = output.secn_count;
-        let mut secn_planning =
-            self.planner.plan_secondary(self.registry.sm_bundle(), &mut secn_count);
+        let mut secn_planning = self.planner.plan_secondary(
+            self.registry.sm_bundle(),
+            &mut secn_count,
+            self.rom_executor.is_asm_emulator(),
+        );
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);
@@ -215,7 +215,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             timer_start_info!(WAIT_ASM_RH);
             let rh_data = handle_rh.join().expect("Error during ROM Histogram thread execution");
 
-            self.rom_executor.set_rh_data(rh_data);
+            self.orchestrator.set_rh_data(rh_data);
             timer_stop_and_log_info!(WAIT_ASM_RH);
         }
 
@@ -328,7 +328,14 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         let pool = create_pool(n_cores);
         pool.install(|| -> ProofmanResult<()> {
-            let ctx = WitnessContext::new(&pctx, &sctx, &self.state, buffer_pool, &_witness_scope);
+            let ctx = WitnessContext::new(
+                &pctx,
+                &sctx,
+                &self.state,
+                buffer_pool,
+                &_witness_scope,
+                self.rom_executor.is_asm_emulator(),
+            );
             for &global_id in global_ids {
                 self.orchestrator.compute_witness_for_instance(&ctx, global_id)?;
             }
@@ -356,8 +363,14 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
 
         let pool = create_pool(n_cores);
-        let result =
-            pool.install(|| self.orchestrator.pre_calculate(&pctx, &self.state, global_ids));
+        let result = pool.install(|| {
+            self.orchestrator.pre_calculate(
+                &pctx,
+                &self.state,
+                global_ids,
+                self.rom_executor.is_asm_emulator(),
+            )
+        });
         result?;
 
         stats_end!(self.state.stats, &_pre_scope);

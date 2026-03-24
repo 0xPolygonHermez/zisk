@@ -4,12 +4,13 @@
 //! the emulator backend and hints stream processing.
 
 use crate::{
-    AsmResources, DeviceMetricsList, Emulator, EmulatorKind, NestedDeviceMetricsList,
+    AsmResources, DeviceMetricsList, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList,
     StaticSMBundle,
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
@@ -33,8 +34,13 @@ pub struct RomExecutionOutput {
 }
 
 pub struct RomExecutor {
-    /// The emulator backend used for execution.
-    emulator: EmulatorKind,
+    // Emulator backend for executing the ROM program in ASM.
+    emulator_asm: EmulatorAsm,
+
+    // Emulator backend for executing the ROM program in native.
+    emulator_rust: EmulatorRust,
+
+    is_asm_execution: AtomicBool,
 
     /// Standard input for the ZisK program execution.
     stdin: Mutex<ZiskStdin>,
@@ -44,10 +50,18 @@ impl RomExecutor {
     /// Creates a new `RomExecutor`.
     ///
     /// # Arguments
-    /// * `emulator` - The emulator backend to use.
-    /// * `hints_stream` - Optional hints stream for precompile processing.
-    pub fn new(emulator: EmulatorKind) -> Self {
-        Self { emulator, stdin: Mutex::new(ZiskStdin::null()) }
+    /// * `chunk_size` - Chunk size for processing.
+    pub fn new(chunk_size: u64) -> Self {
+        Self {
+            emulator_asm: EmulatorAsm::new(chunk_size),
+            emulator_rust: EmulatorRust::new(chunk_size),
+            is_asm_execution: AtomicBool::new(false),
+            stdin: Mutex::new(ZiskStdin::null()),
+        }
+    }
+
+    pub fn is_asm_emulator(&self) -> bool {
+        self.is_asm_execution.load(Ordering::SeqCst)
     }
 
     /// Sets the standard input for execution.
@@ -56,20 +70,23 @@ impl RomExecutor {
     }
 
     pub fn set_asm_resources(&self, asm_resources: AsmResources) {
-        self.emulator.set_asm_resources(asm_resources);
+        self.is_asm_execution.store(true, Ordering::SeqCst);
+        self.emulator_asm.set_asm_resources(asm_resources);
     }
 
     /// Resets the hints stream if configured.
     pub fn reset_hints_stream(&self) {
-        self.emulator.reset_hints_stream()
+        if self.is_asm_execution.load(Ordering::SeqCst) {
+            self.emulator_asm.reset_hints_stream()
+        }
     }
 
     pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
-        self.emulator.get_asm_execution_info()
-    }
-
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.emulator.set_rh_data(rh_data);
+        if self.is_asm_execution.load(Ordering::SeqCst) {
+            self.emulator_asm.get_asm_execution_info()
+        } else {
+            None
+        }
     }
 
     /// Executes the ROM program and collects minimal traces.
@@ -94,15 +111,18 @@ impl RomExecutor {
         caller_stats_scope: &StatsScope,
     ) -> Result<RomExecutionOutput> {
         let (min_traces, main_count, secn_count, handle_mo, handle_rh, steps) =
-            self.emulator.execute(
-                zisk_rom,
-                &self.stdin,
-                pctx,
-                sm_bundle,
-                use_hints,
-                stats,
-                caller_stats_scope,
-            )?;
+            match self.is_asm_execution.load(Ordering::SeqCst) {
+                true => self.emulator_asm.execute(
+                    zisk_rom,
+                    &self.stdin,
+                    pctx,
+                    sm_bundle,
+                    use_hints,
+                    stats,
+                    caller_stats_scope,
+                )?,
+                false => self.emulator_rust.execute(zisk_rom, &self.stdin, sm_bundle)?,
+            };
 
         Ok(RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, handle_rh, steps })
     }

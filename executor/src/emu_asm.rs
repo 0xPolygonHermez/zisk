@@ -12,7 +12,6 @@ use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_rom::RomSM;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,
@@ -23,21 +22,8 @@ use ziskemu::ZiskEmulator;
 use anyhow::Result;
 
 pub struct EmulatorAsm {
-    /// World rank for distributed execution. Default to 0 for single-node execution.
-    world_rank: i32,
-
-    /// Local rank for distributed execution. Default to 0 for single-node execution.
-    local_rank: i32,
-
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    unlock_mapped_memory: bool,
-
     /// Chunk size for processing.
     chunk_size: u64,
-
-    /// Optional ROM state machine, used for assembly ROM execution.
-    rom_sm: Option<Arc<RomSM>>,
 
     /// Assembly resources including shared memory and hints stream.
     asm_resources: Mutex<Option<AsmResources>>,
@@ -47,23 +33,8 @@ pub struct EmulatorAsm {
 
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        world_rank: i32,
-        local_rank: i32,
-        unlock_mapped_memory: bool,
-        chunk_size: u64,
-        rom_sm: Option<Arc<RomSM>>,
-        _verbose_mode: proofman_common::VerboseMode,
-    ) -> Self {
-        Self {
-            world_rank,
-            local_rank,
-            unlock_mapped_memory,
-            chunk_size,
-            rom_sm,
-            asm_resources: Mutex::new(None),
-            asm_execution_info: Mutex::new(None),
-        }
+    pub fn new(chunk_size: u64) -> Self {
+        Self { chunk_size, asm_resources: Mutex::new(None), asm_execution_info: Mutex::new(None) }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
@@ -80,10 +51,6 @@ impl EmulatorAsm {
 
     pub fn reset_hints_stream(&self) {
         self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
-    }
-
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.rom_sm.as_ref().unwrap().set_rh_data(rh_data);
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -142,7 +109,7 @@ impl EmulatorAsm {
         stats_end!(stats, &_write_scope);
 
         let chunk_size = self.chunk_size;
-        let (world_rank, local_rank) = (self.world_rank, self.local_rank);
+        let (world_rank, local_rank) = (config.world_rank, config.local_rank);
 
         let _stats = stats.clone();
 
@@ -172,7 +139,7 @@ impl EmulatorAsm {
         let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = asm_resources.rh_shmem_reader.clone();
             let base_port = config.base_port;
-            let unlock_mapped_memory = self.unlock_mapped_memory;
+            let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || {
                 AsmRunnerRH::run(
                     &mut asm_shmem_rh.lock().unwrap(),
@@ -218,7 +185,7 @@ impl EmulatorAsm {
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-                    let mut data_bus = sm_bundle.build_data_bus_counters();
+                    let mut data_bus = sm_bundle.build_data_bus_counters(true);
 
                     ZiskEmulator::process_emu_trace::<F, _, _>(
                         zisk_rom,
@@ -242,8 +209,8 @@ impl EmulatorAsm {
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
-                self.world_rank,
-                self.local_rank,
+                asm_resources.config().world_rank,
+                asm_resources.config().local_rank,
                 asm_resources.config().base_port,
                 stats.clone(),
             )

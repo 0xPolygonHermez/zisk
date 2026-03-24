@@ -1,7 +1,6 @@
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::path::{Path, PathBuf};
-use zisk_common::ElfBinaryLike;
 
 use crate::{
     gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
@@ -10,7 +9,7 @@ use crate::{
 
 pub fn rom_merkle_setup<F: PrimeField64>(
     pctx: &ProofCtx<F>,
-    elf: &impl ElfBinaryLike,
+    elf: &[u8],
     output_dir: &Option<PathBuf>,
 ) -> Result<(PathBuf, Vec<u8>), anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
@@ -42,7 +41,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 
     let root = gen_elf_hash::<F>(
         pctx,
-        elf.elf(),
+        elf,
         elf_bin_path.as_path(),
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
@@ -58,7 +57,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 }
 
 pub fn rom_merkle_setup_verkey(
-    elf: &impl ElfBinaryLike,
+    elf: &[u8],
     output_dir: &Option<PathBuf>,
     proving_key: &Path,
 ) -> Result<Vec<u8>, anyhow::Error> {
