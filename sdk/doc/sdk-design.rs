@@ -1,12 +1,17 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use zisk_sdk::VerboseMode::Trace;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
 
 enum Tracing {
     Input,
     Hints,
     Summary,
+}
+
+enum Executor {
+    Emulator,
+    Assembly,
 }
 
 struct ProgramId {
@@ -44,14 +49,20 @@ fn main() -> Result<()> {
     let embedded_client = ProverClient::builder().gpu().build()?;
     // .embedded(EmbeddedOptions::default())
 
-    #[derive(Default)]
     struct RemoteOptions {
         url: std::net::SocketAddr,
-        auth_token: Option<String>, // ?????
+        // API key sent as gRPC metadata ("x-api-key").
+        api_key: Option<String>,
+        // TLS config for the gRPC connection.
+        tls: TlsConfig,
     }
 
     let remote_options = RemoteOptions::builder().url("localhost:3000").build()?;
-    let remote_client = ProverClient::builder().gpu().executor(Executor::Assembly).remote(remote_options).build()?;
+    let remote_client = ProverClient::builder()
+        .gpu()
+        .executor(Executor::Assembly)
+        .remote(remote_options)
+        .build()?;
 
     // Client Default
     let client = ProverClient::default(); // defaults to embedded + cpu client
@@ -68,9 +79,11 @@ fn main() -> Result<()> {
                  // Setup options
                  // .with_hints()       // Enables the ROM setup with hints
 
-    let handle = client.prove(&guest_program, stdin).stark().submit()?;
-
-    let proof = handle.proof().await?;
+    // --- Basic API (sync) -------------------------------------------------------
+    // run() blocks the calling thread until the proof is ready.
+    // Internally wraps submit() + proof().await inside a Tokio runtime.
+    // No async required from the caller — suitable for most use cases.
+    let proof = client.prove(&guest_program, stdin).stark().run()?; // sync: blocks until proof is ready, returns Proof directly
 
     assert!(proof.verify().is_ok(), "Proof verification failed");
     assert!(
@@ -78,26 +91,27 @@ fn main() -> Result<()> {
         "Public values and verification key verification failed"
     );
 
-    enum Executor {
-        Emulator,
-        Assembly,
-    }
+    // --- Advanced API (async) ---------------------------------------------------
+    // submit() returns a ProofHandle immediately without blocking.
+    // Useful when the caller needs to watch events, prove multiple programs
+    // concurrently, or integrate into an existing async runtime.
+    // Requires an async context (e.g. #[tokio::main]).
 
     let on_event = |event: WatchEvent| {
         println!("{:?}", event);
     };
 
     let handle = client
+        .prove(&guest_program, stdin)
         .executor(Executor::Assembly)
         .minimal_memory()
-        .prove(&guest_program, stdin)
         .stark()
         .hints(hints)
         .timeout(std::time::Duration::from_secs(60))
-        .subscribe(WatchEvent::All, on_event)
-        .submit()?; // sync: submits the job, returns a handle immediately
+        .subscribe(WatchEvent::All, on_event) // optional: register event callbacks before submission
+        .submit()?; // sync: submits the job, returns a ProofHandle immediately
 
-    let proof = handle.proof().await?;
+    let proof = handle.proof().await?; // async: awaits proof completion
 
     assert!(proof.verify().is_ok(), "Proof verification failed");
     assert!(
