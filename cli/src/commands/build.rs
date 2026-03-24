@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
-use zisk_build::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
@@ -43,6 +43,8 @@ impl ZiskBuild {
         // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
         let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
         command.env("RUSTFLAGS", flags.trim());
+
+        command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
 
         // Add the feature selection flags
         if let Some(features) = &self.features {

@@ -1,4 +1,7 @@
-use crate::{command::create_command, utils::cargo_rerun_if_changed, BuildArgs, ZISK_TARGET};
+use crate::{
+    command::create_command, utils::cargo_rerun_if_changed, BuildArgs, HELPER_TARGET_SUBDIR,
+    ZISK_TARGET,
+};
 use cargo_metadata::camino::Utf8PathBuf;
 use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
@@ -201,8 +204,12 @@ pub fn generate_elf_paths(
     let profile = args.map(|v| if v.release { "release" } else { "debug" }).unwrap_or("debug");
     let root_package = metadata.root_package().expect("No root package found in metadata");
     let bin_target = root_package.targets.first().unwrap();
-    let target_elf_path =
-        metadata.target_directory.join(ZISK_TARGET).join(profile).join(&bin_target.name);
+    let target_elf_path = metadata
+        .target_directory
+        .join(HELPER_TARGET_SUBDIR)
+        .join(ZISK_TARGET)
+        .join(profile)
+        .join(&bin_target.name);
 
     vec![(bin_target.name.to_owned(), target_elf_path)]
 }

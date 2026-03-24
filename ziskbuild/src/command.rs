@@ -1,4 +1,4 @@
-use crate::{BuildArgs, ZISK_TARGET};
+use crate::{BuildArgs, HELPER_TARGET_SUBDIR, ZISK_TARGET};
 use cargo_metadata::camino::Utf8PathBuf;
 use std::{path::PathBuf, process::Command};
 
@@ -59,7 +59,7 @@ pub(crate) fn create_command(
     command.current_dir(canonicalized_program_dir);
 
     // Use a separate subdirectory to avoid conflicts with the host build
-    command.env("CARGO_TARGET_DIR", program_metadata.target_directory.clone());
+    command.env("CARGO_TARGET_DIR", program_metadata.target_directory.join(HELPER_TARGET_SUBDIR));
 
     command
 }
