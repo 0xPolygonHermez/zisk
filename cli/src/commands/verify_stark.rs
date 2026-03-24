@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -7,18 +6,18 @@ use zisk_sdk::{
     get_proving_key, setup_logger, verify_zisk_proof_with_proving_key, ZiskProofWithPublicValues,
 };
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 #[command(propagate_version = true)]
 pub struct ZiskVerify {
-    #[clap(short = 'p', long)]
+    #[arg(short = 'p', long)]
     pub proof: String,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 }
 

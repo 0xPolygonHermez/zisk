@@ -1,10 +1,9 @@
 use crate::{get_target, CommandExecutor};
 use anyhow::{Context, Result};
-use clap::Parser;
 use std::{path::PathBuf, process::Command};
 use zisk_build::RUSTUP_TOOLCHAIN_NAME;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(name = "build-toolchain", about = "Build the cargo-zisk toolchain.")]
 pub struct BuildToolchainCmd {
     /// Name for the toolchain in rustup

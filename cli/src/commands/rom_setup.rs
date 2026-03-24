@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::Parser;
 use std::path::PathBuf;
 
 use crate::ux::print_banner_field;
@@ -13,24 +12,24 @@ use std::sync::Arc;
 use zisk_common::ElfBinaryFromFile;
 use zisk_sdk::setup_logger;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ZiskRomSetup {
     /// ELF file path
-    #[clap(short = 'e', long)]
+    #[arg(short = 'e', long)]
     pub elf: PathBuf,
 
     /// Setup folder path
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
     /// Output dir path
-    #[clap(short = 'o', long, hide = true)]
+    #[arg(short = 'o', long, hide = true)]
     pub output_dir: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
-    #[clap(short = 'n', long, default_value_t = false)]
+    #[arg(short = 'n', long, default_value_t = false)]
     pub hints: bool,
 
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]

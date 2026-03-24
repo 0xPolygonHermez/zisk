@@ -1,6 +1,5 @@
 use crate::download_file;
 use anyhow::Result;
-use clap::Parser;
 use dirs::home_dir;
 use rand::{distr::Alphanumeric, Rng};
 use reqwest::Client;
@@ -16,7 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use crate::{get_target, get_toolchain_download_url, is_supported_target};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
 pub struct InstallToolchainCmd {
     #[arg(short, long)]

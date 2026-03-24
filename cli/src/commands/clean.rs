@@ -1,6 +1,5 @@
 use std::fs;
 
-use clap::Parser;
 use colored::Colorize;
 
 use anyhow::{Context, Result};
@@ -13,7 +12,7 @@ use crate::{
 };
 
 /// Deletes the default zisk setup folder
-#[derive(Parser, Debug)]
+#[derive(clap::Args, Debug)]
 #[command(version, about = "Remove the cache directory", long_about = None)]
 pub struct ZiskClean;
 

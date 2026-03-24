@@ -1,7 +1,5 @@
-// extern crate env_logger;
 use crate::commands::{get_proving_key, get_proving_key_snark};
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 
@@ -10,22 +8,22 @@ use fields::Goldilocks;
 use proofman::{check_setup_snark, ProofMan};
 use zisk_sdk::setup_logger;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ZiskCheckSetup {
     /// Setup folder path
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
     /// Setup folder path
-    #[clap(short = 'w', long)]
+    #[arg(short = 'w', long)]
     pub proving_key_snark: Option<PathBuf>,
 
-    #[clap(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 's', long, default_value_t = false)]
+    #[arg(short = 's', long, default_value_t = false)]
     pub snark: bool,
 
     /// Verbosity (-v, -vv)

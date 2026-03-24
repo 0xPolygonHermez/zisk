@@ -1,19 +1,17 @@
-// extern crate env_logger;
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use proofman::{verify_snark_proof, SnarkProof};
 use std::path::PathBuf;
 use zisk_sdk::setup_logger;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ZiskVerifySnark {
-    #[clap(short = 'p', long)]
+    #[arg(short = 'p', long)]
     pub proof: String,
 
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub verkey: PathBuf,
 
     /// Verbosity (-v, -vv)

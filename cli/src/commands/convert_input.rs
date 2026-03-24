@@ -1,5 +1,4 @@
 use anyhow::{bail, Result};
-use clap::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -7,28 +6,28 @@ use crate::ux::print_banner;
 use crate::ux::print_banner_field;
 use zisk_sdk::{setup_logger, ZiskStdin};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ZiskConvertInput {
     /// Input file to convert
-    #[clap(short = 'i', long)]
+    #[arg(short = 'i', long)]
     pub input_file: Option<PathBuf>,
 
     /// Output file path
-    #[clap(short = 'o', long)]
+    #[arg(short = 'o', long)]
     pub output_file: Option<PathBuf>,
 
     /// Input directory containing files to convert
-    #[clap(short = 'd', long)]
+    #[arg(short = 'd', long)]
     pub input_dir: Option<PathBuf>,
 
     /// Output directory for converted files
-    #[clap(short = 't', long)]
+    #[arg(short = 't', long)]
     pub output_dir: Option<PathBuf>,
 
     /// Process subdirectories recursively
-    #[clap(short = 'r', long)]
+    #[arg(short = 'r', long)]
     pub recursive: bool,
 
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]

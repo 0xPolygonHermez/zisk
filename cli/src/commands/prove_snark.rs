@@ -1,6 +1,4 @@
-// extern crate env_logger;
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use fields::Goldilocks;
 use std::path::PathBuf;
@@ -9,25 +7,25 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 use proofman::SnarkWrapper;
 use zisk_sdk::ZiskProofWithPublicValues;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct ZiskProveSnark {
-    #[clap(short = 'p', long)]
+    #[arg(short = 'p', long)]
     pub proof: String,
 
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
-    #[clap(short = 'e', long)]
+    #[arg(short = 'e', long)]
     pub elf: PathBuf,
 
     /// Setup folder path
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub proving_key_snark: PathBuf,
 
     /// Output dir path
-    #[clap(short = 'o', long, default_value = "tmp")]
+    #[arg(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
 
     /// Verbosity (-v, -vv)

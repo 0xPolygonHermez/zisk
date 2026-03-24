@@ -11,37 +11,37 @@ use std::{fs::File, io::Write, path::Path};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct ZiskRun {
-    #[clap(short = 'F', long)]
+    #[arg(short = 'F', long)]
     features: Option<String>,
 
-    #[clap(long)]
+    #[arg(long)]
     all_features: bool,
 
-    #[clap(long)]
+    #[arg(long)]
     release: bool,
 
-    #[clap(long)]
+    #[arg(long)]
     no_default_features: bool,
 
-    #[clap(long, short)]
+    #[arg(long, short)]
     qemu: bool,
 
-    #[clap(short = 'x', long)]
+    #[arg(short = 'x', long)]
     stats: bool,
 
-    #[clap(long)]
+    #[arg(long)]
     gdb: bool,
 
-    #[clap(short = 'i', long)]
+    #[arg(short = 'i', long)]
     input: Option<String>,
 
-    #[clap(long, short = 'm')]
+    #[arg(long, short = 'm')]
     metrics: bool,
 
-    #[clap(short = 'f', long)]
+    #[arg(short = 'f', long)]
     riscof: bool,
 
-    #[clap(last = true)]
+    #[arg(last = true)]
     args: Vec<String>,
 }
 

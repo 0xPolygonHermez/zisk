@@ -24,48 +24,48 @@ pub struct ZiskProve {
     /// ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
-    #[clap(short = 'e', long)]
+    #[arg(short = 'e', long)]
     pub elf: PathBuf,
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long, hide = true)]
+    #[arg(short = 's', long, hide = true)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'l', long, action = clap::ArgAction::SetTrue)]
     pub emulator: bool,
 
     /// Input path
-    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    #[arg(short = 'i', long, alias = "input", conflicts_with = "hints")]
     pub inputs: Option<String>,
 
     /// Precompiles Hints path
-    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    #[arg(short = 'H', long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
     /// Setup folder path
-    #[clap(short = 'k', long)]
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
     /// Setup folder path for SNARK
-    #[clap(short = 'w', long)]
+    #[arg(short = 'w', long)]
     pub proving_key_snark: Option<PathBuf>,
 
     /// Output dir path
-    #[clap(short = 'o', long, default_value = "tmp")]
+    #[arg(short = 'o', long, default_value = "tmp")]
     pub output_dir: PathBuf,
 
-    #[clap(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'c', long, default_value_t = false, conflicts_with = "snark")]
+    #[arg(short = 'c', long, default_value_t = false, conflicts_with = "snark")]
     pub compressed: bool,
 
-    #[clap(short = 'y', long, default_value_t = false)]
+    #[arg(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
 
-    #[clap(short = 'z', long, default_value_t = false, hide = true)]
+    #[arg(short = 'z', long, default_value_t = false, hide = true)]
     pub preallocate: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -74,50 +74,50 @@ pub struct ZiskProve {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
+    #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
     /// Map unlocked flag
     /// This is used to unlock the memory map for the ROM file.
     /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
     /// This option is mutually exclusive with `--emulator`.
-    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
     /// Redirect ASM emulator output to file
     /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
+    #[arg(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
     pub asm_out_file: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[clap(short = 't', long, hide = true)]
+    #[arg(short = 't', long, hide = true)]
     pub max_streams: Option<usize>,
 
-    #[clap(short = 'h', long, hide = true)]
+    #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
-    #[clap(short = 'x', long)]
+    #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'b', long, default_value_t = false, hide = true)]
+    #[arg(short = 'b', long, default_value_t = false, hide = true)]
     pub save_proofs: bool,
 
-    #[clap(short = 'm', long, default_value_t = false)]
+    #[arg(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'j', long, default_value_t = false, hide = true)]
+    #[arg(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 
-    #[clap(short = 'r', long, default_value_t = false)]
+    #[arg(short = 'r', long, default_value_t = false)]
     pub rma: bool,
 
-    #[clap(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
-    #[clap(long, default_value_t = false, conflicts_with = "compressed")]
+    #[arg(long, default_value_t = false, conflicts_with = "compressed")]
     pub snark: bool,
 }
 

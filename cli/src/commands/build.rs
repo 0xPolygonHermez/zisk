@@ -6,25 +6,25 @@ use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct ZiskBuild {
-    #[clap(short = 'F', long)]
+    #[arg(short = 'F', long)]
     features: Option<String>,
 
-    #[clap(long)]
+    #[arg(long)]
     all_features: bool,
 
-    #[clap(long)]
+    #[arg(long)]
     release: bool,
 
-    #[clap(long)]
+    #[arg(long)]
     no_default_features: bool,
 
     #[arg(short, long)]
     name: Option<String>,
 
-    #[clap(short = 'z', long)]
+    #[arg(short = 'z', long)]
     zisk_path: Option<String>,
 
-    #[clap(long)]
+    #[arg(long)]
     hints: bool,
 }
 

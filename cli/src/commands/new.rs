@@ -1,9 +1,8 @@
 use anyhow::Result;
-use clap::Parser;
 use std::{fs, path::Path, process::Command};
 use yansi::Paint;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(name = "new", about = "Setup a new project that runs inside the ZisK.")]
 pub struct NewCmd {
     name: String,
