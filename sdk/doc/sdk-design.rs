@@ -24,7 +24,7 @@ struct GuestProgram {
     elf: Elf,
 }
 
-pub static PROGRAM: GuestProgram = register_program!("guest");
+pub static PROGRAM: GuestProgram = load_program!("guest");
 
 fn main() -> Result<()> {
     // Alternative to load the program from a URI (file or http(s)://...)
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     }
 
     let remote_options = RemoteOptions::builder().url("localhost:3000").build()?;
-    let remote_client = ProverClient::builder().gpu().assembly().remote(remote_options).build()?;
+    let remote_client = ProverClient::builder().gpu().executor(Executor::Assembly).remote(remote_options).build()?;
 
     // Client Default
     let client = ProverClient::default(); // defaults to embedded + cpu client
@@ -88,13 +88,12 @@ fn main() -> Result<()> {
     };
 
     let handle = client
-        .with_executor(Executor::Assembly)
+        .executor(Executor::Assembly)
         .minimal_memory()
         .prove(&guest_program, stdin)
         .stark()
         .hints(hints)
         .timeout(std::time::Duration::from_secs(60))
-        .trace(Tracing::Input)
         .subscribe(WatchEvent::All, on_event)
         .submit()?; // sync: submits the job, returns a handle immediately
 
