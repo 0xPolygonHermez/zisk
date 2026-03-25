@@ -6,9 +6,12 @@ use crate::{
     ZiskVerifyConstraintsResult,
 };
 use anyhow::Result;
+use asm_runner::HintsShmem;
 use colored::Colorize;
-use executor::ZiskExecutor;
+use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use fields::Goldilocks;
+use precompiles_hints::HintsProcessor;
+use zisk_common::io::StreamSource;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -23,6 +26,7 @@ use std::sync::Arc;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_distributed_common::StreamMessage;
 use zisk_common::{
     PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
@@ -52,6 +56,66 @@ impl ProverBackend {
         }
     }
 
+    fn asm_emulator(&self) -> Option<&EmulatorAsm> {
+        self.executor.as_ref().and_then(|e| e.asm_emulator())
+    }
+
+    pub(crate) fn set_asm_resources(&self, resources: AsmResources) {
+        if let Some(executor) = &self.executor {
+            executor.set_asm_resources(resources);
+        }
+    }
+
+    pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
+        let message: StreamMessage = borsh::from_slice(&bytes[1..])
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize hint StreamMessage: {}", e))?;
+        self.asm_emulator()
+            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot submit hint data"))?
+            .submit_hint_direct(&message.data)
+            .map_err(|e| anyhow::anyhow!("Failed to submit hint data: {}", e))
+    }
+
+    pub(crate) fn submit_input(&self, bytes: &[u8]) -> Result<()> {
+        let message: StreamMessage = borsh::from_slice(&bytes[1..])
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize input StreamMessage: {}", e))?;
+        // SAFETY: Vec<u64> is heap-allocated with 8-byte alignment. Viewing its bytes as
+        // &[u8] is valid because u8 has no alignment requirement, the pointer arithmetic
+        // is in-bounds, and the lifetime is tied to `message` which outlives this scope.
+        let reinterpreted_data = unsafe {
+            std::slice::from_raw_parts(
+                message.data.as_ptr() as *const u8,
+                message.data.len() * std::mem::size_of::<u64>(),
+            )
+        };
+        self.asm_emulator()
+            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot append input data"))?
+            .append_raw_input(reinterpreted_data)
+    }
+
+    pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.asm_emulator()
+            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot register hints stream"))?
+            .set_hints_stream_src(stream)
+            .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))
+    }
+
+    pub(crate) fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.asm_emulator().and_then(|a| a.get_hints_processor())
+    }
+
+    pub(crate) fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.set_active_services(is_first_partition)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reset_resources(&self) {
+        if let Some(asm) = self.asm_emulator() {
+            asm.reset();
+        }
+    }
+
     pub fn get_pctx(&self) -> Result<Arc<ProofCtx<Goldilocks>>> {
         let proofman = self.proofman.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
@@ -68,11 +132,7 @@ impl ProverBackend {
             anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
         })?;
 
-        let mut use_hints = false;
-        if let Some(asm_resources) = &program_pk.asm_resources {
-            executor.set_asm_resources(asm_resources.clone());
-            use_hints = asm_resources.use_hints();
-        }
+        let use_hints = executor.asm_emulator().map(|a| a.use_hints()).unwrap_or(false);
 
         executor.set_rom(program_pk.get_zisk_rom(), use_hints);
 

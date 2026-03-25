@@ -214,6 +214,11 @@ impl AsmResources {
 
         self.inputs_shmem_writer.write_input(&inputs)
     }
+
+    /// Appends a raw byte chunk to the input shmem writer.
+    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.inputs_shmem_writer.append_input(bytes)
+    }
 }
 
 impl Drop for AsmResources {

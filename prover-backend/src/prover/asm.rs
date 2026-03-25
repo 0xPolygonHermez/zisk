@@ -7,8 +7,10 @@ use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
+use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use executor::{get_packed_info, initialize_executor, AsmResources};
+use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
@@ -18,6 +20,7 @@ use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use zisk_common::io::StreamSource;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStatsHandle;
 use zisk_common::ZiskExecutorTime;
@@ -101,9 +104,7 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn setup(&self, elf: &GuestProgram) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
-        let with_hints = false;
-
+    fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         let pctx = self.core_prover.backend.get_pctx()?;
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
 
@@ -190,7 +191,7 @@ impl ProverEngine for AsmProver {
 
         let init_rom = !is_distributed && world_rank == 0;
 
-        let asm_resources = AsmResources::new(
+        self.core_prover.backend.set_asm_resources(AsmResources::new(
             world_rank,
             local_rank,
             base_port,
@@ -200,11 +201,11 @@ impl ProverEngine for AsmProver {
             mpi_broadcast_fn,
             init_rom,
             asm_services,
-        )?;
+        )?);
 
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
-        Ok((ZiskProgramPK::new_asm(zisk_rom, rom_bin_path, asm_resources), ZiskProgramVK { vk }))
+        Ok((ZiskProgramPK::new(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
@@ -330,6 +331,30 @@ impl ProverEngine for AsmProver {
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.core_prover.backend.mpi_broadcast(data)
+    }
+
+    fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
+        self.core_prover.backend.submit_hint(bytes)
+    }
+
+    fn submit_input(&self, bytes: &[u8]) -> Result<()> {
+        self.core_prover.backend.submit_input(bytes)
+    }
+
+    fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.core_prover.backend.register_hints_stream(stream)
+    }
+
+    fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.core_prover.backend.get_hints_processor()
+    }
+
+    fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        self.core_prover.backend.set_active_services(is_first_partition)
+    }
+
+    fn reset_resources(&self) {
+        self.core_prover.backend.reset_resources()
     }
 }
 

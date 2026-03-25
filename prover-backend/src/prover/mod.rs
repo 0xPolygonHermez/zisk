@@ -5,7 +5,6 @@ use crate::guest::GuestProgram;
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
@@ -13,7 +12,7 @@ use proofman_common::{ProofOptions, RowInfo};
 
 use anyhow::Result;
 use asm_runner::HintsShmem;
-use executor::AsmResources;
+use precompiles_hints::HintsProcessor;
 use proofman::PlanningInfo;
 use std::{
     path::{Path, PathBuf},
@@ -21,12 +20,11 @@ use std::{
     time::Duration,
 };
 use zisk_common::{
-    io::StreamSource, io::ZiskStdin, ExecutorStatsHandle, ProofMode, StatsCostPerType,
-    ZiskExecutorSummary, ZiskExecutorTime, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues,
-    ZiskPublics, ZiskVK, ZiskVerifyBuilder,
+    io::{StreamSource, ZiskStdin},
+    ExecutorStatsHandle, ProofMode, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
+    ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK, ZiskVerifyBuilder,
 };
 use zisk_core::ZiskRom;
-use zisk_distributed_common::StreamMessage;
 
 pub struct ZiskExecuteResult {
     pub total_duration: Duration,
@@ -120,20 +118,11 @@ impl ZiskVerifyConstraintsResult {
 pub struct ZiskProgramPK {
     zisk_rom: Arc<ZiskRom>,
     rom_bin_path: PathBuf,
-    asm_resources: Option<AsmResources>,
 }
 
 impl ZiskProgramPK {
-    pub fn new_emu(zisk_rom: Arc<ZiskRom>, rom_bin_path: PathBuf) -> Self {
-        Self { zisk_rom, rom_bin_path, asm_resources: None }
-    }
-
-    pub fn new_asm(
-        zisk_rom: Arc<ZiskRom>,
-        rom_bin_path: PathBuf,
-        asm_resources: AsmResources,
-    ) -> Self {
-        Self { zisk_rom, rom_bin_path, asm_resources: Some(asm_resources) }
+    pub fn new(zisk_rom: Arc<ZiskRom>, rom_bin_path: PathBuf) -> Self {
+        Self { zisk_rom, rom_bin_path }
     }
 
     pub fn get_rom_path(&self) -> &Path {
@@ -142,60 +131,6 @@ impl ZiskProgramPK {
 
     pub fn get_zisk_rom(&self) -> Arc<ZiskRom> {
         self.zisk_rom.clone()
-    }
-
-    pub fn set_active_services(&self, is_first_partition: bool) {
-        self.asm_resources.as_ref().map(|r| r.set_active_services(is_first_partition));
-    }
-
-    pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
-        if let Some(asm_resources) = &self.asm_resources {
-            asm_resources
-                .set_hints_stream_src(stream)
-                .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))?;
-        } else {
-            return Err(anyhow::anyhow!(
-                "ASM resources not initialized, cannot register hints stream"
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn submit_input(&self, bytes: &[u8]) -> Result<()> {
-        if let Some(asm_resources) = &self.asm_resources {
-            let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-            let reinterpreted_data = unsafe {
-                std::slice::from_raw_parts(
-                    message.data.as_ptr() as *const u8,
-                    message.data.len() * std::mem::size_of::<u64>(),
-                )
-            };
-            asm_resources.inputs_shmem_writer.append_input(reinterpreted_data)?;
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("ASM resources not initialized, cannot append input data"))
-        }
-    }
-
-    pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
-        if let Some(asm_resources) = &self.asm_resources {
-            let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-            asm_resources
-                .submit_hint_direct(&message.data)
-                .map_err(|e| anyhow::anyhow!("Failed to submit hint data: {}", e))?;
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("ASM resources not initialized, cannot submit hint data"))
-        }
-    }
-    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
-        self.asm_resources.as_ref().and_then(|r| r.get_hints_processor())
-    }
-
-    pub fn reset(&self) {
-        if let Some(asm_resources) = &self.asm_resources {
-            asm_resources.reset();
-        }
     }
 }
 
@@ -360,7 +295,7 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf: &GuestProgram) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
+    fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
 
     fn world_rank(&self) -> i32;
 
@@ -464,6 +399,35 @@ pub trait ProverEngine {
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
+
+    // --- ASM-only operations ---
+    // These are meaningful only for the ASM backend (distributed worker path).
+    // Data operations (submit_hint, submit_input, register_hints_stream) return Err by
+    // default because calling them on a non-ASM backend is always a caller bug.
+    // State operations (set_active_services, reset_resources) default to no-ops because
+    // they are safe to skip when there are no ASM resources to manage.
+
+    fn submit_hint(&self, _bytes: &[u8]) -> Result<()> {
+        Err(anyhow::anyhow!("submit_hint not supported by this backend"))
+    }
+
+    fn submit_input(&self, _bytes: &[u8]) -> Result<()> {
+        Err(anyhow::anyhow!("submit_input not supported by this backend"))
+    }
+
+    fn register_hints_stream(&self, _stream: StreamSource) -> Result<()> {
+        Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
+    }
+
+    fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        None
+    }
+
+    fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
+        Ok(())
+    }
+
+    fn reset_resources(&self) {}
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -480,8 +444,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(&self, elf: &GuestProgram) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
-        self.prover.setup(elf)
+    pub fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+        self.prover.setup(elf, with_hints)
     }
 
     /// Set the standard input for the current proof.
@@ -650,6 +614,30 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Broadcast data to all MPI processes.
     pub fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.prover.mpi_broadcast(data)
+    }
+
+    pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
+        self.prover.submit_hint(bytes)
+    }
+
+    pub fn submit_input(&self, bytes: &[u8]) -> Result<()> {
+        self.prover.submit_input(bytes)
+    }
+
+    pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.prover.register_hints_stream(stream)
+    }
+
+    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.prover.get_hints_processor()
+    }
+
+    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        self.prover.set_active_services(is_first_partition)
+    }
+
+    pub fn reset_resources(&self) {
+        self.prover.reset_resources()
     }
 }
 

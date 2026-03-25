@@ -173,7 +173,7 @@ impl ZiskStats {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, false)?;
 
         prover.stats(
             &pk,
@@ -205,10 +205,10 @@ impl ZiskStats {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, hints_stream.is_some())?;
 
         if let Some(hints_stream) = hints_stream {
-            pk.register_hints_stream(hints_stream)?;
+            prover.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(&pk, stdin, self.debug.clone(), self.minimal_memory, mpi_node)

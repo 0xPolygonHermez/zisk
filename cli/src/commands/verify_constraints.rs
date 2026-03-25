@@ -163,7 +163,7 @@ impl ZiskVerifyConstraints {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, false)?;
 
         prover.verify_constraints(&pk, stdin, self.debug.clone())
     }
@@ -189,10 +189,10 @@ impl ZiskVerifyConstraints {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, hints_stream.is_some())?;
 
         if let Some(hints_stream) = hints_stream {
-            pk.register_hints_stream(hints_stream)?;
+            prover.register_hints_stream(hints_stream)?;
         }
         prover.verify_constraints(&pk, stdin, self.debug.clone())
     }

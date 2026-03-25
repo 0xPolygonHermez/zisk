@@ -20,7 +20,8 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle, WitnessOrchestrator,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
+    WitnessOrchestrator,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
@@ -105,6 +106,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Sets ASM resources for execution (only applicable for ASM emulator).
     pub fn set_asm_resources(&self, asm_resources: AsmResources) {
         self.rom_executor.set_asm_resources(asm_resources);
+    }
+
+    /// Returns a reference to the ASM emulator if ASM execution is active.
+    pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
+        self.rom_executor.asm_emulator()
     }
 
     /// Gets the execution result and stats.
@@ -253,7 +259,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids);
 
         // Reset hints stream
-        self.rom_executor.reset_hints_stream();
+        if let Some(asm) = self.rom_executor.asm_emulator() {
+            asm.reset();
+        }
 
         stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);

@@ -8,7 +8,9 @@ use crate::AsmResources;
 use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH};
+use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
+use precompiles_hints::HintsProcessor;
+use zisk_common::io::StreamSource;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
@@ -49,8 +51,63 @@ impl EmulatorAsm {
         *self.asm_resources.lock().unwrap() = Some(asm_resources);
     }
 
-    pub fn reset_hints_stream(&self) {
-        self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
+    /// Resets the hints stream pipeline and the input shmem writer for the next job.
+    pub fn reset(&self) {
+        if let Some(resources) = self.asm_resources.lock().unwrap().as_ref() {
+            resources.reset();
+        }
+    }
+
+    pub fn use_hints(&self) -> bool {
+        self.asm_resources.lock().unwrap().as_ref().map(|r| r.use_hints()).unwrap_or(false)
+    }
+
+    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+        self.asm_resources.lock().unwrap().as_ref().and_then(|r| r.get_hints_processor())
+    }
+
+    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        if let Some(resources) = self.asm_resources.lock().unwrap().as_ref() {
+            resources.set_active_services(is_first_partition)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        self.asm_resources
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .set_hints_stream_src(stream)
+    }
+
+    /// Submits hint data directly to the shmem sink, bypassing the `ZiskStream` pipeline.
+    ///
+    /// Used in the gRPC streaming path where hint ordering is handled externally by the
+    /// coordinator before data arrives here.
+    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+        self.asm_resources
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .submit_hint_direct(data)
+    }
+
+    /// Appends a raw byte chunk to the input shmem writer.
+    ///
+    /// Used in the gRPC streaming path where input data arrives in chunks. Unlike
+    /// `write_input` (which writes the full stdin at once for local execution), this
+    /// appends incrementally as chunks arrive over the wire.
+    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.asm_resources
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .append_raw_input(bytes)
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.

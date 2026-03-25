@@ -276,7 +276,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let guest_program =
             GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, false)?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -315,7 +315,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let guest_program =
             GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
-        let (pk, _) = prover.setup(&guest_program)?;
+        let (pk, _) = prover.setup(&guest_program, false)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
@@ -579,7 +579,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
-                pk.register_hints_stream(hints_stream)?;
+                prover.register_hints_stream(hints_stream)?;
             }
             HintsSourceDto::HintsStream(_hints_uri) => {
                 // For HintsStream, the worker will receive hint data via StreamData gRPC messages
@@ -638,13 +638,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.pk.reset();
+                self.prover.reset_resources();
 
-                let processor = self.pk.get_hints_processor().ok_or_else(|| {
+                let processor = self.prover.get_hints_processor().ok_or_else(|| {
                     anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
                 })?;
 
-                self.pk.set_active_services(is_first_partition);
+                self.prover.set_active_services(is_first_partition)?;
 
                 // Replace any existing actor (handles reconnect / job restart)
                 self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
@@ -852,9 +852,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
-            pk.submit_hint(&bytes)?;
+            prover.submit_hint(&bytes)?;
         } else if phase == JobPhase::ContributionsInputsStream {
-            pk.submit_input(&bytes)?;
+            prover.submit_input(&bytes)?;
         } else {
             tokio::task::spawn_blocking(move || match phase {
                 JobPhase::Contributions => {

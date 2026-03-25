@@ -74,11 +74,9 @@ impl RomExecutor {
         self.emulator_asm.set_asm_resources(asm_resources);
     }
 
-    /// Resets the hints stream if configured.
-    pub fn reset_hints_stream(&self) {
-        if self.is_asm_execution.load(Ordering::SeqCst) {
-            self.emulator_asm.reset_hints_stream()
-        }
+    /// Returns a reference to the ASM emulator if ASM execution is active.
+    pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
+        self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
     }
 
     pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {

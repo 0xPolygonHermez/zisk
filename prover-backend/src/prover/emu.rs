@@ -78,7 +78,7 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.register_program(pk)
     }
 
-    fn setup(&self, elf: &GuestProgram) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup(&self, elf: &GuestProgram, _with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
@@ -88,7 +88,7 @@ impl ProverEngine for EmuProver {
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
-        Ok((ZiskProgramPK::new_emu(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
+        Ok((ZiskProgramPK::new(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
     }
 
     fn executed_steps(&self) -> u64 {
