@@ -295,8 +295,20 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf: &GuestProgram, with_hints: bool)
+    /// Builder type returned by setup()
+    type Builder<'a>
+    where
+        Self: 'a;
+
+    /// Internal setup implementation (called by builder's run())
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool)
         -> Result<(ZiskProgramPK, ZiskProgramVK)>;
+
+    /// Create a setup builder for the given ELF program.
+    /// 
+    /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
+    /// before executing with `.run()`.
+    fn setup<'a>(&'a self, elf: &'a GuestProgram) -> Self::Builder<'a>;
 
     fn world_rank(&self) -> i32;
 
@@ -447,12 +459,24 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(
-        &self,
-        elf: &GuestProgram,
-        with_hints: bool,
-    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
-        self.prover.setup(elf, with_hints)
+    /// Create a setup builder for the given ELF program.
+    /// 
+    /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
+    /// before executing with `.run()`.
+    /// 
+    /// # Example
+    /// ```ignore
+    /// // ASM backend with hints
+    /// let (pk, vk) = prover.setup(&elf).with_hints().run()?;
+    /// 
+    /// // ASM backend without hints
+    /// let (pk, vk) = prover.setup(&elf).run()?;
+    /// 
+    /// // EMU backend (no with_hints available)
+    /// let (pk, vk) = prover.setup(&elf).run()?;
+    /// ```
+    pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> <C::Prover as ProverEngine>::Builder<'a> {
+        self.prover.setup(elf)
     }
 
     /// Set the standard input for the current proof.

@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     // Create a `ProverClient` method.
     let client = ProverClient::builder().asm().build().unwrap();
 
-    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(&pk, stdin.clone())?;

@@ -18,10 +18,10 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up first program...");
-    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
 
     println!("Setting up second program...");
-    let (pk2, _vkey2) = client.setup(&GuestProgram::from_elf(ELF2))?;
+    let (pk2, _vkey2) = client.setup(&GuestProgram::from_elf(ELF2)).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");

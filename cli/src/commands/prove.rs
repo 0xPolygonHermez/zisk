@@ -238,7 +238,7 @@ impl ZiskProve {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program, false)?;
+        let (pk, _) = prover.setup(&guest_program).run()?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -288,7 +288,11 @@ impl ZiskProve {
 
         let guest_program =
             GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
-        let (pk, _) = prover.setup(&guest_program, hints_stream.is_some())?;
+        let (pk, _) = if hints_stream.is_some() {
+            prover.setup(&guest_program).with_hints().run()?
+        } else {
+            prover.setup(&guest_program).run()?
+        };
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,

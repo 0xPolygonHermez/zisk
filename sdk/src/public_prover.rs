@@ -19,13 +19,24 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
         Self { inner: prover }
     }
 
-    /// Setup a guest program and return the proving key and verification key
-    pub fn setup(
-        &self,
-        elf: &GuestProgram,
-        with_hints: bool,
-    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
-        self.inner.setup(elf, with_hints)
+    /// Setup a guest program and return a builder for optional configuration.
+    ///
+    /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
+    /// before executing with `.run()`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // ASM backend with hints
+    /// let (pk, vk) = prover.setup(&elf).with_hints().run()?;
+    /// 
+    /// // ASM or EMU backend without hints
+    /// let (pk, vk) = prover.setup(&elf).run()?;
+    /// ```
+    pub fn setup<'a>(
+        &'a self,
+        elf: &'a GuestProgram,
+    ) -> <C::Prover as zisk_prover_backend::ProverEngine>::Builder<'a> {
+        self.inner.setup(elf)
     }
 
     /// Get the verification key for a guest program

@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");

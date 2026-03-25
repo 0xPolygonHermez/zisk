@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     println!("Setting up program and generating verification key...");
-    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");

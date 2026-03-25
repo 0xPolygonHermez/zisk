@@ -27,7 +27,7 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(&pk, stdin.clone())?;

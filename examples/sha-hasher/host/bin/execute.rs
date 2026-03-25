@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF))?;
+    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.

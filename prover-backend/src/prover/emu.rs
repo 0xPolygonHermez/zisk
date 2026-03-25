@@ -28,6 +28,23 @@ impl ZiskBackend for Emu {
     type Prover = EmuProver;
 }
 
+/// Builder for EMU backend setup (hints not supported).
+pub struct EmuSetupBuilder<'a> {
+    prover: &'a EmuProver,
+    elf: &'a GuestProgram,
+}
+
+impl<'a> EmuSetupBuilder<'a> {
+    fn new(prover: &'a EmuProver, elf: &'a GuestProgram) -> Self {
+        Self { prover, elf }
+    }
+
+    /// Execute the setup and return the program proving and verification keys.
+    pub fn run(self) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+        self.prover.setup_internal(self.elf, false)
+    }
+}
+
 pub struct EmuProver {
     pub(crate) core_prover: EmuCoreProver,
 }
@@ -62,23 +79,13 @@ impl EmuProver {
 }
 
 impl ProverEngine for EmuProver {
-    fn world_rank(&self) -> i32 {
-        self.core_prover.rank_info.world_rank
+    type Builder<'a> = EmuSetupBuilder<'a>;
+
+    fn setup<'a>(&'a self, elf: &'a GuestProgram) -> Self::Builder<'a> {
+        EmuSetupBuilder::new(self, elf)
     }
 
-    fn local_rank(&self) -> i32 {
-        self.core_prover.rank_info.local_rank
-    }
-
-    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.core_prover.backend.set_stdin(stdin)
-    }
-
-    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
-        self.core_prover.backend.register_program(pk)
-    }
-
-    fn setup(
+    fn setup_internal(
         &self,
         elf: &GuestProgram,
         _with_hints: bool,
@@ -93,6 +100,22 @@ impl ProverEngine for EmuProver {
         let zisk_rom = Arc::new(zisk_rom);
 
         Ok((ZiskProgramPK::new(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
+    }
+
+    fn world_rank(&self) -> i32 {
+        self.core_prover.rank_info.world_rank
+    }
+
+    fn local_rank(&self) -> i32 {
+        self.core_prover.rank_info.local_rank
+    }
+
+    fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        self.core_prover.backend.set_stdin(stdin)
+    }
+
+    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
+        self.core_prover.backend.register_program(pk)
     }
 
     fn executed_steps(&self) -> u64 {
