@@ -170,7 +170,7 @@ impl ZiskExecute {
         let (pk, _) = if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?
         } else {
-            prover.setup(&guest_program).run()?  
+            prover.setup(&guest_program).run()?
         };
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;

@@ -55,9 +55,9 @@ pub fn execute_build_program(
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(&args, &program_dir, &program_metadata);
+    let cmd = create_command(args, &program_dir, &program_metadata);
 
-    let target_elf_paths = generate_elf_paths(&program_metadata, Some(&args));
+    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
 
     if target_elf_paths.len() > 1 && args.elf_name.is_some() {
         anyhow::bail!("--elf-name is not supported when --output-directory is used and multiple ELFs are built.");

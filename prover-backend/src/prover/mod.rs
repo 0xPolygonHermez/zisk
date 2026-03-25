@@ -301,11 +301,14 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool)
-        -> Result<(ZiskProgramPK, ZiskProgramVK)>;
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
 
     /// Create a setup builder for the given ELF program.
-    /// 
+    ///
     /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
     /// before executing with `.run()`.
     fn setup<'a>(&'a self, elf: &'a GuestProgram) -> Self::Builder<'a>;
@@ -460,18 +463,18 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 
     /// Create a setup builder for the given ELF program.
-    /// 
+    ///
     /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
     /// before executing with `.run()`.
-    /// 
+    ///
     /// # Example
     /// ```ignore
     /// // ASM backend with hints
     /// let (pk, vk) = prover.setup(&elf).with_hints().run()?;
-    /// 
+    ///
     /// // ASM backend without hints
     /// let (pk, vk) = prover.setup(&elf).run()?;
-    /// 
+    ///
     /// // EMU backend (no with_hints available)
     /// let (pk, vk) = prover.setup(&elf).run()?;
     /// ```
@@ -652,7 +655,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// # Parameters
     ///
     /// * `minimal` - If true, returns the reduced/compressed verification key.
-    ///               If false, returns the full verification key.
+    ///   If false, returns the full verification key.
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         self.prover.get_vadcop_vk(minimal)
     }

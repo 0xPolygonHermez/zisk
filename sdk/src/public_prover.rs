@@ -28,7 +28,7 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
     /// ```ignore
     /// // ASM backend with hints
     /// let (pk, vk) = prover.setup(&elf).with_hints().run()?;
-    /// 
+    ///
     /// // ASM or EMU backend without hints
     /// let (pk, vk) = prover.setup(&elf).run()?;
     /// ```
