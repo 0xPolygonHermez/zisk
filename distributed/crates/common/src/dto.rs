@@ -257,6 +257,7 @@ pub struct ProofDto {
 pub struct FinalProofDto {
     pub values: Vec<u64>,
     pub executed_steps: u64,
+    pub verkey: Vec<u8>,
 }
 
 pub struct ExecuteTaskResponseDto {

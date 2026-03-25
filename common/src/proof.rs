@@ -48,12 +48,12 @@ pub enum ZiskProof {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZiskVadcopFinalProof {
     pub proof: Vec<u8>,
-    pub minimal: bool,
+    pub reduced: bool,
 }
 
 impl ZiskVadcopFinalProof {
-    pub fn new(proof: Vec<u8>, minimal: bool) -> Self {
-        Self { proof, minimal }
+    pub fn new(proof: Vec<u8>, reduced: bool) -> Self {
+        Self { proof, reduced }
     }
 
     pub fn save(
@@ -150,8 +150,8 @@ impl ZiskProof {
         match self {
             ZiskProof::Null() => Err(anyhow::anyhow!("No proof to save")),
             ZiskProof::VadcopFinal(proof) | ZiskProof::VadcopFinalReduced(proof) => {
-                let minimal = matches!(self, ZiskProof::VadcopFinalReduced(_));
-                let zisk_proof = ZiskVadcopFinalProof::new(proof.clone(), minimal);
+                let reduced = matches!(self, ZiskProof::VadcopFinalReduced(_));
+                let zisk_proof = ZiskVadcopFinalProof::new(proof.clone(), reduced);
                 zisk_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
             }
             ZiskProof::Plonk(snark_proof) => {
@@ -167,7 +167,7 @@ impl ZiskProof {
 
     pub fn load(path: impl AsRef<Path>) -> Result<ZiskProof> {
         if let Ok(vadcop_proof) = ZiskVadcopFinalProof::load(path.as_ref()) {
-            let proof = if vadcop_proof.minimal {
+            let proof = if vadcop_proof.reduced {
                 ZiskProof::VadcopFinalReduced(vadcop_proof.proof)
             } else {
                 ZiskProof::VadcopFinal(vadcop_proof.proof)
@@ -503,13 +503,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 Ok(())
             }
             ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) => {
-                let minimal =
+                let reduced =
                     matches!(self.proof_with_values.proof, ZiskProof::VadcopFinalReduced(_));
                 let mut pubs = program_vk.vk.clone();
                 pubs.extend(publics.public_bytes());
-                let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
+                let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, reduced);
 
-                let is_valid = if minimal {
+                let is_valid = if reduced {
                     verify_vadcop_final_compressed(&vadcop_final_proof, &zisk_vk.vk)
                 } else {
                     verify_vadcop_final(&vadcop_final_proof, &zisk_vk.vk)
@@ -556,10 +556,10 @@ impl ZiskProofWithPublicValues {
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.proof {
             ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) => {
-                let minimal = matches!(self.proof, ZiskProof::VadcopFinalReduced(_));
+                let reduced = matches!(self.proof, ZiskProof::VadcopFinalReduced(_));
                 let mut pubs = self.program_vk.vk.clone();
                 pubs.extend(self.publics.public_bytes());
-                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal))
+                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, reduced))
             }
 
             _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
@@ -590,16 +590,16 @@ impl ZiskProofWithPublicValues {
     /// # Parameters
     ///
     /// * `proof` - The proof as a slice of u64 values
-    /// * `minimal` - Whether the proof is minimal
+    /// * `reduced` - Whether the proof is reduced
     ///
     /// # Returns
     ///
     /// A ZiskProofWithPublicValues containing the parsed proof, publics, and program VK
-    pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u8>) -> Result<Self> {
-        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal)
+    pub fn new_from_vadcop_proof(proof: &[u64], reduced: bool, zisk_vk: Vec<u8>) -> Result<Self> {
+        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, reduced)
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
-        let zisk_proof = if minimal {
+        let zisk_proof = if reduced {
             ZiskProof::VadcopFinalReduced(vadcop_proof.proof)
         } else {
             ZiskProof::VadcopFinal(vadcop_proof.proof)

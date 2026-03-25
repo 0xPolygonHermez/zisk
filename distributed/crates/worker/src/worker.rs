@@ -46,6 +46,7 @@ pub enum ComputationResult {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
+        reduced: bool,
     },
 }
 
@@ -368,6 +369,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     pub fn set_current_computation(&mut self, handle: JoinHandle<()>) {
         self.current_computation = Some(handle);
+    }
+
+    pub fn get_vadcop_vk(&self, reduced: bool) -> Result<Vec<u8>> {
+        let vk = self.prover.get_vadcop_vk(reduced)?;
+        Ok(vk.vk)
     }
 
     pub fn cancel_current_computation(&mut self) {
@@ -766,6 +772,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 success: false,
                 result: Err(error),
                 executed_steps,
+                reduced: agg_params.reduced,
             });
 
             return tokio::spawn(async {});
@@ -806,6 +813,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: true,
                         result: Ok(Some(proof)),
                         executed_steps,
+                        reduced: agg_params.reduced,
                     });
                 }
                 Err(error) => {
@@ -815,6 +823,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: false,
                         result: Err(error),
                         executed_steps,
+                        reduced: agg_params.reduced,
                     });
                 }
             }

@@ -11,7 +11,10 @@ use precompiles_hints::HintsProcessor;
 use crate::AsmResources;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use zisk_common::{io::{ZiskStdin, StreamSource}, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope,
+};
 use zisk_core::ZiskRom;
 
 pub struct EmulatorAsm {}

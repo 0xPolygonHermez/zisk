@@ -258,6 +258,7 @@ pub struct Job {
     pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
     pub final_proof: Option<Vec<u64>>,
+    pub final_verkey: Option<Vec<u8>>,
     pub executed_steps: Option<u64>,
 }
 
@@ -293,6 +294,7 @@ impl Job {
             witness_info: None,
             execution_mode,
             final_proof: None,
+            final_verkey: None,
             executed_steps: None,
         }
     }
@@ -361,6 +363,7 @@ impl Job {
         self.stats.clear();
         self.challenges = None;
         self.final_proof = None;
+        self.final_verkey = None;
     }
 }
 

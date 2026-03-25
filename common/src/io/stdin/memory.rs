@@ -137,14 +137,14 @@ impl ZiskIO for ZiskMemoryStdin {
         if let ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) =
             &proof.proof
         {
-            let minimal = matches!(proof.proof, ZiskProof::VadcopFinalReduced(_));
+            let reduced = matches!(proof.proof, ZiskProof::VadcopFinalReduced(_));
 
             let mut pubs = proof.program_vk.vk.clone();
             pubs.extend(proof.publics.public_bytes());
 
-            // Format: [minimal(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
+            // Format: [reduced(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
             let mut zisk_proof = Vec::new();
-            zisk_proof.extend_from_slice(&(minimal as u64).to_le_bytes());
+            zisk_proof.extend_from_slice(&(reduced as u64).to_le_bytes());
             zisk_proof.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
             zisk_proof.extend_from_slice(&pubs);
             zisk_proof.extend_from_slice(proof_bytes);

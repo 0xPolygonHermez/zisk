@@ -20,7 +20,11 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
     }
 
     /// Setup a guest program and return the proving key and verification key
-    pub fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    pub fn setup(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         self.inner.setup(elf, with_hints)
     }
 

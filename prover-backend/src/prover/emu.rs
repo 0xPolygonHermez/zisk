@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProofMode, ZiskExecutorTime, ZiskProgramVK, ZiskProof,
-    ZiskProofWithPublicValues, ZiskPublics,
+    ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 use zisk_core::Riscv2zisk;
 use zisk_distributed_common::LoggingConfig;
@@ -78,7 +78,11 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.register_program(pk)
     }
 
-    fn setup(&self, elf: &GuestProgram, _with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup(
+        &self,
+        elf: &GuestProgram,
+        _with_hints: bool,
+    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
@@ -222,6 +226,10 @@ impl ProverEngine for EmuProver {
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.core_prover.backend.mpi_broadcast(data)
+    }
+
+    fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
+        self.core_prover.backend.get_vadcop_vk(reduced)
     }
 }
 

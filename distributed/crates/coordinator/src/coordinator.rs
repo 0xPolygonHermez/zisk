@@ -417,11 +417,21 @@ impl Coordinator {
         let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
-        // Clone job.final_proof and error if does not exist
+        // Clone job.final_proof and final_verkey and error if does not exist
         let final_proof = if job.state == JobState::Completed {
             Some(job.final_proof.clone().ok_or_else(|| {
                 CoordinatorError::Internal(
                     "Final proof is missing during post-launch processing".to_string(),
+                )
+            })?)
+        } else {
+            None
+        };
+
+        let final_verkey = if job.state == JobState::Completed {
+            Some(job.final_verkey.clone().ok_or_else(|| {
+                CoordinatorError::Internal(
+                    "Final verification key is missing during post-launch processing".to_string(),
                 )
             })?)
         } else {
@@ -444,7 +454,7 @@ impl Coordinator {
             let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
                 &final_proof.unwrap(),
                 self.config.coordinator.reduced_proofs,
-                Vec::new(), // LATER
+                final_verkey.unwrap(),
             )
             .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
             fs::create_dir_all(&folder).map_err(|e| {
@@ -2012,6 +2022,7 @@ impl Coordinator {
 
         // Finalize completed job
         job.final_proof = Some(proof_data.values);
+        job.final_verkey = Some(proof_data.verkey);
         job.executed_steps = Some(proof_data.executed_steps);
 
         job.change_state(JobState::Completed);

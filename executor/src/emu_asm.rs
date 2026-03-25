@@ -9,11 +9,11 @@ use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
-use precompiles_hints::HintsProcessor;
-use zisk_common::io::StreamSource;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
+use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
+use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,

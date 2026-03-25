@@ -252,8 +252,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
             }
-            ComputationResult::AggProof { job_id, success, result, executed_steps } => {
-                self.send_aggregation(job_id, success, result, message_sender, executed_steps).await
+            ComputationResult::AggProof { job_id, success, result, executed_steps, reduced } => {
+                self.send_aggregation(
+                    job_id,
+                    success,
+                    result,
+                    message_sender,
+                    executed_steps,
+                    reduced,
+                )
+                .await
             }
         }
     }
@@ -395,6 +403,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
+        reduced: bool,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -411,12 +420,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                 if let Some(final_proof) = data {
                     reset_current_job = !final_proof.is_empty();
+
+                    // Get the verification key for the final proof
+                    let verkey = self.worker.get_vadcop_vk(reduced).unwrap_or_else(|e| {
+                        error!("Failed to get vadcop verification key: {}", e);
+                        vec![]
+                    });
+
                     Some(ResultData::FinalProof(FinalProof {
                         values: final_proof.into_iter().flatten().collect(),
                         executed_steps,
+                        verkey,
                     }))
                 } else {
-                    Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
+                    Some(ResultData::FinalProof(FinalProof {
+                        values: vec![],
+                        executed_steps,
+                        verkey: vec![],
+                    }))
                 }
             }
             Err(e) => {
@@ -424,7 +445,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     return Err(anyhow!("Aggregation returned Err but reported success"));
                 }
                 error_message = e.to_string();
-                Some(ResultData::FinalProof(FinalProof { values: vec![], executed_steps }))
+                Some(ResultData::FinalProof(FinalProof {
+                    values: vec![],
+                    executed_steps,
+                    verkey: vec![],
+                }))
             }
         };
 

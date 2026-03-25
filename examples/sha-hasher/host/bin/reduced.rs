@@ -28,13 +28,13 @@ fn main() -> Result<()> {
     println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
 
     println!("Reducing proof (this may take a while)...");
-    let minimal_result = client.reduce(vadcop_result.get_proof_with_publics()).run()?;
+    let result = client.reduce(vadcop_result.get_proof_with_publics()).run()?;
 
     // Alternatively, you can also call `minimal()` on the `ProverClient.prove` method to generate a minimal proof directly.
     // let result = client.prove(&pk, stdin).with_proof_options(proof_opts).minimal().run()?;
 
     println!("Verifying minimal proof...");
-    minimal_result.verify()?;
+    result.verify()?;
     println!("Minimal proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified minimal proof!");

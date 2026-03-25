@@ -24,7 +24,9 @@ use zisk_common::io::StreamSource;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStatsHandle;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{
+    ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
+};
 use zisk_core::Riscv2zisk;
 use zisk_distributed_common::LoggingConfig;
 
@@ -104,7 +106,11 @@ impl ProverEngine for AsmProver {
             .unwrap_or(0)
     }
 
-    fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         let pctx = self.core_prover.backend.get_pctx()?;
         let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
 
@@ -331,6 +337,10 @@ impl ProverEngine for AsmProver {
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.core_prover.backend.mpi_broadcast(data)
+    }
+
+    fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
+        self.core_prover.backend.get_vadcop_vk(reduced)
     }
 
     fn submit_hint(&self, bytes: &[u8]) -> Result<()> {

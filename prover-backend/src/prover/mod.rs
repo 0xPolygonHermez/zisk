@@ -295,7 +295,8 @@ pub struct ZiskAggPhaseResult {
 }
 
 pub trait ProverEngine {
-    fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
+    fn setup(&self, elf: &GuestProgram, with_hints: bool)
+        -> Result<(ZiskProgramPK, ZiskProgramVK)>;
 
     fn world_rank(&self) -> i32;
 
@@ -398,6 +399,8 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
+    fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK>;
+
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
     // --- ASM-only operations ---
@@ -444,7 +447,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover }
     }
 
-    pub fn setup(&self, elf: &GuestProgram, with_hints: bool) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    pub fn setup(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
         self.prover.setup(elf, with_hints)
     }
 
@@ -614,6 +621,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Broadcast data to all MPI processes.
     pub fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.prover.mpi_broadcast(data)
+    }
+
+    /// Get the Vadcop verification key.
+    ///
+    /// # Parameters
+    ///
+    /// * `minimal` - If true, returns the reduced/compressed verification key.
+    ///               If false, returns the full verification key.
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+        self.prover.get_vadcop_vk(minimal)
     }
 
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {

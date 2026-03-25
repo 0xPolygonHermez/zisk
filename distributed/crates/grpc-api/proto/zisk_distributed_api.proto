@@ -342,6 +342,7 @@ message Proof {
 message FinalProof {
   repeated uint64 values = 1;
   uint64 executed_steps = 2;
+  bytes verkey = 3;
 }
 
 message WorkerError {

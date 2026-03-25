@@ -11,7 +11,6 @@ use colored::Colorize;
 use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use fields::Goldilocks;
 use precompiles_hints::HintsProcessor;
-use zisk_common::io::StreamSource;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -23,13 +22,14 @@ use rom_setup::rom_merkle_setup_verkey;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
-use zisk_distributed_common::StreamMessage;
 use zisk_common::{
     PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
+use zisk_distributed_common::StreamMessage;
 
 pub(crate) struct ProverBackend {
     proofman: Option<ProofMan<Goldilocks>>,
@@ -70,7 +70,9 @@ impl ProverBackend {
         let message: StreamMessage = borsh::from_slice(&bytes[1..])
             .map_err(|e| anyhow::anyhow!("Failed to deserialize hint StreamMessage: {}", e))?;
         self.asm_emulator()
-            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot submit hint data"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!("ASM resources not initialized, cannot submit hint data")
+            })?
             .submit_hint_direct(&message.data)
             .map_err(|e| anyhow::anyhow!("Failed to submit hint data: {}", e))
     }
@@ -88,13 +90,17 @@ impl ProverBackend {
             )
         };
         self.asm_emulator()
-            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot append input data"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!("ASM resources not initialized, cannot append input data")
+            })?
             .append_raw_input(reinterpreted_data)
     }
 
     pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.asm_emulator()
-            .ok_or_else(|| anyhow::anyhow!("ASM resources not initialized, cannot register hints stream"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!("ASM resources not initialized, cannot register hints stream")
+            })?
             .set_hints_stream_src(stream)
             .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))
     }
@@ -371,7 +377,7 @@ impl ProverBackend {
 
         executor.set_stdin(stdin);
 
-        let minimal = matches!(mode, ProofMode::VadcopFinalReduced);
+        let reduced = matches!(mode, ProofMode::VadcopFinalReduced);
 
         proofman.set_partition(1, vec![0], 0)?;
 
@@ -383,7 +389,7 @@ impl ProverBackend {
                     false,
                     proof_options.aggregation,
                     proof_options.rma,
-                    minimal,
+                    reduced,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
                     proof_options.save_proofs,
@@ -408,7 +414,7 @@ impl ProverBackend {
 
         proofman.set_barrier();
 
-        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
+        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, reduced)? };
 
         match (mode, proof) {
             (ProofMode::Snark, Some(vadcop_proof)) => {
@@ -452,7 +458,7 @@ impl ProverBackend {
                 }
             }
             (_, Some(p)) => {
-                let proof = if minimal {
+                let proof = if reduced {
                     ZiskProof::VadcopFinalReduced(p.proof)
                 } else {
                     ZiskProof::VadcopFinal(p.proof)
@@ -499,14 +505,14 @@ impl ProverBackend {
         pubs.extend(publics.public_bytes());
         let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
 
-        let minimal_proof = proofman
+        let reduced_proof = proofman
             .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None, false)
-            .map_err(|e| anyhow::anyhow!("Error generating minimal proof: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Error generating reduced proof: {}", e))?;
 
         Ok(ZiskProofWithPublicValues {
-            proof: ZiskProof::VadcopFinalReduced(minimal_proof.proof),
-            publics: ZiskPublics::new(&minimal_proof.public_values),
-            program_vk: ZiskProgramVK::new_from_publics(&minimal_proof.public_values),
+            proof: ZiskProof::VadcopFinalReduced(reduced_proof.proof),
+            publics: ZiskPublics::new(&reduced_proof.public_values),
+            program_vk: ZiskProgramVK::new_from_publics(&reduced_proof.public_values),
             zisk_vk: ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)? },
             plonk_vkey: None,
         })
@@ -647,6 +653,11 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
+    }
+
+    pub(crate) fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
+        let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, reduced)?;
+        Ok(ZiskVK { vk })
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {

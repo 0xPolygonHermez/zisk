@@ -460,6 +460,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
                     values: final_proof.values,
                     executed_steps: final_proof.executed_steps,
+                    verkey: final_proof.verkey,
                 }))
             }
             None => None,
