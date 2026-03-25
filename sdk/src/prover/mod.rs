@@ -511,23 +511,6 @@ impl ZiskPublics {
         bytes.to_vec()
     }
 
-    pub fn public_bytes_solidity(&self) -> Vec<u8> {
-        let mut bytes = [0u8; ZISK_PUBLICS * 4];
-
-        for i in 0..ZISK_PUBLICS {
-            let start = i * 4;
-            let val32 = u32::from_le_bytes([
-                self.data[start],
-                self.data[start + 1],
-                self.data[start + 2],
-                self.data[start + 3],
-            ]);
-            bytes[i * 4..(i + 1) * 4].copy_from_slice(&val32.to_be_bytes());
-        }
-
-        bytes.to_vec()
-    }
-
     pub fn hash_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
         let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
 
@@ -556,7 +539,7 @@ impl ZiskPublics {
         }
 
         let mut bytes = prefix.to_vec();
-        bytes.extend(self.public_bytes_solidity());
+        bytes.extend(self.data.clone());
         let mut suffix = [0u8; 32];
         for (i, chunk) in vadcop_verkey.chunks_exact(8).enumerate() {
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
