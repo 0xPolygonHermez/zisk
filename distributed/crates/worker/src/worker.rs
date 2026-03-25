@@ -316,7 +316,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let guest_program =
             GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
-        let (pk, _) = prover.setup(&guest_program, false)?;
+        let (pk, _) = prover.setup(&guest_program, prover_config.hints)?;
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
