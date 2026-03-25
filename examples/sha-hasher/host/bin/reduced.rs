@@ -1,9 +1,7 @@
 use anyhow::Result;
-use zisk_sdk::{
-    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient, ZiskStdin,
-};
+use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
+static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client (Reduced proof mode)...");
@@ -19,7 +17,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
+    let (pk, _vkey) = client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating Vadcop proof...");
@@ -30,14 +28,14 @@ fn main() -> Result<()> {
     println!("Reducing proof (this may take a while)...");
     let result = client.reduce(vadcop_result.get_proof_with_publics()).run()?;
 
-    // Alternatively, you can also call `minimal()` on the `ProverClient.prove` method to generate a minimal proof directly.
-    // let result = client.prove(&pk, stdin).with_proof_options(proof_opts).minimal().run()?;
+    // Alternatively, you can also call `reduced()` on the `ProverClient.prove` method to generate a reduced proof directly.
+    // let result = client.prove(&pk, stdin).with_proof_options(proof_opts).reduced().run()?;
 
-    println!("Verifying minimal proof...");
+    println!("Verifying reduced proof...");
     result.verify()?;
-    println!("Minimal proof verification successful!");
+    println!("Reduced proof verification successful!");
 
-    println!("\u{2713} Successfully generated and verified minimal proof!");
+    println!("\u{2713} Successfully generated and verified reduced proof!");
 
     Ok(())
 }

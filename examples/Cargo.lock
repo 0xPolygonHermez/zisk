@@ -4604,6 +4604,7 @@ name = "zisk-build"
 version = "0.17.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "cargo_metadata",
  "clap",
  "rom-setup",

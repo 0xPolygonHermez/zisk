@@ -182,6 +182,12 @@ fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], 
             if hints {
                 println!("cargo:rustc-env=ZISK_ELF_{target_name}_WITH_HINTS=1");
             }
+
+            // Compute and emit blake3 hash of the ELF file
+            if let Ok(elf_bytes) = std::fs::read(elf_path) {
+                let hash = blake3::hash(&elf_bytes).to_hex();
+                println!("cargo:rustc-env=ZISK_ELF_HASH_{target_name}={hash}");
+            }
         }
     }
 }

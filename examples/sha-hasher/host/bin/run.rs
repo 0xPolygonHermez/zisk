@@ -1,7 +1,7 @@
 use anyhow::Result;
-use zisk_sdk::{include_guest_elf, EmbeddedGuestElf, EmuOptions, GuestProgram, ZiskStdin};
+use zisk_sdk::{load_program, EmuOptions, GuestProgram, ZiskStdin};
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
+static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     let current_dir = std::env::current_dir()?;
@@ -18,7 +18,7 @@ fn main() -> Result<()> {
         top_roi_detail: true,
         ..EmuOptions::default()
     };
-    GuestProgram::from_elf(ELF).run(stdin, &emu_options)?;
+    PROGRAM.run(stdin, &emu_options)?;
     println!("ZisK Emulator completed successfully!");
 
     Ok(())

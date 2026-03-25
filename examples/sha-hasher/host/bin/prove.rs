@@ -2,11 +2,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_sdk::{
-    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient,
-    ZiskProofWithPublicValues, ZiskPublics, ZiskStdin,
+    load_program, GuestProgram, ProofOpts, ProverClient, ZiskProofWithPublicValues, ZiskPublics,
+    ZiskStdin,
 };
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
+static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Output {
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
+    let (pk, _) = client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
     println!("Verifying saved proofs from disk...");
     let publics = ZiskPublics::write(&output)?;
     println!("Loading proof from disk...");
-    let vk = client.vk(&GuestProgram::from_elf(ELF))?;
+    let vk = client.vk(&PROGRAM)?;
 
     println!("Loading proof with publics from disk...");
     let proof_with_publics =

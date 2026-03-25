@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::borrow::Cow;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -7,58 +8,48 @@ use zisk_core::Riscv2zisk;
 pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
 
-/// Program identifier containing project and program names
+/// Program identifier containing name and hash
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramId {
-    pub project_name: String,
-    pub program_name: String,
+    pub name: Cow<'static, str>,
+    pub hash_id: Cow<'static, str>,
 }
 
-/// ELF binary with computed hash
-#[derive(Debug, Clone)]
-pub struct Elf {
-    data: Vec<u8>,
-    hash_id: String,
-}
-
-impl Elf {
-    /// Create a new ELF with automatic hash computation
-    pub fn new(data: Vec<u8>) -> Self {
-        let hash_id = blake3::hash(&data).to_hex().to_string();
-        Self { data, hash_id }
+impl ProgramId {
+    /// Create a new ProgramId from static strings (const-compatible)
+    pub const fn new_static(name: &'static str, hash_id: &'static str) -> Self {
+        Self { name: Cow::Borrowed(name), hash_id: Cow::Borrowed(hash_id) }
     }
 }
 
-/// Embedded guest program data (returned by include_guest_elf! macro)
-#[derive(Debug, Clone, Copy)]
-pub struct EmbeddedGuestElf {
-    pub elf_bytes: &'static [u8],
-    pub program_name: &'static str,
-    pub project_name: &'static str,
-    pub uri: &'static str,
+/// ELF binary data
+#[derive(Debug, Clone)]
+pub struct Elf {
+    pub data: Cow<'static, [u8]>,
+}
+
+impl Elf {
+    /// Create a new ELF from embedded static data (const-compatible)
+    pub const fn from_embedded(bytes: &'static [u8]) -> Self {
+        Self { data: Cow::Borrowed(bytes) }
+    }
+
+    /// Create a new ELF from owned data (for dynamic loading)
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data: Cow::Owned(data) }
+    }
 }
 
 /// Guest program that can be executed and proven with Zisk
 #[derive(Clone, Debug)]
 pub struct GuestProgram {
-    program_id: ProgramId,
-    elf: Elf,
+    pub program_id: ProgramId,
+    pub elf: Elf,
 }
 
 impl GuestProgram {
-    /// Create a new guest program from embedded ELF data
-    pub fn from_elf(elf: EmbeddedGuestElf) -> Self {
-        Self {
-            program_id: ProgramId {
-                project_name: elf.project_name.to_string(),
-                program_name: elf.program_name.to_string(),
-            },
-            elf: Elf::new(elf.elf_bytes.to_vec()),
-        }
-    }
-
     /// Create a new guest program from a URI (file://, http://, or plain path)
-    pub fn from_uri(uri: &str, project_name: String) -> Result<Self> {
+    pub fn from_uri(uri: &str) -> Result<Self> {
         let path = if let Some(pos) = uri.find("://") {
             let (scheme, rest) = uri.split_at(pos);
             let rest = &rest[3..]; // Skip "://"
@@ -79,10 +70,15 @@ impl GuestProgram {
         let elf_data = fs::read(path)
             .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", path, e))?;
 
-        let program_name =
+        let name =
             Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
 
-        Ok(Self { program_id: ProgramId { project_name, program_name }, elf: Elf::new(elf_data) })
+        let hash_id = blake3::hash(&elf_data).to_hex().to_string();
+
+        Ok(Self {
+            program_id: ProgramId { name: Cow::Owned(name), hash_id: Cow::Owned(hash_id) },
+            elf: Elf::new(elf_data),
+        })
     }
 
     /// Get the ELF binary bytes
@@ -92,12 +88,7 @@ impl GuestProgram {
 
     /// Get the program name
     pub fn name(&self) -> &str {
-        &self.program_id.program_name
-    }
-
-    /// Get the project name
-    pub fn project_name(&self) -> &str {
-        &self.program_id.project_name
+        &self.program_id.name
     }
 
     /// Get the program ID (project name + program name)
@@ -107,7 +98,7 @@ impl GuestProgram {
 
     /// Get the computed hash of the ELF binary
     pub fn hash(&self) -> &str {
-        &self.elf.hash_id
+        &self.program_id.hash_id
     }
 
     /// Run the ZisK emulator with the given stdin and options
@@ -139,34 +130,33 @@ impl GuestProgram {
     }
 }
 
-/// Macro to include guest program data at compile time
+/// Macro to load a guest program at compile time
 ///
-/// Returns an `EmbeddedGuestElf` struct containing:
-/// - `elf_bytes`: &'static [u8]
-/// - `program_name`: &'static str
-/// - `project_name`: &'static str
-/// - `uri`: &'static str (path to the ELF file)
-///
-/// This macro uses environment variables set by zisk-build:
-/// - `ZISK_ELF_{name}`: Path to the ELF file
-/// - `CARGO_PKG_NAME`: Project name from Cargo.toml
+/// This macro creates a static `GuestProgram` directly from embedded ELF data.
+/// The ELF binary and its blake3 hash are included at compile time with zero runtime overhead.
 ///
 /// # Example
 /// ```ignore
-/// let embedded = include_guest_elf!("my_program");
-/// let program = GuestProgram::from_embedded(embedded);
+/// use zisk_sdk::load_program;
+///
+/// // Create a static program that can be used throughout your application
+/// static PROGRAM: GuestProgram = load_program!("my_program");
+///
+/// fn main() {
+///     println!("Program hash: {}", PROGRAM.hash());
+/// }
 /// ```
+///
+/// For dynamic loading from a file path, use `GuestProgram::from_uri()` instead.
 #[macro_export]
-macro_rules! include_guest_elf {
-    ($arg:literal) => {{
-        $crate::EmbeddedGuestElf {
-            elf_bytes: include_bytes!(env!(concat!("ZISK_ELF_", $arg))),
-            program_name: $arg,
-            project_name: match option_env!("CARGO_PKG_NAME") {
-                Some(name) => name,
-                None => "unknown",
-            },
-            uri: env!(concat!("ZISK_ELF_", $arg)),
+macro_rules! load_program {
+    ($name:literal) => {{
+        $crate::GuestProgram {
+            program_id: $crate::ProgramId::new_static(
+                $name,
+                env!(concat!("ZISK_ELF_HASH_", $name)),
+            ),
+            elf: $crate::Elf::from_embedded(include_bytes!(env!(concat!("ZISK_ELF_", $name)))),
         }
     }};
 }

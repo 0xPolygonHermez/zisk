@@ -9,9 +9,7 @@ pub use public_prover::PublicZiskProver;
 pub use utils::*;
 
 // Re-export guest types from backend (public API for loading programs)
-pub use zisk_prover_backend::{
-    include_guest_elf, Elf, EmbeddedGuestElf, EmuOptions, GuestProgram, ProgramId,
-};
+pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, ProgramId};
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{

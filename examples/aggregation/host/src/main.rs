@@ -1,10 +1,8 @@
 use anyhow::Result;
-use zisk_sdk::{
-    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProofOpts, ProverClient, ZiskStdin,
-};
+use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("guest");
-pub const ELF2: EmbeddedGuestElf = include_guest_elf!("guest-agg");
+static PROGRAM1: GuestProgram = load_program!("guest");
+static PROGRAM2: GuestProgram = load_program!("guest-agg");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
@@ -18,10 +16,10 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up first program...");
-    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
+    let (pk, _vkey) = client.setup(&PROGRAM1).run()?;
 
     println!("Setting up second program...");
-    let (pk2, _vkey2) = client.setup(&GuestProgram::from_elf(ELF2)).run()?;
+    let (pk2, _vkey2) = client.setup(&PROGRAM2).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");

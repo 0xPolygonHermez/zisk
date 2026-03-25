@@ -76,8 +76,7 @@ impl ZiskRomSetup {
         tracing::info!("Computing setup for ROM {}", self.elf.display());
 
         tracing::info!("Computing merkle root");
-        let guest_program =
-            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
         rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
 
         gen_assembly(&self.elf, &self.output_dir, self.hints, self.verbose > 0)?;

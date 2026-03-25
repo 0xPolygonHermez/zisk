@@ -1,10 +1,9 @@
 use anyhow::Result;
 use zisk_sdk::{
-    include_guest_elf, EmbeddedGuestElf, GuestProgram, ProverClient, ZiskProofWithPublicValues,
-    ZiskStdin,
+    load_program, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin,
 };
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("sha-hasher-guest");
+static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client (SNARK mode)...");
@@ -20,7 +19,7 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
 
     println!("Setting up program and generating verification key...");
-    let (pk, vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
+    let (pk, vkey) = client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");

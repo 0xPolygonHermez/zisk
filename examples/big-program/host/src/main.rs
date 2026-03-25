@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use zisk_sdk::{include_guest_elf, EmbeddedGuestElf, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
-pub const ELF: EmbeddedGuestElf = include_guest_elf!("big-program-guest");
+static PROGRAM: GuestProgram = load_program!("big-program-guest");
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let (pk, _vkey) = client.setup(&GuestProgram::from_elf(ELF)).run()?;
+    let (pk, _vkey) = client.setup(&PROGRAM).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     let result = client.execute(&pk, stdin.clone())?;

@@ -236,8 +236,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let guest_program =
-            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
         let (pk, _) = prover.setup(&guest_program).run()?;
 
         let proof_options = ProofOpts {
@@ -286,8 +285,7 @@ impl ZiskProve {
             .print_command_info()
             .build()?;
 
-        let guest_program =
-            GuestProgram::from_uri(self.elf.to_str().unwrap(), "zisk-cli".to_string())?;
+        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
         let (pk, _) = if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?
         } else {

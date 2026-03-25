@@ -160,10 +160,7 @@ impl ProverConfig {
                         prover_service_config.elf.display()
                     )
                 })?;
-            let elf = GuestProgram::from_uri(
-                prover_service_config.elf.to_str().unwrap(),
-                "zisk-worker".to_string(),
-            )?;
+            let elf = GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?;
 
             let hash = get_elf_data_hash(elf.elf())
                 .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
@@ -275,8 +272,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program =
-            GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
+        let guest_program = GuestProgram::from_uri(prover_config.elf.to_str().unwrap())?;
         let (pk, _) = prover.setup(&guest_program).run()?;
 
         Ok(Worker::<Emu> {
@@ -314,8 +310,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program =
-            GuestProgram::from_uri(prover_config.elf.to_str().unwrap(), "zisk-worker".to_string())?;
+        let guest_program = GuestProgram::from_uri(prover_config.elf.to_str().unwrap())?;
         let (pk, _) = if prover_config.hints {
             prover.setup(&guest_program).with_hints().run()?
         } else {
