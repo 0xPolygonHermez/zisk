@@ -201,13 +201,11 @@ fn print_command_info(
             .unwrap_or_default()
     );
 
-    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.elf.display());
-    if let Some(asm) = &prover_config.asm {
+    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.guest_program.program_id);
+    if !prover_config.emulator {
         if let Some(asm_port) = prover_config.asm_port.as_ref() {
             println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);
         }
-        let asm_path = asm.display();
-        println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
     } else {
         println!(
             "{: >12} {}",

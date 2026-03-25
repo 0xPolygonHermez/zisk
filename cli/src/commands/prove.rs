@@ -237,7 +237,7 @@ impl ZiskProve {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = prover.setup(&guest_program).run()?;
+        prover.setup(&guest_program).run()?;
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -250,7 +250,7 @@ impl ZiskProve {
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&pk, stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
         if self.snark {
             prover = prover.plonk();
         }
@@ -286,11 +286,11 @@ impl ZiskProve {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = if hints_stream.is_some() {
-            prover.setup(&guest_program).with_hints().run()?
+        if hints_stream.is_some() {
+            prover.setup(&guest_program).with_hints().run()?;
         } else {
-            prover.setup(&guest_program).run()?
-        };
+            prover.setup(&guest_program).run()?;
+        }
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
@@ -307,7 +307,7 @@ impl ZiskProve {
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&pk, stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
         if self.snark {
             prover = prover.plonk();
         }

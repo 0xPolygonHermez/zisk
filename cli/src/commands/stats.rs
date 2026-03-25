@@ -172,10 +172,10 @@ impl ZiskStats {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = prover.setup(&guest_program).run()?;
+        prover.setup(&guest_program).run()?;
 
         prover.stats(
-            &pk,
+            &guest_program,
             stdin,
             self.debug.clone(),
             self.minimal_memory,
@@ -203,17 +203,17 @@ impl ZiskStats {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = if hints_stream.is_some() {
-            prover.setup(&guest_program).with_hints().run()?
+        if hints_stream.is_some() {
+            prover.setup(&guest_program).with_hints().run()?;
         } else {
-            prover.setup(&guest_program).run()?
-        };
+            prover.setup(&guest_program).run()?;
+        }
 
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
         let mpi_node = self.mpi_node.map(|n| n as u32);
-        prover.stats(&pk, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
+        prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
     }
 
     /// Prints stats individually and grouped, with aligned columns.

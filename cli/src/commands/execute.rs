@@ -142,8 +142,8 @@ impl ZiskExecute {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = prover.setup(&guest_program).run()?;
-        prover.execute(&pk, stdin)
+        prover.setup(&guest_program).run()?;
+        prover.execute(&guest_program, stdin)
     }
 
     pub fn run_asm(
@@ -165,14 +165,14 @@ impl ZiskExecute {
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
-        let (pk, _) = if hints_stream.is_some() {
-            prover.setup(&guest_program).with_hints().run()?
+        if hints_stream.is_some() {
+            prover.setup(&guest_program).with_hints().run()?;
         } else {
-            prover.setup(&guest_program).run()?
-        };
+            prover.setup(&guest_program).run()?;
+        }
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
-        prover.execute(&pk, stdin)
+        prover.execute(&guest_program, stdin)
     }
 }

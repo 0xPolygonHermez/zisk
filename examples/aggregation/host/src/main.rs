@@ -16,14 +16,14 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up first program...");
-    let (pk, _vkey) = client.setup(&PROGRAM1).run()?;
+    client.setup(&PROGRAM1).run()?;
 
     println!("Setting up second program...");
-    let (pk2, _vkey2) = client.setup(&PROGRAM2).run()?;
+    client.setup(&PROGRAM2).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM1, stdin.clone())?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
 
     println!("Generating first proof for program...");
     let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result1 = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result1 = client.prove(&PROGRAM1, stdin).with_proof_options(proof_opts).run()?;
 
     let n = 2000u32;
     let stdin2 = ZiskStdin::new();
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
 
     println!("Generating second proof for program...");
     let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result2 = client.prove(&pk, stdin2).with_proof_options(proof_opts).run()?;
+    let vadcop_result2 = client.prove(&PROGRAM1, stdin2).with_proof_options(proof_opts).run()?;
 
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
     let proof_opts = ProofOpts::default().minimal_memory();
 
     let result_aggregation =
-        client.prove(&pk2, stdin_aggregation).with_proof_options(proof_opts).run()?;
+        client.prove(&PROGRAM2, stdin_aggregation).with_proof_options(proof_opts).run()?;
 
     result_aggregation.verify()?;
 

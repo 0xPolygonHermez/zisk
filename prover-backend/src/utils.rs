@@ -1,16 +1,15 @@
 use fields::PrimeField64;
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::GuestProgram;
+use crate::{GuestProgram, ProgramId};
 use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult,
     VerboseMode,
 };
-use rom_setup::{get_elf_data_hash, rom_merkle_setup};
+use rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup};
 
 /// Gets the user's home directory as specified by the HOME environment variable.
 pub fn get_home_dir() -> String {
@@ -79,19 +78,16 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
     proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
 }
 
-pub fn ensure_custom_commits<F: PrimeField64>(
-    pctx: &ProofCtx<F>,
-    elf: &GuestProgram,
-) -> Result<(PathBuf, Vec<u8>)> {
+pub fn ensure_rom<F: PrimeField64>(pctx: &ProofCtx<F>, elf: &GuestProgram) -> Result<PathBuf> {
     rom_merkle_setup(pctx, elf.elf(), &None)
 }
 
-pub fn get_custom_commits_map<F: PrimeField64>(
+pub fn get_rom_bin_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
-    elf: &GuestProgram,
-) -> Result<HashMap<String, PathBuf>> {
-    let (rom_bin_path, _) = ensure_custom_commits(pctx, elf)?;
-    Ok(HashMap::from([("rom".to_string(), rom_bin_path)]))
+    program_id: &ProgramId,
+) -> Result<PathBuf> {
+    let rom_bin_path = get_rom_path(pctx, program_id.get_hash(), &None)?;
+    Ok(rom_bin_path)
 }
 
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {

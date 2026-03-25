@@ -1,7 +1,7 @@
 mod asm;
 mod backend;
 mod emu;
-use crate::guest::GuestProgram;
+use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
 use backend::*;
 pub use emu::*;
@@ -10,13 +10,14 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, RowInfo};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
 use proofman::PlanningInfo;
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 use zisk_common::{
@@ -111,26 +112,6 @@ impl ZiskVerifyConstraintsResult {
 
     pub fn get_duration(&self) -> Duration {
         self.duration
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ZiskProgramPK {
-    zisk_rom: Arc<ZiskRom>,
-    rom_bin_path: PathBuf,
-}
-
-impl ZiskProgramPK {
-    pub fn new(zisk_rom: Arc<ZiskRom>, rom_bin_path: PathBuf) -> Self {
-        Self { zisk_rom, rom_bin_path }
-    }
-
-    pub fn get_rom_path(&self) -> &Path {
-        &self.rom_bin_path
-    }
-
-    pub fn get_zisk_rom(&self) -> Arc<ZiskRom> {
-        self.zisk_rom.clone()
     }
 }
 
@@ -301,11 +282,7 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(
-        &self,
-        elf: &GuestProgram,
-        with_hints: bool,
-    ) -> Result<(ZiskProgramPK, ZiskProgramVK)>;
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<()>;
 
     /// Create a setup builder for the given ELF program.
     ///
@@ -319,7 +296,7 @@ pub trait ProverEngine {
 
     fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
-    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()>;
+    fn register_program(&self, program_id: &ProgramId) -> Result<()>;
 
     fn executed_steps(&self) -> u64;
 
@@ -345,14 +322,14 @@ pub trait ProverEngine {
 
     fn execute(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult>;
 
     fn stats(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
@@ -361,7 +338,7 @@ pub trait ProverEngine {
 
     fn verify_constraints(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
@@ -370,7 +347,7 @@ pub trait ProverEngine {
 
     fn prove(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
@@ -454,32 +431,20 @@ pub trait ZiskBackend: Send + Sync {
 
 pub struct ZiskProver<C: ZiskBackend> {
     pub prover: C::Prover,
+    program_cache: RwLock<HashMap<ProgramId, Arc<ZiskRom>>>,
 }
 
 impl<C: ZiskBackend> ZiskProver<C> {
     /// Create a new ZiskProver with the given prover engine.
     pub fn new(prover: C::Prover) -> Self {
-        Self { prover }
+        Self { prover, program_cache: RwLock::new(HashMap::new()) }
     }
 
-    /// Create a setup builder for the given ELF program.
-    ///
-    /// Returns a builder that allows optional configuration (like `.with_hints()` for ASM)
-    /// before executing with `.run()`.
-    ///
-    /// # Example
-    /// ```ignore
-    /// // ASM backend with hints
-    /// let (pk, vk) = prover.setup(&elf).with_hints().run()?;
-    ///
-    /// // ASM backend without hints
-    /// let (pk, vk) = prover.setup(&elf).run()?;
-    ///
-    /// // EMU backend (no with_hints available)
-    /// let (pk, vk) = prover.setup(&elf).run()?;
-    /// ```
-    pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> <C::Prover as ProverEngine>::Builder<'a> {
-        self.prover.setup(elf)
+    pub fn get_cached_program(&self, program_id: &ProgramId) -> Result<Arc<ZiskRom>> {
+        let cache =
+            self.program_cache.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
+
+        cache.get(program_id).cloned().ok_or_else(|| anyhow!("Program not found: {:?}", program_id))
     }
 
     /// Set the standard input for the current proof.
@@ -487,8 +452,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin(stdin)
     }
 
-    pub fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
-        self.prover.register_program(pk)
+    pub fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+        self.prover.register_program(program_id)
     }
 
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
@@ -514,20 +479,22 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
-    pub fn execute(&self, pk: &ZiskProgramPK, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        self.prover.execute(pk, stdin, None)
+    /// The program must have been setup previously using `.setup()`.
+    pub fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
+        self.prover.execute(program, stdin, None)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
+    /// The program must have been setup previously using `.setup()`.
     pub fn stats(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.prover.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
+        self.prover.stats(program, stdin, debug_info, minimal_memory, mpi_node)
     }
 
     /// Get the instance trace for a given instance ID and row range.
@@ -559,13 +526,14 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Verify the constraints with the given standard input and debug information.
     /// Verify the constraints with the given standard input and optional debug information.
+    /// The program must have been setup previously using `.setup()`.
     pub fn verify_constraints(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.prover.verify_constraints(pk, stdin, debug_info)
+        self.prover.verify_constraints(program, stdin, debug_info)
     }
 
     pub fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
@@ -574,13 +542,14 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     /// Generate a proof with the given standard input.
     /// Returns a `ProveBuilder` that allows setting per-proof options before running.
+    /// The program must have been setup previously using `.setup()`.
     ///
     /// # Example
     /// ```ignore
-    /// let result = prover.prove(&pk, stdin).reduced().run()?;
+    /// let result = prover.prove(&program, stdin)?.reduced().run()?;
     /// ```
-    pub fn prove<'a>(&'a self, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
-        ProveBuilder::new(&self.prover, pk, stdin)
+    pub fn prove<'a>(&'a self, program: &'a GuestProgram, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
+        ProveBuilder::new(&self.prover, program, stdin)
     }
 
     /// Generate a PLONK/SNARK proof from an existing proof.
@@ -685,6 +654,42 @@ impl<C: ZiskBackend> ZiskProver<C> {
     }
 }
 
+// ASM-specific setup implementation
+impl ZiskProver<Asm> {
+    /// Setup a guest program and return a builder for optional configuration.
+    ///
+    /// Returns a builder that allows optional configuration (like `.with_hints()`)
+    /// before executing with `.run()`. The ZiskRom is automatically cached.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // ASM backend with hints
+    /// prover.setup(&program).with_hints().run()?;
+    ///
+    /// // ASM backend without hints
+    /// prover.setup(&program).run()?;
+    /// ```
+    pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> AsmSetupBuilder<'a> {
+        self.prover.setup(elf)
+    }
+}
+
+// EMU-specific setup implementation
+impl ZiskProver<Emu> {
+    /// Setup a guest program and return a builder.
+    ///
+    /// Returns a builder that must be executed with `.run()`.
+    /// The ZiskRom is automatically cached.
+    ///
+    /// # Example
+    /// ```ignore
+    /// prover.setup(&program).run()?;
+    /// ```
+    pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> EmuSetupBuilder<'a> {
+        self.prover.setup(elf)
+    }
+}
+
 /// Builder for configuring and running a proof.
 ///
 /// This struct provides a fluent API for setting per-proof options
@@ -696,17 +701,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
-    pk: &'a ZiskProgramPK,
+    guest_program: &'a GuestProgram,
     stdin: ZiskStdin,
     mode: ProofMode,
     proof_options: ProofOpts,
 }
 
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
-    fn new(prover: &'a C::Prover, pk: &'a ZiskProgramPK, stdin: ZiskStdin) -> Self {
+    fn new(prover: &'a C::Prover, guest_program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
         Self {
             prover,
-            pk,
+            guest_program,
             stdin,
             mode: ProofMode::VadcopFinal,
             proof_options: ProofOpts::default(),
@@ -731,7 +736,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ZiskProveResult> {
-        self.prover.prove(self.pk, self.stdin, self.mode, self.proof_options)
+        self.prover.prove(self.guest_program, self.stdin, self.mode, self.proof_options)
     }
 }
 
@@ -743,7 +748,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 /// # Example
 /// ```ignore
 /// let reduced = prover.reduce(&proof_with_publics).run()?;
-/// // Or override publics:
+/// // Or override publicsself.guest_program
 /// let reduced = prover.reduce(&proof_with_publics).publics(&custom_publics).run()?;
 /// ```
 pub struct ReduceBuilder<'a, C: ZiskBackend> {

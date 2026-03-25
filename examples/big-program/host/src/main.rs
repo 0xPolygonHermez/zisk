@@ -27,10 +27,10 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
 
-    let (pk, _vkey) = client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone())?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
@@ -38,7 +38,7 @@ fn main() -> Result<()> {
     );
 
     println!("Generating proof...");
-    client.prove(&pk, stdin.clone()).run()?;
+    client.prove(&PROGRAM, stdin.clone()).run()?;
 
     println!("\u{2713} Prove completed successfully!");
 

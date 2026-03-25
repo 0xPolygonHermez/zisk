@@ -14,10 +14,10 @@ fn main() -> Result<()> {
     // Create a `ProverClient` method.
     let client = ProverClient::builder().asm().build().unwrap();
 
-    let (pk, vkey) = client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone())?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
@@ -26,7 +26,9 @@ fn main() -> Result<()> {
     );
 
     let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result = client.prove(&PROGRAM, stdin).with_proof_options(proof_opts).run()?;
+
+    let vkey = client.vk(&PROGRAM)?;
     vadcop_result.program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");

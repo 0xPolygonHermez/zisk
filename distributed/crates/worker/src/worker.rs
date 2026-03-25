@@ -1,8 +1,6 @@
 use anyhow::Result;
 use cargo_zisk::common::get_proving_key;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
-use std::fs;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -13,7 +11,7 @@ use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{Asm, Emu, ProverClientBuilder, ZiskBackend, ZiskProgramPK, ZiskProver};
+use zisk_prover_backend::{Asm, Emu, ProgramId, ProverClientBuilder, ZiskBackend, ZiskProver};
 
 use crate::stream_ordering::StreamOrderingActor;
 
@@ -51,14 +49,8 @@ pub enum ComputationResult {
 }
 
 pub struct ProverConfig {
-    /// Path to the ELF file
-    pub elf: PathBuf,
-
-    /// Path to the ASM file (optional)
-    pub asm: Option<PathBuf>,
-
-    /// Path to the ASM ROM file (optional)
-    pub asm_rom: Option<PathBuf>,
+    /// GuestProgram
+    pub guest_program: GuestProgram,
 
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
@@ -107,7 +99,7 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    pub fn load(mut prover_service_config: ProverServiceConfigDto) -> Result<Self> {
+    pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
         if !prover_service_config.elf.exists() {
             return Err(anyhow::anyhow!(
                 "ELF file '{}' not found.",
@@ -123,68 +115,11 @@ impl ProverConfig {
             }
         };
 
-        let home = std::env::var("HOME").map(PathBuf::from).map_err(|_| {
-            anyhow::anyhow!(
-                "HOME environment variable not set, cannot determine default cache path"
-            )
-        })?;
-
-        let default_cache_path = home.join(DEFAULT_CACHE_PATH);
-        if !default_cache_path.exists() {
-            if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
-                if e.kind() != std::io::ErrorKind::AlreadyExists {
-                    return Err(anyhow::anyhow!("Failed to create the cache directory: {e:?}"));
-                }
-            }
-        }
-
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
-        let mut asm_rom = None;
-        if emulator {
-            prover_service_config.asm = None;
-        } else if prover_service_config.asm.is_none() {
-            let stem = prover_service_config
-                .elf
-                .file_stem()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF path '{}' does not have a file stem.",
-                        prover_service_config.elf.display()
-                    )
-                })?
-                .to_str()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF file stem for '{}' is not valid UTF-8.",
-                        prover_service_config.elf.display()
-                    )
-                })?;
-            let elf = GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?;
 
-            let hash = get_elf_data_hash(elf.elf())
-                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let stem = if prover_service_config.hints {
-                format!("{stem}-hints")
-            } else {
-                stem.to_string()
-            };
-            let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
-            asm_rom = Some(default_cache_path.join(asm_rom_filename));
-            prover_service_config.asm = Some(default_cache_path.join(new_filename));
-        }
-        if let Some(asm_path) = &prover_service_config.asm {
-            if !asm_path.exists() {
-                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
-            }
-        }
+        let guest_program = GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?;
 
-        if let Some(asm_rom) = &asm_rom {
-            if !asm_rom.exists() {
-                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
-            }
-        }
         let mut gpu_params = None;
         if prover_service_config.preallocate
             || prover_service_config.max_streams.is_some()
@@ -205,9 +140,7 @@ impl ProverConfig {
         }
 
         Ok(ProverConfig {
-            elf: prover_service_config.elf.clone(),
-            asm: prover_service_config.asm.clone(),
-            asm_rom,
+            guest_program,
             emulator,
             proving_key,
             verbose: prover_service_config.verbose,
@@ -238,6 +171,7 @@ pub struct JobContext {
     pub phase: JobPhase,
     pub executed_steps: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub guest_program: Arc<GuestProgram>,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -251,7 +185,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover_config: ProverConfig,
 
     stream_actor: Option<StreamOrderingActor>,
-    pk: Arc<ZiskProgramPK>,
+    guest_program: Arc<GuestProgram>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -272,8 +206,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program = GuestProgram::from_uri(prover_config.elf.to_str().unwrap())?;
-        let (pk, _) = prover.setup(&guest_program).run()?;
+        let guest_program = Arc::new(prover_config.guest_program.clone());
+        prover.setup(&guest_program).run()?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -283,7 +217,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
-            pk: Arc::new(pk),
+            guest_program,
             stream_actor: None,
         })
     }
@@ -301,7 +235,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .proving_key_path(prover_config.proving_key.clone())
                 .verbose(prover_config.verbose)
                 .shared_tables(prover_config.shared_tables)
-                .asm_path_opt(prover_config.asm.clone())
                 .base_port_opt(prover_config.asm_port)
                 .unlock_mapped_memory(prover_config.unlock_mapped_memory)
                 .asm_out_file(prover_config.asm_out_file)
@@ -310,12 +243,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program = GuestProgram::from_uri(prover_config.elf.to_str().unwrap())?;
-        let (pk, _) = if prover_config.hints {
-            prover.setup(&guest_program).with_hints().run()?
+        let guest_program = Arc::new(prover_config.guest_program.clone());
+
+        if prover_config.hints {
+            prover.setup(&guest_program).with_hints().run()?;
         } else {
-            prover.setup(&guest_program).run()?
-        };
+            prover.setup(&guest_program).run()?;
+        }
 
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
@@ -325,7 +259,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
-            pk: Arc::new(pk),
+            guest_program,
             stream_actor: None,
         })
     }
@@ -411,6 +345,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             phase: JobPhase::Contributions,
             executed_steps: 0,
             task_received_time,
+            guest_program: self.guest_program.clone(),
         }));
         self.current_job = Some(current_job.clone());
 
@@ -502,12 +437,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let pk = self.pk.clone();
         let options = self.get_proof_options(false);
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
             let job_id = guard.job_id.clone();
+
+            let program_id = guard.guest_program.program_id.clone();
 
             info!("Computing Contribution for {job_id}");
 
@@ -527,7 +463,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 inputs_source,
                 hints_source,
                 partition_info,
-                &pk,
+                &program_id,
                 options,
             );
 
@@ -570,7 +506,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
-        pk: &ZiskProgramPK,
+        program_id: &ProgramId,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
@@ -598,7 +534,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         prover.set_stdin(stdin)?;
 
-        prover.register_program(pk)?;
+        prover.register_program(program_id)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -856,7 +792,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let phase: JobPhase = borsh::from_slice(&bytes[0..1]).unwrap();
 
         let prover = self.prover.clone();
-        let pk = self.pk.clone();
+        let program_id = self.guest_program.program_id.clone();
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
@@ -875,7 +811,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         message.input_source,
                         message.hints_source,
                         message.partition_info,
-                        &pk,
+                        &program_id,
                         message.options,
                     );
                     if let Err(e) = result {

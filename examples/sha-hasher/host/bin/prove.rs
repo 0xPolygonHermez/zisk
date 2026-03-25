@@ -29,12 +29,12 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().asm().base_port(54321).build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
     let proof_opts = ProofOpts::default().minimal_memory();
-    let result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    let result = client.prove(&PROGRAM, stdin).with_proof_options(proof_opts).run()?;
     println!("Proof generated successfully in {:?}", result.get_duration());
     println!("Execution steps: {}", result.get_execution_steps());
 

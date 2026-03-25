@@ -1,10 +1,11 @@
 use crate::get_asm_paths;
+use crate::guest::ProgramId;
 use crate::GuestProgram;
 use crate::ProofOpts;
 use crate::{
-    check_paths_exist, ensure_custom_commits,
+    check_paths_exist, ensure_rom, get_rom_bin_path,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 use asm_runner::HintsShmem;
@@ -17,9 +18,10 @@ use proofman::{
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use zisk_common::io::StreamSource;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStatsHandle;
@@ -27,7 +29,7 @@ use zisk_common::ZiskExecutorTime;
 use zisk_common::{
     ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
-use zisk_core::Riscv2zisk;
+use zisk_core::{Riscv2zisk, ZiskRom};
 use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
@@ -58,14 +60,14 @@ impl<'a> AsmSetupBuilder<'a> {
         self
     }
 
-    /// Execute the setup and return the program proving and verification keys.
-    pub fn run(self) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    pub fn run(self) -> Result<()> {
         self.prover.setup_internal(self.elf, self.with_hints)
     }
 }
 
 pub struct AsmProver {
     pub(crate) core_prover: AsmCoreProver,
+    program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
 }
 
 impl AsmProver {
@@ -103,7 +105,8 @@ impl AsmProver {
             logging_config,
         )?;
 
-        Ok(Self { core_prover })
+        let program_cache = Arc::new(RwLock::new(HashMap::new()));
+        Ok(Self { core_prover, program_cache })
     }
 }
 
@@ -114,13 +117,9 @@ impl ProverEngine for AsmProver {
         AsmSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(
-        &self,
-        elf: &GuestProgram,
-        with_hints: bool,
-    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
         let pctx = self.core_prover.backend.get_pctx()?;
-        let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
+        ensure_rom(&pctx, elf)?;
 
         let world_rank = self.core_prover.rank_info.world_rank;
         let local_rank = self.core_prover.rank_info.local_rank;
@@ -219,7 +218,8 @@ impl ProverEngine for AsmProver {
 
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
-        Ok((ZiskProgramPK::new(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
+        self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+        Ok(())
     }
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank
@@ -233,8 +233,18 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
-        self.core_prover.backend.register_program(pk)
+    fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+        let rom = self
+            .program_cache
+            .read()
+            .ok()
+            .and_then(|cache| cache.get(program_id).cloned())
+            .ok_or_else(|| {
+            anyhow::anyhow!("Program '{}' not found in cache. Call setup() first.", program_id.name)
+        })?;
+        let pctx = self.core_prover.backend.get_pctx()?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        self.core_prover.backend.register_program(rom, &rom_bin_path)
     }
 
     fn executed_steps(&self) -> u64 {
@@ -251,22 +261,24 @@ impl ProverEngine for AsmProver {
 
     fn execute(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
-        self.core_prover.backend.execute(pk, stdin, output_path)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.execute(stdin, output_path)
     }
 
     fn stats(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.core_prover.backend.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -295,11 +307,12 @@ impl ProverEngine for AsmProver {
 
     fn verify_constraints(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints(pk, stdin, debug_info)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
     fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
@@ -308,12 +321,13 @@ impl ProverEngine for AsmProver {
 
     fn prove(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(pk, stdin, mode, proof_options)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.prove(stdin, mode, proof_options)
     }
 
     fn plonk(

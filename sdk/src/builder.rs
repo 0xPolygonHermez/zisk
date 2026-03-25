@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use crate::{get_proving_key, get_proving_key_snark, PublicZiskProver};
+use crate::PublicZiskProver;
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_common::ParamsGPU;
 use zisk_distributed_common::LoggingConfig;
-use zisk_prover_backend::{Asm, AsmProver, Emu, EmuProver, ZiskProver};
+use zisk_prover_backend::{
+    get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, ZiskProver,
+};
 
 use anyhow::Result;
 

@@ -25,12 +25,12 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone())?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

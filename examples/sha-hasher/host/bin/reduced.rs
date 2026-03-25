@@ -17,19 +17,19 @@ fn main() -> Result<()> {
     let client = ProverClient::builder().build().unwrap();
 
     println!("Setting up program...");
-    let (pk, _vkey) = client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating Vadcop proof...");
     let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result = client.prove(&PROGRAM, stdin).with_proof_options(proof_opts).run()?;
     println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
 
     println!("Reducing proof (this may take a while)...");
     let result = client.reduce(vadcop_result.get_proof_with_publics()).run()?;
 
     // Alternatively, you can also call `reduced()` on the `ProverClient.prove` method to generate a reduced proof directly.
-    // let result = client.prove(&pk, stdin).with_proof_options(proof_opts).reduced().run()?;
+    // let result = client.prove(&PROGRAM, stdin)?.with_proof_options(proof_opts).reduced().run()?;
 
     println!("Verifying reduced proof...");
     result.verify()?;

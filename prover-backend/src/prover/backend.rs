@@ -2,7 +2,7 @@ use crate::create_debug_info;
 use crate::GuestProgram;
 use crate::ProofOpts;
 use crate::{
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 use anyhow::Result;
@@ -129,7 +129,11 @@ impl ProverBackend {
         Ok(proofman.get_wcm().get_pctx())
     }
 
-    pub fn register_program(&self, program_pk: &ZiskProgramPK) -> Result<()> {
+    pub fn register_program(
+        &self,
+        zisk_rom: Arc<zisk_core::ZiskRom>,
+        rom_bin_path: &std::path::Path,
+    ) -> Result<()> {
         let executor = self.executor.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
@@ -140,10 +144,9 @@ impl ProverBackend {
 
         let use_hints = executor.asm_emulator().map(|a| a.use_hints()).unwrap_or(false);
 
-        executor.set_rom(program_pk.get_zisk_rom(), use_hints);
+        executor.set_rom(zisk_rom, use_hints);
 
-        let custom_commits_map =
-            HashMap::from([("rom".to_string(), program_pk.get_rom_path().to_path_buf())]);
+        let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         proofman
             .register_custom_commits(custom_commits_map)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
@@ -169,7 +172,6 @@ impl ProverBackend {
 
     pub(crate) fn execute(
         &self,
-        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
@@ -181,8 +183,6 @@ impl ProverBackend {
         let executor = self.executor.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
-
-        self.register_program(pk)?;
 
         executor.set_stdin(stdin);
 
@@ -203,7 +203,6 @@ impl ProverBackend {
 
     pub(crate) fn stats(
         &self,
-        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
@@ -219,8 +218,6 @@ impl ProverBackend {
         })?;
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
-
-        self.register_program(pk)?;
 
         executor.set_stdin(stdin);
 
@@ -306,7 +303,6 @@ impl ProverBackend {
 
     pub(crate) fn verify_constraints(
         &self,
-        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
@@ -322,8 +318,6 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
-
-        self.register_program(pk)?;
 
         executor.set_stdin(stdin);
 
@@ -351,7 +345,6 @@ impl ProverBackend {
 
     pub(crate) fn prove(
         &self,
-        pk: &ZiskProgramPK,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
@@ -364,8 +357,6 @@ impl ProverBackend {
         let executor = self.executor.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
-
-        self.register_program(pk)?;
 
         if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(

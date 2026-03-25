@@ -1,23 +1,25 @@
+use crate::guest::ProgramId;
 use crate::GuestProgram;
 use crate::{
     check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProgramPK, ZiskProveResult,
+    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
-use crate::{ensure_custom_commits, ProofOpts};
+use crate::{ensure_rom, get_rom_bin_path, ProofOpts};
 use executor::{get_packed_info, initialize_executor};
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProofMode, ZiskExecutorTime, ZiskProgramVK, ZiskProof,
     ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
-use zisk_core::Riscv2zisk;
+use zisk_core::{Riscv2zisk, ZiskRom};
 use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
@@ -40,13 +42,14 @@ impl<'a> EmuSetupBuilder<'a> {
     }
 
     /// Execute the setup and return the program proving and verification keys.
-    pub fn run(self) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    pub fn run(self) -> Result<()> {
         self.prover.setup_internal(self.elf, false)
     }
 }
 
 pub struct EmuProver {
     pub(crate) core_prover: EmuCoreProver,
+    program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
 }
 
 impl EmuProver {
@@ -74,7 +77,9 @@ impl EmuProver {
             logging_config,
         )?;
 
-        Ok(Self { core_prover })
+        let program_cache = Arc::new(RwLock::new(HashMap::new()));
+
+        Ok(Self { core_prover, program_cache })
     }
 }
 
@@ -85,21 +90,18 @@ impl ProverEngine for EmuProver {
         EmuSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(
-        &self,
-        elf: &GuestProgram,
-        _with_hints: bool,
-    ) -> Result<(ZiskProgramPK, ZiskProgramVK)> {
+    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<()> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
-        let (rom_bin_path, vk) = ensure_custom_commits(&pctx, elf)?;
+        ensure_rom(&pctx, elf)?;
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
-        Ok((ZiskProgramPK::new(zisk_rom, rom_bin_path), ZiskProgramVK { vk }))
+        self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+        Ok(())
     }
 
     fn world_rank(&self) -> i32 {
@@ -114,8 +116,18 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn register_program(&self, pk: &ZiskProgramPK) -> Result<()> {
-        self.core_prover.backend.register_program(pk)
+    fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+        let rom = self
+            .program_cache
+            .read()
+            .ok()
+            .and_then(|cache| cache.get(program_id).cloned())
+            .ok_or_else(|| {
+            anyhow::anyhow!("Program '{}' not found in cache. Call setup() first.", program_id.name)
+        })?;
+        let pctx = self.core_prover.backend.get_pctx()?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        self.core_prover.backend.register_program(rom, &rom_bin_path)
     }
 
     fn executed_steps(&self) -> u64 {
@@ -132,22 +144,24 @@ impl ProverEngine for EmuProver {
 
     fn execute(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
-        self.core_prover.backend.execute(pk, stdin, output_path)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.execute(stdin, output_path)
     }
 
     fn stats(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.core_prover.backend.stats(pk, stdin, debug_info, minimal_memory, mpi_node)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
     fn get_instance_trace(
@@ -176,11 +190,12 @@ impl ProverEngine for EmuProver {
 
     fn verify_constraints(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        self.core_prover.backend.verify_constraints(pk, stdin, debug_info)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
     fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
@@ -189,12 +204,13 @@ impl ProverEngine for EmuProver {
 
     fn prove(
         &self,
-        pk: &ZiskProgramPK,
+        program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult> {
-        self.core_prover.backend.prove(pk, stdin, mode, proof_options)
+        self.register_program(&program.program_id)?;
+        self.core_prover.backend.prove(stdin, mode, proof_options)
     }
 
     fn plonk(

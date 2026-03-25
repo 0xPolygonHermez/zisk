@@ -9,7 +9,7 @@ pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
 
 /// Program identifier containing name and hash
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProgramId {
     pub name: Cow<'static, str>,
     pub hash_id: Cow<'static, str>,
@@ -19,6 +19,20 @@ impl ProgramId {
     /// Create a new ProgramId from static strings (const-compatible)
     pub const fn new_static(name: &'static str, hash_id: &'static str) -> Self {
         Self { name: Cow::Borrowed(name), hash_id: Cow::Borrowed(hash_id) }
+    }
+
+    pub fn get_hash(&self) -> &str {
+        &self.hash_id
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl std::fmt::Display for ProgramId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.name, self.hash_id)
     }
 }
 
