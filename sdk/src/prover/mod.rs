@@ -539,7 +539,7 @@ impl ZiskPublics {
         }
 
         let mut bytes = prefix.to_vec();
-        bytes.extend(self.data.clone());
+        bytes.extend_from_slice(&self.data);
         let mut suffix = [0u8; 32];
         for (i, chunk) in vadcop_verkey.chunks_exact(8).enumerate() {
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
