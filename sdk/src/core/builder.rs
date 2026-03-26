@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::PublicZiskProver;
+use crate::core::public_prover::PublicZiskProver;
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_common::ParamsGPU;

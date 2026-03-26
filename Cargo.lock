@@ -2501,6 +2501,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
+name = "multiple-program-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "sha2",
+ "tokio",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "named-sem"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6221,11 +6232,13 @@ name = "zisk-sdk"
 version = "0.17.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "colored",
  "fields",
  "proofman-common",
  "rom-setup",
  "serde",
+ "tokio",
  "tracing",
  "zisk-build",
  "zisk-common",

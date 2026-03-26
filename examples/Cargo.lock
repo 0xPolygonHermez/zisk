@@ -1809,6 +1809,7 @@ dependencies = [
  "anyhow",
  "serde",
  "sha2",
+ "tokio",
  "zisk-sdk",
 ]
 
@@ -4725,11 +4726,13 @@ name = "zisk-sdk"
 version = "0.17.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "colored",
  "fields",
  "proofman-common",
  "rom-setup",
  "serde",
+ "tokio",
  "tracing",
  "zisk-build",
  "zisk-common",
