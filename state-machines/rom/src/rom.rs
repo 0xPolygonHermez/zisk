@@ -14,7 +14,7 @@ use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
 use itertools::Itertools;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
@@ -82,16 +82,14 @@ impl RomSM {
     pub fn compute_witness<F: PrimeField64>(
         rom: &ZiskRom,
         counter_stats: &CounterStats,
-        trace_buffer: Vec<F>,
+        mut trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
-
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().sorted().enumerate() {
+        for (i, key) in rom.insts.keys().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
@@ -123,24 +121,30 @@ impl RomSM {
                     multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                 }
             }
-            rom_trace[i].multiplicity = F::from_u64(multiplicity);
+            trace_buffer[i] = F::from_u64(multiplicity);
         }
 
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut rom_trace)))
+        Ok(AirInstance::new(TraceInfo::new(
+            RomTrace::<F>::AIRGROUP_ID,
+            RomTrace::<F>::AIR_ID,
+            1,
+            RomTrace::<F>::NUM_ROWS,
+            trace_buffer,
+            false,
+            false,
+        )))
     }
 
     pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
         asm_romh: &AsmRHData,
-        trace_buffer: Vec<F>,
+        mut trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut rom_trace = RomTrace::new_from_vec_zeroes(trace_buffer)?;
-
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         let main_trace_len = MainTrace::<F>::NUM_ROWS as u64;
 
-        for (i, key) in rom.insts.keys().sorted().enumerate() {
+        for (i, key) in rom.insts.keys().enumerate() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
@@ -172,10 +176,18 @@ impl RomSM {
                 }
             }
 
-            rom_trace[i].multiplicity = F::from_u64(multiplicity);
+            trace_buffer[i] = F::from_u64(multiplicity);
         }
 
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut rom_trace)))
+        Ok(AirInstance::new(TraceInfo::new(
+            RomTrace::<F>::AIRGROUP_ID,
+            RomTrace::<F>::AIR_ID,
+            1,
+            RomTrace::<F>::NUM_ROWS,
+            trace_buffer,
+            false,
+            false,
+        )))
     }
 
     /// Computes the ROM trace based on the ROM instructions.

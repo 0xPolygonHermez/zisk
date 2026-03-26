@@ -132,6 +132,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ) -> ProofmanResult<()> {
         let start_total = Instant::now();
         self.state.reset();
+        self.orchestrator.reset();
 
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
 

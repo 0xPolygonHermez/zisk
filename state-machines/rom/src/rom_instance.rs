@@ -11,8 +11,8 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
 use zisk_common::StatsType;
 use zisk_common::{
-    create_atomic_vec, BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx,
-    InstanceType, Metrics, PayloadType, ROM_BUS_ID,
+    BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
+    Metrics, PayloadType, ROM_BUS_ID,
 };
 use zisk_core::ZiskRom;
 
@@ -125,11 +125,6 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
             // Use the cached result
             let asm_result = self.asm_result.lock().unwrap();
             let result_rh = asm_result.as_ref().unwrap();
-
-            *self.bios_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.bios_inst_count.len()));
-            *self.prog_inst_count.lock().unwrap() =
-                Arc::new(create_atomic_vec(result_rh.asm_rowh_output.prog_inst_count.len()));
 
             return Ok(Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,

@@ -13,7 +13,7 @@ use crate::{
     INPUT_ADDR, MTVEC, OUTPUT_ADDR, REG_X0, ROM_ENTRY, ROM_EXIT,
 };
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
@@ -68,7 +68,7 @@ const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs +
 /// map to store the instructions
 pub struct Riscv2ZiskContext<'a> {
     /// Map of program address to ZisK instructions
-    pub insts: &'a mut HashMap<u64, ZiskInstBuilder>,
+    pub insts: &'a mut BTreeMap<u64, ZiskInstBuilder>,
     // to store csr-port used on CSR instrucction for next instruction
     pub input_precompile: Option<u32>,
     pub output_precompile: Option<u32>,
