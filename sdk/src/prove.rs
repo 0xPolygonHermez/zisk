@@ -2,11 +2,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use super::client::ProverClient;
 use super::proof::Proof;
-use super::types::{ClientConfig, Executor, WatchEvent};
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
+use crate::{Client, ExecutorKind, WatchEvent};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::ProofOpts;
 
@@ -15,11 +14,11 @@ use zisk_prover_backend::ProofOpts;
 /// Obtain via `client.prove(&program, stdin)`.
 /// Finalize with `.run()` (sync).
 #[allow(dead_code)]
-pub struct ProveRequest<'a> {
-    client: &'a ProverClient,
+pub struct ProveRequest<'a, C: Client> {
+    client: &'a C,
     program: &'a GuestProgram,
     stdin: ZiskStdin,
-    executor: Option<Executor>,
+    executor: Option<ExecutorKind>,
     hints: Option<ZiskHints>,
     timeout: Option<Duration>,
     proof_opts: Option<ProofOpts>,
@@ -27,12 +26,8 @@ pub struct ProveRequest<'a> {
     subscribers: Vec<(WatchEvent, Box<dyn Fn(WatchEvent) + Send + Sync>)>,
 }
 
-impl<'a> ProveRequest<'a> {
-    pub(crate) fn new(
-        client: &'a ProverClient,
-        program: &'a GuestProgram,
-        stdin: ZiskStdin,
-    ) -> Self {
+impl<'a, C: Client> ProveRequest<'a, C> {
+    pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
         Self {
             client,
             program,
@@ -51,7 +46,7 @@ impl<'a> ProveRequest<'a> {
     /// `Executor::Assembly` requires it to be declared on the client builder;
     /// otherwise `.run()` returns an error.
     #[must_use]
-    pub fn executor(mut self, executor: Executor) -> Self {
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
         self.executor = Some(executor);
         self
     }
@@ -101,25 +96,15 @@ impl<'a> ProveRequest<'a> {
         self
     }
 
-    fn validate(&self) -> Result<()> {
-        let executor = self.executor.unwrap_or_else(|| self.client.default_executor());
-        if executor == Executor::Assembly && !self.client.assembly_enabled() {
-            anyhow::bail!(
-                "Assembly executor not enabled — call .executor(Executor::Assembly) on the builder"
-            );
-        }
-        if self.hints.is_some() && !self.client.assembly_enabled() {
-            anyhow::bail!(
-                "Hints require Assembly executor — call .executor(Executor::Assembly) on the builder"
-            );
-        }
-        Ok(())
-    }
-
     /// Sync: blocks the calling thread until the proof is ready.
     pub fn run(self) -> Result<Proof> {
-        self.validate()?;
-        self.client.run_prove(self.program, self.stdin, self.proof_opts.unwrap_or_default())
+        let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        self.client.run_prove(
+            self.program,
+            self.stdin,
+            executor,
+            self.proof_opts.unwrap_or_default(),
+        )
     }
 }
 

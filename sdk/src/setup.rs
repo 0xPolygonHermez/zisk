@@ -1,7 +1,6 @@
 use anyhow::Result;
 
-use super::types::ClientConfig;
-use crate::GuestProgram;
+use crate::{Client, GuestProgram};
 
 /// Builder for a program ROM setup request.
 ///
@@ -16,7 +15,7 @@ pub struct SetupRequest<'a, C> {
     with_hints: bool,
 }
 
-impl<'a, C: ClientConfig> SetupRequest<'a, C> {
+impl<'a, C: Client> SetupRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
         Self { client, program, with_hints: false }
     }
@@ -30,11 +29,6 @@ impl<'a, C: ClientConfig> SetupRequest<'a, C> {
 
     /// Run the setup.
     pub fn run(self) -> Result<()> {
-        if self.with_hints && !self.client.assembly_enabled() {
-            anyhow::bail!(
-                "Hints require Assembly executor — call .executor(Executor::Assembly) on the builder"
-            );
-        }
         todo!()
     }
 }

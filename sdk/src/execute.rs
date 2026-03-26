@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use super::client::ProverClient;
 use crate::GuestProgram;
+use crate::{Client, ExecutorKind};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::ZiskExecuteResult;
 
@@ -24,6 +24,10 @@ pub struct ExecuteResult {
 }
 
 impl ExecuteResult {
+    pub(crate) fn new(inner: ZiskExecuteResult) -> Self {
+        Self { inner }
+    }
+
     pub fn get_execution_steps(&self) -> u64 {
         self.inner.get_execution_steps()
     }
@@ -37,21 +41,25 @@ impl ExecuteResult {
 ///
 /// Obtain via `client.execute(&program, stdin)`.
 #[allow(dead_code)]
-pub struct ExecuteRequest<'a> {
-    client: &'a ProverClient,
+pub struct ExecuteRequest<'a, C: Client> {
+    client: &'a C,
     program: &'a GuestProgram,
     stdin: ZiskStdin,
+    executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
     traces: Vec<Tracing>,
 }
 
-impl<'a> ExecuteRequest<'a> {
-    pub(crate) fn new(
-        client: &'a ProverClient,
-        program: &'a GuestProgram,
-        stdin: ZiskStdin,
-    ) -> Self {
-        Self { client, program, stdin, timeout: None, traces: Vec::new() }
+impl<'a, C: Client> ExecuteRequest<'a, C> {
+    pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
+        Self { client, program, stdin, executor: None, timeout: None, traces: Vec::new() }
+    }
+
+    /// Override the executor for this execute call.
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = Some(executor);
+        self
     }
 
     /// Set a timeout for the execution.
@@ -70,6 +78,7 @@ impl<'a> ExecuteRequest<'a> {
 
     /// Run the execution synchronously.
     pub fn run(self) -> Result<ExecuteResult> {
-        todo!()
+        let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        self.client.run_execute(self.program, self.stdin, executor)
     }
 }

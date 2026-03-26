@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use zisk_sdk::{
-    EmbeddedOptions, Executor, GuestProgram, ProverClient, PublicValues, RemoteOptions, Tracing,
-    VerificationKey, WatchEvent, ZiskHints, ZiskStdin,
+    EmbeddedOptions, ExecutorKind, GuestProgram, ProverClient, PublicValues, RemoteOptions,
+    Tracing, VerificationKey, WatchEvent, ZiskHints, ZiskStdin,
 };
 
 pub static PROGRAM: GuestProgram = zisk_sdk::load_program!("guest");
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
 
     let remote_options = RemoteOptions::builder().url("localhost:3000").build()?;
     let _remote_client =
-        ProverClient::remote(remote_options).gpu().executor(Executor::Assembly).build()?;
+        ProverClient::remote(remote_options).gpu().executor(ExecutorKind::Assembly).build()?;
 
     // Default: embedded + emulator, no GPU.
     let client = ProverClient::default();
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
     let handle = client
         .prove(&PROGRAM, stdin.clone())
-        .executor(Executor::Assembly)
+        .executor(ExecutorKind::Assembly)
         .minimal_memory()
         .stark()
         .hints(hints)
