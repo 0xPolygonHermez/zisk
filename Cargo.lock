@@ -631,7 +631,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "futures",
  "indicatif",
  "mpi",
@@ -1154,9 +1154,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "num-traits",
 ]
@@ -1476,7 +1476,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1527,17 +1527,6 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
-name = "fields"
-version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
-dependencies = [
- "cfg-if",
- "num-bigint",
- "paste",
- "serde",
-]
 
 [[package]]
 name = "fields"
@@ -2437,7 +2426,7 @@ name = "mem-common"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2864,10 +2853,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2986,7 +2975,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3022,7 +3011,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3053,7 +3042,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3074,7 +3063,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3093,7 +3082,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3117,7 +3106,7 @@ name = "precomp-keccakf"
 version = "0.17.0"
 dependencies = [
  "circuit",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3137,7 +3126,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3157,7 +3146,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3176,7 +3165,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3248,7 +3237,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "bincode",
  "blake3",
@@ -3259,7 +3248,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3283,7 +3272,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "bincode",
  "borsh",
@@ -3293,7 +3282,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "lazy_static",
  "libc",
  "libloading",
@@ -3315,9 +3304,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3328,7 +3317,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3338,7 +3327,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3347,7 +3336,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3359,10 +3348,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "bytemuck",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3749,7 +3738,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4171,7 +4160,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4191,7 +4180,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4211,7 +4200,7 @@ name = "sm-frequent-ops"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -4225,7 +4214,7 @@ dependencies = [
 name = "sm-main"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -4244,7 +4233,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -4265,7 +4254,7 @@ name = "sm-rom"
 version = "0.17.0"
 dependencies = [
  "asm-runner",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -5894,10 +5883,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables#fa6f52d0bac2fad1ae93bd13e808a55799701ed7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#a0b991094a9c49130d30ea65987d8149d4304ba8"
 dependencies = [
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -6090,7 +6079,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "bincode",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "libc",
  "mpi",
  "proofman",
@@ -6113,7 +6102,7 @@ name = "zisk-core"
 version = "0.17.0"
 dependencies = [
  "elf",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "lib-c",
  "lib-float",
  "paste",
@@ -6216,7 +6205,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6242,7 +6231,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -6259,7 +6248,7 @@ dependencies = [
  "bincode",
  "colored",
  "executor",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6298,7 +6287,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6330,7 +6319,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0)",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6360,7 +6349,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fskip_uninit_tables)",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
