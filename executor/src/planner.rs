@@ -8,7 +8,7 @@ use proofman_common::{ProofCtx, SetupCtx};
 use sm_main::MainPlanner;
 use std::{collections::BTreeMap, sync::RwLock};
 use zisk_common::{EmuTrace, InstanceType, Plan};
-use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MAIN_AIR_IDS, ZISK_AIRGROUP_ID, ROM_AIR_IDS};
 
 use crate::AirClassifier;
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
@@ -76,6 +76,15 @@ impl InstancePlanner {
         sm_bundle.plan_sec(secn_count)
     }
 
+    pub fn assign_rom_instance<F: PrimeField64>(
+        &self,
+        pctx: &ProofCtx<F>,
+        global_ids: &RwLock<Vec<usize>>,
+    ) -> usize {
+        let global_id = pctx.add_instance_assign(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]).expect("Failed to add ROM instance");
+        global_ids.write().unwrap().push(global_id);
+        global_id
+    }
     /// Assigns main instances to the proof context.
     ///
     /// # Arguments
@@ -133,8 +142,7 @@ impl InstancePlanner {
         for plan in plans.iter_mut() {
             // ROM instances need special first partition assignment
             let global_id = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
-                pctx.add_instance_assign_first_process(plan.airgroup_id, plan.air_id)
-                    .expect("Failed to add ROM instance")
+                continue;
             } else if AirClassifier::is_keccakf_instance(plan.airgroup_id, plan.air_id) {
                 pctx.add_instance_assign(plan.airgroup_id, plan.air_id)
                     .expect("Failed to add KeccakF instance")
