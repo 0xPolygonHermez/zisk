@@ -1,0 +1,58 @@
+use anyhow::Result;
+use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+
+fn main() -> Result<()> {
+    println!("Starting ZisK Prover Client...\n");
+
+    // Create an input stream and write '1000' to it.
+    let n = 1000u32;
+    let stdin = ZiskStdin::new();
+    stdin.write(&n);
+
+    // Create a `ProverClient` method.
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).gpu().build()?;
+
+    println!("Setting up first program...");
+    client.setup(&PROGRAM1).run()?;
+
+    println!("Setting up second program...");
+    client.setup(&PROGRAM2).run()?;
+
+    // Execute the program using the `ProverClient.execute` method, without generating a proof.
+    println!("Executing first program...");
+    let result = client.execute(&PROGRAM1, stdin.clone()).run()?;
+
+    println!(
+        "Program executed successfully: {} cycles in {:.2?}",
+        result.get_execution_steps(),
+        result.get_duration()
+    );
+
+    println!("Generating first proof for program...");
+    let proof_opts = ProofOpts::default().minimal_memory();
+    let vadcop_result1 = client.prove(&PROGRAM1, stdin).with_proof_options(proof_opts).run()?;
+
+    let n = 2000u32;
+    let stdin2 = ZiskStdin::new();
+    stdin2.write(&n);
+
+    println!("Generating second proof for program...");
+    let proof_opts = ProofOpts::default().minimal_memory();
+    let vadcop_result2 = client.prove(&PROGRAM1, stdin2).with_proof_options(proof_opts).run()?;
+
+    // Write the proofs, publics, and verification keys to be verified by the guest
+    let stdin_aggregation = ZiskStdin::new();
+
+    stdin_aggregation.write_proof(vadcop_result1.get_proof());
+    stdin_aggregation.write_proof(vadcop_result2.get_proof());
+
+    let proof_opts = ProofOpts::default().minimal_memory();
+
+    let result_aggregation =
+        client.prove(&PROGRAM2, stdin_aggregation).with_proof_options(proof_opts).run()?;
+
+    result_aggregation.verify()?;
+
+    Ok(())
+}

@@ -4,6 +4,7 @@ pub(crate) mod core;
 mod embedded;
 mod execute;
 mod hints;
+mod input;
 mod plonk;
 mod proof;
 mod prove;
@@ -17,6 +18,7 @@ pub use client::ProverClient;
 pub use embedded::{EmbeddedClientBuilder, EmbeddedOptions};
 pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
+pub use input::ProgramInput;
 // pub use program::{Elf, GuestProgram, ProgramId};
 pub use plonk::PlonkRequest;
 pub use proof::Proof;
@@ -61,22 +63,21 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
-        hints: Option<ZiskHints>,
         mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof> {
-        (**self).run_prove(program, stdin, executor, hints, mode, opts)
+        (**self).run_prove(program, input, executor, mode, opts)
     }
 
     fn run_execute(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult> {
-        (**self).run_execute(program, stdin, executor)
+        (**self).run_execute(program, input, executor)
     }
 
     fn run_reduce(
@@ -134,9 +135,8 @@ pub trait Client: Send + Sync {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
-        hints: Option<ZiskHints>,
         mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof>;
@@ -145,7 +145,7 @@ pub trait Client: Send + Sync {
     fn run_execute(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult>;
 

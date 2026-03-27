@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 
+use crate::input::ProgramInput;
 use crate::GuestProgram;
-use crate::ZiskStdin;
 use crate::{Client, ExecutorKind};
 use zisk_common::StatsCostPerType;
 use zisk_prover_backend::ZiskExecuteResult;
@@ -59,15 +59,26 @@ impl ExecuteResult {
 pub struct ExecuteRequest<'a, C: Client> {
     client: &'a C,
     program: &'a GuestProgram,
-    stdin: ZiskStdin,
+    input: ProgramInput,
     executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
     traces: Vec<Tracing>,
 }
 
 impl<'a, C: Client> ExecuteRequest<'a, C> {
-    pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
-        Self { client, program, stdin, executor: None, timeout: None, traces: Vec::new() }
+    pub(crate) fn new(
+        client: &'a C,
+        program: &'a GuestProgram,
+        input: impl Into<ProgramInput>,
+    ) -> Self {
+        Self {
+            client,
+            program,
+            input: input.into(),
+            executor: None,
+            timeout: None,
+            traces: Vec::new(),
+        }
     }
 
     /// Override the executor for this execute call.
@@ -98,6 +109,6 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
         // TODO: forward self.traces (Input, Hints, Summary) to run_execute once backend supports it
-        self.client.run_execute(self.program, self.stdin, executor)
+        self.client.run_execute(self.program, self.input, executor)
     }
 }

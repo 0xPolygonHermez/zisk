@@ -11,8 +11,8 @@ use zisk_prover_backend::{
 };
 
 use crate::{
-    client::ProverClient, core::sdk_prover::ZiskProverSDK, execute::ExecuteResult, proof::Proof,
-    Client, ExecutorKind,
+    client::ProverClient, core::sdk_prover::ZiskProverSDK, execute::ExecuteResult,
+    input::ProgramInput, proof::Proof, Client, ExecutorKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
@@ -185,9 +185,8 @@ impl Client for EmbeddedClient {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
-        hints: Option<crate::hints::ZiskHints>,
         mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof> {
@@ -200,24 +199,33 @@ impl Client for EmbeddedClient {
                 }
             };
         }
-        let result = match (&self.prover, executor) {
-            (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
-                if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
-                }
+        let result = match (&self.prover, executor, input) {
+            (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
                 apply_mode!(p.prove(program, stdin).with_proof_options(opts)).run()?
             }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
+            (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
+                anyhow::bail!("Hints require Assembly executor")
+            }
+            (EmbeddedProver::Emu(_), ExecutorKind::Assembly, _) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
-            (EmbeddedProver::Asm(_p), ExecutorKind::Emulator) => {
-                unimplemented!("Assembly prover does not yet support emulation mode");
+            (EmbeddedProver::Asm(_), ExecutorKind::Emulator, _) => {
+                unimplemented!("Assembly prover does not yet support emulation mode")
             }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
-                if let Some(h) = hints {
-                    p.register_hints_stream(h.into_inner())?;
+            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
+                if p.was_setup_with_hints() {
+                    anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
                 }
                 apply_mode!(p.prove(program, stdin).with_proof_options(opts)).run()?
+            }
+            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
+                if !p.was_setup_with_hints() {
+                    anyhow::bail!(
+                        "Program was set up without hints — pass ZiskStdin, not ZiskHints"
+                    );
+                }
+                p.register_hints_stream(hints.into_inner())?;
+                apply_mode!(p.prove(program, ZiskStdin::null()).with_proof_options(opts)).run()?
             }
         };
         Ok(Proof::new(result))
@@ -226,20 +234,37 @@ impl Client for EmbeddedClient {
     fn run_execute(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult> {
-        let result = match (&self.prover, executor) {
-            (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => p.execute(program, stdin)?,
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
+        let result = match (&self.prover, executor, input) {
+            (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
+                p.execute(program, stdin)?
+            }
+            (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
+                anyhow::bail!("Hints require Assembly executor")
+            }
+            (EmbeddedProver::Emu(_), ExecutorKind::Assembly, _) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
-            (EmbeddedProver::Asm(_p), ExecutorKind::Emulator) => {
-                unimplemented!("Assembly prover does not yet support emulation mode");
-                // TODO: implement execute_emu()
-                // p.execute(program, stdin)? // TODO: replace with execute_emu()
+            (EmbeddedProver::Asm(_), ExecutorKind::Emulator, _) => {
+                unimplemented!("Assembly prover does not yet support emulation mode")
             }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => p.execute(program, stdin)?,
+            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
+                if p.was_setup_with_hints() {
+                    anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
+                }
+                p.execute(program, stdin)?
+            }
+            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
+                if !p.was_setup_with_hints() {
+                    anyhow::bail!(
+                        "Program was set up without hints — pass ZiskStdin, not ZiskHints"
+                    );
+                }
+                p.register_hints_stream(hints.into_inner())?;
+                p.execute(program, ZiskStdin::null())?
+            }
         };
         Ok(ExecuteResult::new(result))
     }

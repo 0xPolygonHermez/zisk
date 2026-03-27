@@ -5,10 +5,10 @@ use anyhow::Result;
 use tokio::task::JoinHandle;
 use zisk_prover_backend::ProofOpts;
 
-use crate::hints::ZiskHints;
+use crate::input::ProgramInput;
 use crate::proof::Proof;
 use crate::prove::{ProofKind, WatchEvent};
-use crate::{Client, ExecutorKind, GuestProgram, ProofMode, ZiskStdin};
+use crate::{Client, ExecutorKind, GuestProgram, ProofMode};
 
 pub(crate) type Subscriber = (WatchEvent, Arc<dyn Fn(WatchEvent) + Send + Sync>);
 pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
@@ -36,9 +36,8 @@ pub(crate) fn fire_event(subscribers: &SubscriberList, event: WatchEvent) {
 pub(crate) fn spawn_prove(
     client: impl Client + 'static,
     program: Arc<GuestProgram>,
-    stdin: ZiskStdin,
+    input: ProgramInput,
     executor: ExecutorKind,
-    hints: Option<ZiskHints>,
     mode: ProofMode,
     opts: ProofOpts,
     subscribers: SubscriberList,
@@ -46,7 +45,7 @@ pub(crate) fn spawn_prove(
     let subs = Arc::clone(&subscribers);
     let handle = tokio::task::spawn_blocking(move || {
         fire_event(&subs, WatchEvent::Started);
-        let result = client.run_prove(&program, stdin, executor, hints, mode, opts);
+        let result = client.run_prove(&program, input, executor, mode, opts);
         match &result {
             Ok(_) => fire_event(&subs, WatchEvent::Completed),
             Err(e) => fire_event(&subs, WatchEvent::Failed(e.to_string())),
@@ -64,9 +63,8 @@ pub(crate) fn spawn_prove(
 pub struct AsyncProveRequest<C: Client + Clone + Send + Sync + 'static> {
     client: C,
     program: Arc<GuestProgram>,
-    stdin: ZiskStdin,
+    input: ProgramInput,
     executor: Option<ExecutorKind>,
-    hints: Option<ZiskHints>,
     timeout: Option<Duration>,
     proof_opts: Option<ProofOpts>,
     proof_kind: ProofKind,
@@ -75,13 +73,16 @@ pub struct AsyncProveRequest<C: Client + Clone + Send + Sync + 'static> {
 }
 
 impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
-    pub(crate) fn new(client: C, program: Arc<GuestProgram>, stdin: ZiskStdin) -> Self {
+    pub(crate) fn new(
+        client: C,
+        program: Arc<GuestProgram>,
+        input: impl Into<ProgramInput>,
+    ) -> Self {
         Self {
             client,
             program,
-            stdin,
+            input: input.into(),
             executor: None,
-            hints: None,
             timeout: None,
             proof_opts: None,
             proof_kind: ProofKind::default(),
@@ -97,13 +98,6 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
         self.executor = Some(executor);
-        self
-    }
-
-    /// Set the hints source. Requires Assembly executor.
-    #[must_use]
-    pub fn hints(mut self, hints: ZiskHints) -> Self {
-        self.hints = Some(hints);
         self
     }
 
@@ -185,10 +179,9 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
         let mode = self.resolve_mode();
         let opts = self.resolve_opts();
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        let hints = self.hints;
         // self.timeout and self.subscribers dropped here
         // TODO: enforce timeout; fire subscribers
-        self.client.run_prove(&self.program, self.stdin, executor, hints, mode, opts)
+        self.client.run_prove(&self.program, self.input, executor, mode, opts)
     }
 
     /// Async: submit proof generation to a background thread, returning a [`ProofHandle`] immediately.
@@ -207,9 +200,8 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
         Ok(spawn_prove(
             self.client,
             self.program,
-            self.stdin,
+            self.input,
             self.executor.unwrap_or(ExecutorKind::Emulator),
-            self.hints,
             mode,
             opts,
             subscribers,

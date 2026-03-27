@@ -4,9 +4,8 @@ use anyhow::Result;
 
 use super::proof::Proof;
 use crate::async_prove::{spawn_prove, Subscriber, SubscriberList};
-use crate::hints::ZiskHints;
+use crate::input::ProgramInput;
 use crate::GuestProgram;
-use crate::ZiskStdin;
 use crate::{Client, ExecutorKind, ProofHandle, ProofMode};
 use std::sync::{Arc, Mutex};
 
@@ -50,9 +49,8 @@ pub enum ProofKind {
 pub struct ProveRequest<'a, C: Client> {
     client: &'a C,
     program: &'a GuestProgram,
-    stdin: ZiskStdin,
+    input: ProgramInput,
     executor: Option<ExecutorKind>,
-    hints: Option<ZiskHints>,
     timeout: Option<Duration>,
     proof_opts: Option<ProofOpts>,
     proof_kind: ProofKind,
@@ -61,13 +59,16 @@ pub struct ProveRequest<'a, C: Client> {
 }
 
 impl<'a, C: Client> ProveRequest<'a, C> {
-    pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
+    pub(crate) fn new(
+        client: &'a C,
+        program: &'a GuestProgram,
+        input: impl Into<ProgramInput>,
+    ) -> Self {
         Self {
             client,
             program,
-            stdin,
+            input: input.into(),
             executor: None,
-            hints: None,
             timeout: None,
             proof_opts: None,
             proof_kind: ProofKind::default(),
@@ -83,13 +84,6 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
         self.executor = Some(executor);
-        self
-    }
-
-    /// Set the hints source. Requires Assembly executor on the client builder.
-    #[must_use]
-    pub fn hints(mut self, hints: ZiskHints) -> Self {
-        self.hints = Some(hints);
         self
     }
 
@@ -162,7 +156,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         if self.minimal_memory {
             opts = opts.minimal_memory();
         }
-        self.client.run_prove(self.program, self.stdin, executor, self.hints, mode, opts)
+        self.client.run_prove(self.program, self.input, executor, mode, opts)
     }
 
     /// Async: submit proof generation to a background thread, returning a [`crate::ProofHandle`] immediately.
@@ -192,9 +186,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         Ok(spawn_prove(
             self.client.clone(),
             Arc::new(self.program.clone()),
-            self.stdin,
+            self.input,
             executor,
-            self.hints,
             mode,
             opts,
             subscribers,

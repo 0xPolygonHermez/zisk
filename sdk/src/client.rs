@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use zisk_common::ZiskProgramVK;
 
-use crate::ZiskStdin;
 use zisk_common::ProofMode;
 use zisk_prover_backend::{GuestProgram, ProofOpts};
 
@@ -12,6 +11,7 @@ use crate::{
     async_prove::AsyncProveRequest,
     embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
     execute::{ExecuteRequest, ExecuteResult},
+    input::ProgramInput,
     plonk::PlonkRequest,
     proof::Proof,
     prove::ProveRequest,
@@ -71,9 +71,9 @@ impl ProverClient {
     pub fn prove<'a>(
         &'a self,
         program: &'a GuestProgram,
-        stdin: ZiskStdin,
+        input: impl Into<ProgramInput>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, stdin)
+        ProveRequest::new(self, program, input)
     }
 
     /// Async variant of [`prove`](Self::prove). Requires the client to be wrapped in [`Arc`].
@@ -83,17 +83,17 @@ impl ProverClient {
     pub fn prove_async(
         self: &Arc<Self>,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: impl Into<ProgramInput>,
     ) -> AsyncProveRequest<Arc<Self>> {
-        AsyncProveRequest::new(Arc::clone(self), Arc::new(program.clone()), stdin)
+        AsyncProveRequest::new(Arc::clone(self), Arc::new(program.clone()), input)
     }
 
     pub fn execute<'a>(
         &'a self,
         program: &'a GuestProgram,
-        stdin: ZiskStdin,
+        input: impl Into<ProgramInput>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, stdin)
+        ExecuteRequest::new(self, program, input)
     }
 
     pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
@@ -158,25 +158,24 @@ impl Client for ProverClient {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
-        hints: Option<crate::hints::ZiskHints>,
         mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_prove(program, stdin, executor, hints, mode, opts),
+            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, opts),
         }
     }
 
     fn run_execute(
         &self,
         program: &GuestProgram,
-        stdin: ZiskStdin,
+        input: ProgramInput,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_execute(program, stdin, executor),
+            BackendClient::Embedded(c) => c.run_execute(program, input, executor),
         }
     }
 
