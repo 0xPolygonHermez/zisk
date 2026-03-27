@@ -27,7 +27,11 @@ fn main() -> Result<()> {
     );
 
     let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&PROGRAM, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result = client
+        .prove(&PROGRAM, stdin)
+        .executor(Executor::Assembly)
+        .with_proof_options(proof_opts)
+        .run()?;
 
     let vkey = client.vk(&PROGRAM)?;
     vadcop_result.program_vk(&vkey).verify()?;

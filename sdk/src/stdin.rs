@@ -9,7 +9,7 @@ pub struct ZiskStdin(ZiskStdinInner);
 impl ZiskStdin {
     /// Creates a new empty memory-based stdin.
     pub fn new() -> Self {
-        Self::memory(Vec::new())
+        Self(ZiskStdinInner::new())
     }
 
     /// Creates a null stdin (no input).

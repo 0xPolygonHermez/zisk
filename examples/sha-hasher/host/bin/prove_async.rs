@@ -15,16 +15,15 @@ struct Output {
     magic_number: u32,
 }
 
-fn main() -> Result<()> {
-    println!("Starting ZisK Prover Client...");
+#[tokio::main]
+async fn main() -> Result<()> {
+    println!("Starting ZisK Prover Client (async)...");
 
-    // Create an input stream and write '1000' to it.
     let n = 1000u32;
     let stdin = ZiskStdin::new();
     stdin.write(&n);
     println!("Input prepared: {} iterations", n);
 
-    // Create a `ProverClient` method.
     println!("Building prover client...");
     let embedded_options = EmbeddedOptions::default();
     let client = ProverClient::embedded(embedded_options).gpu().assembly().build()?;
@@ -33,13 +32,17 @@ fn main() -> Result<()> {
     client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
-    println!("Generating proof (this may take a while)...");
+    println!("Submitting proof (non-blocking)...");
     let proof_opts = ProofOpts::default().minimal_memory();
-    let result = client
+    let handle = client
         .prove(&PROGRAM, stdin)
         .executor(ExecutorKind::Assembly)
         .with_proof_options(proof_opts)
-        .run()?;
+        .submit()?;
+    println!("Proof submitted — handle returned immediately");
+
+    println!("Awaiting proof...");
+    let result = handle.proof().await?;
     println!("Proof generated successfully in {:?}", result.get_duration());
     println!("Execution steps: {}", result.get_execution_steps());
 
@@ -48,7 +51,7 @@ fn main() -> Result<()> {
     println!("Proof verification successful!");
 
     println!("Saving proof to disk...");
-    result.save_proof("tmp/sha_hasher_proof.bin")?;
+    result.save_proof("tmp/sha_hasher_proof_async.bin")?;
     println!("Proofs saved to tmp/ directory");
 
     let mut hash = [0u8; 32];
@@ -64,12 +67,9 @@ fn main() -> Result<()> {
 
     println!("Verifying saved proofs from disk...");
     let publics = ZiskPublics::write(&output)?;
-    println!("Loading proof from disk...");
     let vk = client.vk(&PROGRAM)?;
 
-    println!("Loading proof with publics from disk...");
-    let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof.bin")?;
-    println!("Verifying proof with publics...");
+    let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof_async.bin")?;
     proof_with_publics.program_vk(&vk).publics(&publics).verify()?;
     println!("Proof with publics verification successful!");
 

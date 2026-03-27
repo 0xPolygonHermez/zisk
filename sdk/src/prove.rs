@@ -3,10 +3,12 @@ use std::time::Duration;
 use anyhow::Result;
 
 use super::proof::Proof;
+use crate::async_prove::{spawn_prove, Subscriber, SubscriberList};
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
 use crate::ZiskStdin;
-use crate::{Client, ExecutorKind, ProofMode};
+use crate::{Client, ExecutorKind, ProofHandle, ProofMode};
+use std::sync::{Arc, Mutex};
 
 /// Events emitted during proof generation.
 ///
@@ -107,7 +109,6 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Use minimal memory mode during execution.
-    // TODO: minimal_memory is stored but not forwarded to run_prove yet.
     #[must_use]
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
@@ -163,30 +164,40 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         }
         self.client.run_prove(self.program, self.stdin, executor, self.hints, mode, opts)
     }
+
+    /// Async: submit proof generation to a background thread, returning a [`crate::ProofHandle`] immediately.
+    ///
+    /// Requires `C: Clone + Send + Sync + 'static` and an active Tokio runtime.
+    /// See [`crate::ProofHandle`] for awaiting completion, post-submit callbacks, and cancellation.
+    pub fn submit(self) -> Result<ProofHandle>
+    where
+        C: Clone + 'static,
+    {
+        let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        let mode = match self.proof_kind {
+            ProofKind::Stark => ProofMode::VadcopFinal,
+            ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
+            ProofKind::Plonk => ProofMode::Snark,
+        };
+        let mut opts = self.proof_opts.unwrap_or_default();
+        if self.minimal_memory {
+            opts = opts.minimal_memory();
+        }
+        let subscribers: SubscriberList = Arc::new(Mutex::new(
+            self.subscribers
+                .into_iter()
+                .map(|(e, b)| -> Subscriber { (e, Arc::from(b)) })
+                .collect(),
+        ));
+        Ok(spawn_prove(
+            self.client.clone(),
+            Arc::new(self.program.clone()),
+            self.stdin,
+            executor,
+            self.hints,
+            mode,
+            opts,
+            subscribers,
+        ))
+    }
 }
-
-// pub struct ProofHandle { ... }
-// pub fn submit(self) -> Result<ProofHandle> { todo!() }
-
-// impl ProofHandle {
-//     pub(crate) fn new(receiver: tokio::sync::oneshot::Receiver<Result<Proof>>) -> Self {
-//         Self { receiver }
-//     }
-//
-//     /// Await proof completion.
-//     pub async fn proof(self) -> Result<Proof> {
-//         self.receiver
-//             .await
-//             .map_err(|_| anyhow::anyhow!("prove task dropped before completing"))?
-//     }
-//
-//     /// Register an event callback. Can be called after submission (post-submit).
-//     pub fn on(&self, _event: WatchEvent, _cb: impl Fn(WatchEvent) + Send + Sync + 'static) {
-//         todo!()
-//     }
-//
-//     /// Cancel the in-flight proof job.
-//     pub fn cancel(&self) -> Result<()> {
-//         todo!()
-//     }
-// }
