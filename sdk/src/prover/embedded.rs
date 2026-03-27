@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use crate::ZiskStdin;
 use anyhow::Result;
 use proofman_common::ParamsGPU;
-use zisk_common::io::ZiskStdin;
 use zisk_common::ZiskProgramVK;
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, GuestProgram,

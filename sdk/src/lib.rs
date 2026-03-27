@@ -76,7 +76,7 @@ pub trait Client: Send + Sync {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        stdin: zisk_common::io::ZiskStdin,
+        stdin: ZiskStdin,
         executor: ExecutorKind,
         opts: ProofOpts,
     ) -> Result<Proof>;
@@ -85,7 +85,7 @@ pub trait Client: Send + Sync {
     fn run_execute(
         &self,
         program: &GuestProgram,
-        stdin: zisk_common::io::ZiskStdin,
+        stdin: ZiskStdin,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult>;
 }

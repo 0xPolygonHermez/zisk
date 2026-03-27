@@ -6,7 +6,7 @@ use super::proof::Proof;
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
 use crate::{Client, ExecutorKind, WatchEvent};
-use zisk_common::io::ZiskStdin;
+use crate::ZiskStdin;
 use zisk_prover_backend::ProofOpts;
 
 /// Builder for a prove request.

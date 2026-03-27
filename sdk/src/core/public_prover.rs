@@ -3,8 +3,9 @@
 /// This wrapper provides access to the core proving functionality while hiding
 /// advanced methods that should only be used by internal tools (CLI, distributed).
 use anyhow::Result;
-use zisk_common::io::ZiskStdin;
 use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues};
+
+use crate::ZiskStdin;
 use zisk_prover_backend::{
     Asm, AsmSetupBuilder, Emu, EmuSetupBuilder, GuestProgram, PlonkBuilder, ReduceBuilder,
     ZiskBackend, ZiskExecuteResult, ZiskProver,
@@ -27,7 +28,7 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
     /// Execute the program without generating a proof.
     /// The program must have been setup previously using `.setup()`.
     pub fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        self.inner.execute(program, stdin)
+        self.inner.execute(program, stdin.into_inner())
     }
 
     /// Generate a proof with the given standard input.
@@ -43,7 +44,7 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
         program: &'a GuestProgram,
         stdin: ZiskStdin,
     ) -> zisk_prover_backend::ProveBuilder<'a, C> {
-        self.inner.prove(program, stdin)
+        self.inner.prove(program, stdin.into_inner())
     }
 
     /// Generate a PLONK/SNARK proof from an existing proof.

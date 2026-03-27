@@ -4,39 +4,37 @@ use serde::Serialize;
 use std::path::Path;
 
 /// Hints source for a guest program execution or proof.
-#[derive(Clone)]
-pub struct ZiskHints {}
+pub struct ZiskHints(StreamSource);
 
 impl ZiskHints {
-    /// Creates a new memory-based hints source.
-    pub fn new() -> StreamSource {
+    /// Creates a new empty memory-based hints source.
+    pub fn new() -> Self {
         Self::memory(Vec::new())
     }
 
-    /// Creates stdin from raw bytes.
-    // TODO! pub fn memory(data: impl AsRef<[u8]>) -> StreamSource {
-    pub fn memory(data: Vec<u8>) -> StreamSource {
-        StreamSource::from_vec(data)
+    /// Creates hints from raw bytes.
+    pub fn memory(data: impl Into<Vec<u8>>) -> Self {
+        Self(StreamSource::from_vec(data.into()))
     }
 
-    /// Creates stdin from a serializable data structure.
-    pub fn from<T: Serialize>(data: &T) -> StreamSource {
+    /// Creates hints from a serializable data structure.
+    pub fn from<T: Serialize>(data: &T) -> Self {
         Self::memory(bincode::serialize(data).expect("Failed to serialize hints data"))
     }
 
-    /// Creates stdin from a file path.
+    /// Creates hints from a file path.
     ///
     /// # Errors
     /// Returns an error if the path contains invalid UTF-8.
-    pub fn file(path: impl AsRef<Path>) -> anyhow::Result<StreamSource> {
+    pub fn file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
         let path_str = path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("path contains invalid UTF-8: {:?}", path))?;
-        StreamSource::from_file(path_str)
+        Ok(Self(StreamSource::from_file(path_str)?))
     }
 
-    /// Streams stdin from a URI.
+    /// Streams hints from a URI.
     ///
     /// Supported schemes:
     /// - `quic://` — QUIC transport
@@ -44,7 +42,7 @@ impl ZiskHints {
     ///
     /// # Errors
     /// Returns an error if the URI scheme is not supported.
-    pub fn stream(uri: impl Into<String>) -> anyhow::Result<StreamSource> {
+    pub fn stream(uri: impl Into<String>) -> anyhow::Result<Self> {
         let uri = uri.into();
 
         let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
@@ -59,6 +57,16 @@ impl ZiskHints {
             );
         }
 
-        StreamSource::from_uri(uri)
+        Ok(Self(StreamSource::from_uri(uri)?))
+    }
+
+    pub(crate) fn into_inner(self) -> StreamSource {
+        self.0
+    }
+}
+
+impl Default for ZiskHints {
+    fn default() -> Self {
+        Self::new()
     }
 }

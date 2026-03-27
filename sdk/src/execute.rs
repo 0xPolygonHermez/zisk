@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::GuestProgram;
 use crate::{Client, ExecutorKind};
-use zisk_common::io::ZiskStdin;
+use crate::ZiskStdin;
 use zisk_prover_backend::ZiskExecuteResult;
 
 /// Tracing options for program execution.

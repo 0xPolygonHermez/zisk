@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
-use zisk_common::{io::ZiskStdin, ZiskProgramVK};
+use zisk_common::ZiskProgramVK;
+
+use crate::ZiskStdin;
 use zisk_prover_backend::{GuestProgram, ProofOpts};
 
 use crate::{
