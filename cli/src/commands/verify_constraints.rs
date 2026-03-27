@@ -79,7 +79,7 @@ pub struct ZiskVerifyConstraints {
     pub debug: Option<Option<String>>,
 
     #[clap(short = 'j', long, default_value_t = false)]
-    pub shared_tables: bool,
+    pub no_shared_tables_mpi: bool,
 }
 
 impl ZiskVerifyConstraints {
@@ -157,7 +157,7 @@ impl ZiskVerifyConstraints {
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
+            .shared_tables(!self.no_shared_tables_mpi)
             .print_command_info()
             .build()?;
 
@@ -177,7 +177,7 @@ impl ZiskVerifyConstraints {
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
+            .shared_tables(!self.no_shared_tables_mpi)
             .asm_path_opt(self.asm.clone())
             .no_auto_setup(self.no_auto_setup)
             .base_port_opt(self.port)

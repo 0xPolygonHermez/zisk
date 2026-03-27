@@ -110,10 +110,10 @@ pub struct ZiskProve {
     pub minimal_memory: bool,
 
     #[clap(short = 'j', long, default_value_t = false)]
-    pub shared_tables: bool,
+    pub no_shared_tables_mpi: bool,
 
     #[clap(short = 'r', long, default_value_t = false)]
-    pub rma: bool,
+    pub no_rma_mpi: bool,
 
     #[clap(short = 'n', long, default_value_t = false)]
     pub no_auto_setup: bool,
@@ -230,7 +230,7 @@ impl ZiskProve {
             .proving_key_path_opt(self.proving_key.clone())
             .proving_key_snark_path_opt(self.proving_key_snark.clone())
             .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
+            .shared_tables(!self.no_shared_tables_mpi)
             .with_snark(self.snark)
             .gpu(gpu_params)
             .print_command_info()
@@ -241,7 +241,7 @@ impl ZiskProve {
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
-            rma: self.rma,
+            rma: !self.no_rma_mpi,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,
             save_proofs: self.save_proofs,
@@ -275,7 +275,7 @@ impl ZiskProve {
             .proving_key_snark_path_opt(self.proving_key_snark.clone())
             .verbose(self.verbose)
             .with_snark(self.snark)
-            .shared_tables(self.shared_tables)
+            .shared_tables(!self.no_shared_tables_mpi)
             .asm_path_opt(self.asm.clone())
             .base_port_opt(self.port)
             .no_auto_setup(self.no_auto_setup)
@@ -294,7 +294,7 @@ impl ZiskProve {
 
         let proof_options = ProofOpts {
             aggregation: self.aggregation,
-            rma: self.rma,
+            rma: !self.no_rma_mpi,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,
             save_proofs: self.save_proofs,

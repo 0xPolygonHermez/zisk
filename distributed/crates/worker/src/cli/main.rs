@@ -34,9 +34,9 @@ struct Cli {
         short = 'j',
         long,
         default_value_t = false,
-        help = "Whether to share tables when worker is running in a cluster"
+        help = "Whether to disable shared tables when worker is running in a cluster"
     )]
-    pub shared_tables: bool,
+    pub no_shared_tables_mpi: bool,
 
     /// Path to configuration file
     #[arg(
@@ -114,7 +114,7 @@ struct Cli {
     pub minimal_memory: bool,
 
     #[clap(short = 'r', long, default_value_t = false)]
-    pub rma: bool,
+    pub no_rma_mpi: bool,
 
     #[clap(long, default_value_t = false)]
     pub hints: bool,
@@ -152,8 +152,8 @@ async fn main() -> Result<()> {
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
-        shared_tables: cli.shared_tables,
-        rma: cli.rma,
+        shared_tables: !cli.no_shared_tables_mpi,
+        rma: !cli.no_rma_mpi,
         minimal_memory: cli.minimal_memory,
     };
 
