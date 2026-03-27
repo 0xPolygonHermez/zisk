@@ -23,15 +23,8 @@ impl ZiskHints {
     }
 
     /// Creates hints from a file path.
-    ///
-    /// # Errors
-    /// Returns an error if the path contains invalid UTF-8.
     pub fn file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let path = path.as_ref();
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("path contains invalid UTF-8: {:?}", path))?;
-        Ok(Self(StreamSource::from_file(path_str)?))
+        Ok(Self(StreamSource::from_file(path)?))
     }
 
     /// Streams hints from a URI.
@@ -44,19 +37,7 @@ impl ZiskHints {
     /// Returns an error if the URI scheme is not supported.
     pub fn stream(uri: impl Into<String>) -> anyhow::Result<Self> {
         let uri = uri.into();
-
-        let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
-
-        if !is_valid {
-            #[cfg(unix)]
-            anyhow::bail!("stream() requires 'quic://' or 'unix://' scheme. Got: '{}'", uri);
-            #[cfg(not(unix))]
-            anyhow::bail!(
-                "stream() requires 'quic://' scheme. Got: '{}' (unix:// not supported on this platform)",
-                uri
-            );
-        }
-
+        crate::validate_stream_uri(&uri)?;
         Ok(Self(StreamSource::from_uri(uri)?))
     }
 

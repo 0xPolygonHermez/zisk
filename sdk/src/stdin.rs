@@ -54,19 +54,7 @@ impl ZiskStdin {
     /// Returns an error if the URI scheme is not supported.
     pub fn stream(uri: impl Into<String>) -> anyhow::Result<Self> {
         let uri = uri.into();
-
-        let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
-
-        if !is_valid {
-            #[cfg(unix)]
-            anyhow::bail!("stream() requires 'quic://' or 'unix://' scheme. Got: '{}'", uri);
-            #[cfg(not(unix))]
-            anyhow::bail!(
-                "stream() requires 'quic://' scheme. Got: '{}' (unix:// not supported on this platform)",
-                uri
-            );
-        }
-
+        crate::validate_stream_uri(&uri)?;
         Ok(Self(ZiskStdinInner::from_uri(Some(uri))?))
     }
 
