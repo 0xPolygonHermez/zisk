@@ -3,8 +3,8 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::GuestProgram;
-use crate::{Client, ExecutorKind};
 use crate::ZiskStdin;
+use crate::{Client, ExecutorKind};
 use zisk_prover_backend::ZiskExecuteResult;
 
 /// Tracing options for program execution.
@@ -63,6 +63,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     }
 
     /// Set a timeout for the execution.
+    // TODO: timeout is stored but not enforced in run() yet.
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
@@ -70,6 +71,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     }
 
     /// Enable a tracing mode.
+    // TODO: traces are stored but not forwarded to run_execute yet.
     #[must_use]
     pub fn trace(mut self, tracing: Tracing) -> Self {
         self.traces.push(tracing);
@@ -79,6 +81,8 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     /// Run the execution synchronously.
     pub fn run(self) -> Result<ExecuteResult> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
+        // TODO: forward self.traces (Input, Hints, Summary) to run_execute once backend supports it
         self.client.run_execute(self.program, self.stdin, executor)
     }
 }

@@ -5,9 +5,21 @@ use anyhow::Result;
 use super::proof::Proof;
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
-use crate::{Client, ExecutorKind, WatchEvent};
 use crate::ZiskStdin;
+use crate::{Client, ExecutorKind, WatchEvent};
 use zisk_prover_backend::ProofOpts;
+
+/// The kind of proof to generate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProofKind {
+    /// Full STARK proof (default).
+    #[default]
+    Stark,
+    /// STARK proof in minimal-memory mode.
+    StarkMinimal,
+    /// PLONK/SNARK proof (requires a prior STARK reduction).
+    Plonk,
+}
 
 /// Builder for a prove request.
 ///
@@ -22,6 +34,7 @@ pub struct ProveRequest<'a, C: Client> {
     hints: Option<ZiskHints>,
     timeout: Option<Duration>,
     proof_opts: Option<ProofOpts>,
+    proof_kind: ProofKind,
     minimal_memory: bool,
     subscribers: Vec<(WatchEvent, Box<dyn Fn(WatchEvent) + Send + Sync>)>,
 }
@@ -36,6 +49,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             hints: None,
             timeout: None,
             proof_opts: None,
+            proof_kind: ProofKind::default(),
             minimal_memory: false,
             subscribers: Vec::new(),
         }
@@ -52,6 +66,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Set the hints source. Requires Assembly executor on the client builder.
+    // TODO: hints is stored but not forwarded to run_prove yet — wire up when backend supports it.
     #[must_use]
     pub fn hints(mut self, hints: ZiskHints) -> Self {
         self.hints = Some(hints);
@@ -66,6 +81,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Set a timeout for proof generation.
+    // TODO: timeout is stored but not enforced in run() yet.
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
@@ -73,19 +89,36 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Use minimal memory mode during execution.
+    // TODO: minimal_memory is stored but not forwarded to run_prove yet.
     #[must_use]
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
         self
     }
 
-    /// Select STARK proof type (default).
+    /// Generate a full STARK proof (default).
     #[must_use]
-    pub fn stark(self) -> Self {
+    pub fn stark(mut self) -> Self {
+        self.proof_kind = ProofKind::Stark;
+        self
+    }
+
+    /// Generate a STARK proof in minimal-memory mode.
+    #[must_use]
+    pub fn stark_minimal(mut self) -> Self {
+        self.proof_kind = ProofKind::StarkMinimal;
+        self
+    }
+
+    /// Generate a PLONK/SNARK proof.
+    #[must_use]
+    pub fn plonk(mut self) -> Self {
+        self.proof_kind = ProofKind::Plonk;
         self
     }
 
     /// Register an event callback. Can be called before submission (pre-submit).
+    // TODO: subscribers are stored but never invoked in run() yet.
     #[must_use]
     pub fn on(
         mut self,
@@ -99,6 +132,11 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     /// Sync: blocks the calling thread until the proof is ready.
     pub fn run(self) -> Result<Proof> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        // TODO: forward self.hints to run_prove once backend supports it
+        // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
+        // TODO: forward self.minimal_memory to run_prove (via ProofOpts or Client trait)
+        // TODO: fire self.subscribers (Started, Progress, Completed, Failed) during execution
+        // TODO: forward self.proof_kind (Stark / StarkMinimal / Plonk) to run_prove
         self.client.run_prove(
             self.program,
             self.stdin,

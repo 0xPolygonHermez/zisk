@@ -15,7 +15,7 @@ pub use hints::ZiskHints;
 pub use prover::{EmbeddedClientBuilder, EmbeddedOptions};
 // pub use program::{Elf, GuestProgram, ProgramId};
 pub use proof::Proof;
-pub use prove::ProveRequest;
+pub use prove::{ProofKind, ProveRequest};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
