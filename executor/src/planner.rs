@@ -76,6 +76,14 @@ impl InstancePlanner {
         sm_bundle.plan_sec(secn_count)
     }
 
+    /// Assigns ROM instance to the proof context.
+    ///
+    /// # Arguments
+    /// * `pctx` - Proof context.
+    /// * `global_ids` - Lock for storing assigned global IDs.
+    ///
+    /// # Returns
+    /// Global ID assigned to the ROM instance.
     pub fn assign_rom_instance<F: PrimeField64>(
         &self,
         pctx: &ProofCtx<F>,
@@ -84,9 +92,9 @@ impl InstancePlanner {
         let global_id = pctx
             .add_instance_assign(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
             .expect("Failed to add ROM instance");
-        global_ids.write().unwrap().push(global_id);
         global_id
     }
+
     /// Assigns main instances to the proof context.
     ///
     /// # Arguments
