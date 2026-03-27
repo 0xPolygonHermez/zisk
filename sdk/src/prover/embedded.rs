@@ -37,7 +37,21 @@ impl EmbeddedClientBuilder {
         Self { executor: ExecutorKind::Emulator, gpu_params: None, options }
     }
 
-    /// Enable Assembly executor support. Emulator remains the per-request default.
+    /// Enable a specific executor. Default is `ExecutorKind::Emulator`.
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = executor;
+        self
+    }
+
+    /// Enable `ExecutorKind::Emulator` executor (default). Not compatible with hints.
+    #[must_use]
+    pub fn emulator(mut self) -> Self {
+        self.executor = ExecutorKind::Emulator;
+        self
+    }
+
+    /// Enable `ExecutorKind::Assembly` executor.
     #[must_use]
     pub fn assembly(mut self) -> Self {
         self.executor = ExecutorKind::Assembly;
@@ -146,7 +160,8 @@ impl Client for EmbeddedClient {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
             (EmbeddedProver::Asm(_p), ExecutorKind::Emulator) => {
-                unimplemented!("Assembly prover does not yet support emulation mode"); // TODO: implement prove_emu()
+                unimplemented!("Assembly prover does not yet support emulation mode");
+                // TODO: implement prove_emu()
                 // p.prove(program, stdin).with_proof_options(opts).run()? // TODO: replace with prove_emu()
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
@@ -168,7 +183,8 @@ impl Client for EmbeddedClient {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
             (EmbeddedProver::Asm(_p), ExecutorKind::Emulator) => {
-                unimplemented!("Assembly prover does not yet support emulation mode"); // TODO: implement execute_emu()
+                unimplemented!("Assembly prover does not yet support emulation mode");
+                // TODO: implement execute_emu()
                 // p.execute(program, stdin)? // TODO: replace with execute_emu()
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => p.execute(program, stdin)?,
