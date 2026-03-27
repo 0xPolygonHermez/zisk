@@ -6,7 +6,7 @@ use super::proof::Proof;
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
 use crate::ZiskStdin;
-use crate::{Client, ExecutorKind};
+use crate::{Client, ExecutorKind, ProofMode};
 
 /// Events emitted during proof generation.
 ///
@@ -44,6 +44,7 @@ pub enum ProofKind {
 /// Obtain via `client.prove(&program, stdin)`.
 /// Finalize with `.run()` (sync).
 #[allow(dead_code)]
+#[allow(clippy::type_complexity)]
 pub struct ProveRequest<'a, C: Client> {
     client: &'a C,
     program: &'a GuestProgram,
@@ -84,7 +85,6 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Set the hints source. Requires Assembly executor on the client builder.
-    // TODO: hints is stored but not forwarded to run_prove yet — wire up when backend supports it.
     #[must_use]
     pub fn hints(mut self, hints: ZiskHints) -> Self {
         self.hints = Some(hints);
@@ -150,17 +150,18 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     /// Sync: blocks the calling thread until the proof is ready.
     pub fn run(self) -> Result<Proof> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        // TODO: forward self.hints to run_prove once backend supports it
         // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
-        // TODO: forward self.minimal_memory to run_prove (via ProofOpts or Client trait)
         // TODO: fire self.subscribers (Started, Progress, Completed, Failed) during execution
-        // TODO: forward self.proof_kind (Stark / StarkMinimal / Plonk) to run_prove
-        self.client.run_prove(
-            self.program,
-            self.stdin,
-            executor,
-            self.proof_opts.unwrap_or_default(),
-        )
+        let mode = match self.proof_kind {
+            ProofKind::Stark => ProofMode::VadcopFinal,
+            ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
+            ProofKind::Plonk => ProofMode::Snark,
+        };
+        let mut opts = self.proof_opts.unwrap_or_default();
+        if self.minimal_memory {
+            opts = opts.minimal_memory();
+        }
+        self.client.run_prove(self.program, self.stdin, executor, self.hints, mode, opts)
     }
 }
 

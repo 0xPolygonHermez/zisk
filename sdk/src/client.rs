@@ -4,16 +4,19 @@ use anyhow::Result;
 use zisk_common::ZiskProgramVK;
 
 use crate::ZiskStdin;
+use zisk_common::ProofMode;
 use zisk_prover_backend::{GuestProgram, ProofOpts};
 
 use crate::{
+    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
     execute::{ExecuteRequest, ExecuteResult},
+    plonk::PlonkRequest,
     proof::Proof,
     prove::ProveRequest,
-    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
+    reduce::ReduceRequest,
     setup::SetupRequest,
     upload::UploadRequest,
-    Client, ExecutorKind,
+    Client, ExecutorKind, ZiskProofWithPublicValues, ZiskPublics,
 };
 
 static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
@@ -86,6 +89,20 @@ impl ProverClient {
     pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
         UploadRequest::new(self, program)
     }
+
+    pub fn reduce<'a>(
+        &'a self,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+    ) -> ReduceRequest<'a, Self> {
+        ReduceRequest::new(self, proof_with_publics)
+    }
+
+    pub fn plonk<'a>(
+        &'a self,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+    ) -> PlonkRequest<'a, Self> {
+        PlonkRequest::new(self, proof_with_publics)
+    }
 }
 
 impl Default for ProverClient {
@@ -103,15 +120,29 @@ impl Drop for ProverClient {
 }
 
 impl Client for ProverClient {
+    fn run_upload(&self, program: &GuestProgram) -> Result<()> {
+        match &self.inner {
+            BackendClient::Embedded(c) => c.run_upload(program),
+        }
+    }
+
+    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+        match &self.inner {
+            BackendClient::Embedded(c) => c.run_setup(program, with_hints),
+        }
+    }
+
     fn run_prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
         executor: ExecutorKind,
+        hints: Option<crate::hints::ZiskHints>,
+        mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof> {
         match &self.inner {
-            BackendClient::Embedded(c) => c.run_prove(program, stdin, executor, opts),
+            BackendClient::Embedded(c) => c.run_prove(program, stdin, executor, hints, mode, opts),
         }
     }
 
@@ -123,6 +154,32 @@ impl Client for ProverClient {
     ) -> Result<ExecuteResult> {
         match &self.inner {
             BackendClient::Embedded(c) => c.run_execute(program, stdin, executor),
+        }
+    }
+
+    fn run_reduce(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues> {
+        match &self.inner {
+            BackendClient::Embedded(c) => {
+                c.run_reduce(proof_with_publics, override_publics, override_program_vk)
+            }
+        }
+    }
+
+    fn run_plonk(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues> {
+        match &self.inner {
+            BackendClient::Embedded(c) => {
+                c.run_plonk(proof_with_publics, override_publics, override_program_vk)
+            }
         }
     }
 }

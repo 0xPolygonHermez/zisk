@@ -1,5 +1,6 @@
 use anyhow::Result;
-use zisk_common::{ZiskProgramVK, ZiskPublics};
+use std::time::Duration;
+use zisk_common::{StatsCostPerType, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::ZiskProveResult;
 
 /// A completed ZisK proof with its public values.
@@ -12,19 +13,49 @@ impl Proof {
         Self { inner }
     }
 
+    pub fn get_duration(&self) -> Duration {
+        self.inner.get_duration()
+    }
+
+    pub fn get_execution_steps(&self) -> u64 {
+        self.inner.get_execution_steps()
+    }
+
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.inner.get_execution_total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        self.inner.get_execution_cost_per_type()
+    }
+
+    pub fn get_proof(&self) -> &ZiskProofWithPublicValues {
+        self.inner.get_proof()
+    }
+
+    pub fn save_proof(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        self.inner.save_proof(path)
+    }
+
+    pub fn get_public_values<T: serde::de::DeserializeOwned + serde::Serialize>(
+        &self,
+    ) -> Result<T> {
+        self.inner.get_public_values()
+    }
+
     /// Verify the proof using the public values and verification key embedded in the proof.
     pub fn verify(&self) -> Result<()> {
         self.inner.verify()
     }
 
     /// Override the verification key for this verification.
-    pub fn verification_key<'a>(&'a self, vk: &'a ZiskProgramVK) -> VerifyBuilder<'a> {
-        VerifyBuilder { proof: self, publics: None, vk: Some(vk) }
+    pub fn program_vk<'a>(&'a self, vk: &'a ZiskProgramVK) -> VerifyBuilder<'a> {
+        VerifyBuilder { proof: self, publics: None, program_vk: Some(vk) }
     }
 
     /// Override the public values for this verification.
     pub fn publics<'a>(&'a self, pv: &'a ZiskPublics) -> VerifyBuilder<'a> {
-        VerifyBuilder { proof: self, publics: Some(pv), vk: None }
+        VerifyBuilder { proof: self, publics: Some(pv), program_vk: None }
     }
 }
 
@@ -32,7 +63,7 @@ impl Proof {
 pub struct VerifyBuilder<'a> {
     proof: &'a Proof,
     publics: Option<&'a ZiskPublics>,
-    vk: Option<&'a ZiskProgramVK>,
+    program_vk: Option<&'a ZiskProgramVK>,
 }
 
 impl<'a> VerifyBuilder<'a> {
@@ -45,14 +76,14 @@ impl<'a> VerifyBuilder<'a> {
 
     /// Override the verification key embedded in the proof.
     #[must_use]
-    pub fn verification_key(mut self, vk: &'a ZiskProgramVK) -> Self {
-        self.vk = Some(vk);
+    pub fn program_vk(mut self, vk: &'a ZiskProgramVK) -> Self {
+        self.program_vk = Some(vk);
         self
     }
 
     /// Run the verification.
     pub fn verify(self) -> Result<()> {
-        match (self.publics, self.vk) {
+        match (self.publics, self.program_vk) {
             (None, None) => self.proof.inner.verify(),
             (Some(p), None) => self.proof.inner.publics(p).verify(),
             (None, Some(v)) => self.proof.inner.program_vk(v).verify(),

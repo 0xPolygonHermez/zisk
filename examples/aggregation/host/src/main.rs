@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("guest");
 static PROGRAM2: GuestProgram = load_program!("guest-agg");
@@ -13,7 +13,8 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::builder().build().unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).gpu().build()?;
 
     println!("Setting up first program...");
     client.setup(&PROGRAM1).run()?;
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&PROGRAM1, stdin.clone())?;
+    let result = client.execute(&PROGRAM1, stdin.clone()).run()?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
@@ -46,8 +47,8 @@ fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    stdin_aggregation.write_proof(vadcop_result1.get_proof_with_publics());
-    stdin_aggregation.write_proof(vadcop_result2.get_proof_with_publics());
+    stdin_aggregation.write_proof(vadcop_result1.get_proof());
+    stdin_aggregation.write_proof(vadcop_result2.get_proof());
 
     let proof_opts = ProofOpts::default().minimal_memory();
 

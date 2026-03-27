@@ -1,5 +1,7 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin};
+use zisk_sdk::{
+    load_program, EmbeddedOptions, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin,
+};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -14,7 +16,8 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::builder().asm().base_port(54321).snark().build().unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).gpu().build()?;
 
     println!("Setting up program and generating verification key...");
     client.setup(&PROGRAM).run()?;
@@ -35,11 +38,11 @@ fn main() -> Result<()> {
     println!("PLONK proof verification successful!");
 
     println!("Saving PLONK proof to disk...");
-    snark_proof.save_proof_with_publics("/tmp/sha_hasher_proof_snark_with_publics.bin")?;
-    println!("Proof saved to /tmp/sha_hasher_proof_snark_with_publics.bin");
+    snark_proof.save_proof("/tmp/sha_hasher_proof_snark.bin")?;
+    println!("Proof saved to /tmp/sha_hasher_proof_snark.bin");
 
     println!("Loading and verifying saved PLONK proof...");
-    let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark_with_publics.bin")?;
+    let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark.bin")?;
     let vkey = client.vk(&PROGRAM)?;
     proof.program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");

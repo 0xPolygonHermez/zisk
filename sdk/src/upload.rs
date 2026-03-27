@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::GuestProgram;
+use crate::{Client, GuestProgram};
 
 /// Builder for a program upload request.
 ///
@@ -10,17 +10,17 @@ use crate::GuestProgram;
 /// - Remote client: uploads the ELF and registers the program on the coordinator.
 #[allow(dead_code)]
 pub struct UploadRequest<'a, C> {
-    _client: &'a C,
-    _program: &'a GuestProgram,
+    client: &'a C,
+    program: &'a GuestProgram,
 }
 
-impl<'a, C> UploadRequest<'a, C> {
+impl<'a, C: Client> UploadRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
-        Self { _client: client, _program: program }
+        Self { client, program }
     }
 
     /// Run the upload.
     pub fn run(self) -> Result<()> {
-        todo!()
+        self.client.run_upload(self.program)
     }
 }

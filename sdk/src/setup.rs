@@ -29,6 +29,6 @@ impl<'a, C: Client> SetupRequest<'a, C> {
 
     /// Run the setup.
     pub fn run(self) -> Result<()> {
-        todo!()
+        self.client.run_setup(self.program, self.with_hints)
     }
 }

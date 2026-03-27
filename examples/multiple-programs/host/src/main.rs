@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
 
     println!("Verifying proof...");
     let vkey = client.vk(&PROGRAM1)?;
-    vadcop_result.verification_key(&vkey).verify()?;
+    vadcop_result.program_vk(&vkey).verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
     let n = 2000u32;
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
 
     println!("Verifying proof...");
     let vkey2 = client.vk(&program2)?;
-    vadcop_result2.verification_key(&vkey2).verify()?;
+    vadcop_result2.program_vk(&vkey2).verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 
     println!("All proofs generated and verified successfully!");

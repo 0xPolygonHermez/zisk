@@ -3,8 +3,10 @@ pub(crate) mod core;
 mod embedded;
 mod execute;
 mod hints;
+mod plonk;
 mod proof;
 mod prove;
+mod reduce;
 mod setup;
 mod stdin;
 mod upload;
@@ -14,8 +16,10 @@ pub use embedded::{EmbeddedClientBuilder, EmbeddedOptions};
 pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
 // pub use program::{Elf, GuestProgram, ProgramId};
+pub use plonk::PlonkRequest;
 pub use proof::Proof;
 pub use prove::{ProofKind, ProveRequest, WatchEvent};
+pub use reduce::ReduceRequest;
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
@@ -68,12 +72,20 @@ pub enum ExecutorKind {
 
 /// Core client trait implemented by all prover backends.
 pub trait Client: Send + Sync {
+    /// Run an upload operation for the given program.
+    fn run_upload(&self, program: &GuestProgram) -> Result<()>;
+
+    /// Run a ROM setup for the given program.
+    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()>;
+
     /// Run a prove operation with the given executor.
     fn run_prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
         executor: ExecutorKind,
+        hints: Option<ZiskHints>,
+        mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof>;
 
@@ -84,4 +96,20 @@ pub trait Client: Send + Sync {
         stdin: ZiskStdin,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult>;
+
+    /// Reduce a full STARK proof to a compressed form.
+    fn run_reduce(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues>;
+
+    /// Wrap a full STARK proof into a PLONK/SNARK proof.
+    fn run_plonk(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues>;
 }

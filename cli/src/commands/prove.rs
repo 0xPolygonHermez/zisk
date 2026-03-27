@@ -197,7 +197,7 @@ impl ZiskProve {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
             if let Some(proof_id) = &result.get_proof_id() {
-                let output_dir = match result.get_proof() {
+                let output_dir = match result.get_proof().proof {
                     ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalReduced(_) => {
                         self.output_dir.join("vadcop_final_proof.bin")
                     }
@@ -206,7 +206,7 @@ impl ZiskProve {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }
                 };
-                result.save_proof_with_publics(output_dir)?;
+                result.save_proof(output_dir)?;
                 info!("Proof ID: {}", proof_id);
                 info!("Proof Time: {:.3} seconds", result.duration.as_secs_f64());
             }

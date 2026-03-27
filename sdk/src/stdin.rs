@@ -1,8 +1,7 @@
-use zisk_common::io::ZiskStdin as ZiskStdinInner;
+use zisk_common::{io::ZiskStdin as ZiskStdinInner, ZiskProofWithPublicValues};
 
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
-
 /// Standard input for a guest program execution or proof.
 #[derive(Clone)]
 pub struct ZiskStdin(ZiskStdinInner);
@@ -58,7 +57,37 @@ impl ZiskStdin {
         Ok(Self(ZiskStdinInner::from_uri(Some(uri))?))
     }
 
-    pub(crate) fn into_inner(self) -> ZiskStdinInner {
+    /// Reads and deserializes the next value from the stdin buffer.
+    pub fn read<T: DeserializeOwned>(&self) -> anyhow::Result<T> {
+        self.0.read()
+    }
+
+    /// Appends a serialized value to the stdin buffer.
+    pub fn write<T: Serialize>(&self, data: &T) {
+        self.0.write(data);
+    }
+
+    /// Appends raw bytes to the stdin buffer.
+    pub fn write_slice(&self, data: &[u8]) {
+        self.0.write_slice(data);
+    }
+
+    /// Appends a serialized proof with its public values to the stdin buffer.
+    ///
+    /// Used to pass proofs as inputs to aggregation programs.
+    pub fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
+        self.0.write_proof(proof);
+    }
+
+    /// Saves the stdin buffer contents to a file.
+    pub fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
+        self.0.save(path.as_ref())
+    }
+
+    /// Consumes this wrapper and returns the underlying common `ZiskStdin`.
+    ///
+    /// Useful when passing stdin to lower-level APIs such as `GuestProgram::run`.
+    pub fn into_inner(self) -> ZiskStdinInner {
         self.0
     }
 }

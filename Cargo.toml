@@ -51,7 +51,6 @@ members = [
     "sdk",
     "ziskbuild",
     "definitions",
-    "examples/multiple-programs/host",
 ]
 
 resolver = "2"

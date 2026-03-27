@@ -228,8 +228,8 @@ impl ZiskProveResult {
         self.proof_id.as_ref()
     }
 
-    pub fn get_proof(&self) -> &ZiskProof {
-        &self.proof_with_publics.proof
+    pub fn get_proof(&self) -> &ZiskProofWithPublicValues {
+        &self.proof_with_publics
     }
 
     pub fn get_publics(&self) -> &ZiskPublics {
@@ -240,11 +240,7 @@ impl ZiskProveResult {
         &self.proof_with_publics.program_vk
     }
 
-    pub fn get_proof_with_publics(&self) -> &ZiskProofWithPublicValues {
-        &self.proof_with_publics
-    }
-
-    pub fn save_proof_with_publics(&self, path: impl AsRef<Path>) -> Result<()> {
+    pub fn save_proof(&self, path: impl AsRef<Path>) -> Result<()> {
         self.proof_with_publics.save(path)
     }
 

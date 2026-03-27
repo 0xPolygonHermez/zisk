@@ -2,8 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_sdk::{
-    load_program, GuestProgram, ProofOpts, ProverClient, ZiskProofWithPublicValues, ZiskPublics,
-    ZiskStdin,
+    load_program, EmbeddedOptions, GuestProgram, ProofOpts, ProverClient,
+    ZiskProofWithPublicValues, ZiskPublics, ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
@@ -26,7 +26,8 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::builder().asm().base_port(54321).build().unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).gpu().assembly().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
@@ -43,7 +44,7 @@ fn main() -> Result<()> {
     println!("Proof verification successful!");
 
     println!("Saving proof to disk...");
-    result.save_proof_with_publics("tmp/sha_hasher_proof_with_publics.bin")?;
+    result.save_proof("tmp/sha_hasher_proof.bin")?;
     println!("Proofs saved to tmp/ directory");
 
     let mut hash = [0u8; 32];
@@ -63,8 +64,7 @@ fn main() -> Result<()> {
     let vk = client.vk(&PROGRAM)?;
 
     println!("Loading proof with publics from disk...");
-    let proof_with_publics =
-        ZiskProofWithPublicValues::load("tmp/sha_hasher_proof_with_publics.bin")?;
+    let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof.bin")?;
     println!("Verifying proof with publics...");
     proof_with_publics.program_vk(&vk).publics(&publics).verify()?;
     println!("Proof with publics verification successful!");

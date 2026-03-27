@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -22,7 +22,8 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
@@ -30,7 +31,7 @@ fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&PROGRAM, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

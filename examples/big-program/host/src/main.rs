@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("big-program-guest");
 
@@ -16,25 +16,22 @@ fn main() -> Result<()> {
         PathBuf::from(manifest_dir).join(format!("tmp/big_program_input_{}mb.bin", size_mb));
     println!("Loading input from: {} ({}MB)", input_path.display(), size_mb);
 
-    let stdin = ZiskStdin::from_file(&input_path)?;
+    let stdin = ZiskStdin::file(&input_path)?;
     println!("Input loaded successfully");
 
     // Create a `ProverClient` method.
-    let client = ProverClient::builder()
-        .asm()
-        .verify_constraints()
-        .proving_key_path_opt(Some("/home/roger/zisk/build/provingKey".into()))
-        .build()
-        .unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).build()?;
 
     client.setup(&PROGRAM).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&PROGRAM, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
-        result.executor_summary.steps, result.total_duration
+        result.get_execution_steps(),
+        result.get_duration()
     );
 
     println!("Generating proof...");

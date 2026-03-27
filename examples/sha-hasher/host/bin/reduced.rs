@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -14,7 +14,8 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::builder().build().unwrap();
+    let embedded_options = EmbeddedOptions::default();
+    let client = ProverClient::embedded(embedded_options).gpu().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
     println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
 
     println!("Reducing proof (this may take a while)...");
-    let result = client.reduce(vadcop_result.get_proof_with_publics()).run()?;
+    let result = client.reduce(vadcop_result.get_proof()).run()?;
 
     // Alternatively, you can also call `reduced()` on the `ProverClient.prove` method to generate a reduced proof directly.
     // let result = client.prove(&PROGRAM, stdin)?.with_proof_options(proof_opts).reduced().run()?;

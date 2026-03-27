@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::GuestProgram;
 use crate::ZiskStdin;
 use crate::{Client, ExecutorKind};
+use zisk_common::StatsCostPerType;
 use zisk_prover_backend::ZiskExecuteResult;
 
 /// Tracing options for program execution.
@@ -32,8 +33,22 @@ impl ExecuteResult {
         self.inner.get_execution_steps()
     }
 
+    pub fn get_execution_total_cost(&self) -> u64 {
+        self.inner.get_execution_total_cost()
+    }
+
+    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
+        self.inner.get_execution_cost_per_type()
+    }
+
     pub fn get_duration(&self) -> Duration {
         self.inner.get_duration()
+    }
+
+    pub fn get_public_values<T: serde::de::DeserializeOwned + serde::Serialize>(
+        &self,
+    ) -> Result<T> {
+        self.inner.get_public_values()
     }
 }
 

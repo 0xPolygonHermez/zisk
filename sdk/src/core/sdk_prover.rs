@@ -3,19 +3,19 @@
 /// This wrapper provides access to the core proving functionality while hiding
 /// advanced methods that should only be used by internal tools (CLI, distributed).
 use anyhow::Result;
-use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues};
+use zisk_common::{io::StreamSource, ZiskProgramVK};
 
 use crate::ZiskStdin;
 use zisk_prover_backend::{
-    Asm, AsmSetupBuilder, Emu, EmuSetupBuilder, GuestProgram, PlonkBuilder, ReduceBuilder,
-    ZiskBackend, ZiskExecuteResult, ZiskProver,
+    Asm, AsmSetupBuilder, Emu, EmuSetupBuilder, GuestProgram, ZiskBackend, ZiskExecuteResult,
+    ZiskProver,
 };
 
-pub(crate) struct PublicZiskProver<C: ZiskBackend> {
+pub(crate) struct ZiskProverSDK<C: ZiskBackend> {
     pub(crate) inner: ZiskProver<C>,
 }
 
-impl<C: ZiskBackend> PublicZiskProver<C> {
+impl<C: ZiskBackend> ZiskProverSDK<C> {
     pub(crate) fn new(prover: ZiskProver<C>) -> Self {
         Self { inner: prover }
     }
@@ -47,44 +47,20 @@ impl<C: ZiskBackend> PublicZiskProver<C> {
         self.inner.prove(program, stdin.into_inner())
     }
 
-    /// Generate a PLONK/SNARK proof from an existing proof.
-    /// Returns a `PlonkBuilder` that allows overriding publics or program_vk.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let snark = prover.plonk(&proof_with_publics).run()?;
-    /// ```
-    pub fn plonk<'a>(
-        &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> PlonkBuilder<'a, C> {
-        self.inner.plonk(proof_with_publics)
-    }
-
-    /// Reduce a proof to a smaller, more efficient representation.
-    /// Returns a `ReduceBuilder` that allows overriding publics or program_vk.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let reduced = prover.reduce(&proof_with_publics).run()?;
-    /// ```
-    pub fn reduce<'a>(
-        &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> ReduceBuilder<'a, C> {
-        self.inner.reduce(proof_with_publics)
+    pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
+        self.inner.register_hints_stream(stream)
     }
 }
 
 // ASM-specific setup implementation
-impl PublicZiskProver<Asm> {
+impl ZiskProverSDK<Asm> {
     pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> AsmSetupBuilder<'a> {
         self.inner.setup(elf)
     }
 }
 
 // EMU-specific setup implementation
-impl PublicZiskProver<Emu> {
+impl ZiskProverSDK<Emu> {
     pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> EmuSetupBuilder<'a> {
         self.inner.setup(elf)
     }

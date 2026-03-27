@@ -3,15 +3,16 @@ use std::path::PathBuf;
 use crate::ZiskStdin;
 use anyhow::Result;
 use proofman_common::ParamsGPU;
-use zisk_common::ZiskProgramVK;
+use zisk_common::ProofMode;
+use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, GuestProgram,
-    ProofOpts, ZiskProver,
+    ProofOpts, ProverEngine, ZiskProver,
 };
 
 use crate::{
-    client::ProverClient, core::public_prover::PublicZiskProver, execute::ExecuteResult,
-    proof::Proof, Client, ExecutorKind,
+    client::ProverClient, core::sdk_prover::ZiskProverSDK, execute::ExecuteResult, proof::Proof,
+    Client, ExecutorKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
@@ -115,7 +116,7 @@ impl EmbeddedClientBuilder {
             gpu_params.unwrap_or_default(),
             None,
         )?;
-        Ok(EmbeddedProver::Emu(PublicZiskProver::new(ZiskProver::<Emu>::new(emu))))
+        Ok(EmbeddedProver::Emu(ZiskProverSDK::new(ZiskProver::<Emu>::new(emu))))
     }
 
     fn build_asm(
@@ -139,13 +140,13 @@ impl EmbeddedClientBuilder {
             false,
             None,
         )?;
-        Ok(EmbeddedProver::Asm(PublicZiskProver::new(ZiskProver::<Asm>::new(asm))))
+        Ok(EmbeddedProver::Asm(ZiskProverSDK::new(ZiskProver::<Asm>::new(asm))))
     }
 }
 
 enum EmbeddedProver {
-    Emu(PublicZiskProver<Emu>),
-    Asm(PublicZiskProver<Asm>),
+    Emu(ZiskProverSDK<Emu>),
+    Asm(ZiskProverSDK<Asm>),
 }
 
 pub(crate) struct EmbeddedClient {
@@ -162,27 +163,61 @@ impl EmbeddedClient {
 }
 
 impl Client for EmbeddedClient {
+    fn run_upload(&self, _program: &GuestProgram) -> Result<()> {
+        // No upload step needed for embedded client since it has direct access to the ELF files.
+        Ok(())
+    }
+
+    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+        match &self.prover {
+            EmbeddedProver::Emu(p) => p.setup(program).run(),
+            EmbeddedProver::Asm(p) => {
+                let builder = p.setup(program);
+                if with_hints {
+                    builder.with_hints().run()
+                } else {
+                    builder.run()
+                }
+            }
+        }
+    }
+
     fn run_prove(
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
         executor: ExecutorKind,
+        hints: Option<crate::hints::ZiskHints>,
+        mode: ProofMode,
         opts: ProofOpts,
     ) -> Result<Proof> {
+        macro_rules! apply_mode {
+            ($builder:expr) => {
+                match mode {
+                    ProofMode::VadcopFinal => $builder,
+                    ProofMode::VadcopFinalReduced => $builder.reduced(),
+                    ProofMode::Snark => $builder.plonk(),
+                }
+            };
+        }
         let result = match (&self.prover, executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
-                p.prove(program, stdin).with_proof_options(opts).run()?
+                if hints.is_some() {
+                    anyhow::bail!("Hints require Assembly executor");
+                }
+                apply_mode!(p.prove(program, stdin).with_proof_options(opts)).run()?
             }
             (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
             (EmbeddedProver::Asm(_p), ExecutorKind::Emulator) => {
                 unimplemented!("Assembly prover does not yet support emulation mode");
-                // TODO: implement prove_emu()
-                // p.prove(program, stdin).with_proof_options(opts).run()? // TODO: replace with prove_emu()
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
-                p.prove(program, stdin).with_proof_options(opts).run()?
+                if let Some(h) = hints {
+                    p.register_hints_stream(h.into_inner())?;
+                }
+                apply_mode!(p.prove(program, stdin).with_proof_options(opts)).run()?
             }
         };
         Ok(Proof::new(result))
@@ -207,5 +242,41 @@ impl Client for EmbeddedClient {
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => p.execute(program, stdin)?,
         };
         Ok(ExecuteResult::new(result))
+    }
+
+    fn run_reduce(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues> {
+        let publics = override_publics.unwrap_or(&proof_with_publics.publics);
+        let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
+        match &self.prover {
+            EmbeddedProver::Emu(p) => {
+                p.inner.prover.reduce(&proof_with_publics.proof, publics, program_vk)
+            }
+            EmbeddedProver::Asm(p) => {
+                p.inner.prover.reduce(&proof_with_publics.proof, publics, program_vk)
+            }
+        }
+    }
+
+    fn run_plonk(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        override_publics: Option<&ZiskPublics>,
+        override_program_vk: Option<&ZiskProgramVK>,
+    ) -> Result<ZiskProofWithPublicValues> {
+        let publics = override_publics.unwrap_or(&proof_with_publics.publics);
+        let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
+        match &self.prover {
+            EmbeddedProver::Emu(p) => {
+                p.inner.prover.plonk(&proof_with_publics.proof, publics, program_vk)
+            }
+            EmbeddedProver::Asm(p) => {
+                p.inner.prover.plonk(&proof_with_publics.proof, publics, program_vk)
+            }
+        }
     }
 }
