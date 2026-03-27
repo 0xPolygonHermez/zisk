@@ -70,7 +70,7 @@ pub enum ExecutorKind {
 ///
 /// `WatchEvent::All` is a subscription filter meaning "receive all events".
 /// It is never emitted as a concrete event in callbacks.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WatchEvent {
     /// Subscribe to all events (filter only; never emitted to callbacks).
     All,
