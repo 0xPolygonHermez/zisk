@@ -411,6 +411,10 @@ impl ProverEngine for AsmProver {
     fn reset_resources(&self) {
         self.core_prover.backend.reset_resources()
     }
+
+    fn cancel(&self) {
+        self.core_prover.backend.cancel();
+    }
 }
 
 pub struct AsmInfo {

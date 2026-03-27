@@ -419,6 +419,8 @@ pub trait ProverEngine {
     }
 
     fn reset_resources(&self) {}
+
+    fn cancel(&self);
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -647,6 +649,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn reset_resources(&self) {
         self.prover.reset_resources()
+    }
+
+    pub fn cancel(&self) {
+        self.prover.cancel()
     }
 }
 

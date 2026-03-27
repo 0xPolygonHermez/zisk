@@ -1281,6 +1281,7 @@ impl Coordinator {
                     publics: ch_list.witness_info.publics,
                     proof_values: ch_list.witness_info.proof_values,
                     witness_time: ch_list.witness_info.witness_time,
+                    total_instances: 0,
                 };
 
                 let zisk_executor_time = ZiskExecutorTime {

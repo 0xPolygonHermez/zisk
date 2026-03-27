@@ -160,6 +160,13 @@ impl EmbeddedClient {
             EmbeddedProver::Asm(p) => p.vk(program),
         }
     }
+
+    pub(crate) fn cancel(&self) {
+        match &self.prover {
+            EmbeddedProver::Emu(p) => p.inner.cancel(),
+            EmbeddedProver::Asm(p) => p.inner.cancel(),
+        }
+    }
 }
 
 impl Client for EmbeddedClient {

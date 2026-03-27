@@ -45,12 +45,22 @@ enum BackendClient {
 /// - `ProverClient::remote(url).build()` — remote coordinator (future)
 pub struct ProverClient {
     inner: Arc<BackendClient>,
+    cancel_fn: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl ProverClient {
     pub(crate) fn from_embedded(client: EmbeddedClient) -> Self {
         ensure_single_instance();
-        Self { inner: Arc::new(BackendClient::Embedded(client)) }
+        let inner = Arc::new(BackendClient::Embedded(client));
+        let cancel_fn: Arc<dyn Fn() + Send + Sync> = {
+            let i = Arc::clone(&inner);
+            Arc::new(move || {
+                if let BackendClient::Embedded(c) = i.as_ref() {
+                    c.cancel();
+                }
+            })
+        };
+        Self { inner, cancel_fn }
     }
 
     pub fn embedded(options: EmbeddedOptions) -> EmbeddedClientBuilder {
@@ -73,7 +83,7 @@ impl ProverClient {
         program: &'a GuestProgram,
         input: impl Into<ProgramInput>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, input)
+        ProveRequest::new(self, program, input).with_cancel_fn(Arc::clone(&self.cancel_fn))
     }
 
     /// Async variant of [`prove`](Self::prove). Requires the client to be wrapped in [`Arc`].
@@ -86,6 +96,7 @@ impl ProverClient {
         input: impl Into<ProgramInput>,
     ) -> AsyncProveRequest<Arc<Self>> {
         AsyncProveRequest::new(Arc::clone(self), Arc::new(program.clone()), input)
+            .with_cancel_fn(Arc::clone(&self.cancel_fn))
     }
 
     pub fn execute<'a>(
@@ -93,7 +104,7 @@ impl ProverClient {
         program: &'a GuestProgram,
         input: impl Into<ProgramInput>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, input)
+        ExecuteRequest::new(self, program, input).with_cancel_fn(Arc::clone(&self.cancel_fn))
     }
 
     pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
@@ -121,7 +132,7 @@ impl ProverClient {
 
 impl Clone for ProverClient {
     fn clone(&self) -> Self {
-        Self { inner: Arc::clone(&self.inner) }
+        Self { inner: Arc::clone(&self.inner), cancel_fn: Arc::clone(&self.cancel_fn) }
     }
 }
 

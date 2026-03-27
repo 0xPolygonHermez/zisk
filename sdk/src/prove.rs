@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 
 use super::proof::Proof;
-use crate::async_prove::{spawn_prove, Subscriber, SubscriberList};
+use crate::async_prove::{fire_event, spawn_prove, Subscriber, SubscriberList};
 use crate::input::ProgramInput;
 use crate::GuestProgram;
 use crate::{Client, ExecutorKind, ProofHandle, ProofMode};
@@ -56,6 +56,7 @@ pub struct ProveRequest<'a, C: Client> {
     proof_kind: ProofKind,
     minimal_memory: bool,
     subscribers: Vec<(WatchEvent, Box<dyn Fn(WatchEvent) + Send + Sync>)>,
+    cancel_fn: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl<'a, C: Client> ProveRequest<'a, C> {
@@ -74,6 +75,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             proof_kind: ProofKind::default(),
             minimal_memory: false,
             subscribers: Vec::new(),
+            cancel_fn: None,
         }
     }
 
@@ -142,11 +144,14 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
+    pub(crate) fn with_cancel_fn(mut self, f: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.cancel_fn = Some(f);
+        self
+    }
+
     /// Sync: blocks the calling thread until the proof is ready.
     pub fn run(self) -> Result<Proof> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
-        // TODO: fire self.subscribers (Started, Progress, Completed, Failed) during execution
         let mode = match self.proof_kind {
             ProofKind::Stark => ProofMode::VadcopFinal,
             ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
@@ -156,7 +161,43 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         if self.minimal_memory {
             opts = opts.minimal_memory();
         }
-        self.client.run_prove(self.program, self.input, executor, mode, opts)
+        let client = self.client;
+        let program = self.program;
+        let input = self.input;
+        let cancel_fn = self.cancel_fn;
+        let subscribers: SubscriberList = Arc::new(Mutex::new(
+            self.subscribers
+                .into_iter()
+                .map(|(e, b)| -> Subscriber { (e, Arc::from(b)) })
+                .collect(),
+        ));
+
+        if let Some(dur) = self.timeout {
+            let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+            let timed_out = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let timed_out2 = Arc::clone(&timed_out);
+            let result = std::thread::scope(|s| {
+                s.spawn(move || {
+                    if stop_rx.recv_timeout(dur).is_err() {
+                        timed_out2.store(true, std::sync::atomic::Ordering::Relaxed);
+                        if let Some(ref f) = cancel_fn {
+                            f();
+                        }
+                    }
+                });
+                let result = client.run_prove(program, input, executor, mode, opts);
+                let _ = stop_tx.send(());
+                result
+            });
+            if timed_out.load(std::sync::atomic::Ordering::Acquire) {
+                let msg = format!("proof timed out after {dur:?}");
+                fire_event(&subscribers, WatchEvent::Failed(msg.clone()));
+                anyhow::bail!("{}", msg);
+            }
+            result
+        } else {
+            client.run_prove(program, input, executor, mode, opts)
+        }
     }
 
     /// Async: submit proof generation to a background thread, returning a [`crate::ProofHandle`] immediately.
@@ -177,6 +218,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         if self.minimal_memory {
             opts = opts.minimal_memory();
         }
+        let cancel_fn: Option<Arc<dyn Fn() + Send + Sync>> =
+            if self.timeout.is_some() { self.cancel_fn.clone() } else { None };
         let subscribers: SubscriberList = Arc::new(Mutex::new(
             self.subscribers
                 .into_iter()
@@ -191,6 +234,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
             mode,
             opts,
             subscribers,
+            self.timeout,
+            cancel_fn,
         ))
     }
 }

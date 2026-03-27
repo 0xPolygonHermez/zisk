@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::input::ProgramInput;
 use crate::GuestProgram;
 use crate::{Client, ExecutorKind};
+use std::sync::Arc;
 use zisk_common::StatsCostPerType;
 use zisk_prover_backend::ZiskExecuteResult;
 
@@ -63,6 +64,7 @@ pub struct ExecuteRequest<'a, C: Client> {
     executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
     traces: Vec<Tracing>,
+    cancel_fn: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl<'a, C: Client> ExecuteRequest<'a, C> {
@@ -78,6 +80,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
             executor: None,
             timeout: None,
             traces: Vec::new(),
+            cancel_fn: None,
         }
     }
 
@@ -104,11 +107,42 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         self
     }
 
+    pub(crate) fn with_cancel_fn(mut self, f: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.cancel_fn = Some(f);
+        self
+    }
+
     /// Run the execution synchronously.
     pub fn run(self) -> Result<ExecuteResult> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        // TODO: enforce self.timeout — abort/cancel the blocking call on deadline
-        // TODO: forward self.traces (Input, Hints, Summary) to run_execute once backend supports it
-        self.client.run_execute(self.program, self.input, executor)
+        let client = self.client;
+        let program = self.program;
+        let input = self.input;
+        let cancel_fn = self.cancel_fn;
+
+        if let Some(dur) = self.timeout {
+            let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+            let timed_out = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let timed_out2 = Arc::clone(&timed_out);
+            let result = std::thread::scope(|s| {
+                s.spawn(move || {
+                    if stop_rx.recv_timeout(dur).is_err() {
+                        timed_out2.store(true, std::sync::atomic::Ordering::Relaxed);
+                        if let Some(ref f) = cancel_fn {
+                            f();
+                        }
+                    }
+                });
+                let result = client.run_execute(program, input, executor);
+                let _ = stop_tx.send(());
+                result
+            });
+            if timed_out.load(std::sync::atomic::Ordering::Acquire) {
+                anyhow::bail!("execution timed out after {dur:?}");
+            }
+            result
+        } else {
+            client.run_execute(program, input, executor)
+        }
     }
 }

@@ -32,9 +32,9 @@ use zisk_common::{
 use zisk_distributed_common::StreamMessage;
 
 pub(crate) struct ProverBackend {
-    proofman: Option<ProofMan<Goldilocks>>,
+    proofman: ProofMan<Goldilocks>,
     snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-    executor: Option<Arc<ZiskExecutor<Goldilocks>>>,
+    executor: Arc<ZiskExecutor<Goldilocks>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
 }
@@ -47,23 +47,15 @@ impl ProverBackend {
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
     ) -> Self {
-        Self {
-            proofman: Some(proofman),
-            snark_wrapper,
-            executor: Some(executor),
-            proving_key_path,
-            proving_key_snark_path,
-        }
+        Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
     }
 
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {
-        self.executor.as_ref().and_then(|e| e.asm_emulator())
+        self.executor.asm_emulator()
     }
 
     pub(crate) fn set_asm_resources(&self, resources: AsmResources) {
-        if let Some(executor) = &self.executor {
-            executor.set_asm_resources(resources);
-        }
+        self.executor.set_asm_resources(resources);
     }
 
     pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -122,11 +114,12 @@ impl ProverBackend {
         }
     }
 
+    pub(crate) fn cancel(&self) {
+        self.proofman.cancel();
+    }
+
     pub fn get_pctx(&self) -> Result<Arc<ProofCtx<Goldilocks>>> {
-        let proofman = self.proofman.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
-        })?;
-        Ok(proofman.get_wcm().get_pctx())
+        Ok(self.proofman.get_wcm().get_pctx())
     }
 
     pub fn register_program(
@@ -134,40 +127,23 @@ impl ProverBackend {
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
     ) -> Result<()> {
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
+        let use_hints = self.executor.asm_emulator().map(|a| a.use_hints()).unwrap_or(false);
 
-        let proofman = self.proofman.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Proofman is not initialized. Please initialize it before use.")
-        })?;
-
-        let use_hints = executor.asm_emulator().map(|a| a.use_hints()).unwrap_or(false);
-
-        executor.set_rom(zisk_rom, use_hints);
+        self.executor.set_rom(zisk_rom, use_hints);
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
-        proofman
+        self.proofman
             .register_custom_commits(custom_commits_map)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-        executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin);
         Ok(())
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
-        let (result, stats) = executor.get_execution_result();
-
-        Ok((result, stats))
+        Ok(self.executor.get_execution_result())
     }
 
     pub(crate) fn execute(
@@ -175,28 +151,20 @@ impl ProverBackend {
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot execute in verifier mode"))?;
-
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
-        executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin);
 
         let start = std::time::Instant::now();
 
-        let planning_info = proofman
+        let planning_info = self
+            .proofman
             .execute_from_lib(output_path)
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let elapsed = start.elapsed();
 
-        let (result, _) = executor.get_execution_result();
+        let (result, _) = self.executor.get_execution_result();
 
-        let publics = proofman.get_publics();
+        let publics = self.proofman.get_publics();
 
         Ok(ZiskExecuteResult::new(elapsed, result, planning_info, &publics))
     }
@@ -208,20 +176,11 @@ impl ProverBackend {
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot compute stats in verifier mode"))?;
-
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin);
 
-        let rank_info = proofman.get_rank_info();
+        let rank_info = self.proofman.get_rank_info();
 
         let mut is_active = true;
 
@@ -231,7 +190,7 @@ impl ProverBackend {
             }
         }
 
-        proofman.split_active_processes(is_active);
+        self.proofman.split_active_processes(is_active);
 
         if !is_active {
             println!(
@@ -243,7 +202,7 @@ impl ProverBackend {
             return Ok((rank_info.world_rank, rank_info.n_processes, None));
         }
 
-        proofman
+        self.proofman
             .compute_witness_from_lib(
                 &debug_info,
                 ProofOptions::new(false, false, false, false, false, minimal_memory, false, None),
@@ -251,7 +210,7 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let (_, stats): (ZiskExecutorSummary, ExecutorStatsHandle) =
-            executor.get_execution_result();
+            self.executor.get_execution_result();
 
         Ok((rank_info.world_rank, rank_info.n_processes, Some(stats)))
     }
@@ -263,23 +222,13 @@ impl ProverBackend {
         num_rows: usize,
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot get instance trace in verifier mode"))?;
-
-        proofman
+        self.proofman
             .get_instance_trace(instance_id, first_row, num_rows, offset)
             .map_err(|e| anyhow::anyhow!("Error getting instance trace: {}", e))
     }
 
     pub(crate) fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot get instance AIR values in verifier mode"))?;
-
-        proofman
+        self.proofman
             .get_instance_air_values(instance_id)
             .map_err(|e| anyhow::anyhow!("Error getting instance AIR values: {}", e))
     }
@@ -291,12 +240,7 @@ impl ProverBackend {
         num_rows: usize,
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot get instance fixed in verifier mode"))?;
-
-        proofman
+        self.proofman
             .get_instance_fixed(instance_id, first_row, num_rows, offset)
             .map_err(|e| anyhow::anyhow!("Error getting instance fixed: {}", e))
     }
@@ -306,34 +250,25 @@ impl ProverBackend {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot verify constraints in verifier mode"))?;
-
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin);
 
-        proofman
+        self.proofman
             .verify_proof_constraints_from_lib(&debug_info, false)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
-        let (result, stats) = executor.get_execution_result();
+        let (result, stats) = self.executor.get_execution_result();
 
         stats_mark!(stats, 0, "END", 0);
 
         #[cfg(feature = "stats")]
         stats.store_stats();
 
-        let publics = proofman.get_publics();
+        let publics = self.proofman.get_publics();
 
         Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
     }
@@ -349,15 +284,6 @@ impl ProverBackend {
         mode: ProofMode,
         proof_options: ProofOpts,
     ) -> Result<ZiskProveResult> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
-
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
         if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
@@ -366,14 +292,15 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin);
 
         let reduced = matches!(mode, ProofMode::VadcopFinalReduced);
 
-        proofman.set_partition(1, vec![0], 0)?;
+        self.proofman.set_partition(1, vec![0], 0)?;
 
-        proofman.set_barrier();
-        let proof = proofman
+        self.proofman.set_barrier();
+        let proof = self
+            .proofman
             .generate_proof_from_lib(
                 ProvePhaseInputs::Full(),
                 ProofOptions::new(
@@ -395,7 +322,7 @@ impl ProverBackend {
             _ => (None, None),
         };
 
-        let (execution_result, stats) = executor.get_execution_result();
+        let (execution_result, stats) = self.executor.get_execution_result();
 
         // Store the stats in stats.json
         stats_mark!(stats, 0, "END", 0);
@@ -403,7 +330,7 @@ impl ProverBackend {
         #[cfg(feature = "stats")]
         stats.store_stats();
 
-        proofman.set_barrier();
+        self.proofman.set_barrier();
 
         let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, reduced)? };
 
@@ -478,11 +405,6 @@ impl ProverBackend {
         publics: &ZiskPublics,
         program_vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot compress in verifier mode"))?;
-
         let proof_bytes = match proof {
             ZiskProof::VadcopFinal(bytes) => bytes.clone(),
             _ => {
@@ -496,7 +418,8 @@ impl ProverBackend {
         pubs.extend(publics.public_bytes());
         let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
 
-        let reduced_proof = proofman
+        let reduced_proof = self
+            .proofman
             .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None, false)
             .map_err(|e| anyhow::anyhow!("Error generating reduced proof: {}", e))?;
 
@@ -572,12 +495,7 @@ impl ProverBackend {
         options: ProofOptions,
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot prove in verifier mode"))?;
-
-        proofman
+        self.proofman
             .generate_proof_from_lib(phase_inputs, options, phase.clone())
             .map_err(|e| anyhow::anyhow!("Error generating proof in phase {:?}: {}", phase, e))
     }
@@ -588,28 +506,12 @@ impl ProverBackend {
         allocation: Vec<u32>,
         rank_id: usize,
     ) -> Result<()> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot set partition in verifier mode"))?;
-
-        Ok(proofman.set_partition(total_compute_units, allocation, rank_id)?)
+        Ok(self.proofman.set_partition(total_compute_units, allocation, rank_id)?)
     }
 
     pub(crate) fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot get execution info in verifier mode"))?;
-
-        let witness_info = proofman.get_witness_info();
-
-        let executor = self.executor.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
-        })?;
-
-        let (execution_result, _) = executor.get_execution_result();
-
+        let witness_info = self.proofman.get_witness_info();
+        let (execution_result, _) = self.executor.get_execution_result();
         Ok((witness_info, execution_result.executor_time))
     }
 
@@ -617,12 +519,7 @@ impl ProverBackend {
         &self,
         agg_proofs: Vec<AggProofsRegister>,
     ) -> Result<()> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot aggregate proofs in verifier mode"))?;
-
-        proofman
+        self.proofman
             .register_aggregated_proofs(agg_proofs)
             .map_err(|e| anyhow::anyhow!("Error registering aggregate proof: {}", e))
     }
@@ -634,12 +531,8 @@ impl ProverBackend {
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        let proofman = self
+        let result = self
             .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot aggregate proofs in verifier mode"))?;
-
-        let result = proofman
             .receive_aggregated_proofs(agg_proofs, last_proof, final_proof, options)
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
@@ -652,12 +545,7 @@ impl ProverBackend {
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
-        let proofman = self
-            .proofman
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Cannot broadcast in verifier mode"))?;
-
-        proofman.mpi_broadcast(data);
+        self.proofman.mpi_broadcast(data);
         Ok(())
     }
 }

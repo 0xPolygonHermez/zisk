@@ -270,6 +270,10 @@ impl ProverEngine for EmuProver {
     fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
         self.core_prover.backend.get_vadcop_vk(reduced)
     }
+
+    fn cancel(&self) {
+        self.core_prover.backend.cancel();
+    }
 }
 
 pub struct EmuCoreProver {
