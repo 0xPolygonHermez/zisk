@@ -42,11 +42,11 @@ pub struct ProverClient {
 
 impl ProverClient {
     pub(crate) fn from_embedded(client: EmbeddedClient) -> Self {
+        ensure_single_instance();
         Self { inner: BackendClient::Embedded(client) }
     }
 
     pub fn embedded(options: EmbeddedOptions) -> EmbeddedClientBuilder {
-        ensure_single_instance();
         EmbeddedClientBuilder::new(options)
     }
 
@@ -88,11 +88,15 @@ impl ProverClient {
 
 impl Default for ProverClient {
     fn default() -> Self {
-        ensure_single_instance();
-
         EmbeddedClientBuilder::new(EmbeddedOptions::default())
             .build()
             .expect("Failed to initialize default ProverClient")
+    }
+}
+
+impl Drop for ProverClient {
+    fn drop(&mut self) {
+        PROVER_CLIENT_CREATED.store(false, Ordering::Release);
     }
 }
 
