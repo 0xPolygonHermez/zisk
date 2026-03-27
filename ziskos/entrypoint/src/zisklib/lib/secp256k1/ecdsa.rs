@@ -215,6 +215,7 @@ pub fn secp256k1_ecdsa_recover(
 /// # Returns
 /// - `Ok([u8; 32])` - Recovered address if signature is valid
 /// - `Err(u8)` - Error code
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn secp256k1_ecdsa_verify_c(
     sig: *const u8,
@@ -268,6 +269,7 @@ pub(crate) unsafe fn secp256k1_ecdsa_verify_c(
 /// # Returns
 /// - `Ok([u64; 8])` - Recovered pubkey if recovery is successful
 /// - `Err(u8)` - Error code
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn secp256k1_ecdsa_recover_c(
     sig: *const u8,
@@ -310,6 +312,7 @@ pub(crate) unsafe fn secp256k1_ecdsa_recover_c(
 }
 
 /// Convert big-endian bytes to little-endian u64 limbs (32 bytes -> [u64; 4])
+#[allow(dead_code)]
 fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
     let mut result = [0u64; 4];
     for i in 0..4 {
@@ -320,6 +323,7 @@ fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
     result
 }
 
+#[allow(dead_code)]
 fn u64_le_to_bytes_be(limbs: &[u64; 4]) -> [u8; 32] {
     let mut result = [0u8; 32];
     for i in 0..4 {

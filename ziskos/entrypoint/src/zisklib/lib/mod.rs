@@ -9,6 +9,7 @@ mod ripemd160;
 mod secp256k1;
 mod secp256r1;
 mod sha256;
+mod sw_impl;
 mod utils;
 pub mod zkvm_accelerators;
 

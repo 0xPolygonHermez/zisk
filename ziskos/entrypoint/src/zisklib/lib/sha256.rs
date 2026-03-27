@@ -115,6 +115,7 @@ fn compress_block(
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn sha256_c(
     input: *const u8,

@@ -18,13 +18,17 @@ use super::{
 };
 
 /// G1 add result codes
+#[allow(dead_code)]
 pub(crate) const G1_ADD_SUCCESS: u8 = 0;
+#[allow(dead_code)]
 pub(crate) const G1_ADD_SUCCESS_INFINITY: u8 = 1;
 const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 MSM result codes
+#[allow(dead_code)]
 pub(crate) const G1_MSM_SUCCESS: u8 = 0;
+#[allow(dead_code)]
 pub(crate) const G1_MSM_SUCCESS_INFINITY: u8 = 1;
 const G1_MSM_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_MSM_ERR_NOT_ON_CURVE: u8 = 3;
@@ -708,6 +712,7 @@ pub fn sigma_endomorphism_bls12_381(
 /// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
 /// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
 /// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bls12_381_g1_add_c(
     ret: *mut u8,
@@ -758,6 +763,7 @@ pub(crate) unsafe fn bls12_381_g1_add_c(
 /// - [G1_MSM_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
 /// - [G1_MSM_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
 /// - [G1_MSM_ERR_NOT_IN_SUBGROUP] = error (one of the input points is not in the subgroup)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bls12_381_g1_msm_c(
     ret: *mut u8,

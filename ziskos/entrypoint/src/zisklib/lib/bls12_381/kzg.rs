@@ -166,6 +166,7 @@ pub fn verify_kzg_proof(
 /// * 1 if the proof is valid
 /// * 0 if the proof is invalid
 /// * 2 if there was a parsing error (invalid input)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn verify_kzg_proof_c(
     z: *const u8,

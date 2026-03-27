@@ -30,6 +30,11 @@ serde = { workspace = true, features = ["derive"] }
 zisk-verifier = { workspace = true }
 bincode = { workspace = true }
 ripemd = { workspace = true }
+aurora-engine-modexp = { workspace = true }
+ark-bn254 = { workspace = true }
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
+ark-serialize = { workspace = true }
 zisk-definitions = { path = "../../definitions" }
 critical-section = { version = "1.2.0", optional = true }
 embedded-alloc = { version = "0.6.0", optional = true }
@@ -40,6 +45,10 @@ sha2 = { workspace = true }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.0", features = [
     "verify",
 ] }
+
+[target.'cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))'.dependencies]
+blst = { workspace = true }
+secp256k1 = { workspace = true }
 
 [target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), any(zisk_hints, zisk_hints_debug)))'.dependencies]
 bytes = { version = "1.11.0", optional = true }
