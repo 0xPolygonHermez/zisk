@@ -10,7 +10,7 @@ use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     proof::Proof,
     prove::ProveRequest,
-    prover::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
+    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
     setup::SetupRequest,
     upload::UploadRequest,
     Client, ExecutorKind,

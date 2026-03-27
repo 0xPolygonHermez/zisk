@@ -1,18 +1,18 @@
 mod client;
 pub mod core;
+mod embedded;
 mod execute;
 mod hints;
 mod proof;
 mod prove;
-mod prover;
 mod setup;
 mod stdin;
 mod upload;
 
 pub use client::ProverClient;
+pub use embedded::{EmbeddedClientBuilder, EmbeddedOptions};
 pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
-pub use prover::{EmbeddedClientBuilder, EmbeddedOptions};
 // pub use program::{Elf, GuestProgram, ProgramId};
 pub use proof::Proof;
 pub use prove::{ProofKind, ProveRequest};
