@@ -21,6 +21,7 @@ const ERR_ASSEMBLY_NOT_ENABLED: &str =
 #[derive(Default)]
 pub struct EmbeddedOptions {
     pub proving_key: Option<PathBuf>,
+    pub proving_key_snark: Option<PathBuf>,
 }
 
 /// Builder for an embedded [`ProverClient`].
@@ -74,7 +75,7 @@ impl EmbeddedClientBuilder {
 
     pub fn build(self) -> Result<ProverClient> {
         let pk = get_proving_key(self.options.proving_key.as_ref());
-        let pk_snark = get_proving_key_snark(None);
+        let pk_snark = get_proving_key_snark(self.options.proving_key_snark.as_ref());
         let prover = match self.executor {
             ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, self.gpu_params)?,
             ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, self.gpu_params)?,
