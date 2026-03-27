@@ -631,7 +631,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "futures",
  "indicatif",
  "mpi",
@@ -1154,9 +1154,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "num-traits",
 ]
@@ -1476,7 +1476,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1531,7 +1531,18 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
+name = "fields"
+version = "0.16.1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2426,7 +2437,7 @@ name = "mem-common"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2853,10 +2864,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -2975,7 +2986,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3011,7 +3022,7 @@ dependencies = [
  "ark-ff",
  "ark-secp256k1",
  "ark-std",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3042,7 +3053,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3063,7 +3074,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3082,7 +3093,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3106,7 +3117,7 @@ name = "precomp-keccakf"
 version = "0.17.0"
 dependencies = [
  "circuit",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3126,7 +3137,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3146,7 +3157,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3165,7 +3176,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3237,7 +3248,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "bincode",
  "blake3",
@@ -3248,7 +3259,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3272,7 +3283,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "bincode",
  "borsh",
@@ -3282,7 +3293,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "lazy_static",
  "libc",
  "libloading",
@@ -3304,9 +3315,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3317,7 +3328,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3327,7 +3338,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3336,7 +3347,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -3348,10 +3359,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "bytemuck",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3738,7 +3749,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4160,7 +4171,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4180,7 +4191,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -4200,7 +4211,7 @@ name = "sm-frequent-ops"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -4214,7 +4225,7 @@ dependencies = [
 name = "sm-main"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -4233,7 +4244,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -4254,7 +4265,7 @@ name = "sm-rom"
 version = "0.17.0"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -5883,10 +5894,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph#b42c927653fc196c2fa868032389dba408425936"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -6079,7 +6090,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "bincode",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "libc",
  "mpi",
  "proofman",
@@ -6102,7 +6113,7 @@ name = "zisk-core"
 version = "0.17.0"
 dependencies = [
  "elf",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "lib-c",
  "lib-float",
  "paste",
@@ -6205,7 +6216,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6231,7 +6242,7 @@ dependencies = [
 name = "zisk-pil"
 version = "0.17.0"
 dependencies = [
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -6248,7 +6259,7 @@ dependencies = [
  "bincode",
  "colored",
  "executor",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -6287,7 +6298,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6319,7 +6330,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6349,7 +6360,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmerge_cudaGraph)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
