@@ -23,7 +23,14 @@ impl ZiskHints {
     }
 
     /// Creates hints from a file path.
+    ///
+    /// # Errors
+    /// Returns an error if the file does not exist or is not accessible.
     pub fn file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        if !path.exists() {
+            anyhow::bail!("Hints file not found: {}", path.display());
+        }
         Ok(Self(StreamSource::from_file(path)?))
     }
 

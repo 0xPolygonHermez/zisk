@@ -34,9 +34,13 @@ impl ZiskStdin {
     /// Creates stdin from a file path.
     ///
     /// # Errors
-    /// Returns an error if the path contains invalid UTF-8.
+    /// Returns an error if the file does not exist, is not accessible, or the path contains
+    /// invalid UTF-8.
     pub fn file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
+        if !path.exists() {
+            anyhow::bail!("Stdin file not found: {}", path.display());
+        }
         let path_str = path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("path contains invalid UTF-8: {:?}", path))?;

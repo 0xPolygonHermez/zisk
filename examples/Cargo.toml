@@ -10,6 +10,7 @@ members = [
     "aggregation/guest_agg",
     "big-program/host",
     "big-program/guest",
+    "hints/host",
 ]
 
 resolver = "2"

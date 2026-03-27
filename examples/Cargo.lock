@@ -845,7 +845,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1129,7 +1129,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fields"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -1304,6 +1304,16 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "hints-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "sha2",
+ "zisk-sdk",
+]
 
 [[package]]
 name = "home"
@@ -2049,7 +2059,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "pil-std-lib"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "colored",
  "fields",
@@ -2372,7 +2382,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "bincode",
  "blake3",
@@ -2407,7 +2417,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "bincode",
  "borsh",
@@ -2439,7 +2449,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "fields",
  "itoa",
@@ -2452,7 +2462,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2462,7 +2472,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -2471,7 +2481,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -2483,7 +2493,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "bytemuck",
  "fields",
@@ -4466,7 +4476,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#e9db6c9a5efe66c86a269ad96812135d0ad0ab24"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#710e3e540e5fa8755a5c393de1b3e625adda1bc2"
 dependencies = [
  "colored",
  "fields",
