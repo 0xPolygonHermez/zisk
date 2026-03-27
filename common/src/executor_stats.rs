@@ -281,34 +281,6 @@ impl ExecutorStats {
         self.last_id
     }
 
-    #[cfg(feature = "stats")]
-    fn _air_name(_airgroup_id: usize, air_id: usize) -> String {
-        match air_id {
-            val if val == MAIN_AIR_IDS[0] => "Main".to_string(),
-            val if val == ROM_AIR_IDS[0] => "ROM".to_string(),
-            val if val == MEM_AIR_IDS[0] => "MEM".to_string(),
-            val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
-            val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
-            val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
-            val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
-            val if val == MEM_ALIGN_BYTE_AIR_IDS[0] => "MEM_ALIGN_BYTE".to_string(),
-            val if val == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => "MEM_ALIGN_READ_BYTE".to_string(),
-            val if val == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => "MEM_ALIGN_WRITE_BYTE".to_string(),
-            val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
-            val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
-            val if val == ARITH_EQ_384_AIR_IDS[0] => "ARITH_EQ_384".to_string(),
-            val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
-            val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
-            val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
-            val if val == ADD_256_AIR_IDS[0] => "ADD_256".to_string(),
-            val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
-            val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            val if val == POSEIDON_2_AIR_IDS[0] => "POSEIDON_2".to_string(),
-            val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
-            _ => format!("Unknown air_id: {air_id}"),
-        }
-    }
-
     /// Stores stats in JSON and CSV file formats
     pub fn store_stats(&self) {
         #[derive(Serialize, Deserialize, Debug)]
@@ -419,11 +391,6 @@ impl ExecutorStatsHandle {
 
     pub fn next_id(&self) -> u64 {
         self.inner.lock().unwrap().next_id()
-    }
-
-    #[cfg(feature = "stats")]
-    pub fn _air_name(&self, airgroup_id: usize, air_id: usize) -> String {
-        ExecutorStats::_air_name(airgroup_id, air_id)
     }
 
     pub fn store_stats(&self) {

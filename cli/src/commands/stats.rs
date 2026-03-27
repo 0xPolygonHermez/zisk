@@ -326,7 +326,21 @@ impl ZiskStats {
 
     fn air_name(_airgroup_id: usize, air_id: usize) -> String {
         match air_id {
-            val if val == MAIN_AIR_IDS[0] => "Main".to_string(),
+            val if val == DMA_AIR_IDS[0] => "DMA".to_string(),
+            val if val == DMA_MEM_CPY_AIR_IDS[0] => "DMA_MEM_CPY".to_string(),
+            val if val == DMA_INPUT_CPY_AIR_IDS[0] => "DMA_INPUT_CPY".to_string(),
+            val if val == DMA_64_ALIGNED_AIR_IDS[0] => "DMA_64_ALIGNED".to_string(),
+            val if val == DMA_64_ALIGNED_INPUT_CPY_AIR_IDS[0] => {
+                "DMA_64_ALIGNED_INPUT_CPY".to_string()
+            }
+            val if val == DMA_64_ALIGNED_MEM_SET_AIR_IDS[0] => "DMA_64_ALIGNED_MEM_SET".to_string(),
+            val if val == DMA_64_ALIGNED_MEM_AIR_IDS[0] => "DMA_64_ALIGNED_MEM".to_string(),
+            val if val == DMA_64_ALIGNED_MEM_CPY_AIR_IDS[0] => "DMA_64_ALIGNED_MEM_CPY".to_string(),
+            val if val == DMA_UNALIGNED_AIR_IDS[0] => "DMA_UNALIGNED".to_string(),
+            val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
+            val if val == DMA_PRE_POST_MEM_CPY_AIR_IDS[0] => "DMA_PRE_POST_MEM_CPY".to_string(),
+            val if val == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] => "DMA_PRE_POST_INPUT_CPY".to_string(),
+            val if val == MAIN_AIR_IDS[0] => "MAIN".to_string(),
             val if val == ROM_AIR_IDS[0] => "ROM".to_string(),
             val if val == MEM_AIR_IDS[0] => "MEM".to_string(),
             val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
