@@ -1,2 +1,2 @@
-pub mod builder;
-pub mod public_prover;
+pub(crate) mod builder;
+pub(crate) mod public_prover;

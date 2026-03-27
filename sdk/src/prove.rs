@@ -6,7 +6,25 @@ use super::proof::Proof;
 use crate::hints::ZiskHints;
 use crate::GuestProgram;
 use crate::ZiskStdin;
-use crate::{Client, ExecutorKind, WatchEvent};
+use crate::{Client, ExecutorKind};
+
+/// Events emitted during proof generation.
+///
+/// `WatchEvent::All` is a subscription filter meaning "receive all events".
+/// It is never emitted as a concrete event in callbacks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum WatchEvent {
+    /// Subscribe to all events (filter only; never emitted to callbacks).
+    All,
+    /// Job accepted and execution started.
+    Started,
+    /// Proof generation progress (0–100).
+    Progress(u8),
+    /// Proof completed successfully.
+    Completed,
+    /// Proof generation failed.
+    Failed(String),
+}
 use zisk_prover_backend::ProofOpts;
 
 /// The kind of proof to generate.

@@ -11,7 +11,7 @@ use zisk_prover_backend::{
     ZiskBackend, ZiskExecuteResult, ZiskProver,
 };
 
-pub struct PublicZiskProver<C: ZiskBackend> {
+pub(crate) struct PublicZiskProver<C: ZiskBackend> {
     pub(crate) inner: ZiskProver<C>,
 }
 

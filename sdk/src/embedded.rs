@@ -20,8 +20,24 @@ const ERR_ASSEMBLY_NOT_ENABLED: &str =
 /// Configuration for an embedded prover backend.
 #[derive(Default)]
 pub struct EmbeddedOptions {
-    pub proving_key: Option<PathBuf>,
-    pub proving_key_snark: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
+    proving_key_snark: Option<PathBuf>,
+}
+
+impl EmbeddedOptions {
+    /// Set the path to the proving key directory.
+    #[must_use]
+    pub fn proving_key(mut self, path: impl Into<PathBuf>) -> Self {
+        self.proving_key = Some(path.into());
+        self
+    }
+
+    /// Set the path to the SNARK proving key directory.
+    #[must_use]
+    pub fn proving_key_snark(mut self, path: impl Into<PathBuf>) -> Self {
+        self.proving_key_snark = Some(path.into());
+        self
+    }
 }
 
 /// Builder for an embedded [`ProverClient`].

@@ -1,5 +1,5 @@
 mod client;
-pub mod core;
+pub(crate) mod core;
 mod embedded;
 mod execute;
 mod hints;
@@ -15,7 +15,7 @@ pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
 // pub use program::{Elf, GuestProgram, ProgramId};
 pub use proof::Proof;
-pub use prove::{ProofKind, ProveRequest};
+pub use prove::{ProofKind, ProveRequest, WatchEvent};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
@@ -64,24 +64,6 @@ pub enum ExecutorKind {
     Emulator,
     /// Assembly: must be explicitly enabled on the client builder.
     Assembly,
-}
-
-/// Events emitted during proof generation.
-///
-/// `WatchEvent::All` is a subscription filter meaning "receive all events".
-/// It is never emitted as a concrete event in callbacks.
-#[derive(Debug, Clone, PartialEq)]
-pub enum WatchEvent {
-    /// Subscribe to all events (filter only; never emitted to callbacks).
-    All,
-    /// Job accepted and execution started.
-    Started,
-    /// Proof generation progress (0–100).
-    Progress(u8),
-    /// Proof completed successfully.
-    Completed,
-    /// Proof generation failed.
-    Failed(String),
 }
 
 /// Core client trait implemented by all prover backends.

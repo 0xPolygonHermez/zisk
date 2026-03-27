@@ -12,37 +12,19 @@ use zisk_prover_backend::{
 use anyhow::Result;
 
 // Typestate markers
-pub struct EmuB;
-pub struct AsmB;
+pub(crate) struct EmuB;
+pub(crate) struct AsmB;
 
-pub struct WitnessGeneration;
-pub struct Prove;
+pub(crate) struct WitnessGeneration;
+pub(crate) struct Prove;
 
-/// Unified builder for both EMU and ASM provers with typestate pattern
+/// Unified builder for both EMU and ASM provers with typestate pattern.
 ///
-/// This builder uses typestate pattern to ensure type-safe configuration:
-/// - Backend state: `EmulatorBackend` or `AsmBackend`  
+/// Uses typestate pattern to ensure type-safe configuration:
+/// - Backend state: `EmuB` or `AsmB`
 /// - Operation state: `WitnessGeneration` or `Prove`
-///
-/// # Example
-/// ```rust,no_run
-/// use zisk_sdk::ProverClientBuilder;
-///
-/// let output_path = std::path::PathBuf::from("path/to/output");
-///
-/// let prover_emu = ProverClientBuilder::new()
-///     .emu()
-///     .verify_constraints()
-///     .build();
-///
-/// let prover_asm = ProverClientBuilder::new()
-///     .asm()
-///     .prove()
-///     .unlock_mapped_memory(true)
-///     .build();
-/// ```
 #[derive(Default)]
-pub struct ProverClientBuilder<Backend = (), Operation = ()> {
+pub(crate) struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
     aggregation: bool,
     snark_wrapper: bool,
@@ -257,18 +239,6 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
 
 // Build methods for Emulator
 impl ProverClientBuilder<EmuB, WitnessGeneration> {
-    /// Builds an [`EmuProver`] configured for constraint verification.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
-    ///
-    ///
-    /// let prover = ProverClientBuilder::new()
-    ///     .emu()
-    ///     .verify_constraints()
-    ///     .build();
-    /// ```
     pub fn build(self) -> Result<PublicZiskProver<Emu>> {
         self.build_emu()
     }
@@ -282,17 +252,6 @@ impl ProverClientBuilder<EmuB, ()> {
 }
 
 impl ProverClientBuilder<EmuB, Prove> {
-    /// Builds an [`EmuProver`] configured for proof generation.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
-    ///
-    /// let prover = ProverClientBuilder::new()
-    ///    .emu()
-    ///    .prove()
-    ///    .build();
-    /// ```
     pub fn build(self) -> Result<PublicZiskProver<Emu>> {
         self.build_emu()
     }
@@ -338,17 +297,6 @@ impl<X> ProverClientBuilder<EmuB, X> {
 
 // Build methods for ASM
 impl ProverClientBuilder<AsmB, WitnessGeneration> {
-    /// Builds an [`AsmProver`] configured for constraint verification.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
-    ///
-    /// let prover = ProverClientBuilder::new()
-    ///     .asm()
-    ///     .verify_constraints()
-    ///     .build();
-    /// ```
     pub fn build<F>(self) -> Result<PublicZiskProver<Asm>>
     where
         F: PrimeField64,
@@ -370,17 +318,6 @@ impl ProverClientBuilder<AsmB, ()> {
 }
 
 impl ProverClientBuilder<AsmB, Prove> {
-    /// Builds an [`AsmProver`] configured for proof generation.
-    ///
-    /// # Example
-    /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
-    ///
-    /// let prover = ProverClientBuilder::new()
-    ///     .asm()
-    ///     .prove()
-    ///     .build();
-    /// ```
     pub fn build<F>(self) -> Result<PublicZiskProver<Asm>>
     where
         F: PrimeField64,
