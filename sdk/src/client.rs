@@ -55,8 +55,8 @@ impl ProverClient {
         let cancel_fn: Arc<dyn Fn() + Send + Sync> = {
             let i = Arc::clone(&inner);
             Arc::new(move || {
-                if let BackendClient::Embedded(c) = i.as_ref() {
-                    c.cancel();
+                match i.as_ref() {
+                    BackendClient::Embedded(c) => c.cancel(),
                 }
             })
         };
