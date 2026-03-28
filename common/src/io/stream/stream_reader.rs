@@ -33,9 +33,14 @@ impl StreamSource {
         Ok(StreamSource::File(FileStreamReader::new(path)?))
     }
 
-    /// Create a memory-based stdin
+    /// Create a memory-based stream from an owned vector.
     pub fn from_vec(data: Vec<u8>) -> Self {
         StreamSource::Memory(MemoryStreamReader::new(data))
+    }
+
+    /// Create a memory-based stream from borrowed bytes.
+    pub fn from_slice(data: &[u8]) -> Self {
+        StreamSource::Memory(MemoryStreamReader::from_slice(data))
     }
 
     /// Create a Unix socket-based stdin

@@ -9,17 +9,17 @@ pub struct ZiskHints(StreamSource);
 impl ZiskHints {
     /// Creates a new empty memory-based hints source.
     pub fn new() -> Self {
-        Self::memory(Vec::new())
+        Self(StreamSource::from_vec(Vec::new()))
     }
 
     /// Creates hints from raw bytes.
-    pub fn memory(data: impl Into<Vec<u8>>) -> Self {
-        Self(StreamSource::from_vec(data.into()))
+    pub fn memory(data: impl AsRef<[u8]>) -> Self {
+        Self(StreamSource::from_slice(data.as_ref()))
     }
 
     /// Creates hints from a serializable data structure.
     pub fn from<T: Serialize>(data: &T) -> Self {
-        Self::memory(bincode::serialize(data).expect("Failed to serialize hints data"))
+        Self(StreamSource::from_vec(bincode::serialize(data).expect("Failed to serialize hints data")))
     }
 
     /// Creates hints from a file path.
