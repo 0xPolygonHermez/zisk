@@ -40,10 +40,9 @@ pub use zisk_prover_backend::{
 // Re-export common types
 pub use proofman_common::VerboseMode;
 
-// Re-export types from zisk_common
+// Re-export types from zisk_common (avoid glob io::* — it conflicts with our ZiskStdin wrapper)
 pub use zisk_common::{
-    io::*, PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics,
-    ZiskVK,
+    PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 
 pub use zisk_build::*;
