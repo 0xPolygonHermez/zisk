@@ -1,7 +1,8 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use anyhow::Result;
+use proofman_common::ParamsGPU;
 use zisk_common::ZiskProgramVK;
 
 use zisk_common::ProofMode;
@@ -9,7 +10,8 @@ use zisk_prover_backend::{GuestProgram, ProofOpts};
 
 use crate::{
     async_prove::AsyncProveRequest,
-    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedOptions},
+    cancel::CancellationToken,
+    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
     plonk::PlonkRequest,
@@ -20,6 +22,7 @@ use crate::{
     upload::UploadRequest,
     Client, ExecutorKind, ZiskProofWithPublicValues, ZiskPublics,
 };
+use std::sync::Arc;
 
 static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
 
@@ -32,6 +35,96 @@ fn ensure_single_instance() {
     }
 }
 
+/// Placeholder for future remote backend configuration.
+#[allow(dead_code)]
+pub struct RemoteConfig {
+    // url: String — future
+}
+
+/// Builder for [`ProverClient`].
+///
+/// Obtain via [`ProverClient::embedded`]. The type parameter `B` is the backend config
+/// (`EmbeddedConfig`, or `RemoteConfig` in the future) — it determines which methods
+/// are available and which backend is constructed on `.build()`.
+pub struct ProverClientBuilder<B> {
+    executor: ExecutorKind,
+    gpu_params: Option<ParamsGPU>,
+    backend: B,
+}
+
+impl Default for ProverClientBuilder<EmbeddedClientConfig> {
+    fn default() -> Self {
+        ProverClient::embedded()
+    }
+}
+
+/// Methods shared across all backends.
+impl<B> ProverClientBuilder<B> {
+    /// Set the executor kind. Default is [`ExecutorKind::Emulator`].
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = executor;
+        self
+    }
+
+    /// Use the Emulator executor (default). Not compatible with hints.
+    #[must_use]
+    pub fn emulator(mut self) -> Self {
+        self.executor = ExecutorKind::Emulator;
+        self
+    }
+
+    /// Use the Assembly executor.
+    #[must_use]
+    pub fn assembly(mut self) -> Self {
+        self.executor = ExecutorKind::Assembly;
+        self
+    }
+
+    /// Enable GPU acceleration with default parameters.
+    #[must_use]
+    pub fn gpu(mut self) -> Self {
+        self.gpu_params = Some(ParamsGPU::default());
+        self
+    }
+
+    /// Enable GPU acceleration with custom parameters.
+    #[must_use]
+    pub fn with_gpu_params(mut self, gpu_params: ParamsGPU) -> Self {
+        self.gpu_params = Some(gpu_params);
+        self
+    }
+}
+
+/// Methods specific to the embedded backend.
+impl ProverClientBuilder<EmbeddedClientConfig> {
+    /// Set the path to the proving key directory.
+    #[must_use]
+    pub fn proving_key(mut self, path: impl Into<PathBuf>) -> Self {
+        self.backend.proving_key = Some(path.into());
+        self
+    }
+
+    /// Set the path to the SNARK proving key directory.
+    #[must_use]
+    pub fn proving_key_snark(mut self, path: impl Into<PathBuf>) -> Self {
+        self.backend.proving_key_snark = Some(path.into());
+        self
+    }
+
+    /// Build the [`ProverClient`].
+    pub fn build(self) -> Result<ProverClient> {
+        ensure_single_instance();
+        let builder = EmbeddedClientBuilder::new(self.backend).executor(self.executor);
+        let builder = match self.gpu_params {
+            Some(params) => builder.with_gpu_params(params),
+            None => builder,
+        };
+        let client = builder.build()?;
+        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(client)) })
+    }
+}
+
 enum BackendClient {
     Embedded(EmbeddedClient),
     // Remote(RemoteClient),
@@ -40,81 +133,78 @@ enum BackendClient {
 /// Prover client. Runs proofs using local (embedded) or remote infrastructure.
 ///
 /// Obtain via:
-/// - `ProverClient::default()` — zero-config embedded client (Emulator, no GPU)
-/// - `ProverClient::embedded(opts).build()` — full embedded configuration
+/// - `ProverClient::default()` — zero-config client (Emulator, no GPU)
+/// - `ProverClient::embedded().build()` — full embedded configuration
 /// - `ProverClient::remote(url).build()` — remote coordinator (future)
 pub struct ProverClient {
     inner: Arc<BackendClient>,
-    cancel_fn: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl ProverClient {
-    pub(crate) fn from_embedded(client: EmbeddedClient) -> Self {
-        ensure_single_instance();
-        let inner = Arc::new(BackendClient::Embedded(client));
-        let cancel_fn: Arc<dyn Fn() + Send + Sync> = {
-            let i = Arc::clone(&inner);
-            Arc::new(move || {
-                match i.as_ref() {
-                    BackendClient::Embedded(c) => c.cancel(),
-                }
-            })
-        };
-        Self { inner, cancel_fn }
+    // -- Builders --
+    /// Returns a builder for the embedded (local) backend.
+    #[must_use]
+    pub fn embedded() -> ProverClientBuilder<EmbeddedClientConfig> {
+        ProverClientBuilder {
+            executor: ExecutorKind::Emulator,
+            gpu_params: None,
+            backend: EmbeddedClientConfig::default(),
+        }
     }
 
-    pub fn embedded(options: EmbeddedOptions) -> EmbeddedClientBuilder {
-        EmbeddedClientBuilder::new(options)
-    }
-
-    // pub fn remote(url: impl Into<String>) -> RemoteClientBuilder {
-    //     ensure_single_instance();
-    //     RemoteClientBuilder::new(url.into())
+    // pub fn remote(url: impl Into<String>) -> ProverClientBuilder<RemoteConfig> {
+    //     ProverClientBuilder { executor: ExecutorKind::Emulator, gpu_params: None, backend: RemoteConfig { url: url.into() } }
     // }
 
+    // -- Requests --
     pub fn vk(&self, program: &GuestProgram) -> Result<ZiskProgramVK> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.vk(program),
         }
     }
 
+    #[must_use]
     pub fn prove<'a>(
         &'a self,
         program: &'a GuestProgram,
         input: impl Into<ProgramInput>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, input).with_cancel_fn(Arc::clone(&self.cancel_fn))
+        ProveRequest::new(self, program, input)
     }
 
-    /// Async variant of [`prove`](Self::prove). Requires the client to be wrapped in [`Arc`].
+    /// Async variant of [`prove`](Self::prove).
     ///
     /// Returns an [`AsyncProveRequest`] builder. Call `.submit()` for non-blocking execution
     /// or `.run()` for blocking execution with event support.
+    #[must_use]
     pub fn prove_async(
-        self: &Arc<Self>,
+        &self,
         program: &GuestProgram,
         input: impl Into<ProgramInput>,
-    ) -> AsyncProveRequest<Arc<Self>> {
-        AsyncProveRequest::new(Arc::clone(self), Arc::new(program.clone()), input)
-            .with_cancel_fn(Arc::clone(&self.cancel_fn))
+    ) -> AsyncProveRequest<Self> {
+        AsyncProveRequest::new(self.clone(), program.clone(), input)
     }
 
+    #[must_use]
     pub fn execute<'a>(
         &'a self,
         program: &'a GuestProgram,
         input: impl Into<ProgramInput>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, input).with_cancel_fn(Arc::clone(&self.cancel_fn))
+        ExecuteRequest::new(self, program, input)
     }
 
+    #[must_use]
     pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
         SetupRequest::new(self, program)
     }
 
+    #[must_use]
     pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
         UploadRequest::new(self, program)
     }
 
+    #[must_use]
     pub fn reduce<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
@@ -122,6 +212,7 @@ impl ProverClient {
         ReduceRequest::new(self, proof_with_publics)
     }
 
+    #[must_use]
     pub fn plonk<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
@@ -132,15 +223,13 @@ impl ProverClient {
 
 impl Clone for ProverClient {
     fn clone(&self) -> Self {
-        Self { inner: Arc::clone(&self.inner), cancel_fn: Arc::clone(&self.cancel_fn) }
+        Self { inner: Arc::clone(&self.inner) }
     }
 }
 
 impl Default for ProverClient {
     fn default() -> Self {
-        EmbeddedClientBuilder::new(EmbeddedOptions::default())
-            .build()
-            .expect("Failed to initialize default ProverClient")
+        ProverClient::embedded().build().expect("Failed to initialize default ProverClient")
     }
 }
 
@@ -173,9 +262,10 @@ impl Client for ProverClient {
         executor: ExecutorKind,
         mode: ProofMode,
         opts: ProofOpts,
+        cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, opts),
+            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, opts, cancel),
         }
     }
 
@@ -184,9 +274,10 @@ impl Client for ProverClient {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
+        cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_execute(program, input, executor),
+            BackendClient::Embedded(c) => c.run_execute(program, input, executor, cancel),
         }
     }
 

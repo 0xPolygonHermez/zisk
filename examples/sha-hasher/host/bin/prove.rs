@@ -2,8 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_sdk::{
-    load_program, EmbeddedOptions, ExecutorKind, GuestProgram, ProofOpts, ProverClient,
-    ZiskProofWithPublicValues, ZiskPublics, ZiskStdin,
+    load_program, ExecutorKind, GuestProgram, ProofOpts, ProverClient, ZiskProofWithPublicValues,
+    ZiskPublics, ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
@@ -26,8 +26,7 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let embedded_options = EmbeddedOptions::default();
-    let client = ProverClient::embedded(embedded_options).gpu().assembly().build()?;
+    let client = ProverClient::embedded().gpu().assembly().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;

@@ -5,6 +5,7 @@ use anyhow::Result;
 use tokio::task::JoinHandle;
 use zisk_prover_backend::ProofOpts;
 
+use crate::cancel::CancellationToken;
 use crate::input::ProgramInput;
 use crate::proof::Proof;
 use crate::prove::{ProofKind, WatchEvent};
@@ -35,26 +36,28 @@ pub(crate) fn fire_event(subscribers: &SubscriberList, event: WatchEvent) {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_prove(
     client: impl Client + 'static,
-    program: Arc<GuestProgram>,
+    program: GuestProgram,
     input: ProgramInput,
     executor: ExecutorKind,
     mode: ProofMode,
     opts: ProofOpts,
     subscribers: SubscriberList,
     timeout: Option<Duration>,
-    cancel_fn: Option<Arc<dyn Fn() + Send + Sync>>,
+    cancel_token: Option<CancellationToken>,
 ) -> ProofHandle {
     let subs = Arc::clone(&subscribers);
+    let token_for_task = cancel_token.clone();
     let handle = tokio::task::spawn_blocking(move || {
         fire_event(&subs, WatchEvent::Started);
-        let result = client.run_prove(&program, input, executor, mode, opts);
+        let result =
+            client.run_prove(&program, input, executor, mode, opts, token_for_task.as_ref());
         match &result {
             Ok(_) => fire_event(&subs, WatchEvent::Completed),
             Err(e) => fire_event(&subs, WatchEvent::Failed(e.to_string())),
         }
         result
     });
-    ProofHandle { handle, subscribers, timeout, cancel_fn }
+    ProofHandle { handle, subscribers, timeout, cancel_token }
 }
 
 /// Async builder for a prove request.
@@ -62,9 +65,9 @@ pub(crate) fn spawn_prove(
 /// Obtain via [`ProverClient::prove_async`].
 /// Finalize with `.submit()` (non-blocking, returns [`ProofHandle`]) or `.run()` (blocking).
 #[allow(dead_code)]
-pub struct AsyncProveRequest<C: Client + Clone + Send + Sync + 'static> {
+pub struct AsyncProveRequest<C> {
     client: C,
-    program: Arc<GuestProgram>,
+    program: GuestProgram,
     input: ProgramInput,
     executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
@@ -72,15 +75,11 @@ pub struct AsyncProveRequest<C: Client + Clone + Send + Sync + 'static> {
     proof_kind: ProofKind,
     minimal_memory: bool,
     subscribers: Vec<Subscriber>,
-    cancel_fn: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+#[allow(private_bounds)]
 impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
-    pub(crate) fn new(
-        client: C,
-        program: Arc<GuestProgram>,
-        input: impl Into<ProgramInput>,
-    ) -> Self {
+    pub(crate) fn new(client: C, program: GuestProgram, input: impl Into<ProgramInput>) -> Self {
         Self {
             client,
             program,
@@ -91,7 +90,6 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
             proof_kind: ProofKind::default(),
             minimal_memory: false,
             subscribers: Vec::new(),
-            cancel_fn: None,
         }
     }
 
@@ -162,11 +160,6 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
         self
     }
 
-    pub(crate) fn with_cancel_fn(mut self, f: Arc<dyn Fn() + Send + Sync>) -> Self {
-        self.cancel_fn = Some(f);
-        self
-    }
-
     fn resolve_mode(&self) -> ProofMode {
         match self.proof_kind {
             ProofKind::Stark => ProofMode::VadcopFinal,
@@ -191,12 +184,13 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
         let client = self.client;
         let program = self.program;
         let input = self.input;
-        let cancel_fn = self.cancel_fn;
         let subscribers: SubscriberList = Arc::new(Mutex::new(self.subscribers));
 
         fire_event(&subscribers, WatchEvent::Started);
 
         let result = if let Some(dur) = self.timeout {
+            let cancel_token = CancellationToken::new();
+            let cancel_token2 = cancel_token.clone();
             let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
             let timed_out = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let timed_out2 = Arc::clone(&timed_out);
@@ -204,12 +198,11 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
                 s.spawn(move || {
                     if stop_rx.recv_timeout(dur).is_err() {
                         timed_out2.store(true, std::sync::atomic::Ordering::Relaxed);
-                        if let Some(ref f) = cancel_fn {
-                            f();
-                        }
+                        cancel_token2.cancel();
                     }
                 });
-                let r = client.run_prove(&program, input, executor, mode, opts);
+                let r =
+                    client.run_prove(&program, input, executor, mode, opts, Some(&cancel_token));
                 let _ = stop_tx.send(());
                 r
             });
@@ -219,7 +212,7 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
                 r
             }
         } else {
-            client.run_prove(&program, input, executor, mode, opts)
+            client.run_prove(&program, input, executor, mode, opts, None)
         };
 
         match &result {
@@ -241,8 +234,8 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
     pub fn submit(self) -> Result<ProofHandle> {
         let mode = self.resolve_mode();
         let opts = self.resolve_opts();
-        let cancel_fn: Option<Arc<dyn Fn() + Send + Sync>> =
-            if self.timeout.is_some() { self.cancel_fn.clone() } else { None };
+        let cancel_token =
+            if self.timeout.is_some() { Some(CancellationToken::new()) } else { None };
         let subscribers: SubscriberList = Arc::new(Mutex::new(self.subscribers));
         Ok(spawn_prove(
             self.client,
@@ -253,7 +246,7 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
             opts,
             subscribers,
             self.timeout,
-            cancel_fn,
+            cancel_token,
         ))
     }
 }
@@ -265,7 +258,7 @@ pub struct ProofHandle {
     handle: JoinHandle<Result<Proof>>,
     subscribers: SubscriberList,
     timeout: Option<Duration>,
-    cancel_fn: Option<Arc<dyn Fn() + Send + Sync>>,
+    cancel_token: Option<CancellationToken>,
 }
 
 impl ProofHandle {
@@ -276,13 +269,13 @@ impl ProofHandle {
     /// once the deadline is exceeded.
     pub async fn proof(self) -> Result<Proof> {
         let mut handle = self.handle;
-        match (self.timeout, self.cancel_fn) {
-            (Some(dur), Some(cancel_fn)) => match tokio::time::timeout(dur, &mut handle).await {
+        match (self.timeout, self.cancel_token) {
+            (Some(dur), Some(cancel_token)) => match tokio::time::timeout(dur, &mut handle).await {
                 Ok(join_result) => {
                     join_result.map_err(|e| anyhow::anyhow!("Proof task failed: {e}"))?
                 }
                 Err(_elapsed) => {
-                    cancel_fn();
+                    cancel_token.cancel();
                     fire_event(
                         &self.subscribers,
                         WatchEvent::Failed(format!("Proof timed out after {dur:?}")),
@@ -306,9 +299,12 @@ impl ProofHandle {
 
     /// Cancel the proof task.
     ///
-    /// The spawned blocking OS thread continues running to completion, but
-    /// [`proof()`](Self::proof) returns an error immediately.
+    /// Signals the cancellation token (allowing cooperative cancellation at checkpoints)
+    /// and aborts the Tokio task handle.
     pub fn cancel(self) {
+        if let Some(token) = &self.cancel_token {
+            token.cancel();
+        }
         self.handle.abort();
     }
 }

@@ -19,7 +19,9 @@ impl ZiskHints {
 
     /// Creates hints from a serializable data structure.
     pub fn from<T: Serialize>(data: &T) -> Self {
-        Self(StreamSource::from_vec(bincode::serialize(data).expect("Failed to serialize hints data")))
+        Self(StreamSource::from_vec(
+            bincode::serialize(data).expect("Failed to serialize hints data"),
+        ))
     }
 
     /// Creates hints from a file path.

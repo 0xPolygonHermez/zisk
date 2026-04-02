@@ -15,6 +15,7 @@ pub struct SetupRequest<'a, C> {
     with_hints: bool,
 }
 
+#[allow(private_bounds)]
 impl<'a, C: Client> SetupRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
         Self { client, program, with_hints: false }

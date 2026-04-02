@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -22,8 +22,7 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let embedded_options = EmbeddedOptions::default();
-    let client = ProverClient::embedded(embedded_options).build()?;
+    let client = ProverClient::embedded().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;

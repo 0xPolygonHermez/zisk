@@ -14,6 +14,7 @@ pub struct UploadRequest<'a, C> {
     program: &'a GuestProgram,
 }
 
+#[allow(private_bounds)]
 impl<'a, C: Client> UploadRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
         Self { client, program }

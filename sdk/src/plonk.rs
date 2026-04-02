@@ -9,13 +9,14 @@ use crate::{Client, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 /// Wraps a full STARK proof (`ZiskProof::VadcopFinal`) into a PLONK/SNARK proof
 /// (`ZiskProof::Plonk`). Requires `snark_wrapper` to be initialised in the prover.
 #[allow(dead_code)]
-pub struct PlonkRequest<'a, C: Client> {
+pub struct PlonkRequest<'a, C> {
     client: &'a C,
     proof_with_publics: &'a ZiskProofWithPublicValues,
     override_publics: Option<&'a ZiskPublics>,
     override_program_vk: Option<&'a ZiskProgramVK>,
 }
 
+#[allow(private_bounds)]
 impl<'a, C: Client> PlonkRequest<'a, C> {
     pub(crate) fn new(client: &'a C, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
         Self { client, proof_with_publics, override_publics: None, override_program_vk: None }

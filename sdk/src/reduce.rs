@@ -9,13 +9,14 @@ use crate::{Client, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 /// Reduces a full STARK proof (`ZiskProof::VadcopFinal`) to a compressed form
 /// (`ZiskProof::VadcopFinalReduced`), which is smaller and faster to verify.
 #[allow(dead_code)]
-pub struct ReduceRequest<'a, C: Client> {
+pub struct ReduceRequest<'a, C> {
     client: &'a C,
     proof_with_publics: &'a ZiskProofWithPublicValues,
     override_publics: Option<&'a ZiskPublics>,
     override_program_vk: Option<&'a ZiskProgramVK>,
 }
 
+#[allow(private_bounds)]
 impl<'a, C: Client> ReduceRequest<'a, C> {
     pub(crate) fn new(client: &'a C, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
         Self { client, proof_with_publics, override_publics: None, override_program_vk: None }

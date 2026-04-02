@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{EmbeddedOptions, ExecutorKind, GuestProgram, ProverClient, ZiskHints};
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints};
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
@@ -11,8 +11,7 @@ fn main() -> Result<()> {
     let hints = ZiskHints::file(&hints_path)?;
 
     // Create a `ProverClient` method.
-    let embedded_options = EmbeddedOptions::default();
-    let client = ProverClient::embedded(embedded_options).assembly().build()?;
+    let client = ProverClient::embedded().assembly().build()?;
 
     println!("Setting up program...");
     client.setup(&program).with_hints().run()?;

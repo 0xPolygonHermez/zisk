@@ -674,6 +674,11 @@ impl ZiskProver<Asm> {
     pub fn setup<'a>(&'a self, elf: &'a GuestProgram) -> AsmSetupBuilder<'a> {
         self.prover.setup(elf)
     }
+
+    /// Returns `true` if the last `setup()` call used `.with_hints()`.
+    pub fn was_setup_with_hints(&self) -> bool {
+        self.get_hints_processor().is_some()
+    }
 }
 
 // EMU-specific setup implementation

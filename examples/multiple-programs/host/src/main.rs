@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
 
@@ -22,16 +22,11 @@ async fn main() -> Result<()> {
     // let _hints = ZiskHints::stream("unix:///tmp/hints.sock")?;
 
     // Create a `ProverClient` method.
-    // let client = ProverClient::builder().build()?;
+    // let client = ProverClient::embedded().build()?;
 
-    //////
-    let embedded_options = EmbeddedOptions::default();
-    let client = ProverClient::embedded(embedded_options).gpu().build()?;
+    let client = ProverClient::embedded().gpu().build()?;
 
-    // let remote_options = RemoteOptions::builder().url("localhost:3000").build()?;
-    // let _remote_client =
-    //     ProverClient::remote(remote_options)?.gpu().executor(Executor::Assembly).build()?;
-    /////
+    // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 
     println!("Setting up first program...");
     client.setup(&PROGRAM1).run()?;

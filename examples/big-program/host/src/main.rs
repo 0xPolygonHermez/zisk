@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use zisk_sdk::{load_program, EmbeddedOptions, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("big-program-guest");
 
@@ -20,8 +20,7 @@ fn main() -> Result<()> {
     println!("Input loaded successfully");
 
     // Create a `ProverClient` method.
-    let embedded_options = EmbeddedOptions::default();
-    let client = ProverClient::embedded(embedded_options).build()?;
+    let client = ProverClient::embedded().build()?;
 
     client.setup(&PROGRAM).run()?;
 

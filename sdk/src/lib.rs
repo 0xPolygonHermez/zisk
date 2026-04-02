@@ -1,6 +1,6 @@
 mod async_prove;
+mod cancel;
 mod client;
-pub(crate) mod core;
 mod embedded;
 mod execute;
 mod hints;
@@ -14,8 +14,9 @@ mod stdin;
 mod upload;
 
 pub use async_prove::{AsyncProveRequest, ProofHandle};
-pub use client::ProverClient;
-pub use embedded::{EmbeddedClientBuilder, EmbeddedOptions};
+pub use cancel::CancellationToken;
+pub use client::{ProverClient, ProverClientBuilder, RemoteConfig};
+pub use embedded::EmbeddedClientConfig;
 pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
@@ -66,8 +67,9 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
         executor: ExecutorKind,
         mode: ProofMode,
         opts: ProofOpts,
+        cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
-        (**self).run_prove(program, input, executor, mode, opts)
+        (**self).run_prove(program, input, executor, mode, opts, cancel)
     }
 
     fn run_execute(
@@ -75,8 +77,9 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
+        cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult> {
-        (**self).run_execute(program, input, executor)
+        (**self).run_execute(program, input, executor, cancel)
     }
 
     fn run_reduce(
@@ -122,15 +125,9 @@ pub enum ExecutorKind {
     Assembly,
 }
 
-/// Core client trait implemented by all prover backends.
-pub trait Client: Send + Sync {
-    /// Run an upload operation for the given program.
+pub(crate) trait Client: Send + Sync {
     fn run_upload(&self, program: &GuestProgram) -> Result<()>;
-
-    /// Run a ROM setup for the given program.
     fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()>;
-
-    /// Run a prove operation with the given executor.
     fn run_prove(
         &self,
         program: &GuestProgram,
@@ -138,25 +135,21 @@ pub trait Client: Send + Sync {
         executor: ExecutorKind,
         mode: ProofMode,
         opts: ProofOpts,
+        cancel: Option<&CancellationToken>,
     ) -> Result<Proof>;
-
-    /// Run an execute operation (dry-run, no proof) with the given executor.
     fn run_execute(
         &self,
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
+        cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult>;
-
-    /// Reduce a full STARK proof to a compressed form.
     fn run_reduce(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues>;
-
-    /// Wrap a full STARK proof into a PLONK/SNARK proof.
     fn run_plonk(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
