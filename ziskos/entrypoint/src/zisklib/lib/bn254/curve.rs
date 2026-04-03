@@ -17,14 +17,14 @@ use super::{
 };
 
 /// G1 add result codes
-const G1_ADD_SUCCESS: u8 = 0;
-const G1_ADD_SUCCESS_INFINITY: u8 = 1;
+pub(crate) const G1_ADD_SUCCESS: u8 = 0;
+pub(crate) const G1_ADD_SUCCESS_INFINITY: u8 = 1;
 const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 mul result codes
-const G1_MUL_SUCCESS: u8 = 0;
-const G1_MUL_SUCCESS_INFINITY: u8 = 1;
+pub(crate) const G1_MUL_SUCCESS: u8 = 0;
+pub(crate) const G1_MUL_SUCCESS_INFINITY: u8 = 1;
 const G1_MUL_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_MUL_ERR_NOT_ON_CURVE: u8 = 3;
 
@@ -370,9 +370,8 @@ pub fn mul_complete_bn254(
 /// - 0 if the operation succeeded
 /// - 1 if p1 is invalid (not on curve or invalid field element)
 /// - 2 if p2 is invalid (not on curve or invalid field element)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bn254_g1_add_c")]
-pub unsafe extern "C" fn bn254_g1_add_c(
+#[inline]
+pub(crate) unsafe fn bn254_g1_add_c(
     p1: *const u8,
     p2: *const u8,
     ret: *mut u8,
@@ -416,9 +415,8 @@ pub unsafe extern "C" fn bn254_g1_add_c(
 /// # Returns
 /// - 0 if the operation succeeded
 /// - 1 if point is invalid (not on curve or invalid field element)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bn254_g1_mul_c")]
-pub unsafe extern "C" fn bn254_g1_mul_c(
+#[inline]
+pub(crate) unsafe fn bn254_g1_mul_c(
     point: *const u8,
     scalar: *const u8,
     ret: *mut u8,

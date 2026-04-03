@@ -11,9 +11,10 @@ use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, ProofmanResult, SetupCtx};
 use sm_rom::RomInstance;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
 use zisk_core::ZiskRom;
+use zisk_pil::RomTrace;
 
 /// Type alias for the secondary instances map (owned).
 type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
@@ -67,6 +68,8 @@ pub struct WitnessOrchestrator<F: PrimeField64> {
 
     /// Witness computer for all instance types.
     witness_generator: WitnessGenerator,
+
+    trace_buffer_rom: Mutex<Vec<F>>,
 }
 
 impl<F: PrimeField64> WitnessOrchestrator<F> {
@@ -78,16 +81,20 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
     pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
+        let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
+        Self { collector, witness_generator, trace_buffer_rom }
+    }
 
-        Self { collector, witness_generator }
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+        self.collector.set_rh_data(rh_data);
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
         self.collector.set_rom(zisk_rom.clone());
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.collector.set_rh_data(rh_data);
+    pub fn reset(&self) {
+        *self.trace_buffer_rom.lock().unwrap() = vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
     }
 
     /// Computes witness for a single global ID.
@@ -204,6 +211,11 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         let collectors =
             Self::take_collectors_for_instance(state, global_id, instance.instance_type());
 
+        let trace_buffer = match AirClassifier::is_rom(air_id) {
+            true => std::mem::take(&mut *self.trace_buffer_rom.lock().unwrap()),
+            false => buffer_pool.take_buffer(),
+        };
+
         self.witness_generator.compute_secn_witness(
             pctx,
             sctx,
@@ -211,7 +223,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
             global_id,
             instance,
             collectors,
-            buffer_pool.take_buffer(),
+            trace_buffer,
             stats_scope.id(),
         )
     }

@@ -13,9 +13,8 @@ use ziskos_hints::handlers::bn254::{
 use ziskos_hints::handlers::keccak256::keccak256_hint;
 use ziskos_hints::handlers::kzg::verify_kzg_proof_hint;
 use ziskos_hints::handlers::modexp::modexp_hint;
-use ziskos_hints::handlers::secp256k1::{
-    secp256k1_ecdsa_address_recover, secp256k1_ecdsa_verify_address_recover,
-};
+use ziskos_hints::handlers::ripemd160::ripemd160_hint;
+use ziskos_hints::handlers::secp256k1::{secp256k1_ecdsa_verify_hint, secp256k1_ecrecover_hint};
 use ziskos_hints::handlers::secp256r1::secp256r1_ecdsa_verify_hint;
 use ziskos_hints::handlers::sha256::sha256_hint;
 
@@ -83,10 +82,8 @@ impl HintHandlers {
             BuiltInHint::Bn254PairingCheck => bn254_pairing_check_hint(&data),
 
             // Secp256k1 Hints
-            BuiltInHint::Secp256k1EcdsaAddressRecover => secp256k1_ecdsa_address_recover(&data),
-            BuiltInHint::Secp256k1EcdsaVerifyAddressRecover => {
-                secp256k1_ecdsa_verify_address_recover(&data)
-            }
+            BuiltInHint::Secp256k1Ecrecover => secp256k1_ecrecover_hint(&data),
+            BuiltInHint::Secp256k1EcdsaVerify => secp256k1_ecdsa_verify_hint(&data),
 
             // Secp256r1 Hints
             BuiltInHint::Secp256r1EcdsaVerify => secp256r1_ecdsa_verify_hint(&data),
@@ -111,6 +108,9 @@ impl HintHandlers {
 
             // Blake2b Hint Codes
             BuiltInHint::Blake2bCompress => blake2b_compress_hint(&data),
+
+            // RIPEMD-160 Hint Codes
+            BuiltInHint::Ripemd160 => ripemd160_hint(&data, data_len_bytes),
 
             // Input Hint Codes
             BuiltInHint::Input => unreachable!(

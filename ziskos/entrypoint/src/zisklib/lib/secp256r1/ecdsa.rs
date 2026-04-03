@@ -108,9 +108,8 @@ pub fn secp256r1_ecdsa_verify(
 /// - `pk_ptr` must point to 8 u64s
 ///
 /// Returns true if signature is valid
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_secp256r1_ecdsa_verify_c")]
-pub unsafe extern "C" fn secp256r1_ecdsa_verify_c(
+#[inline]
+pub(crate) unsafe fn secp256r1_ecdsa_verify_c(
     msg: *const u8,
     sig: *const u8,
     pk: *const u8,

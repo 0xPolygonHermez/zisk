@@ -239,7 +239,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
     ) -> Result<()> {
         match result {
-            ComputationResult::Challenge { job_id, success, result, task_received_time } => {
+            ComputationResult::Execution { job_id, success, result, task_received_time } => {
+                self.send_execution(job_id, success, result, message_sender, task_received_time)
+                    .await
+            }
+            ComputationResult::Contribution { job_id, success, result, task_received_time } => {
                 self.send_partial_contribution(
                     job_id,
                     success,
@@ -252,7 +256,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
             }
-            ComputationResult::AggProof { job_id, success, result, executed_steps, reduced } => {
+            ComputationResult::AggProof {
+                job_id,
+                success,
+                result,
+                executed_steps,
+                reduced,
+                instances,
+            } => {
                 self.send_aggregation(
                     job_id,
                     success,
@@ -260,6 +271,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     message_sender,
                     executed_steps,
                     reduced,
+                    instances,
                 )
                 .await
             }
@@ -270,7 +282,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<()> {
@@ -293,7 +305,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![]), e.to_string())
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![], 0), e.to_string())
             }
         };
 
@@ -312,6 +324,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             publics: result_data.0.publics,
             proof_values: result_data.0.proof_values,
             summary_info: result_data.0.summary_info,
+            total_instances: result_data.3,
         };
 
         let zisk_execution_time = ZiskExecuteTime {
@@ -326,17 +339,88 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
         };
 
+        let task_type = TaskType::PartialContribution as i32;
+        let result_data_msg = Some(ResultData::Challenges(ChallengesList {
+            challenges,
+            witness_info: Some(witness_info),
+            zisk_execution_time: Some(zisk_execution_time),
+        }));
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
                 job_id: job_id.as_string(),
-                task_type: TaskType::PartialContribution as i32,
+                task_type,
                 success,
-                result_data: Some(ResultData::Challenges(ChallengesList {
-                    challenges,
-                    witness_info: Some(witness_info),
-                    zisk_execution_time: Some(zisk_execution_time),
-                })),
+                result_data: result_data_msg,
+                error_message,
+            })),
+        };
+
+        message_sender.send(message)?;
+
+        Ok(())
+    }
+
+    async fn send_execution(
+        &mut self,
+        job_id: JobId,
+        success: bool,
+        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<()> {
+        if let Some(handle) = self.worker.take_current_computation() {
+            handle.await?;
+        }
+
+        let (result_data, error_message) = match result {
+            Ok(data) => {
+                if !success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported failure but returned Ok result"
+                    ));
+                }
+                (data, String::new())
+            }
+            Err(e) => {
+                if success {
+                    return Err(anyhow!(
+                        "Inconsistent state: operation reported success but returned Err result"
+                    ));
+                }
+                ((WitnessInfo::default(), ZiskExecutorTime::default(), 0, 0), e.to_string())
+            }
+        };
+
+        let (_, zisk_exec_time, instances, executed_steps) = result_data;
+
+        let zisk_execution_time = ZiskExecuteTime {
+            total_duration: zisk_exec_time.total_duration.as_millis() as f32,
+            execution_duration: zisk_exec_time.execution_duration.as_millis() as f32,
+            count_and_plan_duration: zisk_exec_time.count_and_plan_duration.as_millis() as f32,
+            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration.as_millis()
+                as f32,
+            asm_execution_duration: zisk_exec_time
+                .asm_execution_duration
+                .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
+            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+        };
+
+        let task_type = TaskType::Execution as i32;
+        let result_data_msg = Some(ResultData::Execution(Execution {
+            instances,
+            executed_steps,
+            zisk_execution_time: Some(zisk_execution_time),
+        }));
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id: job_id.as_string(),
+                task_type,
+                success,
+                result_data: result_data_msg,
                 error_message,
             })),
         };
@@ -404,6 +488,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
         reduced: bool,
+        instances: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
             handle.await?;
@@ -431,12 +516,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         values: final_proof.into_iter().flatten().collect(),
                         executed_steps,
                         verkey,
+                        instances,
                     }))
                 } else {
                     Some(ResultData::FinalProof(FinalProof {
                         values: vec![],
                         executed_steps,
                         verkey: vec![],
+                        instances,
                     }))
                 }
             }
@@ -449,6 +536,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     values: vec![],
                     executed_steps,
                     verkey: vec![],
+                    instances,
                 }))
             }
         };
@@ -514,6 +602,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
             coordinator_message::Payload::ExecuteTask(request) => {
                 match TaskType::try_from(request.task_type) {
+                    Ok(TaskType::Execution) => {
+                        self.execute_only(request, computation_tx).await?;
+                    }
                     Ok(TaskType::PartialContribution) => {
                         self.partial_contribution(request, computation_tx).await?;
                     }
@@ -627,6 +718,77 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Start computation in background task
         self.worker.set_current_computation(
             self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
+        );
+
+        Ok(())
+    }
+
+    pub async fn execute_only(
+        &mut self,
+        request: ExecuteTaskRequest,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+    ) -> Result<()> {
+        let task_received_time = chrono::Utc::now();
+        info!("Starting Execution-only for {}", request.job_id);
+
+        // Cancel any existing computation
+        self.worker.cancel_current_computation();
+
+        // Extract the ExecutionParams (reuses ContributionParams structure)
+        let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
+            return Err(anyhow!("Expected ExecutionParams for Execution-only task"));
+        };
+
+        let job_id = JobId::from(request.job_id);
+        let input_source = match params.input_source {
+            Some(InputSource::InputPath(ref inputs_uris)) => {
+                // Validate and get the full path
+                let inputs_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(&inputs_uris),
+                )
+                .await?;
+
+                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
+            }
+            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
+            None => InputSourceDto::InputNull,
+        };
+
+        let hints_source = if let Some(hints_path) = &params.hints_path {
+            if params.hints_stream {
+                // Hints will be streamed - use placeholder, will be updated when stream completes
+                HintsSourceDto::HintsStream(hints_path.clone())
+            } else {
+                // Validate and get the full path
+                let hints_uri = Self::validate_subdir(
+                    &self.worker_config.worker.inputs_folder,
+                    &PathBuf::from(hints_path),
+                )
+                .await?;
+
+                HintsSourceDto::HintsPath(hints_uri.to_string_lossy().to_string())
+            }
+        } else {
+            HintsSourceDto::HintsNull
+        };
+
+        let data_ctx =
+            DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
+
+        let job = self.worker.new_job(
+            job_id.clone(),
+            data_ctx,
+            params.rank_id,
+            params.total_workers,
+            params.worker_allocation,
+            params.job_compute_units,
+            Some(task_received_time),
+        );
+
+        // Start execution-only computation in background task
+        self.worker.set_current_computation(
+            self.worker.handle_execution_only(job.clone(), computation_tx.clone()).await?,
         );
 
         Ok(())

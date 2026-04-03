@@ -10,7 +10,7 @@ use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Debug, Display},
     ops::Range,
 };
@@ -260,6 +260,9 @@ pub struct Job {
     pub final_proof: Option<Vec<u64>>,
     pub final_verkey: Option<Vec<u8>>,
     pub executed_steps: Option<u64>,
+    pub instances: Option<u64>,
+    pub metadata: BTreeMap<String, String>,
+    pub execution_only: bool,
 }
 
 impl Job {
@@ -273,6 +276,8 @@ impl Job {
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
+        metadata: BTreeMap<String, String>,
+        execution_only: bool,
     ) -> Self {
         Self {
             job_id: JobId::new(),
@@ -296,6 +301,9 @@ impl Job {
             final_proof: None,
             final_verkey: None,
             executed_steps: None,
+            instances: None,
+            metadata,
+            execution_only,
         }
     }
 
@@ -399,10 +407,20 @@ pub struct ContributionsResult {
     pub witness_info: WitnessInfo,
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub instances: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecutionResult {
+    pub instances: u64,
+    pub executed_steps: u64,
+    pub zisk_executor_time: ZiskExecutorTime,
+    pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum JobResultData {
+    Execution(ExecutionResult),
     Challenges(ContributionsResult),
     AggProofs(Vec<AggProofData>),
 }
@@ -424,6 +442,7 @@ pub struct DataCtx {
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum JobPhase {
+    Execution,
     Contributions,
     Prove,
     Aggregate,
@@ -436,11 +455,12 @@ impl TryFrom<u8> for JobPhase {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(JobPhase::Contributions),
-            1 => Ok(JobPhase::Prove),
-            2 => Ok(JobPhase::Aggregate),
-            3 => Ok(JobPhase::ContributionsInputsStream),
-            4 => Ok(JobPhase::ContributionsHintsStream),
+            0 => Ok(JobPhase::Execution),
+            1 => Ok(JobPhase::Contributions),
+            2 => Ok(JobPhase::Prove),
+            3 => Ok(JobPhase::Aggregate),
+            4 => Ok(JobPhase::ContributionsInputsStream),
+            5 => Ok(JobPhase::ContributionsHintsStream),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
         }
     }
@@ -449,6 +469,7 @@ impl TryFrom<u8> for JobPhase {
 impl fmt::Display for JobPhase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            JobPhase::Execution => write!(f, "Execution"),
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
             JobPhase::Aggregate => write!(f, "Aggregate"),

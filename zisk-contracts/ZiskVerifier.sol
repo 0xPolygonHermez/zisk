@@ -8,42 +8,42 @@ import {PlonkVerifier} from "./PlonkVerifier.sol";
 /// @author SilentSig
 /// @notice This contracts implements a solidity verifier for Zisk.
 contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
-    /// @notice Thrown when the verifier selector from this proof does not match the one in this
-    /// verifier. This indicates that this proof was sent to the wrong verifier.
-
-    /// @notice Thrown when the proof is invalid.
     error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v0.16.1";
+        return "v0.17.0";
     }
 
-    function getRootCVadcopFinal() external pure returns (uint64[4] memory) {
-        return [uint64(9211010158316595036), uint64(7055235338110277438), uint64(2391371252028311145), uint64(10691781997660262077)];
+    /// @notice Root constant as bytes32 (pre-packed to match the original uint64[4] layout)
+    function getRootCVadcopFinal() external pure returns (bytes32) {
+        return bytes32(
+            abi.encodePacked(
+                uint64(11766295392914223603),
+                uint64(9891544556924317672),
+                uint64(11057384261039105715),
+                uint64(18086400189378942219)
+            )
+        );
     }
 
-    // Modulus zkSNARK
     uint256 internal constant _RFIELD =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
-    /// @notice Hashes the public values to a field elements inside Bn254.
-    /// @param publicValues The public values.
+    /// @notice Hashes the public values into a field element inside BN254.
     function hashPublicValues(
-        uint64[4] calldata programVK,
-        uint64[4] calldata rootCVadcopFinal,
+        bytes32 programVK,
+        bytes32 rootCVadcopFinal,
         bytes calldata publicValues
     ) public pure returns (uint256) {
-            return uint256(sha256(abi.encodePacked(bytes8(programVK[0]), bytes8(programVK[1]), bytes8(programVK[2]), bytes8(programVK[3]), publicValues, bytes8(rootCVadcopFinal[0]), bytes8(rootCVadcopFinal[1]), bytes8(rootCVadcopFinal[2]), bytes8(rootCVadcopFinal[3])))) % _RFIELD;
+        return uint256(
+            sha256(abi.encodePacked(programVK, publicValues, rootCVadcopFinal))
+        ) % _RFIELD;
     }
 
     /// @notice Verifies a proof with given public values and vkey.
-    /// @param programVK The verification key for the RISC-V program.
-    /// @param rootCVadcopFinal The rootC value for the Vadcop final.
-    /// @param publicValues The public values encoded as bytes.
-    /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
-        uint64[4] calldata programVK,
-        uint64[4] calldata rootCVadcopFinal,
+        bytes32 programVK,
+        bytes32 rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external view {
@@ -51,10 +51,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
 
         uint256[24] memory proofDecoded = abi.decode(proofBytes, (uint256[24]));
 
-        bool success = this.verifyProof(
-            proofDecoded,
-            [publicValuesDigest]
-        );
+        bool success = this.verifyProof(proofDecoded, [publicValuesDigest]);
 
         if (!success) {
             revert InvalidProof();

@@ -18,14 +18,14 @@ use super::{
 };
 
 /// G1 add result codes
-const G1_ADD_SUCCESS: u8 = 0;
-const G1_ADD_SUCCESS_INFINITY: u8 = 1;
+pub(crate) const G1_ADD_SUCCESS: u8 = 0;
+pub(crate) const G1_ADD_SUCCESS_INFINITY: u8 = 1;
 const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 MSM result codes
-const G1_MSM_SUCCESS: u8 = 0;
-const G1_MSM_SUCCESS_INFINITY: u8 = 1;
+pub(crate) const G1_MSM_SUCCESS: u8 = 0;
+pub(crate) const G1_MSM_SUCCESS_INFINITY: u8 = 1;
 const G1_MSM_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_MSM_ERR_NOT_ON_CURVE: u8 = 3;
 const G1_MSM_ERR_NOT_IN_SUBGROUP: u8 = 4;
@@ -708,9 +708,8 @@ pub fn sigma_endomorphism_bls12_381(
 /// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
 /// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
 /// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g1_add_c")]
-pub unsafe extern "C" fn bls12_381_g1_add_c(
+#[inline]
+pub(crate) unsafe fn bls12_381_g1_add_c(
     ret: *mut u8,
     a: *const u8,
     b: *const u8,
@@ -759,9 +758,8 @@ pub unsafe extern "C" fn bls12_381_g1_add_c(
 /// - [G1_MSM_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
 /// - [G1_MSM_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
 /// - [G1_MSM_ERR_NOT_IN_SUBGROUP] = error (one of the input points is not in the subgroup)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g1_msm_c")]
-pub unsafe extern "C" fn bls12_381_g1_msm_c(
+#[inline]
+pub(crate) unsafe fn bls12_381_g1_msm_c(
     ret: *mut u8,
     pairs: *const u8,
     num_pairs: usize,

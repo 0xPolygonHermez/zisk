@@ -1030,9 +1030,8 @@ pub fn utf_endomorphism_twist_bls12_381(
 /// - [G2_ADD_SUCCESS_INFINITY] = success (point at infinity)
 /// - [G2_ADD_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
 /// - [G2_ADD_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g2_add_c")]
-pub unsafe extern "C" fn bls12_381_g2_add_c(
+#[inline]
+pub(crate) unsafe fn bls12_381_g2_add_c(
     ret: *mut u8,
     a: *const u8,
     b: *const u8,
@@ -1081,9 +1080,8 @@ pub unsafe extern "C" fn bls12_381_g2_add_c(
 /// - [G2_MSM_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
 /// - [G2_MSM_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
 /// - [G2_MSM_ERR_NOT_IN_SUBGROUP] = error (at least one point not in subgroup)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g2_msm_c")]
-pub unsafe extern "C" fn bls12_381_g2_msm_c(
+#[inline]
+pub(crate) unsafe fn bls12_381_g2_msm_c(
     ret: *mut u8,
     pairs: *const u8,
     num_pairs: usize,

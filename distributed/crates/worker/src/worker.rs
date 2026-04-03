@@ -28,10 +28,18 @@ use crate::config::ProverServiceConfigDto;
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
-    Challenge {
+    /// Execution-only task (no proof generation)
+    Execution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>)>,
+        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>, // (witness_info, exec_time, instances, executed_steps)
+        task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    },
+    /// Partial contribution with challenges
+    Contribution {
+        job_id: JobId,
+        success: bool,
+        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
@@ -45,12 +53,13 @@ pub enum ComputationResult {
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
         reduced: bool,
+        instances: u64,
     },
 }
 
 pub struct ProverConfig {
     /// GuestProgram
-    pub guest_program: GuestProgram,
+    pub guest_program: Arc<GuestProgram>,
 
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
@@ -118,7 +127,7 @@ impl ProverConfig {
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
 
-        let guest_program = GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?;
+        let guest_program = Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
 
         let mut gpu_params = None;
         if prover_service_config.preallocate
@@ -170,6 +179,7 @@ pub struct JobContext {
     pub total_compute_units: u32, // Total compute units for the whole job
     pub phase: JobPhase,
     pub executed_steps: u64,
+    pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub guest_program: Arc<GuestProgram>,
 }
@@ -206,7 +216,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program = Arc::new(prover_config.guest_program.clone());
+        let guest_program = prover_config.guest_program.clone();
         prover.setup(&guest_program).run()?;
 
         Ok(Worker::<Emu> {
@@ -243,7 +253,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .build()?,
         );
 
-        let guest_program = Arc::new(prover_config.guest_program.clone());
+        let guest_program = prover_config.guest_program.clone();
 
         if prover_config.hints {
             prover.setup(&guest_program).with_hints().run()?;
@@ -270,6 +280,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    pub fn get_executed_steps(&self) -> u64 {
+        self.prover.executed_steps()
     }
 
     pub fn state(&self) -> &WorkerState {
@@ -346,6 +360,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             guest_program: self.guest_program.clone(),
+            instances: 0,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -385,6 +400,43 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             };
 
             borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
+        };
+
+        self.prover.mpi_broadcast(&mut serialized)?;
+        Ok(())
+    }
+
+    pub async fn handle_execution_only(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> Result<JoinHandle<()>> {
+        self.execution_only_mpi_broadcast(&job).await?;
+        Ok(self.execution_only(job, tx))
+    }
+
+    pub async fn execution_only_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        let mut serialized = {
+            let job = job.lock().await;
+
+            let phase_inputs = ProvePhaseInputs::Contributions();
+
+            let options = self.get_proof_options(false);
+
+            let message = ContributionsMessage {
+                job_id: job.job_id.clone(),
+                phase_inputs,
+                options,
+                input_source: job.data_ctx.input_source.clone(),
+                hints_source: job.data_ctx.hints_source.clone(),
+                partition_info: PartitionInfo {
+                    total_compute_units: job.total_compute_units as usize,
+                    allocation: job.allocation.clone(),
+                    worker_idx: job.rank_id as usize,
+                },
+            };
+
+            borsh::to_vec(&(JobPhase::Execution, message)).unwrap()
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -467,6 +519,72 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 options,
             );
 
+            let (witness_info, zisk_execution_time) = prover
+                .get_execution_info()
+                .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
+
+            let instances = witness_info.total_instances as u64;
+
+            let mut guard = job.blocking_lock();
+            guard.instances = instances;
+            guard.executed_steps = prover.executed_steps();
+            let task_received_time = guard.task_received_time;
+            drop(guard);
+
+            match result {
+                Ok(data) => {
+                    let _ = tx.send(ComputationResult::Contribution {
+                        job_id,
+                        success: true,
+                        result: Ok((witness_info, zisk_execution_time, data, instances)),
+                        task_received_time,
+                    });
+                }
+                Err(error) => {
+                    error!("Contribution computation failed for {}: {}", job_id, error);
+                    let _ = tx.send(ComputationResult::Contribution {
+                        job_id,
+                        success: false,
+                        result: Err(error),
+                        task_received_time,
+                    });
+                }
+            }
+        })
+    }
+
+    pub fn execution_only(
+        &self,
+        job: Arc<Mutex<JobContext>>,
+        tx: mpsc::UnboundedSender<ComputationResult>,
+    ) -> JoinHandle<()> {
+        let prover = self.prover.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let guard = job.blocking_lock();
+            let job_id = guard.job_id.clone();
+
+            info!("Computing Execution (execution-only) for {job_id}");
+
+            let inputs_source = guard.data_ctx.input_source.clone();
+            let hints_source = guard.data_ctx.hints_source.clone();
+            let partition_info = PartitionInfo {
+                total_compute_units: guard.total_compute_units as usize,
+                allocation: guard.allocation.clone(),
+                worker_idx: guard.rank_id as usize,
+            };
+            let guest_program = guard.guest_program.clone();
+            drop(guard);
+
+            // Execute the program (same as contribution) but without generating challenges
+            let result = Self::execute_execution_task(
+                &prover,
+                inputs_source,
+                hints_source,
+                partition_info,
+                &guest_program,
+            );
+
             let mut guard = job.blocking_lock();
             guard.executed_steps = prover.executed_steps();
             let task_received_time = guard.task_received_time;
@@ -477,17 +595,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             match result {
-                Ok(data) => {
-                    let _ = tx.send(ComputationResult::Challenge {
+                Ok(num_instances) => {
+                    let instances = num_instances as u64;
+                    let executed_steps = prover.executed_steps();
+                    guard = job.blocking_lock();
+                    guard.instances = instances;
+                    drop(guard);
+
+                    let _ = tx.send(ComputationResult::Execution {
                         job_id,
                         success: true,
-                        result: Ok((witness_info, zisk_execution_time, data)),
+                        result: Ok((witness_info, zisk_execution_time, instances, executed_steps)),
                         task_received_time,
                     });
                 }
                 Err(error) => {
-                    error!("Contribution computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Challenge {
+                    error!("Execution-only computation failed for {}: {}", job_id, error);
+                    let _ = tx.send(ComputationResult::Execution {
                         job_id,
                         success: false,
                         result: Err(error),
@@ -562,6 +686,52 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         };
 
         Ok(challenge)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_execution_task(
+        prover: &ZiskProver<T>,
+        input_source: InputSourceDto,
+        hints_source: HintsSourceDto,
+        partition_info: PartitionInfo,
+        guest_program: &GuestProgram,
+    ) -> Result<usize> {
+        let stdin = match input_source {
+            InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            InputSourceDto::InputNull => ZiskStdin::null(),
+        };
+
+        match hints_source {
+            HintsSourceDto::HintsPath(hints_uri) => {
+                let hints_stream = StreamSource::from_uri(hints_uri)?;
+                prover.register_hints_stream(hints_stream)?;
+            }
+            HintsSourceDto::HintsStream(_hints_uri) => {
+                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
+                // routed through the stream ordering actor into the hints processor.
+                // No need to set hints_stream on prover for this case
+            }
+            HintsSourceDto::HintsNull => {
+                // No hints to set
+            }
+        }
+
+        prover.set_stdin(stdin.clone())?;
+
+        prover.register_program(&guest_program.program_id)?;
+
+        prover.set_partition(
+            partition_info.total_compute_units,
+            partition_info.allocation.clone(),
+            partition_info.worker_idx,
+        )?;
+
+        let result = prover.execute(guest_program, stdin)?;
+
+        let num_instances = result.planning_info.num_instances;
+
+        Ok(num_instances)
     }
 
     /// Routes an incoming `StreamData` message to the per-job ordering actor.
@@ -701,6 +871,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let job_guard = job.blocking_lock();
             let job_id = job_guard.job_id.clone();
             let executed_steps = job_guard.executed_steps;
+            let instances = job_guard.instances;
 
             let _ = tx.send(ComputationResult::AggProof {
                 job_id,
@@ -708,15 +879,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 result: Err(error),
                 executed_steps,
                 reduced: agg_params.reduced,
+                instances,
             });
 
             return tokio::spawn(async {});
         }
 
         tokio::task::spawn_blocking(move || {
-            let (job_id, executed_steps) = {
+            let (job_id, executed_steps, instances) = {
                 let guard = job.blocking_lock();
-                (guard.job_id.clone(), guard.executed_steps)
+                (guard.job_id.clone(), guard.executed_steps, guard.instances)
             };
 
             info!("Starting aggregation step for {job_id}");
@@ -749,6 +921,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         result: Ok(Some(proof)),
                         executed_steps,
                         reduced: agg_params.reduced,
+                        instances,
                     });
                 }
                 Err(error) => {
@@ -759,6 +932,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         result: Err(error),
                         executed_steps,
                         reduced: agg_params.reduced,
+                        instances,
                     });
                 }
             }
@@ -793,6 +967,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let prover = self.prover.clone();
         let program_id = self.guest_program.program_id.clone();
+        let guest_program = self.guest_program.clone();
         let options = self.get_proof_options(false);
 
         if phase == JobPhase::ContributionsHintsStream {
@@ -801,6 +976,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover.submit_input(&bytes)?;
         } else {
             tokio::task::spawn_blocking(move || match phase {
+                JobPhase::Execution => {
+                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+
+                    let result = Self::execute_execution_task(
+                        &prover,
+                        message.input_source,
+                        message.hints_source,
+                        message.partition_info,
+                        &guest_program,
+                    );
+                    if let Err(e) = result {
+                        tracing::error!(
+                                "Error during Execution MPI broadcast execution: {}. Waiting for new job...",
+                                e
+                            );
+                    }
+                }
                 JobPhase::Contributions => {
                     let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
 

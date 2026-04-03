@@ -115,9 +115,8 @@ fn compress_block(
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_sha256_c")]
-pub unsafe extern "C" fn sha256_c(
+#[inline]
+pub(crate) unsafe fn sha256_c(
     input: *const u8,
     input_len: usize,
     output: *mut u8,

@@ -443,9 +443,9 @@ extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
     // uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     // for (int i=0; i<32; i++)
     // {
-    //     printf("r%d=%08lx ", i, pRegs[i]);
+    //     asm_raw_printf("r%d=%08lx ", i, pRegs[i]);
     // }
-    // printf("\n");
+    // asm_raw_printf("\n");
     // fflush(stdout);
     print_abcflag_counter++;
     return 0;
@@ -457,7 +457,7 @@ extern int _print_char(uint64_t param)
 {
     printed_chars_counter++;
     char c = param;
-    printf("%c", c);
+    asm_raw_printf("%c", c);
     return 0;
 }
 
@@ -518,9 +518,9 @@ extern int _opcode_keccak(uint64_t address)
         asm_printf("opcode_keccak() calling zisk_keccakf1600() address=%08lx\n", address);
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
+            asm_raw_printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 #endif
@@ -549,9 +549,9 @@ extern int _opcode_keccak(uint64_t address)
         asm_printf("opcode_keccak() called zisk_keccakf1600()\n");
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
+            asm_raw_printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1183,12 +1183,12 @@ extern int _opcode_fcall(struct FcallContext * ctx)
     if (emu_verbose)
     {
         asm_printf("_opcode_fcall() calling Fcall() with params_size=%lu\n", ctx->params_size);
-        printf("params=");
+        asm_raw_printf("params=");
         for (uint64_t i=0; i<ctx->params_size; i++)
         {
-            printf("%lx ", ctx->params[i]);
+            asm_raw_printf("%lx ", ctx->params[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
     int iresult;
@@ -1222,12 +1222,12 @@ extern int _opcode_fcall(struct FcallContext * ctx)
     if (emu_verbose)
     {
         asm_printf("_opcode_fcall() called Fcall() and got result_size=%lu\n", ctx->result_size);
-        printf("results=");
+        asm_raw_printf("results=");
         for (uint64_t i=0; i<ctx->result_size; i++)
         {
-            printf("%lx ", ctx->result[i]);
+            asm_raw_printf("%lx ", ctx->result[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 

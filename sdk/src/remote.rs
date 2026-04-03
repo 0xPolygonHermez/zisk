@@ -2,9 +2,9 @@
 //!
 //! Connects to a remote coordinator to offload proving work to a distributed network.
 
-use std::time::Duration;
-
 use anyhow::{Context, Result};
+use std::collections::HashMap;
+use std::time::Duration;
 use tonic::transport::Channel;
 use zisk_common::{ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_distributed_grpc_api::{
@@ -163,6 +163,8 @@ impl Client for RemoteClient {
                     hints_mode,
                     hints_uri: None,
                     simulated_node: None,
+                    metadata: HashMap::new(),
+                    execution_only: false,
                 })
                 .await
                 .context("Failed to launch proof job")?;

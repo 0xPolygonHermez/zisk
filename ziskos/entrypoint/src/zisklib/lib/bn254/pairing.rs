@@ -11,8 +11,8 @@ use super::{
 };
 
 /// Pairing check result codes
-const PAIRING_CHECK_SUCCESS: u8 = 0;
-const PAIRING_CHECK_FAILED: u8 = 1;
+pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
+pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
 const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
 const PAIRING_CHECK_ERR_G2_NOT_IN_FIELD: u8 = 4;
@@ -246,9 +246,8 @@ pub fn pairing_check_bn254(
 /// - 4 = G2 field element invalid
 /// - 5 = G2 point not on curve
 /// - 6 = G2 point not in subgroup
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bn254_pairing_check_c")]
-pub unsafe extern "C" fn bn254_pairing_check_c(
+#[inline]
+pub(crate) unsafe fn bn254_pairing_check_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

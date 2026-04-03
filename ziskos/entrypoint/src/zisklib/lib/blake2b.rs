@@ -67,9 +67,8 @@ fn blake2b_round(
 /// - `state` must point to a writable buffer of at least 8 `u64`s
 /// - `message` must point to at least 16 `u64`s
 /// - `offset` must point to at least 2 `u64`s
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_blake2b_compress_c")]
-pub unsafe extern "C" fn blake2b_compress_c(
+#[inline]
+pub(crate) unsafe fn blake2b_compress_c(
     rounds: u32,
     state: *mut u64,
     message: *const u64,

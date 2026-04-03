@@ -102,9 +102,8 @@ fn xor_block_into_state(state: &mut [u64; 25], block: &[u8]) {
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_keccak256_c")]
-pub unsafe extern "C" fn keccak256_c(
+#[inline]
+pub(crate) unsafe fn keccak256_c(
     input: *const u8,
     input_len: usize,
     output: *mut u8,

@@ -18,22 +18,6 @@
 #include "log.hpp"
 
 /**************/
-/* TRACE SIZE */
-/**************/
-
-void set_trace_size (uint64_t new_trace_size)
-{
-    // Update trace global variables
-    // asm_printf("%s trace resize (trace_resize_request: %ld):  %ld MB => %ld MB\n", log_name, trace_resize_request, trace_size >> 20, new_trace_size >> 20);
-    
-    // trace_resize_request = 0;
-
-    trace_size = new_trace_size;
-    trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
-    pOutputTrace[2] = trace_size;    
-}
-
-/**************/
 /* PRINT REGS */
 /**************/
 
@@ -80,43 +64,43 @@ extern uint64_t reg_34;
 extern int _print_regs()
 {
 #ifdef PRINT_REGS
-    printf("print_regs()\n");
-    printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
-    printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
-    printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
-    printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
-    printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
-    printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
-    printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
-    printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
-    printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
-    printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
-    printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
-    printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
-    printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
-    printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
-    printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
-    printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
-    printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
-    printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
-    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
-    printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
-    printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
-    printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
-    printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
-    printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
-    printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
-    printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
-    printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
-    printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
-    printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
-    printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
-    printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
-    printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
-    printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
-    printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
-    printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
-    printf("\n");
+    asm_raw_printf("print_regs()\n");
+    asm_raw_printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
+    asm_raw_printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
+    asm_raw_printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
+    asm_raw_printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
+    asm_raw_printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
+    asm_raw_printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
+    asm_raw_printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
+    asm_raw_printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
+    asm_raw_printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
+    asm_raw_printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
+    asm_raw_printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
+    asm_raw_printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
+    asm_raw_printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
+    asm_raw_printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
+    asm_raw_printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
+    asm_raw_printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
+    asm_raw_printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
+    asm_raw_printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
+    asm_raw_printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
+    asm_raw_printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
+    asm_raw_printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
+    asm_raw_printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
+    asm_raw_printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
+    asm_raw_printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
+    asm_raw_printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
+    asm_raw_printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
+    asm_raw_printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
+    asm_raw_printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
+    asm_raw_printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
+    asm_raw_printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
+    asm_raw_printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
+    asm_raw_printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
+    asm_raw_printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
+    asm_raw_printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
+    asm_raw_printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
+    asm_raw_printf("\n");
     fflush(stdout);
 #endif
     return 0;
@@ -134,8 +118,9 @@ struct timeval print_pc_tv;
 // Used for debugging purposes
 extern int _print_pc (uint64_t pc, uint64_t c)
 {
-#ifdef PRINT_PC_DURATION
     print_pc_counter++;
+
+#ifdef PRINT_PC_DURATION
     {
         struct timeval tv;
         gettimeofday(&tv, NULL);
@@ -155,43 +140,42 @@ extern int _print_pc (uint64_t pc, uint64_t c)
 //#define PRINT_PC_REGS
 #ifdef PRINT_PC_REGS
     /* Used for debugging */
-    printf(" r0=%lx", reg_0);
-    printf(" r1=%lx", reg_1);
-    printf(" r2=%lx", reg_2);
-    printf(" r3=%lx", reg_3);
-    printf(" r4=%lx", reg_4);
-    printf(" r5=%lx", reg_5);
-    printf(" r6=%lx", reg_6);
-    printf(" r7=%lx", reg_7);
-    printf(" r8=%lx", reg_8);
-    printf(" r9=%lx", reg_9);
-    printf(" r10=%lx", reg_10);
-    printf(" r11=%lx", reg_11);
-    printf(" r12=%lx", reg_12);
-    printf(" r13=%lx", reg_13);
-    printf(" r14=%lx", reg_14);
-    printf(" r15=%lx", reg_15);
-    printf(" r16=%lx", reg_16);
-    printf(" r17=%lx", reg_17);
-    printf(" r18=%lx", reg_18);
-    printf(" r19=%lx", reg_19);
-    printf(" r20=%lx", reg_20);
-    printf(" r21=%lx", reg_21);
-    printf(" r22=%lx", reg_22);
-    printf(" r23=%lx", reg_23);
-    printf(" r24=%lx", reg_24);
-    printf(" r25=%lx", reg_25);
-    printf(" r26=%lx", reg_26);
-    printf(" r27=%lx", reg_27);
-    printf(" r28=%lx", reg_28);
-    printf(" r29=%lx", reg_29);
-    printf(" r30=%lx", reg_30);
-    printf(" r31=%lx", reg_31);
+    asm_raw_printf(" r0=%lx", reg_0);
+    asm_raw_printf(" r1=%lx", reg_1);
+    asm_raw_printf(" r2=%lx", reg_2);
+    asm_raw_printf(" r3=%lx", reg_3);
+    asm_raw_printf(" r4=%lx", reg_4);
+    asm_raw_printf(" r5=%lx", reg_5);
+    asm_raw_printf(" r6=%lx", reg_6);
+    asm_raw_printf(" r7=%lx", reg_7);
+    asm_raw_printf(" r8=%lx", reg_8);
+    asm_raw_printf(" r9=%lx", reg_9);
+    asm_raw_printf(" r10=%lx", reg_10);
+    asm_raw_printf(" r11=%lx", reg_11);
+    asm_raw_printf(" r12=%lx", reg_12);
+    asm_raw_printf(" r13=%lx", reg_13);
+    asm_raw_printf(" r14=%lx", reg_14);
+    asm_raw_printf(" r15=%lx", reg_15);
+    asm_raw_printf(" r16=%lx", reg_16);
+    asm_raw_printf(" r17=%lx", reg_17);
+    asm_raw_printf(" r18=%lx", reg_18);
+    asm_raw_printf(" r19=%lx", reg_19);
+    asm_raw_printf(" r20=%lx", reg_20);
+    asm_raw_printf(" r21=%lx", reg_21);
+    asm_raw_printf(" r22=%lx", reg_22);
+    asm_raw_printf(" r23=%lx", reg_23);
+    asm_raw_printf(" r24=%lx", reg_24);
+    asm_raw_printf(" r25=%lx", reg_25);
+    asm_raw_printf(" r26=%lx", reg_26);
+    asm_raw_printf(" r27=%lx", reg_27);
+    asm_raw_printf(" r28=%lx", reg_28);
+    asm_raw_printf(" r29=%lx", reg_29);
+    asm_raw_printf(" r30=%lx", reg_30);
+    asm_raw_printf(" r31=%lx", reg_31);
+    asm_raw_printf("\n");
+    fflush(stdout);
 #endif
 
-    printf("\n");
-    fflush(stdout);
-    print_pc_counter++;
     return 0;
 }
 
@@ -264,9 +248,6 @@ extern void _realloc_trace (void)
 
     // Map next chunk of the trace shared memory
     trace_map_next_chunk();
-
-    // Update trace global variables
-    set_trace_size(trace_total_mapped_size);
 
 #ifdef DEBUG
     if (verbose) asm_printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu=%lx max_address=0x%lx trace_address_threshold=0x%lx chunk_size=%lu\n", realloc_counter, trace_address, trace_size, trace_size, trace_address + trace_size, trace_address_threshold, chunk_size);

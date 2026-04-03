@@ -17,8 +17,8 @@ use super::{
 };
 
 /// Pairing check result codes
-const PAIRING_CHECK_SUCCESS: u8 = 0;
-const PAIRING_CHECK_FAILED: u8 = 1;
+pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
+pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
 const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
 const PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP: u8 = 4;
@@ -252,9 +252,8 @@ pub fn pairing_check_bls12_381(
 /// - [PAIRING_CHECK_ERR_G2_NOT_IN_FIELD] = error (at least one G2 point coordinate not in field)
 /// - [PAIRING_CHECK_ERR_G2_NOT_ON_CURVE] = error (at least one G2 point not on curve)
 /// - [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = error (at least one G2 point not in subgroup)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_pairing_check_c")]
-pub unsafe extern "C" fn bls12_381_pairing_check_c(
+#[inline]
+pub(crate) unsafe fn bls12_381_pairing_check_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

@@ -23,9 +23,274 @@
 
 void * shmem_input_address = NULL;
 
-/**********/
-/* CLIENT */
-/**********/
+/*******/
+/* TCP */
+/*******/
+
+int socket_fd = -1;
+
+void client_tcp_connect ( void )
+{
+    // Create socket to connect to server
+    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd < 0)
+    {
+        asm_printf("ERROR: socket() failed socket_fd=%d errno=%d=%s\n", socket_fd, errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Configure server address
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    
+    int result = inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
+    if (result <= 0)
+    {
+        asm_printf("ERROR: inet_pton() failed.  Invalid address/Address not supported result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Connect to server
+    result = connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (result < 0)
+    {
+        asm_printf("ERROR: connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
+    }
+    if (verbose) asm_printf("connect()'d to port=%u\n", port);
+}
+
+void client_tcp_close ( void )
+{
+    // Close the socket
+    close(socket_fd);
+}
+
+void client_tcp_send ( const uint64_t * request )
+{
+    // Send data to server, handling partial writes and EINTR
+    const uint8_t *buffer = (const uint8_t *)request;
+    size_t bytes_to_send = 5 * sizeof(uint64_t);
+    while (bytes_to_send > 0)
+    {
+        ssize_t result = send(socket_fd, buffer, bytes_to_send, 0);
+        if (result < 0)
+        {
+            if (errno == EINTR)
+            {
+                // Interrupted by signal, retry send
+                continue;
+            }
+            asm_printf("ERROR: send() failed result=%zd errno=%d=%s\n", result, errno, strerror(errno));
+            exit(-1);
+        }
+        if (result == 0)
+        {
+            // Unexpected: send() returned 0 without sending data
+            asm_printf("ERROR: send() returned 0 bytes errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        buffer += (size_t)result;
+        bytes_to_send -= (size_t)result;
+    }
+}
+
+void client_tcp_recv ( uint64_t * response )
+{
+    // Read server response, handling partial reads and EINTR
+    uint8_t *buffer = (uint8_t *)response;
+    size_t bytes_remaining = 5 * sizeof(uint64_t);
+    while (bytes_remaining > 0)
+    {
+        ssize_t result = recv(socket_fd, buffer, bytes_remaining, 0);
+        if (result < 0)
+        {
+            if (errno == EINTR)
+            {
+                // Interrupted by signal, retry recv
+                continue;
+            }
+            asm_printf("ERROR: recv() failed result=%zd errno=%d=%s\n", result, errno, strerror(errno));
+            exit(-1);
+        }
+        if (result == 0)
+        {
+            // Peer closed connection unexpectedly
+            asm_printf("ERROR: recv() returned 0 bytes (peer closed connection) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        buffer += (size_t)result;
+        bytes_remaining -= (size_t)result;
+    }
+}
+
+/*********/
+/* STDIO */
+/*********/
+
+int server_stdin_fd = -1;
+int server_stdout_fd = -1;
+char server_stdin_name[256];
+char server_stdout_name[256];
+
+void client_stdio_connect ( void )
+{
+    // Set paths based on server PID or default to fifos if server PID is not provided
+    if (server_pid > 0)
+    {
+        // Construct paths to server's stdin and stdout based on server PID, e.g., /proc/12345/fd/0 and /proc/12345/fd/1
+        snprintf(server_stdin_name, sizeof(server_stdin_name), "/proc/%d/fd/0", server_pid);
+        snprintf(server_stdout_name, sizeof(server_stdout_name), "/proc/%d/fd/1", server_pid);
+    }
+    else
+    {
+        // Default to fifos with fixed names if server PID is not provided (e.g., for testing with a manually launched server)
+        // Precondition 1: These fifos must be created before launching the client, e.g., with "mkfifo /tmp/fifoinput /tmp/fifooutput"
+        // Precondition 2: The server must be launched with its stdout and stdin redirected to these fifos, e.g.
+        // emulator-asm/build/ziskemuasm -s --gen=1 -v -m --stdio --redirect-output-to-file < /tmp/fifoinput > /tmp/fifooutput &
+        // The server process will not exist until the client opens the fifos, so the client must be launched after the server in this state
+        // The server process will stop existing after the client closes the fifos, i.e. after client completion
+        sprintf(server_stdin_name, "/tmp/fifoinput");
+        sprintf(server_stdout_name, "/tmp/fifooutput");
+    }
+    
+    // Open server's stdin (we write to it)
+    server_stdin_fd = open(server_stdin_name, O_WRONLY);
+    if (server_stdin_fd < 0)
+    {
+        asm_printf("ERROR: Failed opening open(%s) errno=%d=%s\n", server_stdin_name, errno, strerror(errno));
+        exit(-1);
+    }
+    if (verbose) asm_printf("Opened %s for writing\n", server_stdin_name);
+
+    // Open server's stdout (we read from it)
+    server_stdout_fd = open(server_stdout_name, O_RDONLY);
+    if (server_stdout_fd < 0)
+    {
+        asm_printf("ERROR: Failed opening open(%s) errno=%d=%s\n", server_stdout_name, errno, strerror(errno));
+        exit(-1);
+    }
+    if (verbose) asm_printf("Opened %s for reading\n", server_stdout_name);
+}
+
+void client_stdio_close ( void )
+{
+    if (server_stdout_fd >= 0) close(server_stdout_fd);
+    if (server_stdin_fd >= 0) close(server_stdin_fd);
+}
+
+void client_stdio_send ( const uint64_t * request )
+{
+    size_t bytes_to_write = 5 * sizeof(uint64_t);
+    size_t total_written = 0;
+    while (total_written < bytes_to_write)
+    {
+        ssize_t bytes_written = write(server_stdin_fd,
+                                      ((const char *)request) + total_written,
+                                      bytes_to_write - total_written);
+        if (bytes_written < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;  // Interrupted, retry
+            }
+            asm_printf("ERROR: Failed calling write() bytes_written=%zd errno=%d=%s\n",
+                       bytes_written, errno, strerror(errno));
+            exit(-1);
+        }
+        if (bytes_written == 0)
+        {
+            asm_printf("ERROR: write() returned 0 bytes, unexpected EOF on %s\n", server_stdin_name);
+            exit(-1);
+        }
+        total_written += (size_t)bytes_written;
+    }
+    if (verbose) asm_printf("Wrote %zu bytes to %s\n", total_written, server_stdin_name);
+}
+
+void client_stdio_recv ( uint64_t * response )
+{
+    size_t bytes_to_read = 5 * sizeof(uint64_t);
+    ssize_t total_read = 0;
+    
+    while (total_read < bytes_to_read)
+    {
+        ssize_t bytes_read = read(server_stdout_fd, ((char*)response) + total_read, bytes_to_read - total_read);
+        if (bytes_read < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;  // Interrupted, retry
+            }
+            asm_printf("ERROR: Failed calling read() bytes_read=%zd errno=%d=%s\n", bytes_read, errno, strerror(errno));
+            exit(-1);
+        }
+        if (bytes_read == 0)
+        {
+            asm_printf("ERROR: Unexpected EOF while reading response\n");
+            exit(-1);
+        }
+        total_read += bytes_read;
+    }
+    if (verbose) asm_printf("Read %zd bytes from %s, total_read=%zd\n", total_read, server_stdout_name, total_read);
+}
+
+/******/
+/* IO */
+/******/
+
+void client_io_connect ( void )
+{
+    if (stdio)
+    {
+        client_stdio_connect();
+    }
+    else
+    {
+        client_tcp_connect();
+    }
+}
+
+void client_io_close ( void )
+{
+    if (stdio)
+    {
+        client_stdio_close();
+    }
+    else
+    {
+        client_tcp_close();
+    }
+}
+
+void client_io_send ( const uint64_t * request )
+{
+    if (stdio)
+    {
+        client_stdio_send(request);
+    }
+    else
+    {
+        client_tcp_send(request);
+    }
+}
+
+void client_io_recv ( uint64_t * response )
+{
+    if (stdio)
+    {
+        client_stdio_recv(response);
+    }
+    else
+    {
+        client_tcp_recv(response);
+    }
+}
+
+/*********/
+/* SETUP */
+/*********/
 
 void client_setup (void)
 {
@@ -484,6 +749,53 @@ void client_run (void)
 
     int result;
 
+    /*************************/
+    /* Connect to the server */
+    /*************************/
+    client_io_connect();
+
+    // Request and response, to be used to communicate with the server.
+    // The first 64 bits of the request is the type, and the rest are arguments.
+    // The response format depends on the request type.
+    uint64_t request[5];
+    uint64_t response[5];
+
+    /********/
+    /* Ping */
+    /********/
+
+    gettimeofday(&start_time, NULL);
+
+    // Prepare message to send
+    request[0] = TYPE_PING;
+    request[1] = 0;
+    request[2] = 0;
+    request[3] = 0;
+    request[4] = 0;
+
+    // Send data to server
+    client_io_send(request);
+
+    // Read server response
+    client_io_recv(response);
+    
+    if (response[0] != TYPE_PONG)
+    {
+        asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
+        exit(-1);
+    }
+    if (response[1] != gen_method)
+    {
+        asm_printf("ERROR: recv() returned unexpected gen_method=%lu\n", response[1]);
+        exit(-1);
+    }
+
+    gettimeofday(&stop_time, NULL);
+    duration = TimeDiff(start_time, stop_time);
+    asm_printf("client (PING): done in %lu us\n", duration);
+
+    client_setup();
+
     /************************/
     /* Read input file data */
     /************************/
@@ -589,92 +901,6 @@ void client_run (void)
         //client_write_precompile_results();
     }
 
-    /*************************/
-    /* Connect to the server */
-    /*************************/
-    
-    // Create socket to connect to server
-    int socket_fd;
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd < 0)
-    {
-        asm_printf("ERROR: socket() failed socket_fd=%d errno=%d=%s\n", socket_fd, errno, strerror(errno));
-        exit(-1);
-    }
-
-    // Configure server address
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    
-    result = inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
-    if (result <= 0)
-    {
-        asm_printf("ERROR: inet_pton() failed.  Invalid address/Address not supported result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-
-    // Connect to server
-    result = connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (result < 0)
-    {
-        asm_printf("ERROR: connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-    if (verbose) asm_printf("connect()'d to port=%u\n", port);
-
-    // Request and response
-    uint64_t request[5];
-    uint64_t response[5];
-
-    /********/
-    /* Ping */
-    /********/
-
-    gettimeofday(&start_time, NULL);
-
-    // Prepare message to send
-    request[0] = TYPE_PING;
-    request[1] = 0;
-    request[2] = 0;
-    request[3] = 0;
-    request[4] = 0;
-
-    // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-
-    // Read server response
-    ssize_t bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        exit(-1);
-    }
-    if (response[0] != TYPE_PONG)
-    {
-        asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-        exit(-1);
-    }
-    if (response[1] != gen_method)
-    {
-        asm_printf("ERROR: recv() returned unexpected gen_method=%lu\n", response[1]);
-        exit(-1);
-    }
-
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    asm_printf("client (PING): done in %lu us\n", duration);
-
     /*****************/
     /* Minimal trace */
     /*****************/
@@ -699,25 +925,11 @@ void client_run (void)
                 }
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+
                 if (response[0] != TYPE_MT_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -750,12 +962,7 @@ void client_run (void)
                 request[4] = 0;
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 if (precompile_results_enabled)
                 {
@@ -763,17 +970,8 @@ void client_run (void)
                 }
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+                
                 if (response[0] != TYPE_RH_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -806,12 +1004,7 @@ void client_run (void)
                 request[4] = 0;
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 if (precompile_results_enabled)
                 {
@@ -819,17 +1012,8 @@ void client_run (void)
                 }
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+                
                 if (response[0] != TYPE_MO_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -862,25 +1046,11 @@ void client_run (void)
                 request[4] = 0;
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+                
                 if (response[0] != TYPE_MA_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -915,25 +1085,11 @@ void client_run (void)
                     request[4] = 0;
 
                     // Send data to server
-                    result = send(socket_fd, request, sizeof(request), 0);
-                    if (result < 0)
-                    {
-                        asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        exit(-1);
-                    }
+                    client_io_send(request);
 
                     // Read server response
-                    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                    if (bytes_received < 0)
-                    {
-                        asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        exit(-1);
-                    }
-                    if (bytes_received != sizeof(response))
-                    {
-                        asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                        exit(-1);
-                    }
+                    client_io_recv(response);
+                    
                     if (response[0] != TYPE_CM_RESPONSE)
                     {
                         asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -979,25 +1135,11 @@ void client_run (void)
                         request[4] = 0;
     
                         // Send data to server
-                        result = send(socket_fd, request, sizeof(request), 0);
-                        if (result < 0)
-                        {
-                            asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            exit(-1);
-                        }
+                        client_io_send(request);
     
                         // Read server response
-                        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                        if (bytes_received < 0)
-                        {
-                            asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            exit(-1);
-                        }
-                        if (bytes_received != sizeof(response))
-                        {
-                            asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                            exit(-1);
-                        }
+                        client_io_recv(response);
+                        
                         if (response[0] != TYPE_CM_RESPONSE)
                         {
                             asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1030,25 +1172,11 @@ void client_run (void)
                 request[4] = 0;
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+                
                 if (response[0] != TYPE_FA_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1081,25 +1209,11 @@ void client_run (void)
                 request[4] = 0;
 
                 // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_send(request);
 
                 // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    exit(-1);
-                }
+                client_io_recv(response);
+                
                 if (response[0] != TYPE_MR_RESPONSE)
                 {
                     asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1134,25 +1248,11 @@ void client_run (void)
                     request[4] = 0;
 
                     // Send data to server
-                    result = send(socket_fd, request, sizeof(request), 0);
-                    if (result < 0)
-                    {
-                        asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        exit(-1);
-                    }
+                    client_io_send(request);
 
                     // Read server response
-                    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                    if (bytes_received < 0)
-                    {
-                        asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        exit(-1);
-                    }
-                    if (bytes_received != sizeof(response))
-                    {
-                        asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                        exit(-1);
-                    }
+                    client_io_recv(response);
+                    
                     if (response[0] != TYPE_CA_RESPONSE)
                     {
                         asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1198,25 +1298,11 @@ void client_run (void)
                         request[4] = 0;
     
                         // Send data to server
-                        result = send(socket_fd, request, sizeof(request), 0);
-                        if (result < 0)
-                        {
-                            asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            exit(-1);
-                        }
+                        client_io_send(request);
     
                         // Read server response
-                        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                        if (bytes_received < 0)
-                        {
-                            asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            exit(-1);
-                        }
-                        if (bytes_received != sizeof(response))
-                        {
-                            asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                            exit(-1);
-                        }
+                        client_io_recv(response);
+                        
                         if (response[0] != TYPE_CA_RESPONSE)
                         {
                             asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1262,25 +1348,11 @@ void client_run (void)
     request[4] = 0;
 
     // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        asm_printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
+    client_io_send(request);
 
     // Read server response
-    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        asm_printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        asm_printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        exit(-1);
-    }
+    client_io_recv(response);
+    
     if (response[0] != TYPE_SD_RESPONSE)
     {
         asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
@@ -1298,7 +1370,7 @@ void client_run (void)
     /***********/
 
     // Close the socket
-    close(socket_fd);
+    client_io_close();
 }
 
 void client_cleanup (void)

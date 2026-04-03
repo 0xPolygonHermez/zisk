@@ -1,3 +1,7 @@
+extern crate alloc;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::{
     syscalls::{
         syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
@@ -119,6 +123,29 @@ fn secp256k1_add_non_infinity_points(
     }
 }
 
+/// Adds two points on the secp256k1 curve. Assumes both are non-infinity.
+/// Returns None if the result is the point at infinity.
+pub fn secp256k1_point_add(
+    p1: &[u64; 8],
+    p2: &[u64; 8],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Option<[u64; 8]> {
+    let mut r =
+        SyscallPoint256 { x: [p1[0], p1[1], p1[2], p1[3]], y: [p1[4], p1[5], p1[6], p1[7]] };
+    let q = SyscallPoint256 { x: [p2[0], p2[1], p2[2], p2[3]], y: [p2[4], p2[5], p2[6], p2[7]] };
+    let is_inf = secp256k1_add_non_infinity_points(
+        &mut r,
+        &q,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    if is_inf {
+        None
+    } else {
+        Some([r.x[0], r.x[1], r.x[2], r.x[3], r.y[0], r.y[1], r.y[2], r.y[3]])
+    }
+}
+
 /// Given a non-infinity point `p` and a scalar `k`, computes the scalar multiplication `k·p`
 ///
 /// Note: There are no (non-infinity) points of order 2 in Secp256k1.
@@ -216,13 +243,36 @@ pub fn secp256k1_scalar_mul(
 }
 
 /// Given a point `p` and scalars `k1` and `k2`, computes the double scalar multiplication `k1·G + k2·p`
-/// It assumes that `k1,k2 ∈ [1, N-1]` and that `p != 𝒪`
+/// It assumes that `k1,k2 ∈ [0, N-1]` and that `p != 𝒪`
 pub fn secp256k1_double_scalar_mul_with_g(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
+    // Handle zero scalars
+    let k1_zero = eq(k1, &ZERO_256);
+    let k2_zero = eq(k2, &ZERO_256);
+    if k1_zero && k2_zero {
+        return None;
+    }
+    if k1_zero {
+        return secp256k1_scalar_mul(
+            k2,
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    }
+    if k2_zero {
+        return secp256k1_scalar_mul(
+            k1,
+            &G,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    }
+
     let p = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
 
     // Start by precomputing g + p
@@ -840,5 +890,189 @@ pub fn secp256k1_triple_scalar_mul_with_g(
         None
     } else {
         Some([res.x[0], res.x[1], res.x[2], res.x[3], res.y[0], res.y[1], res.y[2], res.y[3]])
+    }
+}
+
+/// Extracts a `w`-bit window from a 256-bit scalar at the given window index.
+/// Window 0 is the least significant.
+fn get_scalar_window(scalar: &[u64; 4], window_idx: usize, w: usize) -> u64 {
+    let bit_offset = window_idx * w;
+    let limb_idx = bit_offset / 64;
+    let bit_in_limb = bit_offset % 64;
+    let mask = (1u64 << w) - 1;
+
+    if limb_idx >= 4 {
+        return 0;
+    }
+
+    let mut val = (scalar[limb_idx] >> bit_in_limb) & mask;
+
+    if bit_in_limb + w > 64 && limb_idx + 1 < 4 {
+        let remaining_bits = bit_in_limb + w - 64;
+        val |= (scalar[limb_idx + 1] & ((1u64 << remaining_bits) - 1)) << (64 - bit_in_limb);
+    }
+
+    val
+}
+
+/// Chooses the Pippenger window size that minimizes total group operations for `n` points.
+fn optimal_window_size(n: usize) -> usize {
+    if n <= 1 {
+        1
+    } else if n <= 4 {
+        2
+    } else if n <= 8 {
+        3
+    } else if n <= 16 {
+        4
+    } else if n <= 64 {
+        5
+    } else if n <= 400 {
+        6
+    } else {
+        7
+    }
+}
+
+/// Multi-scalar multiplication using Pippenger's bucket method: Σ kᵢ·Pᵢ.
+/// Returns None if the result is the point at infinity.
+/// Assumes all points are non-infinity and on the curve. Scalars must be in [0, N-1].
+pub fn secp256k1_multi_scalar_mul(
+    scalars: &[[u64; 4]],
+    points: &[[u64; 8]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Option<[u64; 8]> {
+    let n = scalars.len();
+    assert_eq!(n, points.len());
+    if n == 0 {
+        return None;
+    }
+
+    let w = optimal_window_size(n);
+    let num_buckets = (1usize << w) - 1;
+    let num_windows = 256_usize.div_ceil(w);
+
+    let mut result = IDENTITY_POINT256;
+    let mut result_is_inf = true;
+
+    // Allocate buckets once, reset each window
+    let mut buckets: Vec<SyscallPoint256> = Vec::with_capacity(num_buckets);
+    let mut bucket_is_inf: Vec<bool> = vec![true; num_buckets];
+    for _ in 0..num_buckets {
+        buckets.push(SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y });
+    }
+
+    // Process windows from most significant to least significant
+    for window_idx in (0..num_windows).rev() {
+        // Double the accumulator w times (combine with previous windows)
+        if !result_is_inf {
+            for _ in 0..w {
+                syscall_secp256k1_dbl(
+                    &mut result,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+        }
+
+        // Reset buckets
+        for flag in bucket_is_inf.iter_mut() {
+            *flag = true;
+        }
+
+        // Scatter: add each point to its bucket
+        for i in 0..n {
+            let win = get_scalar_window(&scalars[i], window_idx, w);
+            if win == 0 {
+                continue;
+            }
+            let bucket_idx = win as usize - 1;
+
+            let p = SyscallPoint256 {
+                x: [points[i][0], points[i][1], points[i][2], points[i][3]],
+                y: [points[i][4], points[i][5], points[i][6], points[i][7]],
+            };
+
+            if bucket_is_inf[bucket_idx] {
+                buckets[bucket_idx] = p;
+                bucket_is_inf[bucket_idx] = false;
+            } else {
+                bucket_is_inf[bucket_idx] = secp256k1_add_non_infinity_points(
+                    &mut buckets[bucket_idx],
+                    &p,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+        }
+
+        // Aggregate buckets: compute Σ j·buckets[j]
+        // running_sum accumulates from high to low; partial_sum accumulates running_sums.
+        let mut running_sum = IDENTITY_POINT256;
+        let mut running_is_inf = true;
+        let mut partial_sum = IDENTITY_POINT256;
+        let mut partial_is_inf = true;
+
+        for j in (0..num_buckets).rev() {
+            // running_sum += buckets[j]
+            if !bucket_is_inf[j] {
+                if running_is_inf {
+                    running_sum = SyscallPoint256 { x: buckets[j].x, y: buckets[j].y };
+                    running_is_inf = false;
+                } else {
+                    running_is_inf = secp256k1_add_non_infinity_points(
+                        &mut running_sum,
+                        &buckets[j],
+                        #[cfg(feature = "hints")]
+                        hints,
+                    );
+                }
+            }
+
+            // partial_sum += running_sum
+            if !running_is_inf {
+                if partial_is_inf {
+                    partial_sum = SyscallPoint256 { x: running_sum.x, y: running_sum.y };
+                    partial_is_inf = false;
+                } else {
+                    partial_is_inf = secp256k1_add_non_infinity_points(
+                        &mut partial_sum,
+                        &running_sum,
+                        #[cfg(feature = "hints")]
+                        hints,
+                    );
+                }
+            }
+        }
+
+        // Add window contribution to result
+        if !partial_is_inf {
+            if result_is_inf {
+                result = partial_sum;
+                result_is_inf = false;
+            } else {
+                result_is_inf = secp256k1_add_non_infinity_points(
+                    &mut result,
+                    &partial_sum,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+        }
+    }
+
+    if result_is_inf {
+        None
+    } else {
+        Some([
+            result.x[0],
+            result.x[1],
+            result.x[2],
+            result.x[3],
+            result.y[0],
+            result.y[1],
+            result.y[2],
+            result.y[3],
+        ])
     }
 }

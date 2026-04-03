@@ -166,9 +166,8 @@ pub fn verify_kzg_proof(
 /// * 1 if the proof is valid
 /// * 0 if the proof is invalid
 /// * 2 if there was a parsing error (invalid input)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_verify_kzg_proof_c")]
-pub unsafe extern "C" fn verify_kzg_proof_c(
+#[inline]
+pub(crate) unsafe fn verify_kzg_proof_c(
     z: *const u8,
     y: *const u8,
     commitment: *const u8,
