@@ -25,6 +25,8 @@ serde = { workspace = true }
 bincode = { workspace = true }
 tokio = { workspace = true }
 zisk-distributed-common = { workspace = true }
+zisk-distributed-grpc-api = { workspace = true }
+tonic = { workspace = true }
 
 # For utils.rs
 rom-setup = { workspace = true }

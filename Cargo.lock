@@ -6250,10 +6250,12 @@ dependencies = [
  "rom-setup",
  "serde",
  "tokio",
+ "tonic",
  "tracing",
  "zisk-build",
  "zisk-common",
  "zisk-distributed-common",
+ "zisk-distributed-grpc-api",
  "zisk-prover-backend",
 ]
 

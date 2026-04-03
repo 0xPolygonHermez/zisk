@@ -18,11 +18,13 @@ use crate::{
     proof::Proof,
     prove::ProveRequest,
     reduce::ReduceRequest,
+    remote::{RemoteClient, RemoteClientBuilder, RemoteClientConfig},
     setup::SetupRequest,
     upload::UploadRequest,
     Client, ExecutorKind, ZiskProofWithPublicValues, ZiskPublics,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
 
@@ -35,16 +37,10 @@ fn ensure_single_instance() {
     }
 }
 
-/// Placeholder for future remote backend configuration.
-#[allow(dead_code)]
-pub struct RemoteConfig {
-    // url: String — future
-}
-
 /// Builder for [`ProverClient`].
 ///
 /// Obtain via [`ProverClient::embedded`]. The type parameter `B` is the backend config
-/// (`EmbeddedConfig`, or `RemoteConfig` in the future) — it determines which methods
+/// (`EmbeddedConfig`, or `RemoteClientConfig`) — it determines which methods
 /// are available and which backend is constructed on `.build()`.
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
@@ -125,9 +121,33 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
     }
 }
 
+/// Methods specific to the remote backend.
+impl ProverClientBuilder<RemoteClientConfig> {
+    /// Set the connection timeout.
+    #[must_use]
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+        self.backend.connect_timeout = timeout;
+        self
+    }
+
+    /// Set the request timeout for individual operations.
+    #[must_use]
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+        self.backend.request_timeout = timeout;
+        self
+    }
+
+    /// Build the [`ProverClient`].
+    pub fn build(self) -> Result<ProverClient> {
+        ensure_single_instance();
+        let client = RemoteClientBuilder::new(self.backend).build_sync()?;
+        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(client)) })
+    }
+}
+
 enum BackendClient {
     Embedded(EmbeddedClient),
-    // Remote(RemoteClient),
+    Remote(RemoteClient),
 }
 
 /// Prover client. Runs proofs using local (embedded) or remote infrastructure.
@@ -152,14 +172,26 @@ impl ProverClient {
         }
     }
 
-    // pub fn remote(url: impl Into<String>) -> ProverClientBuilder<RemoteConfig> {
-    //     ProverClientBuilder { executor: ExecutorKind::Emulator, gpu_params: None, backend: RemoteConfig { url: url.into() } }
-    // }
+    /// Returns a builder for the remote (distributed) backend.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let client = ProverClient::remote("http://coordinator:50051").build()?;
+    /// ```
+    #[must_use]
+    pub fn remote(url: impl Into<String>) -> ProverClientBuilder<RemoteClientConfig> {
+        ProverClientBuilder {
+            executor: ExecutorKind::Emulator,
+            gpu_params: None,
+            backend: RemoteClientConfig { url: url.into(), ..Default::default() },
+        }
+    }
 
     // -- Requests --
     pub fn vk(&self, program: &GuestProgram) -> Result<ZiskProgramVK> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.vk(program),
+            BackendClient::Remote(c) => c.vk(program),
         }
     }
 
@@ -246,12 +278,14 @@ impl Client for ProverClient {
     fn run_upload(&self, program: &GuestProgram) -> Result<()> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.run_upload(program),
+            BackendClient::Remote(c) => c.run_upload(program),
         }
     }
 
     fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.run_setup(program, with_hints),
+            BackendClient::Remote(c) => c.run_setup(program, with_hints),
         }
     }
 
@@ -266,6 +300,7 @@ impl Client for ProverClient {
     ) -> Result<Proof> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, opts, cancel),
+            BackendClient::Remote(c) => c.run_prove(program, input, executor, mode, opts, cancel),
         }
     }
 
@@ -278,6 +313,7 @@ impl Client for ProverClient {
     ) -> Result<ExecuteResult> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => c.run_execute(program, input, executor, cancel),
+            BackendClient::Remote(c) => c.run_execute(program, input, executor, cancel),
         }
     }
 
@@ -291,6 +327,9 @@ impl Client for ProverClient {
             BackendClient::Embedded(c) => {
                 c.run_reduce(proof_with_publics, override_publics, override_program_vk)
             }
+            BackendClient::Remote(c) => {
+                c.run_reduce(proof_with_publics, override_publics, override_program_vk)
+            }
         }
     }
 
@@ -302,6 +341,9 @@ impl Client for ProverClient {
     ) -> Result<ZiskProofWithPublicValues> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => {
+                c.run_plonk(proof_with_publics, override_publics, override_program_vk)
+            }
+            BackendClient::Remote(c) => {
                 c.run_plonk(proof_with_publics, override_publics, override_program_vk)
             }
         }
