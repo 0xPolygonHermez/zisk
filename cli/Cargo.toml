@@ -45,19 +45,11 @@ indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
 
-# Distributed mode (mpi) is only supported on Linux x86_64
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { workspace = true }
-
 [features]
 default = []
-disable_distributed = ["zisk-prover-backend/disable_distributed"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
 gpu = ["zisk-prover-backend/gpu"]
 packed = ["zisk-prover-backend/packed"]
 stats = []
 verify = ["fields/verify"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

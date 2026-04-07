@@ -36,12 +36,4 @@ default = []
 gpu = ["zisk-prover-backend/gpu"]
 packed = ["zisk-prover-backend/packed"]
 stats = ["zisk-prover-backend/stats"]
-disable_distributed = [
-    "zisk-prover-backend/disable_distributed",
-    "zisk-common/disable_distributed",
-    "zisk-build/disable_distributed",
-]
 diagnostic = ["zisk-prover-backend/diagnostic"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }
