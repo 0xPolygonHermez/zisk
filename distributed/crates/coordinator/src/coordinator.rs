@@ -463,7 +463,7 @@ impl Coordinator {
             fs::create_dir_all(&folder).map_err(|e| {
                 CoordinatorError::Internal(format!("Failed to create proofs directory: {}", e))
             })?;
-            let raw_path = folder.join(format!("proof_{}.fri", job_id));
+            let raw_path = folder.join(format!("proof_{}.bin", job_id));
             zisk_proof
                 .save(raw_path)
                 .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;

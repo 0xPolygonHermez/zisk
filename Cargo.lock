@@ -3189,6 +3189,7 @@ dependencies = [
  "ark-std",
  "cfg-if",
  "circuit",
+ "crunchy",
  "lib-c",
  "num-bigint",
  "num-traits",
