@@ -52,7 +52,6 @@ named-sem = { workspace = true }
 
 [features]
 default = []
-disable_distributed = []
 gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
 packed = [
     "proofman/packed",

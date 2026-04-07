@@ -156,7 +156,6 @@ tracing-subscriber = { version = "0.3", features = [
     "json",
 ] }
 tracing-appender = "0.2"
-mpi = { version = "0.8.0" }
 static_assertions = "1"
 ripemd = "0.1.3"
 

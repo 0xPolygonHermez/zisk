@@ -89,7 +89,7 @@ impl UnixSocketStreamReader {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 path_bytes.as_ptr() as *const i8,
-                addr.sun_path.as_mut_ptr(),
+                addr.sun_path.as_mut_ptr() as *mut i8,
                 path_bytes.len(),
             );
         }
@@ -311,7 +311,7 @@ impl UnixSocketStreamWriter {
         unsafe {
             std::ptr::copy_nonoverlapping(
                 path_bytes.as_ptr() as *const i8,
-                addr.sun_path.as_mut_ptr(),
+                addr.sun_path.as_mut_ptr() as *mut i8,
                 path_bytes.len(),
             );
         }

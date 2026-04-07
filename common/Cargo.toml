@@ -7,8 +7,6 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-build = "build.rs"
-
 [dependencies]
 zisk-core = { workspace = true }
 
@@ -34,14 +32,6 @@ rcgen = "0.14"
 
 bincode = { workspace = true }
 
-# Distributed mode (mpi) is only supported on Linux x86_64
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { workspace = true }
-
 [features]
 default = []
-disable_distributed = []
 stats = []
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

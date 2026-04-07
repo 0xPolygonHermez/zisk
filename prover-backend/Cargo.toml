@@ -49,13 +49,4 @@ gpu = [
 ]
 packed = ["proofman/packed", "proofman-common/packed", "executor/packed"]
 stats = []
-disable_distributed = [
-    "proofman/disable_distributed",
-    "proofman-common/disable_distributed",
-    "executor/disable_distributed",
-    "zisk-common/disable_distributed",
-]
 diagnostic = ["proofman-common/diagnostic"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }
