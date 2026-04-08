@@ -31,7 +31,8 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    const MAX_SEGMENT_ID: usize = ((DEFAULT_MAX_STEPS + 1) as usize / MainTrace::<F>::NUM_ROWS) - 1;
+    const MAX_SEGMENT_ID: usize =
+        ((DEFAULT_MAX_STEPS + 1) as usize / MainTrace::<()>::NUM_ROWS) - 1;
 
     /// Creates a new `MainInstance`.
     ///

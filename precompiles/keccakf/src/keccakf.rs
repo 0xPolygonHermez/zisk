@@ -39,12 +39,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = KeccakfTrace::<F>::NUM_ROWS % CLOCKS;
+        let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
         let num_available_keccakfs = if num_non_usable_rows == 0 {
-            KeccakfTrace::<F>::NUM_ROWS / CLOCKS
+            KeccakfTrace::<()>::NUM_ROWS / CLOCKS
         } else {
             // Subtract 1 because we can't fit a complete cycle in the remaining rows
-            (KeccakfTrace::<F>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
+            (KeccakfTrace::<()>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
         };
 
         // Get the table ID

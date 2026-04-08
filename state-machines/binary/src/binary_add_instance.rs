@@ -51,7 +51,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            BinaryAddTrace::<F>::AIR_ID,
+            BinaryAddTrace::<()>::AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -68,7 +68,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
     pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
         assert_eq!(
             self.ictx.plan.air_id,
-            BinaryAddTrace::<F>::AIR_ID,
+            BinaryAddTrace::<()>::AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -154,7 +154,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            BinaryAddTrace::<F>::AIR_ID,
+            BinaryAddTrace::<()>::AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

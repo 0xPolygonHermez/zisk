@@ -50,7 +50,7 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
+            ArithEqTrace::<()>::AIR_ID,
             "ArithEqInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -67,7 +67,7 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
         assert_eq!(
             self.ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
+            ArithEqTrace::<()>::AIR_ID,
             "ArithEqInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

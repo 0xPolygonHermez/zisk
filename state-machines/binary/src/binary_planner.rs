@@ -32,7 +32,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryTrace::<F>::NUM_ROWS) + 1)
+            (((rows - 1) / BinaryTrace::<()>::NUM_ROWS) + 1)
                 * BinaryTrace::<BinaryTraceRow<F>>::ROW_SIZE
         }
     }
@@ -41,7 +41,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryAddTrace::<F>::NUM_ROWS) + 1)
+            (((rows - 1) / BinaryAddTrace::<()>::NUM_ROWS) + 1)
                 * BinaryAddTrace::<BinaryAddTraceRow<F>>::ROW_SIZE
         }
     }
@@ -58,15 +58,15 @@ impl<F: PrimeField64> BinaryPlanner<F> {
             })
             .collect();
 
-        let extension_num_rows = BinaryExtensionTrace::<F>::NUM_ROWS;
+        let extension_num_rows = BinaryExtensionTrace::<()>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&extension_counters, extension_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryExtensionTrace::<F>::AIRGROUP_ID,
-                    BinaryExtensionTrace::<F>::AIR_ID,
+                    BinaryExtensionTrace::<()>::AIRGROUP_ID,
+                    BinaryExtensionTrace::<()>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -95,15 +95,15 @@ impl<F: PrimeField64> BinaryPlanner<F> {
             })
             .collect();
 
-        let basic_num_rows = BinaryTrace::<F>::NUM_ROWS;
+        let basic_num_rows = BinaryTrace::<()>::NUM_ROWS;
 
         let plans: Vec<_> = plan_with_frops(&basic_counters, basic_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new((with_adds, collect_info));
                 Plan::new(
-                    BinaryTrace::<F>::AIRGROUP_ID,
-                    BinaryTrace::<F>::AIR_ID,
+                    BinaryTrace::<()>::AIRGROUP_ID,
+                    BinaryTrace::<()>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,
@@ -123,15 +123,15 @@ impl<F: PrimeField64> BinaryPlanner<F> {
             })
             .collect();
 
-        let add_num_rows = BinaryAddTrace::<F>::NUM_ROWS;
+        let add_num_rows = BinaryAddTrace::<()>::NUM_ROWS;
 
         plan_with_frops(&add_counters, add_num_rows as u64)
             .into_iter()
             .map(|(check_point, collect_info)| {
                 let converted: Box<dyn Any> = Box::new(collect_info);
                 Plan::new(
-                    BinaryAddTrace::<F>::AIRGROUP_ID,
-                    BinaryAddTrace::<F>::AIR_ID,
+                    BinaryAddTrace::<()>::AIRGROUP_ID,
+                    BinaryAddTrace::<()>::AIR_ID,
                     None,
                     InstanceType::Instance,
                     check_point,

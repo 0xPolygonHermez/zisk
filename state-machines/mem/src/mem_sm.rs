@@ -55,7 +55,7 @@ impl<F: PrimeField64> MemSM<F> {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<F>::NUM_ROWS;
+        let num_rows = MemTrace::<()>::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].addr.as_canonical_u64() * 8;

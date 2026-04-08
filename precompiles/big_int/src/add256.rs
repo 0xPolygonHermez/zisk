@@ -30,7 +30,7 @@ impl<F: PrimeField64> Add256SM<F> {
     /// A new `Add256SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_availables = Add256Trace::<F>::NUM_ROWS;
+        let num_availables = Add256Trace::<()>::NUM_ROWS;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
 

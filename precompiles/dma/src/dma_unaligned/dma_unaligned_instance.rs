@@ -55,7 +55,7 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaUnalignedCollector {
         assert_eq!(
             self.ictx.plan.air_id,
-            DmaUnalignedTrace::<F>::AIR_ID,
+            DmaUnalignedTrace::<()>::AIR_ID,
             "DmaUnalignedInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -157,7 +157,7 @@ impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            DmaUnalignedTrace::<F>::AIR_ID,
+            DmaUnalignedTrace::<()>::AIR_ID,
             "DmaUnalignedInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
