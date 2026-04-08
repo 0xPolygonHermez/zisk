@@ -10,12 +10,14 @@ use crate::{
 };
 use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use executor::{get_packed_info, initialize_executor, AsmResources};
+use executor::{initialize_executor, AsmResources};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo, VerboseMode};
+use proofman_common::{
+    initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
+};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::collections::HashMap;
@@ -73,34 +75,30 @@ pub struct AsmProver {
 impl AsmProver {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        verify_constraints: bool,
-        aggregation: bool,
         snark_wrapper: bool,
+        preload_snark: bool,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
-        verbose: u8,
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
         asm_out_file: bool,
         no_auto_setup: bool,
-        gpu_params: ParamsGPU,
+        options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = AsmCoreProver::new(
-            verify_constraints,
-            aggregation,
             snark_wrapper,
+            preload_snark,
             proving_key,
             proving_key_snark,
-            verbose,
             shared_tables,
             base_port,
             unlock_mapped_memory,
             asm_out_file,
             no_auto_setup,
-            gpu_params,
+            options,
             is_distributed,
             logging_config,
         )?;
@@ -436,38 +434,29 @@ pub struct AsmCoreProver {
 impl AsmCoreProver {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        verify_constraints: bool,
-        aggregation: bool,
         use_snark_wrapper: bool,
+        preload_snark: bool,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
-        verbose: u8,
         shared_tables: bool,
         base_port: Option<u16>,
         unlock_mapped_memory: bool,
         asm_out_file: bool,
         no_auto_setup: bool,
-        gpu_params: ParamsGPU,
+        options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
-        let proofman = ProofMan::new(
-            proving_key.clone(),
-            verify_constraints,
-            aggregation,
-            gpu_params,
-            verbose.into(),
-            get_packed_info(),
-        )
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let proofman = ProofMan::new(proving_key.clone(), options.clone())
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
         let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
             zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(&rank_info));
+            initialize_logger(options.verbose_mode, Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -478,15 +467,17 @@ impl AsmCoreProver {
             let (aux_trace, d_buffers, reload_fixed_pols_gpu) = proofman.get_preallocated_buffers();
             snark_wrapper = Some(SnarkWrapper::new_with_preallocated_buffers(
                 &proving_key_snark,
-                verbose.into(),
+                options.verbose_mode,
                 Some(aux_trace),
                 Some(d_buffers),
                 Some(reload_fixed_pols_gpu),
+                preload_snark,
+                options.gpu,
             )?);
         }
 
         let executor =
-            initialize_executor(verbose.into(), shared_tables, true, &proofman.get_wcm())?;
+            initialize_executor(options.verbose_mode, shared_tables, true, &proofman.get_wcm())?;
 
         let core = ProverBackend::new(
             proofman,
@@ -504,7 +495,7 @@ impl AsmCoreProver {
                 base_port,
                 unlock_mapped_memory,
                 asm_out_file,
-                verbose: verbose.into(),
+                verbose: options.verbose_mode,
                 no_auto_setup,
                 n_setups: AtomicU64::new(0),
             },

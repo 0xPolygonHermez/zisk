@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
-use proofman_common::ParamsGPU;
 use zisk_common::ZiskProgramVK;
 
 use zisk_common::ProofMode;
@@ -26,6 +25,8 @@ use crate::{
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::ProofKind;
+
 static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
 
 fn ensure_single_instance() {
@@ -44,8 +45,8 @@ fn ensure_single_instance() {
 /// are available and which backend is constructed on `.build()`.
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
-    gpu_params: Option<ParamsGPU>,
-    minimal_memory: bool,
+    proof_kind: ProofKind,
+    gpu: bool,
     backend: B,
 }
 
@@ -78,17 +79,17 @@ impl<B> ProverClientBuilder<B> {
         self
     }
 
-    /// Enable GPU acceleration with default parameters.
+    /// Enable GPU acceleration.
     #[must_use]
     pub fn gpu(mut self) -> Self {
-        self.gpu_params = Some(ParamsGPU::default());
+        self.gpu = true;
         self
     }
 
-    /// Enable GPU acceleration with custom parameters.
+    /// Enable PLONK proof mode.
     #[must_use]
-    pub fn with_gpu_params(mut self, gpu_params: ParamsGPU) -> Self {
-        self.gpu_params = Some(gpu_params);
+    pub fn plonk(mut self) -> Self {
+        self.proof_kind = ProofKind::Plonk;
         self
     }
 }
@@ -112,13 +113,15 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
     /// Build the [`ProverClient`].
     pub fn build(self) -> Result<ProverClient> {
         ensure_single_instance();
-        let builder = EmbeddedClientBuilder::new(self.backend).executor(self.executor);
-        let builder = match self.gpu_params {
-            Some(params) => builder.with_gpu_params(params),
-            None => builder,
-        };
+        let mut builder = EmbeddedClientBuilder::new(self.backend).executor(self.executor);
+        if self.gpu {
+            builder = builder.gpu();
+        }
+        if self.proof_kind == ProofKind::Plonk {
+            builder = builder.plonk();
+        }
         let client = builder.build()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(client)) })
+        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(Box::new(client))) })
     }
 }
 
@@ -147,7 +150,7 @@ impl ProverClientBuilder<RemoteClientConfig> {
 }
 
 enum BackendClient {
-    Embedded(EmbeddedClient),
+    Embedded(Box<EmbeddedClient>),
     Remote(RemoteClient),
 }
 
@@ -168,8 +171,9 @@ impl ProverClient {
     pub fn embedded() -> ProverClientBuilder<EmbeddedClientConfig> {
         ProverClientBuilder {
             executor: ExecutorKind::Emulator,
-            gpu_params: None,
+            proof_kind: ProofKind::StarkMinimal,
             backend: EmbeddedClientConfig::default(),
+            gpu: false,
         }
     }
 
@@ -183,8 +187,9 @@ impl ProverClient {
     pub fn remote(url: impl Into<String>) -> ProverClientBuilder<RemoteClientConfig> {
         ProverClientBuilder {
             executor: ExecutorKind::Emulator,
-            gpu_params: None,
+            proof_kind: ProofKind::StarkMinimal,
             backend: RemoteClientConfig { url: url.into(), ..Default::default() },
+            gpu: false,
         }
     }
 

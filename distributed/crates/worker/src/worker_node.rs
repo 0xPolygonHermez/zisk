@@ -480,6 +480,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_aggregation(
         &mut self,
         job_id: JobId,

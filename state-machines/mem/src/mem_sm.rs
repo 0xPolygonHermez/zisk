@@ -1,16 +1,7 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
-use zisk_pil::MemAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::MemTrace;
-#[cfg(feature = "packed")]
-use zisk_pil::MemTracePacked;
+use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
-#[cfg(feature = "packed")]
-type MemTraceType<F> = MemTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
 use std::{
     env,
@@ -111,8 +102,38 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer)?;
+        if packed {
+            self.compute_witness_inner::<MemTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<MemTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        }
+    }
+}
+
+impl<F: PrimeField64> MemSM<F> {
+    fn compute_witness_inner<R: MemTraceRowOps<F>>(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemTrace::<R>::new_from_vec(trace_buffer)?;
 
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];

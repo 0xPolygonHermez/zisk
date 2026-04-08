@@ -98,6 +98,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.orchestrator.set_rom(zisk_rom);
     }
 
+    /// Sets whether to use packed representation for witness computation.
+    pub fn set_packed(&self, packed: bool) {
+        self.orchestrator.set_packed(packed);
+    }
+
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) {
         self.rom_executor.set_stdin(stdin);

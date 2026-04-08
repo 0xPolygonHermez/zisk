@@ -6,8 +6,10 @@
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, ProofmanResult, SetupCtx};
 use sm_main::MainInstance;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
+use zisk_pil::{MainTraceRow, MainTraceRowPacked};
 
 use crate::state::ExecutionState;
 
@@ -20,6 +22,8 @@ use crate::state::ExecutionState;
 pub struct WitnessGenerator {
     /// Chunk size for trace processing.
     chunk_size: u64,
+
+    packed: AtomicBool,
 }
 
 impl WitnessGenerator {
@@ -28,7 +32,7 @@ impl WitnessGenerator {
     /// # Arguments
     /// * `chunk_size` - Chunk size for processing.
     pub fn new(chunk_size: u64) -> Self {
-        Self { chunk_size }
+        Self { chunk_size, packed: AtomicBool::new(false) }
     }
 
     /// Computes witness for a main state machine instance.
@@ -61,13 +65,23 @@ impl WitnessGenerator {
         let min_traces_guard = state.min_traces.read().unwrap();
         let min_traces = min_traces_guard.as_ref().expect("min_traces should not be None");
 
-        let air_instance = main_instance.compute_witness(
-            &zisk_rom,
-            min_traces,
-            self.chunk_size,
-            main_instance,
-            trace_buffer,
-        )?;
+        let air_instance = if self.packed.load(Ordering::Relaxed) {
+            main_instance.compute_witness::<MainTraceRowPacked<F>>(
+                &zisk_rom,
+                min_traces,
+                self.chunk_size,
+                main_instance,
+                trace_buffer,
+            )?
+        } else {
+            main_instance.compute_witness::<MainTraceRow<F>>(
+                &zisk_rom,
+                min_traces,
+                self.chunk_size,
+                main_instance,
+                trace_buffer,
+            )?
+        };
 
         pctx.add_air_instance(air_instance, main_instance.ictx.global_id);
 
@@ -116,7 +130,13 @@ impl WitnessGenerator {
 
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, _stats_msg, _air_id);
 
-        let air_instance = secn_instance.compute_witness(pctx, sctx, collectors, trace_buffer)?;
+        let air_instance = secn_instance.compute_witness(
+            pctx,
+            sctx,
+            collectors,
+            trace_buffer,
+            self.packed.load(Ordering::Relaxed),
+        )?;
 
         if let Some(air_instance) = air_instance {
             let should_add_instance = secn_instance.instance_type() == InstanceType::Instance
@@ -135,5 +155,9 @@ impl WitnessGenerator {
         state.stats.set_witness_duration(global_id, witness_start_time.elapsed().as_millis());
 
         Ok(())
+    }
+
+    pub fn set_packed(&self, packed: bool) {
+        self.packed.store(packed, Ordering::SeqCst);
     }
 }

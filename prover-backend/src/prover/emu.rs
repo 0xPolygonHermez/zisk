@@ -7,11 +7,11 @@ use crate::{
     ZiskVerifyConstraintsResult,
 };
 use crate::{ensure_rom, get_rom_bin_path, ProofOpts};
-use executor::{get_packed_info, initialize_executor};
+use executor::initialize_executor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
-use proofman_common::{initialize_logger, ParamsGPU, ProofOptions, RankInfo, RowInfo};
+use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -55,25 +55,21 @@ pub struct EmuProver {
 impl EmuProver {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        verify_constraints: bool,
-        aggregation: bool,
         snark_wrapper: bool,
+        preload_snark: bool,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
-        verbose: u8,
         shared_tables: bool,
-        gpu_params: ParamsGPU,
+        options: ProofmanOptions,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = EmuCoreProver::new(
-            verify_constraints,
-            aggregation,
             snark_wrapper,
+            preload_snark,
             proving_key,
             proving_key_snark,
-            verbose,
             shared_tables,
-            gpu_params,
+            options,
             logging_config,
         )?;
 
@@ -284,34 +280,25 @@ pub struct EmuCoreProver {
 impl EmuCoreProver {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        verify_constraints: bool,
-        aggregation: bool,
         use_snark_wrapper: bool,
+        preload_snark: bool,
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
-        verbose: u8,
         shared_tables: bool,
-        gpu_params: ParamsGPU,
+        options: ProofmanOptions,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
 
-        let proofman = ProofMan::new(
-            proving_key.clone(),
-            verify_constraints,
-            aggregation,
-            gpu_params,
-            verbose.into(),
-            get_packed_info(),
-        )
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let proofman = ProofMan::new(proving_key.clone(), options.clone())
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
         let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
             zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
-            initialize_logger(verbose.into(), Some(&rank_info));
+            initialize_logger(options.verbose_mode, Some(&rank_info));
         }
 
         proofman.set_barrier();
@@ -322,15 +309,17 @@ impl EmuCoreProver {
             let (aux_trace, d_buffers, reload_fixed_pols_gpu) = proofman.get_preallocated_buffers();
             snark_wrapper = Some(SnarkWrapper::new_with_preallocated_buffers(
                 &proving_key_snark,
-                verbose.into(),
+                options.verbose_mode,
                 Some(aux_trace),
                 Some(d_buffers),
                 Some(reload_fixed_pols_gpu),
+                preload_snark,
+                options.gpu,
             )?);
         }
 
         let executor =
-            initialize_executor(verbose.into(), shared_tables, false, &proofman.get_wcm())?;
+            initialize_executor(options.verbose_mode, shared_tables, false, &proofman.get_wcm())?;
 
         let core = ProverBackend::new(
             proofman,

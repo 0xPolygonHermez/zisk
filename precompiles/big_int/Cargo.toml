@@ -27,5 +27,3 @@ generic-array = "0.14"
 
 [features]
 default = []
-gpu = ["packed"]
-packed = []

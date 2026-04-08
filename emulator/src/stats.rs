@@ -173,8 +173,7 @@ impl Stats {
             .iter()
             .rev()
             .skip(1)
-            .find(|entry| entry.called_roi_index.unwrap_or(NO_ROI_ID) == roi)
-            .is_some()
+            .any(|entry| entry.called_roi_index.unwrap_or(NO_ROI_ID) == roi)
     }
     pub fn print_call_stack(&self) {
         println!("CALL STACK DUMP (top to bottom):");

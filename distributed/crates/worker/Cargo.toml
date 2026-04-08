@@ -44,3 +44,7 @@ colored = { workspace = true }
 toml = { workspace = true }
 config = { workspace = true }
 uuid = { workspace = true }
+
+[features]
+default = []
+gpu = ["zisk-prover-backend/gpu"]

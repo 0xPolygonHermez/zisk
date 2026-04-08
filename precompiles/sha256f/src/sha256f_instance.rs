@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Sha256fTrace;
+use zisk_pil::{Sha256fTraceRow, Sha256fTraceRowPacked, SHA_256_F_AIR_IDS};
 
 /// The `Sha256fInstance` struct represents an instance for the Sha256f State Machine.
 ///
@@ -46,8 +46,7 @@ impl<F: PrimeField64> Sha256fInstance<F> {
 
     pub fn build_sha256f_collector(&self, chunk_id: ChunkId) -> Sha256fCollector {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Sha256fTrace::<F>::AIR_ID,
+            self.ictx.plan.air_id, SHA_256_F_AIR_IDS[0],
             "Sha256fInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -76,13 +75,21 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Sha256fCollector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.sha256f_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.sha256f_sm
+                    .compute_witness::<Sha256fTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.sha256f_sm.compute_witness::<Sha256fTraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -107,8 +114,7 @@ impl<F: PrimeField64> Instance<F> for Sha256fInstance<F> {
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Sha256fTrace::<F>::AIR_ID,
+            self.ictx.plan.air_id, SHA_256_F_AIR_IDS[0],
             "Sha256fInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

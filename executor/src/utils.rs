@@ -18,7 +18,6 @@ use sm_rom::RomSM;
 use std::{collections::HashMap, sync::Arc};
 use witness::WitnessManager;
 
-#[cfg(feature = "packed")]
 use zisk_pil::PACKED_INFO;
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BINARY_ADD_AIR_IDS,
@@ -34,21 +33,20 @@ use zisk_pil::{
 use anyhow::Result;
 
 pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
-    let mut _packed_info = HashMap::new();
-    #[cfg(feature = "packed")]
-    {
-        for packed_info in PACKED_INFO.iter() {
-            _packed_info.insert(
-                (packed_info.0, packed_info.1),
-                PackedInfo::new(
-                    packed_info.2.is_packed,
-                    packed_info.2.num_packed_words,
-                    packed_info.2.unpack_info.to_vec(),
-                ),
-            );
-        }
+    let mut packed_info = HashMap::new();
+
+    for pack_info in PACKED_INFO.iter() {
+        packed_info.insert(
+            (pack_info.0, pack_info.1),
+            PackedInfo::new(
+                pack_info.2.is_packed,
+                pack_info.2.num_packed_words,
+                pack_info.2.unpack_info.to_vec(),
+            ),
+        );
     }
-    _packed_info
+
+    packed_info
 }
 
 /// Registers the witness components

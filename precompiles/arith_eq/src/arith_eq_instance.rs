@@ -19,7 +19,7 @@ use zisk_common::{
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::ArithEqTrace;
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow, ArithEqTraceRowPacked};
 
 /// The `ArithEqInstance` struct represents an instance for the ArithEq State Machine.
 ///
@@ -94,13 +94,26 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(self.arith_eq_sm.compute_witness::<ArithEqTraceRowPacked<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        } else {
+            Ok(Some(self.arith_eq_sm.compute_witness::<ArithEqTraceRow<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

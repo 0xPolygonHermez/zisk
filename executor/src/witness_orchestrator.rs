@@ -93,6 +93,10 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         self.collector.set_rom(zisk_rom.clone());
     }
 
+    pub fn set_packed(&self, packed: bool) {
+        self.witness_generator.set_packed(packed);
+    }
+
     pub fn reset(&self) {
         *self.trace_buffer_rom.lock().unwrap() = vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
     }

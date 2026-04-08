@@ -345,7 +345,6 @@ impl ProverBackend {
                     compressed,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
-                    proof_options.save_proofs,
                     proof_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,

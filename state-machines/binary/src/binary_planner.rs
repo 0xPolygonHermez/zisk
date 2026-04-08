@@ -11,7 +11,9 @@ use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,
     Planner,
 };
-use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
+use zisk_pil::{
+    BinaryAddTrace, BinaryAddTraceRow, BinaryExtensionTrace, BinaryTrace, BinaryTraceRow,
+};
 
 /// The `BinaryPlanner` struct organizes execution plans for binaries instances and tables.
 ///
@@ -30,7 +32,8 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryTrace::<F>::NUM_ROWS) + 1) * BinaryTrace::<F>::ROW_SIZE
+            ((rows - 1 / BinaryTrace::<F>::NUM_ROWS) + 1)
+                * BinaryTrace::<BinaryTraceRow<F>>::ROW_SIZE
         }
     }
 
@@ -38,7 +41,8 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         if rows == 0 {
             0
         } else {
-            ((rows - 1 / BinaryAddTrace::<F>::NUM_ROWS) + 1) * BinaryAddTrace::<F>::ROW_SIZE
+            ((rows - 1 / BinaryAddTrace::<F>::NUM_ROWS) + 1)
+                * BinaryAddTrace::<BinaryAddTraceRow<F>>::ROW_SIZE
         }
     }
 

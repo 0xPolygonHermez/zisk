@@ -27,6 +27,9 @@ pub struct ZiskPlonk {
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 impl ZiskPlonk {
@@ -44,7 +47,7 @@ impl ZiskPlonk {
         })?;
 
         let snark_wrapper: SnarkWrapper<Goldilocks> =
-            SnarkWrapper::new(&self.proving_key_snark, self.verbose.into())?;
+            SnarkWrapper::new(&self.proving_key_snark, self.verbose.into(), true, self.gpu)?;
 
         let proof = zisk_proof.get_vadcop_final_proof()?;
 

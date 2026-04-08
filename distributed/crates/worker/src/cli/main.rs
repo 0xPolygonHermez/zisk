@@ -118,6 +118,9 @@ struct Cli {
 
     #[clap(long, default_value_t = false)]
     pub hints: bool,
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 #[tokio::main]
@@ -155,6 +158,7 @@ async fn main() -> Result<()> {
         shared_tables: !cli.no_shared_tables_mpi,
         rma: !cli.no_rma_mpi,
         minimal_memory: cli.minimal_memory,
+        gpu: cli.gpu,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;

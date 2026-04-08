@@ -9,7 +9,7 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::MemTrace;
+use zisk_pil::{MEM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
@@ -62,6 +62,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         // Collect inputs from all collectors. At most, one of them has `prev_last_value` non zero,
         // we take this `prev_last_value`, which represents the last value of the previous segment.
@@ -88,8 +89,8 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
         }
 
         // This method sorts all inputs
-        let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
-            && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
+        let parallelize = self.ictx.plan.air_id == MEM_AIR_IDS[0]
+            && self.ictx.plan.airgroup_id == ZISK_AIRGROUP_ID;
         self.prepare_inputs(&mut inputs, parallelize);
 
         // This method calculates intermediate accesses without adding inputs and trims
@@ -108,6 +109,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             is_last_segment,
             &prev_segment,
             trace_buffer,
+            packed,
         )?))
     }
 

@@ -6,6 +6,7 @@ pub trait DmaPrePostModule<F: Clone>: Send + Sync {
         &self,
         inputs: &[Vec<DmaPrePostInput>],
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>>;
     fn get_name(&self) -> &'static str;
 }

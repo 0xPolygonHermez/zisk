@@ -31,6 +31,9 @@ pub struct ZiskCheckSetup {
     /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 impl ZiskCheckSetup {
@@ -44,6 +47,7 @@ impl ZiskCheckSetup {
             get_proving_key(self.proving_key.as_ref()),
             self.aggregation,
             self.verbose.into(),
+            self.gpu,
         )
         .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;
 
@@ -51,6 +55,7 @@ impl ZiskCheckSetup {
             check_setup_snark::<Goldilocks>(
                 &get_proving_key_snark(self.proving_key_snark.as_ref()),
                 self.verbose.into(),
+                self.gpu,
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup snark: {}", e))?
         }

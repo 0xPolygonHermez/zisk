@@ -112,6 +112,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        _packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         // Case 1: Use ROM assembly output
         if self.is_asm_execution() {
