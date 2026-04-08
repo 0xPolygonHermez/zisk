@@ -2,6 +2,7 @@ mod arith_eq;
 mod arith_eq_384;
 mod big_int;
 mod blake2;
+mod blake3;
 mod common;
 mod dma;
 mod keccak;
@@ -10,6 +11,7 @@ pub use arith_eq::*;
 pub use arith_eq_384::*;
 pub use big_int::*;
 pub use blake2::{blake2b_compress, blake2b_round};
+pub use blake3::blake3_f;
 pub use common::*;
 pub use dma::*;
 pub use keccak::{

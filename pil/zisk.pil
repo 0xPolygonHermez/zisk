@@ -29,6 +29,7 @@ require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
 require "poseidon2/pil/poseidon2.pil"
 require "blake2/pil/blake2br.pil"
+require "blake3/pil/blake3f.pil"
 
 enable_range_stats();
 
@@ -141,6 +142,8 @@ airgroup Zisk {
     Poseidon2(N: 2**17);
 
     Blake2br(N: 2**18);
+
+    Blake3f(N: 2**18);
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

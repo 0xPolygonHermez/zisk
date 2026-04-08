@@ -1,6 +1,7 @@
 mod arith256;
 mod array_lib;
 mod blake2b;
+mod blake3;
 mod bls12_381;
 mod bn254;
 mod constants;
@@ -16,6 +17,7 @@ pub mod zkvm_accelerators;
 pub use arith256::*;
 pub use array_lib::*;
 pub use blake2b::*;
+pub use blake3::*;
 pub use bls12_381::*;
 pub use bn254::*;
 pub use constants::*;
