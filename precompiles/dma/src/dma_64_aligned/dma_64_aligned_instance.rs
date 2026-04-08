@@ -104,6 +104,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
@@ -139,6 +140,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
             segment_id,
             self.is_last_segment,
             trace_buffer,
+            packed,
         )?))
     }
 

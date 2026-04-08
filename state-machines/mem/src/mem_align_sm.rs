@@ -9,20 +9,7 @@ use pil_std_lib::Std;
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{MemAlignTrace, MemAlignTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{MemAlignTracePacked, MemAlignTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type MemAlignTraceRowType<F> = MemAlignTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type MemAlignTraceType<F> = MemAlignTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type MemAlignTraceRowType<F> = MemAlignTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type MemAlignTraceType<F> = MemAlignTrace<F>;
+use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -89,10 +76,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
         })
     }
 
-    pub fn prove_mem_align_op(
+    pub fn prove_mem_align_op<R: MemAlignTraceRowOps<F>>(
         &self,
         input: &MemAlignInput,
-        trace: &mut [MemAlignTraceRowType<F>],
+        trace: &mut [R],
     ) -> usize {
         let addr = input.addr;
         let width = input.width;
@@ -143,7 +130,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Update the row multiplicity of the operation
                 MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
-                let mut read_row = MemAlignTraceRowType::default();
+                let mut read_row: R = Default::default();
                 read_row.set_step(step);
                 read_row.set_addr(addr_read);
                 read_row.set_offset(DEFAULT_OFFSET);
@@ -151,7 +138,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 read_row.set_reset(true);
                 read_row.set_sel_up_to_down(true);
 
-                let mut value_row = MemAlignTraceRowType::default();
+                let mut value_row: R = Default::default();
                 value_row.set_step(step);
                 value_row.set_addr(addr_read);
                 value_row.set_offset(offset as u8);
@@ -260,7 +247,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     (value_read & !mask) | value_to_write
                 };
 
-                let mut read_row = MemAlignTraceRowType::default();
+                let mut read_row: R = Default::default();
                 read_row.set_step(step);
                 read_row.set_addr(addr_read);
                 read_row.set_offset(DEFAULT_OFFSET);
@@ -268,7 +255,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 read_row.set_reset(true);
                 read_row.set_sel_up_to_down(true);
 
-                let mut write_row = MemAlignTraceRowType::default();
+                let mut write_row: R = Default::default();
                 write_row.set_step(step + 1);
                 write_row.set_addr(addr_read);
                 write_row.set_offset(DEFAULT_OFFSET);
@@ -277,7 +264,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 write_row.set_pc(next_pc as u8);
                 write_row.set_sel_up_to_down(true);
 
-                let mut value_row = MemAlignTraceRowType::default();
+                let mut value_row: R = Default::default();
                 value_row.set_step(step);
                 value_row.set_addr(addr_read);
                 value_row.set_offset(offset as u8);
@@ -402,7 +389,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 // Update the row multiplicity of the operation
                 MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
-                let mut first_read_row = MemAlignTraceRowType::default();
+                let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
                 first_read_row.set_addr(addr_first_read);
                 first_read_row.set_offset(DEFAULT_OFFSET);
@@ -410,7 +397,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 first_read_row.set_reset(true);
                 first_read_row.set_sel_up_to_down(true);
 
-                let mut value_row = MemAlignTraceRowType::default();
+                let mut value_row: R = Default::default();
                 value_row.set_step(step);
                 value_row.set_addr(addr_first_read);
                 value_row.set_offset(offset as u8);
@@ -418,7 +405,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_pc(next_pc as u8);
                 value_row.set_sel_prove(true);
 
-                let mut second_read_row = MemAlignTraceRowType::default();
+                let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
                 second_read_row.set_addr(addr_second_read);
                 second_read_row.set_delta_addr(1);
@@ -578,7 +565,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
 
                 // RWVWR
-                let mut first_read_row = MemAlignTraceRowType::default();
+                let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
                 first_read_row.set_addr(addr_first_read_write);
                 first_read_row.set_offset(DEFAULT_OFFSET);
@@ -586,7 +573,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 first_read_row.set_reset(true);
                 first_read_row.set_sel_up_to_down(true);
 
-                let mut first_write_row = MemAlignTraceRowType::<F>::default();
+                let mut first_write_row: R = Default::default();
                 first_write_row.set_step(step + 1);
                 first_write_row.set_addr(addr_first_read_write);
                 first_write_row.set_offset(DEFAULT_OFFSET);
@@ -595,7 +582,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 first_write_row.set_pc(next_pc as u8);
                 first_write_row.set_sel_up_to_down(true);
 
-                let mut value_row = MemAlignTraceRowType::default();
+                let mut value_row: R = Default::default();
                 value_row.set_step(step);
                 value_row.set_addr(addr_first_read_write);
                 value_row.set_offset(offset as u8);
@@ -604,7 +591,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_pc(next_pc as u8 + 1);
                 value_row.set_sel_prove(true);
 
-                let mut second_write_row = MemAlignTraceRowType::default();
+                let mut second_write_row: R = Default::default();
                 second_write_row.set_step(step + 1);
                 second_write_row.set_addr(addr_second_read_write);
                 second_write_row.set_delta_addr(1);
@@ -614,7 +601,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 second_write_row.set_pc(next_pc as u8 + 2);
                 second_write_row.set_sel_down_to_up(true);
 
-                let mut second_read_row = MemAlignTraceRowType::default();
+                let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
                 second_read_row.set_addr(addr_second_read_write);
                 second_read_row.set_offset(DEFAULT_OFFSET);
@@ -744,13 +731,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
         ((value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK) as u8
     }
 
-    pub fn compute_witness(
+    pub fn compute_witness<R: MemAlignTraceRowOps<F>>(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemAlignTraceType::new_from_vec(trace_buffer)?;
+        let mut trace = MemAlignTrace::<R>::new_from_vec(trace_buffer)?;
         let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
 
         let num_rows = trace.num_rows();
@@ -800,7 +787,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         });
 
         let padding_size = num_rows - total_index;
-        let mut padding_row = MemAlignTraceRowType::default();
+        let mut padding_row: R = Default::default();
         padding_row.set_reset(true);
 
         // Store the padding rows

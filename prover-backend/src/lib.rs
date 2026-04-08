@@ -3,6 +3,8 @@ mod guest;
 mod prover;
 mod utils;
 
+pub use executor::get_packed_info;
+
 pub use builder::*;
 pub use guest::*;
 pub use prover::*;

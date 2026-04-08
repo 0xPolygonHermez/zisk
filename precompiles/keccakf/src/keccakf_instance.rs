@@ -13,7 +13,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::KeccakfTrace;
+use zisk_pil::{KeccakfTrace, KeccakfTraceRow, KeccakfTraceRowPacked};
 
 /// The `KeccakfInstance` struct represents an instance for the Keccakf State Machine.
 ///
@@ -88,13 +88,21 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<KeccakfCollector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.keccakf_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.keccakf_sm
+                    .compute_witness::<KeccakfTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.keccakf_sm.compute_witness::<KeccakfTraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

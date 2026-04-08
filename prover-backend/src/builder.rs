@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::{get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, ZiskProver};
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
-use proofman_common::ParamsGPU;
+use proofman_common::ProofmanOptions;
 use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
@@ -41,13 +41,9 @@ pub struct Prove;
 #[derive(Default)]
 pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     // Common fields for both EMU and ASM
-    aggregation: bool,
     snark_wrapper: bool,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
-    verify_constraints: bool,
-    witness: bool,
-    verbose: u8,
     shared_tables: bool,
     logging_config: Option<LoggingConfig>,
     print_command_info: bool,
@@ -60,8 +56,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
     no_auto_setup: bool,
     is_distributed: bool,
 
-    // Prove-specific fields (only available when Operation = Prove)
-    gpu_params: ParamsGPU,
+    options: ProofmanOptions,
 
     // Phantom data to track state
     _backend: std::marker::PhantomData<Backend>,
@@ -71,7 +66,7 @@ pub struct ProverClientBuilder<Backend = (), Operation = ()> {
 impl ProverClientBuilder<(), ()> {
     #[must_use]
     pub fn new() -> Self {
-        Self { aggregation: true, snark_wrapper: false, ..Default::default() }
+        Self { snark_wrapper: false, ..Default::default() }
     }
 
     /// Configure for Emulator backend
@@ -98,9 +93,7 @@ impl<Backend> ProverClientBuilder<Backend, ()> {
     #[must_use]
     pub fn witness(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
         let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
-        builder.verify_constraints = false;
-        builder.witness = true;
-        builder.aggregation = false;
+        builder.options.verify_constraints();
         builder
     }
 
@@ -108,8 +101,7 @@ impl<Backend> ProverClientBuilder<Backend, ()> {
     #[must_use]
     pub fn verify_constraints(self) -> ProverClientBuilder<Backend, WitnessGeneration> {
         let mut builder: ProverClientBuilder<Backend, WitnessGeneration> = self.into();
-        builder.verify_constraints = true;
-        builder.aggregation = false;
+        builder.options.verify_constraints();
         builder
     }
 
@@ -125,16 +117,13 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     /// Enables aggregation.
     #[must_use]
     pub fn aggregation(mut self, enable: bool) -> Self {
-        self.aggregation = enable;
+        if !enable {
+            self.options.no_aggregation();
+        }
         self
     }
 
-    #[must_use]
-    pub fn snark(mut self) -> Self {
-        self.snark_wrapper = true;
-        self
-    }
-
+    /// Configure whether to use SNARK wrapper
     #[must_use]
     pub fn with_snark(mut self, snark: bool) -> Self {
         self.snark_wrapper = snark;
@@ -167,7 +156,7 @@ impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
 
     #[must_use]
     pub fn verbose(mut self, verbose: u8) -> Self {
-        self.verbose = verbose;
+        self.options.verbose_mode(verbose.into());
         self
     }
 
@@ -244,10 +233,8 @@ impl<Operation> ProverClientBuilder<AsmB, Operation> {
 // Prove-specific methods (available for any operation state - will use defaults if not in Prove mode)
 impl<Backend, Operation> ProverClientBuilder<Backend, Operation> {
     #[must_use]
-    pub fn gpu(mut self, gpu_params: Option<ParamsGPU>) -> Self {
-        if let Some(gpu_params) = gpu_params {
-            self.gpu_params = gpu_params;
-        }
+    pub fn options(mut self, options: ProofmanOptions) -> Self {
+        self.options = options;
         self
     }
 }
@@ -305,14 +292,12 @@ impl<X> ProverClientBuilder<EmuB, X> {
         }
 
         let emu = EmuProver::new(
-            self.verify_constraints || self.witness,
-            self.aggregation,
             self.snark_wrapper,
+            false,
             proving_key,
             proving_key_snark,
-            self.verbose,
             self.shared_tables,
-            self.gpu_params,
+            self.options,
             self.logging_config,
         )?;
 
@@ -401,18 +386,16 @@ impl<X> ProverClientBuilder<AsmB, X> {
         }
 
         let asm = AsmProver::new(
-            self.verify_constraints || self.witness,
-            self.aggregation,
             self.snark_wrapper,
+            false,
             proving_key,
             proving_key_snark,
-            self.verbose,
             self.shared_tables,
             self.base_port,
             self.unlock_mapped_memory,
             self.asm_out_file,
             self.no_auto_setup,
-            self.gpu_params,
+            self.options,
             self.is_distributed,
             self.logging_config,
         )?;
@@ -434,17 +417,13 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<EmuB, ()> {
     fn from(builder: ProverClientBuilder<(), ()>) -> Self {
         Self {
             // Preserve common fields
-            aggregation: builder.aggregation,
-            witness: builder.witness,
             snark_wrapper: builder.snark_wrapper,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
-            verify_constraints: builder.verify_constraints,
-            verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
-            gpu_params: builder.gpu_params,
+            options: builder.options,
 
             // Reset ASM-specific fields for EMU backend
             asm_path: None,
@@ -465,17 +444,13 @@ impl From<ProverClientBuilder<(), ()>> for ProverClientBuilder<AsmB, ()> {
     fn from(builder: ProverClientBuilder<(), ()>) -> Self {
         Self {
             // Preserve common fields
-            aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
-            witness: builder.witness,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
-            verify_constraints: builder.verify_constraints,
-            verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
-            gpu_params: builder.gpu_params,
+            options: builder.options,
 
             // Preserve ASM-specific fields (user may have set defaults)
             asm_path: builder.asm_path,
@@ -497,17 +472,13 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>>
     fn from(builder: ProverClientBuilder<Backend, ()>) -> Self {
         Self {
             // Preserve common fields
-            aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
-            witness: builder.witness,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
-            verify_constraints: builder.verify_constraints,
-            verbose: builder.verbose,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,
-            gpu_params: builder.gpu_params,
+            options: builder.options,
 
             // Preserve backend-specific fields (ASM or EMU)
             asm_path: builder.asm_path,
@@ -527,14 +498,10 @@ impl<Backend> From<ProverClientBuilder<Backend, ()>> for ProverClientBuilder<Bac
     fn from(builder: ProverClientBuilder<Backend, ()>) -> Self {
         Self {
             // Preserve common fields
-            aggregation: builder.aggregation,
             snark_wrapper: builder.snark_wrapper,
-            witness: builder.witness,
             proving_key: builder.proving_key,
             proving_key_snark: builder.proving_key_snark,
-            verify_constraints: false,
-            gpu_params: builder.gpu_params,
-            verbose: builder.verbose,
+            options: builder.options,
             shared_tables: builder.shared_tables,
             print_command_info: builder.print_command_info,
             logging_config: builder.logging_config,

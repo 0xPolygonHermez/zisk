@@ -3,6 +3,8 @@ use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
+use executor::get_packed_info;
+use proofman_common::ProofmanOptions;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -80,6 +82,9 @@ pub struct ZiskVerifyConstraints {
 
     #[clap(short = 'j', long, default_value_t = false)]
     pub no_shared_tables_mpi: bool,
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 impl ZiskVerifyConstraints {
@@ -135,8 +140,19 @@ impl ZiskVerifyConstraints {
             self.emulator
         };
 
-        let result =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
+        let mut options = ProofmanOptions::default();
+        options.verify_constraints();
+        options.verbose_mode(self.verbose.into());
+        if self.gpu {
+            options.gpu();
+        }
+        options.packed_info(get_packed_info());
+
+        let result = if emulator {
+            self.run_emu(stdin, options)?
+        } else {
+            self.run_asm(stdin, hints_stream, options)?
+        };
 
         info!(
             "{}",
@@ -151,13 +167,18 @@ impl ZiskVerifyConstraints {
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
+    pub fn run_emu(
+        &mut self,
+        stdin: ZiskStdin,
+        options: ProofmanOptions,
+    ) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClientBuilder::new()
             .emu()
             .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
             .shared_tables(!self.no_shared_tables_mpi)
+            .options(options)
             .print_command_info()
             .build()?;
 
@@ -171,10 +192,10 @@ impl ZiskVerifyConstraints {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
+        options: ProofmanOptions,
     ) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClientBuilder::new()
             .asm()
-            .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
             .shared_tables(!self.no_shared_tables_mpi)
@@ -183,6 +204,7 @@ impl ZiskVerifyConstraints {
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .asm_out_file(self.asm_out_file)
+            .options(options)
             .print_command_info()
             .build()?;
 

@@ -19,20 +19,7 @@ use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REG
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
 
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{MainTrace, MainTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{MainTracePacked, MainTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type MainTraceRowType<F> = MainTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type MainTraceType<F> = MainTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type MainTraceRowType<F> = MainTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type MainTraceType<F> = MainTrace<F>;
+use zisk_pil::{MainTrace, MainTraceRowOps};
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -44,8 +31,7 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    const MAX_SEGMENT_ID: usize =
-        ((DEFAULT_MAX_STEPS + 1) as usize / MainTraceType::<F>::NUM_ROWS) - 1;
+    const MAX_SEGMENT_ID: usize = ((DEFAULT_MAX_STEPS + 1) as usize / MainTrace::<F>::NUM_ROWS) - 1;
 
     /// Creates a new `MainInstance`.
     ///
@@ -69,7 +55,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
-    pub fn compute_witness(
+    pub fn compute_witness<R: MainTraceRowOps<F>>(
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
@@ -78,7 +64,7 @@ impl<F: PrimeField64> MainInstance<F> {
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         // Create the main trace buffer
-        let mut main_trace = MainTraceType::new_from_vec(trace_buffer)?;
+        let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
         let segment_id = main_instance.ictx.plan.segment_id.unwrap();
 
@@ -143,7 +129,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 let mut step_range_check = vec![0; max_range as usize];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
-                let (pc, regs) = Self::fill_partial_trace(
+                let (pc, regs) = Self::fill_partial_trace::<R>(
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
@@ -166,7 +152,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // are only a few values that exceed this limit, for this reason, are stored in a vector
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
+        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
             num_rows,
             &fill_trace_outputs,
             &mut main_trace,
@@ -224,9 +210,9 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace(
+    fn fill_partial_trace<R: MainTraceRowOps<F>>(
         zisk_rom: &ZiskRom,
-        main_trace: &mut [MainTraceRowType<F>],
+        main_trace: &mut [R],
         min_trace: &EmuTrace,
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
@@ -237,7 +223,8 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut mem_reads_index: usize = 0;
 
         for trace in main_trace {
-            *trace = emu.step_slice_full_trace(
+            emu.step_slice_full_trace::<R, F>(
+                trace,
                 &min_trace.mem_reads,
                 &mut mem_reads_index,
                 reg_trace,
@@ -255,10 +242,10 @@ impl<F: PrimeField64> MainInstance<F> {
         )
     }
 
-    fn complete_trace_with_initial_reg_steps_per_chunk(
+    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
-        main_trace: &mut MainTraceType<F>,
+        main_trace: &mut MainTrace<R>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
     ) -> Vec<u32> {

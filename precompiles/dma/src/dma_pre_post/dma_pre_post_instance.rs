@@ -79,6 +79,7 @@ impl<F: PrimeField64> Instance<F> for DmaPrePostInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
@@ -112,7 +113,7 @@ impl<F: PrimeField64> Instance<F> for DmaPrePostInstance<F> {
             &format!("{}_inputs_{air_instance_id:04}.txt", self.module.get_name()),
         )?;
 
-        Ok(Some(self.module.compute_witness(&inputs, trace_buffer)?))
+        Ok(Some(self.module.compute_witness(&inputs, trace_buffer, packed)?))
     }
 
     /// Retrieves the checkpoint associated with this instance.

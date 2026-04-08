@@ -52,23 +52,4 @@ named-sem = { workspace = true }
 
 [features]
 default = []
-gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
-packed = [
-    "proofman/packed",
-    "proofman-common/packed",
-    "precomp-keccakf/packed",
-    "precomp-sha256f/packed",
-    "precomp-poseidon2/packed",
-    "precomp-blake2/packed",
-    "precomp-arith-eq/packed",
-    "precomp-arith-eq-384/packed",
-    "precomp-big-int/packed",
-    "precomp-dma/packed",
-    "sm-arith/packed",
-    "sm-binary/packed",
-    "sm-main/packed",
-    "sm-mem/packed",
-    "sm-frequent-ops/packed",
-    "sm-rom/packed",
-]
 stats = []

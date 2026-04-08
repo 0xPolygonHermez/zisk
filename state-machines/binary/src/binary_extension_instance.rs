@@ -14,7 +14,7 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
     PayloadType,
 };
-use zisk_pil::BinaryExtensionTrace;
+use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked};
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
 /// computations.
@@ -107,6 +107,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -117,7 +118,17 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             })
             .collect();
 
-        Ok(Some(self.binary_extension_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.binary_extension_sm
+                    .compute_witness::<BinaryExtensionTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(
+                self.binary_extension_sm
+                    .compute_witness::<BinaryExtensionTraceRow<F>>(&inputs, trace_buffer)?,
+            ))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

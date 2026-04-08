@@ -2,7 +2,8 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 use anyhow::Result;
 
 use colored::Colorize;
-use proofman_common::ParamsGPU;
+use executor::get_packed_info;
+use proofman_common::ProofmanOptions;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -103,9 +104,6 @@ pub struct ZiskProve {
     #[clap(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'b', long, default_value_t = false)]
-    pub save_proofs: bool,
-
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
@@ -120,6 +118,9 @@ pub struct ZiskProve {
 
     #[clap(long, default_value_t = false)]
     pub snark: bool,
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 impl ZiskProve {
@@ -135,24 +136,22 @@ impl ZiskProve {
 
         print_banner_field("Elf", self.elf.display());
 
-        let mut gpu_params = None;
-        if self.preallocate
-            || self.max_streams.is_some()
-            || self.number_threads_witness.is_some()
-            || self.max_witness_stored.is_some()
-        {
-            let mut gpu_params_new = ParamsGPU::new(self.preallocate);
-            if let Some(max_witness_stored) = self.max_witness_stored {
-                gpu_params_new.with_max_witness_stored(max_witness_stored);
-            }
-            if let Some(number_threads_witness) = self.number_threads_witness {
-                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
-            }
-            if let Some(max_streams) = self.max_streams {
-                gpu_params_new.with_max_number_streams(max_streams);
-            }
-            gpu_params = Some(gpu_params_new);
+        let mut options = ProofmanOptions::new(self.preallocate);
+
+        if let Some(max_witness_stored) = self.max_witness_stored {
+            options.with_max_witness_stored(max_witness_stored);
         }
+        if let Some(number_threads_witness) = self.number_threads_witness {
+            options.with_number_threads_pools_witness(number_threads_witness);
+        }
+        if let Some(max_streams) = self.max_streams {
+            options.with_max_number_streams(max_streams);
+        }
+
+        if self.gpu {
+            options.gpu();
+        }
+        options.packed_info(get_packed_info());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -188,9 +187,9 @@ impl ZiskProve {
         };
 
         let (result, world_rank) = if emulator {
-            self.run_emu(stdin, gpu_params)?
+            self.run_emu(stdin, options)?
         } else {
-            self.run_asm(stdin, hints_stream, gpu_params)?
+            self.run_asm(stdin, hints_stream, options)?
         };
 
         if world_rank == 0 {
@@ -223,7 +222,7 @@ impl ZiskProve {
     pub fn run_emu(
         &mut self,
         stdin: ZiskStdin,
-        gpu_params: Option<ParamsGPU>,
+        options: ProofmanOptions,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClientBuilder::new()
             .aggregation(self.aggregation)
@@ -232,7 +231,7 @@ impl ZiskProve {
             .verbose(self.verbose)
             .shared_tables(!self.no_shared_tables_mpi)
             .with_snark(self.snark)
-            .gpu(gpu_params)
+            .options(options)
             .print_command_info()
             .build()?;
 
@@ -244,7 +243,6 @@ impl ZiskProve {
             rma: !self.no_rma_mpi,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,
-            save_proofs: self.save_proofs,
             output_dir_path: Some(self.output_dir.clone()),
         };
 
@@ -266,7 +264,7 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        gpu_params: Option<ParamsGPU>,
+        options: ProofmanOptions,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover = ProverClientBuilder::new()
             .aggregation(self.aggregation)
@@ -281,7 +279,7 @@ impl ZiskProve {
             .no_auto_setup(self.no_auto_setup)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .asm_out_file(self.asm_out_file)
-            .gpu(gpu_params)
+            .options(options)
             .print_command_info()
             .build()?;
 
@@ -297,7 +295,6 @@ impl ZiskProve {
             rma: !self.no_rma_mpi,
             minimal_memory: self.minimal_memory,
             verify_proofs: self.verify_proofs,
-            save_proofs: self.save_proofs,
             output_dir_path: Some(self.output_dir.clone()),
         };
 

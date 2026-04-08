@@ -14,7 +14,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Blake2brTrace;
+use zisk_pil::{Blake2brTraceRow, Blake2brTraceRowPacked, BLAKE_2_BR_AIR_IDS};
 
 /// The `Blake2Instance` struct represents an instance for the Blake2 State Machine.
 ///
@@ -45,8 +45,7 @@ impl<F: PrimeField64> Blake2Instance<F> {
 
     pub fn build_blake2_collector(&self, chunk_id: ChunkId) -> Blake2Collector {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Blake2brTrace::<F>::AIR_ID,
+            self.ictx.plan.air_id, BLAKE_2_BR_AIR_IDS[0],
             "Blake2Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -75,13 +74,21 @@ impl<F: PrimeField64> Instance<F> for Blake2Instance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Blake2Collector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.blake2_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.blake2_sm
+                    .compute_witness::<Blake2brTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.blake2_sm.compute_witness::<Blake2brTraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -102,8 +109,7 @@ impl<F: PrimeField64> Instance<F> for Blake2Instance<F> {
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Blake2brTrace::<F>::AIR_ID,
+            self.ictx.plan.air_id, BLAKE_2_BR_AIR_IDS[0],
             "Blake2Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

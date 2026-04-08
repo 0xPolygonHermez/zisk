@@ -6,7 +6,7 @@ use crate::ux::print_banner_field;
 use crate::{common::get_proving_key, ux::print_banner};
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman_common::{MpiCtx, ParamsGPU, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_common::{MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use std::sync::Arc;
@@ -35,6 +35,9 @@ pub struct ZiskRomSetup {
 
     #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
     pub verbose: u8,
+
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 }
 
 impl ZiskRomSetup {
@@ -56,21 +59,20 @@ impl ZiskRomSetup {
         println!();
 
         let mpi_ctx = Arc::new(MpiCtx::new());
-        let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx)?;
-
-        let mut params_gpu = ParamsGPU::new(false);
-        params_gpu.with_max_number_streams(1);
+        let mut pctx =
+            ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, self.gpu)?;
 
         let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
             &pctx.global_info,
             &ProofType::Basic,
             false,
-            &params_gpu,
+            false,
             &[],
+            self.gpu,
         )?);
         let setups_vadcop =
-            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &params_gpu, &[])?);
-        pctx.set_device_buffers(&sctx, &setups_vadcop, false, &params_gpu)?;
+            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, false, &[], self.gpu)?);
+        pctx.set_device_buffers(&sctx, &setups_vadcop, false, self.gpu, 1)?;
         let pctx = Arc::new(pctx);
 
         tracing::info!("Computing setup for ROM {}", self.elf.display());

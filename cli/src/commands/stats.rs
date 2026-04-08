@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
+use executor::get_packed_info;
+use proofman_common::ProofmanOptions;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use tracing::warn;
@@ -96,6 +98,9 @@ pub struct ZiskStats {
 
     #[clap(short = 'n', long, default_value_t = false)]
     pub no_auto_setup: bool,
+
+    #[clap(short = 'a', long, default_value_t = false)]
+    pub packed: bool,
 }
 
 impl ZiskStats {
@@ -140,8 +145,19 @@ impl ZiskStats {
             self.emulator
         };
 
-        let (world_rank, n_processes, stats) =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
+        let mut options = ProofmanOptions::default();
+        options.verify_constraints();
+        options.verbose_mode(self.verbose.into());
+        if self.packed {
+            options.packed();
+        }
+        options.packed_info(get_packed_info());
+
+        let (world_rank, n_processes, stats) = if emulator {
+            self.run_emu(stdin, options)?
+        } else {
+            self.run_asm(stdin, hints_stream, options)?
+        };
 
         if world_rank % 2 == 1 {
             std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -167,7 +183,11 @@ impl ZiskStats {
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    pub fn run_emu(
+        &mut self,
+        stdin: ZiskStdin,
+        options: ProofmanOptions,
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClientBuilder::new()
             .emu()
             .witness()
@@ -175,6 +195,7 @@ impl ZiskStats {
             .verbose(self.verbose)
             .shared_tables(!self.no_shared_tables_mpi)
             .print_command_info()
+            .options(options)
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
@@ -193,6 +214,7 @@ impl ZiskStats {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
+        options: ProofmanOptions,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let prover = ProverClientBuilder::new()
             .asm()
@@ -205,6 +227,7 @@ impl ZiskStats {
             .base_port_opt(self.port)
             .unlock_mapped_memory(self.unlock_mapped_memory)
             .asm_out_file(self.asm_out_file)
+            .options(options)
             .print_command_info()
             .build()?;
 

@@ -58,6 +58,4 @@ path-clean = "1.0"
 
 [features]
 default = []
-gpu = ["packed"]
-packed = []
 test_data = []

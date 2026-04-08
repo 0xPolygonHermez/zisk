@@ -15,5 +15,4 @@ zisk-sdk = { workspace = true }
 
 [features]
 default = []
-packed = ["zisk-sdk/packed"]
-gpu = ["zisk-sdk/gpu", "packed"]
+gpu = ["zisk-sdk/gpu"]

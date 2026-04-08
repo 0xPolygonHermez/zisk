@@ -15,7 +15,7 @@ use std::sync::Arc;
 use zisk_common::ChunkId;
 use zisk_common::StatsType;
 use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
-use zisk_pil::DmaUnalignedTrace;
+use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked};
 
 /// The `DmaUnalignedInstance` struct represents an instance for the Dma State Machine.
 ///
@@ -89,6 +89,7 @@ impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
@@ -116,12 +117,21 @@ impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
             &format!("dma_unaligned_inputs_{segment_id:04}.txt"),
         )?;
 
-        Ok(Some(self.dma_unaligned_sm.compute_witness(
-            &inputs,
-            segment_id,
-            self.is_last_segment,
-            trace_buffer,
-        )?))
+        if packed {
+            Ok(Some(self.dma_unaligned_sm.compute_witness::<DmaUnalignedTraceRowPacked<F>>(
+                &inputs,
+                segment_id,
+                self.is_last_segment,
+                trace_buffer,
+            )?))
+        } else {
+            Ok(Some(self.dma_unaligned_sm.compute_witness::<DmaUnalignedTraceRow<F>>(
+                &inputs,
+                segment_id,
+                self.is_last_segment,
+                trace_buffer,
+            )?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

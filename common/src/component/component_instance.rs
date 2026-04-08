@@ -37,6 +37,7 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _trace_buffer: Vec<F>,
+        _packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         Ok(None)
     }
@@ -146,6 +147,7 @@ macro_rules! table_instance {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
+                _packed: bool,
             ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
@@ -255,6 +257,7 @@ macro_rules! table_instance_array {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
+                _packed: bool,
             ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();

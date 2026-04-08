@@ -122,7 +122,6 @@ pub struct ProofOpts {
     pub rma: bool,
     pub minimal_memory: bool,
     pub output_dir_path: Option<PathBuf>,
-    pub save_proofs: bool,
 }
 
 impl Default for ProofOpts {
@@ -133,7 +132,6 @@ impl Default for ProofOpts {
             rma: false,
             minimal_memory: false,
             output_dir_path: None,
-            save_proofs: false,
         }
     }
 }
@@ -141,11 +139,6 @@ impl Default for ProofOpts {
 impl ProofOpts {
     pub fn output_dir(mut self, path: PathBuf) -> Self {
         self.output_dir_path = Some(path);
-        self
-    }
-
-    pub fn save_proofs(mut self) -> Self {
-        self.save_proofs = true;
         self
     }
 

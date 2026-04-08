@@ -3,15 +3,17 @@ use std::path::PathBuf;
 use crate::cancel::CancellationToken;
 use crate::ZiskStdin;
 use anyhow::Result;
-use proofman_common::ParamsGPU;
+use proofman_common::ProofmanOptions;
 use zisk_common::ProofMode;
 use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::{
-    get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, GuestProgram,
-    ProofOpts, ProverEngine, ZiskProver,
+    get_packed_info, get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver,
+    GuestProgram, ProofOpts, ProverEngine, ZiskProver,
 };
 
-use crate::{execute::ExecuteResult, input::ProgramInput, proof::Proof, Client, ExecutorKind};
+use crate::{
+    execute::ExecuteResult, input::ProgramInput, proof::Proof, Client, ExecutorKind, ProofKind,
+};
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
     "Assembly executor not enabled — call .assembly() on the builder";
@@ -26,13 +28,19 @@ pub struct EmbeddedClientConfig {
 /// Builder for an embedded [`ProverClient`].
 pub(crate) struct EmbeddedClientBuilder {
     executor: ExecutorKind,
-    gpu_params: Option<ParamsGPU>,
+    proof_kind: ProofKind,
+    options: ProofmanOptions,
     config: EmbeddedClientConfig,
 }
 
 impl EmbeddedClientBuilder {
     pub(crate) fn new(config: EmbeddedClientConfig) -> Self {
-        Self { executor: ExecutorKind::Emulator, gpu_params: None, config }
+        Self {
+            executor: ExecutorKind::Emulator,
+            proof_kind: ProofKind::StarkMinimal,
+            options: ProofmanOptions::default(),
+            config,
+        }
     }
 
     #[must_use]
@@ -42,17 +50,25 @@ impl EmbeddedClientBuilder {
     }
 
     #[must_use]
-    pub(crate) fn with_gpu_params(mut self, gpu_params: ParamsGPU) -> Self {
-        self.gpu_params = Some(gpu_params);
+    pub(crate) fn gpu(mut self) -> Self {
+        self.options.gpu();
+        self.options.packed_info(get_packed_info());
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn plonk(mut self) -> Self {
+        self.proof_kind = ProofKind::Plonk;
         self
     }
 
     pub(crate) fn build(self) -> Result<EmbeddedClient> {
         let pk = get_proving_key(self.config.proving_key.as_ref());
         let pk_snark = get_proving_key_snark(self.config.proving_key_snark.as_ref());
+        let use_snark = matches!(self.proof_kind, ProofKind::Plonk);
         let prover = match self.executor {
-            ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, self.gpu_params)?,
-            ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, self.gpu_params)?,
+            ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, self.options, use_snark)?,
+            ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, self.options, use_snark)?,
         };
         Ok(EmbeddedClient { prover })
     }
@@ -60,42 +76,21 @@ impl EmbeddedClientBuilder {
     fn build_emu(
         pk: PathBuf,
         pk_snark: PathBuf,
-        gpu_params: Option<ParamsGPU>,
+        options: ProofmanOptions,
+        use_snark: bool,
     ) -> Result<EmbeddedProver> {
-        let emu = EmuProver::new(
-            false,
-            true,
-            false,
-            pk,
-            pk_snark,
-            0,
-            false,
-            gpu_params.unwrap_or_default(),
-            None,
-        )?;
+        let emu = EmuProver::new(use_snark, false, pk, pk_snark, false, options, None)?;
         Ok(EmbeddedProver::Emu(ZiskProver::<Emu>::new(emu)))
     }
 
     fn build_asm(
         pk: PathBuf,
         pk_snark: PathBuf,
-        gpu_params: Option<ParamsGPU>,
+        options: ProofmanOptions,
+        use_snark: bool,
     ) -> Result<EmbeddedProver> {
         let asm = AsmProver::new(
-            false,
-            true,
-            false,
-            pk,
-            pk_snark,
-            0,
-            false,
-            None,
-            false,
-            false,
-            false,
-            gpu_params.unwrap_or_default(),
-            false,
-            None,
+            use_snark, false, pk, pk_snark, false, None, false, false, false, options, false, None,
         )?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm)))
     }

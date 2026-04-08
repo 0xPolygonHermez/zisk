@@ -95,12 +95,12 @@ pub fn get_elf_bin_file_path_with_hash(
     default_cache_path: &Path,
     blowup_factor: u64,
     arity: u64,
+    gpu: bool,
 ) -> Result<PathBuf> {
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
-    let gpu = if cfg!(feature = "gpu") { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
         "{}_{}_{}_{}_{}{}.bin",
         hash,
@@ -119,12 +119,12 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
     default_cache_path: &Path,
     blowup_factor: u64,
     arity: u64,
+    gpu: bool,
 ) -> Result<PathBuf> {
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
-    let gpu = if cfg!(feature = "gpu") { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
         "{}_{}_{}_{}_{}{}.verkey.bin",
         hash,

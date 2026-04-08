@@ -49,7 +49,5 @@ yansi = "1.0.1"
 default = []
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
-gpu = ["zisk-prover-backend/gpu"]
-packed = ["zisk-prover-backend/packed"]
 stats = []
 verify = ["fields/verify"]

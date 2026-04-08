@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::ArithTrace;
+use zisk_pil::{ArithTrace, ArithTraceRow, ArithTraceRowPacked};
 
 /// The `ArithFullInstance` struct represents an instance for arithmetic-related witness
 /// computations.
@@ -96,6 +96,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -105,7 +106,14 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
                 _collector.inputs
             })
             .collect();
-        Ok(Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.arith_full_sm
+                    .compute_witness::<ArithTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.arith_full_sm.compute_witness::<ArithTraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
