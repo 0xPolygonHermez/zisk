@@ -2,7 +2,9 @@ use num_integer::Integer;
 
 use super::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
-/// Perform the division between two 256-bit non-zero numbers
+/// Perform the division of a 256-bit integer `a` by another 256-bit integer `b`,
+/// returning the quotient `q` and the remainder `r`, such that `a = b * q + r`
+/// It assumes that `b != 0`
 pub fn fcall_uint256_div(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..4].try_into().unwrap();
@@ -30,7 +32,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_div() {
+    fn test_div_a_zero() {
+        let a = [0, 0, 0, 0];
+        let b = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x0];
+        let params = [a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]];
+        let mut results = [0; 8];
+        fcall_uint256_div(&params, &mut results);
+        let expected_quo = [0, 0, 0, 0];
+        let expected_rem = [0, 0, 0, 0];
+
+        assert_eq!(results[0..4], expected_quo);
+        assert_eq!(results[4..8], expected_rem);
+    }
+
+    #[test]
+    fn test_div_a_eq_b() {
+        let a = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x0];
+        let b = a;
+        let params = [a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]];
+        let mut results = [0; 8];
+        fcall_uint256_div(&params, &mut results);
+        let expected_quo = [1, 0, 0, 0];
+        let expected_rem = [0, 0, 0, 0];
+
+        assert_eq!(results[0..4], expected_quo);
+        assert_eq!(results[4..8], expected_rem);
+    }
+
+    #[test]
+    fn test_div_a_lt_b() {
+        let a = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x0];
+        let b = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x1];
+        let params = [a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]];
+        let mut results = [0; 8];
+        fcall_uint256_div(&params, &mut results);
+        let expected_quo = [0, 0, 0, 0];
+        let expected_rem = a;
+
+        assert_eq!(results[0..4], expected_quo);
+        assert_eq!(results[4..8], expected_rem);
+    }
+
+    #[test]
+    fn test_div_a_gt_b() {
         let a = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x3b4e3fc5e0d8b014];
         let b = [0x16b12176aedd308e, 0x9d331c2b34766fc9, 0xb7f85b22001249e, 0x0];
         let params = [a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3]];

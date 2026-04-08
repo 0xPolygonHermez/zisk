@@ -14,16 +14,14 @@ cfg_if! {
     }
 }
 
-/// Executes the inverse computation
+/// Given 256-bit unsigned integers `a` and `b`, it computes `(quotient, remainder)`
+/// such that `a = b * quotient + remainder` with `0 <= remainder < b`.
 ///
-/// `fcall_uint256_div` performs an inversion of a 256-bit field element,
-/// represented as an array of four `u64` values.
-///
-/// - `fcall_uint256_div` performs the inversion and **returns the result directly**.
+/// Requires `b != 0`.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that the input pointers are valid and aligned to an 8-byte boundary.
 ///
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.

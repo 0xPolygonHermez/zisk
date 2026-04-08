@@ -12,11 +12,17 @@ cfg_if! {
     }
 }
 
-/// Executes the division of an unsigned integer of length `l` by another unsigned integer of length `s`.
+/// Given unsigned big integers `a` (of `a_value.len()` limbs) and `b` (of `b_value.len()` limbs),
+/// it computes `(quo, rem)` such that `a = b * quo + rem` with `0 <= rem < b`.
+///
+/// Requires `b != 0`.
+///
+/// Returns `(len_quo, len_rem)` — the number of limbs written to `quo` and `rem`.
 ///
 /// ### Safety
 ///
 /// The caller must ensure that the input pointers are valid and aligned to an 8-byte boundary.
+/// The `quo` and `rem` slices must be large enough to hold the result.
 ///
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
