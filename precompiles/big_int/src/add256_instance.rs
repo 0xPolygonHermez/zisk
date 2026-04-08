@@ -47,7 +47,7 @@ impl<F: PrimeField64> Add256Instance<F> {
     pub fn build_add256_collector(&self, chunk_id: ChunkId) -> Add256Collector {
         assert_eq!(
             self.ictx.plan.air_id,
-            Add256Trace::<F>::AIR_ID,
+            Add256Trace::<()>::AIR_ID,
             "Add256Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -115,7 +115,7 @@ impl<F: PrimeField64> Instance<F> for Add256Instance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            Add256Trace::<F>::AIR_ID,
+            Add256Trace::<()>::AIR_ID,
             "Add256Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

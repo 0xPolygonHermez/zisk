@@ -53,7 +53,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            BinaryExtensionTrace::<F>::AIR_ID,
+            BinaryExtensionTrace::<()>::AIR_ID,
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -73,7 +73,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     ) -> BinaryExtensionCollector<F> {
         assert_eq!(
             self.ictx.plan.air_id,
-            BinaryExtensionTrace::<F>::AIR_ID,
+            BinaryExtensionTrace::<()>::AIR_ID,
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

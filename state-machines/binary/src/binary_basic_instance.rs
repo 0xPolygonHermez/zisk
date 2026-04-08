@@ -54,7 +54,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            BinaryTrace::<F>::AIR_ID,
+            BinaryTrace::<()>::AIR_ID,
             "BinaryBasicInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );

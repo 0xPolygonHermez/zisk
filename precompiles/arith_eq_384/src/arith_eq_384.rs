@@ -51,8 +51,8 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// A new `ArithEq384SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEq384Trace::<F>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
-        let num_non_usable_rows = ArithEq384Trace::<F>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
+        let num_available_ops = ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
+        let num_non_usable_rows = ArithEq384Trace::<()>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
         let q_hsc_range_id =
             std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
         let chunk_range_id = std

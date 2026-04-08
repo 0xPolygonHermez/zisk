@@ -47,7 +47,7 @@ impl<F: PrimeField64> DmaInstance<F> {
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaCollector {
         debug_assert!(
-            [DmaTrace::<F>::AIR_ID, DmaMemCpyTrace::<F>::AIR_ID, DmaInputCpyTrace::<F>::AIR_ID,]
+            [DmaTrace::<()>::AIR_ID, DmaMemCpyTrace::<()>::AIR_ID, DmaInputCpyTrace::<()>::AIR_ID,]
                 .contains(&self.ictx.plan.air_id),
             "DmaInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
@@ -135,7 +135,7 @@ impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            DmaTrace::<F>::AIR_ID,
+            DmaTrace::<()>::AIR_ID,
             "DmaInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

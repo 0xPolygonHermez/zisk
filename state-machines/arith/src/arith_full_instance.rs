@@ -52,7 +52,7 @@ impl<F: PrimeField64> ArithFullInstance<F> {
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            ArithTrace::<F>::AIR_ID,
+            ArithTrace::<()>::AIR_ID,
             "ArithFullInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );

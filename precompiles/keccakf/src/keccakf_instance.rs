@@ -44,7 +44,7 @@ impl<F: PrimeField64> KeccakfInstance<F> {
     pub fn new(keccakf_sm: Arc<KeccakfSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            KeccakfTrace::<F>::AIR_ID,
+            KeccakfTrace::<()>::AIR_ID,
             "KeccakfInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -61,7 +61,7 @@ impl<F: PrimeField64> KeccakfInstance<F> {
     pub fn build_keccakf_collector(&self, chunk_id: ChunkId) -> KeccakfCollector {
         assert_eq!(
             self.ictx.plan.air_id,
-            KeccakfTrace::<F>::AIR_ID,
+            KeccakfTrace::<()>::AIR_ID,
             "KeccakfInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -128,7 +128,7 @@ impl<F: PrimeField64> Instance<F> for KeccakfInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            KeccakfTrace::<F>::AIR_ID,
+            KeccakfTrace::<()>::AIR_ID,
             "KeccakfInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

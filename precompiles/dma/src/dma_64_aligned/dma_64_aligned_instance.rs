@@ -66,11 +66,11 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
         let ops_by_row = match self.ictx.plan.air_id {
-            Dma64AlignedTrace::<F>::AIR_ID => DMA_64_ALIGNED_OPS_BY_ROW,
-            Dma64AlignedMemCpyTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
-            Dma64AlignedInputCpyTrace::<F>::AIR_ID => DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
-            Dma64AlignedMemSetTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-            Dma64AlignedMemTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEM_OPS_BY_ROW,
+            Dma64AlignedTrace::<()>::AIR_ID => DMA_64_ALIGNED_OPS_BY_ROW,
+            Dma64AlignedMemCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
+            Dma64AlignedInputCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
+            Dma64AlignedMemSetTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
+            Dma64AlignedMemTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEM_OPS_BY_ROW,
             _ => panic!("Dma64AlignedInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
         };
 

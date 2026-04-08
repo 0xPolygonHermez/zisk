@@ -51,7 +51,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
     /// A new `ArithEqSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEqTrace::<F>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
+        let num_available_ops = ArithEqTrace::<()>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
         let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
         let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");

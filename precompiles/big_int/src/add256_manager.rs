@@ -49,8 +49,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Add256Manager<F> {
         let num_availables = self.add256_sm.num_availables;
 
         Box::new(Add256Planner::new().add_instance(InstanceInfo::new(
-            Add256Trace::<F>::AIRGROUP_ID,
-            Add256Trace::<F>::AIR_ID,
+            Add256Trace::<()>::AIRGROUP_ID,
+            Add256Trace::<()>::AIR_ID,
             num_availables,
             ZiskOperationType::BigInt,
         )))
@@ -69,7 +69,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Add256Manager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == Add256Trace::<F>::AIR_ID => {
+            id if id == Add256Trace::<()>::AIR_ID => {
                 Box::new(Add256Instance::new(self.add256_sm.clone(), ictx))
             }
             _ => {

@@ -108,41 +108,41 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
             // DMA controller instances
-            DmaTrace::<F>::AIR_ID => Box::new(DmaInstance::new(self.dma_sm.clone(), ictx)),
-            DmaMemCpyTrace::<F>::AIR_ID => {
+            DmaTrace::<()>::AIR_ID => Box::new(DmaInstance::new(self.dma_sm.clone(), ictx)),
+            DmaMemCpyTrace::<()>::AIR_ID => {
                 Box::new(DmaInstance::new(self.dma_memcpy_sm.clone(), ictx))
             }
-            DmaInputCpyTrace::<F>::AIR_ID => {
+            DmaInputCpyTrace::<()>::AIR_ID => {
                 Box::new(DmaInstance::new(self.dma_inputcpy_sm.clone(), ictx))
             }
             // DMA pre post instances
-            DmaPrePostTrace::<F>::AIR_ID => {
+            DmaPrePostTrace::<()>::AIR_ID => {
                 Box::new(DmaPrePostInstance::new(self.dma_pre_post_sm.clone(), ictx))
             }
-            DmaPrePostMemCpyTrace::<F>::AIR_ID => {
+            DmaPrePostMemCpyTrace::<()>::AIR_ID => {
                 Box::new(DmaPrePostInstance::new(self.dma_pre_post_memcpy_sm.clone(), ictx))
             }
-            DmaPrePostInputCpyTrace::<F>::AIR_ID => {
+            DmaPrePostInputCpyTrace::<()>::AIR_ID => {
                 Box::new(DmaPrePostInstance::new(self.dma_pre_post_inputcpy_sm.clone(), ictx))
             }
             // DMA 64 aligned instances
-            Dma64AlignedTrace::<F>::AIR_ID => {
+            Dma64AlignedTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_sm.clone(), ictx))
             }
-            Dma64AlignedMemCpyTrace::<F>::AIR_ID => {
+            Dma64AlignedMemCpyTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_memcpy_sm.clone(), ictx))
             }
-            Dma64AlignedInputCpyTrace::<F>::AIR_ID => {
+            Dma64AlignedInputCpyTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_inputcpy_sm.clone(), ictx))
             }
-            Dma64AlignedMemSetTrace::<F>::AIR_ID => {
+            Dma64AlignedMemSetTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_memset_sm.clone(), ictx))
             }
-            Dma64AlignedMemTrace::<F>::AIR_ID => {
+            Dma64AlignedMemTrace::<()>::AIR_ID => {
                 Box::new(Dma64AlignedInstance::new(self.dma_64_aligned_mem_sm.clone(), ictx))
             }
             // DMA unaligned instances
-            DmaUnalignedTrace::<F>::AIR_ID => {
+            DmaUnalignedTrace::<()>::AIR_ID => {
                 Box::new(DmaUnalignedInstance::new(self.dma_unaligned_sm.clone(), ictx))
             }
             _ => {
@@ -153,17 +153,17 @@ impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
         let enable_dma_64_aligned =
-            plannings.iter().any(|p| p.air_id == Dma64AlignedTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == Dma64AlignedTrace::<()>::AIR_ID);
         let enable_dma_64_aligned_memcpy =
-            plannings.iter().any(|p| p.air_id == Dma64AlignedMemCpyTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == Dma64AlignedMemCpyTrace::<()>::AIR_ID);
         let enable_dma_64_aligned_memset =
-            plannings.iter().any(|p| p.air_id == Dma64AlignedMemSetTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == Dma64AlignedMemSetTrace::<()>::AIR_ID);
         let enable_dma_64_aligned_inputcpy =
-            plannings.iter().any(|p| p.air_id == Dma64AlignedInputCpyTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == Dma64AlignedInputCpyTrace::<()>::AIR_ID);
         let enable_dma_64_aligned_mem =
-            plannings.iter().any(|p| p.air_id == Dma64AlignedMemTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == Dma64AlignedMemTrace::<()>::AIR_ID);
         let enable_dma_unaligned =
-            plannings.iter().any(|p| p.air_id == DmaUnalignedTrace::<F>::AIR_ID);
+            plannings.iter().any(|p| p.air_id == DmaUnalignedTrace::<()>::AIR_ID);
         let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
         proof_values.enable_dma_64_aligned = F::from_bool(enable_dma_64_aligned);
         proof_values.enable_dma_unaligned = F::from_bool(enable_dma_unaligned);
