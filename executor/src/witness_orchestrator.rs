@@ -7,13 +7,15 @@ use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
 use fields::PrimeField64;
-use proofman_common::{BufferPool, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
+
+use anyhow::Result;
 
 /// Type alias for the secondary instances map (owned).
 type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
@@ -52,8 +54,8 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
     }
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
-    pub fn get_instance_info(&self, global_id: usize) -> (usize, usize) {
-        self.pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info")
+    pub fn get_instance_info(&self, global_id: usize) -> Result<(usize, usize)> {
+        Ok(self.pctx.dctx_get_instance_info(global_id)?)
     }
 }
 
@@ -89,8 +91,11 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         self.collector.set_rom(zisk_rom.clone());
     }
 
-    pub fn reset(&self) {
-        *self.trace_buffer_rom.lock().unwrap() = vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
+    pub fn reset(&self) -> Result<()> {
+        *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))? =
+            vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
+
+        Ok(())
     }
 
     /// Computes witness for a single global ID.
@@ -105,8 +110,8 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         &self,
         ctx: &WitnessContext<'_, F>,
         global_id: usize,
-    ) -> ProofmanResult<()> {
-        let (airgroup_id, air_id) = ctx.get_instance_info(global_id);
+    ) -> Result<()> {
+        let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
 
         if AirClassifier::is_main(air_id) {
             self.compute_main_witness(
@@ -145,9 +150,11 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         global_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope: &StatsScope,
-    ) -> ProofmanResult<()> {
-        let main_instances = state.main_instances.read().unwrap();
-        let main_instance = &main_instances[&global_id];
+    ) -> Result<()> {
+        let main_instances = state.main_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let main_instance = main_instances
+            .get(&global_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
         self.witness_generator.compute_main_witness(
             pctx,
@@ -180,33 +187,40 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         air_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope: &StatsScope,
-    ) -> ProofmanResult<()> {
-        let secn_instances = state.secn_instances.read().unwrap();
-        let secn_instance = &secn_instances[&global_id];
+    ) -> Result<()> {
+        let secn_instances = state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let secn_instance = secn_instances
+            .get(&global_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
         if secn_instance.instance_type() == InstanceType::Instance {
-            let needs_collection =
-                !state.collectors_by_instance.read().unwrap().contains_key(&global_id);
+            let needs_collection = !state
+                .collectors_by_instance
+                .read()
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+                .contains_key(&global_id);
 
             if needs_collection {
                 if AirClassifier::is_rom(air_id) && self.is_asm_emulator {
                     // ROM with ASM emulator: skip collection
-                    self.register_empty_collector(state, global_id, airgroup_id, air_id);
+                    self.register_empty_collector(state, global_id, airgroup_id, air_id)?;
                 } else {
                     // Collect data for this instance
-                    self.collector.collect_single(pctx, state, global_id, secn_instance).map_err(
-                        |e| proofman_common::ProofmanError::InvalidConfiguration(e.to_string()),
-                    )?;
+                    self.collector
+                        .collect_single(pctx, state, global_id, secn_instance)
+                        .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
                 }
             }
         }
 
         let instance = &**secn_instance;
         let collectors =
-            Self::take_collectors_for_instance(state, global_id, instance.instance_type());
+            Self::take_collectors_for_instance(state, global_id, instance.instance_type())?;
 
         let trace_buffer = match AirClassifier::is_rom(air_id) {
-            true => std::mem::take(&mut *self.trace_buffer_rom.lock().unwrap()),
+            true => std::mem::take(
+                &mut *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?,
+            ),
             false => buffer_pool.take_buffer(),
         };
 
@@ -235,11 +249,17 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
-    ) {
+    ) -> Result<()> {
         let stats = Stats::new_no_collection(airgroup_id, air_id);
 
-        state.collectors_by_instance.write().unwrap().insert(global_id, Vec::new());
+        state
+            .collectors_by_instance
+            .write()
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .insert(global_id, Vec::new());
         state.stats.insert_witness_stats(global_id, stats);
+
+        Ok(())
     }
 
     /// Extracts collectors from state, returning an empty list for table instances.
@@ -248,30 +268,36 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
     /// * `state` - Execution state.
     /// * `global_id` - Global ID of the instance.
     /// * `instance_type` - Type of the instance (Instance or Table).
+    #[allow(clippy::type_complexity)]
     fn take_collectors_for_instance(
         state: &ExecutionState<F>,
         global_id: usize,
         instance_type: InstanceType,
-    ) -> Vec<(usize, Box<dyn BusDevice<u64>>)> {
+    ) -> Result<Vec<(usize, Box<dyn BusDevice<u64>>)>> {
         match instance_type {
             InstanceType::Instance => {
-                let mut guard = state.collectors_by_instance.write().unwrap();
+                let mut guard =
+                    state.collectors_by_instance.write().map_err(|e| anyhow::anyhow!("{e}"))?;
 
-                guard
-                    .remove(&global_id)
-                    .expect("Missing collectors for given global_id")
+                let collectors = guard.remove(&global_id).ok_or_else(|| {
+                    anyhow::anyhow!("Missing collectors for global_id {global_id}")
+                })?;
+
+                let result = collectors
                     .into_iter()
                     .enumerate()
                     .map(|(idx, opt)| {
-                        opt.unwrap_or_else(|| {
-                            panic!("Collector at index {} for global_id {} is None", idx, global_id)
+                        opt.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "Collector at index {idx} for global_id {global_id} is None"
+                            )
                         })
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(result)
             }
-            InstanceType::Table => {
-                vec![]
-            }
+            InstanceType::Table => Ok(vec![]),
         }
     }
 
@@ -288,14 +314,14 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         global_ids: &[usize],
-    ) -> ProofmanResult<()> {
-        let secn_instances_guard = state.secn_instances.read().unwrap();
+    ) -> Result<()> {
+        let secn_instances_guard =
+            state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         let mut instances_to_collect = HashMap::new();
 
         for &global_id in global_ids {
-            let (airgroup_id, air_id) =
-                pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id)?;
 
             if AirClassifier::is_main(air_id) {
                 pctx.set_witness_ready(global_id, false);
@@ -308,7 +334,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                     global_id,
                     airgroup_id,
                     air_id,
-                );
+                )?;
             } else {
                 self.handle_secondary_pre_calculate(
                     pctx,
@@ -316,7 +342,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
                     &secn_instances_guard,
                     &mut instances_to_collect,
                     global_id,
-                );
+                )?;
             }
         }
 
@@ -324,8 +350,9 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         if !instances_to_collect.is_empty() {
             self.collector
                 .collect(pctx, state, instances_to_collect)
-                .map_err(|e| proofman_common::ProofmanError::InvalidConfiguration(e.to_string()))?;
+                .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
         }
+
         Ok(())
     }
 
@@ -340,20 +367,27 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
-    ) {
+    ) -> Result<()> {
         if self.is_asm_emulator {
             pctx.set_witness_ready(global_id, false);
         } else {
-            let secn_instance = &secn_instances[&global_id];
-            let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().unwrap();
+            let secn_instance = secn_instances
+                .get(&global_id)
+                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+            let rom_instance =
+                secn_instance.as_any().downcast_ref::<RomInstance>().ok_or_else(|| {
+                    anyhow::anyhow!("Downcast failed: instance {global_id} to RomInstance")
+                })?;
 
             if rom_instance.skip_collector() {
-                self.register_empty_collector(state, global_id, airgroup_id, air_id);
+                self.register_empty_collector(state, global_id, airgroup_id, air_id)?;
                 pctx.set_witness_ready(global_id, true);
             } else {
                 instances_to_collect.insert(global_id, secn_instance);
             }
         }
+
+        Ok(())
     }
 
     /// Handles secondary instance pre-calculation.
@@ -364,15 +398,23 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
         global_id: usize,
-    ) {
-        let secn_instance = &secn_instances[&global_id];
+    ) -> Result<()> {
+        let secn_instance = secn_instances
+            .get(&global_id)
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
         if secn_instance.instance_type() == InstanceType::Instance
-            && !state.collectors_by_instance.read().unwrap().contains_key(&global_id)
+            && !state
+                .collectors_by_instance
+                .read()
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+                .contains_key(&global_id)
         {
             instances_to_collect.insert(global_id, secn_instance);
         } else {
             pctx.set_witness_ready(global_id, true);
         }
+
+        Ok(())
     }
 }

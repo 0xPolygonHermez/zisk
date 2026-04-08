@@ -25,9 +25,9 @@ pub struct RomExecutionOutput {
     /// Device metrics for secondary state machines.
     pub secn_count: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
-    pub handle_mo: Option<JoinHandle<AsmRunnerMO>>,
+    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
-    pub handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
     /// Execution result with step counts.
     pub steps: u64,
 }
@@ -51,25 +51,26 @@ impl RomExecutor {
     }
 
     /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
-        *self.stdin.lock().unwrap() = stdin;
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        *self.stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))? = stdin;
+        Ok(())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
-        self.emulator.set_asm_resources(asm_resources);
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+        self.emulator.set_asm_resources(asm_resources)
     }
 
     /// Resets the hints stream if configured.
-    pub fn reset_hints_stream(&self) {
+    pub fn reset_hints_stream(&self) -> Result<()> {
         self.emulator.reset_hints_stream()
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         self.emulator.get_asm_execution_info()
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.emulator.set_rh_data(rh_data);
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+        self.emulator.set_rh_data(rh_data)
     }
 
     /// Executes the ROM program and collects minimal traces.

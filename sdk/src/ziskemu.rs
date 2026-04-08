@@ -5,11 +5,9 @@ use zisk_core::Riscv2zisk;
 pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
 
-pub fn ziskemu(
-    elf: &impl ElfBinaryLike,
-    stdin: ZiskStdin,
-    options: &EmuOptions,
-) -> anyhow::Result<()> {
+use anyhow::Result;
+
+pub fn ziskemu(elf: &impl ElfBinaryLike, stdin: ZiskStdin, options: &EmuOptions) -> Result<()> {
     let riscv2zisk = Riscv2zisk::new(elf.elf());
 
     let zisk_rom = riscv2zisk

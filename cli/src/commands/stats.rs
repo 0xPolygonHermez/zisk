@@ -154,7 +154,13 @@ impl ZiskStats {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(&stats.get_inner().lock().unwrap().witness_stats);
+            Self::print_stats(
+                &stats
+                    .get_inner()
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))?
+                    .witness_stats,
+            );
             stats.print_stats();
         }
 
@@ -401,7 +407,10 @@ impl ZiskStats {
         // Save to stats.json
 
         // Convert to pretty-printed JSON
-        let json = serde_json::to_string_pretty(&tasks).unwrap();
+        let Ok(json) = serde_json::to_string_pretty(&tasks) else {
+            tracing::warn!("Failed to serialize stats to JSON");
+            return;
+        };
 
         // Write to file
         let _ = fs::write("stats.json", json);

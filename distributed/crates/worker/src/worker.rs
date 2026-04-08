@@ -122,7 +122,7 @@ impl ProverConfig {
                 prover_service_config.elf.display()
             ));
         }
-        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref());
+        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),

@@ -138,7 +138,10 @@ impl AsmResources {
     /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
         if let Some(stream) = &self.hints_stream {
-            let processor = stream.lock().unwrap().get_processor();
+            let processor = stream
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+                .get_processor();
             let sink = processor.hints_sink();
             let services = if is_first_partition {
                 &AsmServices::SERVICES[..]
@@ -147,6 +150,7 @@ impl AsmResources {
             };
             sink.set_active_services(services)?;
         }
+
         Ok(())
     }
 
@@ -155,24 +159,37 @@ impl AsmResources {
     /// Used in the gRPC streaming path where hints arrive pre-processed.
     pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
         if let Some(stream) = &self.hints_stream {
-            let processor = stream.lock().unwrap().get_processor();
-            processor.hints_sink().submit(data)
+            let processor = stream
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+                .get_processor();
+            processor.hints_sink().submit(data)?;
+
+            Ok(())
         } else {
-            Err(anyhow::anyhow!("Hints stream not configured"))
+            Err(anyhow::anyhow!("Hints stream not initialized"))
         }
     }
 
     pub fn start_stream(&self) -> Result<()> {
         if let Some(hints_stream) = &self.hints_stream {
-            hints_stream.lock().unwrap().start_stream()
-        } else {
-            Ok(())
+            hints_stream
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+                .start_stream()?;
         }
+
+        Ok(())
     }
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         if let Some(hints_stream) = &self.hints_stream {
-            hints_stream.lock().unwrap().set_hints_stream_src(stream)
+            hints_stream
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+                .set_hints_stream_src(stream)?;
+
+            Ok(())
         } else {
             Err(anyhow::anyhow!("Hints stream not initialized"))
         }

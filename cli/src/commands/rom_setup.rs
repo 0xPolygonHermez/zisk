@@ -49,7 +49,7 @@ impl ZiskRomSetup {
             print_banner_field("Hints", "Enabled".yellow());
         }
 
-        let proving_key = get_proving_key(self.proving_key.as_ref());
+        let proving_key = get_proving_key(self.proving_key.as_ref())?;
 
         print_banner_field("Proving Key", proving_key.display());
 

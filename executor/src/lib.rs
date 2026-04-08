@@ -51,16 +51,17 @@ use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 
+use anyhow::Result;
+
 pub type EmulatorResult = (
     Vec<EmuTrace>,
     DeviceMetricsList,
     NestedDeviceMetricsList,
-    Option<JoinHandle<AsmRunnerMO>>,
-    Option<JoinHandle<AsmRunnerRH>>,
+    Option<JoinHandle<Result<AsmRunnerMO>>>,
+    Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
 );
 
-use anyhow::Result;
 /// Trait for unified execution across different emulator backends
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
@@ -97,30 +98,30 @@ impl EmulatorKind {
         }
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
         match self {
             Self::Asm(e) => e.set_asm_resources(asm_resources),
-            Self::Rust(_) => (), // No ASM resources in Rust emulator
-        };
+            Self::Rust(_) => Ok(()), // No ASM resources in Rust emulator
+        }
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         match self {
             Self::Asm(e) => e.get_asm_execution_info(),
-            Self::Rust(_) => None, // No ASM execution info in Rust emulator
+            Self::Rust(_) => Ok(None), // No ASM execution info in Rust emulator
         }
     }
-    pub fn reset_hints_stream(&self) {
+    pub fn reset_hints_stream(&self) -> Result<()> {
         match self {
             Self::Asm(e) => e.reset_hints_stream(),
-            Self::Rust(_) => (), // No hints stream in Rust emulator
+            Self::Rust(_) => Ok(()), // No hints stream in Rust emulator
         }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
         match self {
             Self::Asm(e) => e.set_rh_data(rh_data),
-            Self::Rust(_) => (),
+            Self::Rust(_) => Ok(()), // No RH data in Rust emulator
         }
     }
 }

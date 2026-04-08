@@ -44,18 +44,18 @@ impl EmulatorAsm {
         Vec<EmuTrace>,
         DeviceMetricsList,
         NestedDeviceMetricsList,
-        Option<JoinHandle<AsmRunnerMO>>,
-        Option<JoinHandle<AsmRunnerRH>>,
+        Option<JoinHandle<Result<AsmRunnerMO>>>,
+        Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
     )> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_asm_resources(&self, _asm_resources: AsmResources) {
+    pub fn set_asm_resources(&self, _asm_resources: AsmResources) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_rh_data(&self, _rh_data: AsmRunnerRH) {
+    pub fn set_rh_data(&self, _rh_data: AsmRunnerRH) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -63,11 +63,11 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn reset_hints_stream(&self) {
+    pub fn reset_hints_stream(&self) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 }

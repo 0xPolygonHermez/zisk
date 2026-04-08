@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cargo_zisk::{commands::get_proving_key, ux::print_banner};
+use cargo_zisk::ux::print_banner;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -218,7 +218,7 @@ fn print_command_info(
     println!(
         "{: >12} {}",
         "Proving Key".bright_green().bold(),
-        get_proving_key(Some(&prover_config.proving_key)).display()
+        prover_config.proving_key.display()
     );
 
     let std_mode = if debug { "Debug mode" } else { "Standard mode" };

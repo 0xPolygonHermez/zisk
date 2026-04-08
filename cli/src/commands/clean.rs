@@ -24,7 +24,7 @@ impl ZiskClean {
         print_banner();
         print_banner_command("Clean");
 
-        let home_zisk_path = get_home_zisk_path();
+        let home_zisk_path = get_home_zisk_path()?;
         let cache_zisk_path = home_zisk_path.join("cache");
 
         if home_zisk_path.exists() {

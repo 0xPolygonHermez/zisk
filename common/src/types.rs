@@ -285,9 +285,13 @@ impl ElfBinaryFromFile {
             .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", elf.display(), e))?;
         Ok(Self {
             elf: elf_bin,
-            name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
+            name: elf
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow::anyhow!("Invalid ELF path: {}", elf.display()))?
+                .to_string(),
             with_hints,
-            path: Some(elf.to_str().unwrap().to_string()),
+            path: elf.to_str().map(|s| s.to_string()),
         })
     }
 

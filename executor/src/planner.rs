@@ -13,6 +13,8 @@ use zisk_pil::{MAIN_AIR_IDS, ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 use crate::AirClassifier;
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
 
+use anyhow::Result;
+
 /// Output from main planning.
 pub struct MainPlanningOutput {
     /// Plans for main instances.
@@ -83,9 +85,8 @@ impl InstancePlanner {
     ///
     /// # Returns
     /// Global ID assigned to the ROM instance.
-    pub fn assign_rom_instance<F: PrimeField64>(&self, pctx: &ProofCtx<F>) -> usize {
-        pctx.add_instance_assign(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
-            .expect("Failed to add ROM instance")
+    pub fn assign_rom_instance<F: PrimeField64>(&self, pctx: &ProofCtx<F>) -> Result<usize> {
+        Ok(pctx.add_instance_assign(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])?)
     }
 
     /// Assigns main instances to the proof context.
@@ -103,10 +104,10 @@ impl InstancePlanner {
         sctx: &SetupCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
         plans: Vec<Plan>,
-    ) -> (Vec<(usize, Plan)>, u64) {
+    ) -> Result<(Vec<(usize, Plan)>, u64)> {
         let mut assignments = Vec::with_capacity(plans.len());
 
-        let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0]).unwrap();
+        let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])?;
         let n_bits = setup_main.stark_info.stark_struct.n_bits;
         let total_cols: u64 = setup_main
             .stark_info
@@ -119,15 +120,13 @@ impl InstancePlanner {
         let total_cost = cost * plans.len() as u64;
 
         for mut plan in plans {
-            let global_id = pctx
-                .add_instance_assign(plan.airgroup_id, plan.air_id)
-                .expect("Failed to add instance");
+            let global_id = pctx.add_instance_assign(plan.airgroup_id, plan.air_id)?;
             plan.set_global_id(global_id);
-            global_ids.write().unwrap().push(global_id);
+            global_ids.write().map_err(|e| anyhow::anyhow!("{e}"))?.push(global_id);
             assignments.push((global_id, plan));
         }
 
-        (assignments, total_cost)
+        Ok((assignments, total_cost))
     }
 
     /// Assigns secondary instances to the proof context.
@@ -141,30 +140,25 @@ impl InstancePlanner {
         pctx: &ProofCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
         plans: &mut [Plan],
-    ) {
+    ) -> Result<()> {
         for plan in plans.iter_mut() {
             // ROM instances need special first partition assignment
             let global_id = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
-                let (_, id) = pctx
-                    .dctx_find_instance_id(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])
-                    .expect("ROM instance must be assigned before secondary instances");
+                let (_, id) = pctx.dctx_find_instance_id(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])?;
                 id
             } else if AirClassifier::is_keccakf_instance(plan.airgroup_id, plan.air_id) {
-                pctx.add_instance_assign(plan.airgroup_id, plan.air_id)
-                    .expect("Failed to add KeccakF instance")
+                pctx.add_instance_assign(plan.airgroup_id, plan.air_id)?
             } else {
                 match plan.instance_type {
-                    InstanceType::Instance => pctx
-                        .add_instance(plan.airgroup_id, plan.air_id)
-                        .expect("Failed to add instance"),
-                    InstanceType::Table => {
-                        pctx.add_table(plan.airgroup_id, plan.air_id).expect("Failed to add table")
-                    }
+                    InstanceType::Instance => pctx.add_instance(plan.airgroup_id, plan.air_id)?,
+                    InstanceType::Table => pctx.add_table(plan.airgroup_id, plan.air_id)?,
                 }
             };
 
-            global_ids.write().unwrap().push(global_id);
+            global_ids.write().map_err(|e| anyhow::anyhow!("{e}"))?.push(global_id);
             plan.set_global_id(global_id);
         }
+
+        Ok(())
     }
 }
