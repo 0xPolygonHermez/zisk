@@ -98,7 +98,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
     pub fn set_packed(&self, packed: bool) {
         self.witness_generator.set_packed(packed);
     }
-    
+
     pub fn reset(&self) -> Result<()> {
         *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];

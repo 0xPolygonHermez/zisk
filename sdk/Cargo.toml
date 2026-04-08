@@ -33,6 +33,6 @@ rom-setup = { workspace = true }
 
 [features]
 default = []
-gpu = ["zisk-prover-backend/gpu"]
+cpu-only = ["zisk-prover-backend/cpu-only"]
 stats = ["zisk-prover-backend/stats"]
 diagnostic = ["zisk-prover-backend/diagnostic"]

@@ -860,7 +860,8 @@ impl Coordinator {
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
         let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry =
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
         let worker_ids = {

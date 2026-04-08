@@ -47,4 +47,4 @@ uuid = { workspace = true }
 
 [features]
 default = []
-gpu = ["zisk-prover-backend/gpu"]
+cpu-only = ["zisk-prover-backend/cpu-only"]

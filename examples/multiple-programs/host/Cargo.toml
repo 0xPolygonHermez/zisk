@@ -12,7 +12,3 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 zisk-sdk = { workspace = true }
-
-[features]
-default = []
-gpu = ["zisk-sdk/gpu"]
