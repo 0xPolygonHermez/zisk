@@ -196,6 +196,7 @@ impl ZiskVerifyConstraints {
     ) -> Result<ZiskVerifyConstraintsResult> {
         let prover = ProverClientBuilder::new()
             .asm()
+            .verify_constraints()
             .proving_key_path_opt(self.proving_key.clone())
             .verbose(self.verbose)
             .shared_tables(!self.no_shared_tables_mpi)
