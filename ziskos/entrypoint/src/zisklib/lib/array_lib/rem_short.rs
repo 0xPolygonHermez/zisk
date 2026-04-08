@@ -1,4 +1,4 @@
-use crate::zisklib::fcall_division;
+use crate::zisklib::fcall_bigint_div;
 
 use super::{add_short, mul_short, ShortScratch, U256};
 
@@ -47,7 +47,7 @@ pub fn rem_short_init(
     // Hint the quotient and remainder
     let mut quo_flat = vec![0u64; len_a * 4];
     let mut rem_flat = [0u64; 4];
-    let (limbs_quo, _) = fcall_division(
+    let (limbs_quo, _) = fcall_bigint_div(
         a_flat,
         b.as_limbs(),
         &mut quo_flat,
@@ -115,7 +115,7 @@ pub fn rem_short(
     let a_flat = U256::slice_to_flat(a);
 
     // Hint the quotient and remainder
-    let (limbs_quo, _) = fcall_division(
+    let (limbs_quo, _) = fcall_bigint_div(
         a_flat,
         b.as_limbs(),
         &mut scratch.quo,

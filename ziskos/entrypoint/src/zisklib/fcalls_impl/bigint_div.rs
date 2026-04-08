@@ -5,7 +5,7 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, u64_digits_fro
 /// Perform the division of an unsigned integer `a` by another unsigned integer `b`,
 /// returning the quotient `q` and the remainder `r`, such that `a = b * q + r`
 /// It assumes that `a >= b` and `b != 0`
-pub fn fcall_big_int_div(params: &[u64], results: &mut [u64]) -> i64 {
+pub fn fcall_bigint_div(params: &[u64], results: &mut [u64]) -> i64 {
     let len_a = params[0] as usize;
     let a = &params[1..(1 + len_a)];
     let len_b = params[1 + len_a] as usize;
@@ -13,7 +13,7 @@ pub fn fcall_big_int_div(params: &[u64], results: &mut [u64]) -> i64 {
 
     let mut q = Vec::with_capacity(len_a);
     let mut r = Vec::with_capacity(len_b);
-    big_int_div_into(a, b, &mut q, &mut r);
+    bigint_div_into(a, b, &mut q, &mut r);
 
     let len_q = q.len();
     let len_r = r.len();
@@ -26,7 +26,7 @@ pub fn fcall_big_int_div(params: &[u64], results: &mut [u64]) -> i64 {
     (2 + len_q + len_r) as i64
 }
 
-pub fn big_int_div_into(a: &[u64], b: &[u64], q: &mut Vec<u64>, r: &mut Vec<u64>) {
+pub fn bigint_div_into(a: &[u64], b: &[u64], q: &mut Vec<u64>, r: &mut Vec<u64>) {
     let a_big = biguint_from_u64_digits(a);
     let b_big = biguint_from_u64_digits(b);
 

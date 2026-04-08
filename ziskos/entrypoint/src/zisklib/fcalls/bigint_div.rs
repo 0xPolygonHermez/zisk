@@ -4,11 +4,11 @@ cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
-        use super::FCALL_BIG_INT_DIV_ID;
+        use super::FCALL_BIGINT_DIV_ID;
         #[cfg(feature = "inputcpy")]
         use crate::ziskos_inputcpy;
     } else {
-        use crate::zisklib::fcalls_impl::big_int_div::big_int_div_into;
+        use crate::zisklib::fcalls_impl::bigint_div::bigint_div_into;
     }
 }
 
@@ -21,7 +21,7 @@ cfg_if! {
 /// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_division(
+pub fn fcall_bigint_div(
     a_value: &[u64],
     b_value: &[u64],
     quo: &mut [u64],
@@ -32,7 +32,7 @@ pub fn fcall_division(
     {
         let mut quo_vector: Vec<u64> = Vec::new();
         let mut rem_vector: Vec<u64> = Vec::new();
-        big_int_div_into(a_value, b_value, &mut quo_vector, &mut rem_vector);
+        bigint_div_into(a_value, b_value, &mut quo_vector, &mut rem_vector);
         quo[..quo_vector.len()].copy_from_slice(&quo_vector);
         rem[..rem_vector.len()].copy_from_slice(&rem_vector);
         let len_quo = quo_vector.len();
@@ -62,7 +62,7 @@ pub fn fcall_division(
             ziskos_fcall_param!(b_value[i], 1);
         }
 
-        ziskos_fcall!(FCALL_BIG_INT_DIV_ID);
+        ziskos_fcall!(FCALL_BIGINT_DIV_ID);
 
         #[cfg(not(feature = "inputcpy"))]
         {
