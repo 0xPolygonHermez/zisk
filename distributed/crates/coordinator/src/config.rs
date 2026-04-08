@@ -36,6 +36,10 @@ pub struct CoordinatorConfig {
     pub max_total_workers: u32,
     pub phase1_timeout_seconds: u64,
     pub phase2_timeout_seconds: u64,
+    pub phase3_timeout_seconds: u64,
+    pub heartbeat_interval_seconds: u64,
+    pub heartbeat_max_missed: u32,
+    pub job_monitor_interval_seconds: u64,
     pub webhook_url: Option<String>,
     pub compressed_proofs: bool,
 }
@@ -78,6 +82,10 @@ impl Config {
             .set_default("coordinator.max_total_workers", 1000)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
+            .set_default("coordinator.phase3_timeout_seconds", 100)?
+            .set_default("coordinator.heartbeat_interval_seconds", 30)?
+            .set_default("coordinator.heartbeat_max_missed", 3)?
+            .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.compressed_proofs", compressed_proofs)?;
 
         if let Some(path) = config_file {

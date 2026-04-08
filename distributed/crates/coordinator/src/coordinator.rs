@@ -144,6 +144,21 @@ impl Coordinator {
         }
     }
 
+    /// Returns a reference to the workers pool.
+    pub fn workers_pool(&self) -> &WorkersPool {
+        &self.workers_pool
+    }
+
+    /// Returns a reference to the jobs map.
+    pub fn jobs(&self) -> &DashMap<JobId, Arc<RwLock<Job>>> {
+        &self.jobs
+    }
+
+    /// Returns a reference to the coordinator config.
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
     /// Retrieves comprehensive status information about the coordinator service.
     ///
     /// # Returns

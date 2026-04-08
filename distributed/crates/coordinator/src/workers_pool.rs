@@ -294,6 +294,10 @@ impl WorkersPool {
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let mut workers = self.workers.write().await;
         match workers.get_mut(worker_id) {
+            Some(existing_worker) if existing_worker.state == WorkerState::Disconnected => {
+                // Already disconnected — idempotent, nothing to do
+                Ok(())
+            }
             Some(existing_worker) => {
                 existing_worker.state = WorkerState::Disconnected;
 
@@ -532,5 +536,26 @@ impl WorkersPool {
         }
 
         Ok((selected_workers, worker_allocations))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::*;
+    use zisk_distributed_common::WorkerState;
+
+    #[tokio::test]
+    async fn test_disconnect_idempotent() {
+        let pool = WorkersPool::new();
+        let (worker_id, _msgs) = register_test_worker(&pool, "w1").await;
+
+        // First disconnect succeeds
+        pool.disconnect_worker(&worker_id).await.unwrap();
+        assert_eq!(pool.worker_state(&worker_id).await, Some(WorkerState::Disconnected));
+
+        // Second disconnect also succeeds (idempotent)
+        pool.disconnect_worker(&worker_id).await.unwrap();
+        assert_eq!(pool.worker_state(&worker_id).await, Some(WorkerState::Disconnected));
     }
 }

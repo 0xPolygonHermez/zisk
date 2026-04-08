@@ -211,6 +211,35 @@ impl JobExecutionMode {
     }
 }
 
+/// Policy applied when a worker fails or a phase times out.
+///
+/// Determines how the coordinator reacts to failures during job execution.
+/// The policy is configured at the coordinator level and applies to all jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FailurePolicy {
+    /// Abort the entire job immediately. All assigned workers are cancelled
+    /// and the job is marked as failed.
+    AbortJob,
+    // /// Retry failed workers up to `max_retries` times before aborting.
+    // /// If all retries are exhausted, the job is aborted.
+    // RetryWorkers { max_retries: u32 },
+}
+
+impl Default for FailurePolicy {
+    fn default() -> Self {
+        Self::AbortJob
+    }
+}
+
+impl Display for FailurePolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FailurePolicy::AbortJob => write!(f, "AbortJob"),
+            // FailurePolicy::RetryWorkers { max_retries } => write!(f, "RetryWorkers(max={})", max_retries),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct JobStats {
     pub start_time: Option<DateTime<Utc>>,
