@@ -11,7 +11,3 @@ sha2 = "0.10.8"
 
 [build-dependencies]
 zisk-sdk = { workspace = true }
-
-[features]
-default = []
-gpu = ["zisk-sdk/gpu"]

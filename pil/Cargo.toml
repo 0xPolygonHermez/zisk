@@ -14,8 +14,3 @@ fields = { workspace = true }
 serde = { workspace = true }
 rayon = { workspace = true }
 serde_arrays = "0.2"
-
-
-[features]
-default = []
-dev = []
