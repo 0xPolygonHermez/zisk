@@ -15,11 +15,8 @@ pub struct SyscallBn254ComplexAddParams<'a> {
     pub f2: &'a SyscallComplex256,
 }
 
-/// Performs the addition of two complex field elements on a complex extension of the Bn254 base field curve,
+/// Performs the addition of two complex field elements on a complex extension of the BN254 base field curve,
 /// storing the result in the first field element.
-///
-/// The `Bn254ComplexAdd` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Bn254ComplexAdd`.
 ///
 /// `Bn254ComplexAdd` operates on two field elements, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
@@ -28,12 +25,11 @@ pub struct SyscallBn254ComplexAddParams<'a> {
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `f1` is a valid pointer to data that is aligned to an eight-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
 /// The caller must ensure that both `f1` and `f2` coordinates are within the range of the BN254 base field.
 ///
 /// The resulting field element will have both coordinates in the range of the BN254 base field.
-#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_complex_add")]
 pub extern "C" fn syscall_bn254_complex_add(

@@ -11,16 +11,12 @@ use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 
 /// Executes the Poseidon2 permutation on the given state.
 ///
-/// The `Poseidon2` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Poseidon2`.
-///
-/// The syscall takes as a parameter the address of a state data (1024 bits = 128 bytes)
-/// and the result of the poseidon2 operation is stored at the same location
+/// The Poseidon2 permutation operates on an array of sixteen `u64` elements, which represents the internal state of the Poseidon2 algorithm.
+/// The input state is modified in place to produce the output.
 ///
 /// ### Safety
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
-#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_poseidon2")]
 pub unsafe extern "C" fn syscall_poseidon2(

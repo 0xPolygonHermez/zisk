@@ -17,9 +17,6 @@ pub struct SyscallSecp256k1AddParams<'a> {
 
 /// Performs the addition of two points on the Secp256k1 curve, storing the result in the first point.
 ///
-/// The `Secp256k1Add` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Secp256k1Add`.
-///
 /// `Secp256k1Add` operates on two points, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
 /// The syscall takes as a parameter the address of a structure containing points `p1` and `p2`.
@@ -27,12 +24,13 @@ pub struct SyscallSecp256k1AddParams<'a> {
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// The caller must ensure that the points `p1` and `p2` are valid points on the Secp256k1 curve.
 ///
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the Secp256k1 base field.
 ///
 /// The resulting point will have both coordinates in the range of the Secp256k1 base field.
-#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_secp256k1_add")]
 pub extern "C" fn syscall_secp256k1_add(
