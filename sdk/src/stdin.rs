@@ -12,25 +12,6 @@ impl ZiskStdin {
         Self(ZiskStdinInner::new())
     }
 
-    /// Creates a null stdin (no input).
-    pub fn null() -> Self {
-        Self(ZiskStdinInner::null())
-    }
-
-    /// Creates stdin from raw bytes.
-    pub fn memory(data: impl AsRef<[u8]>) -> Self {
-        let inner = ZiskStdinInner::new();
-        inner.write_slice(data.as_ref());
-        Self(inner)
-    }
-
-    /// Creates stdin from a serializable data structure.
-    pub fn from<T: Serialize>(data: &T) -> Self {
-        let inner = ZiskStdinInner::new();
-        inner.write(data);
-        Self(inner)
-    }
-
     /// Creates stdin from a file path.
     ///
     /// # Errors
@@ -64,6 +45,10 @@ impl ZiskStdin {
     /// Reads and deserializes the next value from the stdin buffer.
     pub fn read<T: DeserializeOwned>(&self) -> anyhow::Result<T> {
         self.0.read()
+    }
+
+    pub fn read_bytes(&self) -> Vec<u8> {
+        self.0.read_bytes()
     }
 
     /// Appends a serialized value to the stdin buffer.

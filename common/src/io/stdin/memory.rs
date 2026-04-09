@@ -53,24 +53,12 @@ impl ZiskMemoryStdin {
 }
 
 impl ZiskIO for ZiskMemoryStdin {
-    fn read_raw_bytes(&self) -> Vec<u8> {
+    fn read_data(&self) -> Vec<u8> {
         self.data.lock().unwrap().clone()
     }
 
     fn read_bytes(&self) -> Vec<u8> {
         self.read_raw_data().expect("Failed to read into buffer from memory")
-    }
-
-    fn read_slice(&self, slice: &mut [u8]) {
-        let data = self.read_raw_data().expect("Failed to read slice from memory");
-        assert_eq!(
-            slice.len(),
-            data.len(),
-            "Slice length mismatch: expected {}, got {}",
-            data.len(),
-            slice.len()
-        );
-        slice.copy_from_slice(&data);
     }
 
     fn read<T: DeserializeOwned>(&self) -> Result<T> {

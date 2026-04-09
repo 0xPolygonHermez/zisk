@@ -125,7 +125,7 @@ impl GuestProgram {
 
         let callback = None::<Box<dyn Fn(zisk_common::EmuTrace)>>;
 
-        let inputs = stdin.read_raw_bytes();
+        let inputs = stdin.read_data();
 
         let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, options, callback);
         match result {

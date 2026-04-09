@@ -56,7 +56,7 @@ impl RomExecutor {
             emulator_asm: EmulatorAsm::new(chunk_size),
             emulator_rust: EmulatorRust::new(chunk_size),
             is_asm_execution: AtomicBool::new(false),
-            stdin: Mutex::new(ZiskStdin::null()),
+            stdin: Mutex::new(ZiskStdin::new()),
         }
     }
 

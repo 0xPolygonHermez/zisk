@@ -1,17 +1,14 @@
-use crate::io::{ZiskFileStdin, ZiskMemoryStdin, ZiskNullStdin};
+use crate::io::{ZiskFileStdin, ZiskMemoryStdin};
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
 pub trait ZiskIO: Send + Sync {
-    fn read_raw_bytes(&self) -> Vec<u8>;
+    fn read_data(&self) -> Vec<u8>;
 
     /// Read a value from the buffer.
     fn read_bytes(&self) -> Vec<u8>;
-
-    /// Read a slice of bytes from the buffer.
-    fn read_slice(&self, slice: &mut [u8]);
 
     /// Read and deserialize a value from the buffer.
     fn read<T: DeserializeOwned>(&self) -> Result<T>;
@@ -27,39 +24,27 @@ pub trait ZiskIO: Send + Sync {
 
 pub enum ZiskIOVariant {
     File(ZiskFileStdin),
-    Null(ZiskNullStdin),
     Memory(ZiskMemoryStdin),
 }
 
 impl ZiskIO for ZiskIOVariant {
-    fn read_raw_bytes(&self) -> Vec<u8> {
+    fn read_data(&self) -> Vec<u8> {
         match self {
-            ZiskIOVariant::File(file_stdin) => file_stdin.read_raw_bytes(),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.read_raw_bytes(),
-            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_raw_bytes(),
+            ZiskIOVariant::File(file_stdin) => file_stdin.read_data(),
+            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_data(),
         }
     }
 
     fn read_bytes(&self) -> Vec<u8> {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.read_bytes(),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.read_bytes(),
             ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_bytes(),
-        }
-    }
-
-    fn read_slice(&self, slice: &mut [u8]) {
-        match self {
-            ZiskIOVariant::File(file_stdin) => file_stdin.read_slice(slice),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.read_slice(slice),
-            ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read_slice(slice),
         }
     }
 
     fn read<T: DeserializeOwned>(&self) -> Result<T> {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.read(),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.read(),
             ZiskIOVariant::Memory(memory_stdin) => memory_stdin.read(),
         }
     }
@@ -67,7 +52,6 @@ impl ZiskIO for ZiskIOVariant {
     fn write<T: Serialize>(&self, data: &T) {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.write(data),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.write(data),
             ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write(data),
         }
     }
@@ -75,7 +59,6 @@ impl ZiskIO for ZiskIOVariant {
     fn write_slice(&self, data: &[u8]) {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.write_slice(data),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.write_slice(data),
             ZiskIOVariant::Memory(memory_stdin) => memory_stdin.write_slice(data),
         }
     }
@@ -83,7 +66,6 @@ impl ZiskIO for ZiskIOVariant {
     fn save(&self, path: &Path) -> Result<()> {
         match self {
             ZiskIOVariant::File(file_stdin) => file_stdin.save(path),
-            ZiskIOVariant::Null(null_stdin) => null_stdin.save(path),
             ZiskIOVariant::Memory(memory_stdin) => memory_stdin.save(path),
         }
     }
@@ -95,16 +77,12 @@ pub struct ZiskStdin {
 }
 
 impl ZiskIO for ZiskStdin {
-    fn read_raw_bytes(&self) -> Vec<u8> {
-        self.io.read_raw_bytes()
+    fn read_data(&self) -> Vec<u8> {
+        self.io.read_data()
     }
 
     fn read_bytes(&self) -> Vec<u8> {
         self.io.read_bytes()
-    }
-
-    fn read_slice(&self, slice: &mut [u8]) {
-        self.io.read_slice(slice)
     }
 
     fn read<T: DeserializeOwned>(&self) -> Result<T> {
@@ -136,11 +114,6 @@ impl ZiskStdin {
         Self { io: Arc::new(ZiskIOVariant::Memory(ZiskMemoryStdin::new(Vec::new()))) }
     }
 
-    /// Create a null stdin (no input)
-    pub fn null() -> Self {
-        Self { io: Arc::new(ZiskIOVariant::Null(ZiskNullStdin)) }
-    }
-
     /// Create a file-based stdin
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(Self { io: Arc::new(ZiskIOVariant::File(ZiskFileStdin::new(path)?)) })
@@ -156,7 +129,7 @@ impl ZiskStdin {
     /// - No scheme -> treated as file path
     pub fn from_uri<S: Into<String>>(stdin_uri: Option<S>) -> Result<ZiskStdin> {
         if stdin_uri.is_none() {
-            return Ok(ZiskStdin::null());
+            return Ok(ZiskStdin::new());
         }
 
         let uri = stdin_uri.unwrap().into();
@@ -181,18 +154,13 @@ impl ZiskStdin {
     // This allows using these methods without importing the trait
 
     /// Read raw bytes
-    pub fn read_raw_bytes(&self) -> Vec<u8> {
-        ZiskIO::read_raw_bytes(self)
+    pub fn read_data(&self) -> Vec<u8> {
+        ZiskIO::read_data(self)
     }
 
     /// Read a value from the buffer.
     pub fn read_bytes(&self) -> Vec<u8> {
         ZiskIO::read_bytes(self)
-    }
-
-    /// Read a slice of bytes from the buffer.
-    pub fn read_slice(&self, slice: &mut [u8]) {
-        ZiskIO::read_slice(self, slice)
     }
 
     /// Read and deserialize a value from the buffer.

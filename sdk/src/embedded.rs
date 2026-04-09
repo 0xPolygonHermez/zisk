@@ -188,7 +188,7 @@ impl Client for EmbeddedClient {
                 }
                 p.register_hints_stream(hints.into_inner())?;
                 apply_mode!(p
-                    .prove(program, ZiskStdin::null().into_inner())
+                    .prove(program, ZiskStdin::new().into_inner())
                     .with_proof_options(opts))
                 .run()?
             }
@@ -233,7 +233,7 @@ impl Client for EmbeddedClient {
                     );
                 }
                 p.register_hints_stream(hints.into_inner())?;
-                p.execute(program, ZiskStdin::null().into_inner())?
+                p.execute(program, ZiskStdin::new().into_inner())?
             }
         };
         Ok(ExecuteResult::new(result))
