@@ -149,7 +149,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let mode = match self.proof_kind {
             ProofKind::Stark => ProofMode::VadcopFinal,
-            ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
+            ProofKind::StarkMinimal => ProofMode::VadcopFinalMinimal,
             ProofKind::Plonk => ProofMode::Snark,
         };
         let mut opts = self.proof_opts.unwrap_or_default();
@@ -206,7 +206,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let mode = match self.proof_kind {
             ProofKind::Stark => ProofMode::VadcopFinal,
-            ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
+            ProofKind::StarkMinimal => ProofMode::VadcopFinalMinimal,
             ProofKind::Plonk => ProofMode::Snark,
         };
         let mut opts = self.proof_opts.unwrap_or_default();

@@ -5,10 +5,10 @@ mod embedded;
 mod execute;
 mod hints;
 mod input;
+mod minimal;
 mod plonk;
 mod proof;
 mod prove;
-mod reduce;
 mod remote;
 mod setup;
 mod stdin;
@@ -22,10 +22,10 @@ pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
 // pub use program::{Elf, GuestProgram, ProgramId};
+pub use minimal::MinimalRequest;
 pub use plonk::PlonkRequest;
 pub use proof::Proof;
 pub use prove::{ProofKind, ProveRequest, WatchEvent};
-pub use reduce::ReduceRequest;
 pub use remote::RemoteClientConfig;
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
@@ -36,7 +36,7 @@ pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, Progr
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{
-    PlonkBuilder, ProofOpts, ProveBuilder, ReduceBuilder, ZiskExecuteResult, ZiskProveResult,
+    MinimalBuilder, PlonkBuilder, ProofOpts, ProveBuilder, ZiskExecuteResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 
@@ -84,13 +84,13 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
         (**self).run_execute(program, input, executor, cancel)
     }
 
-    fn run_reduce(
+    fn run_minimal(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
-        (**self).run_reduce(proof_with_publics, override_publics, override_program_vk)
+        (**self).run_minimal(proof_with_publics, override_publics, override_program_vk)
     }
 
     fn run_plonk(
@@ -146,7 +146,7 @@ pub(crate) trait Client: Send + Sync {
         executor: ExecutorKind,
         cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult>;
-    fn run_reduce(
+    fn run_minimal(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         override_publics: Option<&ZiskPublics>,

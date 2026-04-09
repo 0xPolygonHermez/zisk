@@ -132,7 +132,7 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
         self
     }
 
-    /// Generate a reduced STARK proof.
+    /// Generate a minimal STARK proof.
     #[must_use]
     pub fn stark_minimal(mut self) -> Self {
         self.proof_kind = ProofKind::StarkMinimal;
@@ -163,7 +163,7 @@ impl<C: Client + Clone + Send + Sync + 'static> AsyncProveRequest<C> {
     fn resolve_mode(&self) -> ProofMode {
         match self.proof_kind {
             ProofKind::Stark => ProofMode::VadcopFinal,
-            ProofKind::StarkMinimal => ProofMode::VadcopFinalReduced,
+            ProofKind::StarkMinimal => ProofMode::VadcopFinalMinimal,
             ProofKind::Plonk => ProofMode::Snark,
         }
     }

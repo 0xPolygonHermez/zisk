@@ -294,7 +294,7 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin);
 
-        let reduced = matches!(mode, ProofMode::VadcopFinalReduced);
+        let minimal = matches!(mode, ProofMode::VadcopFinalMinimal);
 
         self.proofman.set_partition(1, vec![0], 0)?;
 
@@ -307,7 +307,7 @@ impl ProverBackend {
                     false,
                     proof_options.aggregation,
                     proof_options.rma,
-                    reduced,
+                    minimal,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
                     proof_options.save_proofs,
@@ -332,7 +332,7 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, reduced)? };
+        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
 
         match (mode, proof) {
             (ProofMode::Snark, Some(vadcop_proof)) => {
@@ -376,8 +376,8 @@ impl ProverBackend {
                 }
             }
             (_, Some(p)) => {
-                let proof = if reduced {
-                    ZiskProof::VadcopFinalReduced(p.proof)
+                let proof = if minimal {
+                    ZiskProof::VadcopFinalMinimal(p.proof)
                 } else {
                     ZiskProof::VadcopFinal(p.proof)
                 };
@@ -399,7 +399,7 @@ impl ProverBackend {
         }
     }
 
-    pub(crate) fn reduce(
+    pub(crate) fn minimal(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
@@ -418,15 +418,15 @@ impl ProverBackend {
         pubs.extend(publics.public_bytes());
         let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
 
-        let reduced_proof = self
+        let minimal_proof = self
             .proofman
             .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None, false)
-            .map_err(|e| anyhow::anyhow!("Error generating reduced proof: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Error generating minimal proof: {}", e))?;
 
         Ok(ZiskProofWithPublicValues {
-            proof: ZiskProof::VadcopFinalReduced(reduced_proof.proof),
-            publics: ZiskPublics::new(&reduced_proof.public_values),
-            program_vk: ZiskProgramVK::new_from_publics(&reduced_proof.public_values),
+            proof: ZiskProof::VadcopFinalMinimal(minimal_proof.proof),
+            publics: ZiskPublics::new(&minimal_proof.public_values),
+            program_vk: ZiskProgramVK::new_from_publics(&minimal_proof.public_values),
             zisk_vk: ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)? },
             plonk_vkey: None,
         })
@@ -539,8 +539,8 @@ impl ProverBackend {
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
     }
 
-    pub(crate) fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
-        let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, reduced)?;
+    pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+        let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?;
         Ok(ZiskVK { vk })
     }
 

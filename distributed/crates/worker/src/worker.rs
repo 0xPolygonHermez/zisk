@@ -52,7 +52,7 @@ pub enum ComputationResult {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
-        reduced: bool,
+        minimal: bool,
         instances: u64,
     },
 }
@@ -127,7 +127,8 @@ impl ProverConfig {
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
 
-        let guest_program = Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
+        let guest_program =
+            Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
 
         let mut gpu_params = None;
         if prover_service_config.preallocate
@@ -318,8 +319,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.current_computation = Some(handle);
     }
 
-    pub fn get_vadcop_vk(&self, reduced: bool) -> Result<Vec<u8>> {
-        let vk = self.prover.get_vadcop_vk(reduced)?;
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u8>> {
+        let vk = self.prover.get_vadcop_vk(minimal)?;
         Ok(vk.vk)
     }
 
@@ -856,7 +857,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(agg_params.reduced);
+        let options = self.get_proof_options(agg_params.minimal);
 
         let agg_proofs_register: Vec<AggProofsRegister> = agg_params
             .agg_proofs
@@ -878,7 +879,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 success: false,
                 result: Err(error),
                 executed_steps,
-                reduced: agg_params.reduced,
+                minimal: agg_params.minimal,
                 instances,
             });
 
@@ -920,7 +921,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: true,
                         result: Ok(Some(proof)),
                         executed_steps,
-                        reduced: agg_params.reduced,
+                        minimal: agg_params.minimal,
                         instances,
                     });
                 }
@@ -931,7 +932,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         success: false,
                         result: Err(error),
                         executed_steps,
-                        reduced: agg_params.reduced,
+                        minimal: agg_params.minimal,
                         instances,
                     });
                 }
@@ -939,7 +940,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    fn get_proof_options(&self, reduced: bool) -> ProofOptions {
+    fn get_proof_options(&self, minimal: bool) -> ProofOptions {
         ProofOptions {
             verify_constraints: self.prover_config.verify_constraints,
             aggregation: self.prover_config.aggregation,
@@ -949,7 +950,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             output_dir_path: None,
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,
-            compressed: reduced,
+            compressed: minimal,
         }
     }
 

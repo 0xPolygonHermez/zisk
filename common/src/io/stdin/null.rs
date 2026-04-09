@@ -1,7 +1,6 @@
 use tracing::warn;
 
 use crate::io::ZiskIO;
-use crate::ZiskProofWithPublicValues;
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
@@ -26,9 +25,6 @@ impl ZiskIO for ZiskNullStdin {
         warn!("NullStdin does not support writing");
     }
     fn write_slice(&self, _data: &[u8]) {
-        warn!("NullStdin does not support writing");
-    }
-    fn write_proof(&self, _proof: &ZiskProofWithPublicValues) {
         warn!("NullStdin does not support writing");
     }
     fn save(&self, _path: &Path) -> Result<()> {

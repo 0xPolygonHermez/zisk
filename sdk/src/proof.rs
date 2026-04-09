@@ -33,6 +33,10 @@ impl Proof {
         self.inner.get_proof()
     }
 
+    pub fn get_proof_bytes(&self) -> Vec<u8> {
+        self.inner.get_proof_bytes()
+    }
+
     pub fn save_proof(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         self.inner.save_proof(path)
     }
@@ -49,12 +53,12 @@ impl Proof {
     }
 
     /// Override the verification key for this verification.
-    pub fn program_vk<'a>(&'a self, vk: &'a ZiskProgramVK) -> VerifyBuilder<'a> {
+    pub fn with_program_vk<'a>(&'a self, vk: &'a ZiskProgramVK) -> VerifyBuilder<'a> {
         VerifyBuilder { proof: self, publics: None, program_vk: Some(vk) }
     }
 
     /// Override the public values for this verification.
-    pub fn publics<'a>(&'a self, pv: &'a ZiskPublics) -> VerifyBuilder<'a> {
+    pub fn with_publics<'a>(&'a self, pv: &'a ZiskPublics) -> VerifyBuilder<'a> {
         VerifyBuilder { proof: self, publics: Some(pv), program_vk: None }
     }
 }
@@ -69,14 +73,14 @@ pub struct VerifyBuilder<'a> {
 impl<'a> VerifyBuilder<'a> {
     /// Override the public values embedded in the proof.
     #[must_use]
-    pub fn publics(mut self, pv: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, pv: &'a ZiskPublics) -> Self {
         self.publics = Some(pv);
         self
     }
 
     /// Override the verification key embedded in the proof.
     #[must_use]
-    pub fn program_vk(mut self, vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, vk: &'a ZiskProgramVK) -> Self {
         self.program_vk = Some(vk);
         self
     }
@@ -85,9 +89,9 @@ impl<'a> VerifyBuilder<'a> {
     pub fn verify(self) -> Result<()> {
         match (self.publics, self.program_vk) {
             (None, None) => self.proof.inner.verify(),
-            (Some(p), None) => self.proof.inner.publics(p).verify(),
-            (None, Some(v)) => self.proof.inner.program_vk(v).verify(),
-            (Some(p), Some(v)) => self.proof.inner.publics(p).program_vk(v).verify(),
+            (Some(p), None) => self.proof.inner.with_publics(p).verify(),
+            (None, Some(v)) => self.proof.inner.with_program_vk(v).verify(),
+            (Some(p), Some(v)) => self.proof.inner.with_publics(p).with_program_vk(v).verify(),
         }
     }
 }

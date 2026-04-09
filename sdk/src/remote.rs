@@ -245,14 +245,14 @@ impl Client for RemoteClient {
         )
     }
 
-    fn run_reduce(
+    fn run_minimal(
         &self,
         _proof_with_publics: &ZiskProofWithPublicValues,
         _override_publics: Option<&ZiskPublics>,
         _override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
-        // TODO: Remote reduction
-        anyhow::bail!("Remote proof reduction not yet implemented")
+        // TODO: Remote minimal
+        anyhow::bail!("Remote minimal not yet implemented")
     }
 
     fn run_plonk(

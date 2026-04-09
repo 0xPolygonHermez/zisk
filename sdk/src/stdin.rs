@@ -1,4 +1,4 @@
-use zisk_common::{io::ZiskStdin as ZiskStdinInner, ZiskProofWithPublicValues};
+use zisk_common::io::ZiskStdin as ZiskStdinInner;
 
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
@@ -74,13 +74,6 @@ impl ZiskStdin {
     /// Appends raw bytes to the stdin buffer.
     pub fn write_slice(&self, data: &[u8]) {
         self.0.write_slice(data);
-    }
-
-    /// Appends a serialized proof with its public values to the stdin buffer.
-    ///
-    /// Used to pass proofs as inputs to aggregation programs.
-    pub fn write_proof(&self, proof: &ZiskProofWithPublicValues) {
-        self.0.write_proof(proof);
     }
 
     /// Saves the stdin buffer contents to a file.

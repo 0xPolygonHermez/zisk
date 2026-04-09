@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     let vk = client.vk(&PROGRAM)?;
 
     let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof_async.bin")?;
-    proof_with_publics.program_vk(&vk).publics(&publics).verify()?;
+    proof_with_publics.with_program_vk(&vk).with_publics(&publics).verify()?;
     println!("Proof with publics verification successful!");
 
     println!("\u{2713} Successfully generated and verified all proofs!");

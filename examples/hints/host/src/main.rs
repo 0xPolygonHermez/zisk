@@ -16,7 +16,6 @@ fn main() -> Result<()> {
     println!("Setting up program...");
     client.setup(&program).with_hints().run()?;
 
-
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program...");
     let result = client.execute(&program, hints).executor(ExecutorKind::Assembly).run()?;

@@ -222,13 +222,13 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.plonk(proof, publics, vk)
     }
 
-    fn reduce(
+    fn minimal(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.reduce(proof, publics, vk)
+        self.core_prover.backend.minimal(proof, publics, vk)
     }
 
     fn prove_phase(
@@ -267,8 +267,8 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
-    fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK> {
-        self.core_prover.backend.get_vadcop_vk(reduced)
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+        self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
     fn cancel(&self) {

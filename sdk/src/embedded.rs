@@ -156,7 +156,7 @@ impl Client for EmbeddedClient {
             ($builder:expr) => {
                 match mode {
                     ProofMode::VadcopFinal => $builder,
-                    ProofMode::VadcopFinalReduced => $builder.reduced(),
+                    ProofMode::VadcopFinalMinimal => $builder.minimal(),
                     ProofMode::Snark => $builder.plonk(),
                 }
             };
@@ -239,7 +239,7 @@ impl Client for EmbeddedClient {
         Ok(ExecuteResult::new(result))
     }
 
-    fn run_reduce(
+    fn run_minimal(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         override_publics: Option<&ZiskPublics>,
@@ -249,10 +249,10 @@ impl Client for EmbeddedClient {
         let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
         match &self.prover {
             EmbeddedProver::Emu(p) => {
-                p.prover.reduce(&proof_with_publics.proof, publics, program_vk)
+                p.prover.minimal(&proof_with_publics.proof, publics, program_vk)
             }
             EmbeddedProver::Asm(p) => {
-                p.prover.reduce(&proof_with_publics.proof, publics, program_vk)
+                p.prover.minimal(&proof_with_publics.proof, publics, program_vk)
             }
         }
     }

@@ -265,7 +265,7 @@ message AggParams {
   ProofList agg_proofs = 1;
   bool last_proof = 2;
   bool final_proof = 3;
-  bool reduced = 4;
+  bool minimal = 4;
 }
 
 // Stream type enumeration

@@ -402,7 +402,7 @@ impl From<AggParamsDto> for AggParams {
             agg_proofs: Some(ProofList { proofs: agg_proofs }),
             last_proof: dto.last_proof,
             final_proof: dto.final_proof,
-            reduced: dto.reduced,
+            minimal: dto.minimal,
         }
     }
 }

@@ -4,8 +4,8 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use sha2::{Digest, Sha256};
 use alloy_sol_types::{sol, SolValue};
+use sha2::{Digest, Sha256};
 
 sol! {
     struct Output {
@@ -36,6 +36,6 @@ fn main() {
     let bytes = output.abi_encode();
 
     println!("Bytes to commit: {:?}", bytes);
-    
+
     ziskos::io::commit(&bytes);
 }

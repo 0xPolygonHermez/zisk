@@ -24,14 +24,14 @@ impl<'a, C: Client> PlonkRequest<'a, C> {
 
     /// Override the public inputs used during PLONK proof generation.
     #[must_use]
-    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key used during PLONK proof generation.
     #[must_use]
-    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }

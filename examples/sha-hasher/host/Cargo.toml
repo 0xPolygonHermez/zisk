@@ -35,8 +35,8 @@ name = "plonk"
 path = "bin/plonk.rs"
 
 [[bin]]
-name = "reduced"
-path = "bin/reduced.rs"
+name = "minimal"
+path = "bin/minimal.rs"
 
 [[bin]]
 name = "run"

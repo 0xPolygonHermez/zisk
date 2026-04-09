@@ -33,7 +33,7 @@ impl ZiskProgramVK {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProofMode {
     VadcopFinal,
-    VadcopFinalReduced,
+    VadcopFinalMinimal,
     Snark,
 }
 
@@ -41,19 +41,19 @@ pub enum ProofMode {
 pub enum ZiskProof {
     Null(),
     VadcopFinal(Vec<u8>),
-    VadcopFinalReduced(Vec<u8>),
+    VadcopFinalMinimal(Vec<u8>),
     Plonk(Vec<u8>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZiskVadcopFinalProof {
     pub proof: Vec<u8>,
-    pub reduced: bool,
+    pub minimal: bool,
 }
 
 impl ZiskVadcopFinalProof {
-    pub fn new(proof: Vec<u8>, reduced: bool) -> Self {
-        Self { proof, reduced }
+    pub fn new(proof: Vec<u8>, minimal: bool) -> Self {
+        Self { proof, minimal }
     }
 
     pub fn save(
@@ -149,9 +149,9 @@ impl ZiskProof {
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         match self {
             ZiskProof::Null() => Err(anyhow::anyhow!("No proof to save")),
-            ZiskProof::VadcopFinal(proof) | ZiskProof::VadcopFinalReduced(proof) => {
-                let reduced = matches!(self, ZiskProof::VadcopFinalReduced(_));
-                let zisk_proof = ZiskVadcopFinalProof::new(proof.clone(), reduced);
+            ZiskProof::VadcopFinal(proof) | ZiskProof::VadcopFinalMinimal(proof) => {
+                let minimal = matches!(self, ZiskProof::VadcopFinalMinimal(_));
+                let zisk_proof = ZiskVadcopFinalProof::new(proof.clone(), minimal);
                 zisk_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
             }
             ZiskProof::Plonk(snark_proof) => {
@@ -167,8 +167,8 @@ impl ZiskProof {
 
     pub fn load(path: impl AsRef<Path>) -> Result<ZiskProof> {
         if let Ok(vadcop_proof) = ZiskVadcopFinalProof::load(path.as_ref()) {
-            let proof = if vadcop_proof.reduced {
-                ZiskProof::VadcopFinalReduced(vadcop_proof.proof)
+            let proof = if vadcop_proof.minimal {
+                ZiskProof::VadcopFinalMinimal(vadcop_proof.proof)
             } else {
                 ZiskProof::VadcopFinal(vadcop_proof.proof)
             };
@@ -429,13 +429,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
     }
 
     /// Override the publics used for verification.
-    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key used for verification.
-    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
@@ -485,14 +485,14 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result?;
                 Ok(())
             }
-            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) => {
-                let reduced =
-                    matches!(self.proof_with_values.proof, ZiskProof::VadcopFinalReduced(_));
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
+                let minimal =
+                    matches!(self.proof_with_values.proof, ZiskProof::VadcopFinalMinimal(_));
                 let mut pubs = program_vk.vk.clone();
                 pubs.extend(publics.public_bytes());
-                let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, reduced);
+                let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
 
-                let is_valid = if reduced {
+                let is_valid = if minimal {
                     verify_vadcop_final_compressed(&vadcop_final_proof, &zisk_vk.vk)
                 } else {
                     verify_vadcop_final(&vadcop_final_proof, &zisk_vk.vk)
@@ -538,14 +538,36 @@ impl ZiskProofWithPublicValues {
 
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.proof {
-            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalReduced(proof_bytes) => {
-                let reduced = matches!(self.proof, ZiskProof::VadcopFinalReduced(_));
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
+                let minimal = matches!(self.proof, ZiskProof::VadcopFinalMinimal(_));
                 let mut pubs = self.program_vk.vk.clone();
                 pubs.extend(self.publics.public_bytes());
-                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, reduced))
+                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal))
             }
 
             _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
+        }
+    }
+
+    pub fn get_proof_bytes(&self) -> Vec<u8> {
+        match &self.proof {
+            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
+                let minimal = matches!(self.proof, ZiskProof::VadcopFinalMinimal(_));
+
+                let mut pubs = self.program_vk.vk.clone();
+                pubs.extend(self.publics.public_bytes());
+
+                // Format: [minimal(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
+                let mut bytes = Vec::new();
+                bytes.extend_from_slice(&(minimal as u64).to_le_bytes());
+                bytes.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
+                bytes.extend_from_slice(&pubs);
+                bytes.extend_from_slice(proof_bytes);
+                bytes.extend_from_slice(&self.zisk_vk.vk);
+
+                bytes
+            }
+            _ => panic!("Proof not suitable for get_proof_bytes. Only VadcopFinal and VadcopFinalMinimal proofs are supported."),
         }
     }
 
@@ -573,17 +595,17 @@ impl ZiskProofWithPublicValues {
     /// # Parameters
     ///
     /// * `proof` - The proof as a slice of u64 values
-    /// * `reduced` - Whether the proof is reduced
+    /// * `minimal` - Whether the proof is minimal
     ///
     /// # Returns
     ///
     /// A ZiskProofWithPublicValues containing the parsed proof, publics, and program VK
-    pub fn new_from_vadcop_proof(proof: &[u64], reduced: bool, zisk_vk: Vec<u8>) -> Result<Self> {
-        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, reduced)
+    pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u8>) -> Result<Self> {
+        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal)
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
-        let zisk_proof = if reduced {
-            ZiskProof::VadcopFinalReduced(vadcop_proof.proof)
+        let zisk_proof = if minimal {
+            ZiskProof::VadcopFinalMinimal(vadcop_proof.proof)
         } else {
             ZiskProof::VadcopFinal(vadcop_proof.proof)
         };
@@ -629,8 +651,8 @@ impl ZiskProofWithPublicValues {
     /// proof.publics(&custom_publics).verify()?;
     /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
     /// ```
-    pub fn publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
-        ZiskVerifyBuilder::new(self).publics(publics)
+    pub fn with_publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_publics(publics)
     }
 
     /// Start building a custom verification by overriding the program verification key.
@@ -643,7 +665,7 @@ impl ZiskProofWithPublicValues {
     /// proof.program_vk(&custom_program_vk).verify()?;
     /// proof.program_vk(&custom_program_vk).publics(&custom_publics).verify()?;
     /// ```
-    pub fn program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
-        ZiskVerifyBuilder::new(self).program_vk(program_vk)
+    pub fn with_program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
+        ZiskVerifyBuilder::new(self).with_program_vk(program_vk)
     }
 }

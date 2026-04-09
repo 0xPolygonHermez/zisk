@@ -14,10 +14,10 @@ use crate::{
     embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
+    minimal::MinimalRequest,
     plonk::PlonkRequest,
     proof::Proof,
     prove::ProveRequest,
-    reduce::ReduceRequest,
     remote::{RemoteClient, RemoteClientBuilder, RemoteClientConfig},
     setup::SetupRequest,
     upload::UploadRequest,
@@ -45,6 +45,7 @@ fn ensure_single_instance() {
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
     gpu_params: Option<ParamsGPU>,
+    minimal_memory: bool,
     backend: B,
 }
 
@@ -237,11 +238,11 @@ impl ProverClient {
     }
 
     #[must_use]
-    pub fn reduce<'a>(
+    pub fn minimal<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> ReduceRequest<'a, Self> {
-        ReduceRequest::new(self, proof_with_publics)
+    ) -> MinimalRequest<'a, Self> {
+        MinimalRequest::new(self, proof_with_publics)
     }
 
     #[must_use]
@@ -317,7 +318,7 @@ impl Client for ProverClient {
         }
     }
 
-    fn run_reduce(
+    fn run_minimal(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         override_publics: Option<&ZiskPublics>,
@@ -325,10 +326,10 @@ impl Client for ProverClient {
     ) -> Result<ZiskProofWithPublicValues> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => {
-                c.run_reduce(proof_with_publics, override_publics, override_program_vk)
+                c.run_minimal(proof_with_publics, override_publics, override_program_vk)
             }
             BackendClient::Remote(c) => {
-                c.run_reduce(proof_with_publics, override_publics, override_program_vk)
+                c.run_minimal(proof_with_publics, override_publics, override_program_vk)
             }
         }
     }

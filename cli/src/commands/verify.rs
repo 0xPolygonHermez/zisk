@@ -33,7 +33,7 @@ impl ZiskVerify {
             .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", &self.proof, e))?;
 
         let proof_type = match &proof.get_proof() {
-            ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalReduced(_) => "STARK",
+            ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => "STARK",
             ZiskProof::Plonk(_) => "PLONK",
             _ => panic!("Unsupported proof type"),
         };

@@ -14,7 +14,7 @@ pub async fn handle(
     port: Option<u16>,
     proofs_dir: Option<PathBuf>,
     no_save_proofs: bool,
-    reduced_proofs: bool,
+    minimal_proofs: bool,
     webhook_url: Option<String>,
 ) -> Result<()> {
     // Config file is now optional - if not provided, defaults will be used
@@ -22,7 +22,7 @@ pub async fn handle(
 
     // Load configuration
     let config =
-        Config::load(config_file, port, proofs_dir, no_save_proofs, reduced_proofs, webhook_url)?;
+        Config::load(config_file, port, proofs_dir, no_save_proofs, minimal_proofs, webhook_url)?;
 
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging), None)?;

@@ -46,8 +46,8 @@ fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    stdin_aggregation.write_proof(vadcop_result1.get_proof());
-    stdin_aggregation.write_proof(vadcop_result2.get_proof());
+    stdin_aggregation.write(&vadcop_result1.get_proof_bytes());
+    stdin_aggregation.write(&vadcop_result2.get_proof_bytes());
 
     let proof_opts = ProofOpts::default().minimal_memory();
 

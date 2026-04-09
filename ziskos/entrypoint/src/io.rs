@@ -47,17 +47,6 @@ pub fn read_input_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_proof<'a>() -> &'a [u8] {
-    crate::read_slice_zerocopy()
-}
-
-#[allow(unused)]
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_proof() -> Box<[u8]> {
-    read_input().into_boxed_slice()
-}
-
 /// Commit a serializable value to public outputs.
 /// The value is serialized with bincode and written as 32-bit chunks.
 pub fn commit<T: Serialize>(value: &T) {

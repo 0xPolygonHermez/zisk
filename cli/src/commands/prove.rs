@@ -61,7 +61,7 @@ pub struct ZiskProve {
     pub aggregation: bool,
 
     #[clap(short = 'c', long, default_value_t = false)]
-    pub reduced: bool,
+    pub minimal: bool,
 
     #[clap(short = 'y', long, default_value_t = false)]
     pub verify_proofs: bool,
@@ -161,8 +161,8 @@ impl ZiskProve {
             print_banner_field("Prec. Hints", hints);
         }
 
-        if self.snark && self.reduced {
-            anyhow::bail!("Reduced proofs are not supported for SNARK generation.");
+        if self.snark && self.minimal {
+            anyhow::bail!("Minimal proofs are not supported for SNARK generation.");
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -198,7 +198,7 @@ impl ZiskProve {
 
             if let Some(proof_id) = &result.get_proof_id() {
                 let output_dir = match result.get_proof().proof {
-                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalReduced(_) => {
+                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => {
                         self.output_dir.join("vadcop_final_proof.bin")
                     }
                     ZiskProof::Plonk(_) => self.output_dir.join("final_snark_proof.bin"),
@@ -254,8 +254,8 @@ impl ZiskProve {
         if self.snark {
             prover = prover.plonk();
         }
-        if self.reduced {
-            prover = prover.reduced();
+        if self.minimal {
+            prover = prover.minimal();
         }
         let result = prover.run()?;
 
@@ -311,8 +311,8 @@ impl ZiskProve {
         if self.snark {
             prover = prover.plonk();
         }
-        if self.reduced {
-            prover = prover.reduced();
+        if self.minimal {
+            prover = prover.minimal();
         }
 
         let result = prover.run()?;

@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::io::ZiskIO;
-use crate::ZiskProofWithPublicValues;
 
 /// A file-based implementation of ZiskStdin that reads from a file.
 pub struct ZiskFileStdin {
@@ -93,12 +92,6 @@ impl ZiskIO for ZiskFileStdin {
     }
 
     fn write_slice(&self, _data: &[u8]) {
-        // This is a read-only stdin implementation
-        // Writing is not supported for file-based stdin
-        panic!("Write operations are not supported for FileStdin");
-    }
-
-    fn write_proof(&self, _proof: &ZiskProofWithPublicValues) {
         // This is a read-only stdin implementation
         // Writing is not supported for file-based stdin
         panic!("Write operations are not supported for FileStdin");

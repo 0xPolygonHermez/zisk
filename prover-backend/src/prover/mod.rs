@@ -232,6 +232,10 @@ impl ZiskProveResult {
         &self.proof_with_publics
     }
 
+    pub fn get_proof_bytes(&self) -> Vec<u8> {
+        self.proof_with_publics.get_proof_bytes()
+    }
+
     pub fn get_publics(&self) -> &ZiskPublics {
         &self.proof_with_publics.publics
     }
@@ -256,12 +260,12 @@ impl ZiskProveResult {
         self.proof_with_publics.verify()
     }
 
-    pub fn publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
-        self.proof_with_publics.publics(publics)
+    pub fn with_publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
+        self.proof_with_publics.with_publics(publics)
     }
 
-    pub fn program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
-        self.proof_with_publics.program_vk(program_vk)
+    pub fn with_program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
+        self.proof_with_publics.with_program_vk(program_vk)
     }
 }
 
@@ -356,7 +360,7 @@ pub trait ProverEngine {
         vk: &ZiskProgramVK,
     ) -> Result<ZiskProofWithPublicValues>;
 
-    fn reduce(
+    fn minimal(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
@@ -387,7 +391,7 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
-    fn get_vadcop_vk(&self, reduced: bool) -> Result<ZiskVK>;
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
@@ -544,7 +548,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// # Example
     /// ```ignore
-    /// let result = prover.prove(&program, stdin)?.reduced().run()?;
+    /// let result = prover.prove(&program, stdin)?.minimal().run()?;
     /// ```
     pub fn prove<'a>(&'a self, program: &'a GuestProgram, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
         ProveBuilder::new(&self.prover, program, stdin)
@@ -565,19 +569,19 @@ impl<C: ZiskBackend> ZiskProver<C> {
         PlonkBuilder::new(&self.prover, proof_with_publics)
     }
 
-    /// Reduce/compress a proof to a smaller representation.
-    /// Returns a `ReduceBuilder` that allows overriding publics or program_vk.
+    /// Convert  proof to a minimal representation.
+    /// Returns a `MinimalBuilder` that allows overriding publics or program_vk.
     ///
     /// # Example
     /// ```ignore
-    /// let reduced = prover.reduce(&proof_with_publics).run()?;
-    /// let reduced = prover.reduce(&proof_with_publics).publics(&custom_publics).run()?;
+    /// let minimal = prover.minimal(&proof_with_publics).run()?;
+    /// let minimal = prover.minimal(&proof_with_publics).publics(&custom_publics).run()?;
     /// ```
-    pub fn reduce<'a>(
+    pub fn minimal<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> ReduceBuilder<'a, C> {
-        ReduceBuilder::new(&self.prover, proof_with_publics)
+    ) -> MinimalBuilder<'a, C> {
+        MinimalBuilder::new(&self.prover, proof_with_publics)
     }
 
     pub fn prove_phase(
@@ -621,7 +625,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// # Parameters
     ///
-    /// * `minimal` - If true, returns the reduced/compressed verification key.
+    /// * `minimal` - If true, returns the minimal verification key.
     ///   If false, returns the full verification key.
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         self.prover.get_vadcop_vk(minimal)
@@ -704,7 +708,7 @@ impl ZiskProver<Emu> {
 ///
 /// # Example
 /// ```ignore
-/// let result = prover.prove(stdin).reduced().run()?;
+/// let result = prover.prove(stdin).minimal().run()?;
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
@@ -725,9 +729,9 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         }
     }
 
-    /// Enable reduced proof generation.
-    pub fn reduced(mut self) -> Self {
-        self.mode = ProofMode::VadcopFinalReduced;
+    /// Enable minimal proof generation.
+    pub fn minimal(mut self) -> Self {
+        self.mode = ProofMode::VadcopFinalMinimal;
         self
     }
 
@@ -754,30 +758,30 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 ///
 /// # Example
 /// ```ignore
-/// let reduced = prover.reduce(&proof_with_publics).run()?;
+/// let minimal = prover.minimal(&proof_with_publics).run()?;
 /// // Or override publicsself.guest_program
-/// let reduced = prover.reduce(&proof_with_publics).publics(&custom_publics).run()?;
+/// let minimal = prover.minimal(&proof_with_publics).publics(&custom_publics).run()?;
 /// ```
-pub struct ReduceBuilder<'a, C: ZiskBackend> {
+pub struct MinimalBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     proof_with_publics: &'a ZiskProofWithPublicValues,
     override_publics: Option<&'a ZiskPublics>,
     override_program_vk: Option<&'a ZiskProgramVK>,
 }
 
-impl<'a, C: ZiskBackend> ReduceBuilder<'a, C> {
+impl<'a, C: ZiskBackend> MinimalBuilder<'a, C> {
     fn new(prover: &'a C::Prover, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
         Self { prover, proof_with_publics, override_publics: None, override_program_vk: None }
     }
 
     /// Override the publics from the original proof.
-    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key from the original proof.
-    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
@@ -786,7 +790,7 @@ impl<'a, C: ZiskBackend> ReduceBuilder<'a, C> {
     pub fn run(self) -> Result<ZiskProofWithPublicValues> {
         let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.reduce(&self.proof_with_publics.proof, publics, program_vk)
+        self.prover.minimal(&self.proof_with_publics.proof, publics, program_vk)
     }
 }
 
@@ -799,7 +803,7 @@ impl<'a, C: ZiskBackend> ReduceBuilder<'a, C> {
 /// ```ignore
 /// let snark = prover.plonk(&proof_with_publics).run()?;
 /// // Or override verification key:
-/// let snark = prover.plonk(&proof_with_publics).program_vk(&custom_vk).run()?;
+/// let snark = prover.plonk(&proof_with_publics).with_program_vk(&custom_vk).run()?;
 /// ```
 pub struct PlonkBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
@@ -814,13 +818,13 @@ impl<'a, C: ZiskBackend> PlonkBuilder<'a, C> {
     }
 
     /// Override the publics from the original proof.
-    pub fn publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key from the original proof.
-    pub fn program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }

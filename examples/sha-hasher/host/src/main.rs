@@ -33,7 +33,7 @@ fn main() -> Result<()> {
         .run()?;
 
     let vkey = client.vk(&PROGRAM)?;
-    vadcop_result.program_vk(&vkey).verify()?;
+    vadcop_result.with_program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");
 

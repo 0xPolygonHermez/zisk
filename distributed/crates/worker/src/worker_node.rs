@@ -261,7 +261,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result,
                 executed_steps,
-                reduced,
+                minimal,
                 instances,
             } => {
                 self.send_aggregation(
@@ -270,7 +270,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     result,
                     message_sender,
                     executed_steps,
-                    reduced,
+                    minimal,
                     instances,
                 )
                 .await
@@ -487,7 +487,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
-        reduced: bool,
+        minimal: bool,
         instances: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -507,7 +507,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     reset_current_job = !final_proof.is_empty();
 
                     // Get the verification key for the final proof
-                    let verkey = self.worker.get_vadcop_vk(reduced).unwrap_or_else(|e| {
+                    let verkey = self.worker.get_vadcop_vk(minimal).unwrap_or_else(|e| {
                         error!("Failed to get vadcop verification key: {}", e);
                         vec![]
                     });
@@ -942,7 +942,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            reduced: agg_params.reduced,
+            minimal: agg_params.minimal,
         };
         self.worker.set_current_computation(self.worker.handle_aggregate(
             job,

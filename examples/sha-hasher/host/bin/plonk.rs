@@ -1,7 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{
-    load_program, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin,
-};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -43,7 +41,7 @@ fn main() -> Result<()> {
     println!("Loading and verifying saved PLONK proof...");
     let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark.bin")?;
     let vkey = client.vk(&PROGRAM)?;
-    proof.program_vk(&vkey).verify()?;
+    proof.with_program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified PLONK proof!");
