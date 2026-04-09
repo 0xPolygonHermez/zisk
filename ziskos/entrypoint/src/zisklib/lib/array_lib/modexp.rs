@@ -111,6 +111,7 @@ fn modexp_short(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(len > 0 && bits[len - 1] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
     let mut rec_exp = vec![0u64; len_e];
@@ -188,6 +189,7 @@ fn modexp_long(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(len > 0 && bits[len - 1] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
     let mut rec_exp = vec![0u64; len_e];
