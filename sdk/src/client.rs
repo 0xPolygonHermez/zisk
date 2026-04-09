@@ -45,7 +45,6 @@ fn ensure_single_instance() {
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
     gpu_params: Option<ParamsGPU>,
-    minimal_memory: bool,
     backend: B,
 }
 
