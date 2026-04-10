@@ -63,6 +63,7 @@ jobs:
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
       PROVE_FLAGS: "-a -y"
+      BUILD_GPU: "1"
       TERM: xterm
     steps:
       - name: Checkout sources
@@ -87,7 +88,6 @@ jobs:
 
       - name: Test sha_hasher
         env:
-          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.0"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
@@ -100,7 +100,7 @@ jobs:
       - name: Verify Constraints Ethereum block
         env:
           DISABLE_PROVE: "1"
-          BLOCK_INPUTS: "mainnet_24626900_221_16_zec_reth.bin"
+          BLOCK_INPUTS_SINGLE: "mainnet_24628607_66_7_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
@@ -108,7 +108,7 @@ jobs:
       - name: Prove Ethereum block
         env:
           DISABLE_ROM_SETUP: "1"
-          BLOCK_INPUTS_DISTRIBUTED: "mainnet_24628607_66_7_zec_reth.bin"
+          BLOCK_INPUTS_DISTRIBUTED="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh

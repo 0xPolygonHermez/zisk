@@ -2,6 +2,8 @@
 
 source "./utils.sh"
 
+PROOF_DIR="./proof"
+
 # print_proofs_result: Display proof results in a table format
 #
 # Parameters:
@@ -47,41 +49,211 @@ print_proofs_result() {
     echo
 }
 
-# delete_proofs_result: Remove proof result JSON files after processing
-#
-# Arguments:
-#   $1 (base_path) — Directory path where result JSON files are stored
-#   $2…$n (files) — Input filenames (without “.json”) of the result files to delete
-#
-# Example:
-#   delete_proofs_result "/home/user/work/proofs/distributed" file1 file2 file3
-delete_proofs_result() {
-    local base_path="$1"
-    shift
-    local files=("$@")
+# resolve_verify_proof_file: Pick proof_*.bin in ./proof for verification.
+# Falls back to ./proof/vadcop_final_proof.bin for backward compatibility.
+resolve_verify_proof_file() {
+    local selected_file
+    selected_file=$(find "${PROOF_DIR}" -maxdepth 1 -type f -name "proof_*.bin" | sort | head -n 1)
+    if [[ -n "${selected_file}" ]]; then
+        echo "${selected_file}"
+        return 0
+    fi
 
-    for f in "${files[@]}"; do
-        rm -f "${base_path}/${f}.json"
-    done
+    if [[ -f "${PROOF_DIR}/vadcop_final_proof.bin" ]]; then
+        echo "${PROOF_DIR}/vadcop_final_proof.bin"
+        return 0
+    fi
+
+    return 1
 }
 
-# test_elf: Run proofs for a given ELF program with both non-distributed and distributed inputs
+# prefix_log_output: Prefix each log line written to stdout.
+prefix_log_output() {
+    local prefix="$1"
+    local prefix_width="${LOG_PREFIX_WIDTH:-11}"
+
+    awk -v prefix="${prefix}" -v width="${prefix_width}" '{ printf "[%-*s] %s\n", width, prefix, $0; fflush() }'
+}
+
+# kill_distributed: Reset INT/TERM trap and kill both coordinator and worker.
+kill_distributed() {
+    info "Stopping zisk-coordinator and zisk-worker processes..."
+    trap - INT TERM
+    pkill -9 -u "$(id -u)" -f "(^|/)zisk-worker([[:space:]]|$)" 2>/dev/null || true
+    pkill -9 -u "$(id -u)" -x "zisk-worker" 2>/dev/null || true
+    sleep 3
+    pkill -9 -u "$(id -u)" -f "(^|/)zisk-coordinator([[:space:]]|$)" 2>/dev/null || true
+    pkill -9 -u "$(id -u)" -x "zisk-coordinato" 2>/dev/null || true
+    info "Processes stopped."
+}
+
+# distributed_prove: Prove an ELF program in distributed mode (zisk-coordinator + zisk-worker).
+#
+# Starts a coordinator and a single worker in the background, submits the proof
+# request via "zisk-coordinator prove", polls for completion, copies the proof
+# files to the expected output directory, then stops both processes.
 #
 # Parameters:
-#   $1 (elf_file)              – Path to the ELF binary
-#   $2 (inputs_path)           – Directory where input files are located
-#   $3 (inputs_var_name)       – Name of the env variable holding comma-separated non-distributed input filenames
-#   $4 (dist_inputs_var_name)  – Name of the env variable holding comma-separated distributed input filenames
-#   $5 (desc)                  – Descriptive label for logging
+#   $1 (elf_file)    – Path to the ELF binary (absolute or relative to cwd)
+#   $2 (inputs_path) – Directory containing input files
+#   $3 (input_file)  – Input filename (basename only) or "empty" for no input
+distributed_prove() {
+    local elf_file="$1"
+    local inputs_path="$2"
+    local input_file="$3"
+    local log_prefix="$4"
+
+    local port="${COORDINATOR_PORT:-50051}"
+    local capacity="${COORDINATOR_COMPUTE_CAPACITY:-10}"
+    local startup_wait="${COORDINATOR_STARTUP_WAIT:-120}"
+    local prove_timeout="${COORDINATOR_PROVE_TIMEOUT:-3600}"
+    local coord_url="http://127.0.0.1:${port}"
+
+    local coord_pid worker_pid
+
+    LOGS_DIR="${WORKSPACE_DIR}/logs"
+
+    rm -rf "${PROOF_DIR}"
+
+    # Kill any leftover zisk-coordinator / zisk-worker processes owned by the current user
+    kill_distributed
+
+    info "Starting zisk-coordinator on port ${port}..."
+    zisk-coordinator \
+        --port "${port}" \
+        --proofs-dir "${PROOF_DIR}" \
+        --compressed-proofs \
+        2>&1 | tee "${LOGS_DIR}/distributed/coordinator.log" | prefix_log_output "coordinator" &
+    coord_pid=$!
+
+    info "Starting zisk-worker (elf: ${elf_file}, inputs-folder: ${inputs_path})..."
+    zisk-worker \
+        --elf "${elf_file}" \
+        --inputs-folder "${inputs_path}" \
+        --compute-capacity "${capacity}" \
+        --coordinator-url "${coord_url}" \
+        --asm-port 6100 \
+        2>&1 | tee "${LOGS_DIR}/distributed/worker.log" | prefix_log_output "worker" &
+    worker_pid=$!
+
+    # Terminate background processes if the script is interrupted (Ctrl-C / SIGTERM)
+    trap 'trap - INT TERM; kill "${coord_pid}" "${worker_pid}" 2>/dev/null || true; wait "${coord_pid}" "${worker_pid}" 2>/dev/null || true; exit 130' INT TERM
+
+    info "Waiting for worker to register (timeout: ${startup_wait}s)..."
+    local startup_elapsed=0
+    while [[ ${startup_elapsed} -lt ${startup_wait} ]]; do
+        if grep -qF "Registration accepted: Registration successful" "${LOGS_DIR}/distributed/worker.log" 2>/dev/null; then
+            info "Worker registered successfully."
+            break
+        fi
+        if ! kill -0 "${coord_pid}" 2>/dev/null; then
+            kill_distributed
+            err "Coordinator exited during startup. See ${LOGS_DIR}/distributed/coordinator.log"
+            return 1
+        fi
+        if ! kill -0 "${worker_pid}" 2>/dev/null; then
+            kill_distributed
+            err "Worker exited during startup. See ${LOGS_DIR}/distributed/worker.log"
+            return 1
+        fi
+        sleep 2
+        startup_elapsed=$(( startup_elapsed + 2 ))
+    done
+    if [[ ${startup_elapsed} -ge ${startup_wait} ]]; then
+        kill_distributed
+        err "Worker did not register within ${startup_wait}s. See ${LOGS_DIR}/distributed/worker.log"
+        return 1
+    fi
+
+    # Build --inputs-uri flag with full path (omit entirely when input is "empty").
+    local inputs_flag=""
+    if [[ "${input_file}" != "empty" ]]; then
+        inputs_flag="--inputs-uri ${inputs_path}/${input_file} --direct-inputs"
+    fi
+
+    info "Submitting proof via zisk-coordinator prove..."
+    zisk-coordinator prove \
+        --coordinator-url "${coord_url}" \
+        ${inputs_flag} \
+        --compute-capacity "${capacity}" \
+        >"${LOGS_DIR}/single/prove_${input_file}.log" 2>&1
+    local prove_exit=$?
+
+    if [[ ${prove_exit} -ne 0 ]]; then
+        kill_distributed
+        err "zisk-coordinator prove failed (exit ${prove_exit}). See ${LOGS_DIR}/single/prove_${input_file}.log"
+        return 1
+    fi
+
+    # Poll for proof completion via worker logs
+    local elapsed=0
+    local prove_completed=false
+    info "Waiting for proof to complete (timeout: ${prove_timeout}s)..."
+    while [[ ${elapsed} -lt ${prove_timeout} ]]; do
+        if grep -qF "Aggregation task completed" "${LOGS_DIR}/distributed/worker.log" 2>/dev/null; then
+            prove_completed=true
+            break
+        fi
+        if ! kill -0 "${worker_pid}" 2>/dev/null; then
+            kill_distributed
+            err "Worker process (pid=${worker_pid}) exited unexpectedly. See ${LOGS_DIR}/distributed/worker.log"
+            return 1
+        fi
+        sleep 5
+        elapsed=$(( elapsed + 5 ))
+    done
+
+    kill_distributed
+
+    if [[ "${prove_completed}" != "true" ]]; then
+        err "Proof did not complete within ${prove_timeout}s."
+        err "  Coordinator log : ${LOGS_DIR}/distributed/coordinator.log"
+        err "  Worker log      : ${LOGS_DIR}/distributed/worker.log"
+        return 1
+    fi
+
+    # Find the proof file produced by the coordinator
+    local proof_file
+    proof_file=$(resolve_verify_proof_file) || {
+        err "No proof_*.bin or vadcop_final_proof.bin found in ${PROOF_DIR}"
+        return 1
+    }
+
+    # # Copy proof files to the expected location so downstream steps are identical
+    # cp "${proof_file}" "${PROOF_DIR}/vadcop_final_proof.bin"
+    # local proof_job_dir
+    # proof_job_dir=$(dirname "${proof_file}")
+    # if [[ -f "${proof_job_dir}/result.json" ]]; then
+    #     cp "${proof_job_dir}/result.json" "${PROOF_DIR}/result.json"
+    # fi
+
+    info "Proof completed: ${proof_file}"
+    return 0
+}
+
+# test_elf: Run proofs for a given ELF program.
+#
+# Parameters:
+#   $1 (elf_file)      – Path to the ELF binary
+#   $2 (inputs_path)   – Directory where input files are located
+#   $3 (inputs_prefix) – Prefix for input env variables.
+#                        The function appends _SINGLE, _MPI, _DISTRIBUTED to derive
+#                        the actual variable names (e.g. BLOCK_INPUTS_SINGLE)
+#   $4 (desc)          – Descriptive label for logging
+#
+# Each proving mode is enabled by populating the corresponding input variable:
+#   <PREFIX>_SINGLE      — non-empty → runs "cargo-zisk prove" (no mpirun)
+#   <PREFIX>_MPI         — non-empty → runs "cargo-zisk prove" via mpirun
+#   <PREFIX>_DISTRIBUTED — non-empty → starts zisk-coordinator + zisk-worker
+# Leave any variable empty to skip that mode.
 #
 # Example:
-#  prove "program.elf" "inputs" "INPUTS" "INPUTS_DISTRIBUTED" "Proving program"
+#  test_elf "program.elf" "inputs" "BLOCK_INPUTS" "Ethereum blocks"
 test_elf() {
     local elf_file="$1"
     local inputs_path="$2"
-    local inputs_var_name="$3"
-    local dist_inputs_var_name="$4"
-    local desc="$5"
+    local inputs_prefix="$3"
+    local desc="$4"
 
     current_dir=$(pwd)
 
@@ -89,66 +261,70 @@ test_elf() {
 
     is_proving_key_installed || return 1
 
-    info "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
-
     export ELF_FILE="$elf_file"
     export INPUTS_PATH="$inputs_path"
-    export INPUTS="${!inputs_var_name}"
-    export INPUTS_DISTRIBUTED="${!dist_inputs_var_name}"
 
-    declare -a result_files=() result_dist_files=()
-    declare -a inputs=() dist_inputs=()
+    # Derive input variable names from prefix
+    local single_var="${inputs_prefix}_SINGLE"
+    local mpi_var="${inputs_prefix}_MPI"
+    local dist_var="${inputs_prefix}_DISTRIBUTED"
 
-    # Get list of input files
-    get_var_list_to_array inputs "INPUTS"
+    export INPUTS_SINGLE="${!single_var}"
+    export INPUTS_MPI="${!mpi_var}"
+    export INPUTS_DISTRIBUTED="${!dist_var}"
+
+    # Validate required binaries if distributed inputs are provided
+    if [[ -n "${INPUTS_DISTRIBUTED}" ]]; then
+        if ! command -v zisk-coordinator &>/dev/null; then
+            err "zisk-coordinator binary not found in PATH. Required for distributed proving"
+            return 1
+        fi
+        if ! command -v zisk-worker &>/dev/null; then
+            err "zisk-worker binary not found in PATH. Required for distributed proving"
+            return 1
+        fi
+    fi
+
+    declare -a result_files=() result_mpi_files=() result_dist_files=()
+    declare -a inputs=() mpi_inputs=() dist_inputs=()
+
+    # Load all input arrays; a non-empty list enables that proving mode
+    get_var_list_to_array inputs      "INPUTS_SINGLE"
+    get_var_list_to_array mpi_inputs  "INPUTS_MPI"
     get_var_list_to_array dist_inputs "INPUTS_DISTRIBUTED"
 
     num_inputs=${#inputs[@]}
+    num_mpi_inputs=${#mpi_inputs[@]}
     num_dist_inputs=${#dist_inputs[@]}
 
     # Set step counts
     current_step=1
-    steps_no_dist=3
-    steps_dist=1
-    if [[ "${DISABLE_PROVE}" != "1" ]]; then
-        steps_no_dist=1
+    steps_single=3
+    steps_mpi=2
+    steps_dist=2
+    if [[ "${DISABLE_PROVE}" == "1" ]]; then
+        steps_single=1
+        steps_mpi=0
         steps_dist=0
     fi
-    total_steps=$(( 2 + num_inputs * $steps_no_dist + num_dist_inputs * $steps_dist ))
+    total_steps=$(( 1 + num_inputs * steps_single + num_mpi_inputs * steps_mpi + num_dist_inputs * steps_dist ))
 
-    # Create directories for proof results
+    # Create directories for proof results and logs
     PROOF_RESULTS_DIR="${WORKSPACE_DIR}/proof-results"
-    rm -rf "${PROOF_RESULTS_DIR}"
-    mkdir -p "${PROOF_RESULTS_DIR}"
-    mkdir -p "${PROOF_RESULTS_DIR}/non-distributed"
-    mkdir -p "${PROOF_RESULTS_DIR}/distributed"
+    LOGS_DIR="${WORKSPACE_DIR}/logs"
+    rm -rf "${PROOF_RESULTS_DIR}" "${LOGS_DIR}"
+    mkdir -p "${PROOF_RESULTS_DIR}/single" "${PROOF_RESULTS_DIR}/mpi" "${PROOF_RESULTS_DIR}/distributed"
+    mkdir -p "${LOGS_DIR}/single" "${LOGS_DIR}/mpi" "${LOGS_DIR}/distributed"
 
     # Change to the working directory
     cd "${WORKSPACE_DIR}" || return 1
 
     # Build mpi command
-    MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
-
-    step "Cloning zisk-testvectors repository..."
-    if [[ -n "$ZISK_TESTVECTORS_BRANCH" ]]; then
-        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
-            warn "Skipping cloning zisk-testvectors repository as DISABLE_CLONE_REPO is set to 1"
-        else
-            rm -rf zisk-testvectors
-            ensure git clone https://github.com/0xPolygonHermez/zisk-testvectors.git || return 1
-            cd zisk-testvectors
-            ensure git checkout "$ZISK_TESTVECTORS_BRANCH" || return 1
-            cd ..
-        fi
-    else
-        info "Skipping cloning zisk-testvectors repository as ZISK_TESTVECTORS_BRANCH is not defined"
-    fi
-    cd zisk-testvectors || return 1
+    MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $MPI_PROCESSES -x OMP_NUM_THREADS=$MPI_THREADS -x RAYON_NUM_THREADS=$MPI_THREADS"
 
     # Verify existence of all input files
     verify_files_exist "$INPUTS_PATH" "${inputs[@]}" || return 1
+    verify_files_exist "$INPUTS_PATH" "${mpi_inputs[@]}" || return 1
     verify_files_exist "$INPUTS_PATH" "${dist_inputs[@]}" || return 1
 
     step "Generating ${desc} setup..."
@@ -157,14 +333,16 @@ test_elf() {
     else
         rm -rf $HOME/.zisk/cache
         ensure cargo-zisk rom-setup -e "${ELF_FILE}" \
-        2>&1 | tee romsetup_output.log || return 1
-        if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
+        2>&1 | tee "${LOGS_DIR}/romsetup_output.log" || return 1
+        if ! grep -qF "ROM setup successfully completed" "${LOGS_DIR}/romsetup_output.log"; then
         err "program setup failed"
         return 1
         fi
     fi
 
-    # Process inputs in non-distributed
+    # -------------------------------------------------------------------------
+    # single: cargo-zisk prove (no mpirun)
+    # -------------------------------------------------------------------------
     if [ ${num_inputs} -gt 0 ]; then
         for input_file in "${inputs[@]}"; do
             if [[ "${input_file}" != "empty" ]]; then
@@ -181,45 +359,118 @@ test_elf() {
                 ensure cargo-zisk verify-constraints \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    2>&1 | tee "constraints_${input_file}.log" || return 1
-                if ! grep -F "All global constraints were successfully verified" \
-                         "constraints_${input_file}.log"; then
-                    err "verify constraints failed for ${input_file}"
+                    -p 6100 \
+                    2>&1 | tee "${LOGS_DIR}/single/constraints_${input_file}.log" || return 1
+                if ! grep -qF "All global constraints were successfully verified" \
+                         "${LOGS_DIR}/single/constraints_${input_file}.log"; then
+                    err "Verify constraints failed for ${input_file}"
                     return 1
                 fi
             fi
 
             if [[ "${DISABLE_PROVE}" != "1" ]]; then
-                step "Proving (non-distributed) for ${input_file}..."
+                step "Proving (single) for ${input_file}..."
+                rm -rf ${PROOF_DIR}
+
                 ensure cargo-zisk prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -o proof $PROVE_FLAGS \
-                    2>&1 | tee "prove_${input_file}.log" || return 1
-                if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
+                    -o ${PROOF_DIR} $PROVE_FLAGS \
+                    2>&1 | tee "${LOGS_DIR}/single/prove_${input_file}.log" || return 1
+                if ! grep -qF "Vadcop Final proof was verified" "${LOGS_DIR}/single/prove_${input_file}.log"; then
                     err "prove failed for ${input_file}"
                     return 1
                 fi
 
-                # move result.json into PROOF_RESULTS_DIR
-                mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
-                result_files+=("${input_file}")
+                # move result.json into PROOF_RESULTS_DIR (if present)
+                if [[ -f "${PROOF_DIR}/result.json" ]]; then
+                    mv "${PROOF_DIR}/result.json" "${PROOF_RESULTS_DIR}/single/${input_file}.json"
+                    result_files+=("${input_file}")
+                fi
 
                 step "Verifying proof for ${input_file}..."
-                ensure cargo-zisk verify \
-                    -p ./proof/vadcop_final_proof.bin \
-                    2>&1 | tee "verify_${input_file}.log" || return 1
-                if ! grep -F "Stark proof was verified" "verify_${input_file}.log"; then
-                    err "verify proof failed for ${input_file}"
+                local verify_proof_file
+                verify_proof_file=$(resolve_verify_proof_file) || {
+                    err "Verify proof failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
+                    return 1
+                }
+
+                if ! ensure cargo-zisk verify \
+                    -p "${verify_proof_file}" \
+                    2>&1 | tee "${LOGS_DIR}/single/verify_${input_file}.log"; then
+                    return 1
+                fi
+
+                if ! grep -qF "Stark proof was verified" "${LOGS_DIR}/single/verify_${input_file}.log"; then
+                    err "Verify proof failed for ${input_file}"
                     return 1
                 fi
             fi
         done
     else
-        warn "non-distributed inputs variable is empty or not defined; skipping non-distributed proofs"
+        warn "Variable (${inputs_prefix}_SINGLE) is empty or not defined; Skipping single process proving (no mpi)"
     fi
 
-    # Process inputs in distributed mode
+    # -------------------------------------------------------------------------
+    # mpi: cargo-zisk prove via mpirun
+    # -------------------------------------------------------------------------
+    if [ ${num_mpi_inputs} -gt 0 ]; then
+        if [[ "${DISABLE_PROVE}" != "1" ]]; then
+            for input_file in "${mpi_inputs[@]}"; do
+                if [[ "${input_file}" != "empty" ]]; then
+                    input_flag="-i ${INPUTS_PATH}/${input_file}"
+                else
+                    input_flag=""
+                fi
+
+                step "Proving (mpi) for ${input_file}..."
+                rm -rf ${PROOF_DIR}
+
+                export RAYON_NUM_THREADS=$MPI_THREADS
+                ensure $MPI_CMD cargo-zisk prove \
+                    -e "${ELF_FILE}" \
+                    ${input_flag} \
+                    -p 6100 \
+                    -o ${PROOF_DIR} $PROVE_FLAGS \
+                    2>&1 | tee "${LOGS_DIR}/mpi/prove_mpi_${input_file}.log" || return 1
+                if ! grep -qF "Vadcop Final proof was verified" \
+                        "${LOGS_DIR}/mpi/prove_mpi_${input_file}.log"; then
+                    err "mpi prove failed for ${input_file}"
+                    return 1
+                fi
+
+                # move result.json into PROOF_RESULTS_DIR (if present)
+                if [[ -f "${PROOF_DIR}/result.json" ]]; then
+                    mv "${PROOF_DIR}/result.json" "${PROOF_RESULTS_DIR}/mpi/${input_file}.json"
+                    result_mpi_files+=("${input_file}")
+                fi
+
+                step "Verifying mpi proof for ${input_file}..."
+                local verify_proof_file
+                verify_proof_file=$(resolve_verify_proof_file) || {
+                    err "Verify mpi proof failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
+                    return 1
+                }
+
+                if ! ensure cargo-zisk verify \
+                    -p "${verify_proof_file}" \
+                    2>&1 | tee "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
+                    return 1
+                fi
+
+                if ! grep -qF "Stark proof was verified" "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
+                    err "Verify mpi proof failed for ${input_file}"
+                    return 1
+                fi
+            done
+        fi
+    else
+        warn "Variable (${inputs_prefix}_MPI) is empty or not defined; Skipping mpi proving"
+    fi
+
+    # -------------------------------------------------------------------------
+    # distributed: zisk-coordinator + zisk-worker
+    # -------------------------------------------------------------------------
     if [ ${num_dist_inputs} -gt 0 ]; then
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
             for input_file in "${dist_inputs[@]}"; do
@@ -230,35 +481,58 @@ test_elf() {
                 fi
 
                 step "Proving (distributed) for ${input_file}..."
-                export RAYON_NUM_THREADS=$DISTRIBUTED_THREADS
-                ensure $MPI_CMD cargo-zisk prove \
-                    -e "${ELF_FILE}" \
-                    ${input_flag} \
-                    -o proof $PROVE_FLAGS \
-                    2>&1 | tee "prove_dist_${input_file}.log" || return 1
-                if ! grep -F "Vadcop Final proof was verified" \
-                        "prove_dist_${input_file}.log"; then
-                    err "distributed prove failed for ${input_file}"
+                rm -rf ${PROOF_DIR}
+
+                distributed_prove \
+                    "${WORKSPACE_DIR}/${ELF_FILE}" \
+                    "${WORKSPACE_DIR}/${INPUTS_PATH}" \
+                    "${input_file}" \
+                    "${LOGS_DIR}/distributed/prove_dist_${input_file}" || return 1
+
+                local verify_proof_file
+                verify_proof_file=$(resolve_verify_proof_file) || {
+                    err "distributed prove failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
+                    return 1
+                }
+
+                # move result.json into PROOF_RESULTS_DIR (if present)
+                if [[ -f "${PROOF_DIR}/result.json" ]]; then
+                    dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
+                    mv "${PROOF_DIR}/result.json" "${dest_result_file}"
+                    result_dist_files+=("${input_file}")
+                fi
+
+                step "Verifying distributed proof for ${input_file}..."
+                if ! ensure cargo-zisk verify \
+                    -p "${verify_proof_file}" \
+                    2>&1 | tee "${LOGS_DIR}/distributed/verify_dist_${input_file}.log"; then
                     return 1
                 fi
 
-                # move result.json into PROOF_RESULTS_DIR
-                dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
-                mv proof/result.json "${dest_result_file}"
-                result_dist_files+=("${input_file}")
+                if ! grep -qF "Stark proof was verified" "${LOGS_DIR}/distributed/verify_dist_${input_file}.log"; then
+                    err "Verify distributed proof failed for ${input_file}"
+                    return 1
+                fi
             done
         fi
     else
-        warn "distributed inputs variable is empty or not defined; skipping distributed proofs"
+        warn "Variable (${inputs_prefix}_DISTRIBUTED) is empty or not defined; skipping distributed proving"
     fi
+
+    rm -rf "${PROOF_DIR}"
 
     cd ..
 
     # Print results
     if [ ${num_inputs} -gt 0 ]; then
         echo
-        info "Non-distributed results:"
-        print_proofs_result "${PROOF_RESULTS_DIR}/non-distributed" "${result_files[@]}"
+        info "Single results:"
+        print_proofs_result "${PROOF_RESULTS_DIR}/single" "${result_files[@]}"
+    fi
+    if [ ${num_mpi_inputs} -gt 0 ]; then
+        echo
+        info "MPI results:"
+        print_proofs_result "${PROOF_RESULTS_DIR}/mpi" "${result_mpi_files[@]}"
     fi
     if [ ${num_dist_inputs} -gt 0 ]; then
         echo
@@ -266,10 +540,8 @@ test_elf() {
         print_proofs_result "${PROOF_RESULTS_DIR}/distributed" "${result_dist_files[@]}"
     fi
 
-    # Clean up result files
-    delete_proofs_result "${PROOF_RESULTS_DIR}/non-distributed" "${result_files[@]}"
-    delete_proofs_result "${PROOF_RESULTS_DIR}/distributed" "${result_dist_files[@]}"
-    rm -rf "${PROOF_RESULTS_DIR}"
+    # Clean up result and log files
+    rm -rf "${PROOF_RESULTS_DIR}" "${LOGS_DIR}"
 
     cd "$current_dir"
 

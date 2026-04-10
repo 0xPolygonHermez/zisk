@@ -52,8 +52,13 @@ warn() {
 }
 
 err() {
-    echo "${RED}❌ Error: $1${RESET}" >&2
-    press_any_key
+    local message="$1"
+    local skip_press_any_key="${2:-false}"
+
+    echo "${RED}❌ Error: ${message}${RESET}" >&2
+    if [[ "${skip_press_any_key}" != "true" ]]; then
+        press_any_key
+    fi
     return 1
 }
 
