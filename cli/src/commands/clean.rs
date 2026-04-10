@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Remove the cache directoy
+/// Remove the cache directory
 pub struct ZiskClean;
 
 impl ZiskClean {
