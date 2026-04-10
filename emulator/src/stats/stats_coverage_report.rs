@@ -1,6 +1,6 @@
 //! Emulator coverage information
 
-use crate::StatsReport;
+use crate::{StatsCosts, StatsReport};
 use std::{collections::HashMap, str::FromStr};
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom};
 
@@ -10,17 +10,12 @@ pub struct StatsCoverageReport {}
 
 impl StatsCoverageReport {
     pub fn report_opcodes_coverage(
+        title: &str,
         pc_histogram: &HashMap<u64, u64>,
         report: &mut StatsReport,
-        no_frops: &[u64],
-        frops: &[u64],
-        title: &str,
+        costs: &StatsCosts,
         rom: &ZiskRom,
     ) {
-        let mut ops: [u64; 256] = [0; 256];
-        for i in 0..256_usize {
-            ops[i] = no_frops[i] + frops[i];
-        }
         let mut ops_total_counter: u64 = 0;
         let mut ops_used_counter: u64 = 0;
         let mut no_frops_used_counter: u64 = 0;
@@ -32,22 +27,25 @@ impl StatsCoverageReport {
         let mut no_frops_unused_text: String = String::new();
         let mut frops_used_text: String = String::new();
 
-        for i in 0..256_usize {
-            if let Ok(inst) = ZiskOp::try_from_code(i as u8) {
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                let no_frops_count = costs.get_opcode_count_and_cost(opcode).unwrap_or((0, 0)).0;
+                let frops_count = costs.get_opcode_frops_count_and_cost(opcode).unwrap_or((0, 0)).0;
+                let ops = no_frops_count + frops_count;
                 ops_total_counter += 1;
-                if ops[i] > 0 {
+                if ops > 0 {
                     ops_used_counter += 1;
                     ops_used_text.push_str(&format!("{}, ", inst.name()));
                 } else {
                     ops_unused_text.push_str(&format!("{}, ", inst.name()));
                 }
-                if no_frops[i] > 0 {
+                if no_frops_count > 0 {
                     no_frops_used_counter += 1;
                     no_frops_used_text.push_str(&format!("{}, ", inst.name()));
                 } else {
                     no_frops_unused_text.push_str(&format!("{}, ", inst.name()));
                 }
-                if frops[i] > 0 {
+                if frops_count > 0 {
                     frops_used_counter += 1;
                     frops_used_text.push_str(&format!("{}, ", inst.name()));
                 }

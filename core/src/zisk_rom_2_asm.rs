@@ -7590,17 +7590,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Dma64Aligned => {
-                unimplemented!("Internal opcode Dma64Aligned");
-            }
-            ZiskOp::DmaUnaligned => {
-                unimplemented!("Internal opcode DmaUnaligned");
-            }
-            ZiskOp::DmaPre => {
-                unimplemented!("Internal opcode DmaPre");
-            }
-            ZiskOp::DmaPost => {
-                unimplemented!("Internal opcode DmaPost");
+            ZiskOp::Profile => {
+                unimplemented!("Internal opcode Profile");
             }
         }
     }

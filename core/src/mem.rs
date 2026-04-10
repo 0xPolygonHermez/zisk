@@ -123,6 +123,8 @@ pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
+/// Size of the BIOS instruction area
+pub const ROM_ENTRY_SIZE: u64 = 1 << 20;
 /// Last BIOS instruction address, i.e. last instruction executed
 pub const ROM_EXIT: u64 = 0x1004;
 /// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
@@ -375,6 +377,38 @@ impl Mem {
             ),
             _ => panic!("Mem::read() invalid width={width}"),
         }
+    }
+
+    #[inline(always)]
+    pub fn read_slice(&self, addr: u64, count: u64) -> &[u8] {
+        debug_assert!(!Mem::address_is_register(addr));
+
+        // First try to read in the write section
+        if (addr >= self.write_section.start) && ((addr + count) <= self.write_section.end) {
+            // Calculate the read position
+            let read_position: usize = (addr - self.write_section.start) as usize;
+            return &self.write_section.buffer[read_position..read_position + count as usize];
+        }
+
+        // Search for the section that contains the address using binary search (dicothomic search).
+        // Read sections are ordered by start address to allow this search.
+        let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
+            if addr < section.start {
+                std::cmp::Ordering::Greater
+            } else if addr > section.end - count {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            &self.read_sections[section]
+        } else {
+            panic!("Mem::read() section not found for addr: {addr}={addr:x} with count: {count}");
+        };
+
+        // Calculate the buffer relative read position
+        let read_position: usize = (addr - section.start) as usize;
+        &section.buffer[read_position..read_position + count as usize]
     }
 
     /*

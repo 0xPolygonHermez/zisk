@@ -89,6 +89,7 @@ pub enum ZiskOperationType {
     FcallParam,
     Fcall,
     FcallGet,
+    Profile,
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
