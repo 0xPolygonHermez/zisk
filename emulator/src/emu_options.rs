@@ -124,14 +124,14 @@ pub struct EmuOptions {
     pub roi_filter: Option<String>,
     /// Track function calls to filtered symbols, specifying number of parameters to log.
     /// Requires options: -S --roi-filter
-    #[clap(long, value_name = "TRACK_CALLS", default_value = "0")]
+    #[clap(long = "track-call-args", value_name = "TRACK_CALL_ARGS", default_value = "0")]
     pub track_calls: usize,
     /// Separator for tracked call parameters in output files.
-    /// Requires option: --track-calls
+    /// Requires option: --track-call-args
     #[clap(long, value_name = "TRACK_SEPARATOR", default_value = ";")]
     pub track_separator: String,
     /// Output directory path for tracked call files.
-    /// Requires option: --track-calls
+    /// Requires option: --track-call-args
     #[clap(long, value_name = "TRACK_OUTPUT_PATH", default_value = ".")]
     pub track_output_path: String,
     /// Disable thousands separator in statistics reports.

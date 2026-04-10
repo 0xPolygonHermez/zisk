@@ -1630,7 +1630,7 @@ impl<'a> Emu<'a> {
                             eprintln!("Error initializing ROI tracking: {}", e);
                         }
                     } else {
-                        eprintln!("Warning: --track-calls specified but no ROI symbols found");
+                        eprintln!("Warning: --track-call-args specified but no ROI symbols found");
                     }
                 }
 
