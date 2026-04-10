@@ -407,7 +407,7 @@ pub enum JobState {
 }
 
 impl JobState {
-    pub fn is_terminal(&self) -> bool {
+    pub fn is_resolved(&self) -> bool {
         matches!(self, JobState::Failed | JobState::Completed)
     }
 }

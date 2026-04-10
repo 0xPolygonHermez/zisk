@@ -2,6 +2,7 @@ use anyhow::Result;
 use cargo_zisk::common::get_proving_key;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -24,6 +25,11 @@ use std::path::PathBuf;
 use tracing::{error, info, warn};
 
 use crate::config::ProverServiceConfigDto;
+
+/// Timeout for awaiting cancellation of blocking computation tasks.
+/// If a spawn_blocking task doesn't promptly observe the cancel signal,
+/// we'll detach it after this duration to keep the worker event loop responsive.
+const CANCELLATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -328,7 +334,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.cancel();
 
         if let Some(handle) = self.current_computation.take() {
-            let _ = handle.await;
+            match tokio::time::timeout(CANCELLATION_TIMEOUT, handle).await {
+                Ok(_) => {}
+                Err(_) => {
+                    warn!(
+                        "Cancellation timeout ({:?}) expired; detaching computation task (it may complete in background)",
+                        CANCELLATION_TIMEOUT
+                    );
+                }
+            }
         }
 
         // Drop the actor on a blocking thread: closes the channel, which signals the ordering

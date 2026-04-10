@@ -117,7 +117,7 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
             None => builder,
         };
         let client = builder.build()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(client)) })
+        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(Box::new(client))) })
     }
 }
 
@@ -141,13 +141,13 @@ impl ProverClientBuilder<RemoteClientConfig> {
     pub fn build(self) -> Result<ProverClient> {
         ensure_single_instance();
         let client = RemoteClientBuilder::new(self.backend).build_sync()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(client)) })
+        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(Box::new(client))) })
     }
 }
 
 enum BackendClient {
-    Embedded(EmbeddedClient),
-    Remote(RemoteClient),
+    Embedded(Box<EmbeddedClient>),
+    Remote(Box<RemoteClient>),
 }
 
 /// Prover client. Runs proofs using local (embedded) or remote infrastructure.

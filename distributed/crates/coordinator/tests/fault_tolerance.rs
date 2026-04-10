@@ -38,7 +38,7 @@ async fn setup_running_job(
             .unwrap();
     }
 
-    // Insert job into coordinator's DashMap
+    // Insert job into coordinator's
     coordinator.jobs().insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
     SetupResult { coordinator, workers, job_id }

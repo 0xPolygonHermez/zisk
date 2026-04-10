@@ -38,7 +38,6 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use colored::Colorize;
-use dashmap::DashMap;
 use proofman::{ContributionsInfo, WitnessInfo};
 use std::{
     collections::HashMap,
@@ -114,8 +113,8 @@ pub struct Coordinator {
     /// Manages the pool of connected workers and their communication channels.
     workers_pool: Arc<WorkersPool>,
 
-    /// Concurrent storage for active jobs with fine-grained locking.
-    jobs: DashMap<JobId, Arc<RwLock<Job>>>,
+    /// Concurrent storage for active jobs.
+    jobs: RwLock<HashMap<JobId, Arc<RwLock<Job>>>>,
 
     /// Number of registrations accumulated.
     registrations: AtomicU64,
@@ -137,7 +136,7 @@ impl Coordinator {
             config,
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
-            jobs: DashMap::new(),
+            jobs: RwLock::new(HashMap::new()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
         }
@@ -149,7 +148,7 @@ impl Coordinator {
     }
 
     /// Returns a reference to the jobs map.
-    pub fn jobs(&self) -> &DashMap<JobId, Arc<RwLock<Job>>> {
+    pub fn jobs(&self) -> &RwLock<HashMap<JobId, Arc<RwLock<Job>>>> {
         &self.jobs
     }
 
@@ -189,8 +188,8 @@ impl Coordinator {
     pub async fn handle_jobs_list(&self) -> JobsListDto {
         let mut jobs = Vec::new();
 
-        for entry in self.jobs.iter() {
-            let job_lock = entry.value();
+        let jobs_map = self.jobs.read().await;
+        for job_lock in jobs_map.values() {
             let job = job_lock.read().await;
 
             if let JobState::Running(phase) = &job.state() {
@@ -239,7 +238,8 @@ impl Coordinator {
     ///
     /// On success, returns a JobStatusDto with detailed job status information
     pub async fn handle_job_status(&self, job_id: &JobId) -> CoordinatorResult<JobStatusDto> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         let phase = JobPhase::Contributions;
@@ -275,8 +275,9 @@ impl Coordinator {
         let busy_workers = self.workers_pool.busy_workers().await;
 
         let mut active_jobs = 0;
-        for entry in self.jobs.iter() {
-            let job = entry.value().read().await;
+        let jobs_map = self.jobs.read().await;
+        for job_lock in jobs_map.values() {
+            let job = job_lock.read().await;
             if matches!(job.state(), JobState::Running(_)) {
                 active_jobs += 1;
             }
@@ -390,14 +391,13 @@ impl Coordinator {
         let job_id = job.job_id.clone();
         let active_workers = self.select_workers_for_execution(&job)?;
 
-        // Store job in jobs map with RwLock
-        self.jobs.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        // Store job in jobs map
+        let job_arc = Arc::new(RwLock::new(job));
+        self.jobs.write().await.insert(job_id.clone(), job_arc.clone());
 
         // Send Phase1 tasks to selected workers
-        if let Some(job_entry) = self.jobs.get(&job_id) {
-            let job = job_entry.read().await;
-            self.dispatch_contributions_messages(&job, &active_workers).await?;
-        }
+        let job = job_arc.read().await;
+        self.dispatch_contributions_messages(&job, &active_workers).await?;
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
@@ -434,7 +434,8 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         // Clone job.final_proof and final_verkey and error if does not exist
@@ -858,13 +859,15 @@ impl Coordinator {
     /// * `job_id` - Identifier of the failing job
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        drop(jobs_map);
 
         let worker_ids = {
             let mut job = job_entry.write().await;
 
             // Prevent double-fail races (monitor + worker error racing)
-            if job.state().is_terminal() {
+            if job.state().is_resolved() {
                 return Ok(());
             }
 
@@ -885,7 +888,8 @@ impl Coordinator {
         // Ensure cleanup always runs even if it does.
         if let Err(e) = self.post_launch_proof(job_id).await {
             warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
-            if let Some(job_entry) = self.jobs.get(job_id) {
+            let jobs_map = self.jobs.read().await;
+            if let Some(job_entry) = jobs_map.get(job_id) {
                 job_entry.write().await.cleanup();
             }
         }
@@ -1007,18 +1011,20 @@ impl Coordinator {
     ) -> Option<ReconnectionDirectiveDto> {
         let claimed_job_id = last_known_job_id?;
 
-        let job_entry = match self.jobs.get(&claimed_job_id) {
-            None => {
-                // Coordinator has no record (restarted or job expired)
-                return Some(ReconnectionDirectiveDto::CancelStaleJob);
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            match jobs_map.get(&claimed_job_id) {
+                None => {
+                    // Coordinator has no record (restarted or job expired)
+                    return Some(ReconnectionDirectiveDto::CancelStaleJob);
+                }
+                Some(entry) => entry.clone(),
             }
-            // Clone the Arc to release the DashMap shard lock before awaiting the RwLock
-            Some(entry) => entry.clone(),
         };
 
         let job = job_entry.read().await;
 
-        if job.state.is_terminal() {
+        if job.state.is_resolved() {
             return Some(ReconnectionDirectiveDto::CancelStaleJob);
         }
 
@@ -1142,9 +1148,11 @@ impl Coordinator {
 
     /// Checks all running jobs for phase timeouts and fails them if exceeded.
     pub async fn check_phase_timeouts(&self) {
-        // Collect Arc clones first — never hold DashMap shard locks across .await
-        let entries: Vec<_> =
-            self.jobs.iter().map(|e| (e.key().clone(), Arc::clone(e.value()))).collect();
+        // Clone job entries to avoid holding the read lock during async operations
+        let entries: Vec<_> = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
 
         let mut timed_out: Vec<(JobId, String)> = Vec::new();
 
@@ -1279,11 +1287,15 @@ impl Coordinator {
 
         // If the job is already terminal (Failed/Completed), this is a late arrival
         // (e.g. spawn_blocking finished after JobCancelled). Mark worker Idle and discard.
-        if let Some(job_entry) = self.jobs.get(&message.job_id) {
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&message.job_id).cloned()
+        };
+        if let Some(job_entry) = job_entry {
             let job = job_entry.read().await;
-            if job.state().is_terminal() {
+            if job.state().is_resolved() {
                 info!(
-                    "Ignoring late ExecuteTaskResponse from worker {} for terminal job {}",
+                    "Ignoring late ExecuteTaskResponse from worker {} for resolved job {}",
                     message.worker_id, message.job_id
                 );
                 drop(job);
@@ -1329,7 +1341,7 @@ impl Coordinator {
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         // Check if job exists
-        if !self.jobs.contains_key(&message.job_id) {
+        if !self.jobs.read().await.contains_key(&message.job_id) {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from worker {}",
                 message.job_id, message.worker_id
@@ -1370,7 +1382,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -1421,7 +1434,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -2147,7 +2161,8 @@ impl Coordinator {
         let job_id = execute_task_response.job_id.clone();
         let worker_id = execute_task_response.worker_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
 
         // If in simulation mode, complete the job
@@ -2521,7 +2536,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.write().await;
 
         // If job has Failed, mark worker as Idle and return early
@@ -2559,7 +2575,8 @@ impl Coordinator {
             return Ok(());
         }
 
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -2839,7 +2856,6 @@ impl Coordinator {
 
         // Release job lock before calling post_launch_proof
         drop(job);
-        drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
 
@@ -2881,7 +2897,7 @@ mod tests {
         )
     }
 
-    /// Helper: create a Coordinator with workers and a Running job inserted in DashMap.
+    /// Helper: create a Coordinator with workers and a Running job inserted.
     async fn setup_coordinator_with_job(
         n_workers: usize,
         phase: JobPhase,

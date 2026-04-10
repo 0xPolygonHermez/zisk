@@ -27,6 +27,7 @@ use std::{
     },
     time::Instant,
 };
+use tracing::error;
 use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
@@ -395,21 +396,26 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         });
 
-        // Collect any errors from parallel execution
-        if let Ok(err_vec) = errors.lock() {
-            if !err_vec.is_empty() {
-                let combined = err_vec
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                return Err(anyhow::anyhow!(
-                    "Chunk data collection failed ({} errors):\n{}",
-                    err_vec.len(),
-                    combined
-                ));
-            }
+        // Collect any errors from parallel execution.
+        // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
+        // We extract the data even if poisoned, then report the poisoning as an additional error.
+        let err_vec = errors.lock().unwrap_or_else(|poisoned| {
+            error!("errors mutex was poisoned during parallel chunk execution");
+            poisoned.into_inner()
+        });
+
+        if !err_vec.is_empty() {
+            let combined = err_vec
+                .iter()
+                .enumerate()
+                .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(anyhow::anyhow!(
+                "Chunk data collection failed ({} errors):\n{}",
+                err_vec.len(),
+                combined
+            ));
         }
 
         Ok(())
