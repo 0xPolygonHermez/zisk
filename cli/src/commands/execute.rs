@@ -24,7 +24,7 @@ pub struct ZiskExecute {
     pub emulator: bool,
 
     /// Input file path for the guest. Accepts a string literal or a path to a binary file
-    #[arg(alias = "input",short = 'i', long, conflicts_with = "hints")]
+    #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
     // /// Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
@@ -82,7 +82,7 @@ impl ZiskExecute {
             anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
         }
 
-            // Check if the deprecated alias was used
+        // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }

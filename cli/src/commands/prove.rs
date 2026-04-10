@@ -97,10 +97,10 @@ pub struct ZiskProve {
     pub gpu: bool,
 
     /// Verbose (-v, -vv)
-    #[arg(short ='v', long, action = clap::ArgAction::Count)]
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    /// Hidden flags
+    // Hidden flags
 
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
@@ -115,7 +115,7 @@ pub struct ZiskProve {
     pub no_auto_setup: bool,
 
     /// Use shared tables for execution
-    #[clap(short = 'j', long, default_value_t = false)]
+    #[arg(short = 'j', long, default_value_t = false)]
     pub no_shared_tables_mpi: bool,
 
     #[arg(short = 'b', long, default_value_t = false, hide = true)]
