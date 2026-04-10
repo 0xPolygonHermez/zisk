@@ -10,7 +10,7 @@ use zisk_definitions::{
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
     EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0,
-    INPUT_ADDR, MTVEC, OUTPUT_ADDR, REG_X0, ROM_ENTRY, ROM_EXIT,
+    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, REG_X0, ROM_ENTRY, ROM_EXIT,
 };
 
 use std::collections::BTreeMap;
@@ -2071,24 +2071,6 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     for (i, riscv_instruction) in riscv_instructions.iter().enumerate() {
         //print!("add_zisk_code() converting RISCV instruction={}\n",
         // riscv_instruction.to_string());
-        // if riscv_instructions[i].rom_address >= 0x80267b28
-        //     && riscv_instructions[i].rom_address <= 0x80267b30
-        // {
-        //     if let Some(zisk_memcmp_index) = zisk_memcmp_index {
-        //         // Get slice of remaining instructions after current one
-        //         let index_offset = (riscv_instructions[i].rom_address - 0x80267b28) as usize >> 2;
-        //         let next_instructions =
-        //             &riscv_instructions[(zisk_memcmp_index + index_offset + 1)..];
-
-        //         let mut instruction = riscv_instructions[zisk_memcmp_index + index_offset].clone();
-        //         instruction.rom_address = riscv_instructions[i].rom_address;
-
-        //         // Convert RICV instruction to ZisK instruction and store it in rom.insts
-        //         ctx.convert(&instruction, next_instructions);
-        //         continue;
-        //         //print!("   to: {}", ctx.insts.iter().last().)
-        //     }
-        // }
 
         // Get slice of remaining instructions after current one
         let next_instructions = &riscv_instructions[(i + 1)..];
@@ -2225,6 +2207,14 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
     // Check resulting length
     if o != addr + data.len() as u64 {
         panic!("add_zisk_init_data() invalid length o={} addr={} data.len={}", o, addr, data.len());
+    }
+
+    // Check resulting rom address does not exceed max
+    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
+        panic!(
+            "add_zisk_init_data() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
+            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
+        );
     }
 }
 
@@ -2466,6 +2456,14 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
+
+    // Check resulting rom address does not exceed max
+    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
+        panic!(
+            "add_entry_exit_jmp() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
+            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
+        );
+    }
 }
 
 /// Add the end jump program section to the rom instruction set.
@@ -2582,4 +2580,12 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.build();
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
+
+    // Check resulting rom address does not exceed max
+    if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
+        panic!(
+            "add_end_and_lib() exceeded max rom address: next_init_inst_addr={:#x} max={:#x}",
+            rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
+        );
+    }
 }

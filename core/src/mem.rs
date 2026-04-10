@@ -27,8 +27,6 @@
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
-//! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
-//! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
@@ -49,14 +47,14 @@
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
 //! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xc0000000 - 0x10000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xbfff0000     (0xc0000000 - 0x10000)`
 //! `|`
 //! `| Contains float library memory, available for normal R/W`
 //! `| used during library execution (bottom-up).`
 //! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xc0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = 0xbffffff0           (0xc0000000 - 16)`
 //! `|`
 //! `|--------------- END OF RAM                          (0xc0000000)`
 //! `      ...`
@@ -127,6 +125,8 @@ pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Last BIOS instruction address, i.e. last instruction executed
 pub const ROM_EXIT: u64 = 0x1004;
+/// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
+pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
