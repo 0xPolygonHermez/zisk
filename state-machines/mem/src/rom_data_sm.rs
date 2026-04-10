@@ -54,7 +54,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         ROM_DATA_W_ADDR_END
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
+    pub fn save_to_file(trace: &RomDataTrace<()>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = RomDataTrace::<()>::NUM_ROWS;
