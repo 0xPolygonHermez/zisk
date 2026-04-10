@@ -320,7 +320,7 @@ impl ProverBackend {
 
         self.register_program(pk)?;
 
-        if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
+        if mode == ProofMode::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -345,7 +345,6 @@ impl ProverBackend {
                     compressed,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
-                    proof_options.save_proofs,
                     proof_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
@@ -368,7 +367,7 @@ impl ProverBackend {
         proofman.set_barrier();
 
         match (mode, proof) {
-            (ProofMode::Snark, Some(vadcop_proof)) => {
+            (ProofMode::Plonk, Some(vadcop_proof)) => {
                 let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
                     &vadcop_proof,
                     proof_options.output_dir_path.clone(),

@@ -1,5 +1,7 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskStdin};
+use zisk_sdk::{
+    load_program, GuestProgram, ProofKind, ProverClient, ZiskProofWithPublicValues, ZiskStdin,
+};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -21,14 +23,14 @@ fn main() -> Result<()> {
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(&PROGRAM, stdin).plonk().run()?;
+    let snark_proof = client.prove(&PROGRAM, stdin).wrap_proof(ProofKind::Plonk).run()?;
     println!("PLONK proof generated successfully in {:?}", snark_proof.get_duration());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 
     // Alternatively, it can also be done in two steps
     // let vadcop_result = client.prove(&PROGRAM, stdin)?.run()?;
     // let vkey = client.vk(&PROGRAM)?;
-    // let snark_proof = client.prove_snark(&vadcop_result.get_proof(), &vadcop_result.get_publics(), &vkey)?;
+    // let snark_proof = client.wrap(vadcop_result.get_proof(), ProofMode::Plonk)?;
 
     println!("Verifying PLONK proof...");
     snark_proof.verify()?;

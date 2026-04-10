@@ -7,8 +7,8 @@ fn main() -> Result<()> {
     let elf_path = "hints/example/zec-reth.elf";
     let hints_path = "hints/example/24654300_hints.bin";
 
-    let program = GuestProgram::from_uri(&elf_path)?;
-    let hints = ZiskHints::file(&hints_path)?;
+    let program = GuestProgram::from_uri(elf_path)?;
+    let hints = ZiskHints::file(hints_path)?;
 
     // Create a `ProverClient` method.
     let client = ProverClient::embedded().assembly().build()?;

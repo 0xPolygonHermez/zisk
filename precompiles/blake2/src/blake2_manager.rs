@@ -49,8 +49,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Blake2Manager<F> {
         let num_available_blake2s = self.blake2_sm.num_available_blake2s;
 
         Box::new(Blake2Planner::new().add_instance(InstanceInfo::new(
-            Blake2brTrace::<F>::AIRGROUP_ID,
-            Blake2brTrace::<F>::AIR_ID,
+            Blake2brTrace::<()>::AIRGROUP_ID,
+            Blake2brTrace::<()>::AIR_ID,
             num_available_blake2s,
             ZiskOperationType::Blake2,
         )))
@@ -69,7 +69,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Blake2Manager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == Blake2brTrace::<F>::AIR_ID => {
+            id if id == Blake2brTrace::<()>::AIR_ID => {
                 Box::new(Blake2Instance::new(self.blake2_sm.clone(), ictx))
             }
             _ => {

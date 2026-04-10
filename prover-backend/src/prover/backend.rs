@@ -1,6 +1,6 @@
 use crate::create_debug_info;
 use crate::GuestProgram;
-use crate::ProofOpts;
+use crate::ProverOpts;
 use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
@@ -184,6 +184,8 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin)?;
 
+        self.executor.set_packed(self.proofman.get_options().packed);
+
         let rank_info = self.proofman.get_rank_info();
 
         let mut is_active = true;
@@ -209,7 +211,7 @@ impl ProverBackend {
         self.proofman
             .compute_witness_from_lib(
                 &debug_info,
-                ProofOptions::new(false, false, false, false, false, minimal_memory, false, None),
+                ProofOptions::new(false, false, false, false, false, minimal_memory, None),
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -260,8 +262,10 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin)?;
 
+        self.executor.set_packed(self.proofman.get_options().packed);
+
         self.proofman
-            .verify_proof_constraints_from_lib(&debug_info, false)
+            .verify_proof_constraints_from_lib(&debug_info)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
@@ -278,7 +282,12 @@ impl ProverBackend {
     }
 
     pub(crate) fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
-        let vk = rom_merkle_setup_verkey(elf.elf(), &None, &self.proving_key_path)?;
+        let vk = rom_merkle_setup_verkey(
+            elf.elf(),
+            &None,
+            &self.proving_key_path,
+            self.proofman.get_options().gpu,
+        )?;
         Ok(ZiskProgramVK { vk })
     }
 
@@ -286,9 +295,9 @@ impl ProverBackend {
         &self,
         stdin: ZiskStdin,
         mode: ProofMode,
-        proof_options: ProofOpts,
+        prover_options: ProverOpts,
     ) -> Result<ZiskProveResult> {
-        if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
+        if mode == ProofMode::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -297,6 +306,8 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         self.executor.set_stdin(stdin)?;
+
+        self.executor.set_packed(self.proofman.get_options().packed);
 
         let minimal = matches!(mode, ProofMode::VadcopFinalMinimal);
 
@@ -309,13 +320,12 @@ impl ProverBackend {
                 ProvePhaseInputs::Full(),
                 ProofOptions::new(
                     false,
-                    proof_options.aggregation,
-                    proof_options.rma,
+                    prover_options.aggregation,
+                    prover_options.rma,
                     minimal,
-                    proof_options.verify_proofs,
-                    proof_options.minimal_memory,
-                    proof_options.save_proofs,
-                    proof_options.output_dir_path.clone(),
+                    prover_options.verify_proofs,
+                    prover_options.minimal_memory,
+                    prover_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -339,10 +349,10 @@ impl ProverBackend {
         let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
 
         match (mode, proof) {
-            (ProofMode::Snark, Some(vadcop_proof)) => {
+            (ProofMode::Plonk, Some(vadcop_proof)) => {
                 let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
                     &vadcop_proof,
-                    proof_options.output_dir_path.clone(),
+                    prover_options.output_dir_path.clone(),
                 )?;
 
                 let publics = ZiskPublics::new(&vadcop_proof.public_values);
@@ -424,7 +434,7 @@ impl ProverBackend {
 
         let minimal_proof = self
             .proofman
-            .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None, false)
+            .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None)
             .map_err(|e| anyhow::anyhow!("Error generating minimal proof: {}", e))?;
 
         Ok(ZiskProofWithPublicValues {

@@ -9,16 +9,11 @@ use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::{ParallelSlice, ParallelSliceMut},
 };
-use zisk_pil::{DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE, DUAL_RANGE_BYTE_ID};
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    DmaPrePostMemCpyTracePacked as DmaPrePostMemCpyTrace,
-    DmaPrePostMemCpyTraceRowPacked as DmaPrePostMemCpyTraceRow,
+use zisk_pil::{
+    DmaPrePostMemCpyTrace, DmaPrePostMemCpyTraceRow, DmaPrePostMemCpyTraceRowOps,
+    DmaPrePostMemCpyTraceRowPacked, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE,
+    DUAL_RANGE_BYTE_ID,
 };
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{DmaPrePostMemCpyTrace, DmaPrePostMemCpyTraceRow};
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
 use precompiles_helpers::DmaInfo;
@@ -58,10 +53,10 @@ impl<F: PrimeField64> DmaPrePostMemCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<R: DmaPrePostMemCpyTraceRowOps<F>>(
         &self,
         input: &DmaPrePostInput,
-        trace: &mut DmaPrePostMemCpyTraceRow<F>,
+        trace: &mut R,
         pre_post_table_mul: &mut [u64],
         local_dual_range_byte_mul: &mut [u64],
     ) {
@@ -207,26 +202,12 @@ impl<F: PrimeField64> DmaPrePostMemCpySM<F> {
         // println!("PRE-POST-ROM [{table_row}] dst_offset: {dst_offset} src_offset: {src_offset} count: {count}");
         pre_post_table_mul[table_row] += 1;
     }
-}
-impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostMemCpySM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_pre_post_memcpy"
-    }
-
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: DmaPrePostMemCpyTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaPrePostInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaPrePostMemCpyTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = DmaPrePostMemCpyTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|inputs| inputs.len()).sum();
@@ -292,5 +273,22 @@ impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostMemCpySM<F> {
         let from_trace = FromTrace::new(&mut trace);
         timer_stop_and_log_trace!(DMA_PRE_POST_TRACE);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostMemCpySM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_pre_post_memcpy"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<DmaPrePostInput>],
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<DmaPrePostMemCpyTraceRowPacked<F>>(inputs, trace_buffer)
+        } else {
+            self.compute_witness_inner::<DmaPrePostMemCpyTraceRow<F>>(inputs, trace_buffer)
+        }
     }
 }

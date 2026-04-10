@@ -5,10 +5,11 @@ use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
 use backend::*;
 pub use emu::*;
+use executor::get_packed_info;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
-use proofman_common::{ProofOptions, RowInfo};
+use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
@@ -115,17 +116,81 @@ impl ZiskVerifyConstraintsResult {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ProofOpts {
-    pub aggregation: bool,
-    pub verify_proofs: bool,
-    pub rma: bool,
-    pub minimal_memory: bool,
-    pub output_dir_path: Option<PathBuf>,
-    pub save_proofs: bool,
+/// ASM-specific configuration options
+#[derive(Clone, Default)]
+pub struct AsmOptions {
+    pub asm_path: Option<PathBuf>,
+    pub base_port: Option<u16>,
+    pub no_auto_setup: bool,
+    pub unlock_mapped_memory: bool,
+    pub asm_out_file: bool,
+    pub is_distributed: bool,
 }
 
-impl Default for ProofOpts {
+impl AsmOptions {
+    pub fn asm_path(mut self, path: PathBuf) -> Self {
+        self.asm_path = Some(path);
+        self
+    }
+
+    pub fn base_port(mut self, port: u16) -> Self {
+        self.base_port = Some(port);
+        self
+    }
+
+    pub fn no_auto_setup(mut self) -> Self {
+        self.no_auto_setup = true;
+        self
+    }
+
+    pub fn unlock_mapped_memory(mut self) -> Self {
+        self.unlock_mapped_memory = true;
+        self
+    }
+
+    pub fn asm_out_file(mut self) -> Self {
+        self.asm_out_file = true;
+        self
+    }
+
+    pub fn is_distributed(mut self) -> Self {
+        self.is_distributed = true;
+        self
+    }
+}
+
+/// Comprehensive prover configuration containing all settings
+#[derive(Clone)]
+pub struct ProverOpts {
+    // Proof settings
+    pub aggregation: bool,
+    pub verify_proofs: bool,
+    pub minimal_memory: bool,
+    pub output_dir_path: Option<PathBuf>,
+    pub verbose: u8,
+
+    // Proving keys
+    pub proving_key: Option<PathBuf>,
+    pub proving_key_snark: Option<PathBuf>,
+    pub preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
+
+    // MPI settings
+    pub shared_tables: bool,
+    pub rma: bool,
+
+    // ProofmanOptions fields (flattened)
+    pub preallocate: bool,
+    pub gpu: bool,
+    pub packed: bool,
+    pub max_witness_stored: Option<usize>,
+    pub number_threads_witness: Option<usize>,
+    pub max_streams: Option<usize>,
+
+    // ASM-specific options
+    pub asm_options: AsmOptions,
+}
+
+impl Default for ProverOpts {
     fn default() -> Self {
         Self {
             aggregation: true,
@@ -133,19 +198,61 @@ impl Default for ProofOpts {
             rma: false,
             minimal_memory: false,
             output_dir_path: None,
-            save_proofs: false,
+            verbose: 0,
+            proving_key: None,
+            proving_key_snark: None,
+            preload_plonk: false,
+            shared_tables: true,
+            preallocate: false,
+            gpu: false,
+            packed: false,
+            max_witness_stored: None,
+            number_threads_witness: None,
+            max_streams: None,
+            asm_options: AsmOptions::default(),
         }
     }
 }
 
-impl ProofOpts {
-    pub fn output_dir(mut self, path: PathBuf) -> Self {
-        self.output_dir_path = Some(path);
+impl ProverOpts {
+    /// Build ProofmanOptions from the configuration fields
+    pub fn build_proofman_options(&self) -> ProofmanOptions {
+        let mut options = ProofmanOptions::new(self.preallocate);
+
+        if let Some(max_witness_stored) = self.max_witness_stored {
+            options.with_max_witness_stored(max_witness_stored);
+        }
+        if let Some(number_threads_witness) = self.number_threads_witness {
+            options.with_number_threads_pools_witness(number_threads_witness);
+        }
+        if let Some(max_streams) = self.max_streams {
+            options.with_max_number_streams(max_streams);
+        }
+
+        if self.gpu {
+            options.gpu();
+        }
+
+        if self.packed {
+            options.packed();
+        }
+
+        // Only call packed_info when packed or gpu is enabled
+        if self.packed || self.gpu {
+            options.packed_info(get_packed_info());
+        }
+
+        options
+    }
+
+    // Builder methods for all configuration
+    pub fn aggregation(mut self, value: bool) -> Self {
+        self.aggregation = value;
         self
     }
 
-    pub fn save_proofs(mut self) -> Self {
-        self.save_proofs = true;
+    pub fn no_aggregation(mut self) -> Self {
+        self.aggregation = false;
         self
     }
 
@@ -154,13 +261,78 @@ impl ProofOpts {
         self
     }
 
+    pub fn rma(mut self, value: bool) -> Self {
+        self.rma = value;
+        self
+    }
+
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
         self
     }
 
-    pub fn no_aggregation(mut self) -> Self {
-        self.aggregation = false;
+    pub fn output_dir(mut self, path: PathBuf) -> Self {
+        self.output_dir_path = Some(path);
+        self
+    }
+
+    pub fn verbose(mut self, level: u8) -> Self {
+        self.verbose = level;
+        self
+    }
+
+    pub fn proving_key(mut self, path: PathBuf) -> Self {
+        self.proving_key = Some(path);
+        self
+    }
+
+    pub fn proving_key_plonk(mut self, path: PathBuf) -> Self {
+        self.proving_key_snark = Some(path);
+        self
+    }
+
+    pub fn preload_plonk(mut self) -> Self {
+        self.preload_plonk = true;
+        self
+    }
+
+    pub fn shared_tables(mut self, value: bool) -> Self {
+        self.shared_tables = value;
+        self
+    }
+
+    pub fn preallocate(mut self) -> Self {
+        self.preallocate = true;
+        self
+    }
+
+    pub fn gpu(mut self) -> Self {
+        self.gpu = true;
+        self
+    }
+
+    pub fn packed(mut self) -> Self {
+        self.packed = true;
+        self
+    }
+
+    pub fn max_witness_stored(mut self, max: usize) -> Self {
+        self.max_witness_stored = Some(max);
+        self
+    }
+
+    pub fn number_threads_witness(mut self, threads: usize) -> Self {
+        self.number_threads_witness = Some(threads);
+        self
+    }
+
+    pub fn max_streams(mut self, max: usize) -> Self {
+        self.max_streams = Some(max);
+        self
+    }
+
+    pub fn with_asm_options(mut self, options: AsmOptions) -> Self {
+        self.asm_options = options;
         self
     }
 }
@@ -350,21 +522,15 @@ pub trait ProverEngine {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        proof_options: ProofOpts,
+        prover_options: ProverOpts,
     ) -> Result<ZiskProveResult>;
 
-    fn plonk(
+    fn wrap(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues>;
-
-    fn minimal(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
+        mode: ProofMode,
     ) -> Result<ZiskProofWithPublicValues>;
 
     fn prove_phase(
@@ -436,12 +602,13 @@ pub trait ZiskBackend: Send + Sync {
 pub struct ZiskProver<C: ZiskBackend> {
     pub prover: C::Prover,
     program_cache: RwLock<HashMap<ProgramId, Arc<ZiskRom>>>,
+    prover_options: ProverOpts,
 }
 
 impl<C: ZiskBackend> ZiskProver<C> {
-    /// Create a new ZiskProver with the given prover engine.
-    pub fn new(prover: C::Prover) -> Self {
-        Self { prover, program_cache: RwLock::new(HashMap::new()) }
+    /// Create a new ZiskProver with the given prover engine and prover options.
+    pub fn new(prover: C::Prover, prover_options: ProverOpts) -> Self {
+        Self { prover, program_cache: RwLock::new(HashMap::new()), prover_options }
     }
 
     pub fn get_cached_program(&self, program_id: &ProgramId) -> Result<Arc<ZiskRom>> {
@@ -553,37 +720,28 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// let result = prover.prove(&program, stdin)?.minimal().run()?;
     /// ```
     pub fn prove<'a>(&'a self, program: &'a GuestProgram, stdin: ZiskStdin) -> ProveBuilder<'a, C> {
-        ProveBuilder::new(&self.prover, program, stdin)
+        ProveBuilder::new(&self.prover, self, program, stdin)
     }
 
-    /// Generate a PLONK/SNARK proof from an existing proof.
-    /// Returns a `PlonkBuilder` that allows overriding publics or program_vk.
+    /// Wrap an existing proof to a different format (minimal or PLONK/SNARK).
+    /// Returns a `WrapBuilder` that allows overriding publics or program_vk before wrapping.
     ///
     /// # Example
     /// ```ignore
-    /// let snark = prover.plonk(&proof_with_publics).run()?;
-    /// let snark = prover.plonk(&proof_with_publics).program_vk(&custom_vk).run()?;
-    /// ```
-    pub fn plonk<'a>(
-        &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> PlonkBuilder<'a, C> {
-        PlonkBuilder::new(&self.prover, proof_with_publics)
-    }
-
-    /// Convert  proof to a minimal representation.
-    /// Returns a `MinimalBuilder` that allows overriding publics or program_vk.
+    /// // Wrap to minimal
+    /// let minimal = prover.wrap(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
     ///
-    /// # Example
-    /// ```ignore
-    /// let minimal = prover.minimal(&proof_with_publics).run()?;
-    /// let minimal = prover.minimal(&proof_with_publics).publics(&custom_publics).run()?;
+    /// // Wrap to SNARK with custom verification key
+    /// let snark = prover.wrap(&proof_with_publics, ProofMode::Plonk)
+    ///     .with_program_vk(&custom_vk)
+    ///     .run()?;
     /// ```
-    pub fn minimal<'a>(
+    pub fn wrap<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> MinimalBuilder<'a, C> {
-        MinimalBuilder::new(&self.prover, proof_with_publics)
+        mode: ProofMode,
+    ) -> WrapBuilder<'a, C> {
+        WrapBuilder::new(&self.prover, proof_with_publics, mode)
     }
 
     pub fn prove_phase(
@@ -705,7 +863,7 @@ impl ZiskProver<Emu> {
 
 /// Builder for configuring and running a proof.
 ///
-/// This struct provides a fluent API for setting per-proof options
+/// This struct provides a fluent API for setting the proof mode
 /// before executing the proof generation.
 ///
 /// # Example
@@ -714,66 +872,74 @@ impl ZiskProver<Emu> {
 /// ```
 pub struct ProveBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
+    zisk_prover: &'a ZiskProver<C>,
     guest_program: &'a GuestProgram,
     stdin: ZiskStdin,
     mode: ProofMode,
-    proof_options: ProofOpts,
 }
 
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
-    fn new(prover: &'a C::Prover, guest_program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
-        Self {
-            prover,
-            guest_program,
-            stdin,
-            mode: ProofMode::VadcopFinal,
-            proof_options: ProofOpts::default(),
-        }
+    fn new(
+        prover: &'a C::Prover,
+        zisk_prover: &'a ZiskProver<C>,
+        guest_program: &'a GuestProgram,
+        stdin: ZiskStdin,
+    ) -> Self {
+        Self { prover, zisk_prover, guest_program, stdin, mode: ProofMode::VadcopFinal }
     }
 
     /// Enable minimal proof generation.
-    pub fn minimal(mut self) -> Self {
-        self.mode = ProofMode::VadcopFinalMinimal;
-        self
-    }
-
-    pub fn plonk(mut self) -> Self {
-        self.mode = ProofMode::Snark;
-        self
-    }
-
-    pub fn with_proof_options(mut self, options: ProofOpts) -> Self {
-        self.proof_options = options;
+    pub fn wrap(mut self, proof_mode: ProofMode) -> Self {
+        assert!(
+            matches!(proof_mode, ProofMode::VadcopFinalMinimal | ProofMode::Plonk),
+            "Invalid proof mode for ProveBuilder: {:?}",
+            proof_mode
+        );
+        self.mode = proof_mode;
         self
     }
 
     /// Execute the proof generation with the configured options.
     pub fn run(self) -> Result<ZiskProveResult> {
-        self.prover.prove(self.guest_program, self.stdin, self.mode, self.proof_options)
+        self.prover.prove(
+            self.guest_program,
+            self.stdin,
+            self.mode,
+            self.zisk_prover.prover_options.clone(),
+        )
     }
 }
 
-/// Builder for reducing/compressing a proof.
+/// Builder for wrapping/converting proofs to different formats.
 ///
 /// This builder allows optionally overriding the publics or program verification key
-/// from the original proof before reducing it.
+/// from the original proof before wrapping it to the target format (minimal or SNARK).
 ///
 /// # Example
 /// ```ignore
-/// let minimal = prover.minimal(&proof_with_publics).run()?;
-/// // Or override publicsself.guest_program
-/// let minimal = prover.minimal(&proof_with_publics).publics(&custom_publics).run()?;
+/// // Wrap to minimal
+/// let minimal = prover.wrap(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
+///
+/// // Wrap to SNARK with custom publics
+/// let snark = prover.wrap(&proof_with_publics, ProofMode::Plonk)
+///     .with_publics(&custom_publics)
+///     .run()?;
 /// ```
-pub struct MinimalBuilder<'a, C: ZiskBackend> {
+pub struct WrapBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     proof_with_publics: &'a ZiskProofWithPublicValues,
+    mode: ProofMode,
     override_publics: Option<&'a ZiskPublics>,
     override_program_vk: Option<&'a ZiskProgramVK>,
 }
 
-impl<'a, C: ZiskBackend> MinimalBuilder<'a, C> {
-    fn new(prover: &'a C::Prover, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
-        Self { prover, proof_with_publics, override_publics: None, override_program_vk: None }
+impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
+    fn new(
+        prover: &'a C::Prover,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+        mode: ProofMode,
+    ) -> Self {
+        Self { prover, proof_with_publics, mode, override_publics: None, override_program_vk: None }
     }
 
     /// Override the publics from the original proof.
@@ -788,53 +954,10 @@ impl<'a, C: ZiskBackend> MinimalBuilder<'a, C> {
         self
     }
 
-    /// Execute the proof reduction with the configured options.
+    /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ZiskProofWithPublicValues> {
         let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.minimal(&self.proof_with_publics.proof, publics, program_vk)
-    }
-}
-
-/// Builder for generating a PLONK/SNARK proof from an existing proof.
-///
-/// This builder allows optionally overriding the publics or program verification key
-/// from the original proof before generating the SNARK.
-///
-/// # Example
-/// ```ignore
-/// let snark = prover.plonk(&proof_with_publics).run()?;
-/// // Or override verification key:
-/// let snark = prover.plonk(&proof_with_publics).with_program_vk(&custom_vk).run()?;
-/// ```
-pub struct PlonkBuilder<'a, C: ZiskBackend> {
-    prover: &'a C::Prover,
-    proof_with_publics: &'a ZiskProofWithPublicValues,
-    override_publics: Option<&'a ZiskPublics>,
-    override_program_vk: Option<&'a ZiskProgramVK>,
-}
-
-impl<'a, C: ZiskBackend> PlonkBuilder<'a, C> {
-    fn new(prover: &'a C::Prover, proof_with_publics: &'a ZiskProofWithPublicValues) -> Self {
-        Self { prover, proof_with_publics, override_publics: None, override_program_vk: None }
-    }
-
-    /// Override the publics from the original proof.
-    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
-        self.override_publics = Some(publics);
-        self
-    }
-
-    /// Override the program verification key from the original proof.
-    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
-        self.override_program_vk = Some(program_vk);
-        self
-    }
-
-    /// Execute the SNARK proof generation with the configured options.
-    pub fn run(self) -> Result<ZiskProofWithPublicValues> {
-        let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
-        let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.plonk(&self.proof_with_publics.proof, publics, program_vk)
+        self.prover.wrap(&self.proof_with_publics.proof, publics, program_vk, self.mode)
     }
 }

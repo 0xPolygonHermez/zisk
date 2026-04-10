@@ -6,18 +6,13 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::DMA_ROM_ID;
+use zisk_pil::{
+    DmaInputCpyTrace, DmaInputCpyTraceRow, DmaInputCpyTraceRowOps, DmaInputCpyTraceRowPacked,
+    DMA_ROM_ID,
+};
 
 use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITHOUT_MEMCMP_SIZE};
 use precompiles_helpers::DmaInfo;
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    DmaInputCpyTracePacked as DmaInputCpyTrace, DmaInputCpyTraceRowPacked as DmaInputCpyTraceRow,
-};
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{DmaInputCpyTrace, DmaInputCpyTraceRow};
 
 /// The `DmaInputCpySM` struct encapsulates the logic of the Dma State Machine.
 pub struct DmaInputCpySM<F: PrimeField64> {
@@ -58,10 +53,10 @@ impl<F: PrimeField64> DmaInputCpySM<F> {
     /// * `input` - The operation data to process.
     #[allow(clippy::too_many_arguments)]
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<R: DmaInputCpyTraceRowOps<F>>(
         &self,
         input: &DmaInput,
-        trace: &mut DmaInputCpyTraceRow<F>,
+        trace: &mut R,
         local_7_bits_multiplicities: &mut [u32],
         local_22_bits_values: &mut Vec<u32>,
         local_24_bits_values: &mut Vec<u32>,
@@ -119,29 +114,16 @@ impl<F: PrimeField64> DmaInputCpySM<F> {
     /// * `trace` - A mutable reference to the DmaInputCpy trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut DmaInputCpyTraceRow<F>) {
+    pub fn process_empty_slice<R: DmaInputCpyTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_count_lt_256(true);
     }
-}
 
-impl<F: PrimeField64> DmaModule<F> for DmaInputCpySM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_inputcpy"
-    }
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: DmaInputCpyTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaInputCpyTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = DmaInputCpyTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
@@ -250,5 +232,22 @@ impl<F: PrimeField64> DmaModule<F> for DmaInputCpySM<F> {
         timer_stop_and_log_trace!(DMA_TRACE);
         let from_trace = FromTrace::new(&mut trace);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> DmaModule<F> for DmaInputCpySM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_inputcpy"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<DmaInput>],
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<DmaInputCpyTraceRowPacked<F>>(inputs, trace_buffer)
+        } else {
+            self.compute_witness_inner::<DmaInputCpyTraceRow<F>>(inputs, trace_buffer)
+        }
     }
 }

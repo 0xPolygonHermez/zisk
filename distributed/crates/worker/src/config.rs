@@ -163,6 +163,7 @@ pub struct ProverServiceConfigDto {
     pub shared_tables: bool,
     pub rma: bool,
     pub minimal_memory: bool,
+    pub gpu: bool,
 }
 
 impl Default for ProverServiceConfigDto {
@@ -187,6 +188,7 @@ impl Default for ProverServiceConfigDto {
             shared_tables: false,
             rma: true,
             minimal_memory: false,
+            gpu: false,
         }
     }
 }

@@ -22,8 +22,3 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 itertools = { workspace = true }
 anyhow = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []

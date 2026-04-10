@@ -20,24 +20,10 @@ use crate::get_dma_air_name;
 
 use fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
-#[cfg(not(feature = "packed"))]
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
     Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,
     DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace, DmaPrePostTrace, DmaTrace, DmaUnalignedTrace,
-};
-
-#[cfg(feature = "packed")]
-use zisk_pil::{
-    Dma64AlignedInputCpyTracePacked as Dma64AlignedInputCpyTrace,
-    Dma64AlignedMemCpyTracePacked as Dma64AlignedMemCpyTrace,
-    Dma64AlignedMemSetTracePacked as Dma64AlignedMemSetTrace,
-    Dma64AlignedMemTracePacked as Dma64AlignedMemTrace,
-    Dma64AlignedTracePacked as Dma64AlignedTrace, DmaInputCpyTracePacked as DmaInputCpyTrace,
-    DmaMemCpyTracePacked as DmaMemCpyTrace,
-    DmaPrePostInputCpyTracePacked as DmaPrePostInputCpyTrace,
-    DmaPrePostMemCpyTracePacked as DmaPrePostMemCpyTrace, DmaPrePostTracePacked as DmaPrePostTrace,
-    DmaTracePacked as DmaTrace, DmaUnalignedTracePacked as DmaUnalignedTrace,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -181,18 +167,18 @@ impl<F: PrimeField64> DmaStrategy<F> {
         totals
     }
 
-    const DMA_ROWS: usize = DmaTrace::<F>::NUM_ROWS;
-    const DMA_MEMCPY_ROWS: usize = DmaMemCpyTrace::<F>::NUM_ROWS;
-    const DMA_INPUTCPY_ROWS: usize = DmaInputCpyTrace::<F>::NUM_ROWS;
-    const DMA_PRE_POST_ROWS: usize = DmaPrePostTrace::<F>::NUM_ROWS;
-    const DMA_PRE_POST_MEMCPY_ROWS: usize = DmaPrePostMemCpyTrace::<F>::NUM_ROWS;
-    const DMA_PRE_POST_INPUTCPY_ROWS: usize = DmaPrePostInputCpyTrace::<F>::NUM_ROWS;
-    const DMA_64_ALIGNED_ROWS: usize = Dma64AlignedTrace::<F>::NUM_ROWS;
-    const DMA_64_ALIGNED_MEMCPY_ROWS: usize = Dma64AlignedMemCpyTrace::<F>::NUM_ROWS;
-    const DMA_64_ALIGNED_MEMSET_ROWS: usize = Dma64AlignedMemSetTrace::<F>::NUM_ROWS;
-    const DMA_64_ALIGNED_INPUTCPY_ROWS: usize = Dma64AlignedInputCpyTrace::<F>::NUM_ROWS;
-    const DMA_64_ALIGNED_MEM_ROWS: usize = Dma64AlignedMemTrace::<F>::NUM_ROWS;
-    const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<F>::NUM_ROWS;
+    const DMA_ROWS: usize = DmaTrace::<()>::NUM_ROWS;
+    const DMA_MEMCPY_ROWS: usize = DmaMemCpyTrace::<()>::NUM_ROWS;
+    const DMA_INPUTCPY_ROWS: usize = DmaInputCpyTrace::<()>::NUM_ROWS;
+    const DMA_PRE_POST_ROWS: usize = DmaPrePostTrace::<()>::NUM_ROWS;
+    const DMA_PRE_POST_MEMCPY_ROWS: usize = DmaPrePostMemCpyTrace::<()>::NUM_ROWS;
+    const DMA_PRE_POST_INPUTCPY_ROWS: usize = DmaPrePostInputCpyTrace::<()>::NUM_ROWS;
+    const DMA_64_ALIGNED_ROWS: usize = Dma64AlignedTrace::<()>::NUM_ROWS;
+    const DMA_64_ALIGNED_MEMCPY_ROWS: usize = Dma64AlignedMemCpyTrace::<()>::NUM_ROWS;
+    const DMA_64_ALIGNED_MEMSET_ROWS: usize = Dma64AlignedMemSetTrace::<()>::NUM_ROWS;
+    const DMA_64_ALIGNED_INPUTCPY_ROWS: usize = Dma64AlignedInputCpyTrace::<()>::NUM_ROWS;
+    const DMA_64_ALIGNED_MEM_ROWS: usize = Dma64AlignedMemTrace::<()>::NUM_ROWS;
+    const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<()>::NUM_ROWS;
     // Dma
     // DmaMemCpy
     // DmaInputCpy

@@ -12,14 +12,16 @@ use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{Asm, Emu, ProgramId, ProverClientBuilder, ZiskBackend, ZiskProver};
+use zisk_prover_backend::{
+    Asm, AsmOptions, Emu, ProgramId, ProverClientBuilder, ProverOpts, ZiskBackend, ZiskProver,
+};
 
 use crate::stream_ordering::StreamOrderingActor;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
-use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
+use proofman_common::ProofmanOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
@@ -97,8 +99,7 @@ pub struct ProverConfig {
     /// Flag to enable aggregation
     pub aggregation: bool,
 
-    /// Preallocate resources
-    pub gpu_params: Option<ParamsGPU>,
+    pub options: ProofmanOptions,
 
     /// Whether to use shared tables in the witness library
     pub shared_tables: bool,
@@ -136,23 +137,19 @@ impl ProverConfig {
         let guest_program =
             Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
 
-        let mut gpu_params = None;
-        if prover_service_config.preallocate
-            || prover_service_config.max_streams.is_some()
-            || prover_service_config.number_threads_witness.is_some()
-            || prover_service_config.max_witness_stored.is_some()
-        {
-            let mut gpu_params_new = ParamsGPU::new(prover_service_config.preallocate);
-            if let Some(max_streams) = prover_service_config.max_streams {
-                gpu_params_new.with_max_number_streams(max_streams);
-            }
-            if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
-                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
-            }
-            if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
-                gpu_params_new.with_max_witness_stored(max_witness_stored);
-            }
-            gpu_params = Some(gpu_params_new);
+        let mut options = ProofmanOptions::new(prover_service_config.preallocate);
+        if let Some(max_streams) = prover_service_config.max_streams {
+            options.with_max_number_streams(max_streams);
+        }
+        if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
+            options.with_number_threads_pools_witness(number_threads_witness);
+        }
+        if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
+            options.with_max_witness_stored(max_witness_stored);
+        }
+
+        if prover_service_config.gpu {
+            options.gpu();
         }
 
         Ok(ProverConfig {
@@ -166,7 +163,7 @@ impl ProverConfig {
             asm_out_file: prover_service_config.asm_out_file,
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
-            gpu_params,
+            options,
             shared_tables: prover_service_config.shared_tables,
             rma: prover_service_config.rma,
             minimal_memory: prover_service_config.minimal_memory,
@@ -211,16 +208,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Emu>> {
+        let mut prover_options = ProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .shared_tables(prover_config.shared_tables)
+            .rma(prover_config.rma)
+            .aggregation(prover_config.aggregation);
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+
         let prover = Arc::new(
-            ProverClientBuilder::new()
-                .emu()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .gpu(prover_config.gpu_params.clone())
-                .build()?,
+            ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
         );
 
         let guest_program = prover_config.guest_program.clone();
@@ -244,20 +244,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Asm>> {
+        let mut prover_options = ProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .shared_tables(prover_config.shared_tables)
+            .rma(prover_config.rma)
+            .aggregation(prover_config.aggregation);
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+
+        // ASM-specific options for distributed worker
+        let mut asm_options = AsmOptions::default();
+        if let Some(port) = prover_config.asm_port {
+            asm_options = asm_options.base_port(port);
+        }
+        if prover_config.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if prover_config.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        asm_options = asm_options.is_distributed();
+        prover_options = prover_options.with_asm_options(asm_options);
+
         let prover = Arc::new(
-            ProverClientBuilder::new()
-                .asm()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .base_port_opt(prover_config.asm_port)
-                .unlock_mapped_memory(prover_config.unlock_mapped_memory)
-                .asm_out_file(prover_config.asm_out_file)
-                .gpu(prover_config.gpu_params.clone())
-                .is_distributed(true)
-                .build()?,
+            ProverClientBuilder::new().asm().prove().with_prover_options(prover_options).build()?,
         );
 
         let guest_program = prover_config.guest_program.clone();
@@ -1020,8 +1033,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             verify_constraints: self.prover_config.verify_constraints,
             aggregation: self.prover_config.aggregation,
             verify_proofs: false,
-            save_proofs: false,
-            test_mode: false,
             output_dir_path: None,
             rma: self.prover_config.rma,
             minimal_memory: self.prover_config.minimal_memory,

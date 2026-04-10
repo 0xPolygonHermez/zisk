@@ -7,13 +7,13 @@ use zisk_prover_backend::setup_logger;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
+/// Verify a proof
 pub struct ZiskVerify {
     #[clap(short = 'p', long)]
     pub proof: String,
 
     /// Verbosity (-v, -vv)
-    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 

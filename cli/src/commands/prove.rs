@@ -1,73 +1,68 @@
+use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
 
 use colored::Colorize;
-use proofman_common::ParamsGPU;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ZiskProof;
+use zisk_common::{ProofMode, ZiskProof};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{ProofOpts, ProverClientBuilder, ZiskProveResult};
+use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
-#[command(group(
-    clap::ArgGroup::new("input_mode")
-        .args(["asm", "emulator"])
-        .multiple(false)
-        .required(false)
-))]
+/// Generate a proof from the execution of the guest program
 pub struct ZiskProve {
-    /// ELF file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
-    pub elf: PathBuf,
-
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
-    pub asm: Option<PathBuf>,
+    /// Path to the program ELF file
+    #[arg(short = 'e', long)]
+    pub elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 
-    /// Input path
-    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    /// Precompiles Hints path
-    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
+    // #[arg(long, requires = "inputs")]
+    // pub save_inputs: bool,
+    //
+    /// Precompiles hints file path for the guest
+    #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
-    /// Setup folder path
-    #[clap(short = 'k', long)]
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Setup folder path for SNARK
-    #[clap(short = 'w', long)]
-    pub proving_key_snark: Option<PathBuf>,
+    /// Path to a precomputed PLONK proving key
+    #[arg(short = 'w', long)]
+    pub proving_key_plonk: Option<PathBuf>,
 
-    /// Output dir path
-    #[clap(short = 'o', long, default_value = "tmp")]
+    /// Save the generated proof to the specified directory
+    #[arg(short = 'o', long, default_value = "proof")]
     pub output_dir: PathBuf,
 
-    #[clap(short = 'a', long, default_value_t = false)]
+    /// Enable proofs aggregation
+    #[arg(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
-    #[clap(short = 'c', long, default_value_t = false)]
+    /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
+    #[arg(short = 'c', long, default_value_t = false, conflicts_with = "plonk")]
     pub minimal: bool,
 
-    #[clap(short = 'y', long, default_value_t = false)]
-    pub verify_proofs: bool,
+    /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with minimal
+    #[arg(long, default_value_t = false, conflicts_with = "minimal")]
+    pub plonk: bool,
 
-    #[clap(short = 'z', long, default_value_t = false)]
-    pub preallocate: bool,
+    /// Verify proofs after generation
+    #[arg(short = 'y', long, default_value_t = false)]
+    pub verify_proofs: bool,
 
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
@@ -75,55 +70,75 @@ pub struct ZiskProve {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
+    #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
-    /// This option is mutually exclusive with `--emulator`.
-    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
+    #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// Redirect ASM emulator output to file
-    /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
-    pub asm_out_file: bool,
-
-    /// Verbosity (-v, -vv)
-    #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    #[clap(short = 't', long)]
-    pub max_streams: Option<usize>,
-
-    #[clap(short = 'h', long)]
-    pub number_threads_witness: Option<usize>,
-
-    #[clap(short = 'x', long)]
+    /// Maximum memory (bytes) for witness storage during proving
+    // TODO: Review default value
+    #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
-    #[clap(short = 'b', long, default_value_t = false)]
-    pub save_proofs: bool,
-
-    #[clap(short = 'm', long, default_value_t = false)]
+    /// Reduce memory footprint during proving at the cost of speed
+    #[arg(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub no_shared_tables_mpi: bool,
-
-    #[clap(short = 'r', long, default_value_t = false)]
+    //TODO: Review if we want to keep this flag
+    #[arg(short = 'r', long, default_value_t = false)]
     pub no_rma_mpi: bool,
 
-    #[clap(short = 'n', long, default_value_t = false)]
+    /// Use GPU acceleration
+    #[clap(long, default_value_t = false)]
+    pub gpu: bool,
+
+    /// Verbosity (-v, -vv)
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    // Hidden flags
+    /// ASM file path
+    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
+    pub asm: Option<PathBuf>,
+
+    /// Redirect ASM emulator output to file
+    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    pub asm_out_file: bool,
+
+    /// Disable automatic ROM setup
+    #[arg(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
-    #[clap(long, default_value_t = false)]
-    pub snark: bool,
+    /// Use shared tables for execution
+    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    pub no_shared_tables_mpi: bool,
+
+    #[arg(short = 'b', long, default_value_t = false, hide = true)]
+    // TODO: Review, we can remove this flag since now we can use the optional `--output` flag
+    pub save_proofs: bool,
+
+    #[arg(short = 'z', long, default_value_t = false, hide = true)]
+    pub preallocate: bool,
+
+    #[arg(short = 't', long, hide = true)]
+    pub max_streams: Option<usize>,
+
+    #[arg(long, hide = true)]
+    pub number_threads_witness: Option<usize>,
 }
 
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
+        if self.elf.is_none() {
+            self.elf = detect_current_project_elf()?;
+        }
+
+        if self.elf.is_none() {
+            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+        }
+
         // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
@@ -133,26 +148,7 @@ impl ZiskProve {
 
         print_banner_command("Prove");
 
-        print_banner_field("Elf", self.elf.display());
-
-        let mut gpu_params = None;
-        if self.preallocate
-            || self.max_streams.is_some()
-            || self.number_threads_witness.is_some()
-            || self.max_witness_stored.is_some()
-        {
-            let mut gpu_params_new = ParamsGPU::new(self.preallocate);
-            if let Some(max_witness_stored) = self.max_witness_stored {
-                gpu_params_new.with_max_witness_stored(max_witness_stored);
-            }
-            if let Some(number_threads_witness) = self.number_threads_witness {
-                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
-            }
-            if let Some(max_streams) = self.max_streams {
-                gpu_params_new.with_max_number_streams(max_streams);
-            }
-            gpu_params = Some(gpu_params_new);
-        }
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -161,9 +157,67 @@ impl ZiskProve {
             print_banner_field("Prec. Hints", hints);
         }
 
-        if self.snark && self.minimal {
+        if self.plonk && self.minimal {
             anyhow::bail!("Minimal proofs are not supported for SNARK generation.");
         }
+
+        // Build ProverOpts once with all configuration
+        let mut prover_options = ProverOpts::default()
+            .aggregation(self.aggregation)
+            .rma(!self.no_rma_mpi)
+            .output_dir(self.output_dir.clone())
+            .shared_tables(!self.no_shared_tables_mpi)
+            .verbose(self.verbose);
+
+        if self.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+        if self.verify_proofs {
+            prover_options = prover_options.verify_proofs();
+        }
+        if self.preallocate {
+            prover_options = prover_options.preallocate();
+        }
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if self.plonk {
+            prover_options = prover_options.preload_plonk();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+        if let Some(ref path) = self.proving_key_plonk {
+            prover_options = prover_options.proving_key_plonk(path.clone());
+        }
+        if let Some(max) = self.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+        if let Some(threads) = self.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = self.max_streams {
+            prover_options = prover_options.max_streams(max);
+        }
+
+        // ASM-specific options (only used if not emulator)
+        let mut asm_options = AsmOptions::default();
+        if let Some(ref path) = self.asm {
+            asm_options = asm_options.asm_path(path.clone());
+        }
+        if let Some(port) = self.port {
+            asm_options = asm_options.base_port(port);
+        }
+        if self.no_auto_setup {
+            asm_options = asm_options.no_auto_setup();
+        }
+        if self.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if self.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        prover_options = prover_options.with_asm_options(asm_options);
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
 
@@ -188,9 +242,9 @@ impl ZiskProve {
         };
 
         let (result, world_rank) = if emulator {
-            self.run_emu(stdin, gpu_params)?
+            self.run_emu(stdin, prover_options)?
         } else {
-            self.run_asm(stdin, hints_stream, gpu_params)?
+            self.run_asm(stdin, hints_stream, prover_options)?
         };
 
         if world_rank == 0 {
@@ -201,7 +255,7 @@ impl ZiskProve {
                     ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => {
                         self.output_dir.join("vadcop_final_proof.bin")
                     }
-                    ZiskProof::Plonk(_) => self.output_dir.join("final_snark_proof.bin"),
+                    ZiskProof::Plonk(_) => self.output_dir.join("final_plonk_proof.bin"),
                     _ => {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }
@@ -223,39 +277,22 @@ impl ZiskProve {
     pub fn run_emu(
         &mut self,
         stdin: ZiskStdin,
-        gpu_params: Option<ParamsGPU>,
+        prover_options: ProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClientBuilder::new()
-            .aggregation(self.aggregation)
-            .proving_key_path_opt(self.proving_key.clone())
-            .proving_key_snark_path_opt(self.proving_key_snark.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .with_snark(self.snark)
-            .gpu(gpu_params)
-            .print_command_info()
-            .build()?;
+        let prover =
+            ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
-
-        let proof_options = ProofOpts {
-            aggregation: self.aggregation,
-            rma: !self.no_rma_mpi,
-            minimal_memory: self.minimal_memory,
-            verify_proofs: self.verify_proofs,
-            save_proofs: self.save_proofs,
-            output_dir_path: Some(self.output_dir.clone()),
-        };
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
-        if self.snark {
-            prover = prover.plonk();
+        let mut prover = prover.prove(&guest_program, stdin);
+        if self.plonk {
+            prover = prover.wrap(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.minimal();
+            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
         }
         let result = prover.run()?;
 
@@ -266,40 +303,17 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        gpu_params: Option<ParamsGPU>,
+        prover_options: ProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClientBuilder::new()
-            .aggregation(self.aggregation)
-            .asm()
-            .proving_key_path_opt(self.proving_key.clone())
-            .proving_key_snark_path_opt(self.proving_key_snark.clone())
-            .verbose(self.verbose)
-            .with_snark(self.snark)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .asm_path_opt(self.asm.clone())
-            .base_port_opt(self.port)
-            .no_auto_setup(self.no_auto_setup)
-            .unlock_mapped_memory(self.unlock_mapped_memory)
-            .asm_out_file(self.asm_out_file)
-            .gpu(gpu_params)
-            .print_command_info()
-            .build()?;
+        let prover =
+            ProverClientBuilder::new().asm().with_prover_options(prover_options).build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?;
         } else {
             prover.setup(&guest_program).run()?;
         }
-
-        let proof_options = ProofOpts {
-            aggregation: self.aggregation,
-            rma: !self.no_rma_mpi,
-            minimal_memory: self.minimal_memory,
-            verify_proofs: self.verify_proofs,
-            save_proofs: self.save_proofs,
-            output_dir_path: Some(self.output_dir.clone()),
-        };
 
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
@@ -307,12 +321,12 @@ impl ZiskProve {
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
-        if self.snark {
-            prover = prover.plonk();
+        let mut prover = prover.prove(&guest_program, stdin);
+        if self.plonk {
+            prover = prover.wrap(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.minimal();
+            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
         }
 
         let result = prover.run()?;

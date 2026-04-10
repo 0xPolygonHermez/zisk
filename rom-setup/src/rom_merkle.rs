@@ -22,6 +22,7 @@ pub fn get_rom_path<F: PrimeField64>(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        pctx.gpu,
     )?;
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
@@ -29,6 +30,7 @@ pub fn get_rom_path<F: PrimeField64>(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        pctx.gpu,
     )?;
 
     if !elf_bin_path.exists() || !elf_verkey_bin_path.exists() {
@@ -58,6 +60,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        pctx.gpu,
     )?;
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
@@ -65,6 +68,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        pctx.gpu,
     )?;
 
     if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
@@ -92,6 +96,7 @@ pub fn rom_merkle_setup_verkey(
     elf: &[u8],
     output_dir: &Option<PathBuf>,
     proving_key: &Path,
+    gpu: bool,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
@@ -104,6 +109,7 @@ pub fn rom_merkle_setup_verkey(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        gpu,
     )?;
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
@@ -111,6 +117,7 @@ pub fn rom_merkle_setup_verkey(
         &output_path,
         rom_info.blowup_factor,
         rom_info.merkle_tree_arity,
+        gpu,
     )?;
 
     if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
