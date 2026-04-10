@@ -156,7 +156,7 @@ test_elf() {
         warn "Skipping ROM setup as DISABLE_ROM_SETUP is set to 1"
     else
         rm -rf $HOME/.zisk/cache
-        ensure cargo-zisk rom-setup -e "${ELF_FILE}" \
+        ensure cargo-zisk program-setup -e "${ELF_FILE}" \
         2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
         err "program setup failed"

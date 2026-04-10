@@ -194,7 +194,7 @@ EOF
   done
 
   step "Installing ZisK Rust toolchain..."
-  ensure "${CARGO_ZISK}" sdk install-toolchain
+  ensure "${CARGO_ZISK}" install-toolchain
 
   # Install the proving/verify key setup
   IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
@@ -424,7 +424,7 @@ setup_snark_command() {
     err "cargo-zisk not found. Please install ZisK first with 'ziskup'"
     exit 1
   fi
-  
+
   ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
 
   # Parse version to get setup version
