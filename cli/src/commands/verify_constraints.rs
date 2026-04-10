@@ -12,14 +12,15 @@ use zisk_prover_backend::{
     AsmOptions, ProverClientBuilder, ProverOpts, ZiskVerifyConstraintsResult,
 };
 
+use crate::common::detect_current_project_elf;
+
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
 pub struct ZiskVerifyConstraints {
     /// Path to the program ELF file
-    // TODO: Optional?
     #[arg(short = 'e', long)]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
@@ -51,7 +52,7 @@ pub struct ZiskVerifyConstraints {
     pub unlock_mapped_memory: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long, default_value_t = false)]
+    #[clap(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
@@ -64,15 +65,15 @@ pub struct ZiskVerifyConstraints {
     pub asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
     /// Disable automatic ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
     /// Use shared tables for execution
-    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
     #[clap(short = 'd', long)]
@@ -97,11 +98,19 @@ impl ZiskVerifyConstraints {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
+        if self.elf.is_none() {
+            self.elf = detect_current_project_elf()?;
+        }
+
+        if self.elf.is_none() {
+            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+        }
+
         print_banner();
 
         print_banner_command("Verify Constraints");
 
-        print_banner_field("Elf", self.elf.display());
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -164,7 +173,7 @@ impl ZiskVerifyConstraints {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
         prover.verify_constraints(&guest_program, stdin, self.debug.clone())
@@ -209,7 +218,7 @@ impl ZiskVerifyConstraints {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?;
         } else {

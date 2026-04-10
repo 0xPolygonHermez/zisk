@@ -23,15 +23,15 @@ pub struct ZiskCheckSetup {
     pub proving_key_plonk: Option<PathBuf>,
 
     /// Enable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long)]
     pub aggregation: bool,
 
     /// Enable PLONK proofs
-    #[arg(short = 's', long, default_value_t = false)]
+    #[arg(short = 's', long)]
     pub plonk: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long, default_value_t = false)]
+    #[clap(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)

@@ -12,15 +12,15 @@ use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts};
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
+use crate::common::detect_current_project_elf;
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run the program and collect execution statistics
 pub struct ZiskStats {
     /// Path to the program ELF file
-    // TODO: Optional?
     #[arg(short = 'e', long)]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
     // TODO: Add program-id?
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -61,11 +61,11 @@ pub struct ZiskStats {
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long, default_value_t = false)]
+    #[arg(short = 'm', long,)]
     pub minimal_memory: bool,
 
     // TODO: Add desc, should be hidden?
-    #[clap(short = 'a', long, default_value_t = false)]
+    #[clap(short = 'a', long,)]
     pub packed: bool,
 
     /// Verbosity (-v, -vv)
@@ -78,15 +78,15 @@ pub struct ZiskStats {
     pub asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
     /// Disable automatic ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
     /// Use shared tables for execution
-    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
     #[arg(long, hide = true)]
@@ -103,11 +103,19 @@ impl ZiskStats {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
+        if self.elf.is_none() {
+            self.elf = detect_current_project_elf()?;
+        }
+
+        if self.elf.is_none() {
+            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+        }
+
         print_banner();
 
         print_banner_command("Stats");
 
-        print_banner_field("Elf", self.elf.display());
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -187,7 +195,7 @@ impl ZiskStats {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
         prover.stats(
@@ -245,7 +253,7 @@ impl ZiskStats {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?;
         } else {

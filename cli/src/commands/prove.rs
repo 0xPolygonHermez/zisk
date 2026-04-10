@@ -49,19 +49,19 @@ pub struct ZiskProve {
     pub output_dir: PathBuf,
 
     /// Enable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long)]
     pub aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
-    #[arg(short = 'c', long, default_value_t = false, conflicts_with = "plonk")]
+    #[arg(short = 'c', long, conflicts_with = "plonk")]
     pub minimal: bool,
 
     /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with minimal
-    #[arg(long, default_value_t = false, conflicts_with = "minimal")]
+    #[arg(long, conflicts_with = "minimal")]
     pub plonk: bool,
 
     /// Verify proofs after generation
-    #[arg(short = 'y', long, default_value_t = false)]
+    #[arg(short = 'y', long)]
     pub verify_proofs: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -83,15 +83,15 @@ pub struct ZiskProve {
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long, default_value_t = false)]
+    #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
     //TODO: Review if we want to keep this flag
-    #[arg(short = 'r', long, default_value_t = false)]
+    #[arg(short = 'r', long)]
     pub no_rma_mpi: bool,
 
     /// Use GPU acceleration
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
@@ -104,22 +104,22 @@ pub struct ZiskProve {
     pub asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
     /// Disable automatic ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
     /// Use shared tables for execution
-    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
-    #[arg(short = 'b', long, default_value_t = false, hide = true)]
+    #[arg(short = 'b', long, hide = true)]
     // TODO: Review, we can remove this flag since now we can use the optional `--output` flag
     pub save_proofs: bool,
 
-    #[arg(short = 'z', long, default_value_t = false, hide = true)]
+    #[arg(short = 'z', long, hide = true)]
     pub preallocate: bool,
 
     #[arg(short = 't', long, hide = true)]

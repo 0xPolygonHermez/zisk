@@ -9,6 +9,7 @@ use zisk_prover_backend::setup_logger;
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify a proof
 pub struct ZiskVerify {
+    /// Path to the proof file
     #[clap(short = 'p', long)]
     pub proof: String,
 

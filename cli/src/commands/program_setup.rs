@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::ux::print_banner_field;
-use crate::{common::get_proving_key, ux::print_banner};
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
@@ -13,28 +11,31 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
 
+use crate::ux::print_banner_field;
+use crate::{common::{detect_current_project_elf,get_proving_key}, ux::print_banner};
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Setup guest program
 pub struct ZiskProgramSetup {
     /// Path to the program ELF file
-    #[arg(short = 'e', long)] //Optional, mirar si existe Cargo.toml
-    pub elf: PathBuf,
+    #[arg(short = 'e', long)]
+    pub elf: Option<PathBuf>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
-    #[arg(short = 'n', long, default_value_t = false)]
+    #[arg(short = 'n', long)]
     pub hints: bool,
 
     /// Enable GPU acceleration in assembly generation
-    #[arg(short = 'g', long, default_value_t = false)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
     // Hidden flags
@@ -44,13 +45,21 @@ pub struct ZiskProgramSetup {
 }
 
 impl ZiskProgramSetup {
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
+        if self.elf.is_none() {
+            self.elf = detect_current_project_elf()?;
+        }
+
+        if self.elf.is_none() {
+            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+        }
+
         setup_logger(self.verbose.into());
 
         print_banner();
 
         print_banner_field("Command", "Rom Setup");
-        print_banner_field("Elf", self.elf.display());
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
         if self.hints {
             print_banner_field("Hints", "Enabled".yellow());
         }
@@ -78,13 +87,13 @@ impl ZiskProgramSetup {
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, self.gpu, 1)?;
         let pctx = Arc::new(pctx);
 
-        tracing::info!("Computing setup for ROM {}", self.elf.display());
+        tracing::info!("Computing setup for ROM {}", self.elf.as_ref().unwrap().display());
 
         tracing::info!("Computing merkle root");
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
 
-        gen_assembly(&self.elf, &self.output_dir, self.hints, self.verbose > 0)?;
+        gen_assembly(&self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

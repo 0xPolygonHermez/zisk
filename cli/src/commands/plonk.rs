@@ -22,15 +22,15 @@ pub struct ZiskPlonk {
     pub proving_key_plonk: PathBuf,
 
     /// Output dir path
-    #[arg(short = 'o', long, default_value = "tmp")]
+    #[arg(short = 'o', long, default_value = "proof_plonk")]
     pub output_dir: PathBuf,
 
     /// Use GPU acceleration
-    #[clap(long, default_value_t = false)]
+    #[clap(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 }
 
