@@ -31,10 +31,10 @@ pub struct ZiskConvertInput {
     /// Process subdirectories recursively
     #[clap(short = 'r', long)]
     pub recursive: bool,
-    
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 }
 
 impl ZiskConvertInput {

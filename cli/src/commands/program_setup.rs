@@ -11,8 +11,8 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
 
-use crate::ux::print_banner_field;
-use crate::{common::{detect_current_project_elf,get_proving_key}, ux::print_banner};
+use crate::common::{detect_current_project_elf, get_proving_key};
+use crate::ux::{print_banner_field, print_banner};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -47,13 +47,13 @@ pub struct ZiskProgramSetup {
 impl ZiskProgramSetup {
     pub fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
-            self.elf = detect_current_project_elf()?;
+            match detect_current_project_elf()? {
+                Some(elf) => self.elf = Some(elf),
+                None => {
+                    anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+                }
+            }
         }
-
-        if self.elf.is_none() {
-            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
-        }
-
         setup_logger(self.verbose.into());
 
         print_banner();

@@ -61,16 +61,16 @@ pub struct ZiskStats {
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long,)]
+    #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
     // TODO: Add desc, should be hidden?
-    #[clap(short = 'a', long,)]
+    #[clap(short = 'a', long)]
     pub packed: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 
     // Hidden flags
     /// ASM file path
@@ -104,11 +104,14 @@ impl ZiskStats {
         }
 
         if self.elf.is_none() {
-            self.elf = detect_current_project_elf()?;
-        }
-
-        if self.elf.is_none() {
-            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+            self.elf = match detect_current_project_elf()? {
+                Some(elf) => Some(elf),
+                None => {
+                    anyhow::bail!(
+                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                    );
+                }
+            };
         }
 
         print_banner();
