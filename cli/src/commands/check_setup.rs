@@ -31,7 +31,7 @@ pub struct ZiskCheckSetup {
     pub plonk: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)

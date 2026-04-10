@@ -9,15 +9,15 @@ use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
 /// Build the cargo-zisk toolchain
 pub struct ZiskBuildToolchain {
     /// Name for the toolchain in rustup
-    #[arg(short, long)]
+    #[arg(short = 'n', long)]
     name: Option<String>,
 
     /// Git branch to checkout (default: zisk)
-    #[arg(short, long)]
+    #[arg(short = 'b', long)]
     branch: Option<String>,
 
     /// Git tag to checkout (takes precedence over branch)
-    #[arg(short, long)]
+    #[arg(short = 't', long)]
     tag: Option<String>,
 }
 

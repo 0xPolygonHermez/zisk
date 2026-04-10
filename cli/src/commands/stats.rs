@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
@@ -14,7 +13,7 @@ use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 use crate::common::detect_current_project_elf;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run the program and collect execution statistics
 pub struct ZiskStats {
@@ -22,7 +21,6 @@ pub struct ZiskStats {
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 
-    // TODO: Add program-id?
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
@@ -45,13 +43,15 @@ pub struct ZiskStats {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
+    #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
+    /// MPI node index for distributed execution
+    // TODO: Review description
     #[arg(long)]
     pub mpi_node: Option<usize>,
 
@@ -64,8 +64,9 @@ pub struct ZiskStats {
     #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
-    // TODO: Add desc, should be hidden?
-    #[clap(short = 'a', long)]
+    /// Pack execution data into a compact representation for statistics
+    // TODO: Review desc, should be hidden?
+    #[arg(short = 'a', long)]
     pub packed: bool,
 
     /// Verbosity (-v, -vv)
@@ -89,9 +90,13 @@ pub struct ZiskStats {
     #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
+    /// Number of threads for witness computation
+    // TODO: Review description
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
+    /// Enable debug mode with optional output path
+    // TODO: Review description
     #[arg(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }

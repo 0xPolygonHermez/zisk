@@ -19,10 +19,12 @@ use crate::{get_target, get_toolchain_download_url, is_supported_target};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Install the cargo-zisk toolchain
 pub struct ZiskInstallToolchain {
-    #[arg(short, long)]
+    /// Version of the toolchain to install (default: latest)
+    #[arg(short = 'v', long)]
     version: Option<String>,
 
-    #[arg(short, long)]
+    /// Name assigned to the toolchain (default: zisk)
+    #[arg(short = 'n', long)]
     name: Option<String>,
 }
 

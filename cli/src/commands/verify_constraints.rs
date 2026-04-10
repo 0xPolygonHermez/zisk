@@ -1,7 +1,4 @@
-use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
-
-use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
@@ -13,8 +10,9 @@ use zisk_prover_backend::{
 };
 
 use crate::common::detect_current_project_elf;
+use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
 pub struct ZiskVerifyConstraints {
@@ -44,7 +42,7 @@ pub struct ZiskVerifyConstraints {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
+    #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
@@ -52,7 +50,7 @@ pub struct ZiskVerifyConstraints {
     pub unlock_mapped_memory: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
@@ -76,7 +74,9 @@ pub struct ZiskVerifyConstraints {
     #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
-    #[clap(short = 'd', long)]
+    /// Enable debug mode with optional output path
+    // TODO: Review description
+    #[arg(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }
 

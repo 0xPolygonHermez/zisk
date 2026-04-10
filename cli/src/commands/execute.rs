@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
@@ -11,7 +10,7 @@ use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use zisk_common::io::{StreamSource, ZiskStdin};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
 pub struct ZiskExecute {
@@ -19,7 +18,7 @@ pub struct ZiskExecute {
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 
-    /// Use prebuilt emulator
+    /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 

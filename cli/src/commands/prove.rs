@@ -86,12 +86,13 @@ pub struct ZiskProve {
     #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
-    //TODO: Review if we want to keep this flag
+    /// Disable RMA MPI optimization during proving
+    //TODO: Review desc, review if we want to keep this flag
     #[arg(short = 'r', long)]
     pub no_rma_mpi: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
@@ -115,16 +116,18 @@ pub struct ZiskProve {
     #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
-    #[arg(short = 'b', long, hide = true)]
-    // TODO: Review, we can remove this flag since now we can use the optional `--output` flag
-    pub save_proofs: bool,
-
+    /// Pre-allocate memory buffers before proving
+    // TODO: Review description
     #[arg(short = 'z', long, hide = true)]
     pub preallocate: bool,
 
+    /// Maximum number of concurrent streams for proving
+    // TODO: Review description
     #[arg(short = 't', long, hide = true)]
     pub max_streams: Option<usize>,
 
+    /// Number of threads for witness computation
+    // TODO: Review description
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 }

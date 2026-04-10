@@ -26,7 +26,7 @@ pub struct ZiskPlonk {
     pub output_dir: PathBuf,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)

@@ -13,23 +13,23 @@ use zisk_prover_backend::setup_logger;
 /// Convert old input files to new ZiskStdin format
 pub struct ZiskConvertInput {
     /// Input file to convert
-    #[clap(short = 'i', long)]
+    #[arg(short = 'i', long)]
     pub input_file: Option<PathBuf>,
 
     /// Output file path
-    #[clap(short = 'o', long)]
+    #[arg(short = 'o', long)]
     pub output_file: Option<PathBuf>,
 
     /// Input directory containing files to convert
-    #[clap(short = 'd', long)]
+    #[arg(short = 'd', long)]
     pub input_dir: Option<PathBuf>,
 
     /// Output directory for converted files
-    #[clap(short = 't', long)]
+    #[arg(short = 't', long)]
     pub output_dir: Option<PathBuf>,
 
     /// Process subdirectories recursively
-    #[clap(short = 'r', long)]
+    #[arg(short = 'r', long)]
     pub recursive: bool,
 
     /// Verbosity (-v, -vv)

@@ -1,11 +1,10 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::{ZiskProof, ZiskProofWithPublicValues};
 use zisk_prover_backend::setup_logger;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify a proof
 pub struct ZiskVerify {

@@ -46,8 +46,9 @@ pub struct ZiskRun {
     profiling: Option<ProfilingMode>,
 
     // Hidden flags
+    /// Log the output to console in riscof format
     #[arg(short = 'f', long, hide = true)]
-    riscof: bool,
+    log_output_riscof: bool,
 
     /// Additional arguments to pass to the cargo run command
     #[arg(last = true, hide = true)]
@@ -114,7 +115,7 @@ impl ZiskRun {
         if let Some(input) = &self.inputs {
             cmd += &format!(" -i {}", input);
         }
-        if self.riscof {
+        if self.log_output_riscof {
             cmd += " -f";
         }
         if self.profiling.is_some() {
