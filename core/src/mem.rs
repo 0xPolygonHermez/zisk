@@ -27,8 +27,6 @@
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
-//! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
-//! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
@@ -56,7 +54,7 @@
 //! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xc0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = 0xbffffff0           (0xc0000000 - 16)`
 //! `|`
 //! `|--------------- END OF RAM                          (0xc0000000)`
 //! `      ...`
