@@ -30,6 +30,7 @@ pub struct SyscallBn254ComplexSubParams<'a> {
 /// The caller must ensure that both `f1` and `f2` coordinates are within the range of the BN254 base field.
 ///
 /// The resulting field element will have both coordinates in the range of the BN254 base field.
+#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_complex_sub")]
 pub extern "C" fn syscall_bn254_complex_sub(

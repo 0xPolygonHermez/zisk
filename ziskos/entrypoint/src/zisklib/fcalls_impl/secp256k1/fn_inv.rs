@@ -1,45 +1,30 @@
-cfg_if::cfg_if! {
-    if #[cfg(all(target_os = "linux", target_arch = "x86_64"))] {
-        use lib_c::secp256k1_fn_inv_c;
+use lazy_static::lazy_static;
+use num_bigint::BigUint;
 
-        pub fn fcall_secp256k1_fn_inv(params: &[u64], results: &mut [u64]) -> i64 {
-            // Perform the inversion
-            let res_c_call = secp256k1_fn_inv_c(params, results);
-            if res_c_call == 0 {
-                4
-            } else {
-                res_c_call as i64
-            }
-        }
-    } else {
-        use lazy_static::lazy_static;
-        use num_bigint::BigUint;
+use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
 
-        use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_from_biguint};
+use super::N;
 
-        use super::N;
+/// Perform the inversion of a NON-ZERO scalar field element in Fn
+pub fn fcall_secp256k1_fn_inv(params: &[u64], results: &mut [u64]) -> i64 {
+    // Get the input
+    let a: &[u64; 4] = &params[0..4].try_into().unwrap();
 
-        pub fn fcall_secp256k1_fn_inv(params: &[u64], results: &mut [u64]) -> i64 {
-            // Get the input
-            let a: &[u64; 4] = &params[0..4].try_into().unwrap();
+    // Perform the inversion using fn inversion
+    let inv = secp256k1_fn_inv(a);
 
-            // Perform the inversion using fn inversion
-            let inv = secp256k1_fn_inv(a);
+    // Store the result
+    results[0..4].copy_from_slice(&inv);
 
-            // Store the result
-            results[0..4].copy_from_slice(&inv);
+    4
+}
 
-            4
-        }
-
-        fn secp256k1_fn_inv(a: &[u64; 4]) -> [u64; 4] {
-            let a_big = biguint_from_u64_digits(a);
-            let inv = a_big.modinv(&N);
-            match inv {
-                Some(inverse) => n_u64_digits_from_biguint(&inverse),
-                None => panic!("Inverse does not exist"),
-            }
-        }
+fn secp256k1_fn_inv(a: &[u64; 4]) -> [u64; 4] {
+    let a_big = biguint_from_u64_digits(a);
+    let inv = a_big.modinv(&N);
+    match inv {
+        Some(inverse) => n_u64_digits_from_biguint(&inverse),
+        None => panic!("Inverse does not exist"),
     }
 }
 

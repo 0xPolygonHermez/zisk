@@ -31,6 +31,7 @@ pub struct SyscallSecp256k1AddParams<'a> {
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the Secp256k1 base field.
 ///
 /// The resulting point will have both coordinates in the range of the Secp256k1 base field.
+#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_secp256k1_add")]
 pub extern "C" fn syscall_secp256k1_add(

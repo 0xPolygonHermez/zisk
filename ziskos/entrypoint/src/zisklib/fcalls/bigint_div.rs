@@ -12,7 +12,7 @@ cfg_if! {
     }
 }
 
-/// Given unsigned big integers `a` (of `a_value.len()` limbs) and `b` (of `b_value.len()` limbs),
+/// Given unsigned big integers `a` (of `a.len()` limbs) and `b` (of `b.len()` limbs),
 /// it computes `(quo, rem)` such that `a = b * quo + rem` with `0 <= rem < b`.
 ///
 /// Requires `b != 0`.
@@ -24,12 +24,12 @@ cfg_if! {
 /// The caller must ensure that the input pointers are valid and aligned to an 8-byte boundary.
 /// The `quo` and `rem` slices must be large enough to hold the result.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bigint_div(
-    a_value: &[u64],
-    b_value: &[u64],
+    a: &[u64],
+    b: &[u64],
     quo: &mut [u64],
     rem: &mut [u64],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -38,7 +38,7 @@ pub fn fcall_bigint_div(
     {
         let mut quo_vector: Vec<u64> = Vec::new();
         let mut rem_vector: Vec<u64> = Vec::new();
-        bigint_div_into(a_value, b_value, &mut quo_vector, &mut rem_vector);
+        bigint_div_into(a, b, &mut quo_vector, &mut rem_vector);
         quo[..quo_vector.len()].copy_from_slice(&quo_vector);
         rem[..rem_vector.len()].copy_from_slice(&rem_vector);
         let len_quo = quo_vector.len();
@@ -56,16 +56,16 @@ pub fn fcall_bigint_div(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        let len_a = a_value.len() as usize;
+        let len_a = a.len() as usize;
         ziskos_fcall_param!(len_a, 1);
         for i in 0..len_a {
-            ziskos_fcall_param!(a_value[i], 1);
+            ziskos_fcall_param!(a[i], 1);
         }
 
-        let len_b = b_value.len() as usize;
+        let len_b = b.len() as usize;
         ziskos_fcall_param!(len_b, 1);
         for i in 0..len_b {
-            ziskos_fcall_param!(b_value[i], 1);
+            ziskos_fcall_param!(b[i], 1);
         }
 
         ziskos_fcall!(FCALL_BIGINT_DIV_ID);

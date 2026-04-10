@@ -1,3 +1,5 @@
+/// Finds the limb index and bit position of the most significant set bit among `n`
+/// concatenated 256-bit values in `params`. Panics if all values are zero.
 pub fn fcall_msb_pos_256(params: &[u64], results: &mut [u64]) -> i64 {
     let n = params[0] as usize;
 
@@ -8,9 +10,6 @@ pub fn fcall_msb_pos_256(params: &[u64], results: &mut [u64]) -> i64 {
     2
 }
 
-// Q: Do we prefer constant time functions?
-// Finds the most significant bit position among n 256-bit integers
-// some of which may be zero, but not all
 pub fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
     debug_assert!(params.len() >= n * 4, "Not enough data for {} inputs", n);
 
@@ -31,7 +30,6 @@ pub fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
     panic!("Invalid input: all values are zero");
 }
 
-// Q: Do we prefer constant time functions?
 #[rustfmt::skip]
 fn msb_pos(mut x: u64) -> usize {
     let mut pos = 0;

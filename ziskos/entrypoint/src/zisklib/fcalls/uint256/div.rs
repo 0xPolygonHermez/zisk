@@ -10,7 +10,7 @@ cfg_if! {
         #[cfg(feature = "inputcpy")]
         use crate::ziskos_inputcpy;
     } else {
-        use crate::zisklib::fcalls_impl::uint256_div::uint256_div;
+        use crate::zisklib::fcalls_impl::uint256::uint256_div;
     }
 }
 
@@ -23,17 +23,17 @@ cfg_if! {
 ///
 /// The caller must ensure that the input pointers are valid and aligned to an 8-byte boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_uint256_div(
-    a_value: &[u64; 4],
-    b_value: &[u64; 4],
+    a: &[u64; 4],
+    b: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 4], [u64; 4]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let (quotient, remainder) = uint256_div(a_value, b_value);
+        let (quotient, remainder) = uint256_div(a, b);
         #[cfg(feature = "hints")]
         {
             hints.push(8);
@@ -45,8 +45,8 @@ pub fn fcall_uint256_div(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(a_value, 4);
-        ziskos_fcall_param!(b_value, 4);
+        ziskos_fcall_param!(a, 4);
+        ziskos_fcall_param!(b, 4);
         ziskos_fcall!(FCALL_UINT256_DIV_ID);
         #[cfg(not(feature = "inputcpy"))]
         {

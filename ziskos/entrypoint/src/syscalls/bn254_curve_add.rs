@@ -31,6 +31,7 @@ pub struct SyscallBn254CurveAddParams<'a> {
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the BN254 base field.
 ///
 /// The resulting point will have both coordinates in the range of the BN254 base field.
+#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_curve_add")]
 pub extern "C" fn syscall_bn254_curve_add(

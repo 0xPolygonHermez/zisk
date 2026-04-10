@@ -5,6 +5,7 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_f
 
 use super::{NQR, P, P_DIV_4};
 
+/// Computes the square root of a field element in Fp
 pub fn fcall_secp256k1_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a: &[u64; 4] = &params[0..4].try_into().unwrap();
@@ -60,6 +61,22 @@ mod tests {
         let b_big = biguint_from_u64_digits(b);
         let ab_big = (a_big * b_big) % &*P;
         n_u64_digits_from_biguint::<4>(&ab_big)
+    }
+
+    #[test]
+    fn test_sqrt_zero() {
+        let x = [0, 0, 0, 0];
+        let parity = 0;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt = [0, 0, 0, 0];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
     }
 
     #[test]

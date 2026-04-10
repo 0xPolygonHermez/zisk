@@ -23,6 +23,7 @@ use super::point::SyscallPoint384;
 /// The caller must ensure that `p` coordinates are within the range of the BLS12-381 base field.
 ///
 /// The resulting point will have both coordinates in the range of the BLS12-381 base field.
+#[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bls12_381_curve_dbl")]
 pub extern "C" fn syscall_bls12_381_curve_dbl(
