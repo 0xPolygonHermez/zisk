@@ -74,7 +74,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
 
 /// Assert a job has the expected state.
 pub async fn assert_job_state(coordinator: &Coordinator, job_id: &JobId, expected: JobState) {
-    let job_entry = coordinator.jobs().get(job_id).expect("Job not found");
+    let job_entry = coordinator.jobs().read().await.get(job_id).cloned().expect("Job not found");
     let job = job_entry.read().await;
     assert_eq!(
         job.state, expected,

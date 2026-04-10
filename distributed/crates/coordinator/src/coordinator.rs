@@ -2938,7 +2938,7 @@ mod tests {
                 .unwrap();
         }
 
-        coordinator.jobs.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
         (coordinator, workers, job_id)
     }
@@ -2950,7 +2950,7 @@ mod tests {
 
         // First fail succeeds
         coordinator.fail_job(&job_id, "first").await.unwrap();
-        let entry = coordinator.jobs.get(&job_id).unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
 
         // Second fail is a no-op (no panic, returns Ok)
@@ -3000,7 +3000,7 @@ mod tests {
 
         // Backdate start_time to 10 minutes ago
         {
-            let entry = coordinator.jobs.get(&job_id).unwrap();
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
             let mut job = entry.write().await;
             job.phase_timings.insert(
                 JobPhase::Contributions,
@@ -3013,7 +3013,7 @@ mod tests {
 
         coordinator.check_phase_timeouts().await;
 
-        let entry = coordinator.jobs.get(&job_id).unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
@@ -3028,7 +3028,7 @@ mod tests {
         // start_time is fresh (just set) — should NOT timeout
         coordinator.check_phase_timeouts().await;
 
-        let entry = coordinator.jobs.get(&job_id).unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Running(JobPhase::Contributions),);
     }
 
@@ -3051,7 +3051,7 @@ mod tests {
 
         coordinator.check_stale_heartbeats().await;
 
-        let entry = coordinator.jobs.get(&job_id).unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 
@@ -3097,7 +3097,7 @@ mod tests {
         assert_eq!(state, Some(WorkerState::Idle));
 
         // Job should still be Failed (not revived)
-        let entry = coordinator.jobs.get(&job_id).unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
     }
 

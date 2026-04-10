@@ -39,7 +39,7 @@ async fn setup_running_job(
     }
 
     // Insert job into coordinator's
-    coordinator.jobs().insert(job_id.clone(), Arc::new(RwLock::new(job)));
+    coordinator.jobs().write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
     SetupResult { coordinator, workers, job_id }
 }
@@ -66,7 +66,7 @@ async fn test_phase1_timeout_aborts_job() {
 
     // Backdate the start_time to 2 seconds ago
     {
-        let entry = s.coordinator.jobs().get(&s.job_id).unwrap();
+        let entry = s.coordinator.jobs().read().await.get(&s.job_id).cloned().unwrap();
         let mut job = entry.write().await;
         job.phase_timings.insert(
             JobPhase::Contributions,
@@ -92,7 +92,7 @@ async fn test_phase2_timeout_aborts_job() {
     .await;
 
     {
-        let entry = s.coordinator.jobs().get(&s.job_id).unwrap();
+        let entry = s.coordinator.jobs().read().await.get(&s.job_id).cloned().unwrap();
         let mut job = entry.write().await;
         job.phase_timings.insert(
             JobPhase::Prove,
@@ -116,7 +116,7 @@ async fn test_phase3_timeout_aborts_job() {
     .await;
 
     {
-        let entry = s.coordinator.jobs().get(&s.job_id).unwrap();
+        let entry = s.coordinator.jobs().read().await.get(&s.job_id).cloned().unwrap();
         let mut job = entry.write().await;
         job.phase_timings.insert(
             JobPhase::Aggregate,
@@ -260,7 +260,7 @@ async fn test_monitor_sweep_does_not_fail_completed_jobs() {
     job.change_state(JobState::Running(JobPhase::Contributions));
     job.change_state(JobState::Completed);
     let job_id = job.job_id.clone();
-    coordinator.jobs().insert(job_id.clone(), Arc::new(RwLock::new(job)));
+    coordinator.jobs().write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
 
     coordinator.run_monitor_sweep().await;
 
@@ -443,7 +443,7 @@ async fn test_reconnect_active_job_resumes() {
 
     // Manually reset job to Running to simulate the case where guard hasn't fired yet
     {
-        let entry = s.coordinator.jobs().get(&s.job_id).unwrap();
+        let entry = s.coordinator.jobs().read().await.get(&s.job_id).cloned().unwrap();
         let mut job = entry.write().await;
         job.state = JobState::Running(JobPhase::Contributions);
     }

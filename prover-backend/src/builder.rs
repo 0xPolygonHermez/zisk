@@ -23,7 +23,7 @@ pub struct Prove;
 ///
 /// # Example
 /// ```rust,no_run
-/// use zisk_sdk::ProverClientBuilder;
+/// use zisk_prover_backend::ProverClientBuilder;
 ///
 /// let output_path = std::path::PathBuf::from("path/to/output");
 ///
@@ -258,7 +258,7 @@ impl ProverClientBuilder<EmuB, WitnessGeneration> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
+    /// use zisk_prover_backend::ProverClientBuilder;
     ///
     ///
     /// let prover = ProverClientBuilder::new()
@@ -283,7 +283,7 @@ impl ProverClientBuilder<EmuB, Prove> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
+    /// use zisk_prover_backend::ProverClientBuilder;
     ///
     /// let prover = ProverClientBuilder::new()
     ///    .emu()
@@ -339,7 +339,7 @@ impl ProverClientBuilder<AsmB, WitnessGeneration> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
+    /// use zisk_prover_backend::ProverClientBuilder;
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
@@ -371,7 +371,7 @@ impl ProverClientBuilder<AsmB, Prove> {
     ///
     /// # Example
     /// ```rust,no_run
-    /// use zisk_sdk::ProverClientBuilder;
+    /// use zisk_prover_backend::ProverClientBuilder;
     ///
     /// let prover = ProverClientBuilder::new()
     ///     .asm()
