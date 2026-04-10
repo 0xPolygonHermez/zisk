@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use zisk_common::ZiskExecutorTime;
 use zisk_distributed_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
@@ -170,7 +170,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 payload: Some(worker_message::Payload::Reconnect(WorkerReconnectRequest {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
-                    last_known_job_id: job.lock().await.job_id.as_string(),
+                    last_known_job_id: Some(job.lock().await.job_id.as_string()),
                 })),
             }
         } else {
@@ -191,13 +191,42 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Main non-blocking event loop
         loop {
+            // Take the computation handle out so select! can poll it independently.
+            // On the happy path (task sends ComputationResult through the channel),
+            // the channel branch fires first and the handle is put back.
+            // On panic/cancel, the handle branch fires and we report the error.
+            let mut computation_handle = self.worker.take_current_computation();
+
+            // biased: computation_rx must be checked before the JoinHandle branch.
+            // When a task completes normally, both become ready simultaneously.
+            // Without biased, select! picks non-deterministically and the JoinHandle
+            // branch could win, discarding the actual result.
             tokio::select! {
-                // Handle incoming coordinator messages
+                biased;
+
+                // Highest priority: task results from spawn_blocking via channel
+                Some(result) = computation_rx.recv() => {
+                    // Happy path: task completed and sent its result through the channel.
+                    // Drop the handle — no need to await it, the task already finished.
+                    drop(computation_handle.take());
+                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
+                        error!("Error handling computation result: {}", e);
+                        self.report_computation_error(&message_sender, &e.to_string()).await;
+                        break;
+                    }
+                }
+                // Coordinator messages (task dispatch, cancellation, heartbeat, etc.)
                 Some(result) = response_stream.next() => {
+                    // Put the handle back before processing (coordinator message handler
+                    // may need it, e.g. cancel_current_computation).
+                    if let Some(h) = computation_handle.take() {
+                        self.worker.set_current_computation(h);
+                    }
                     match result {
                         Ok(message) => {
                             if let Err(e) = self.handle_coordinator_message(message, &message_sender, &computation_tx).await {
                                 error!("Error handling coordinator message: {}", e);
+                                self.report_computation_error(&message_sender, &e.to_string()).await;
                                 break;
                             }
                         }
@@ -207,13 +236,33 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
                 }
-                Some(result) = computation_rx.recv() => {
-                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
-                        error!("Error handling computation result: {}", e);
-                        break;
+                // Monitor the computation task handle directly. This branch only
+                // fires when the task finishes WITHOUT sending a ComputationResult
+                // (panic, cancellation, or unexpected silent exit).
+                // Because of biased, computation_rx is checked first — so this only
+                // fires when the channel is empty (i.e., the task truly didn't send).
+                join_result = async { computation_handle.as_mut().unwrap().await }, if computation_handle.is_some() => {
+                    match join_result {
+                        Err(join_error) => {
+                            error!("Computation task failed unexpectedly: {}", join_error);
+                            self.report_computation_error(&message_sender, &join_error.to_string()).await;
+                            self.worker.set_current_job(None);
+                            self.worker.set_state(WorkerState::Idle);
+                        }
+                        Ok(()) => {
+                            // Task completed without sending a ComputationResult — shouldn't
+                            // happen in normal operation, but handle it defensively.
+                            warn!("Computation task exited without sending a result");
+                            self.worker.set_current_job(None);
+                            self.worker.set_state(WorkerState::Idle);
+                        }
                     }
                 }
                 _ = heartbeat_interval.tick() => {
+                    // Put the handle back before processing.
+                    if let Some(h) = computation_handle.take() {
+                        self.worker.set_current_computation(h);
+                    }
                     if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
                         error!("Error sending heartbeat: {}", e);
                         break;
@@ -267,6 +316,40 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
                 .await
             }
+        }
+    }
+
+    /// Sends a [`WorkerError`] message to the coordinator when a computation task
+    /// fails unexpectedly (e.g. panic inside `spawn_blocking`). This ensures the
+    /// coordinator learns about the failure immediately instead of waiting for a
+    /// heartbeat timeout.
+    async fn report_computation_error(
+        &self,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        error_message: &str,
+    ) {
+        let job_id = match self.worker.current_job() {
+            Some(job) => job.lock().await.job_id.as_string(),
+            None => {
+                // No current job — nothing useful to report to coordinator
+                warn!(
+                    "Computation error without active job (not reported to coordinator): {}",
+                    error_message
+                );
+                return;
+            }
+        };
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::Error(WorkerError {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id,
+                error_message: error_message.to_string(),
+            })),
+        };
+
+        if let Err(e) = message_sender.send(message) {
+            error!("Failed to send WorkerError to coordinator: {}", e);
         }
     }
 
@@ -328,7 +411,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 .1
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
-            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+            task_received_time: task_received_time
+                .unwrap_or_else(chrono::Utc::now)
+                .timestamp_millis() as f64,
         };
 
         let task_type = TaskType::PartialContribution as i32;
@@ -396,7 +481,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             asm_execution_duration: zisk_exec_time
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
-            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+            task_received_time: task_received_time
+                .unwrap_or_else(chrono::Utc::now)
+                .timestamp_millis() as f64,
         };
 
         let task_type = TaskType::Execution as i32;
@@ -435,7 +522,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let (result_data, error_message) = match result {
             Ok(data) => {
-                assert!(success);
+                if !success {
+                    return Err(anyhow!(
+                        "Inconsistent state: Prove reported failure but returned Ok result"
+                    ));
+                }
                 (
                     data.into_iter()
                         .map(|v| Proof {
@@ -451,7 +542,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
             }
             Err(e) => {
-                assert!(!success);
+                if success {
+                    return Err(anyhow!(
+                        "Inconsistent state: Prove reported success but returned Err result"
+                    ));
+                }
                 (vec![], e.to_string())
             }
         };
@@ -574,6 +669,30 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             coordinator_message::Payload::RegisterResponse(response) => {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
+
+                    // Process reconciliation directive from coordinator
+                    match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
+                        Some(Ok(ReconnectionAction::CancelStaleJob)) => {
+                            info!("Coordinator directed cancellation of stale job");
+                            self.worker.clear_current_job();
+                        }
+                        Some(Ok(ReconnectionAction::KeepComputing)) => {
+                            info!("Coordinator confirmed active job; keep computing");
+                        }
+                        Some(Ok(ReconnectionAction::Idle)) | None => {
+                            if self.worker.current_job().is_some() {
+                                warn!("No cancel directive but worker has stale job; clearing");
+                                self.worker.clear_current_job();
+                            }
+                        }
+                        Some(Err(_)) => {
+                            warn!(
+                                "Unknown reconciliation action; clearing stale state defensively"
+                            );
+                            self.worker.clear_current_job();
+                        }
+                    }
+
                     self.worker.set_state(WorkerState::Idle);
                 } else {
                     self.worker.set_state(WorkerState::Error);
@@ -611,9 +730,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        self.worker.cancel_current_computation();
+                        self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Idle);
                     }
+                }
+
+                // Acknowledge cancellation so the coordinator knows we stopped
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::JobCancelledAck(JobCancelledAck {
+                        worker_id: self.worker_config.worker.worker_id.as_string(),
+                        job_id: cancelled.job_id,
+                    })),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send JobCancelledAck: {}", e);
                 }
             }
             coordinator_message::Payload::Heartbeat(_) => {
@@ -909,7 +1039,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Expected AggParams params for Aggregate task"));
         };
 
-        let agg_proofs = agg_params.agg_proofs.unwrap().proofs;
+        let agg_proofs =
+            agg_params.agg_proofs.ok_or_else(|| anyhow!("Missing agg_proofs in AggParams"))?.proofs;
         let agg_proofs: Vec<_> = agg_proofs
             .into_iter()
             .map(|p| AggProofData {

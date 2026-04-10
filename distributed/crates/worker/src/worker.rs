@@ -23,7 +23,7 @@ use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::ProverServiceConfigDto;
 
@@ -394,6 +394,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
     }
 
+    /// Cancels any in-flight computation and clears the current job context.
+    /// Use this when the worker should become fully idle (e.g., job cancelled,
+    /// stale job cleared on reconnection).
+    pub fn clear_current_job(&mut self) {
+        self.cancel_current_computation();
+        self.current_job = None;
+    }
+
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn new_job(
@@ -455,7 +463,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
+            borsh::to_vec(&(JobPhase::Contributions, message)).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize Contributions MPI broadcast: {}", e)
+            })?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -492,7 +502,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Execution, message)).unwrap()
+            borsh::to_vec(&(JobPhase::Execution, message)).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize Execution MPI broadcast: {}", e)
+            })?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -523,7 +535,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
 
-            borsh::to_vec(&(JobPhase::Prove, message)).unwrap()
+            borsh::to_vec(&(JobPhase::Prove, message))
+                .map_err(|e| anyhow::anyhow!("Failed to serialize Prove MPI broadcast: {}", e))?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -588,21 +601,31 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Contribution {
-                        job_id,
-                        success: true,
-                        result: Ok((witness_info, zisk_execution_time, data, instances)),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Contribution {
+                            job_id,
+                            success: true,
+                            result: Ok((witness_info, zisk_execution_time, data, instances)),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send contribution result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Contribution computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Contribution {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Contribution {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send contribution error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -657,21 +680,36 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     guard.instances = instances;
                     drop(guard);
 
-                    let _ = tx.send(ComputationResult::Execution {
-                        job_id,
-                        success: true,
-                        result: Ok((witness_info, zisk_execution_time, instances, executed_steps)),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Execution {
+                            job_id,
+                            success: true,
+                            result: Ok((
+                                witness_info,
+                                zisk_execution_time,
+                                instances,
+                                executed_steps,
+                            )),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send execution result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Execution-only computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Execution {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Execution {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send execution error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -859,19 +897,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Proofs {
-                        job_id,
-                        success: true,
-                        result: Ok(data),
-                    });
+                    if tx
+                        .send(ComputationResult::Proofs { job_id, success: true, result: Ok(data) })
+                        .is_err()
+                    {
+                        warn!("Failed to send prove result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Prove computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Proofs {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                    });
+                    if tx
+                        .send(ComputationResult::Proofs {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send prove error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -930,13 +974,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let executed_steps = job_guard.executed_steps;
             let instances = job_guard.instances;
 
-            let _ = tx.send(ComputationResult::AggProof {
-                job_id,
-                success: false,
-                result: Err(error),
-                executed_steps,
-                instances,
-            });
+            if tx
+                .send(ComputationResult::AggProof {
+                    job_id,
+                    success: false,
+                    result: Err(error),
+                    executed_steps,
+                    instances,
+                })
+                .is_err()
+            {
+                warn!("Failed to send aggregation register error: event loop channel closed");
+            }
 
             return tokio::spawn(async {});
         }
@@ -971,23 +1020,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     let proof = data
                         .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
                         .unwrap_or_default();
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: true,
-                        result: Ok(Some(proof)),
-                        executed_steps,
-                        instances,
-                    });
+                    if tx
+                        .send(ComputationResult::AggProof {
+                            job_id,
+                            success: true,
+                            result: Ok(Some(proof)),
+                            executed_steps,
+                            instances,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send aggregation result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     tracing::error!("Aggregation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        executed_steps,
-                        instances,
-                    });
+                    if tx
+                        .send(ComputationResult::AggProof {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            executed_steps,
+                            instances,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send aggregation error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -1016,8 +1075,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         self.prover.mpi_broadcast(&mut bytes)?;
 
-        // extract byte 0 to decide the option
-        let phase: JobPhase = borsh::from_slice(&bytes[0..1]).unwrap();
+        if bytes.is_empty() {
+            return Err(anyhow::anyhow!("Empty MPI broadcast received"));
+        }
+
+        let phase: JobPhase = borsh::from_slice(&bytes[0..1])
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast phase: {}", e))?;
 
         let prover = self.prover.clone();
         let pk = self.pk.clone();
@@ -1025,7 +1088,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         if phase == JobPhase::ContributionsHintsStream {
             if let Some(r) = pk.asm_resources.as_ref() {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                let message: StreamMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize hints stream MPI broadcast: {}", e)
+                })?;
                 if let Err(e) = r.submit_hint_direct(&message.data) {
                     tracing::error!("Failed to submit hints: {}", e);
                 }
@@ -1036,7 +1101,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             if let Some(inputs_shmem_writer) =
                 pk.asm_resources.as_ref().map(|r| r.inputs_shmem_writer.clone())
             {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                let message: StreamMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize inputs stream MPI broadcast: {}", e)
+                })?;
                 let reinterpreted_data = unsafe {
                     std::slice::from_raw_parts(
                         message.data.as_ptr() as *const u8,
@@ -1050,68 +1117,81 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 tracing::error!("Inputs sink is not configured for ContributionsInputsStream");
             }
         } else {
-            tokio::task::spawn_blocking(move || match phase {
-                JobPhase::Execution => {
-                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+            // Clone bytes so the blocking task owns them
+            let bytes = bytes;
+            tokio::task::spawn_blocking(move || {
+                let deserialize_and_run = || -> Result<()> {
+                    match phase {
+                        JobPhase::Execution => {
+                            let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
+                                .map_err(|e| {
+                                    anyhow::anyhow!(
+                                        "Failed to deserialize Execution MPI broadcast: {}",
+                                        e
+                                    )
+                                })?;
 
-                    let result = Self::execute_execution_task(
-                        &prover,
-                        message.input_source,
-                        message.hints_source,
-                        message.partition_info,
-                        &pk,
-                    );
-                    if let Err(e) = result {
-                        tracing::error!(
-                                "Error during Execution MPI broadcast execution: {}. Waiting for new job...",
-                                e
-                            );
+                            Self::execute_execution_task(
+                                &prover,
+                                message.input_source,
+                                message.hints_source,
+                                message.partition_info,
+                                &pk,
+                            )?;
+                        }
+                        JobPhase::Contributions => {
+                            let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
+                                .map_err(|e| {
+                                    anyhow::anyhow!(
+                                        "Failed to deserialize Contributions MPI broadcast: {}",
+                                        e
+                                    )
+                                })?;
+
+                            Self::execute_contribution_task(
+                                message.job_id,
+                                &prover,
+                                message.phase_inputs,
+                                message.input_source,
+                                message.hints_source,
+                                message.partition_info,
+                                &pk,
+                                message.options,
+                            )?;
+                        }
+                        JobPhase::Prove => {
+                            let message: ProveMessage =
+                                borsh::from_slice(&bytes[1..]).map_err(|e| {
+                                    anyhow::anyhow!(
+                                        "Failed to deserialize Prove MPI broadcast: {}",
+                                        e
+                                    )
+                                })?;
+
+                            Self::execute_prove_task(
+                                message.job_id,
+                                &prover,
+                                message.phase_inputs,
+                                options,
+                            )?;
+                        }
+                        JobPhase::Aggregate => {
+                            return Err(anyhow::anyhow!(
+                                "Aggregate phase is not supported in MPI broadcast"
+                            ));
+                        }
+                        JobPhase::ContributionsHintsStream
+                        | JobPhase::ContributionsInputsStream => {
+                            return Err(anyhow::anyhow!(
+                                "Stream phases should be handled separately and not reach this point"
+                            ));
+                        }
                     }
-                }
-                JobPhase::Contributions => {
-                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                    Ok(())
+                };
 
-                    let result = Self::execute_contribution_task(
-                        message.job_id,
-                        &prover,
-                        message.phase_inputs,
-                        message.input_source,
-                        message.hints_source,
-                        message.partition_info,
-                        &pk,
-                        message.options,
-                    );
-                    if let Err(e) = result {
-                        tracing::error!(
-                                "Error during Contributions MPI broadcast execution: {}. Waiting for new job...",
-                                e
-                            );
-                    }
-                }
-                JobPhase::Prove => {
-                    let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
-
-                    let result = Self::execute_prove_task(
-                        message.job_id,
-                        &prover,
-                        message.phase_inputs,
-                        options,
-                    );
-                    if let Err(e) = result {
-                        error!(
-                            "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
-                            e
-                        );
-                    }
-                }
-
-                JobPhase::Aggregate => {
-                    unreachable!("Aggregate phase is not supported in MPI broadcast");
-                }
-                JobPhase::ContributionsHintsStream | JobPhase::ContributionsInputsStream => {
-                    unreachable!(
-                        "Stream phases should be handled separately and not reach this point"
-                    );
+                if let Err(e) = deserialize_and_run() {
+                    error!("MPI broadcast task failed: {}. Waiting for new job...", e);
                 }
             });
         }

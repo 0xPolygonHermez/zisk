@@ -2,11 +2,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use zisk_distributed_common::{ComputeCapacity, CoordinatorMessageDto, WorkerId};
+use zisk_distributed_common::{CoordinatorMessageDto, WorkerId};
 
 use crate::coordinator::MessageSender;
 use crate::coordinator_errors::CoordinatorResult;
-use crate::workers_pool::{WorkerInfo, WorkersPool};
+use crate::workers_pool::WorkersPool;
 
 pub struct MockMessageSender {
     pub messages: Arc<Mutex<Vec<CoordinatorMessageDto>>>,
@@ -24,19 +24,6 @@ impl MessageSender for MockMessageSender {
         self.messages.lock().unwrap().push(msg);
         Ok(())
     }
-}
-
-pub fn mock_worker_info(
-    id: &str,
-    capacity: u32,
-) -> (WorkerInfo, Arc<Mutex<Vec<CoordinatorMessageDto>>>) {
-    let (sender, messages) = MockMessageSender::new();
-    let info = WorkerInfo::new(
-        WorkerId::from(id.to_string()),
-        ComputeCapacity::from(capacity),
-        Box::new(sender),
-    );
-    (info, messages)
 }
 
 pub async fn register_test_worker(

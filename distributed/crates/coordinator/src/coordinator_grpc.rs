@@ -45,15 +45,17 @@ impl MessageSender for GrpcMessageSender {
     }
 }
 
-/// Simple drop guard that automatically unregisters worker when dropped
+/// Simple drop guard that automatically disconnects worker when dropped.
+/// Uses connection generation to prevent stale guards from undoing reconnections.
 struct ConnectionDropGuard {
     worker_id: WorkerId,
     coordinator: Arc<Coordinator>,
+    generation: u64,
 }
 
 impl ConnectionDropGuard {
-    fn new(worker_id: WorkerId, coordinator: Arc<Coordinator>) -> Self {
-        Self { worker_id, coordinator }
+    fn new(worker_id: WorkerId, coordinator: Arc<Coordinator>, generation: u64) -> Self {
+        Self { worker_id, coordinator, generation }
     }
 }
 
@@ -61,38 +63,18 @@ impl Drop for ConnectionDropGuard {
     fn drop(&mut self) {
         let worker_id = self.worker_id.clone();
         let coordinator = self.coordinator.clone();
+        let generation = self.generation;
 
-        // Spawn async cleanup on drop
+        // Spawn async cleanup on drop — only if generation matches.
+        // Calls coordinator-level method that also fails the job if worker was Computing.
         tokio::spawn(async move {
-            cleanup_worker(coordinator, worker_id).await;
+            if let Err(e) =
+                coordinator.disconnect_worker_if_generation(&worker_id, generation).await
+            {
+                error!("Failed to disconnect worker {}: {}", worker_id, e);
+            }
         });
     }
-}
-
-async fn cleanup_worker(coordinator: Arc<Coordinator>, worker_id: WorkerId) {
-    if let Err(e) = coordinator.disconnect_worker(&worker_id).await {
-        error!("Failed to disconnect worker {}: {}", worker_id, e);
-    } else {
-        info!("{worker_id} disconnected successfully");
-    }
-}
-
-/// Cleans up the worker and returns or yields from the current context
-///
-/// Usage:
-/// - `cleanup_worker!(coordinator, worker_id)` → returns `()` or yields `()` in a stream
-/// - `cleanup_worker!(coordinator, worker_id, Err(Status::invalid_argument("msg")))` → yields/returns a Result
-macro_rules! cleanup_worker {
-    // Without explicit value → return/yield ()
-    ($coordinator:expr, $worker:expr) => {{
-        cleanup_worker($coordinator.clone(), $worker.clone()).await;
-        return;
-    }};
-    // With explicit value → return/yield that value
-    ($coordinator:expr, $worker:expr, $val:expr) => {{
-        cleanup_worker($coordinator.clone(), $worker.clone()).await;
-        return $val;
-    }};
 }
 
 /// gRPC server implementation for the distributed proof coordination system.
@@ -103,6 +85,7 @@ macro_rules! cleanup_worker {
 /// - Authentication and authorization for admin endpoints
 pub struct CoordinatorGrpc {
     coordinator: Arc<Coordinator>,
+    _monitor_handle: tokio::task::JoinHandle<()>,
 }
 
 impl CoordinatorGrpc {
@@ -112,7 +95,9 @@ impl CoordinatorGrpc {
     ///
     /// * `config` - Configuration parameters for the coordinator service.
     pub async fn new(config: Config) -> CoordinatorResult<Self> {
-        Ok(Self { coordinator: Arc::new(Coordinator::new(config)) })
+        let coordinator = Arc::new(Coordinator::new(config));
+        let monitor_handle = coordinator.start_job_monitor();
+        Ok(Self { coordinator, _monitor_handle: monitor_handle })
     }
 
     /// Checks if the request originates from localhost for admin endpoint security.
@@ -214,6 +199,10 @@ impl CoordinatorGrpc {
                         .handle_stream_execute_task_response(execute_task_response.into())
                         .await
                 }
+                worker_message::Payload::JobCancelledAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator.handle_stream_job_cancelled_ack(worker_id, &ack.job_id.into()).await
+                }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }
@@ -230,6 +219,7 @@ impl CoordinatorGrpc {
         worker_id: &WorkerId,
         accepted: bool,
         message: String,
+        directive: Option<ReconnectionDirective>,
     ) -> Result<CoordinatorMessage, Status> {
         Ok(CoordinatorMessage {
             payload: Some(coordinator_message::Payload::RegisterResponse(WorkerRegisterResponse {
@@ -241,6 +231,7 @@ impl CoordinatorGrpc {
                 } else {
                     None
                 },
+                directive,
             })),
         })
     }
@@ -399,8 +390,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                     let (accepted, message) =
                         coordinator.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
-
-                        yield Self::registration_response(&req_worker_id, accepted, message);
+                        yield Self::registration_response(&req_worker_id, accepted, message, None);
 
                     if !accepted { return; }
 
@@ -408,10 +398,15 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                 }
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Reconnect(req)) })) => {
                     let req_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message) =
+                    let (accepted, message, directive) =
                         coordinator.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
-                    yield Self::registration_response(&req_worker_id, accepted, message);
+                    yield Self::registration_response(
+                        &req_worker_id,
+                        accepted,
+                        message,
+                        directive.map(Into::into),
+                    );
 
                     if !accepted { return; }
 
@@ -436,8 +431,15 @@ impl ZiskDistributedApi for CoordinatorGrpc {
 
             info!("{worker_id} registered successfully");
 
-            // Drop guard fallback for panic/task-abort safety
-            let _guard = ConnectionDropGuard::new(worker_id.clone(), coordinator.clone());
+            // Get the connection generation to pass to the guard
+            let generation = coordinator
+                .workers_pool()
+                .connection_generation(&worker_id)
+                .await
+                .unwrap_or(0);
+
+            // Drop guard handles ALL cleanup — uses generation to avoid race with reconnection
+            let _guard = ConnectionDropGuard::new(worker_id.clone(), coordinator.clone(), generation);
 
             // Main stream loop
             loop {
@@ -452,11 +454,12 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                             }
                             Some(Err(e)) => {
                                 error!("Error receiving from {worker_id}: {e}");
-                                cleanup_worker!(coordinator, worker_id, yield Err(e));
+                                yield Err(e);
+                                return; // guard handles cleanup
                             }
                             None => {
                                 info!("Worker {worker_id} disconnected");
-                                cleanup_worker!(coordinator, worker_id);
+                                return; // guard handles cleanup
                             }
                         }
                     }
@@ -468,19 +471,11 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                             None => {
                                 // Channel closed, likely service shutdown
                                 info!("Outbound channel closed for worker {}", worker_id);
-                                break; // Break out of the loop, ending the stream naturally
+                                return; // guard handles cleanup
                             }
                         }
                     }
                 }
-            }
-
-            // Stream cleanup - this runs when the loop breaks
-            info!("Cleaning up worker {} connection", worker_id);
-
-            // Perform async cleanup
-            if let Err(e) = coordinator.unregister_worker(&worker_id).await {
-                error!("Failed to handle disconnect for worker {}: {}", worker_id, e);
             }
         });
 

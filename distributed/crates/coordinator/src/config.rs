@@ -30,17 +30,60 @@ pub struct ServiceConfig {
     pub environment: Environment,
 }
 
+/// Coordinator-level knobs for job orchestration, fault tolerance, and worker management.
+///
+/// ## Timeout mapping
+///
+/// The job monitor checks running jobs against per-phase timeouts. A phase that
+/// exceeds its timeout triggers an immediate `fail_job` (all workers cancelled).
+///
+/// | Job phase                              | Config field                    | Default |
+/// |----------------------------------------|---------------------------------|---------|
+/// | `Execution`                            | `execution_timeout_seconds`     | 300 s   |
+/// | `Contributions` / `ContributionsInputsStream` / `ContributionsHintsStream` | `phase1_timeout_seconds` | 300 s |
+/// | `Prove`                                | `phase2_timeout_seconds`        | 600 s   |
+/// | `Aggregate`                            | `phase3_timeout_seconds`        | 100 s   |
+///
+/// Setting any timeout to `0` disables enforcement for that phase.
+///
+/// ## Heartbeat detection
+///
+/// Workers send periodic heartbeats. A worker is considered dead when
+/// `heartbeat_interval_seconds × heartbeat_max_missed` seconds elapse with no
+/// heartbeat while the worker is in `Computing` state. Dead workers cause their
+/// job to be aborted.
+///
+/// ## Stale worker cleanup
+///
+/// Workers in `Disconnected` state for longer than `stale_disconnected_threshold_seconds`
+/// are removed from the pool to prevent unbounded growth.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
+    /// Maximum number of workers that can be assigned to a single job.
     pub max_workers_per_job: u32,
+    /// Maximum number of workers the coordinator will accept (across all jobs).
     pub max_total_workers: u32,
+    /// Timeout for the Execution phase. Default: 300s.
+    pub execution_timeout_seconds: u64,
+    /// Timeout for Phase 1: Contributions. Default: 300s.
     pub phase1_timeout_seconds: u64,
+    /// Timeout for Phase 2: Prove (proof generation). Default: 600s.
     pub phase2_timeout_seconds: u64,
+    /// Timeout for Phase 3: Aggregate (proof aggregation). Default: 100s.
     pub phase3_timeout_seconds: u64,
+    /// Expected interval between worker heartbeats. Default: 30s.
     pub heartbeat_interval_seconds: u64,
+    /// Number of missed heartbeats before a computing worker is considered dead.
+    /// Dead threshold = `heartbeat_interval_seconds × heartbeat_max_missed`. Default: 3.
     pub heartbeat_max_missed: u32,
+    /// How often the background monitor sweeps for timeouts and stale heartbeats. Default: 10s.
     pub job_monitor_interval_seconds: u64,
+    /// Seconds a worker can remain in `Disconnected` state before being removed from
+    /// the pool entirely. Default: 300s.
+    pub stale_disconnected_threshold_seconds: u64,
+    /// Optional webhook URL to POST job completion/failure notifications.
     pub webhook_url: Option<String>,
+    /// Whether to generate compressed (Snark) proofs in the aggregation phase.
     pub compressed_proofs: bool,
 }
 
@@ -80,12 +123,14 @@ impl Config {
             .set_default("logging.format", "pretty")?
             .set_default("coordinator.max_workers_per_job", 10)?
             .set_default("coordinator.max_total_workers", 1000)?
+            .set_default("coordinator.execution_timeout_seconds", 300)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
             .set_default("coordinator.phase3_timeout_seconds", 100)?
             .set_default("coordinator.heartbeat_interval_seconds", 30)?
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
+            .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
             .set_default("coordinator.compressed_proofs", compressed_proofs)?;
 
         if let Some(path) = config_file {
