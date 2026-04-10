@@ -209,7 +209,7 @@ test_elf() {
                 ensure cargo-zisk verify \
                     -p ./proof/vadcop_final_proof.bin \
                     2>&1 | tee "verify_${input_file}.log" || return 1
-                if ! grep -F "Stark proof was verified" "verify_${input_file}.log"; then
+                if ! grep -F "STARK proof was verified" "verify_${input_file}.log"; then
                     err "verify proof failed for ${input_file}"
                     return 1
                 fi
