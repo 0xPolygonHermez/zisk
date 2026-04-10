@@ -1,16 +1,16 @@
 use anyhow::{bail, Result};
-use clap::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ux::print_banner;
 use crate::ux::print_banner_field;
+use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::setup_logger;
 
-#[derive(Parser)]
-#[command(version, about, long_about = None)]
-#[command(propagate_version = true)]
+#[derive(clap::Args)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Convert old input files to new ZiskStdin format
 pub struct ZiskConvertInput {
     /// Input file to convert
     #[clap(short = 'i', long)]

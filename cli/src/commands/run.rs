@@ -5,50 +5,80 @@ use std::{
 };
 use zisk_build::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
-use std::{fs::File, io::Write, path::Path};
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum ProfilingMode {
+    Inline,
+    Summary,
+    Complete,
+}
 
-// Structure representing the 'run' subcommand of cargo.
+// Structure representing the 'run' subcommand of cargo-zisk
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Build the program and run it using the ZisK toolchain
 pub struct ZiskRun {
-    #[clap(short = 'F', long)]
+    /// Space or comma separated list of features to activate
+    #[arg(short = 'F', long)]
     features: Option<String>,
 
-    #[clap(long)]
+    /// Activate all available features
+    #[arg(long)]
     all_features: bool,
 
-    #[clap(long)]
+    /// Build artifacts in release mode, with optimizations
+    #[arg(long)]
     release: bool,
 
-    #[clap(long)]
+    /// Do not activate the `default` feature
+    #[arg(long)]
     no_default_features: bool,
 
-    #[clap(long, short)]
-    qemu: bool,
+    /// Path to the guest ELF
+    #[arg(short = 'e', long)]
+    elf: Option<String>,
 
-    #[clap(short = 'x', long)]
-    stats: bool,
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(short = 'i', long)]
+    inputs: Option<String>,
 
-    #[clap(long)]
-    gdb: bool,
+    /// Profiling report to emit
+    #[arg(short = 'p', long)]
+    profiling: Option<ProfilingMode>,
 
-    #[clap(short = 'i', long)]
-    input: Option<String>,
+    // Hidden flags
 
-    #[clap(long, short = 'm')]
-    metrics: bool,
-
-    #[clap(short = 'f', long)]
+    #[arg(short = 'f', long, hide = true)]
     riscof: bool,
 
-    #[clap(last = true)]
+    /// Additional arguments to pass to the cargo run command
+    #[arg(last = true, hide = true)]
     args: Vec<String>,
 }
 
 // Implement the run functionality for ZiskRun
 impl ZiskRun {
     pub fn run(&self) -> Result<()> {
-        let runner_command: String;
+        match &self.elf {
+            Some(_) => self.run_cmd(Command::new(self.build_ziskemu_cmd())),
+            None => self.cargo_run_cmd(),
+        }
+    }
+
+    fn run_cmd(&self, mut command: Command) -> Result<()> {
+        // Set up the command to inherit the parent's stdout and stderr
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
+
+        // Execute the ziskemu command
+        let status = command.status().context("Failed to execute ziskemu command")?;
+        if !status.success() {
+            return Err(anyhow!("ziskemu command failed with status {}", status));
+        }
+
+        Ok(())
+    }
+
+    fn cargo_run_cmd(&self) -> Result<()> {
         // Construct the cargo run command
         let mut command = Command::new("cargo");
         command.args(["+zisk", "run"]);
@@ -66,96 +96,35 @@ impl ZiskRun {
         if self.release {
             command.arg("--release");
         }
-        if !self.qemu {
-            let mut extra_command: String = "".to_string();
-            let mut input_command: String = "".to_string();
-            if self.stats {
-                extra_command += " -x ";
-            }
-            if self.metrics {
-                extra_command += " -m ";
-            }
-            if let Some(input) = &self.input {
-                let path = Path::new(input);
-                if !path.exists() {
-                    return Err(anyhow!("Input file does not exist at path: {}", path.display()));
-                }
-                input_command = format!("-i {}", input);
-            }
-            if self.riscof {
-                extra_command += " -f ";
-            }
-            runner_command = format!("ziskemu {input_command} {extra_command} -e");
-        } else {
-            let mut gdb_command = "";
-            if self.gdb {
-                gdb_command = "-S";
-            }
 
-            let input_path: &Path = Path::new(self.input.as_ref().unwrap());
-
-            if !input_path.exists() {
-                return Err(anyhow!("Input file does not exist at path: {}", input_path.display()));
-            }
-
-            let build_path = match input_path.parent() {
-                Some(parent) => parent.to_str().unwrap_or("./"),
-                None => "./",
-            };
-
-            let stem = input_path.file_stem().unwrap_or_default();
-            let extension = input_path.extension().unwrap_or_default();
-            let output_path = format!(
-                "{}/{}_size.{}",
-                build_path,
-                stem.to_str().unwrap_or(""),
-                extension.to_str().unwrap_or("")
-            );
-
-            let metadata = std::fs::metadata(input_path)?;
-            let file_size = metadata.len();
-
-            let size_bytes = file_size.to_le_bytes();
-            let mut output_file = File::create(output_path.clone())?;
-            output_file.write_all(&size_bytes)?;
-
-            runner_command = format!(
-                "
-            qemu-system-riscv64 \
-            -cpu rv64 \
-            -machine virt \
-            -device loader,file=./{},addr=0x40000000 \
-            -device loader,file=./{},addr=0x40000008 \
-            -m 1G \
-            -s \
-            {}  \
-            -nographic \
-            -serial mon:stdio \
-            -bios none \
-            -kernel",
-                output_path,
-                input_path.display(),
-                gdb_command
-            );
-        }
-
-        env::set_var("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUNNER", runner_command);
+        env::set_var(
+            "CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUNNER",
+            self.build_ziskemu_cmd()
+        );
 
         command.args(["--target", ZISK_TARGET]);
 
         // Add any additional arguments passed to the run command
         command.args(&self.args);
 
-        // Set up the command to inherit the parent's stdout and stderr
-        command.stdout(Stdio::inherit());
-        command.stderr(Stdio::inherit());
+        self.run_cmd(command)
+    }
 
-        // Execute the command
-        let status = command.status().context("Failed to execute cargo run command")?;
-        if !status.success() {
-            return Err(anyhow!("Cargo run command failed with status {}", status));
+    fn build_ziskemu_cmd(&self) -> String {
+        let mut cmd = "ziskemu".to_string();
+        if let Some(elf) = &self.elf {
+            cmd += &format!(" -e {}", elf);
         }
-
-        Ok(())
+        if let Some(input) = &self.inputs {
+            cmd += &format!(" -i {}", input);
+        }
+        if self.riscof {
+            cmd += " -f";
+        }
+        if self.profiling.is_some() {
+            //TODO: handle profiling flags
+            cmd += " -p ";
+        }
+        cmd
     }
 }
