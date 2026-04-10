@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Context, Result};
-use cargo_zisk::commands::{
-    BuildToolchainCmd, InstallToolchainCmd, NewCmd, ZiskBuild, ZiskCheckSetup, ZiskClean,
-    ZiskConvertInput, ZiskExecute, ZiskProve, ZiskProveSnark, ZiskRomSetup, ZiskRun, ZiskStats,
-    ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
-};
 use clap::Parser;
+
+use crate::commands::{
+    ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute,
+    ZiskInstallToolchain, ZiskNew, ZiskProgramSetup, ZiskProve, ZiskPlonk, ZiskRun, ZiskStats,
+    ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark
+};
 use zisk_build::ZISK_VERSION_MESSAGE;
 
 // Main enum defining cargo subcommands.
@@ -17,17 +18,17 @@ use zisk_build::ZISK_VERSION_MESSAGE;
     long_about = "Cargo Zisk is a command-line tool to manage Zisk projects."
 )]
 pub enum Cargo {
-    New(NewCmd),
-    BuildToolchain(BuildToolchainCmd),
-    InstallToolchain(InstallToolchainCmd),
     Build(ZiskBuild),
+    BuildToolchain(ZiskBuildToolchain),
     ConvertInput(ZiskConvertInput),
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
     Execute(ZiskExecute),
+    InstallToolchain(ZiskInstallToolchain),
+    New(ZiskNew),
     Prove(ZiskProve),
-    ProveSnark(ZiskProveSnark),
-    RomSetup(ZiskRomSetup),
+    Plonk(ZiskPlonk),
+    ProgramSetup(ZiskProgramSetup),
     Run(ZiskRun),
     Stats(ZiskStats),
     Verify(ZiskVerify),
@@ -35,22 +36,15 @@ pub enum Cargo {
     VerifyConstraints(ZiskVerifyConstraints),
 }
 
-fn main() -> Result<()> {
-    // Parse command-line arguments and handle errors if they occur.
+pub fn run_cargo_zisk() -> Result<()> {
     let cargo_args = Cargo::parse();
 
     match cargo_args {
-        Cargo::New(cmd) => {
-            cmd.run().context("Error executing New command")?;
+        Cargo::Build(cmd) => {
+            cmd.run().context("Error executing Build command")?;
         }
         Cargo::BuildToolchain(cmd) => {
             cmd.run().context("Error executing BuildToolchain command")?;
-        }
-        Cargo::InstallToolchain(cmd) => {
-            cmd.run().context("Error executing InstallToolchain command")?;
-        }
-        Cargo::Build(cmd) => {
-            cmd.run().context("Error executing Build command")?;
         }
         Cargo::ConvertInput(cmd) => {
             cmd.run().context("Error executing ConvertInput command")?;
@@ -61,23 +55,29 @@ fn main() -> Result<()> {
         Cargo::Clean(cmd) => {
             cmd.run().context("Error executing Clean command")?;
         }
-        Cargo::Execute(mut cmd) => {
-            cmd.run().context("Error executing Execute command")?;
+        Cargo::InstallToolchain(cmd) => {
+            cmd.run().context("Error executing InstallToolchain command")?;
+        }
+        Cargo::New(cmd) => {
+            cmd.run().context("Error executing New command")?;
         }
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
-        Cargo::ProveSnark(cmd) => {
-            cmd.run().context("Error executing ProveSnark command")?;
+        Cargo::Plonk(mut cmd) => {
+            cmd.run().context("Error executing Plonk command")?;
         }
-        Cargo::RomSetup(cmd) => {
-            cmd.run().context("Error executing RomSetup command")?;
+        Cargo::ProgramSetup(cmd) => {
+            cmd.run().context("Error executing ProgramSetup command")?;
         }
         Cargo::Run(cmd) => {
             cmd.run().context("Error executing Run command")?;
         }
         Cargo::Stats(mut cmd) => {
             cmd.run().context("Error executing Stats command")?;
+        }
+        Cargo::Execute(mut cmd) => {
+            cmd.run().context("Error executing Execute command")?;
         }
         Cargo::Verify(cmd) => {
             cmd.run().map_err(|e| anyhow!("Error executing Verify command: {}", e))?;

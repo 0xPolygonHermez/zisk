@@ -1,14 +1,17 @@
 use anyhow::Result;
+use zisk_sdk::ZISK_VERSION_MESSAGE;
 use std::{fs, path::Path, process::Command};
 use yansi::Paint;
 
 #[derive(clap::Args)]
-#[command(name = "new", about = "Setup a new project that runs inside the ZisK.")]
-pub struct NewCmd {
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Create a new project that runs inside ZisK
+pub struct ZiskNew {
+    /// Name of the new project to create
     name: String,
 }
 
-impl NewCmd {
+impl ZiskNew {
     pub fn run(&self) -> Result<()> {
         let root = Path::new(&self.name);
         let repo_url = "https://{}@github.com/0xPolygonHermez/zisk_template";

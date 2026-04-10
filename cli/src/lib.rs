@@ -1,5 +1,8 @@
+pub mod cargo_zisk_cli;
 pub mod commands;
 pub mod ux;
+
+pub use cargo_zisk_cli::run_cargo_zisk;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;

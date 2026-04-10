@@ -1,11 +1,13 @@
 use crate::{get_target, CommandExecutor};
 use anyhow::{Context, Result};
+use zisk_sdk::ZISK_VERSION_MESSAGE;
 use std::{path::PathBuf, process::Command};
 use zisk_build::RUSTUP_TOOLCHAIN_NAME;
 
 #[derive(clap::Args)]
-#[command(name = "build-toolchain", about = "Build the cargo-zisk toolchain.")]
-pub struct BuildToolchainCmd {
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Build the cargo-zisk toolchain
+pub struct ZiskBuildToolchain {
     /// Name for the toolchain in rustup
     #[arg(short, long)]
     name: Option<String>,
@@ -19,7 +21,7 @@ pub struct BuildToolchainCmd {
     tag: Option<String>,
 }
 
-impl BuildToolchainCmd {
+impl ZiskBuildToolchain {
     pub fn run(&self) -> Result<()> {
         println!("Building toolchain...");
         // Get environment variables.

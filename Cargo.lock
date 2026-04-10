@@ -637,6 +637,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-zisk-cpu"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "cargo-zisk",
+]
+
+[[package]]
+name = "cargo-zisk-gpu"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "cargo-zisk",
+]
+
+[[package]]
 name = "cargo_metadata"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

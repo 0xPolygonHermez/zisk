@@ -1,0 +1,15 @@
+[package]
+name = "cargo-zisk-gpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "cargo-zisk-gpu"
+path = "src/main.rs"
+
+[dependencies]
+cargo-zisk = { workspace = true, features = ["gpu"] }
+anyhow = { workspace = true }

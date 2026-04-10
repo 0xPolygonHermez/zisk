@@ -10,33 +10,40 @@ use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use std::sync::Arc;
 use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::setup_logger;
+use zisk_sdk::{ZISK_VERSION_MESSAGE, setup_logger};
 
 #[derive(clap::Args)]
-#[command(version, about, long_about = None)]
-#[command(propagate_version = true)]
-pub struct ZiskRomSetup {
-    /// ELF file path
-    #[arg(short = 'e', long)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Setup guest program
+pub struct ZiskProgramSetup {
+    /// Path to the program ELF file
+    #[arg(short = 'e', long)] //Optional, mirar si existe Cargo.toml
     pub elf: PathBuf,
 
-    /// Setup folder path
+    /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
-
-    /// Output dir path
-    #[arg(short = 'o', long, hide = true)]
-    pub output_dir: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
     #[arg(short = 'n', long, default_value_t = false)]
     pub hints: bool,
 
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    /// Enable GPU acceleration in assembly generation
+    #[clap(long, default_value_t = false)]
+    pub gpu: bool,
+
+    /// Verbose (-v, -vv)
+    #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    // Hidden flags
+
+    /// Output dir path
+    #[arg(short = 'o', long, hide = true)]
+    pub output_dir: Option<PathBuf>,
 }
 
-impl ZiskRomSetup {
+impl ZiskProgramSetup {
     pub fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 

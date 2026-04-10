@@ -4,16 +4,16 @@ use colored::Colorize;
 
 use anyhow::{Context, Result};
 use proofman_common::VerboseMode;
-use zisk_sdk::setup_logger;
+use zisk_sdk::{ZISK_VERSION_MESSAGE, setup_logger};
 
 use crate::{
     commands::get_home_zisk_path,
     ux::{print_banner, print_banner_command},
 };
 
-/// Deletes the default zisk setup folder
 #[derive(clap::Args, Debug)]
-#[command(version, about = "Remove the cache directory", long_about = None)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Remove the cache directoy
 pub struct ZiskClean;
 
 impl ZiskClean {

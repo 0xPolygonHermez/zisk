@@ -14,38 +14,28 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
-#[command(group(
-    clap::ArgGroup::new("input_mode")
-        .args(["asm", "emulator"])
-        .multiple(false)
-        .required(false)
-))]
+/// Run the program and collect execution statistics
 pub struct ZiskStats {
-    /// ROM file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
+    /// Path to the program ELF file
+    // TODO: Optional?
     #[arg(short = 'e', long)]
     pub elf: PathBuf,
 
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[arg(short = 's', long, hide = true)]
-    pub asm: Option<PathBuf>,
+    // TODO: Add program-id?
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[arg(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 
-    /// Input path
-    #[arg(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    /// Precompiles Hints path
-    #[arg(short = 'H', long, conflicts_with = "inputs")]
+     /// Precompiles hints file path for the guest
+    #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
-    /// Setup folder path
+    /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
@@ -58,43 +48,51 @@ pub struct ZiskStats {
     #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
-    /// This option is mutually exclusive with `--emulator`.
+    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// Redirect ASM emulator output to file
-    /// This option is mutually exclusive with `--emulator`
-    #[arg(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
-    pub asm_out_file: bool,
-
-    /// Verbosity (-v, -vv)
-    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
-
-    #[arg(short = 'w', long)]
-    pub number_threads_witness: Option<usize>,
-
-    #[arg(short = 'x', long)]
-    pub max_witness_stored: Option<usize>,
-
-    #[arg(short = 'd', long, hide = true)]
-    pub debug: Option<Option<String>>,
-
-    // PRECOMPILES OPTIONS
     #[arg(long)]
     pub mpi_node: Option<usize>,
 
+    /// Maximum memory (bytes) for witness storage during proving
+    // TODO: Review default value
+    #[arg(short = 'x', long)]
+    pub max_witness_stored: Option<usize>,
+
+    /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
+    // TODO: Add gpu flag?
+
+    /// Verbose (-v, -vv)
+    #[arg(short ='v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    // Hidden flags
+
+    /// ASM file path
+    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
+    pub asm: Option<PathBuf>,
+
+    /// Redirect ASM emulator output to file
+    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    pub asm_out_file: bool,
+
+    /// Disable automatic ROM setup
+    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    pub no_auto_setup: bool,
+
+    /// Use shared tables for execution
     #[arg(short = 'j', long, default_value_t = false, hide = true)]
     pub shared_tables: bool,
 
-    #[arg(short = 'n', long, default_value_t = false)]
-    pub no_auto_setup: bool,
+    #[arg(long, hide = true)]
+    pub number_threads_witness: Option<usize>,
+
+    #[arg(short = 'd', long, hide = true)]
+    pub debug: Option<Option<String>>,
 }
 
 impl ZiskStats {

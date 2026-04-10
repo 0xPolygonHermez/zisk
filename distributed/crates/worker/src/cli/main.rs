@@ -45,7 +45,7 @@ struct Cli {
     )]
     config: Option<String>,
 
-    /// ELF file path
+    /// Program ELF file path
     /// This is the path to the ROM file that the witness computation dynamic library will use
     /// to generate the witness.
     #[clap(short = 'e', long)]

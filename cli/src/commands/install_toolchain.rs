@@ -3,6 +3,7 @@ use anyhow::Result;
 use dirs::home_dir;
 use rand::{distr::Alphanumeric, Rng};
 use reqwest::Client;
+use zisk_sdk::ZISK_VERSION_MESSAGE;
 use std::{
     fs::{self},
     io::Read,
@@ -16,8 +17,9 @@ use std::os::unix::fs::PermissionsExt;
 use crate::{get_target, get_toolchain_download_url, is_supported_target};
 
 #[derive(clap::Args)]
-#[command(name = "install-toolchain", about = "Install the cargo-zisk toolchain.")]
-pub struct InstallToolchainCmd {
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Install the cargo-zisk toolchain
+pub struct ZiskInstallToolchain {
     #[arg(short, long)]
     version: Option<String>,
 
@@ -25,7 +27,7 @@ pub struct InstallToolchainCmd {
     name: Option<String>,
 }
 
-impl InstallToolchainCmd {
+impl ZiskInstallToolchain {
     pub fn run(&self) -> Result<()> {
         // Setup client.
         let client = Client::builder()

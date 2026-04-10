@@ -8,7 +8,7 @@ repository.workspace = true
 
 [[bin]]
 name = "zisk-coordinator"
-path = "src/cli/main.rs"
+path = "cli/src/main.rs"
 
 [dependencies]
 zisk-distributed-grpc-api = { workspace = true }

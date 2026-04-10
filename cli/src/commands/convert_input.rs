@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use crate::ux::print_banner;
 use crate::ux::print_banner_field;
-use zisk_sdk::{setup_logger, ZiskStdin};
+use zisk_sdk::{ZISK_VERSION_MESSAGE, ZiskStdin, setup_logger};
 
 #[derive(clap::Args)]
-#[command(version, about, long_about = None)]
-#[command(propagate_version = true)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Convert old input files to new ZiskStdin format
 pub struct ZiskConvertInput {
     /// Input file to convert
     #[arg(short = 'i', long)]

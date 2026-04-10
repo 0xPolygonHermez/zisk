@@ -6,28 +6,33 @@ use std::path::PathBuf;
 use fields::Goldilocks;
 
 use proofman::{check_setup_snark, ProofMan};
-use zisk_sdk::setup_logger;
+use zisk_sdk::{ZISK_VERSION_MESSAGE, setup_logger};
 
 #[derive(clap::Args)]
-#[command(version, about, long_about = None)]
-#[command(propagate_version = true)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct ZiskCheckSetup {
-    /// Setup folder path
+    /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Setup folder path
+    /// Path to a precomputed PLONK proving key
     #[arg(short = 'w', long)]
-    pub proving_key_snark: Option<PathBuf>,
+    pub proving_key_plonk: Option<PathBuf>,
 
+    /// Enable proofs aggregation
     #[arg(short = 'a', long, default_value_t = false)]
     pub aggregation: bool,
 
+    /// Enable PLONK proofs
     #[arg(short = 's', long, default_value_t = false)]
-    pub snark: bool,
+    pub plonk: bool,
 
-    /// Verbosity (-v, -vv)
-    #[arg(short, long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    /// Use GPU acceleration
+    #[clap(long, default_value_t = false)]
+    pub gpu: bool,
+
+    /// Verbose (-v, -vv)
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
 
@@ -45,9 +50,9 @@ impl ZiskCheckSetup {
         )
         .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;
 
-        if self.snark {
+        if self.plonk {
             check_setup_snark::<Goldilocks>(
-                &get_proving_key_snark(self.proving_key_snark.as_ref()),
+                &get_proving_key_snark(self.proving_key_plonk.as_ref()),
                 self.verbose.into(),
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup snark: {}", e))?

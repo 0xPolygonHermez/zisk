@@ -7,46 +7,39 @@ use zisk_common::ElfBinaryFromFile;
 use zisk_sdk::{ProverClient, ZiskExecuteResult};
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
+use super::{detect_current_project_elf, resolve_elf_path};
 use zisk_common::io::{StreamSource, ZiskStdin};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
-#[command(group(
-    clap::ArgGroup::new("input_mode")
-        .args(["asm", "emulator"])
-        .multiple(false)
-        .required(false)
-))]
+/// Execute the guest program through the same pipeline that prove command uses but without generating a proof
 pub struct ZiskExecute {
-    /// ROM file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
+    /// Path to the program ELF file
     #[arg(short = 'e', long)]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[arg(short = 's', long, hide = true)]
-    pub asm: Option<PathBuf>,
+    //TODO: conflicts with --elf. Revisar si lo ponemos en 0.17.0
+    /// Id of your program generated during setup
+    #[arg(short = 'p', long, conflicts_with = "elf")]
+    pub program_id: Option<String>,
 
-    /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[arg(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    /// Use prebuilt emulator
+    #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 
-    /// Input path
-    #[arg(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(alias = "input",short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    /// Precompiles Hints path
-    #[arg(short = 'H', long, conflicts_with = "inputs")]
+    /// Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
+    #[arg(long, requires = "inputs")]
+    pub save_inputs: bool,
+
+    /// Precompiles hints file path for the guest
+    #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
-    /// Force ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
-    pub no_auto_setup: bool,
-
-    /// Setup folder path
+    /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
@@ -56,31 +49,43 @@ pub struct ZiskExecute {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
+    //TODO: Remove
     #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
-    /// This option is mutually exclusive with `--emulator`.
+    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// Redirect ASM emulator output to file
-    /// This option is mutually exclusive with `--emulator`
-    #[arg(long, conflicts_with = "emulator", default_value_t = false, hide = true)]
-    pub asm_out_file: bool,
-
-    /// Verbosity (-v, -vv)
-    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
+    /// Verbose (-v, -vv)
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
-    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    // Hidden flags
+
+    /// ASM file path
+    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
+    pub asm: Option<PathBuf>,
+
+    /// Redirect ASM emulator output to file
+    #[arg(long, conflicts_with = "emulator", hide = true)]
+    pub asm_out_file: bool,
+
+    /// Disable automatic ROM setup
+    #[arg(short = 'n', long, hide = true)]
+    pub no_auto_setup: bool,
+
+    /// Use shared tables for execution
+    #[arg(short = 'j', long, hide = true)]
     pub shared_tables: bool,
 }
 
 impl ZiskExecute {
     pub fn run(&mut self) -> Result<()> {
+        if self.elf.is_none() && self.program_id.is_none() {
+            self.elf = detect_current_project_elf()?;
+        }
+
         // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
@@ -90,7 +95,11 @@ impl ZiskExecute {
 
         print_banner_command("Execute");
 
-        print_banner_field("Elf", self.elf.display());
+        if let Some(elf) = &self.elf {
+            print_banner_field("Elf", elf.display());
+        } else if let Some(program_id) = &self.program_id {
+            print_banner_field("Program ID", program_id);
+        }
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -144,7 +153,8 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
+        let elf_path = resolve_elf_path(&self.elf)?;
+        let elf = ElfBinaryFromFile::new(elf_path, false)?;
         let (pk, _) = prover.setup(&elf)?;
         prover.execute(&pk, stdin)
     }
@@ -168,7 +178,8 @@ impl ZiskExecute {
             .print_command_info()
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
+        let elf_path = resolve_elf_path(&self.elf)?;
+        let elf = ElfBinaryFromFile::new(elf_path, hints_stream.is_some())?;
         let (pk, _) = prover.setup(&elf)?;
         if let Some(hints_stream) = hints_stream {
             pk.register_hints_stream(hints_stream)?;
