@@ -2,8 +2,8 @@
 use crate::common::{get_proving_key, get_proving_key_snark};
 use anyhow::Result;
 use colored::Colorize;
-use zisk_build::ZISK_VERSION_MESSAGE;
 use std::path::PathBuf;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 use fields::Goldilocks;
 
@@ -34,7 +34,7 @@ pub struct ZiskCheckSetup {
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }

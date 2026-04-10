@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
-    ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute, ZiskInstallToolchain, ZiskNew, ZiskPlonk, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats, ZiskVerify, ZiskVerifyConstraints
+    ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute,
+    ZiskInstallToolchain, ZiskNew, ZiskPlonk, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats,
+    ZiskVerify, ZiskVerifyConstraints,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;

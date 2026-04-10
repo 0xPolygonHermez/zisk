@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-
+use crate::ux::print_banner_field;
+use crate::{common::get_proving_key, ux::print_banner};
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
@@ -11,8 +12,6 @@ use rom_setup::rom_merkle_setup;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
-use crate::ux::print_banner_field;
-use crate::{common::get_proving_key, ux::print_banner};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -34,12 +33,11 @@ pub struct ZiskProgramSetup {
     #[arg(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
     // Hidden flags
-
     /// Output dir path
     #[arg(short = 'o', long, hide = true)]
     pub output_dir: Option<PathBuf>,

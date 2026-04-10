@@ -1,7 +1,7 @@
 use anyhow::Result;
-use zisk_build::ZISK_VERSION_MESSAGE;
 use std::{fs, path::Path, process::Command};
 use yansi::Paint;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

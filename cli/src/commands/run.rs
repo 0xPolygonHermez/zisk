@@ -46,7 +46,6 @@ pub struct ZiskRun {
     profiling: Option<ProfilingMode>,
 
     // Hidden flags
-
     #[arg(short = 'f', long, hide = true)]
     riscof: bool,
 
@@ -97,10 +96,7 @@ impl ZiskRun {
             command.arg("--release");
         }
 
-        env::set_var(
-            "CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUNNER",
-            self.build_ziskemu_cmd()
-        );
+        env::set_var("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUNNER", self.build_ziskemu_cmd());
 
         command.args(["--target", ZISK_TARGET]);
 

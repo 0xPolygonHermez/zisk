@@ -25,7 +25,6 @@ pub struct ZiskStats {
     pub elf: PathBuf,
 
     // TODO: Add program-id?
-
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
@@ -34,7 +33,7 @@ pub struct ZiskStats {
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-     /// Precompiles hints file path for the guest
+    /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
@@ -71,12 +70,11 @@ pub struct ZiskStats {
     #[clap(short = 'a', long, default_value_t = false)]
     pub packed: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
     // Hidden flags
-
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
     pub asm: Option<PathBuf>,

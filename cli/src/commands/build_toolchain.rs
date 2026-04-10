@@ -1,8 +1,8 @@
 use std::{path::PathBuf, process::Command};
 
+use crate::{get_target, CommandExecutor};
 use anyhow::{Context, Result};
 use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
-use crate::{get_target, CommandExecutor};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
