@@ -12,7 +12,7 @@ pub use zisk_definitions::{
 macro_rules! profile_call {
     ($name:ident, $profile_call_id:expr) => {{
         let name_str = stringify!($name);
-        ziskos::ziskos_syscall!(
+        $crate::ziskos_syscall!(
             $crate::SYSCALL_PROFILE_ID,
             $profile_call_id,
             &name_str as *const _ as usize

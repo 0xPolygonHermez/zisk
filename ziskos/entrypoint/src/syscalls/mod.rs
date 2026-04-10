@@ -118,12 +118,13 @@ macro_rules! ziskos_syscall_ret_u64 {
         let v: u64;
         unsafe {
             core::arch::asm!(
-                concat!("csrs {port}, {p0}"),
+                concat!("csrrs {rd}, {port}, {p0}"),
                 "add x0, {p1}, {p2}",
                 port = const $csr_addr,
                 p0 = in(reg) $arg0,  // {0}
                 p1 = in(reg) $arg1,  // {1}
                 p2 = in(reg) $arg2,  // {2}
+                rd = out(reg) v,
                 options(nostack)
             );
         }

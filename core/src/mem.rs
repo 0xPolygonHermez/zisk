@@ -384,7 +384,7 @@ impl Mem {
         debug_assert!(!Mem::address_is_register(addr));
 
         // First try to read in the write section
-        if (addr >= self.write_section.start) && (addr <= (self.write_section.end - count)) {
+        if (addr >= self.write_section.start) && ((addr + count) <= self.write_section.end) {
             // Calculate the read position
             let read_position: usize = (addr - self.write_section.start) as usize;
             return &self.write_section.buffer[read_position..read_position + count as usize];

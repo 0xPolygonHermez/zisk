@@ -34,14 +34,14 @@ impl StatsCosts {
         self.mops.memory_read(address, width);
     }
     pub fn get_delta_steps(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
-        current.steps - reference.steps - 1
+        (current.steps - reference.steps).saturating_sub(1)
     }
     pub fn add_delta(
         &mut self,
         reference: &StatsCosts,
         current: &StatsCosts,
     ) -> Result<u64, String> {
-        let delta_steps = current.steps - reference.steps - 1;
+        let delta_steps = (current.steps - reference.steps).saturating_sub(1);
         if self.steps >= reference.steps && reference.steps > 0 {
             return Err(format!(
                 "COSTS OVERFLOW STEPS:{} + DELTA:{} => STEPS'{} (REF: {})",

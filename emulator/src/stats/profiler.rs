@@ -204,7 +204,7 @@ impl CallPathProfiler {
         let samples_count = self.samples.len().saturating_sub(1);
         let mut time_deltas: Vec<f64> = Vec::with_capacity(samples_count);
         let mut last_time = 0u64;
-        for (time, _) in self.samples.iter() {
+        for (time, _) in self.samples.iter().take(samples_count) {
             let delta = (*time - last_time) as f64;
             time_deltas.push(delta / 1000.0);
             last_time = *time;
