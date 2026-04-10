@@ -1,3 +1,17 @@
+//! Core library for guest programs running on the Zisk zkVM.
+//!
+//! ## Arithmetic
+//! - [`arith256`] — 256-bit multiply-add, modular arithmetic, and modular exponentiation.
+//! - [`uint256`] — Low-level 256-bit add, subtract, multiply, divide, and power.
+//! - [`constants`] — Common 256-bit constants (`ZERO_256`, `ONE_256`, etc.).
+//! - [`utils`] — Comparison helpers and alignment checks.
+//!
+//! ## Hashing
+//! - [`blake2b`], [`keccak256`], [`sha256`], [`ripemd160`]
+//!
+//! ## Elliptic curves
+//! - [`secp256k1`], [`secp256r1`], [`bn254`], [`bls12_381`]
+
 mod arith256;
 mod array_lib;
 mod blake2b;
@@ -9,6 +23,7 @@ mod ripemd160;
 mod secp256k1;
 mod secp256r1;
 mod sha256;
+mod uint256;
 mod utils;
 pub mod zkvm_accelerators;
 
@@ -24,4 +39,5 @@ pub use ripemd160::*;
 pub use secp256k1::*;
 pub use secp256r1::*;
 pub use sha256::*;
+pub use uint256::*;
 pub use utils::*;
