@@ -1,13 +1,8 @@
-use crate::{zisk_ops::OpStats, EmulationMode, InstContext};
+use crate::{zisk_ops::OpStats, InstContext};
 
 pub fn opc_profile(ctx: &mut InstContext) {
-    if ctx.emulation_mode == EmulationMode::Mem {
-        ctx.c = 0;
-        ctx.flag = false;
-    } else {
-        ctx.c = 0;
-        ctx.flag = false;
-    }
+    ctx.c = 0;
+    ctx.flag = false;
 }
 
 /// Unimplemented.  Profile can only be called from the system call context via InstContext.

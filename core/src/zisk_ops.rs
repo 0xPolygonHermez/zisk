@@ -14,7 +14,11 @@ use ziskos_hints::zisklib::fcall_proxy;
 
 use crate::{
     blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
-    ZiskRequiredOperation, EXTRA_PARAMS_ADDR, INPUT_ADDR, M64, MAX_INPUT_SIZE, REG_A0, SYS_ADDR,
+    ZiskRequiredOperation, ADD256_COST, ARITHA32_COST, ARITHAM32_COST, ARITH_EQ_384_COST,
+    ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST, DMA_64_ALIGNED_COST,
+    DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
+    DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
+    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_COST, REG_A0, SHA256_COST, SYS_ADDR,
 };
 use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
 use paste::paste;
@@ -162,7 +166,7 @@ impl Display for InvalidCodeError {
 pub trait OpStats {
     fn mem_align_read(&mut self, addr: u64, count: usize);
     fn mem_align_write(&mut self, addr: u64, count: usize);
-    fn add_extras(&mut self, extras: &[(u8, usize)]);
+    fn set_variable_cost(&mut self, cost: u64);
 }
 
 /// Stats gathering function that does nothing (used as default)
@@ -171,24 +175,9 @@ pub fn ops_none(_ctx: &InstContext, _stats: &mut dyn OpStats) {
     // No-op implementation
 }
 
-#[inline(always)]
-pub fn opc_virtual(ctx: &mut InstContext) {
-    unimplemented!("opc_virtual: virtual operation")
-}
-
-#[inline(always)]
-pub fn op_virtual(a: u64, b: u64) -> (u64, bool) {
-    unimplemented!("op_virtual: virtual operation")
-}
-
-#[inline(always)]
-pub fn ops_virtual(_ctx: &InstContext, _stats: &mut dyn OpStats) {
-    unimplemented!("ops_virtual: virtual operation")
-}
-
 /// Internal macro used to define all ops in the [`ZiskOp`] enum
 macro_rules! define_ops {
-    ( $( ($name:ident, $str_name:expr, $type:ident, $steps:expr, $code:expr, $input_size:expr, $output_size:expr, $call_fn:ident, $call_ab_fn:ident, $call_stats_fn:ident ) ),* $(,)? ) => {
+    ( $( ($name:ident, $str_name:expr, $type:ident, $cost:expr, $code:expr, $input_size:expr, $output_size:expr, $call_fn:ident, $call_ab_fn:ident, $call_stats_fn:ident ) ),* $(,)? ) => {
 		/// Represents an operation that can be executed in Zisk.
 		///
 		/// All relevant metadata associated with the operation can be efficiently accessed via
@@ -207,6 +196,41 @@ macro_rules! define_ops {
                     pub const [<$str_name:upper>]: u8 = $code;
                 }
             )*
+
+            /// Minimum opcode value across all defined operations
+            pub const MIN_OPCODE: u8 = {
+                const CODES: &[u8] = &[$($code),*];
+                let mut min = 2; // flag and copyb are reserved for internal use, so we can start from 2
+                let mut i = 1;
+                while i < CODES.len() {
+                    if CODES[i] > 1 && CODES[i] < min {
+                        min = CODES[i];
+                    }
+                    i += 1;
+                }
+                min
+            };
+
+            /// Maximum opcode value across all defined operations
+            pub const MAX_OPCODE: u8 = {
+                const CODES: &[u8] = &[$($code),*];
+                let mut max = CODES[0];
+                let mut i = 1;
+                while i < CODES.len() {
+                    if CODES[i] > max {
+                        max = CODES[i];
+                    }
+                    i += 1;
+                }
+                max
+            };
+
+            // Count opcodes
+            pub const OPCODES_COUNT: usize = {
+                const CODES: &[u8] = &[$($code),*];
+                CODES.len()
+            };
+
 			/// Returns the (string) name of the operation
             pub const fn name(&self) -> &'static str {
                 match self {
@@ -225,11 +249,11 @@ macro_rules! define_ops {
                 }
             }
 
-			/// Returns the number of steps required to execute the operation
-            pub const fn steps(&self) -> u64 {
+			/// Returns cost required to execute the operation
+            pub const fn cost(&self) -> u64 {
                 match self {
                     $(
-                        Self::$name => $steps,
+                        Self::$name => $cost,
                     )*
                 }
             }
@@ -310,6 +334,17 @@ macro_rules! define_ops {
                 }
             }
 
+			/// Executes the operation on the given inputs `a` and `b`
+			#[inline(always)]
+            pub fn is_precompiled(&self) -> bool {
+                match self {
+                    $(
+                        Self::$name => $input_size > 0,
+                    )*
+                }
+            }
+
+
 			/// Attempts to create a [`ZiskOp`] from a string name, returning an error if the
 			/// name is invalid
             pub fn try_from_name(st: &str) -> Result<ZiskOp, InvalidNameError> {
@@ -348,33 +383,6 @@ macro_rules! define_ops {
         }
     };
 }
-
-// Cost definitions: Area x Op
-const INTERNAL_COST: u64 = 0;
-const BINARY_COST: u64 = 60;
-const BINARY_ADD_COST: u64 = 25;
-const BINARY_E_COST: u64 = 53;
-const ARITHA32_COST: u64 = 95;
-const ARITHAM32_COST: u64 = 95;
-const KECCAK_COST: u64 = 25 * 3022;
-const SHA256_COST: u64 = 72 * 121;
-const POSEIDON2_COST: u64 = 14 * 75;
-const ARITH_EQ_COST: u64 = 89 * 16;
-const FCALL_COST: u64 = INTERNAL_COST;
-const ARITH_EQ_384_COST: u64 = 79 * 24;
-const ADD256_COST: u64 = 104;
-const DMA_COST: u64 = 42;
-const BLAKE2_COST: u64 = 24 * 205;
-
-const DMA_64_ALIGNED_COST: u64 = 40;
-const DMA_UNALIGNED_COST: u64 = 42;
-const DMA_PRE_POST_COST: u64 = 88;
-
-// const OP_DMA_64_ALIGNED: u8 = 0xda;
-// const OP_DMA_UNALIGNED: u8 = 0xdb;
-// const OP_DMA_PRE: u8 = 0xdc;
-// const OP_DMA_POST: u8 = 0xdd;
-// const OP_DMA_CMP_BYTE: u8 = 0xde;
 
 /// Table of Zisk opcode definitions: enum, name, type, cost, code and implementation functions
 /// This table is the backbone of the Zisk processor, it determines what functionality is supported,
@@ -438,17 +446,13 @@ define_ops! {
     (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
     (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
     // opcpdes 0xc0-0xcf are available
-    (DmaMemCpy, "dma_memcpy", Dma, DMA_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
-    (DmaMemCmp, "dma_memcmp", Dma, DMA_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
-    (DmaInputCpy, "dma_inputcpy", Dma, DMA_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
-    (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_COST, 0xd6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
-    (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_COST, 0xd7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
-    (DmaXMemSet, "dma_xmemset", Dma, DMA_COST, 0xd9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
+    (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
+    (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
+    (DmaInputCpy, "dma_inputcpy", Dma, DMA_INPUTCPY_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
+    (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_MEMCPY_COST, 0xd6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
+    (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_MEMCMP_COST, 0xd7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
+    (DmaXMemSet, "dma_xmemset", Dma, DMA_MEMSET_COST, 0xd9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
     // opcodes 0xd2-0xd9 future reserved for dma operations (memset, memcpy256, memcmp256)
-    (Dma64Aligned, "_dma_64_aligned", Dma, DMA_64_ALIGNED_COST, 0xda, 8, 0, opc_virtual, op_virtual, ops_virtual),
-    (DmaUnaligned, "_dma_unaligned", Dma, DMA_UNALIGNED_COST, 0xdb, 8, 0, opc_virtual, op_virtual, ops_virtual),
-    (DmaPre, "_dma_pre", Dma, DMA_PRE_POST_COST, 0xdc, 8, 0, opc_virtual, op_virtual, ops_virtual),
-    (DmaPost, "_dma_post", Dma, DMA_PRE_POST_COST, 0xdd, 8, 0, opc_virtual, op_virtual, ops_virtual),
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
     // opcodes 0xe0 is available
     (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),

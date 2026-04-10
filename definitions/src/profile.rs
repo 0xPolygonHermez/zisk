@@ -1,4 +1,8 @@
-pub const PROFILE_START_COST_ID: u16 = 1;
-pub const PROFILE_END_COST_ID: u16 = 2;
-pub const PROFILE_START_STEPS_ID: u16 = 3;
-pub const PROFILE_END_STEPS_ID: u16 = 4;
+pub const PROFILE_START_COST_ID: u8 = 1;
+pub const PROFILE_END_COST_ID: u8 = 2;
+pub const PROFILE_REPORT_START_COST_ID: u8 = 3;
+pub const PROFILE_REPORT_END_COST_ID: u8 = 4;
+pub const PROFILE_START_STEPS_ID: u8 = 5;
+pub const PROFILE_END_STEPS_ID: u8 = 6;
+pub const PROFILE_REPORT_START_STEPS_ID: u8 = 7;
+pub const PROFILE_REPORT_END_STEPS_ID: u8 = 8;

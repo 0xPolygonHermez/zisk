@@ -1,11 +1,10 @@
 use precompiles_helpers::DmaInfo;
 
 use crate::{
-    zisk_ops::{OpStats, ZiskOp},
-    EmulationMode, InstContext, EXTRA_PARAMS_ADDR,
+    zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMCMP_COST,
+    DMA_64_ALIGNED_MEMCMP_DIVISOR, DMA_PRE_POST_MEMCMP_COST, DMA_UNALIGNED_MEMCMP_COST,
+    EXTRA_PARAMS_ADDR,
 };
-
-const DMA_64_ALIGNED_OPS_BY_ROW: usize = 4;
 
 #[inline(always)]
 pub fn opc_dma_memcmp(ctx: &mut InstContext) {
@@ -131,11 +130,15 @@ pub fn ops_dma_xmemcmp(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
-fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, _extended: bool) {
+fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
     let addr_a = ctx.a;
     let addr_b = ctx.b;
     // let _bus_count = if extended { ctx.extended_arg as u64 } else { ctx.mem.read(EXTRA_PARAMS_ADDR, 8) };
     let count = ctx.stats_hint;
+
+    if !extended {
+        stats.mem_align_read(EXTRA_PARAMS_ADDR, 1);
+    }
 
     // pre, post, dma_align, dma_unalign
     if count == 0 {
@@ -167,13 +170,12 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, _extended: bool) 
         stats.mem_align_read(addr64_a_end, 1);
     }
 
-    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    let loop_count = ((count - pre_count - post_count) >> 3) as usize;
+    let variable_cost =
+        DMA_PRE_POST_MEMCMP_COST * ((pre_count > 0) as u64 + (post_count > 0) as u64);
     if loop_count == 0 {
         // with count < 8, there aren't 64-bits loops.
-        stats.add_extras(&[
-            (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
-            (ZiskOp::_DMA_POST, (post_count > 0) as usize),
-        ]);
+        stats.set_variable_cost(variable_cost);
     } else {
         // calculate the resources used by 64-bits loop.
         // count used are number of bytes read to demostrate memcmp(), usually count_eq + 1,
@@ -186,21 +188,18 @@ fn ops_dma_memcmps(ctx: &InstContext, stats: &mut dyn OpStats, _extended: bool) 
             stats.mem_align_read(first_loop_src64, loop_count);
             stats.mem_align_read(first_loop_dst64, loop_count);
             // add information about other machines to demostrate operation
-            let _units = loop_count.div_ceil(DMA_64_ALIGNED_OPS_BY_ROW);
-            stats.add_extras(&[
-                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
-                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
-                (ZiskOp::_DMA_64_ALIGNED, loop_count),
-            ]);
+            stats.set_variable_cost(
+                variable_cost
+                    + (loop_count as u64).div_ceil(DMA_64_ALIGNED_MEMCMP_DIVISOR)
+                        * DMA_64_ALIGNED_MEMCMP_COST,
+            );
         } else {
             stats.mem_align_read(first_loop_src64, loop_count + 1);
             stats.mem_align_read(first_loop_dst64, loop_count);
             // add information about other machines to demostrate operation
-            stats.add_extras(&[
-                (ZiskOp::_DMA_PRE, (pre_count > 0) as usize),
-                (ZiskOp::_DMA_POST, (post_count > 0) as usize),
-                (ZiskOp::_DMA_UNALIGNED, loop_count + 1),
-            ]);
+            stats.set_variable_cost(
+                variable_cost + (loop_count as u64 + 1) * DMA_UNALIGNED_MEMCMP_COST,
+            );
         }
     }
 }

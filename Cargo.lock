@@ -6237,6 +6237,7 @@ dependencies = [
  "criterion 0.5.1",
  "data-bus",
  "fields",
+ "flate2",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6245,6 +6246,7 @@ dependencies = [
  "rayon",
  "regex",
  "riscv",
+ "serde_json",
  "sm-arith",
  "sm-binary",
  "symbolic-common",
@@ -6253,6 +6255,7 @@ dependencies = [
  "vergen-git2",
  "zisk-common",
  "zisk-core",
+ "zisk-definitions",
  "zisk-pil",
 ]
 

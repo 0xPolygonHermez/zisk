@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 
-use crate::{get_ops_costs, StatsCosts, MAIN_COST};
+use crate::{OpsCosts, StatsCosts};
 
 pub const NO_ROI_ID: usize = 900_000_000;
 #[derive(Debug)]
@@ -29,12 +29,12 @@ pub struct RegionsOfInterest {
 }
 
 impl RegionsOfInterest {
-    pub fn new(id: usize, from_pc: u32, to_pc: u32, name: &str) -> Self {
+    pub fn new(id: usize, from_pc: u32, to_pc: u32, name: &str, compact: bool) -> Self {
         Self {
             id,
             from_pc,
             to_pc,
-            costs: StatsCosts::new(),
+            costs: if compact { StatsCosts::new_compact() } else { StatsCosts::new_no_compact() },
             calls: 0,
             name: name.to_string(),
             callers: BTreeMap::new(),
@@ -158,13 +158,8 @@ impl RegionsOfInterest {
     pub fn get_callers(&self) -> impl Iterator<Item = (&usize, &CallerInfo)> {
         self.callers.iter()
     }
-    pub fn update_costs(&mut self) {
-        let (cost, precompiles_cost) = get_ops_costs(&self.costs.ops);
-        self.costs.cost =
-            cost + precompiles_cost + self.costs.mops.get_cost() + self.costs.steps * MAIN_COST;
-    }
     pub fn get_cost(&self) -> u64 {
-        self.costs.cost
+        self.costs.total_cost()
     }
     pub fn get_mem_cost(&self) -> u64 {
         self.costs.mops.get_cost()
@@ -175,11 +170,18 @@ impl RegionsOfInterest {
     pub fn get_callstack_rc(&self) -> usize {
         self.call_stack_rc
     }
-    pub fn get_ops_costs(&self) -> &[u64; 256] {
-        &self.costs.ops
-    }
+    // pub fn get_ops_costs(&self) -> &[u64; 256] {
+    //     &self.costs.ops
+    // }
     pub fn get_call_stack_depth(&self) -> Option<usize> {
         self.call_stack_depth
+    }
+    pub fn add_absolute_costs(&mut self, costs: &StatsCosts) {
+        let zero = StatsCosts::new_no_compact();
+        if self.calls == 0 {
+            self.calls = 1; // Avoid division by zero in average cost calculations
+        }
+        let _ = self.costs.add_delta(&zero, costs);
     }
     pub fn add_delta_costs(
         &mut self,
@@ -210,5 +212,8 @@ impl RegionsOfInterest {
         self.callers.entry(caller_id).and_modify(|info| {
             info.steps += steps as usize;
         });
+    }
+    pub fn ops_costs(&self) -> &OpsCosts {
+        self.costs.ops_costs()
     }
 }

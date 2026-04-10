@@ -4,7 +4,15 @@
 
 use riscv::{riscv_interpreter, RiscvInstruction};
 use zisk_definitions::{
+    SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
+    SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
+    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
+    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
+    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
     SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
+    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID,
 };
 
 use crate::{
@@ -36,7 +44,7 @@ const CSR_PRECOMPILED: [&str; 27] = [
     "bls12_381_complex_add",
     "bls12_381_complex_sub",
     "bls12_381_complex_mul",
-    "add256", // Note: Constant CSR_PRECOMPILED_ADD256 needs to be updated if this is moved
+    "add256",
     "poseidon2",
     "dma_memcpy",
     "dma_memcmp",
@@ -47,16 +55,12 @@ const CSR_PRECOMPILED: [&str; 27] = [
     "blake2",
     "profile",
 ];
-const CSR_PRECOMPILED_ADDR_START: u32 = 0x800;
-const CSR_PRECOMPILED_ADDR_END: u32 = CSR_PRECOMPILED_ADDR_START + CSR_PRECOMPILED.len() as u32;
-const CSR_DMA_PRECOMPILED_ADDR_START: u32 = 0x813;
-const CSR_DMA_PRECOMPILED_ADDR_END: u32 = 0x816;
-const CSR_PRECOMPILED_ADD256: u32 = CSR_PRECOMPILED_ADDR_START + 17;
-const CSR_FCALL_ADDR_START: u32 = 0x8C0;
-const CSR_FCALL_ADDR_END: u32 = 0x8DF;
-const CSR_FCALL_GET_ADDR: u32 = 0xFFE;
-const CSR_FCALL_PARAM_ADDR_START: u32 = 0x8F0;
-const CSR_FCALL_PARAM_ADDR_END: u32 = 0x8FF;
+const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
+const CSR_FCALL_ADDR_START: u16 = 0x8C0;
+const CSR_FCALL_ADDR_END: u16 = 0x8DF;
+const CSR_FCALL_GET_ADDR: u16 = 0xFFE;
+const CSR_FCALL_PARAM_ADDR_START: u16 = 0x8F0;
+const CSR_FCALL_PARAM_ADDR_END: u16 = 0x8FF;
 const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
     [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128, 256];
 
@@ -102,7 +106,7 @@ impl Riscv2ZiskContext<'_> {
                 if riscv_instruction.rd == 0
                     && self.input_precompile == Some(SYSCALL_DMA_MEMCPY_ID as u32)
                 {
-                    self.create_precompiles_op(
+                    self.create_precompiled_op(
                         riscv_instruction,
                         "dma_memcpy",
                         riscv_instruction.rs1,
@@ -110,7 +114,7 @@ impl Riscv2ZiskContext<'_> {
                         4,
                     );
                 } else if self.input_precompile == Some(SYSCALL_DMA_MEMCMP_ID as u32) {
-                    self.create_precompiles_op(
+                    self.create_precompiled_op(
                         riscv_instruction,
                         "dma_memcmp",
                         riscv_instruction.rs1,
@@ -646,7 +650,7 @@ impl Riscv2ZiskContext<'_> {
     /// loads both input parameters a and b from their respective registers, and stores the
     /// result c into a register.
     /// NOTE: How extended static param not it's used set it to zero (jmp_offset1)
-    pub fn create_precompiles_op(
+    pub fn create_precompiled_op(
         &mut self,
         i: &RiscvInstruction,
         op: &str,
@@ -1319,61 +1323,92 @@ impl Riscv2ZiskContext<'_> {
                     self.insts.insert(rom_address, zib);
                 }
             }
-        } else if i.rd == 0
-            && (CSR_DMA_PRECOMPILED_ADDR_START..=CSR_DMA_PRECOMPILED_ADDR_END).contains(&i.csr)
-        {
-            assert!(!next_instructions.is_empty());
-            // Special "extended" precompiles that could be use jmp_offset1 as extended static parameter that
-            // was sent to bus when is a precompiles
+        } else if i.rd == 0 {
             match i.csr as u16 {
                 SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID => {
+                    assert!(!next_instructions.is_empty());
                     self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
                 }
                 SYSCALL_DMA_INPUTCPY_ID => {
+                    assert!(!next_instructions.is_empty());
                     self.transpile_dma_inputcpy_pattern(i, next_instructions);
                 }
                 SYSCALL_DMA_MEMSET_ID => {
+                    assert!(!next_instructions.is_empty());
                     self.transpile_dma_memset_pattern(i, next_instructions);
                 }
+                SYSCALL_PROFILE_ID => {
+                    assert!(!next_instructions.is_empty());
+                    self.transpile_profile_pattern(i, next_instructions);
+                }
+                SYSCALL_KECCAKF_ID
+                | SYSCALL_ARITH256_ID
+                | SYSCALL_ARITH256_MOD_ID
+                | SYSCALL_SECP256K1_ADD_ID
+                | SYSCALL_SECP256K1_DBL_ID
+                | SYSCALL_SHA256F_ID
+                | SYSCALL_BN254_CURVE_ADD_ID
+                | SYSCALL_BN254_CURVE_DBL_ID
+                | SYSCALL_BN254_COMPLEX_ADD_ID
+                | SYSCALL_BN254_COMPLEX_SUB_ID
+                | SYSCALL_BN254_COMPLEX_MUL_ID
+                | SYSCALL_ARITH384_MOD_ID
+                | SYSCALL_BLS12_381_CURVE_ADD_ID
+                | SYSCALL_BLS12_381_CURVE_DBL_ID
+                | SYSCALL_BLS12_381_COMPLEX_ADD_ID
+                | SYSCALL_BLS12_381_COMPLEX_SUB_ID
+                | SYSCALL_BLS12_381_COMPLEX_MUL_ID
+                | SYSCALL_POSEIDON2_ID
+                | SYSCALL_SECP256R1_ADD_ID
+                | SYSCALL_SECP256R1_DBL_ID
+                | SYSCALL_BLAKE2B_ROUND_ID => {
+                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    zib.src_b("reg", i.rs1 as u64, false);
+                    let precompiled =
+                        CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
+                    zib.src_a("imm", 0, false);
+                    zib.op(precompiled).unwrap();
+                    zib.verbose(precompiled);
+                    // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
+                    // to match with that precompiles proves
+                    zib.j(0, 4);
+                    zib.build();
+                    self.insts.insert(rom_address, zib);
+                }
+                CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END => {
+                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    zib.src_b("reg", i.rs1 as u64, false);
+                    let words = CSR_FCALL_PARAM_OFFSET_TO_WORDS
+                        [i.csr as usize - CSR_FCALL_PARAM_ADDR_START as usize];
+                    zib.src_a("imm", words, false);
+                    zib.op("fcall_param").unwrap();
+                    zib.verbose(&format!(
+                        "csrrs 0x{0:X}, rs1={1} => copyb[fcall_param(r{1},{2})]",
+                        i.csr, i.rs1, words
+                    ));
+                    zib.j(4, 4);
+                    zib.build();
+                    self.insts.insert(rom_address, zib);
+                }
                 _ => {
-                    panic!("Invalid CSR 0x{:03X}", i.csr);
+                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    zib.src_b("reg", i.rs1 as u64, false);
+                    zib.src_a("mem", CSR_ADDR + (i.csr * 8) as u64, false);
+                    zib.op("or").unwrap();
+                    zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
+                    zib.verbose(&format!(
+                        "{} r{}, 0x{:x}, r{} # rs!=rd=0",
+                        i.inst, i.rd, i.csr, i.rs1
+                    ));
+                    zib.j(4, 4);
+                    zib.build();
+                    self.insts.insert(rom_address, zib);
                 }
             }
-        } else if i.rd == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
-            zib.src_b("reg", i.rs1 as u64, false);
-
-            if (CSR_PRECOMPILED_ADDR_START..=CSR_PRECOMPILED_ADDR_END).contains(&i.csr) {
-                let precompiled = CSR_PRECOMPILED[(i.csr - CSR_PRECOMPILED_ADDR_START) as usize];
-                zib.src_a("imm", 0, false);
-                zib.op(precompiled).unwrap();
-                zib.verbose(precompiled);
-                // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
-                // to match with that precompiles proves
-                zib.j(0, 4);
-            } else if (CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END).contains(&i.csr) {
-                let words =
-                    CSR_FCALL_PARAM_OFFSET_TO_WORDS[(i.csr - CSR_FCALL_PARAM_ADDR_START) as usize];
-                zib.src_a("imm", words, false);
-                zib.op("fcall_param").unwrap();
-                zib.verbose(&format!(
-                    "csrrs 0x{0:X}, rs1={1} => copyb[fcall_param(r{1},{2})]",
-                    i.csr, i.rs1, words
-                ));
-                zib.j(4, 4);
-            } else {
-                zib.src_a("mem", CSR_ADDR + (i.csr * 8) as u64, false);
-                zib.op("or").unwrap();
-                zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.j(4, 4);
-            }
-            zib.build();
-            self.insts.insert(rom_address, zib);
         } else if i.rs1 == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
             zib.src_a("imm", 0, false);
-            if i.csr == CSR_FCALL_GET_ADDR {
+            if i.csr == CSR_FCALL_GET_ADDR as u32 {
                 zib.src_b("mem", INPUT_ADDR, false);
                 zib.op("fcall_get").unwrap();
                 zib.verbose(&format!(
@@ -1389,7 +1424,7 @@ impl Riscv2ZiskContext<'_> {
             zib.j(4, 4);
             zib.build();
             self.insts.insert(rom_address, zib);
-        } else if i.csr == CSR_PRECOMPILED_ADD256 {
+        } else if i.csr == SYSCALL_ADD256_ID as u32 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
             zib.src_a("imm", 0, false);
             zib.src_b("reg", i.rs1 as u64, false);
@@ -1604,8 +1639,8 @@ impl Riscv2ZiskContext<'_> {
         if i.rd == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
 
-            if (CSR_FCALL_ADDR_START..=CSR_FCALL_ADDR_END).contains(&i.csr) {
-                let func_id = (((i.csr - CSR_FCALL_ADDR_START) as u64) << 5) + i.imme as u64;
+            if (CSR_FCALL_ADDR_START as u32..=CSR_FCALL_ADDR_END as u32).contains(&i.csr) {
+                let func_id = ((i.csr as u64 - CSR_FCALL_ADDR_START as u64) << 5) + i.imme as u64;
                 zib.src_a("imm", func_id, false);
                 zib.src_b("imm", 0, false);
                 zib.op("fcall").unwrap();
@@ -2044,6 +2079,24 @@ impl Riscv2ZiskContext<'_> {
                         consecutive addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
+    }
+    fn transpile_profile_pattern(
+        &mut self,
+        i: &RiscvInstruction,
+        next_instructions: &[RiscvInstruction],
+    ) {
+        assert!(!next_instructions.is_empty());
+        assert!(next_instructions[0].inst == "addi");
+        assert!(next_instructions[0].rd == 0);
+        assert!(next_instructions[0].rs1 == 0);
+        // profile transpilation pattern:
+        //
+        //  csrs  0x81A, reg(tag)    ===>  profile x0, reg(tag), imm(cmd_id) ─┐
+        //  addi  x0, x0, imm(cmd_id)      addi x0, x0, imm(cmd_id)           │ jmp+8
+        //  ..........                     ..........   <─────────────────────┘
+        let rs1 = i.rs1;
+        let rs2 = next_instructions[0].imm as u32;
+        self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, 8);
     }
 } // impl Riscv2ZiskContext
 
