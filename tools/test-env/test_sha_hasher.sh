@@ -90,7 +90,7 @@ main() {
 
             step "Verifying proof..."
             ensure cargo-zisk verify -p ./proof/vadcop_final_proof.bin 2>&1 | tee verify_output.log || return 1
-            if ! grep -F "Stark proof was verified" verify_output.log; then
+            if ! grep -F "STARK proof was verified" verify_output.log; then
                 err "verify proof failed"
                 return 1
             fi
