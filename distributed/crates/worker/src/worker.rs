@@ -324,9 +324,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(vk.vk)
     }
 
-    pub fn cancel_current_computation(&mut self) {
+    pub async fn cancel_current_computation(&mut self) {
+        self.prover.cancel();
+
         if let Some(handle) = self.current_computation.take() {
-            handle.abort();
+            let _ = handle.await;
         }
 
         // Drop the actor on a blocking thread: closes the channel, which signals the ordering
@@ -341,8 +343,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// Cancels any in-flight computation and clears the current job context.
     /// Use this when the worker should become fully idle (e.g., job cancelled,
     /// stale job cleared on reconnection).
-    pub fn clear_current_job(&mut self) {
-        self.cancel_current_computation();
+    pub async fn clear_current_job(&mut self) {
+        self.cancel_current_computation().await;
         self.current_job = None;
     }
 

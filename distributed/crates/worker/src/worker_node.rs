@@ -276,7 +276,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         // Cancel any running computation
-        self.worker.cancel_current_computation();
+        self.worker.cancel_current_computation().await;
 
         self.worker.set_state(WorkerState::Disconnected);
         Ok(())
@@ -694,7 +694,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            self.worker.clear_current_job();
+                            self.worker.clear_current_job().await;
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
                             info!("Coordinator confirmed active job; keep computing");
@@ -702,14 +702,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                self.worker.clear_current_job();
+                                self.worker.clear_current_job().await;
                             }
                         }
                         Some(Err(_)) => {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            self.worker.clear_current_job();
+                            self.worker.clear_current_job().await;
                         }
                     }
 
@@ -750,7 +750,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        self.worker.clear_current_job();
+                        self.worker.clear_current_job().await;
                         self.worker.set_state(WorkerState::Idle);
                     }
                 }
@@ -792,7 +792,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        self.worker.cancel_current_computation().await;
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -863,7 +863,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Execution-only for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        self.worker.cancel_current_computation().await;
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
