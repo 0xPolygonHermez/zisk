@@ -68,7 +68,7 @@ pub struct ZiskStats {
     #[clap(short = 'a', long, default_value_t = false)]
     pub packed: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 

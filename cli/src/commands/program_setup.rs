@@ -33,7 +33,7 @@ pub struct ZiskProgramSetup {
     #[arg(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 

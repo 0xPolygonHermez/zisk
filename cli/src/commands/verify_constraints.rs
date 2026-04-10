@@ -54,12 +54,11 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 
     // Hidden flags
-
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
     pub asm: Option<PathBuf>,

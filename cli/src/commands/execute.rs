@@ -27,9 +27,10 @@ pub struct ZiskExecute {
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    // /// Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
+    // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
     // #[arg(long, requires = "inputs")]
     // pub save_inputs: bool,
+    //
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
@@ -52,7 +53,7 @@ pub struct ZiskExecute {
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 

@@ -12,7 +12,7 @@ pub struct ZiskVerify {
     #[clap(short = 'p', long)]
     pub proof: String,
 
-    /// Verbose (-v, -vv)
+    /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8, // Using u8 to hold the number of `-v`
 }
