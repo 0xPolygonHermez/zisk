@@ -3,14 +3,14 @@ use anyhow::Result;
 
 use clap::Parser;
 use colored::Colorize;
-use executor::get_packed_info;
-use proofman_common::ProofmanOptions;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{ProverClientBuilder, ZiskVerifyConstraintsResult};
+use zisk_prover_backend::{
+    AsmOptions, ProverClientBuilder, ProverOpts, ZiskVerifyConstraintsResult,
+};
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -132,19 +132,8 @@ impl ZiskVerifyConstraints {
             self.emulator
         };
 
-        let mut options = ProofmanOptions::default();
-        options.verify_constraints();
-        options.verbose_mode(self.verbose.into());
-        if self.gpu {
-            options.gpu();
-        }
-        options.packed_info(get_packed_info());
-
-        let result = if emulator {
-            self.run_emu(stdin, options)?
-        } else {
-            self.run_asm(stdin, hints_stream, options)?
-        };
+        let result =
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         info!(
             "{}",
@@ -159,19 +148,20 @@ impl ZiskVerifyConstraints {
         Ok(())
     }
 
-    pub fn run_emu(
-        &mut self,
-        stdin: ZiskStdin,
-        options: ProofmanOptions,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
+        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+
         let prover = ProverClientBuilder::new()
             .emu()
             .verify_constraints()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .options(options)
-            .print_command_info()
+            .with_prover_options(prover_options)
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
@@ -184,21 +174,39 @@ impl ZiskVerifyConstraints {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        options: ProofmanOptions,
     ) -> Result<ZiskVerifyConstraintsResult> {
+        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+
+        // ASM-specific options (only used if not emulator)
+        let mut asm_options = AsmOptions::default();
+        if let Some(ref path) = self.asm {
+            asm_options = asm_options.asm_path(path.clone());
+        }
+        if let Some(port) = self.port {
+            asm_options = asm_options.base_port(port);
+        }
+        if self.no_auto_setup {
+            asm_options = asm_options.no_auto_setup();
+        }
+        if self.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if self.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        prover_options = prover_options.with_asm_options(asm_options);
+
         let prover = ProverClientBuilder::new()
             .asm()
             .verify_constraints()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .asm_path_opt(self.asm.clone())
-            .no_auto_setup(self.no_auto_setup)
-            .base_port_opt(self.port)
-            .unlock_mapped_memory(self.unlock_mapped_memory)
-            .asm_out_file(self.asm_out_file)
-            .options(options)
-            .print_command_info()
+            .with_prover_options(prover_options)
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;

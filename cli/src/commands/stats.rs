@@ -1,8 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use executor::get_packed_info;
-use proofman_common::ProofmanOptions;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
 use tracing::warn;
@@ -11,7 +9,7 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::ProverClientBuilder;
+use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts};
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
@@ -140,19 +138,8 @@ impl ZiskStats {
             self.emulator
         };
 
-        let mut options = ProofmanOptions::default();
-        options.verify_constraints();
-        options.verbose_mode(self.verbose.into());
-        if self.packed {
-            options.packed();
-        }
-        options.packed_info(get_packed_info());
-
-        let (world_rank, n_processes, stats) = if emulator {
-            self.run_emu(stdin, options)?
-        } else {
-            self.run_asm(stdin, hints_stream, options)?
-        };
+        let (world_rank, n_processes, stats) =
+            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         if world_rank % 2 == 1 {
             std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -172,19 +159,26 @@ impl ZiskStats {
         Ok(())
     }
 
-    pub fn run_emu(
-        &mut self,
-        stdin: ZiskStdin,
-        options: ProofmanOptions,
-    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+
+        if self.packed {
+            prover_options = prover_options.packed();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+        if let Some(max) = self.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+        if let Some(threads) = self.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+
         let prover = ProverClientBuilder::new()
             .emu()
             .witness()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .print_command_info()
-            .options(options)
+            .with_prover_options(prover_options)
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
@@ -203,21 +197,46 @@ impl ZiskStats {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        options: ProofmanOptions,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+        let mut prover_options =
+            ProverOpts::default().shared_tables(!self.no_shared_tables_mpi).verbose(self.verbose);
+
+        if self.packed {
+            prover_options = prover_options.packed();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+        if let Some(max) = self.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+        if let Some(threads) = self.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+
+        // ASM-specific options (only used if not emulator)
+        let mut asm_options = AsmOptions::default();
+        if let Some(ref path) = self.asm {
+            asm_options = asm_options.asm_path(path.clone());
+        }
+        if let Some(port) = self.port {
+            asm_options = asm_options.base_port(port);
+        }
+        if self.no_auto_setup {
+            asm_options = asm_options.no_auto_setup();
+        }
+        if self.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if self.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        prover_options = prover_options.with_asm_options(asm_options);
+
         let prover = ProverClientBuilder::new()
             .asm()
             .witness()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .asm_path_opt(self.asm.clone())
-            .no_auto_setup(self.no_auto_setup)
-            .base_port_opt(self.port)
-            .unlock_mapped_memory(self.unlock_mapped_memory)
-            .asm_out_file(self.asm_out_file)
-            .options(options)
-            .print_command_info()
+            .with_prover_options(prover_options)
             .build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;

@@ -34,7 +34,7 @@ impl ZiskProgramVK {
 pub enum ProofMode {
     VadcopFinal,
     VadcopFinalMinimal,
-    Snark,
+    Plonk,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

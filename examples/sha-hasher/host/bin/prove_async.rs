@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, ProofOpts, ProverClient, ZiskProofWithPublicValues,
+    load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskProofWithPublicValues,
     ZiskPublics, ZiskStdin,
 };
 
@@ -25,19 +25,16 @@ async fn main() -> Result<()> {
     println!("Input prepared: {} iterations", n);
 
     println!("Building prover client...");
-    let client = ProverClient::embedded().gpu().assembly().build()?;
+    let proof_opts = ProverOpts::default().minimal_memory();
+    let client =
+        ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Submitting proof (non-blocking)...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let handle = client
-        .prove_async(&PROGRAM, stdin)
-        .executor(ExecutorKind::Assembly)
-        .with_proof_options(proof_opts)
-        .submit()?;
+    let handle = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run_async()?;
     println!("Proof submitted — handle returned immediately");
 
     println!("Awaiting proof...");

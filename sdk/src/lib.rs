@@ -1,42 +1,38 @@
-mod async_prove;
 mod cancel;
 mod client;
 mod embedded;
 mod execute;
 mod hints;
 mod input;
-mod minimal;
-mod plonk;
 mod proof;
 mod prove;
 mod remote;
 mod setup;
 mod stdin;
 mod upload;
+mod wrap;
 
-pub use async_prove::{AsyncProveRequest, ProofHandle};
 pub use cancel::CancellationToken;
 pub use client::{ProverClient, ProverClientBuilder};
 pub use embedded::EmbeddedClientConfig;
 pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
+pub use prove::{ProofHandle, ProofKind, ProveRequest, WatchEvent};
 // pub use program::{Elf, GuestProgram, ProgramId};
-pub use minimal::MinimalRequest;
-pub use plonk::PlonkRequest;
 pub use proof::Proof;
-pub use prove::{ProofKind, ProveRequest, WatchEvent};
 pub use remote::RemoteClientConfig;
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
+pub use wrap::WrapRequest;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, ProgramId};
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{
-    MinimalBuilder, PlonkBuilder, ProofOpts, ProveBuilder, ZiskExecuteResult, ZiskProveResult,
+    AsmOptions, ProveBuilder, ProverOpts, WrapBuilder, ZiskExecuteResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 
@@ -68,10 +64,9 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        opts: ProofOpts,
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
-        (**self).run_prove(program, input, executor, mode, opts, cancel)
+        (**self).run_prove(program, input, executor, mode, cancel)
     }
 
     fn run_execute(
@@ -84,22 +79,14 @@ impl<C: Client + Send + Sync> Client for Arc<C> {
         (**self).run_execute(program, input, executor, cancel)
     }
 
-    fn run_minimal(
+    fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
+        mode: ProofMode,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
-        (**self).run_minimal(proof_with_publics, override_publics, override_program_vk)
-    }
-
-    fn run_plonk(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        (**self).run_plonk(proof_with_publics, override_publics, override_program_vk)
+        (**self).run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
     }
 }
 
@@ -136,7 +123,6 @@ pub(crate) trait Client: Send + Sync {
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        opts: ProofOpts,
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof>;
     fn run_execute(
@@ -146,15 +132,10 @@ pub(crate) trait Client: Send + Sync {
         executor: ExecutorKind,
         cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult>;
-    fn run_minimal(
+    fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues>;
-    fn run_plonk(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
+        mode: ProofMode,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues>;

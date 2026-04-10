@@ -11,7 +11,7 @@ use zisk_distributed_grpc_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, HealthCheckRequest, HintsMode,
     InputMode, JobStatusRequest, LaunchProofRequest,
 };
-use zisk_prover_backend::{GuestProgram, ProofOpts};
+use zisk_prover_backend::{GuestProgram, ProverOpts};
 
 use crate::cancel::CancellationToken;
 use crate::execute::ExecuteResult;
@@ -43,11 +43,18 @@ impl Default for RemoteClientConfig {
 /// Builder for a remote [`ProverClient`].
 pub(crate) struct RemoteClientBuilder {
     config: RemoteClientConfig,
+    prover_options: ProverOpts,
 }
 
 impl RemoteClientBuilder {
     pub(crate) fn new(config: RemoteClientConfig) -> Self {
-        Self { config }
+        Self { config, prover_options: ProverOpts::default() }
+    }
+
+    #[must_use]
+    pub(crate) fn with_prover_options(mut self, opts: ProverOpts) -> Self {
+        self.prover_options = opts;
+        self
     }
 
     pub(crate) async fn build(self) -> Result<RemoteClient> {
@@ -65,21 +72,32 @@ impl RemoteClientBuilder {
             .await
             .context("Coordinator health check failed")?;
 
-        Ok(RemoteClient { channel, config: self.config })
+        Ok(RemoteClient { channel, config: self.config, prover_options: self.prover_options })
     }
 
     /// Build synchronously (blocks on the async connection).
     pub(crate) fn build_sync(self) -> Result<RemoteClient> {
         let config = self.config;
+        let prover_options = self.prover_options;
         tokio::runtime::Handle::try_current()
-            .map(|handle| handle.block_on(RemoteClientBuilder::new(config.clone()).build()))
+            .map(|handle| {
+                handle.block_on(
+                    RemoteClientBuilder::new(config.clone())
+                        .with_prover_options(prover_options.clone())
+                        .build(),
+                )
+            })
             .unwrap_or_else(|_| {
                 // No runtime available, create a temporary one
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .expect("Failed to create tokio runtime")
-                    .block_on(RemoteClientBuilder::new(config).build())
+                    .block_on(
+                        RemoteClientBuilder::new(config)
+                            .with_prover_options(prover_options)
+                            .build(),
+                    )
             })
     }
 }
@@ -89,6 +107,8 @@ pub(crate) struct RemoteClient {
     channel: Channel,
     #[allow(dead_code)]
     config: RemoteClientConfig,
+    #[allow(dead_code)]
+    prover_options: ProverOpts,
 }
 
 impl RemoteClient {
@@ -122,13 +142,15 @@ impl Client for RemoteClient {
         input: ProgramInput,
         _executor: ExecutorKind,
         _mode: ProofMode,
-        _opts: ProofOpts,
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         // Check for cancellation before starting
         if cancel.is_some_and(|t| t.is_cancelled()) {
             anyhow::bail!("Operation was cancelled");
         }
+
+        // Note: prover_options are stored in self.prover_options but not yet used in remote proving
+        // TODO: Pass prover options to the remote coordinator
 
         // For now, we use a blocking approach within the sync interface
         let rt = tokio::runtime::Handle::try_current().map_err(|_| {
@@ -245,23 +267,14 @@ impl Client for RemoteClient {
         )
     }
 
-    fn run_minimal(
+    fn run_wrap(
         &self,
         _proof_with_publics: &ZiskProofWithPublicValues,
+        _mode: ProofMode,
         _override_publics: Option<&ZiskPublics>,
         _override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
-        // TODO: Remote minimal
-        anyhow::bail!("Remote minimal not yet implemented")
-    }
-
-    fn run_plonk(
-        &self,
-        _proof_with_publics: &ZiskProofWithPublicValues,
-        _override_publics: Option<&ZiskPublics>,
-        _override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        // TODO: Remote PLONK generation
-        anyhow::bail!("Remote PLONK generation not yet implemented")
+        // TODO: Remote wrap
+        anyhow::bail!("Remote wrap not yet implemented")
     }
 }
