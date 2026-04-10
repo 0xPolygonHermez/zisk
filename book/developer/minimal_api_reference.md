@@ -6,17 +6,18 @@ _Version 1.0 · Creation date: 17-03-2026 · Last update: 17-03-2026_
 
 gRPC protocol buffer definition: [`zisk_user_api.proto`](../../distributed/crates/node/proto/zisk_user_api.proto)
 
-| Method                                             | Category | Description                                                      |
-| -------------------------------------------------- | -------- | ---------------------------------------------------------------- |
-| [`RegisterGuestProgram`](#registerguestprogram) \* | Program  | Register a new program                                           |
-| [`SetupGuestProgram`](#setupguestprogram)          | Program  | Prepares the guest to generate proofs                            |
-| [`Prove`](#prove) \*                               | Proof    | Submit a `prove` job; returns `job_id` immediately               |
-| [`WatchJob`](#watchjob) \*                         | Runtime  | Subscribe to state events for a job (reconnectable)              |
-| [`ListJobs`](#listjobs)                            | Runtime  | List jobs with optional filters                                  |
-| [`GetJob`](#getjob)                                | Runtime  | Get full details and current status of a job                     |
-| [`WaitJobResult`](#waitjobresult) \*               | Runtime  | Block until a job reaches a terminal state and return the result |
-| [`PushJobInput`](#pushjobinput)                    | Runtime  | Push input data to a job waiting for input                       |
-| [`CancelJob`](#canceljob)                          | Runtime  | Cancel a queued or running job                                   |
+| Method                                          | Category | Description                                                         |
+| ----------------------------------------------- | -------- | ------------------------------------------------------------------- |
+| [`RegisterGuestProgram`](#registerguestprogram) | Program  | Register a new program                                              |
+| [`SetupGuestProgram`](#setupguestprogram)       | Program  | Prepares the guest to generate proofs                               |
+| [`JobRequest`](#jobrequest)                     | Job      | Submit a new job of various kinds (prove, wrap, aggregate, execute) |
+| [`WaitJobResult`](#waitjobresult)               | Runtime  | Block until a job reaches a terminal state and return the result    |
+| [`Prove`](#prove)                               | Proof    | Submit a `prove` job; returns `job_id` immediately                  |
+| [`Wrap`](#wrap)                                 | Proof    | Submit a `wrap` job; returns `job_id` immediately                   |
+| [`Aggregate`](#aggregate)                       | Proof    | Submit an `aggregate` job; returns `job_id` immediately             |
+| [`Execute`](#execute)                           | Proof    | Submit an `execute` job; returns `job_id` immediately               |
+| [`WatchJob`](#watchjob)                         | Runtime  | Subscribe to state events for a job (reconnectable)                 |
+| [`PushJobInput`](#pushjobinput)                 | Runtime  | Push input data to a job waiting for input                          |
 
 ### Common data types
 
@@ -66,7 +67,7 @@ struct SetupGuestProgramResponse {
 
 ## Jobs Management
 
-### `JobRequest` and `JobResponse`
+### `JobRequest`
 
 `JobRequest -> JobResponse`
 
@@ -171,7 +172,7 @@ struct Proof {
 
 ```
 
-### Wrap 
+### Wrap
 
 ```rust
 struct WrapRequest {
@@ -182,6 +183,7 @@ struct WrapRequest {
 ```
 
 ### Aggregate
+
 // TODO To be defined
 struct AggregateRequest {
 proof: Vec<Proof>,
