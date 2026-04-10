@@ -155,7 +155,7 @@ fn ops_dma_memcpys(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
         stats.mem_align_write(addr64_a_end, 1);
     }
 
-    let loop_count = ((count - pre_count - post_count) >> 32) as usize;
+    let loop_count = ((count - pre_count - post_count) >> 3) as usize;
     let variable_cost =
         DMA_PRE_POST_MEMCPY_COST * ((pre_count > 0) as u64 + (post_count > 0) as u64);
 

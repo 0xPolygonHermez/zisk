@@ -112,7 +112,7 @@ pub fn ops_dma_xmemset(ctx: &InstContext, stats: &mut dyn OpStats) {
         stats.mem_align_write(addr64_a_end, 1);
     }
 
-    let loop_count = (count - pre_count - post_count) >> 32;
+    let loop_count = (count - pre_count - post_count) >> 3;
     let variable_cost =
         DMA_PRE_POST_MEMSET_COST * ((pre_count > 0) as u64 + (post_count > 0) as u64);
     if loop_count == 0 {

@@ -157,7 +157,10 @@ impl CallPathProfiler {
     /// # Examples
     /// ```no_run
     /// # use std::error::Error;
+    /// # use ziskemu::{CallPathProfiler, RegionsOfInterest};
     /// # fn example() -> Result<(), Box<dyn Error>> {
+    /// # let profiler = CallPathProfiler::new();
+    /// # let rois: Vec<RegionsOfInterest> = vec![];
     /// profiler.save_to_file("profile.json", &rois)?;
     ///
     /// // For compressed output:
@@ -198,7 +201,7 @@ impl CallPathProfiler {
         }
 
         // Calculate time deltas (differences between consecutive samples)
-        let samples_count = self.samples.len() - 1;
+        let samples_count = self.samples.len().saturating_sub(1);
         let mut time_deltas: Vec<f64> = Vec::with_capacity(samples_count);
         let mut last_time = 0u64;
         for (time, _) in self.samples.iter() {
@@ -331,7 +334,7 @@ impl CallPathProfiler {
                 "samples": {
                     "weightType": "tracing-ms",
                     "weight": time_deltas[1..].to_vec(),
-                    "stack": sample_stack,
+                    "stack": sample_stack[..samples_count].to_vec(),
                     "timeDeltas": time_deltas[0..samples_count].to_vec(),
                     "threadCPUDelta": vec![Value::Null; samples_count],
                     "eventDelay": vec![Value::Null; samples_count],

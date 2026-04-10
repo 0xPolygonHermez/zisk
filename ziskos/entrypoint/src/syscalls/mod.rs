@@ -127,5 +127,6 @@ macro_rules! ziskos_syscall_ret_u64 {
                 options(nostack)
             );
         }
+        v
     }};
 }
