@@ -3,12 +3,11 @@ use std::path::PathBuf;
 use crate::cancel::CancellationToken;
 use crate::ZiskStdin;
 use anyhow::Result;
-use proofman_common::ProofmanOptions;
 use zisk_common::ProofMode;
 use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::{
-    get_packed_info, get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver,
-    GuestProgram, ProofOpts, ProverEngine, ZiskProver,
+    get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, GuestProgram,
+    ProverEngine, ProverOpts, ZiskProver,
 };
 
 use crate::{
@@ -18,28 +17,33 @@ use crate::{
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
     "Assembly executor not enabled — call .assembly() on the builder";
 
-/// Configuration for the embedded prover backend.
-#[derive(Default)]
+/// Configuration for embedded (local) prover client.
+#[derive(Clone, Default)]
 pub struct EmbeddedClientConfig {
-    pub(crate) proving_key: Option<PathBuf>,
-    pub(crate) proving_key_snark: Option<PathBuf>,
+    pub proving_key: Option<PathBuf>,
+    pub proving_key_snark: Option<PathBuf>,
 }
 
 /// Builder for an embedded [`ProverClient`].
 pub(crate) struct EmbeddedClientBuilder {
     executor: ExecutorKind,
     proof_kind: ProofKind,
-    options: ProofmanOptions,
-    config: EmbeddedClientConfig,
+    prover_options: ProverOpts,
 }
 
 impl EmbeddedClientBuilder {
     pub(crate) fn new(config: EmbeddedClientConfig) -> Self {
+        let mut prover_options = ProverOpts::default();
+        if let Some(pk) = config.proving_key {
+            prover_options.proving_key = Some(pk);
+        }
+        if let Some(pk_snark) = config.proving_key_snark {
+            prover_options.proving_key_snark = Some(pk_snark);
+        }
         Self {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::StarkMinimal,
-            options: ProofmanOptions::default(),
-            config,
+            prover_options,
         }
     }
 
@@ -50,9 +54,13 @@ impl EmbeddedClientBuilder {
     }
 
     #[must_use]
+    pub(crate) fn with_prover_options(mut self, opts: ProverOpts) -> Self {
+        self.prover_options = opts;
+        self
+    }
+
     pub(crate) fn gpu(mut self) -> Self {
-        self.options.gpu();
-        self.options.packed_info(get_packed_info());
+        self.prover_options.gpu = true;
         self
     }
 
@@ -63,12 +71,11 @@ impl EmbeddedClientBuilder {
     }
 
     pub(crate) fn build(self) -> Result<EmbeddedClient> {
-        let pk = get_proving_key(self.config.proving_key.as_ref());
-        let pk_snark = get_proving_key_snark(self.config.proving_key_snark.as_ref());
-        let use_snark = matches!(self.proof_kind, ProofKind::Plonk);
+        let pk = get_proving_key(self.prover_options.proving_key.as_ref());
+        let pk_snark = get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
         let prover = match self.executor {
-            ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, self.options, use_snark)?,
-            ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, self.options, use_snark)?,
+            ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, self.prover_options.clone())?,
+            ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, self.prover_options.clone())?,
         };
         Ok(EmbeddedClient { prover })
     }
@@ -76,23 +83,40 @@ impl EmbeddedClientBuilder {
     fn build_emu(
         pk: PathBuf,
         pk_snark: PathBuf,
-        options: ProofmanOptions,
-        use_snark: bool,
+        prover_options: ProverOpts,
     ) -> Result<EmbeddedProver> {
-        let emu = EmuProver::new(use_snark, false, pk, pk_snark, false, options, None)?;
-        Ok(EmbeddedProver::Emu(ZiskProver::<Emu>::new(emu)))
+        let emu = EmuProver::new(
+            false,                                   // snark_wrapper
+            true,                                    // preload_snark
+            pk,                                      // proving_key
+            pk_snark,                                // proving_key_snark
+            prover_options.shared_tables,            // shared_tables
+            prover_options.build_proofman_options(), // options
+            None,                                    // logging_config
+        )?;
+        Ok(EmbeddedProver::Emu(ZiskProver::<Emu>::new(emu, prover_options)))
     }
 
     fn build_asm(
         pk: PathBuf,
         pk_snark: PathBuf,
-        options: ProofmanOptions,
-        use_snark: bool,
+        prover_options: ProverOpts,
     ) -> Result<EmbeddedProver> {
         let asm = AsmProver::new(
-            use_snark, false, pk, pk_snark, false, None, false, false, false, options, false, None,
+            false,                                           // snark_wrapper
+            true,                                            // preload_snark
+            pk,                                              // proving_key
+            pk_snark,                                        // proving_key_snark
+            prover_options.shared_tables,                    // shared_tables
+            prover_options.asm_options.base_port,            // base_port
+            prover_options.asm_options.unlock_mapped_memory, // unlock_mapped_memory
+            prover_options.asm_options.asm_out_file,         // asm_out_file
+            prover_options.asm_options.no_auto_setup,        // no_auto_setup
+            prover_options.build_proofman_options(),         // options
+            false,                                           // is_distributed
+            None,                                            // logging_config
         )?;
-        Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm)))
+        Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, prover_options)))
     }
 }
 
@@ -140,7 +164,6 @@ impl Client for EmbeddedClient {
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        opts: ProofOpts,
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         // Check for cancellation before starting.
@@ -151,14 +174,14 @@ impl Client for EmbeddedClient {
             ($builder:expr) => {
                 match mode {
                     ProofMode::VadcopFinal => $builder,
-                    ProofMode::VadcopFinalMinimal => $builder.minimal(),
-                    ProofMode::Snark => $builder.plonk(),
+                    ProofMode::VadcopFinalMinimal => $builder.wrap(ProofMode::VadcopFinalMinimal),
+                    ProofMode::Plonk => $builder.wrap(ProofMode::Plonk),
                 }
             };
         }
         let result = match (&self.prover, executor, input) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
-                apply_mode!(p.prove(program, stdin.into_inner()).with_proof_options(opts)).run()?
+                apply_mode!(p.prove(program, stdin.into_inner())).run()?
             }
             (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
                 anyhow::bail!("Hints require Assembly executor")
@@ -173,7 +196,7 @@ impl Client for EmbeddedClient {
                 if p.was_setup_with_hints() {
                     anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
                 }
-                apply_mode!(p.prove(program, stdin.into_inner()).with_proof_options(opts)).run()?
+                apply_mode!(p.prove(program, stdin.into_inner())).run()?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
                 if !p.was_setup_with_hints() {
@@ -182,10 +205,7 @@ impl Client for EmbeddedClient {
                     );
                 }
                 p.register_hints_stream(hints.into_inner())?;
-                apply_mode!(p
-                    .prove(program, ZiskStdin::null().into_inner())
-                    .with_proof_options(opts))
-                .run()?
+                apply_mode!(p.prove(program, ZiskStdin::new().into_inner())).run()?
             }
         };
         Ok(Proof::new(result))
@@ -234,9 +254,10 @@ impl Client for EmbeddedClient {
         Ok(ExecuteResult::new(result))
     }
 
-    fn run_minimal(
+    fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
+        mode: ProofMode,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
@@ -244,28 +265,10 @@ impl Client for EmbeddedClient {
         let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
         match &self.prover {
             EmbeddedProver::Emu(p) => {
-                p.prover.minimal(&proof_with_publics.proof, publics, program_vk)
+                p.prover.wrap(&proof_with_publics.proof, publics, program_vk, mode)
             }
             EmbeddedProver::Asm(p) => {
-                p.prover.minimal(&proof_with_publics.proof, publics, program_vk)
-            }
-        }
-    }
-
-    fn run_plonk(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        let publics = override_publics.unwrap_or(&proof_with_publics.publics);
-        let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
-        match &self.prover {
-            EmbeddedProver::Emu(p) => {
-                p.prover.plonk(&proof_with_publics.proof, publics, program_vk)
-            }
-            EmbeddedProver::Asm(p) => {
-                p.prover.plonk(&proof_with_publics.proof, publics, program_vk)
+                p.prover.wrap(&proof_with_publics.proof, publics, program_vk, mode)
             }
         }
     }

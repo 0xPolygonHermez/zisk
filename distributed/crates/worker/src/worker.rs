@@ -12,7 +12,7 @@ use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    get_packed_info, Asm, Emu, ProgramId, ProverClientBuilder, ZiskBackend, ZiskProver,
+    Asm, AsmOptions, Emu, ProgramId, ProverClientBuilder, ProverOpts, ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -144,7 +144,6 @@ impl ProverConfig {
 
         if prover_service_config.gpu {
             options.gpu();
-            options.packed_info(get_packed_info());
         }
 
         Ok(ProverConfig {
@@ -203,16 +202,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Emu>> {
+        let mut prover_options = ProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .shared_tables(prover_config.shared_tables)
+            .rma(prover_config.rma)
+            .aggregation(prover_config.aggregation);
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+
         let prover = Arc::new(
-            ProverClientBuilder::new()
-                .emu()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .options(prover_config.options.clone())
-                .build()?,
+            ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
         );
 
         let guest_program = prover_config.guest_program.clone();
@@ -236,20 +238,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Asm>> {
+        let mut prover_options = ProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .shared_tables(prover_config.shared_tables)
+            .rma(prover_config.rma)
+            .aggregation(prover_config.aggregation);
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+
+        // ASM-specific options for distributed worker
+        let mut asm_options = AsmOptions::default();
+        if let Some(port) = prover_config.asm_port {
+            asm_options = asm_options.base_port(port);
+        }
+        if prover_config.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if prover_config.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        asm_options = asm_options.is_distributed();
+        prover_options = prover_options.with_asm_options(asm_options);
+
         let prover = Arc::new(
-            ProverClientBuilder::new()
-                .asm()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .base_port_opt(prover_config.asm_port)
-                .unlock_mapped_memory(prover_config.unlock_mapped_memory)
-                .asm_out_file(prover_config.asm_out_file)
-                .options(prover_config.options.clone())
-                .is_distributed(true)
-                .build()?,
+            ProverClientBuilder::new().asm().prove().with_prover_options(prover_options).build()?,
         );
 
         let guest_program = prover_config.guest_program.clone();

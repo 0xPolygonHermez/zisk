@@ -1,6 +1,6 @@
 use crate::create_debug_info;
 use crate::GuestProgram;
-use crate::ProofOpts;
+use crate::ProverOpts;
 use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
@@ -291,9 +291,9 @@ impl ProverBackend {
         &self,
         stdin: ZiskStdin,
         mode: ProofMode,
-        proof_options: ProofOpts,
+        prover_options: ProverOpts,
     ) -> Result<ZiskProveResult> {
-        if mode == ProofMode::Snark && self.snark_wrapper.is_none() {
+        if mode == ProofMode::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -316,12 +316,12 @@ impl ProverBackend {
                 ProvePhaseInputs::Full(),
                 ProofOptions::new(
                     false,
-                    proof_options.aggregation,
-                    proof_options.rma,
+                    prover_options.aggregation,
+                    prover_options.rma,
                     minimal,
-                    proof_options.verify_proofs,
-                    proof_options.minimal_memory,
-                    proof_options.output_dir_path.clone(),
+                    prover_options.verify_proofs,
+                    prover_options.minimal_memory,
+                    prover_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -345,10 +345,10 @@ impl ProverBackend {
         let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
 
         match (mode, proof) {
-            (ProofMode::Snark, Some(vadcop_proof)) => {
+            (ProofMode::Plonk, Some(vadcop_proof)) => {
                 let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
                     &vadcop_proof,
-                    proof_options.output_dir_path.clone(),
+                    prover_options.output_dir_path.clone(),
                 )?;
 
                 let publics = ZiskPublics::new(&vadcop_proof.public_values);

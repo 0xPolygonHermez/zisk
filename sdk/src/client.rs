@@ -5,21 +5,19 @@ use anyhow::Result;
 use zisk_common::ZiskProgramVK;
 
 use zisk_common::ProofMode;
-use zisk_prover_backend::{GuestProgram, ProofOpts};
+use zisk_prover_backend::{GuestProgram, ProverOpts};
 
 use crate::{
-    async_prove::AsyncProveRequest,
     cancel::CancellationToken,
     embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
-    minimal::MinimalRequest,
-    plonk::PlonkRequest,
     proof::Proof,
     prove::ProveRequest,
     remote::{RemoteClient, RemoteClientBuilder, RemoteClientConfig},
     setup::SetupRequest,
     upload::UploadRequest,
+    wrap::WrapRequest,
     Client, ExecutorKind, ZiskProofWithPublicValues, ZiskPublics,
 };
 use std::sync::Arc;
@@ -45,6 +43,7 @@ fn ensure_single_instance() {
 /// are available and which backend is constructed on `.build()`.
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
+    prover_options: ProverOpts,
     proof_kind: ProofKind,
     gpu: bool,
     backend: B,
@@ -53,6 +52,16 @@ pub struct ProverClientBuilder<B> {
 impl Default for ProverClientBuilder<EmbeddedClientConfig> {
     fn default() -> Self {
         ProverClient::embedded()
+    }
+}
+
+/// Methods shared across all backends.
+impl<B> ProverClientBuilder<B> {
+    /// Set proof generation options (e.g. minimal memory mode).
+    #[must_use]
+    pub fn with_prover_options(mut self, opts: ProverOpts) -> Self {
+        self.prover_options = opts;
+        self
     }
 }
 
@@ -113,7 +122,10 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
     /// Build the [`ProverClient`].
     pub fn build(self) -> Result<ProverClient> {
         ensure_single_instance();
-        let mut builder = EmbeddedClientBuilder::new(self.backend).executor(self.executor);
+        let mut builder = EmbeddedClientBuilder::new(self.backend)
+            .executor(self.executor)
+            .with_prover_options(self.prover_options);
+
         if self.gpu {
             builder = builder.gpu();
         }
@@ -144,14 +156,16 @@ impl ProverClientBuilder<RemoteClientConfig> {
     /// Build the [`ProverClient`].
     pub fn build(self) -> Result<ProverClient> {
         ensure_single_instance();
-        let client = RemoteClientBuilder::new(self.backend).build_sync()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(client)) })
+        let client = RemoteClientBuilder::new(self.backend)
+            .with_prover_options(self.prover_options)
+            .build_sync()?;
+        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(Box::new(client))) })
     }
 }
 
 enum BackendClient {
     Embedded(Box<EmbeddedClient>),
-    Remote(RemoteClient),
+    Remote(Box<RemoteClient>),
 }
 
 /// Prover client. Runs proofs using local (embedded) or remote infrastructure.
@@ -172,6 +186,7 @@ impl ProverClient {
         ProverClientBuilder {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::StarkMinimal,
+            prover_options: ProverOpts::default(),
             backend: EmbeddedClientConfig::default(),
             gpu: false,
         }
@@ -188,6 +203,7 @@ impl ProverClient {
         ProverClientBuilder {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::StarkMinimal,
+            prover_options: ProverOpts::default(),
             backend: RemoteClientConfig { url: url.into(), ..Default::default() },
             gpu: false,
         }
@@ -201,26 +217,17 @@ impl ProverClient {
         }
     }
 
-    #[must_use]
-    pub fn prove<'a>(
-        &'a self,
-        program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
-    ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, input)
-    }
-
-    /// Async variant of [`prove`](Self::prove).
+    /// Build a prove request.
     ///
-    /// Returns an [`AsyncProveRequest`] builder. Call `.submit()` for non-blocking execution
-    /// or `.run()` for blocking execution with event support.
+    /// Returns a [`ProveRequest`] builder.
+    /// Call `.run()` for blocking execution or `.submit()` for non-blocking execution.
     #[must_use]
-    pub fn prove_async(
+    pub fn prove(
         &self,
         program: &GuestProgram,
         input: impl Into<ProgramInput>,
-    ) -> AsyncProveRequest<Self> {
-        AsyncProveRequest::new(self.clone(), program.clone(), input)
+    ) -> ProveRequest<Self> {
+        ProveRequest::new(self.clone(), program.clone(), input)
     }
 
     #[must_use]
@@ -242,20 +249,16 @@ impl ProverClient {
         UploadRequest::new(self, program)
     }
 
+    /// Wrap an existing proof to a different format.
+    ///
+    /// See [`ProofMode`] for available formats.
     #[must_use]
-    pub fn minimal<'a>(
+    pub fn wrap<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> MinimalRequest<'a, Self> {
-        MinimalRequest::new(self, proof_with_publics)
-    }
-
-    #[must_use]
-    pub fn plonk<'a>(
-        &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-    ) -> PlonkRequest<'a, Self> {
-        PlonkRequest::new(self, proof_with_publics)
+        mode: ProofMode,
+    ) -> WrapRequest<'a, Self> {
+        WrapRequest::new(self, proof_with_publics, mode)
     }
 }
 
@@ -301,12 +304,11 @@ impl Client for ProverClient {
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        opts: ProofOpts,
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, opts, cancel),
-            BackendClient::Remote(c) => c.run_prove(program, input, executor, mode, opts, cancel),
+            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, cancel),
+            BackendClient::Remote(c) => c.run_prove(program, input, executor, mode, cancel),
         }
     }
 
@@ -323,34 +325,19 @@ impl Client for ProverClient {
         }
     }
 
-    fn run_minimal(
+    fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
+        mode: ProofMode,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
         match self.inner.as_ref() {
             BackendClient::Embedded(c) => {
-                c.run_minimal(proof_with_publics, override_publics, override_program_vk)
+                c.run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
             }
             BackendClient::Remote(c) => {
-                c.run_minimal(proof_with_publics, override_publics, override_program_vk)
-            }
-        }
-    }
-
-    fn run_plonk(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        match self.inner.as_ref() {
-            BackendClient::Embedded(c) => {
-                c.run_plonk(proof_with_publics, override_publics, override_program_vk)
-            }
-            BackendClient::Remote(c) => {
-                c.run_plonk(proof_with_publics, override_publics, override_program_vk)
+                c.run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
             }
         }
     }

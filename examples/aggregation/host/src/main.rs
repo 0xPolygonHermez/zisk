@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("guest");
 static PROGRAM2: GuestProgram = load_program!("guest-agg");
@@ -13,7 +13,8 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::embedded().gpu().build()?;
+    let proof_opts = ProverOpts::default().minimal_memory();
+    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
 
     println!("Setting up first program...");
     client.setup(&PROGRAM1).run()?;
@@ -32,16 +33,14 @@ fn main() -> Result<()> {
     );
 
     println!("Generating first proof for program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result1 = client.prove(&PROGRAM1, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result1 = client.prove(&PROGRAM1, stdin).run()?;
 
     let n = 2000u32;
     let stdin2 = ZiskStdin::new();
     stdin2.write(&n);
 
     println!("Generating second proof for program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result2 = client.prove(&PROGRAM1, stdin2).with_proof_options(proof_opts).run()?;
+    let vadcop_result2 = client.prove(&PROGRAM1, stdin2).run()?;
 
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
@@ -49,10 +48,7 @@ fn main() -> Result<()> {
     stdin_aggregation.write(&vadcop_result1.get_proof_bytes());
     stdin_aggregation.write(&vadcop_result2.get_proof_bytes());
 
-    let proof_opts = ProofOpts::default().minimal_memory();
-
-    let result_aggregation =
-        client.prove(&PROGRAM2, stdin_aggregation).with_proof_options(proof_opts).run()?;
+    let result_aggregation = client.prove(&PROGRAM2, stdin_aggregation).run()?;
 
     result_aggregation.verify()?;
 

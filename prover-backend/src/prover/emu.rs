@@ -6,7 +6,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
-use crate::{ensure_rom, get_rom_bin_path, ProofOpts};
+use crate::{ensure_rom, get_rom_bin_path, ProverOpts};
 use executor::initialize_executor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -203,28 +203,24 @@ impl ProverEngine for EmuProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        proof_options: ProofOpts,
+        prover_options: ProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, mode, proof_options)
+        self.core_prover.backend.prove(stdin, mode, prover_options)
     }
 
-    fn plonk(
+    fn wrap(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
+        mode: ProofMode,
     ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.plonk(proof, publics, vk)
-    }
-
-    fn minimal(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.minimal(proof, publics, vk)
+        match mode {
+            ProofMode::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofMode::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", mode)),
+        }
     }
 
     fn prove_phase(

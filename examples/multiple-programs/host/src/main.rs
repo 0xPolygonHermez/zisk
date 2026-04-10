@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use zisk_sdk::{load_program, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
 
@@ -24,7 +24,8 @@ async fn main() -> Result<()> {
     // Create a `ProverClient` method.
     // let client = ProverClient::embedded().build()?;
 
-    let client = ProverClient::embedded().gpu().build()?;
+    let proof_opts = ProverOpts::default().minimal_memory();
+    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
 
     // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 
@@ -45,8 +46,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for first program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&PROGRAM1, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result = client.prove(&PROGRAM1, stdin).run()?;
 
     println!("Verifying proof...");
     let vkey = client.vk(&PROGRAM1)?;
@@ -68,8 +68,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for second program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result2 = client.prove(&program2, stdin2).with_proof_options(proof_opts).run()?;
+    let vadcop_result2 = client.prove(&program2, stdin2).run()?;
 
     println!("Verifying proof...");
     let vkey2 = client.vk(&program2)?;
