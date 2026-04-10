@@ -10,19 +10,27 @@ This guide walks you through ZiskEmu's profiling capabilities, progressing from 
 
 2. **Basic Profiling**: Global statistics showing cost distribution across major categories (base, main, opcodes, precompiles, memory)
 
-3. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
+3. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
 
-4. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
+4. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
 
-5. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
+5. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
 
-6. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
+6. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
 
-7. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
+7. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
 
-8. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+8. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
 
-9. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
+9. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
+
+10. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
+
+11. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
+
+12. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+
+13. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
 
 ## Introduction
 
@@ -326,6 +334,379 @@ Use this information to:
 - Find operations with high count but disproportionate cost (optimization candidates)
 - Verify that precompiles are being used where expected
 - Understand the balance between computation (OPCODES), memory access (MEMORY), and complex operations (PRECOMPILES)
+
+## SDK Report Mode
+
+For a **cleaner, more compact output** ideal for continuous integration or quick checks, use the `--sdk` flag. This provides a streamlined report with only the essential summary information.
+
+### Command
+
+```bash
+ziskemu -e <elf> -i <input> --sdk
+```
+
+### Output Example
+
+```
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ REPORT SUMMARY                                                                                                    ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  STEPS                                                                                                    92,875,129  ║
+║  COST                                                                                              11,437,643,381  ║
+║  RAM                                                                                                  17.61 MB /  64.00 MB  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ COST DISTRIBUTION SUMMARY                                                                                         ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  CATEGORY     ∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙          COST      %  ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  Base         ▎∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙     293,601,280   2.6%  ║
+║  Main         ███████████████████████████████████████████████████████∙∙∙∙   6,315,508,772  55.2%  ║
+║  Opcodes      ████████████▊∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙   1,334,639,984  11.7%  ║
+║  Precompiles  █████████████████████████▊∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙   2,565,960,716  22.4%  ║
+║  Memory       █████████▎∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙∙     927,932,629   8.1%  ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  Total                                                                       11,437,643,381 100.0%  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+The SDK report provides:
+- **Clean visual layout** with box-drawing characters
+- **Progress bars** showing the proportional cost of each category
+- **Essential metrics only**: steps, total cost, RAM usage, and cost distribution
+- **No detailed breakdowns** - ideal for automated testing or quick cost checks
+
+### SDK Selective Sections
+
+By default, the SDK report shows only the summary. You can selectively enable additional sections:
+
+#### Show Opcode Details (`--opcodes`)
+
+Adds a section showing the top 10 most expensive opcodes with their cost distribution and FROPS hit rates:
+
+```bash
+ziskemu -e <elf> -i <input> --sdk --opcodes
+```
+
+This adds a **COST DISTRIBUTION BY OPCODE** section comparing regular operations vs frequent operations (FROPS).
+
+#### Show Top Functions (`--top-functions`)
+
+Lists the functions with highest cost. **Requires `-S`** to read symbols:
+
+```bash
+ziskemu -e <elf> -i <input> --sdk --top-functions -S
+```
+
+This adds a **TOP COST FUNCTIONS** section with automatic compacting of long function names.
+
+**Note**: Using `--top-functions` automatically enables symbol reading (`-S`), so you can omit the `-S` flag if you only need it for this feature.
+
+#### Show Profile Tags (`--profile-tags`)
+
+Displays accumulated profile tag measurements from your code. **Requires profile tags** in your program (see [Profile Tags](#profile-tags) section):
+
+```bash
+ziskemu -e <elf> -i <input> --sdk --profile-tags
+```
+
+This shows sections like **STEPS PROFILE TAGS** and **COST PROFILE TAGS** if you've instrumented your code with profile markers.
+
+#### Combining Options
+
+You can combine multiple flags to customize the report:
+
+```bash
+# Show summary + opcodes + top functions
+ziskemu -e <elf> -i <input> --sdk --opcodes --top-functions -S
+
+# Show all optional sections
+ziskemu -e <elf> -i <input> --sdk --opcodes --top-functions --profile-tags -S
+```
+
+**Behavior Note**: If you specify any of the selective flags (`--opcodes`, `--top-functions`, `--profile-tags`), **only the summary plus the explicitly requested sections** will be shown. If you don't specify any selective flags, you get only the summary.
+
+### SDK Width Configuration
+
+Control the width of the SDK report output with `--sdk-width`:
+
+```bash
+# Use wider report (150 characters)
+ziskemu -e <elf> -i <input> --sdk --sdk-width=150
+
+# Use narrower report (100 characters) 
+ziskemu -e <elf> -i <input> --sdk --sdk-width=100
+```
+
+**Default width**: 120 characters. Wider reports provide more space for progress bars and function names, while narrower reports fit better in smaller terminals or log viewers.
+
+## Function Name Display Options
+
+When displaying function-level profiling information with `-S`, function names can become very long, especially in Rust with its fully-qualified paths and generic parameters. ZiskEmu provides options to control how these names are displayed.
+
+### Compact Names (Default)
+
+**By default**, long function names are automatically shortened to 160 characters using intelligent compacting:
+
+```bash
+# Default behavior - compact to 160 characters
+ziskemu -e <elf> -i <input> -X -S
+```
+
+The compacting algorithm:
+1. Collapses nested generic parameters: `<A<B<C>>>` → `<A<…>>`
+2. Elides intermediate path segments: `std::io::default_write_fmt::Adapter` → `std::..::Adapter`
+3. Maintains readability while reducing length
+
+### Custom Compact Length
+
+Specify a different maximum length:
+
+```bash
+# Compact to 80 characters
+ziskemu -e <elf> -i <input> -X -S --compact-names=80
+
+# Compact to 200 characters  
+ziskemu -e <elf> -i <input> -X -S --compact-names=200
+```
+
+### Disable Compacting
+
+To see complete, uncompacted function names:
+
+```bash
+ziskemu -e <elf> -i <input> -X -S --no-compact-names
+```
+
+**When to use each option:**
+
+- **Default (160 chars)**: Good balance for most terminal widths and readability
+- **Shorter (80-100 chars)**: When viewing in narrow terminals or want very concise output
+- **Longer (200+ chars)**: When you need more context from the function path
+- **No compacting**: When you need to see the complete, exact function signatures (e.g., for copy-pasting into code searches)
+
+## Profile Tags
+
+Profile tags allow you to **instrument your code** to measure specific code sections, loops, or algorithms. This is useful when you want to:
+
+- Measure the cost or steps of a specific algorithm
+- Compare different implementation approaches
+- Track performance of critical sections across multiple calls
+- Identify hotspots within a single function
+
+### How Profile Tags Work
+
+You add markers in your guest code using macros provided by `ziskos`. These markers:
+- Have **zero overhead** when not running in the ZiskEmu profiler
+- Work at the **source code level** - you decide what to measure
+- Can measure either **steps** (execution cycles) or **cost** (profiling cost)
+- Can either **print immediately** or **accumulate for a summary report**
+
+### Setting Up Profile Tags
+
+In your guest code's `Cargo.toml`, add the ziskos dependency:
+
+```toml
+[dependencies]
+ziskos = { path = "../../ziskos" }  # Adjust path as needed
+```
+
+In your guest source code:
+
+```rust
+use ziskos::{profile_start, profile_end};
+use ziskos::{profile_report_start, profile_report_end};
+use ziskos::{profile_steps_start, profile_steps_end};
+use ziskos::{profile_report_steps_start, profile_report_steps_end};
+
+fn main() {
+    // Example usage in your code
+    profile_start!(hash_computation);
+    let result = expensive_hash_function(&data);
+    profile_end!(hash_computation);
+    
+    // ... more code
+}
+```
+
+### Profile Tag Macros
+
+There are **8 macros** organized in 2 dimensions:
+
+**Dimension 1 - What to measure:**
+- **Cost macros** (`profile_start!` / `profile_end!`): Measure profiling cost
+- **Steps macros** (`profile_steps_start!` / `profile_steps_end!`): Measure execution steps
+
+**Dimension 2 - When to report:**
+- **Immediate** (`profile_start!` / `profile_end!`): Print result after each `end!` call
+- **Report** (`profile_report_start!` / `profile_report_end!`): Accumulate and show at program end
+
+#### Immediate Output Macros
+
+Print the measurement immediately after the `end!` call:
+
+```rust
+// Measure and print COST after each execution
+profile_start!(my_algorithm);
+run_my_algorithm();
+profile_end!(my_algorithm);
+// Prints: [my_algorithm] 12345
+
+// Measure and print STEPS after each execution  
+profile_steps_start!(my_loop);
+for i in 0..1000 {
+    expensive_operation(i);
+}
+profile_steps_end!(my_loop);
+// Prints: [my_loop] 45678
+```
+
+**Use case**: When you want to track each individual execution, or when the measured section is called only once or a few times.
+
+#### Report Macros
+
+Accumulate measurements and show statistics at the end:
+
+```rust
+for batch in batches {
+    profile_report_start!(process_batch);
+    process_batch(&batch);
+    profile_report_end!(process_batch);
+}
+// No output during execution
+
+// At program end, you'll see accumulated statistics:
+// Total, average, min, max for all executions
+```
+
+**Use case**: When measuring sections called many times (loops, repeated operations) and you want aggregate statistics rather than individual measurements.
+
+### Complete Example
+
+```rust
+use ziskos::{
+    profile_start, profile_end,
+    profile_report_start, profile_report_end,
+    profile_steps_start, profile_steps_end,
+    profile_report_steps_start, profile_report_steps_end
+};
+
+fn main() {
+    // Measure total cost once
+    profile_start!(total_execution);
+    
+    // Accumulate statistics for repeated calls
+    for i in 0..100 {
+        profile_report_steps_start!(loop_iteration);
+        expensive_computation(i);
+        profile_report_steps_end!(loop_iteration);
+    }
+    
+    // Nested measurements
+    profile_steps_start!(data_processing);
+    
+    profile_report_start!(hash_phase);
+    for item in items {
+        compute_hash(item);
+    }
+    profile_report_end!(hash_phase);
+    
+    profile_steps_end!(data_processing);
+    
+    profile_end!(total_execution);
+}
+```
+
+### Viewing Profile Tag Results
+
+To see the accumulated profile tag statistics, add `--profile-tags` to your command:
+
+```bash
+# With standard report
+ziskemu -e <elf> -i <input> -X --profile-tags
+
+# With SDK report  
+ziskemu -e <elf> -i <input> --sdk --profile-tags
+```
+
+The output shows aggregated statistics for all profile tags used with the `report` variants:
+
+```
+PROFILE TAGS STEPS (STEPS, % STEPS, CALLS, AVG, MIN, MAX)
+----------------------------------------------------------
+     10,234,567  11.02%        100     102,345     98,123     125,678  loop_iteration
+      3,456,789   3.72%         50      69,135     45,000      89,000  hash_phase
+
+PROFILE TAGS COST (COST, % COST, CALLS, AVG, MIN, MAX)
+-------------------------------------------------------
+  1,234,567,890  10.79%        100  12,345,678  10,000,000  15,000,000  total_execution
+    456,789,012   3.99%         50   9,135,780   5,000,000  12,000,000  hash_phase
+```
+
+**Statistics shown:**
+- **TOTAL**: Sum of all measurements
+- **% TOTAL**: Percentage of total steps or cost
+- **CALLS**: Number of times the tag was executed
+- **AVG**: Average per call
+- **MIN**: Minimum value observed
+- **MAX**: Maximum value observed
+
+### Best Practices
+
+1. **Use descriptive tag names**: `hash_computation` is better than `tag1`
+2. **Choose report vs. immediate based on frequency**:
+   - Few calls (1-10): Use immediate variants
+   - Many calls (100+): Use report variants
+3. **Match start/end pairs**: Always use matching macro pairs (same tag name, same variant)
+4. **Don't nest same tag names**: Each tag should represent a unique code section
+5. **Combine with function profiling**: Profile tags show "what", function profiling shows "where"
+
+## Firefox Profiler Integration
+
+ZiskEmu can export profiling data to **Firefox Profiler format**, enabling advanced visualization and analysis of your program's execution.
+
+### Generating Profiler Data
+
+Use `--profiler-output` to specify the output file:
+
+```bash
+# Generate compressed profiler data (recommended)
+ziskemu -e <elf> -i <input> -X -S --profiler-output=profile.json.gz
+
+# Generate uncompressed JSON
+ziskemu -e <elf> -i <input> -X -S --profiler-output=profile.json
+```
+
+**Requirements**: The `-S` flag is **required** to load symbol information. The `-X` flag is **recommended** for complete profiling data.
+
+**Default**: If you use `-X -S` without specifying `--profiler-output`, a file named `profile.json.gz` is created automatically.
+
+### Viewing in Firefox Profiler
+
+1. Go to https://profiler.firefox.com
+2. Click "Load a profile from file"
+3. Select your `profile.json.gz` file
+
+The Firefox Profiler provides:
+- **Call tree visualization** showing the function call hierarchy
+- **Flame graphs** for identifying performance hotspots
+- **Timeline view** showing execution progress over time
+- **Function details** with cumulative costs
+- **Search and filtering** capabilities
+
+### Use Cases
+
+Firefox Profiler is particularly useful when:
+- You need to **visualize complex call graphs**
+- Standard text reports are too verbose
+- You want to **share profiling results** with team members
+- You need to **compare multiple profiling runs**
+- You want **interactive exploration** of the call stack
+
+### File Format
+
+The exported file follows the [Firefox Profiler format specification](https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md), making it compatible with other tools that support this format.
 
 ## Function-Level Profiling
 
