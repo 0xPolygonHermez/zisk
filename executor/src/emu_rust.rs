@@ -10,8 +10,7 @@ use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::{
-    DeviceMetricsList, DummyCounter, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle,
-    MAX_NUM_STEPS,
+    DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
 
 use anyhow::Result;
@@ -56,13 +55,15 @@ impl EmulatorRust {
         stdin: &Mutex<ZiskStdin>,
         sm_bundle: &StaticSMBundle<F>,
     ) -> Result<EmulatorResult> {
-        let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, &stdin.lock().unwrap());
+        let stdin_guard = stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))?;
+        let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, &stdin_guard)?;
+        drop(stdin_guard);
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
         timer_start_info!(COUNT);
-        let (main_count, secn_count) = self.count(zisk_rom, &min_traces, sm_bundle);
+        let (main_count, secn_count) = self.count(zisk_rom, &min_traces, sm_bundle)?;
         timer_stop_and_log_info!(COUNT);
 
         Ok((min_traces, main_count, secn_count, None, None, steps))
@@ -73,7 +74,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         num_threads: usize,
         stdin: &ZiskStdin,
-    ) -> Vec<EmuTrace> {
+    ) -> Result<Vec<EmuTrace>> {
         // Call emulate with these options
         let input_data = stdin.read_data();
 
@@ -84,8 +85,7 @@ impl EmulatorRust {
             ..EmuOptions::default()
         };
 
-        ZiskEmulator::compute_minimal_traces(zisk_rom, &input_data, &emu_options, num_threads)
-            .expect("Error during emulator execution")
+        Ok(ZiskEmulator::compute_minimal_traces(zisk_rom, &input_data, &emu_options, num_threads)?)
     }
 
     /// Counts metrics for secondary state machines based on minimal traces.
@@ -104,11 +104,11 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
-    ) -> (DeviceMetricsList, NestedDeviceMetricsList) {
+    ) -> Result<(DeviceMetricsList, NestedDeviceMetricsList)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = sm_bundle.build_data_bus_counters(false);
+                let mut data_bus = sm_bundle.build_data_bus_counters(false)?;
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,
@@ -124,9 +124,9 @@ impl EmulatorRust {
                     counters.push(counter);
                 }
 
-                counters
+                Ok(counters)
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         let mut main_count = Vec::new();
         let mut secn_count = HashMap::new();
@@ -137,20 +137,26 @@ impl EmulatorRust {
                     None => {
                         main_count.push((
                             ChunkId(chunk_id),
-                            counter.unwrap_or_else(|| Box::new(DummyCounter {})),
+                            counter.ok_or_else(|| {
+                                anyhow::anyhow!("main counter is None for chunk {chunk_id}")
+                            })?,
                         ));
                     }
                     Some(idx) => {
-                        secn_count
-                            .entry(idx)
-                            .or_insert_with(Vec::new)
-                            .push((ChunkId(chunk_id), counter.unwrap()));
+                        secn_count.entry(idx).or_insert_with(Vec::new).push((
+                            ChunkId(chunk_id),
+                            counter.ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "secondary counter is None for chunk {chunk_id}, idx {idx}"
+                                )
+                            })?,
+                        ));
                     }
                 }
             }
         }
 
-        (main_count, secn_count)
+        Ok((main_count, secn_count))
     }
 }
 

@@ -51,16 +51,17 @@ use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 
+use anyhow::Result;
+
 pub type EmulatorResult = (
     Vec<EmuTrace>,
     DeviceMetricsList,
     NestedDeviceMetricsList,
-    Option<JoinHandle<AsmRunnerMO>>,
-    Option<JoinHandle<AsmRunnerRH>>,
+    Option<JoinHandle<Result<AsmRunnerMO>>>,
+    Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
 );
 
-use anyhow::Result;
 /// Trait for unified execution across different emulator backends
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]

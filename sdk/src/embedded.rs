@@ -149,7 +149,7 @@ impl Client for EmbeddedClient {
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         // Check for cancellation before starting.
-        if cancel.map_or(false, |t| t.is_cancelled()) {
+        if cancel.is_some_and(|t| t.is_cancelled()) {
             anyhow::bail!("Operation was cancelled");
         }
         macro_rules! apply_mode {
@@ -175,13 +175,13 @@ impl Client for EmbeddedClient {
                 unimplemented!("Assembly prover does not yet support emulation mode")
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
-                if p.was_setup_with_hints() {
+                if p.was_setup_with_hints()? {
                     anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
                 }
                 apply_mode!(p.prove(program, stdin.into_inner()).with_proof_options(opts)).run()?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
-                if !p.was_setup_with_hints() {
+                if !p.was_setup_with_hints()? {
                     anyhow::bail!(
                         "Program was set up without hints — pass ZiskStdin, not ZiskHints"
                     );
@@ -204,7 +204,7 @@ impl Client for EmbeddedClient {
         cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult> {
         // Check for cancellation before starting.
-        if cancel.map_or(false, |t| t.is_cancelled()) {
+        if cancel.is_some_and(|t| t.is_cancelled()) {
             anyhow::bail!("Operation was cancelled");
         }
         let result = match (&self.prover, executor, input) {
@@ -221,13 +221,13 @@ impl Client for EmbeddedClient {
                 unimplemented!("Assembly prover does not yet support emulation mode")
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
-                if p.was_setup_with_hints() {
+                if p.was_setup_with_hints()? {
                     anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
                 }
                 p.execute(program, stdin.into_inner())?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
-                if !p.was_setup_with_hints() {
+                if !p.was_setup_with_hints()? {
                     anyhow::bail!(
                         "Program was set up without hints — pass ZiskStdin, not ZiskHints"
                     );

@@ -42,6 +42,8 @@ use zisk_pil::{
     SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
+use anyhow::Result;
+
 pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
@@ -93,19 +95,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - The ZisK ROM to execute.
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) -> Result<()> {
         self.state.set_rom(zisk_rom.clone(), use_hints);
-        self.orchestrator.set_rom(zisk_rom);
+        self.orchestrator.set_rom(zisk_rom)
     }
 
     /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
-        self.rom_executor.set_stdin(stdin);
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        self.rom_executor.set_stdin(stdin)
     }
 
     /// Sets ASM resources for execution (only applicable for ASM emulator).
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
-        self.rom_executor.set_asm_resources(asm_resources);
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+        self.rom_executor.set_asm_resources(asm_resources)
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
@@ -135,7 +137,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
     ) -> ProofmanResult<()> {
         let start_total = Instant::now();
         self.state.reset();
-        self.orchestrator.reset();
+        self.orchestrator
+            .reset()
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
 
@@ -160,7 +164,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 &self.state.stats,
                 &_exec_scope,
             )
-            .expect("Failed to execute ROM and collect minimal traces");
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
 
         let execution_duration = start_partial.elapsed();
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
@@ -171,14 +175,22 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         timer_start_info!(PLAN);
         let start_partial = Instant::now();
 
-        self.planner.assign_rom_instance(&pctx);
+        self.planner
+            .assign_rom_instance(&pctx)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         let main_output = self.planner.plan_main::<F>(&output.min_traces, output.main_count);
-        *self.state.min_traces.write().unwrap() = Some(output.min_traces);
+        *self.state.min_traces.write().map_err(|e| {
+            proofman_common::ProofmanError::InvalidSetup(format!("min_traces lock poisoned: {e}"))
+        })? = Some(output.min_traces);
 
-        let (main_assignments, cost_main) =
-            self.planner.assign_main_instances(&pctx, &sctx, global_ids, main_output.plans);
-        self.registry.populate_main_instances(&pctx, &self.state, main_assignments)?;
+        let (main_assignments, cost_main) = self
+            .planner
+            .assign_main_instances(&pctx, &sctx, global_ids, main_output.plans)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
+        self.registry
+            .populate_main_instances(&pctx, &self.state, main_assignments)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         stats_end!(self.state.stats, &_main_plan_scope);
 
@@ -203,8 +215,20 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         if let Some(handle_mo) = output.handle_mo {
             stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
 
-            let asm_runner_mo =
-                handle_mo.join().expect("Error during Assembly Memory Operations thread execution");
+            let asm_runner_mo = handle_mo
+                .join()
+                .map_err(|_| {
+                    proofman_common::ProofmanError::InvalidSetup(
+                        "Assembly Memory Operations thread panicked".to_string(),
+                    )
+                })
+                .and_then(|r| {
+                    r.map_err(|e| {
+                        proofman_common::ProofmanError::InvalidSetup(format!(
+                            "Assembly Memory Operations execution failed: {e}"
+                        ))
+                    })
+                })?;
 
             stats_end!(self.state.stats, &_mo_wait_scope);
             stats_begin!(self.state.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
@@ -222,9 +246,25 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
         if let Some(handle_rh) = output.handle_rh {
             timer_start_info!(WAIT_ASM_RH);
-            let rh_data = handle_rh.join().expect("Error during ROM Histogram thread execution");
+            let rh_data = handle_rh
+                .join()
+                .map_err(|_| {
+                    proofman_common::ProofmanError::InvalidSetup(
+                        "ROM Histogram thread panicked".to_string(),
+                    )
+                })
+                .and_then(|r| {
+                    r.map_err(|e| {
+                        proofman_common::ProofmanError::InvalidSetup(format!(
+                            "ROM Histogram execution failed: {e}"
+                        ))
+                    })
+                })?;
 
-            self.orchestrator.set_rh_data(rh_data);
+            self.orchestrator
+                .set_rh_data(rh_data)
+                .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
+
             timer_stop_and_log_info!(WAIT_ASM_RH);
         }
 
@@ -240,10 +280,20 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let mut secn_planning: Vec<_> =
             secn_planning.into_iter().flat_map(|(_, plans)| plans).collect();
 
-        self.planner.assign_secn_instances(&pctx, global_ids, &mut secn_planning);
+        self.planner
+            .assign_secn_instances(&pctx, global_ids, &mut secn_planning)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
-        let secn_global_ids: Vec<usize> =
-            secn_planning.iter().map(|plan| plan.global_id.unwrap()).collect();
+        let secn_global_ids: Vec<usize> = secn_planning
+            .iter()
+            .map(|plan| {
+                plan.global_id.ok_or_else(|| {
+                    proofman_common::ProofmanError::InvalidSetup(
+                        "secn plan missing global_id after assignment".to_string(),
+                    )
+                })
+            })
+            .collect::<ProofmanResult<Vec<_>>>()?;
 
         // Add public values to the proof context
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
@@ -253,28 +303,39 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         drop(publics);
 
         // Store secondary planning in execution state
-        *self.state.secn_planning.write().unwrap() = secn_planning;
+        *self.state.secn_planning.write().map_err(|e| {
+            proofman_common::ProofmanError::InvalidSetup(format!(
+                "secn_planning lock poisoned: {e}"
+            ))
+        })? = secn_planning;
 
         // Create secondary instances
-        self.registry.populate_secn_instances(&self.state, &secn_global_ids);
+        self.registry
+            .populate_secn_instances(&self.state, &secn_global_ids)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         // Configure instance checkpoints using registry method
-        self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids);
+        self.registry
+            .configure_checkpoints(&pctx, &self.state, &secn_global_ids)
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         // Reset hints stream
         if let Some(asm) = self.rom_executor.asm_emulator() {
-            asm.reset();
+            asm.reset().map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
         }
 
         stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);
 
-        let secn_instances = self.state.secn_instances.read().unwrap();
+        let secn_instances = self.state.secn_instances.read().map_err(|e| {
+            proofman_common::ProofmanError::InvalidSetup(format!(
+                "secn_instances lock poisoned: {e}"
+            ))
+        })?;
         for (global_id, instance) in secn_instances.iter() {
-            let (airgroup_id, air_id) =
-                pctx.dctx_get_instance_info(*global_id).expect("Failed to get instance info");
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id)?;
 
-            let setup = sctx.get_setup(airgroup_id, air_id).unwrap();
+            let setup = sctx.get_setup(airgroup_id, air_id)?;
             let n_bits = setup.stark_info.stark_struct.n_bits;
             let total_cols: u64 = setup
                 .stark_info
@@ -309,7 +370,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             count_and_plan_duration,
             count_and_plan_mo_duration,
             total_duration: start_total.elapsed(),
-            asm_execution_duration: self.rom_executor.get_asm_execution_info(),
+            asm_execution_duration: self
+                .rom_executor
+                .get_asm_execution_info()
+                .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?,
         };
         // Store the execution result
         let execution_result =
@@ -348,7 +412,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 self.rom_executor.is_asm_emulator(),
             );
             for &global_id in global_ids {
-                self.orchestrator.compute_witness_for_instance(&ctx, global_id)?;
+                self.orchestrator
+                    .compute_witness_for_instance(&ctx, global_id)
+                    .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
             }
             Ok(())
         })?;
@@ -374,15 +440,16 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
 
         let pool = create_pool(n_cores);
-        let result = pool.install(|| {
+
+        pool.install(|| {
             self.orchestrator.pre_calculate(
                 &pctx,
                 &self.state,
                 global_ids,
                 self.rom_executor.is_asm_emulator(),
             )
-        });
-        result?;
+        })
+        .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())
@@ -396,14 +463,21 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         global_ids: &[usize],
     ) -> ProofmanResult<()> {
         for &global_id in global_ids {
-            let (_airgroup_id, air_id) =
-                pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
+            let (_airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id)?;
 
             if AirClassifier::is_main(air_id) {
                 MainSM::debug(&pctx, &sctx);
             } else {
-                let secn_instances = self.state.secn_instances.read().unwrap();
-                let secn_instance = secn_instances.get(&global_id).expect("Instance not found");
+                let secn_instances = self.state.secn_instances.read().map_err(|e| {
+                    proofman_common::ProofmanError::InvalidSetup(format!(
+                        "secn_instances lock poisoned: {e}"
+                    ))
+                })?;
+                let secn_instance = secn_instances.get(&global_id).ok_or_else(|| {
+                    proofman_common::ProofmanError::InvalidSetup(format!(
+                        "Instance not found for global_id {global_id}"
+                    ))
+                })?;
 
                 secn_instance.debug(&pctx, &sctx);
             }

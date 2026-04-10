@@ -126,7 +126,7 @@ impl Client for RemoteClient {
         cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
         // Check for cancellation before starting
-        if cancel.map_or(false, |t| t.is_cancelled()) {
+        if cancel.is_some_and(|t| t.is_cancelled()) {
             anyhow::bail!("Operation was cancelled");
         }
 
@@ -182,7 +182,7 @@ impl Client for RemoteClient {
             // Poll for completion
             // TODO: Use streaming API for real-time progress updates
             loop {
-                if cancel.map_or(false, |t| t.is_cancelled()) {
+                if cancel.is_some_and(|t| t.is_cancelled()) {
                     // TODO: Send cancellation to coordinator
                     anyhow::bail!("Operation was cancelled");
                 }
@@ -236,7 +236,7 @@ impl Client for RemoteClient {
         _executor: ExecutorKind,
         cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult> {
-        if cancel.map_or(false, |t| t.is_cancelled()) {
+        if cancel.is_some_and(|t| t.is_cancelled()) {
             anyhow::bail!("Operation was cancelled");
         }
         // TODO: Remote execution - may be implemented for cost estimation

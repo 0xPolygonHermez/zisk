@@ -214,7 +214,7 @@ impl ProverEngine for AsmProver {
             mpi_broadcast_fn,
             init_rom,
             asm_services,
-        )?);
+        )?)?;
 
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
@@ -400,7 +400,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.register_hints_stream(stream)
     }
 
-    fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
         self.core_prover.backend.get_hints_processor()
     }
 
@@ -408,7 +408,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_active_services(is_first_partition)
     }
 
-    fn reset_resources(&self) {
+    fn reset_resources(&self) -> Result<()> {
         self.core_prover.backend.reset_resources()
     }
 

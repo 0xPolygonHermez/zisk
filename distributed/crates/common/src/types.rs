@@ -211,36 +211,60 @@ impl JobExecutionMode {
     }
 }
 
-#[derive(Clone)]
-pub struct JobStats {
-    pub start_time: Option<DateTime<Utc>>,
-    pub end_time: Option<DateTime<Utc>>,
+/// Policy applied when a worker fails or a phase times out.
+///
+/// Determines how the coordinator reacts to failures during job execution.
+/// The policy is configured at the coordinator level and applies to all jobs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub enum FailurePolicy {
+    /// Abort the entire job immediately. All assigned workers are cancelled
+    /// and the job is marked as failed.
+    #[default]
+    AbortJob,
+    // /// Retry failed workers up to `max_retries` times before aborting.
+    // /// If all retries are exhausted, the job is aborted.
+    // RetryWorkers { max_retries: u32 },
 }
 
-impl Display for JobStats {
+impl Display for FailurePolicy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let start_time = self.start_time.unwrap();
-        let end_time = self.end_time.unwrap();
-        let duration = end_time.signed_duration_since(start_time);
-
-        write!(f, "Duration: {}ms", duration.num_milliseconds())
+        match self {
+            FailurePolicy::AbortJob => write!(f, "AbortJob"),
+            // FailurePolicy::RetryWorkers { max_retries } => write!(f, "RetryWorkers(max_retries={})", max_retries),
+        }
     }
 }
 
-impl Debug for JobStats {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let start_time = self.start_time.unwrap();
-        let end_time = self.end_time.unwrap();
-        let duration = end_time.signed_duration_since(start_time);
+/// Per-phase timing data: tracks when a phase started and optionally when it ended.
+#[derive(Clone)]
+pub struct PhaseTimings {
+    pub start_time: DateTime<Utc>,
+    pub end_time: Option<DateTime<Utc>>,
+}
 
-        write!(f, "Duration: {}ms", duration.num_milliseconds())
+impl Debug for PhaseTimings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl Display for PhaseTimings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.end_time {
+            Some(end) => {
+                let duration = end.signed_duration_since(self.start_time);
+                write!(f, "{}ms [{} - {}]", duration.num_milliseconds(), self.start_time, end)
+            }
+            None => write!(f, "in progress [started {}]", self.start_time),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Job {
     pub job_id: JobId,
-    pub start_times: HashMap<JobPhase, DateTime<Utc>>,
+    pub phase_timings: HashMap<JobPhase, PhaseTimings>,
     pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub state: JobState,
@@ -253,7 +277,6 @@ pub struct Job {
     pub agg_worker_id: Option<WorkerId>,
     pub partitions: Vec<Vec<u32>>,
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
-    pub stats: HashMap<JobPhase, JobStats>,
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
@@ -281,7 +304,7 @@ impl Job {
     ) -> Self {
         Self {
             job_id: JobId::new(),
-            start_times: HashMap::new(),
+            phase_timings: HashMap::new(),
             duration_ms: None,
             state: JobState::Created,
             data_id,
@@ -293,7 +316,6 @@ impl Job {
             agg_worker_id: None,
             partitions,
             results: HashMap::new(),
-            stats: HashMap::new(),
             task_received_time: None,
             challenges: None,
             witness_info: None,
@@ -312,27 +334,44 @@ impl Job {
     }
 
     pub fn change_state(&mut self, new_state: JobState) {
-        if let JobState::Running(current_state) = &self.state {
-            self.add_end_time(current_state.clone());
+        // Validate transition. Failed is always reachable (abort from any state).
+        let valid = matches!(
+            (&self.state, &new_state),
+            (_, JobState::Failed)
+                | (JobState::Created, JobState::Running(_))
+                | (JobState::Running(_), JobState::Running(_))
+                | (JobState::Running(_), JobState::Completed)
+        );
+
+        if !valid {
+            error!(
+                "Invalid job state transition for {}: {} -> {}",
+                self.job_id, self.state, new_state
+            );
+            return;
+        }
+
+        // Record end_time for the phase we're leaving
+        if let JobState::Running(ref current_phase) = self.state {
+            if let Some(timings) = self.phase_timings.get_mut(current_phase) {
+                timings.end_time = Some(Utc::now());
+            }
         }
 
         self.state = new_state.clone();
 
-        if let JobState::Running(new_phase) = &new_state {
-            self.add_start_time(new_phase.clone());
-        }
-
         match new_state {
             JobState::Running(phase) => {
-                let previous = self.start_times.insert(phase.clone(), Utc::now());
+                let previous = self
+                    .phase_timings
+                    .insert(phase.clone(), PhaseTimings { start_time: Utc::now(), end_time: None });
                 if previous.is_some() {
                     error!("Start time for phase {:?} was already set", phase);
                 }
             }
             JobState::Completed | JobState::Failed => {
-                let end_time = Utc::now();
-                if let Some(start_time) = self.start_times.get(&JobPhase::Contributions) {
-                    let duration = end_time.signed_duration_since(*start_time);
+                if let Some(start_time) = self.phase_start_time(&JobPhase::Contributions) {
+                    let duration = Utc::now().signed_duration_since(start_time);
                     self.duration_ms = Some(duration.num_milliseconds() as u64);
                 }
             }
@@ -340,25 +379,9 @@ impl Job {
         }
     }
 
-    fn add_start_time(&mut self, job_phase: JobPhase) {
-        match self.stats.get_mut(&job_phase) {
-            Some(_) => {
-                unreachable!("Start time added twice for the same phase");
-            }
-            None => {
-                self.stats
-                    .insert(job_phase, JobStats { start_time: Some(Utc::now()), end_time: None });
-            }
-        }
-    }
-
-    fn add_end_time(&mut self, job_phase: JobPhase) {
-        match self.stats.get_mut(&job_phase) {
-            Some(existing_stats) => {
-                existing_stats.end_time = Some(Utc::now());
-            }
-            None => unreachable!("End time added without start time"),
-        }
+    /// Returns the start time for a given phase, if recorded.
+    pub fn phase_start_time(&self, phase: &JobPhase) -> Option<DateTime<Utc>> {
+        self.phase_timings.get(phase).map(|t| t.start_time)
     }
 
     pub fn state(&self) -> &JobState {
@@ -368,7 +391,7 @@ impl Job {
     pub fn cleanup(&mut self) {
         self.partitions.clear();
         self.results.clear();
-        self.stats.clear();
+        self.phase_timings.clear();
         self.challenges = None;
         self.final_proof = None;
         self.final_verkey = None;
@@ -381,6 +404,12 @@ pub enum JobState {
     Running(JobPhase),
     Completed,
     Failed,
+}
+
+impl JobState {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, JobState::Failed | JobState::Completed)
+    }
 }
 
 impl fmt::Display for JobState {
@@ -520,4 +549,134 @@ pub struct ProveMessage {
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct StreamMessage {
     pub data: Vec<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_job() -> Job {
+        Job::new(
+            Default::default(),
+            crate::InputsModeDto::InputsNone,
+            crate::HintsModeDto::HintsNone,
+            ComputeCapacity::from(1u32),
+            ComputeCapacity::from(1u32),
+            vec![],
+            vec![],
+            JobExecutionMode::Standard,
+            BTreeMap::new(),
+            false,
+        )
+    }
+
+    #[test]
+    fn test_valid_state_transitions() {
+        let mut job = make_job();
+        assert_eq!(job.state, JobState::Created);
+
+        // Created → Running(Contributions)
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        assert_eq!(job.state, JobState::Running(JobPhase::Contributions));
+
+        // Running → Running (phase change)
+        job.change_state(JobState::Running(JobPhase::Prove));
+        assert_eq!(job.state, JobState::Running(JobPhase::Prove));
+
+        // Running → Completed
+        job.change_state(JobState::Completed);
+        assert_eq!(job.state, JobState::Completed);
+    }
+
+    #[test]
+    fn test_invalid_transition_created_to_completed() {
+        let mut job = make_job();
+
+        // Created → Completed is invalid
+        job.change_state(JobState::Completed);
+        assert_eq!(job.state, JobState::Created); // state unchanged
+    }
+
+    #[test]
+    fn test_invalid_transition_completed_to_running() {
+        let mut job = make_job();
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        job.change_state(JobState::Completed);
+
+        // Completed → Running is invalid
+        job.change_state(JobState::Running(JobPhase::Prove));
+        assert_eq!(job.state, JobState::Completed); // state unchanged
+    }
+
+    #[test]
+    fn test_failed_always_reachable() {
+        let mut job = make_job();
+
+        // Created → Failed
+        job.change_state(JobState::Failed);
+        assert_eq!(job.state, JobState::Failed);
+
+        // Another job: Running → Failed
+        let mut job2 = make_job();
+        job2.change_state(JobState::Running(JobPhase::Prove));
+        job2.change_state(JobState::Failed);
+        assert_eq!(job2.state, JobState::Failed);
+    }
+
+    #[test]
+    fn test_duplicate_phase_start_time_does_not_crash() {
+        let mut job = make_job();
+
+        // First time: insert Contributions start time
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        assert!(job.phase_start_time(&JobPhase::Contributions).is_some());
+
+        // Manually re-insert to simulate the error path
+        // (normally prevented by state machine, but we test the error! path)
+        let original_time = job.phase_start_time(&JobPhase::Contributions).unwrap();
+        job.phase_timings.insert(
+            JobPhase::Contributions,
+            PhaseTimings { start_time: Utc::now(), end_time: None },
+        );
+
+        // The job should still be functional — no panic
+        job.change_state(JobState::Running(JobPhase::Prove));
+        assert!(job.phase_start_time(&JobPhase::Prove).is_some());
+
+        // Verify first phase was overwritten (not panicked)
+        assert_ne!(job.phase_start_time(&JobPhase::Contributions).unwrap(), original_time);
+    }
+
+    #[test]
+    fn test_duration_computed_on_completion() {
+        let mut job = make_job();
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        job.change_state(JobState::Completed);
+
+        // duration_ms should be set (very small since no real work)
+        assert!(job.duration_ms.is_some());
+    }
+
+    #[test]
+    fn test_cleanup_clears_phase_timings() {
+        let mut job = make_job();
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        assert!(!job.phase_timings.is_empty());
+
+        job.cleanup();
+        assert!(job.phase_timings.is_empty());
+    }
+
+    #[test]
+    fn test_phase_end_time_recorded_on_transition() {
+        let mut job = make_job();
+        job.change_state(JobState::Running(JobPhase::Contributions));
+
+        // End time not set yet
+        assert!(job.phase_timings.get(&JobPhase::Contributions).unwrap().end_time.is_none());
+
+        // Transition to next phase records end_time on previous
+        job.change_state(JobState::Running(JobPhase::Prove));
+        assert!(job.phase_timings.get(&JobPhase::Contributions).unwrap().end_time.is_some());
+    }
 }

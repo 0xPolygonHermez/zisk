@@ -83,7 +83,7 @@ impl ProverBackend {
 
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         if let Some(asm_resources) = &program_pk.asm_resources {
-            executor.set_asm_resources(asm_resources.clone());
+            executor.set_asm_resources(asm_resources.clone())?;
         }
 
         executor.set_rom(program_pk.zisk_rom.clone(), program_pk.use_hints());
@@ -99,7 +99,7 @@ impl ProverBackend {
         let executor = self.executor.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Executor is not initialized. Please initialize it before use.")
         })?;
-        executor.set_stdin(stdin);
+        executor.set_stdin(stdin)?;
         Ok(())
     }
 
@@ -130,7 +130,7 @@ impl ProverBackend {
 
         self.register_program(pk)?;
 
-        executor.set_stdin(stdin);
+        executor.set_stdin(stdin)?;
 
         let start = std::time::Instant::now();
 
@@ -168,7 +168,7 @@ impl ProverBackend {
 
         self.register_program(pk)?;
 
-        executor.set_stdin(stdin);
+        executor.set_stdin(stdin)?;
 
         let rank_info = proofman.get_rank_info();
 
@@ -271,7 +271,7 @@ impl ProverBackend {
 
         self.register_program(pk)?;
 
-        executor.set_stdin(stdin);
+        executor.set_stdin(stdin)?;
 
         proofman
             .verify_proof_constraints_from_lib(&debug_info, false)
@@ -328,7 +328,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        executor.set_stdin(stdin);
+        executor.set_stdin(stdin)?;
 
         let compressed = matches!(mode, ProofMode::VadcopFinalCompressed);
 

@@ -414,15 +414,17 @@ pub trait ProverEngine {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
     }
 
-    fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
-        None
+    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+        Ok(None)
     }
 
     fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
         Ok(())
     }
 
-    fn reset_resources(&self) {}
+    fn reset_resources(&self) -> Result<()> {
+        Ok(())
+    }
 
     fn cancel(&self);
 }
@@ -643,7 +645,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.register_hints_stream(stream)
     }
 
-    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
         self.prover.get_hints_processor()
     }
 
@@ -651,7 +653,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_active_services(is_first_partition)
     }
 
-    pub fn reset_resources(&self) {
+    pub fn reset_resources(&self) -> Result<()> {
         self.prover.reset_resources()
     }
 
@@ -680,8 +682,8 @@ impl ZiskProver<Asm> {
     }
 
     /// Returns `true` if the last `setup()` call used `.with_hints()`.
-    pub fn was_setup_with_hints(&self) -> bool {
-        self.get_hints_processor().is_some()
+    pub fn was_setup_with_hints(&self) -> Result<bool> {
+        Ok(self.get_hints_processor()?.is_some())
     }
 }
 

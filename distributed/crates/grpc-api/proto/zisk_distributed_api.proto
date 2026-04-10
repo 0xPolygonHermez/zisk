@@ -190,7 +190,13 @@ message WorkerMessage {
     WorkerRegisterRequest register = 3;
     WorkerReconnectRequest reconnect = 4;
     ExecuteTaskResponse execute_task_response = 5;
+    JobCancelledAck job_cancelled_ack = 6;
   }
+}
+
+message JobCancelledAck {
+  string worker_id = 1;
+  string job_id = 2;
 }
 
 message Heartbeat {
@@ -214,7 +220,7 @@ message WorkerRegisterRequest {
 message WorkerReconnectRequest {
   string worker_id = 1;
   ComputeCapacity compute_capacity = 2; // Maximum compute capacity of a node/cluster
-  string last_known_job_id = 3;
+  optional string last_known_job_id = 3;
 }
 
 message WorkerRegisterResponse {
@@ -222,6 +228,7 @@ message WorkerRegisterResponse {
   bool accepted = 2;
   string message = 3;
   google.protobuf.Timestamp registered_at = 4;
+  optional ReconnectionDirective directive = 5;
 }
 
 message ExecuteTaskRequest {
@@ -371,4 +378,14 @@ message ComputeCapacity {
 message JobCancelled {
   string job_id = 1;
   string reason = 2;
+}
+
+message ReconnectionDirective {
+  ReconnectionAction action = 1;
+}
+
+enum ReconnectionAction {
+  RECONNECTION_ACTION_IDLE = 0;
+  RECONNECTION_ACTION_KEEP_COMPUTING = 1;
+  RECONNECTION_ACTION_CANCEL_STALE_JOB = 2;
 }

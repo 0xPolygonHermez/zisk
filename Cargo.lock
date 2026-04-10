@@ -4258,6 +4258,7 @@ dependencies = [
 name = "sm-rom"
 version = "0.17.0"
 dependencies = [
+ "anyhow",
  "asm-runner",
  "fields",
  "itertools 0.14.0",

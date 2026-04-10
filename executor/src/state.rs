@@ -1,6 +1,5 @@
 //! Shared execution state for the ZisK executor components.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use sm_main::MainInstance;
 use std::{
@@ -12,6 +11,8 @@ use std::{
 };
 use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, Instance, Plan, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
+
+use anyhow::Result;
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
@@ -81,16 +82,12 @@ impl<F: PrimeField64> ExecutionState<F> {
     /// Panics if no ROM has been set.
     pub fn get_rom(&self) -> Result<Arc<ZiskRom>> {
         if !self.is_rom_initialized.load(Ordering::SeqCst) {
-            return Err(anyhow::anyhow!("ROM not initialized. Call set_rom() before get_rom()"));
+            anyhow::bail!("ROM not initialized. Call set_rom() before execute()");
         }
 
-        Ok(self
-            .zisk_rom
-            .read()
-            .unwrap()
-            .as_ref()
-            .expect("ROM not set. Call set_rom() before execute()")
-            .clone())
+        let guard = self.zisk_rom.read().map_err(|e| anyhow::anyhow!("ROM lock poisoned: {e}"))?;
+
+        guard.as_ref().cloned().ok_or_else(|| anyhow::anyhow!("ROM not initialized"))
     }
 
     /// Resets all internal state to default values.

@@ -54,8 +54,8 @@ impl ProverBackend {
         self.executor.asm_emulator()
     }
 
-    pub(crate) fn set_asm_resources(&self, resources: AsmResources) {
-        self.executor.set_asm_resources(resources);
+    pub(crate) fn set_asm_resources(&self, resources: AsmResources) -> Result<()> {
+        self.executor.set_asm_resources(resources)
     }
 
     pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -97,8 +97,11 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))
     }
 
-    pub(crate) fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
-        self.asm_emulator().and_then(|a| a.get_hints_processor())
+    pub(crate) fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+        match self.asm_emulator() {
+            Some(a) => a.get_hints_processor(),
+            None => Ok(None),
+        }
     }
 
     pub(crate) fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
@@ -108,10 +111,11 @@ impl ProverBackend {
         Ok(())
     }
 
-    pub(crate) fn reset_resources(&self) {
+    pub(crate) fn reset_resources(&self) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
-            asm.reset();
+            asm.reset()?;
         }
+        Ok(())
     }
 
     pub(crate) fn cancel(&self) {
@@ -127,9 +131,10 @@ impl ProverBackend {
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
     ) -> Result<()> {
-        let use_hints = self.executor.asm_emulator().map(|a| a.use_hints()).unwrap_or(false);
+        let use_hints =
+            self.executor.asm_emulator().map(|a| a.use_hints()).transpose()?.unwrap_or(false);
 
-        self.executor.set_rom(zisk_rom, use_hints);
+        self.executor.set_rom(zisk_rom, use_hints)?;
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman
@@ -138,8 +143,7 @@ impl ProverBackend {
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin);
-        Ok(())
+        self.executor.set_stdin(stdin)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
@@ -151,7 +155,7 @@ impl ProverBackend {
         stdin: ZiskStdin,
         output_path: Option<PathBuf>,
     ) -> Result<ZiskExecuteResult> {
-        self.executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin)?;
 
         let start = std::time::Instant::now();
 
@@ -178,7 +182,7 @@ impl ProverBackend {
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin)?;
 
         let rank_info = self.proofman.get_rank_info();
 
@@ -254,7 +258,7 @@ impl ProverBackend {
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        self.executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin)?;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info, false)
@@ -292,7 +296,7 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.executor.set_stdin(stdin);
+        self.executor.set_stdin(stdin)?;
 
         let minimal = matches!(mode, ProofMode::VadcopFinalMinimal);
 
