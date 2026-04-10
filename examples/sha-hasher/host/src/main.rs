@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProofOpts, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -12,7 +12,9 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::embedded().gpu().assembly().build()?;
+    let proof_opts = ProverOpts::default().minimal_memory();
+    let client =
+        ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
 
     client.setup(&PROGRAM).run()?;
 
@@ -25,12 +27,7 @@ fn main() -> Result<()> {
         result.get_duration()
     );
 
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client
-        .prove(&PROGRAM, stdin)
-        .executor(ExecutorKind::Assembly)
-        .with_proof_options(proof_opts)
-        .run()?;
+    let vadcop_result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?;
 
     let vkey = client.vk(&PROGRAM)?;
     vadcop_result.with_program_vk(&vkey).verify()?;

@@ -1,7 +1,7 @@
 use crate::get_asm_paths;
 use crate::guest::ProgramId;
 use crate::GuestProgram;
-use crate::ProofOpts;
+use crate::ProverOpts;
 use crate::{
     check_paths_exist, ensure_rom, get_rom_bin_path,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
@@ -322,28 +322,24 @@ impl ProverEngine for AsmProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        proof_options: ProofOpts,
+        prover_options: ProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, mode, proof_options)
+        self.core_prover.backend.prove(stdin, mode, prover_options)
     }
 
-    fn plonk(
+    fn wrap(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
+        mode: ProofMode,
     ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.plonk(proof, publics, vk)
-    }
-
-    fn minimal(
-        &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
-        self.core_prover.backend.minimal(proof, publics, vk)
+        match mode {
+            ProofMode::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofMode::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", mode)),
+        }
     }
 
     fn prove_phase(

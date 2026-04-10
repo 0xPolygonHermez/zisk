@@ -2,15 +2,13 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 use anyhow::Result;
 
 use colored::Colorize;
-use executor::get_packed_info;
-use proofman_common::ProofmanOptions;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ZiskProof;
+use zisk_common::{ProofMode, ZiskProof};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{ProofOpts, ProverClientBuilder, ZiskProveResult};
+use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -136,23 +134,6 @@ impl ZiskProve {
 
         print_banner_field("Elf", self.elf.display());
 
-        let mut options = ProofmanOptions::new(self.preallocate);
-
-        if let Some(max_witness_stored) = self.max_witness_stored {
-            options.with_max_witness_stored(max_witness_stored);
-        }
-        if let Some(number_threads_witness) = self.number_threads_witness {
-            options.with_number_threads_pools_witness(number_threads_witness);
-        }
-        if let Some(max_streams) = self.max_streams {
-            options.with_max_number_streams(max_streams);
-        }
-
-        if self.gpu {
-            options.gpu();
-        }
-        options.packed_info(get_packed_info());
-
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
 
@@ -163,6 +144,64 @@ impl ZiskProve {
         if self.snark && self.minimal {
             anyhow::bail!("Minimal proofs are not supported for SNARK generation.");
         }
+
+        // Build ProverOpts once with all configuration
+        let mut prover_options = ProverOpts::default()
+            .aggregation(self.aggregation)
+            .rma(!self.no_rma_mpi)
+            .output_dir(self.output_dir.clone())
+            .shared_tables(!self.no_shared_tables_mpi)
+            .verbose(self.verbose);
+
+        if self.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+        if self.verify_proofs {
+            prover_options = prover_options.verify_proofs();
+        }
+        if self.preallocate {
+            prover_options = prover_options.preallocate();
+        }
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if self.snark {
+            prover_options = prover_options.preload_plonk();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+        if let Some(ref path) = self.proving_key_snark {
+            prover_options = prover_options.proving_key_snark(path.clone());
+        }
+        if let Some(max) = self.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+        if let Some(threads) = self.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = self.max_streams {
+            prover_options = prover_options.max_streams(max);
+        }
+
+        // ASM-specific options (only used if not emulator)
+        let mut asm_options = AsmOptions::default();
+        if let Some(ref path) = self.asm {
+            asm_options = asm_options.asm_path(path.clone());
+        }
+        if let Some(port) = self.port {
+            asm_options = asm_options.base_port(port);
+        }
+        if self.no_auto_setup {
+            asm_options = asm_options.no_auto_setup();
+        }
+        if self.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if self.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        prover_options = prover_options.with_asm_options(asm_options);
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
 
@@ -187,9 +226,9 @@ impl ZiskProve {
         };
 
         let (result, world_rank) = if emulator {
-            self.run_emu(stdin, options)?
+            self.run_emu(stdin, prover_options)?
         } else {
-            self.run_asm(stdin, hints_stream, options)?
+            self.run_asm(stdin, hints_stream, prover_options)?
         };
 
         if world_rank == 0 {
@@ -222,38 +261,22 @@ impl ZiskProve {
     pub fn run_emu(
         &mut self,
         stdin: ZiskStdin,
-        options: ProofmanOptions,
+        prover_options: ProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClientBuilder::new()
-            .aggregation(self.aggregation)
-            .proving_key_path_opt(self.proving_key.clone())
-            .proving_key_snark_path_opt(self.proving_key_snark.clone())
-            .verbose(self.verbose)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .with_snark(self.snark)
-            .options(options)
-            .print_command_info()
-            .build()?;
+        let prover =
+            ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let proof_options = ProofOpts {
-            aggregation: self.aggregation,
-            rma: !self.no_rma_mpi,
-            minimal_memory: self.minimal_memory,
-            verify_proofs: self.verify_proofs,
-            output_dir_path: Some(self.output_dir.clone()),
-        };
-
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&guest_program, stdin);
         if self.snark {
-            prover = prover.plonk();
+            prover = prover.wrap(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.minimal();
+            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
         }
         let result = prover.run()?;
 
@@ -264,24 +287,10 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        options: ProofmanOptions,
+        prover_options: ProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
-        let prover = ProverClientBuilder::new()
-            .aggregation(self.aggregation)
-            .asm()
-            .proving_key_path_opt(self.proving_key.clone())
-            .proving_key_snark_path_opt(self.proving_key_snark.clone())
-            .verbose(self.verbose)
-            .with_snark(self.snark)
-            .shared_tables(!self.no_shared_tables_mpi)
-            .asm_path_opt(self.asm.clone())
-            .base_port_opt(self.port)
-            .no_auto_setup(self.no_auto_setup)
-            .unlock_mapped_memory(self.unlock_mapped_memory)
-            .asm_out_file(self.asm_out_file)
-            .options(options)
-            .print_command_info()
-            .build()?;
+        let prover =
+            ProverClientBuilder::new().asm().with_prover_options(prover_options).build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
         if hints_stream.is_some() {
@@ -290,26 +299,18 @@ impl ZiskProve {
             prover.setup(&guest_program).run()?;
         }
 
-        let proof_options = ProofOpts {
-            aggregation: self.aggregation,
-            rma: !self.no_rma_mpi,
-            minimal_memory: self.minimal_memory,
-            verify_proofs: self.verify_proofs,
-            output_dir_path: Some(self.output_dir.clone()),
-        };
-
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
 
         let world_rank = prover.world_rank();
 
-        let mut prover = prover.prove(&guest_program, stdin).with_proof_options(proof_options);
+        let mut prover = prover.prove(&guest_program, stdin);
         if self.snark {
-            prover = prover.plonk();
+            prover = prover.wrap(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.minimal();
+            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
         }
 
         let result = prover.run()?;

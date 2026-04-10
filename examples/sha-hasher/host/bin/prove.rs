@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, ProofOpts, ProverClient, ZiskProofWithPublicValues,
+    load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskProofWithPublicValues,
     ZiskPublics, ZiskStdin,
 };
 
@@ -26,19 +26,16 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::embedded().gpu().assembly().build()?;
+    let proof_opts = ProverOpts::default().minimal_memory();
+    let client =
+        ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let result = client
-        .prove(&PROGRAM, stdin)
-        .executor(ExecutorKind::Assembly)
-        .with_proof_options(proof_opts)
-        .run()?;
+    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?;
     println!("Proof generated successfully in {:?}", result.get_duration());
     println!("Execution steps: {}", result.get_execution_steps());
 
