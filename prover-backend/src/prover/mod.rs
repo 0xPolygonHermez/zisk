@@ -286,7 +286,7 @@ impl ProverOpts {
         self
     }
 
-    pub fn proving_key_snark(mut self, path: PathBuf) -> Self {
+    pub fn proving_key_plonk(mut self, path: PathBuf) -> Self {
         self.proving_key_snark = Some(path);
         self
     }

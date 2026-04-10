@@ -14,39 +14,27 @@ use zisk_prover_backend::{
 
 #[derive(Parser)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
-#[command(group(
-    clap::ArgGroup::new("input_mode")
-        .args(["asm", "emulator"])
-        .multiple(false)
-        .required(false)
-))]
+/// Verify the constraints of the guest program execution without generating a proof
 pub struct ZiskVerifyConstraints {
-    /// ROM file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
+    /// Path to the program ELF file
+    // TODO: Optional?
+    #[arg(short = 'e', long)]
     pub elf: PathBuf,
 
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
-    pub asm: Option<PathBuf>,
-
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 
-    /// Input path
-    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    /// Precompiles Hints path
-    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    /// Precompiles hints file path for the guest
+    #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
-    /// Setup folder path
-    #[clap(short = 'k', long)]
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -58,33 +46,38 @@ pub struct ZiskVerifyConstraints {
     #[clap(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
-    /// This option is mutually exclusive with `--emulator`.
-    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
+    #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
+    /// Use GPU acceleration
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
+
+    /// Verbose (-v, -vv)
+    #[arg(short ='v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8, // Using u8 to hold the number of `-v`
+
+    /// Hidden flags
+
+    /// ASM file path
+    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
+    pub asm: Option<PathBuf>,
+
     /// Redirect ASM emulator output to file
-    /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
-    #[clap(short = 'n', long, default_value_t = false)]
+    /// Disable automatic ROM setup
+    #[arg(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
-    /// Verbosity (-v, -vv)
-    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    /// Use shared tables for execution
+    #[arg(short = 'j', long, default_value_t = false, hide = true)]
+    pub no_shared_tables_mpi: bool,
 
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub no_shared_tables_mpi: bool,
-
-    #[clap(short = 'g', long, default_value_t = false)]
-    pub gpu: bool,
 }
 
 impl ZiskVerifyConstraints {

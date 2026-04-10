@@ -112,9 +112,9 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
         self
     }
 
-    /// Set the path to the SNARK proving key directory.
+    /// Set the path to the PLONK proving key directory.
     #[must_use]
-    pub fn proving_key_snark(mut self, path: impl Into<PathBuf>) -> Self {
+    pub fn proving_key_plonk(mut self, path: impl Into<PathBuf>) -> Self {
         self.backend.proving_key_snark = Some(path.into());
         self
     }
