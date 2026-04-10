@@ -181,13 +181,13 @@ impl ZiskProve {
         if self.gpu {
             prover_options = prover_options.gpu();
         }
-        if self.snark {
+        if self.plonk {
             prover_options = prover_options.preload_plonk();
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
         }
-        if let Some(ref path) = self.proving_key_snark {
+        if let Some(ref path) = self.proving_key_plonk {
             prover_options = prover_options.proving_key_snark(path.clone());
         }
         if let Some(max) = self.max_witness_stored {
