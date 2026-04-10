@@ -21,7 +21,7 @@ pub struct CallPathProfiler {
     prefix_table: HashMap<String, usize>,
     /// Stack of indices into call_stack_table representing current call path
     prefix_stack: Vec<usize>,
-    /// Table of call stack entries: (roi_index, parent_index, cost)
+    /// Table of call stack entries: (roi_index, parent_index)
     stack_table: Vec<(usize, Option<usize>)>,
     /// Samples, first element metric (e.g., cost), second element index into stack_table
     samples: Vec<(u64, usize)>,
@@ -202,9 +202,9 @@ impl CallPathProfiler {
 
         // Calculate time deltas (differences between consecutive samples)
         let samples_count = self.samples.len().saturating_sub(1);
-        let mut time_deltas: Vec<f64> = Vec::with_capacity(samples_count);
+        let mut time_deltas: Vec<f64> = Vec::with_capacity(self.samples.len());
         let mut last_time = 0u64;
-        for (time, _) in self.samples.iter().take(samples_count) {
+        for (time, _) in self.samples.iter() {
             let delta = (*time - last_time) as f64;
             time_deltas.push(delta / 1000.0);
             last_time = *time;
