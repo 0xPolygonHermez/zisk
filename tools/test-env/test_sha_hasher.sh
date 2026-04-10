@@ -36,7 +36,7 @@ main() {
 
     step "Creating new ZisK program: $PROJECT_NAME"
     rm -rf "$PROJECT_NAME"
-    ensure cargo-zisk sdk new "$PROJECT_NAME" || return 1
+    ensure cargo-zisk new "$PROJECT_NAME" || return 1
     cd "$PROJECT_NAME"
 
     step "Building program..."
@@ -56,7 +56,7 @@ main() {
         warn "Skipping prove and verify steps on macOS as it's not supported in GHA"
     else
         step "Generating program setup..."
-        ensure cargo-zisk rom-setup -e "$ELF_PATH" 2>&1 | tee romsetup_output.log || return 1
+        ensure cargo-zisk program-setup -e "$ELF_PATH" 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
             err "program setup failed"
             return 1
