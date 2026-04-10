@@ -21,21 +21,19 @@ pub struct ZiskFileStdin {
 
 impl ZiskFileStdin {
     /// Create a new FileStdin from a file path.
-    pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_buf = path.as_ref().to_path_buf();
         if !path_buf.exists() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Input file not found at {:?}", path_buf.display()),
-            ));
+            return Err(anyhow::anyhow!("Input file not found at {:?}", path_buf.display()));
         }
 
         let file = File::open(&path_buf)?;
         Ok(ZiskFileStdin { path: path_buf, reader: Mutex::new(BufReader::new(file)) })
     }
 
-    fn read_raw_data(&self) -> std::io::Result<Vec<u8>> {
-        let mut reader = self.reader.lock().unwrap();
+    fn read_raw_data(&self) -> Result<Vec<u8>> {
+        let mut reader =
+            self.reader.lock().map_err(|e| anyhow::anyhow!("reader lock poisoned: {e}"))?;
 
         let mut len_bytes = [0u8; 8];
         reader.read_exact(&mut len_bytes)?;
@@ -65,9 +63,7 @@ impl ZiskIO for ZiskFileStdin {
     }
 
     fn read<T: DeserializeOwned>(&self) -> Result<T> {
-        let data = self
-            .read_raw_data()
-            .map_err(|e| anyhow::anyhow!("Failed to read data from file: {}", e))?;
+        let data = self.read_raw_data()?;
 
         bincode::deserialize(&data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize from file: {}", e))

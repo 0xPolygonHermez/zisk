@@ -41,7 +41,7 @@ impl ZiskCheckSetup {
         setup_logger(self.verbose.into());
 
         ProofMan::<Goldilocks>::check_setup(
-            get_proving_key(self.proving_key.as_ref()),
+            get_proving_key(self.proving_key.as_ref())?,
             self.aggregation,
             self.verbose.into(),
         )
@@ -49,7 +49,7 @@ impl ZiskCheckSetup {
 
         if self.snark {
             check_setup_snark::<Goldilocks>(
-                &get_proving_key_snark(self.proving_key_snark.as_ref()),
+                &get_proving_key_snark(self.proving_key_snark.as_ref())?,
                 self.verbose.into(),
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup snark: {}", e))?

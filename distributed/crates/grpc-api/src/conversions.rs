@@ -15,10 +15,10 @@ use crate::{
     ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, HintsMode, InputMode,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, Shutdown, StatusInfoResponse,
-    StreamData, StreamPayload, StreamType, SystemStatus, SystemStatusResponse, TaskType,
-    WorkerError, WorkerInfo, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
-    WorkersList, WorkersListResponse,
+    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ReconnectionAction,
+    ReconnectionDirective, Shutdown, StatusInfoResponse, StreamData, StreamPayload, StreamType,
+    SystemStatus, SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
+    WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
 };
 use zisk_distributed_common::*;
 
@@ -256,6 +256,7 @@ impl From<WorkerReconnectRequest> for WorkerReconnectRequestDto {
         WorkerReconnectRequestDto {
             worker_id: req.worker_id.into(),
             compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
+            last_known_job_id: req.last_known_job_id.map(JobId::from),
         }
     }
 }
@@ -312,6 +313,23 @@ impl From<WorkerRegisterResponseDto> for WorkerRegisterResponse {
                 seconds: dto.registered_at.timestamp(),
                 nanos: dto.registered_at.timestamp_subsec_nanos() as i32,
             }),
+            directive: None,
+        }
+    }
+}
+
+impl From<ReconnectionDirectiveDto> for ReconnectionDirective {
+    fn from(dto: ReconnectionDirectiveDto) -> Self {
+        match dto {
+            ReconnectionDirectiveDto::Idle => {
+                ReconnectionDirective { action: ReconnectionAction::Idle as i32 }
+            }
+            ReconnectionDirectiveDto::CancelStaleJob => {
+                ReconnectionDirective { action: ReconnectionAction::CancelStaleJob as i32 }
+            }
+            ReconnectionDirectiveDto::KeepComputing => {
+                ReconnectionDirective { action: ReconnectionAction::KeepComputing as i32 }
+            }
         }
     }
 }

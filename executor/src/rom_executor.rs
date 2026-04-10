@@ -26,9 +26,9 @@ pub struct RomExecutionOutput {
     /// Device metrics for secondary state machines.
     pub secn_count: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
-    pub handle_mo: Option<JoinHandle<AsmRunnerMO>>,
+    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
-    pub handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
     /// Execution result with step counts.
     pub steps: u64,
 }
@@ -65,13 +65,14 @@ impl RomExecutor {
     }
 
     /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
-        *self.stdin.lock().unwrap() = stdin;
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        *self.stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))? = stdin;
+        Ok(())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
+    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
         self.is_asm_execution.store(true, Ordering::SeqCst);
-        self.emulator_asm.set_asm_resources(asm_resources);
+        self.emulator_asm.set_asm_resources(asm_resources)
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
@@ -79,11 +80,11 @@ impl RomExecutor {
         self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         if self.is_asm_execution.load(Ordering::SeqCst) {
             self.emulator_asm.get_asm_execution_info()
         } else {
-            None
+            Ok(None)
         }
     }
 

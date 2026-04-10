@@ -38,7 +38,6 @@ use crate::{
 
 use chrono::{DateTime, Utc};
 use colored::Colorize;
-use dashmap::DashMap;
 use proofman::{ContributionsInfo, WitnessInfo};
 use std::{
     collections::HashMap,
@@ -61,10 +60,10 @@ use zisk_distributed_common::{
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, ProofDto,
-    ProveParamsDto, StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
-    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
-    ZiskExecutorTimeDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, PhaseTimings, ProofDto,
+    ProveParamsDto, ReconnectionDirectiveDto, StatusInfoDto, StreamMessageKind, SystemStatusDto,
+    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
+    WorkersListDto, ZiskExecutorTimeDto,
 };
 
 /// Trait for sending messages to workers through various communication channels.
@@ -114,8 +113,8 @@ pub struct Coordinator {
     /// Manages the pool of connected workers and their communication channels.
     workers_pool: Arc<WorkersPool>,
 
-    /// Concurrent storage for active jobs with fine-grained locking.
-    jobs: DashMap<JobId, Arc<RwLock<Job>>>,
+    /// Concurrent storage for active jobs.
+    jobs: RwLock<HashMap<JobId, Arc<RwLock<Job>>>>,
 
     /// Number of registrations accumulated.
     registrations: AtomicU64,
@@ -137,10 +136,25 @@ impl Coordinator {
             config,
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
-            jobs: DashMap::new(),
+            jobs: RwLock::new(HashMap::new()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
         }
+    }
+
+    /// Returns a reference to the workers pool.
+    pub fn workers_pool(&self) -> &WorkersPool {
+        &self.workers_pool
+    }
+
+    /// Returns a reference to the jobs map.
+    pub fn jobs(&self) -> &RwLock<HashMap<JobId, Arc<RwLock<Job>>>> {
+        &self.jobs
+    }
+
+    /// Returns a reference to the coordinator config.
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     /// Retrieves comprehensive status information about the coordinator service.
@@ -174,13 +188,15 @@ impl Coordinator {
     pub async fn handle_jobs_list(&self) -> JobsListDto {
         let mut jobs = Vec::new();
 
-        for entry in self.jobs.iter() {
-            let job_lock = entry.value();
+        let jobs_map = self.jobs.read().await;
+        for job_lock in jobs_map.values() {
             let job = job_lock.read().await;
 
             if let JobState::Running(phase) = &job.state() {
-                let start_time =
-                    job.start_times.get(phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
+                let start_time = job
+                    .phase_start_time(phase)
+                    .map(|t| t.timestamp() as u64)
+                    .unwrap_or_else(|| {
                         error!(
                             "Start time for phase {:?} is missing for job {}",
                             phase, job.job_id
@@ -222,12 +238,13 @@ impl Coordinator {
     ///
     /// On success, returns a JobStatusDto with detailed job status information
     pub async fn handle_job_status(&self, job_id: &JobId) -> CoordinatorResult<JobStatusDto> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         let phase = JobPhase::Contributions;
         let start_time =
-            job.start_times.get(&phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
+            job.phase_start_time(&phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
                 error!("Start time for phase {:?} is missing for job {}", phase, job.job_id);
                 0
             });
@@ -258,8 +275,9 @@ impl Coordinator {
         let busy_workers = self.workers_pool.busy_workers().await;
 
         let mut active_jobs = 0;
-        for entry in self.jobs.iter() {
-            let job = entry.value().read().await;
+        let jobs_map = self.jobs.read().await;
+        for job_lock in jobs_map.values() {
+            let job = job_lock.read().await;
             if matches!(job.state(), JobState::Running(_)) {
                 active_jobs += 1;
             }
@@ -373,14 +391,13 @@ impl Coordinator {
         let job_id = job.job_id.clone();
         let active_workers = self.select_workers_for_execution(&job)?;
 
-        // Store job in jobs map with RwLock
-        self.jobs.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        // Store job in jobs map
+        let job_arc = Arc::new(RwLock::new(job));
+        self.jobs.write().await.insert(job_id.clone(), job_arc.clone());
 
         // Send Phase1 tasks to selected workers
-        if let Some(job_entry) = self.jobs.get(&job_id) {
-            let job = job_entry.read().await;
-            self.dispatch_contributions_messages(&job, &active_workers).await?;
-        }
+        let job = job_arc.read().await;
+        self.dispatch_contributions_messages(&job, &active_workers).await?;
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
@@ -417,7 +434,8 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
         // Clone job.final_proof and final_verkey and error if does not exist
@@ -841,93 +859,65 @@ impl Coordinator {
     /// * `job_id` - Identifier of the failing job
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        drop(jobs_map);
 
-        let mut job = job_entry.write().await;
-        let previous_state = job.state().clone();
-        job.change_state(JobState::Failed);
+        let worker_ids = {
+            let mut job = job_entry.write().await;
 
-        self.ensure_workers_idle(&job, previous_state).await?;
+            // Prevent double-fail races (monitor + worker error racing)
+            if job.state().is_resolved() {
+                return Ok(());
+            }
 
-        error!("Failed job {} (reason: {})", job_id, reason.as_ref(),);
+            job.change_state(JobState::Failed);
+            job.workers.clone()
+            // job write lock released here
+        };
 
-        // Release job lock before calling post_launch_proof
-        drop(job);
+        // These operations only need the worker IDs, not the job lock.
+        self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
+        self.ensure_workers_idle(&worker_ids).await;
+
+        error!("Failed job {} (reason: {})", job_id, reason.as_ref());
+
         drop(job_entry);
 
-        self.post_launch_proof(job_id).await?;
-
-        Ok(())
-    }
-
-    /// Updates all workers of a failed job, marking those that have finished their computation
-    /// or partial computation as idle.
-    ///
-    /// # Parameters
-    ///
-    /// * `job` - The job whose workers need to be marked as idle
-    /// * `previous_state` - The previous state of the job before it was marked as failed
-    async fn ensure_workers_idle(
-        &self,
-        job: &Job,
-        previous_state: JobState,
-    ) -> CoordinatorResult<()> {
-        if let JobState::Running(job_previous_phase) = &previous_state {
-            let mut job_worker_ids = std::collections::HashSet::new();
-
-            // Get results from the current job phase
-            if let Some(results) = job.results.get(job_previous_phase) {
-                job_worker_ids.extend(results.keys().cloned());
-            }
-
-            // If job_phase is Aggregate, also add workers from Prove phase
-            if job_previous_phase == &JobPhase::Aggregate {
-                if let Some(prove_results) = job.results.get(&JobPhase::Prove) {
-                    job_worker_ids.extend(prove_results.keys().cloned());
-                }
-            }
-
-            for worker_id in job_worker_ids {
-                let worker_state = self.workers_pool.worker_state(&worker_id).await;
-
-                if let Some(WorkerState::Computing((_, _))) = worker_state {
-                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
-                }
+        // post_launch_proof may fail (e.g. proof serialization, webhook).
+        // Ensure cleanup always runs even if it does.
+        if let Err(e) = self.post_launch_proof(job_id).await {
+            warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
+            let jobs_map = self.jobs.read().await;
+            if let Some(job_entry) = jobs_map.get(job_id) {
+                job_entry.write().await.cleanup();
             }
         }
 
         Ok(())
     }
 
-    /// Handles new worker registration requests in streaming context.
-    ///
-    /// Processes incoming worker registration requests and manages the bidirectional
-    /// communication channel setup. This method is called directly from stream handlers
-    /// to provide immediate registration feedback without additional async coordination.
-    ///
-    /// # Parameters
-    ///
-    /// * `req` - Registration request containing worker ID and compute capacity
-    /// * `msg_sender` - Communication channel for sending messages back to the worker
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - `bool` - Whether registration was successful
-    /// - `String` - Success confirmation or detailed error message
-    ///
-    /// # Registration Process
-    ///
-    /// 1. **Capacity Check**: Validates against maximum allowed concurrent connections
-    /// 2. **Pool Registration**: Attempts to register worker in the active pool
-    /// 3. **Channel Setup**: Associates the message sender with the worker ID
-    /// 4. **Response Generation**: Returns immediate feedback for the stream handler
-    ///
-    /// # Connection Limits
-    ///
-    /// The coordinator enforces a maximum number of concurrent worker connections
-    /// (configured via `max_total_workers`) to prevent resource exhaustion and
-    /// maintain system stability under load.
+    /// Sends cancellation messages to all workers assigned to a job.
+    /// Best-effort: logs warnings on failure but continues.
+    async fn cancel_job_workers(&self, worker_ids: &[WorkerId], job_id: &JobId, reason: &str) {
+        for worker_id in worker_ids {
+            let msg =
+                CoordinatorMessageDto::JobCancelled(zisk_distributed_common::JobCancelledDto {
+                    job_id: job_id.clone(),
+                    reason: reason.to_string(),
+                });
+            if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
+                warn!("Failed to send cancellation to worker {}: {}", worker_id, e);
+            }
+        }
+    }
+
+    /// Marks all Computing workers in the list as Idle.
+    async fn ensure_workers_idle(&self, worker_ids: &[WorkerId]) {
+        self.workers_pool.mark_computing_workers_idle(worker_ids).await;
+    }
+
+    /// Handles new worker registration. Returns `(accepted, message)`.
     pub async fn handle_stream_registration(
         &self,
         req: WorkerRegisterRequestDto,
@@ -953,59 +943,99 @@ impl Coordinator {
         }
     }
 
-    /// Handles worker reconnection requests in streaming context.
+    /// Handles worker reconnection with state reconciliation.
     ///
-    /// Processes reconnection attempts from workers that have previously registered
-    /// but lost their connection due to network issues, service restarts, or other
-    /// transient failures. Maintains job continuity where possible.
+    /// When a worker reconnects (process survived a disconnect), it may hold stale
+    /// `current_job` state. The coordinator reconciles by checking the claimed job
+    /// against its own state and returning a directive:
     ///
-    /// # Parameters
-    ///
-    /// * `req` - Reconnection request containing worker ID and current compute capacity
-    /// * `msg_sender` - New communication channel for the reconnected worker
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing:
-    /// - `bool` - Whether reconnection was successful
-    /// - `String` - Success confirmation or detailed error message
-    ///
-    /// # Reconnection Process
-    ///
-    /// 1. **Identity Validation**: Verifies the worker was previously registered
-    /// 2. **State Recovery**: Attempts to restore worker to its previous operational state
-    /// 3. **Channel Update**: Associates the new message sender with the existing worker entry
-    /// 4. **Continuation**: Allows ongoing jobs to resume with the reconnected worker
-    ///
-    /// # State Preservation
-    ///
-    /// The coordinator attempts to maintain job continuity during reconnections:
-    /// - Active job assignments are preserved where possible
-    /// - Worker compute capacity can be updated to reflect current capabilities
-    /// - Message queues and pending tasks are maintained across disconnections
-    ///
-    /// # Recovery Scenarios
-    ///
-    /// Successful reconnection depends on:
-    /// - Worker ID matches a previously registered instance
-    /// - No conflicting registrations for the same worker ID
-    /// - System state consistency allows for safe state restoration
+    /// | Worker claims job X | Coordinator state          | Directive                |
+    /// |---------------------|----------------------------|--------------------------|
+    /// | None                | —                          | None (idle)              |
+    /// | Some(X)             | Job X unknown              | CancelStaleJob           |
+    /// | Some(X)             | Job X terminal             | CancelStaleJob           |
+    /// | Some(X)             | Job X active, not assigned | CancelStaleJob           |
+    /// | Some(X)             | Job X active, assigned     | ResumeComputing          |
     pub async fn handle_stream_reconnection(
         &self,
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String) {
-        // TODO! Since we call register_worker here, we need to make sure we have not reached
-        // the max connections limit. Otherwise, a reconnecting worker may be rejected.
+    ) -> (bool, String, Option<ReconnectionDirectiveDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
-        match self
-            .workers_pool
-            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
-            .await
+
+        // Check max connections — but allow if the worker already exists (reconnection)
+        let max_connections = self.config.coordinator.max_total_workers as usize;
+        if self.workers_pool.num_workers().await >= max_connections
+            && self.workers_pool.worker_state(&req.worker_id).await.is_none()
         {
-            Ok(()) => (true, "Reconnection successful".to_string()),
-            Err(e) => (false, format!("Reconnection failed: {e}")),
+            return (
+                false,
+                format!("Maximum concurrent connections reached: ({})", max_connections),
+                None,
+            );
         }
+
+        let worker_id = req.worker_id.clone();
+        let last_known_job_id = req.last_known_job_id.clone();
+
+        if let Err(e) =
+            self.workers_pool.register_worker(req.worker_id, req.compute_capacity, msg_sender).await
+        {
+            return (false, format!("Reconnection failed: {e}"), None);
+        }
+
+        // Reconcile stale job state
+        let directive = self.compute_reconnection_directive(&worker_id, last_known_job_id).await;
+
+        if let Some(ref d) = directive {
+            match d {
+                ReconnectionDirectiveDto::CancelStaleJob => {
+                    info!("Reconnection of {worker_id}: directing cancellation of stale job");
+                }
+                ReconnectionDirectiveDto::KeepComputing => {
+                    info!("Reconnection of {worker_id}: job still active, keep computing");
+                }
+                ReconnectionDirectiveDto::Idle => {}
+            }
+        }
+
+        (true, "Reconnection successful".to_string(), directive)
+    }
+
+    /// Computes the reconciliation directive for a reconnecting worker based on
+    /// its claimed `last_known_job_id` vs the coordinator's current job state.
+    async fn compute_reconnection_directive(
+        &self,
+        worker_id: &WorkerId,
+        last_known_job_id: Option<JobId>,
+    ) -> Option<ReconnectionDirectiveDto> {
+        let claimed_job_id = last_known_job_id?;
+
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            match jobs_map.get(&claimed_job_id) {
+                None => {
+                    // Coordinator has no record (restarted or job expired)
+                    return Some(ReconnectionDirectiveDto::CancelStaleJob);
+                }
+                Some(entry) => entry.clone(),
+            }
+        };
+
+        let job = job_entry.read().await;
+
+        if job.state.is_resolved() {
+            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+        }
+
+        if !job.workers.contains(worker_id) {
+            return Some(ReconnectionDirectiveDto::CancelStaleJob);
+        }
+
+        // Job is active and worker is still assigned — process survived the
+        // disconnect so the computation may still be running. Let the worker
+        // continue; the re-established channel will deliver the result.
+        Some(ReconnectionDirectiveDto::KeepComputing)
     }
 
     /// Removes a worker from the active pool and cleans up associated resources.
@@ -1028,41 +1058,176 @@ impl Coordinator {
     /// # Impact on Active Jobs
     ///
     /// When a worker is unregistered:
-    /// - Jobs in progress may be marked as failed if the worker was critical
-    /// - Work may be redistributed to remaining workers where possible
-    /// - Aggregation phases may need to be restarted with different worker assignments
-    pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
-        // Is this worker involved in any active jobs?
-        let worker_state = self.workers_pool.worker_state(worker_id).await;
+    /// If the worker was computing, fail the associated job.
+    /// Returns Ok(()) if the worker was not computing or if the job was already terminal.
+    async fn fail_job_if_computing(
+        &self,
+        worker_id: &WorkerId,
+        worker_state: Option<WorkerState>,
+        reason: &str,
+    ) -> CoordinatorResult<()> {
         if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
             error!(
-                "Worker {} unregistered while computing for job {} in phase {:?}",
-                worker_id, job_id, phase
+                "Worker {} {} while computing for job {} in phase {:?}",
+                worker_id, reason, job_id, phase
             );
-            error!("Marking job {} as failed due to worker disconnection", job_id);
-
-            // Fail the affected job
-            self.fail_job(&job_id, format!("Worker {} disconnected", worker_id)).await?;
+            self.fail_job(&job_id, format!("Worker {} {}", worker_id, reason)).await?;
         }
+        Ok(())
+    }
 
+    /// Unregisters a worker. If it was computing, fails the associated job.
+    pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
+        let worker_state = self.workers_pool.worker_state(worker_id).await;
+        self.fail_job_if_computing(worker_id, worker_state, "unregistered").await?;
         self.workers_pool.unregister_worker(worker_id).await
     }
 
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
-        // Is this worker involved in any active jobs?
         let worker_state = self.workers_pool.worker_state(worker_id).await;
-        if let Some(WorkerState::Computing((job_id, phase))) = worker_state {
-            error!(
-                "Worker {} disconnected while computing for job {} in phase {:?}",
-                worker_id, job_id, phase
-            );
-            error!("Marking job {} as failed due to worker disconnection", job_id);
+        self.fail_job_if_computing(worker_id, worker_state, "disconnected").await?;
+        self.workers_pool.disconnect_worker(worker_id).await
+    }
 
-            // Fail the affected job
-            self.fail_job(&job_id, format!("Worker {} disconnected", worker_id)).await?;
+    /// Generation-aware disconnect for [`ConnectionDropGuard`].
+    ///
+    /// Checks if the worker's current connection generation matches the expected
+    /// generation. If it does, checks if the worker was computing and fails the
+    /// associated job, then disconnects the worker. If the generation doesn't match,
+    /// this is a stale guard and the call is a no-op.
+    pub async fn disconnect_worker_if_generation(
+        &self,
+        worker_id: &WorkerId,
+        expected_generation: u64,
+    ) -> CoordinatorResult<()> {
+        // Read the worker state + generation atomically under one lock
+        let (generation_matches, worker_state) = {
+            match self.workers_pool.worker_state_and_generation(worker_id).await {
+                Some((state, gen)) if gen == expected_generation => (true, Some(state)),
+                _ => (false, None),
+            }
+        };
+
+        if !generation_matches {
+            return Ok(());
         }
 
-        self.workers_pool.disconnect_worker(worker_id).await
+        // If the worker was computing, fail the associated job
+        if let Err(e) =
+            self.fail_job_if_computing(worker_id, worker_state, "connection dropped").await
+        {
+            warn!("Failed to fail job on worker {} disconnect: {}", worker_id, e);
+        }
+
+        // Disconnect with generation check (re-validates under write lock)
+        self.workers_pool.disconnect_worker_if_generation(worker_id, expected_generation).await
+    }
+
+    /// Starts the background job monitor that periodically checks for
+    /// phase timeouts, stale heartbeats, and disconnected worker cleanup.
+    pub fn start_job_monitor(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let coordinator = Arc::clone(self);
+        let interval_secs = coordinator.config.coordinator.job_monitor_interval_seconds;
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            loop {
+                interval.tick().await;
+                coordinator.run_monitor_sweep().await;
+            }
+        })
+    }
+
+    /// Runs a single monitor sweep: checks phase timeouts, stale heartbeats,
+    /// and cleans up stale disconnected workers.
+    pub async fn run_monitor_sweep(&self) {
+        self.check_phase_timeouts().await;
+        self.check_stale_heartbeats().await;
+        self.cleanup_stale_disconnected_workers().await;
+    }
+
+    /// Checks all running jobs for phase timeouts and fails them if exceeded.
+    pub async fn check_phase_timeouts(&self) {
+        // Clone job entries to avoid holding the read lock during async operations
+        let entries: Vec<_> = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+
+        let mut timed_out: Vec<(JobId, String)> = Vec::new();
+
+        for (job_id, job_lock) in entries {
+            let job = job_lock.read().await;
+            if let JobState::Running(ref phase) = job.state {
+                let timeout_secs = self.phase_timeout_secs(phase);
+                if timeout_secs == 0 {
+                    continue;
+                }
+
+                if let Some(start_time) = job.phase_start_time(phase) {
+                    let elapsed = Utc::now().signed_duration_since(start_time);
+                    if elapsed >= chrono::Duration::seconds(timeout_secs as i64) {
+                        let reason = format!(
+                            "[Monitor] Phase {:?} timed out for job {} ({}s > {}s)",
+                            phase,
+                            job.job_id,
+                            elapsed.num_seconds(),
+                            timeout_secs
+                        );
+                        timed_out.push((job_id.clone(), reason));
+                    }
+                }
+            }
+        }
+
+        for (job_id, reason) in timed_out {
+            warn!("{}", reason);
+            if let Err(e) = self.fail_job(&job_id, &reason).await {
+                error!("Failed to abort timed-out job {}: {}", job_id, e);
+            }
+        }
+    }
+
+    /// Returns the configured timeout in seconds for a given phase.
+    fn phase_timeout_secs(&self, phase: &JobPhase) -> u64 {
+        match phase {
+            JobPhase::Execution => self.config.coordinator.execution_timeout_seconds,
+            JobPhase::Contributions
+            | JobPhase::ContributionsInputsStream
+            | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
+            JobPhase::Prove => self.config.coordinator.phase2_timeout_seconds,
+            JobPhase::Aggregate => self.config.coordinator.phase3_timeout_seconds,
+        }
+    }
+
+    /// Checks for computing workers with stale heartbeats and fails their jobs.
+    pub async fn check_stale_heartbeats(&self) {
+        let threshold = chrono::Duration::seconds(
+            (self.config.coordinator.heartbeat_interval_seconds
+                * self.config.coordinator.heartbeat_max_missed as u64) as i64,
+        );
+        let stale = self.workers_pool.get_stale_computing_workers(threshold).await;
+
+        // Deduplicate by job_id
+        let mut failed_jobs = std::collections::HashSet::new();
+        for (worker_id, job_id, _phase) in &stale {
+            if failed_jobs.insert(job_id.clone()) {
+                let reason =
+                    format!("[Monitor] Worker {} missed heartbeats for job {}", worker_id, job_id);
+                warn!("{}", reason);
+                if let Err(e) = self.fail_job(job_id, &reason).await {
+                    error!("Failed to abort job {} due to stale heartbeat: {}", job_id, e);
+                }
+            }
+        }
+    }
+
+    /// Removes worker entries that have been Disconnected for longer than the configured threshold.
+    async fn cleanup_stale_disconnected_workers(&self) {
+        let threshold_secs = self.config.coordinator.stale_disconnected_threshold_seconds;
+        self.workers_pool
+            .remove_stale_disconnected(chrono::Duration::seconds(threshold_secs as i64))
+            .await;
     }
 
     /// Handles heartbeat acknowledgments from workers to maintain liveness tracking.
@@ -1098,6 +1263,16 @@ impl Coordinator {
         Ok(())
     }
 
+    pub async fn handle_stream_job_cancelled_ack(
+        &self,
+        worker_id: &WorkerId,
+        job_id: &JobId,
+    ) -> CoordinatorResult<()> {
+        self.workers_pool.update_last_heartbeat(worker_id).await?;
+        info!("Worker {} acknowledged cancellation of job {}", worker_id, job_id);
+        Ok(())
+    }
+
     /// Handles task execution responses from workers and orchestrates job progression.
     ///
     /// # Parameters
@@ -1109,6 +1284,28 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         // Validate and update heartbeat
         self.validate_and_update_heartbeat(&message).await?;
+
+        // If the job is already terminal (Failed/Completed), this is a late arrival
+        // (e.g. spawn_blocking finished after JobCancelled). Mark worker Idle and discard.
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&message.job_id).cloned()
+        };
+        if let Some(job_entry) = job_entry {
+            let job = job_entry.read().await;
+            if job.state().is_resolved() {
+                info!(
+                    "Ignoring late ExecuteTaskResponse from worker {} for resolved job {}",
+                    message.worker_id, message.job_id
+                );
+                drop(job);
+                drop(job_entry);
+                self.workers_pool
+                    .mark_worker_with_state(&message.worker_id, WorkerState::Idle)
+                    .await?;
+                return Ok(());
+            }
+        }
 
         // Handle task failure if needed
         if !message.success {
@@ -1144,7 +1341,7 @@ impl Coordinator {
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         // Check if job exists
-        if !self.jobs.contains_key(&message.job_id) {
+        if !self.jobs.read().await.contains_key(&message.job_id) {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from worker {}",
                 message.job_id, message.worker_id
@@ -1162,8 +1359,6 @@ impl Coordinator {
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
         self.fail_job(&message.job_id, "Task execution failed").await?;
-
-        self.workers_pool.mark_worker_with_state(&message.worker_id, WorkerState::Idle).await?;
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed to execute task for {}: {}",
@@ -1187,7 +1382,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -1238,7 +1434,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -1269,7 +1466,7 @@ impl Coordinator {
 
         // Calculate total execution time
         let end_time = Utc::now();
-        let start_time = job.start_times.get(&JobPhase::Execution).unwrap_or(&end_time);
+        let start_time = job.phase_start_time(&JobPhase::Execution).unwrap_or(end_time);
         let total_duration = end_time.signed_duration_since(start_time);
         let duration = Duration::from_millis(total_duration.num_milliseconds() as u64);
 
@@ -1626,10 +1823,11 @@ impl Coordinator {
             job.results.get(&JobPhase::Contributions).map(|r| r.len()).unwrap_or(0);
 
         let end_time = Utc::now();
-        let phase_start_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
-            error!("Missing start time for Phase1 in job {}", job.job_id);
-            &end_time
-        });
+        let phase_start_time =
+            job.phase_start_time(&JobPhase::Contributions).unwrap_or_else(|| {
+                error!("Missing start time for Phase1 in job {}", job.job_id);
+                end_time
+            });
         let duration = end_time.signed_duration_since(phase_start_time);
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
 
@@ -1645,7 +1843,7 @@ impl Coordinator {
                     // Calculate delay: time from coordinator sending job to worker receiving task
                     let delay_duration = contributions_result
                         .task_received_time
-                        .map(|task_received| task_received.signed_duration_since(*phase_start_time))
+                        .map(|task_received| task_received.signed_duration_since(phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
                     let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
@@ -1703,9 +1901,9 @@ impl Coordinator {
             job.results.get(&JobPhase::Execution).map(|r| r.len()).unwrap_or(0);
 
         let end_time = Utc::now();
-        let phase_start_time = job.start_times.get(&JobPhase::Execution).unwrap_or_else(|| {
+        let phase_start_time = job.phase_start_time(&JobPhase::Execution).unwrap_or_else(|| {
             error!("Missing start time for Execution phase in job {}", job.job_id);
-            &end_time
+            end_time
         });
         let duration = end_time.signed_duration_since(phase_start_time);
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
@@ -1720,7 +1918,7 @@ impl Coordinator {
                     // Calculate delay: time from coordinator sending job to worker receiving task
                     let delay_duration = execution_result
                         .task_received_time
-                        .map(|task_received| task_received.signed_duration_since(*phase_start_time))
+                        .map(|task_received| task_received.signed_duration_since(phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
                     let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
@@ -1963,7 +2161,8 @@ impl Coordinator {
         let job_id = execute_task_response.job_id.clone();
         let worker_id = execute_task_response.worker_id.clone();
 
-        let job_entry = self.jobs.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
 
         // If in simulation mode, complete the job
@@ -1988,7 +2187,10 @@ impl Coordinator {
         let all_done = self.check_phase2_completion(&job, &worker_id).await?;
 
         if all_done {
-            job.start_times.insert(JobPhase::Aggregate, Utc::now());
+            job.phase_timings.insert(
+                JobPhase::Aggregate,
+                PhaseTimings { start_time: Utc::now(), end_time: None },
+            );
         }
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
@@ -2071,9 +2273,9 @@ impl Coordinator {
 
         let end_time = Utc::now();
         let duration = end_time.signed_duration_since(
-            job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+            job.phase_start_time(&JobPhase::Prove).unwrap_or_else(|| {
                 error!("Missing start time for Phase2 in job {}", job.job_id);
-                &end_time
+                end_time
             }),
         );
 
@@ -2177,9 +2379,9 @@ impl Coordinator {
 
         let end_time = Utc::now();
         let duration = end_time.signed_duration_since(
-            job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+            job.phase_start_time(&JobPhase::Prove).unwrap_or_else(|| {
                 error!("Missing start time for Phase2 in job {}", job.job_id);
-                &end_time
+                end_time
             }),
         );
         let duration_ms = Duration::from_millis(duration.num_milliseconds() as u64);
@@ -2334,7 +2536,8 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.write().await;
 
         // If job has Failed, mark worker as Idle and return early
@@ -2372,7 +2575,8 @@ impl Coordinator {
             return Ok(());
         }
 
-        let job_entry = self.jobs.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 
@@ -2391,17 +2595,17 @@ impl Coordinator {
 
         let end_time = Utc::now();
 
-        let phase1_time = job.start_times.get(&JobPhase::Contributions).unwrap_or_else(|| {
+        let phase1_time = job.phase_start_time(&JobPhase::Contributions).unwrap_or_else(|| {
             error!("Missing start time for Phase1 in job {}", job.job_id);
-            &end_time
+            end_time
         });
-        let phase2_time = job.start_times.get(&JobPhase::Prove).unwrap_or_else(|| {
+        let phase2_time = job.phase_start_time(&JobPhase::Prove).unwrap_or_else(|| {
             error!("Missing start time for Phase2 in job {}", job.job_id);
-            &end_time
+            end_time
         });
-        let phase3_time = job.start_times.get(&JobPhase::Aggregate).unwrap_or_else(|| {
+        let phase3_time = job.phase_start_time(&JobPhase::Aggregate).unwrap_or_else(|| {
             error!("Missing start time for Phase3 in job {}", job.job_id);
-            &end_time
+            end_time
         });
 
         let phase1_duration = phase2_time.signed_duration_since(phase1_time);
@@ -2456,7 +2660,7 @@ impl Coordinator {
         if workers.len() > 1 {
             for phase in [JobPhase::Contributions, JobPhase::Prove] {
                 if let Some(results) = job.results.get(&phase) {
-                    if let Some(start_time) = job.start_times.get(&phase) {
+                    if let Some(start_time) = job.phase_start_time(&phase) {
                         let mut durations_ms: Vec<(WorkerId, i64)> = results
                             .iter()
                             .map(|(worker_id, result)| {
@@ -2652,10 +2856,282 @@ impl Coordinator {
 
         // Release job lock before calling post_launch_proof
         drop(job);
-        drop(job_entry);
 
         self.post_launch_proof(job_id).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::*;
+    use std::collections::BTreeMap;
+    use zisk_distributed_common::{
+        ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
+        PhaseTimings, WorkerState,
+    };
+
+    fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
+        let mut config = Config::load(None, None, None, true, false, None)
+            .expect("Failed to create default test config");
+        overrides(&mut config);
+        config
+    }
+
+    fn create_test_job(workers: &[WorkerId]) -> Job {
+        let partitions: Vec<Vec<u32>> =
+            workers.iter().enumerate().map(|(i, _)| vec![i as u32]).collect();
+        Job::new(
+            Default::default(),
+            InputsModeDto::InputsNone,
+            HintsModeDto::HintsNone,
+            ComputeCapacity::from(workers.len() as u32),
+            ComputeCapacity::from(1u32),
+            workers.to_vec(),
+            partitions,
+            JobExecutionMode::Standard,
+            BTreeMap::new(),
+            false,
+        )
+    }
+
+    /// Helper: create a Coordinator with workers and a Running job inserted.
+    async fn setup_coordinator_with_job(
+        n_workers: usize,
+        phase: JobPhase,
+        config_overrides: impl FnOnce(&mut Config),
+    ) -> (
+        Coordinator,
+        Vec<(WorkerId, std::sync::Arc<std::sync::Mutex<Vec<CoordinatorMessageDto>>>)>,
+        JobId,
+    ) {
+        let config = test_config_with(config_overrides);
+        let coordinator = Coordinator::new(config);
+
+        let mut workers = Vec::with_capacity(n_workers);
+        for i in 0..n_workers {
+            let worker_id = WorkerId::from(format!("w{}", i));
+            let (sender, messages) = MockMessageSender::new();
+            coordinator
+                .workers_pool
+                .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+                .await
+                .unwrap();
+            workers.push((worker_id, messages));
+        }
+
+        let worker_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+        let mut job = create_test_job(&worker_ids);
+        job.change_state(JobState::Running(phase.clone()));
+        let job_id = job.job_id.clone();
+
+        for wid in &worker_ids {
+            coordinator
+                .workers_pool
+                .mark_worker_with_state(
+                    wid,
+                    WorkerState::Computing((job_id.clone(), phase.clone())),
+                )
+                .await
+                .unwrap();
+        }
+
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+
+        (coordinator, workers, job_id)
+    }
+
+    #[tokio::test]
+    async fn test_fail_job_is_idempotent() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        // First fail succeeds
+        coordinator.fail_job(&job_id, "first").await.unwrap();
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+
+        // Second fail is a no-op (no panic, returns Ok)
+        coordinator.fail_job(&job_id, "second").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_fail_job_sends_cancellation() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        coordinator.fail_job(&job_id, "test reason").await.unwrap();
+
+        // Both workers should have received at least one JobCancelled message
+        for (_, msgs) in &workers {
+            let cancellations: usize = msgs
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|m| matches!(m, CoordinatorMessageDto::JobCancelled(_)))
+                .count();
+            assert!(cancellations >= 1, "Expected at least one JobCancelled message");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ensure_workers_idle_all_workers() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(3, JobPhase::Contributions, |_| {}).await;
+
+        // Only worker 0 has "results" — but ensure_workers_idle should mark ALL 3 as Idle
+        coordinator.fail_job(&job_id, "test").await.unwrap();
+
+        for (wid, _) in &workers {
+            let state = coordinator.workers_pool.worker_state(wid).await;
+            assert_eq!(state, Some(WorkerState::Idle), "Worker {} should be Idle", wid);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_phase_timeouts() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        // Backdate start_time to 10 minutes ago
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.phase_timings.insert(
+                JobPhase::Contributions,
+                PhaseTimings {
+                    start_time: Utc::now() - chrono::Duration::seconds(600),
+                    end_time: None,
+                },
+            );
+        }
+
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_check_phase_timeouts_no_false_positive() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.phase1_timeout_seconds = 300;
+            })
+            .await;
+
+        // start_time is fresh (just set) — should NOT timeout
+        coordinator.check_phase_timeouts().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Running(JobPhase::Contributions),);
+    }
+
+    #[tokio::test]
+    async fn test_check_stale_heartbeats() {
+        let (coordinator, _workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |c| {
+                c.coordinator.heartbeat_interval_seconds = 30;
+                c.coordinator.heartbeat_max_missed = 3;
+            })
+            .await;
+
+        // Set worker 0's heartbeat to 100 seconds ago
+        let w0 = &_workers[0].0;
+        coordinator
+            .workers_pool
+            .set_last_heartbeat(w0, Utc::now() - chrono::Duration::seconds(100))
+            .await
+            .unwrap();
+
+        coordinator.check_stale_heartbeats().await;
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_late_task_response_ignored_for_failed_job() {
+        use zisk_distributed_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ExecutionResultDataDto,
+            ZiskExecutorTimeDto,
+        };
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        // Fail the job first
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+
+        // Now simulate a late task response from worker 0
+        let w0_id = workers[0].0.clone();
+        let late_response = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: true,
+            error_message: None,
+            result_data: ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
+                instances: 1,
+                executed_steps: 100,
+                zisk_executor_time: ZiskExecutorTimeDto {
+                    total_duration: 0.0,
+                    execution_duration: 0.0,
+                    count_and_plan_duration: 0.0,
+                    count_and_plan_mo_duration: 0.0,
+                    asm_execution_duration: None,
+                    task_received_time: 0.0,
+                },
+            }),
+        };
+
+        // Should succeed (not error) — the late response is silently discarded
+        coordinator.handle_stream_execute_task_response(late_response).await.unwrap();
+
+        // Worker should be set to Idle
+        let state = coordinator.workers_pool.worker_state(&w0_id).await;
+        assert_eq!(state, Some(WorkerState::Idle));
+
+        // Job should still be Failed (not revived)
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_register_worker_accepts_idle() {
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        let worker_id = WorkerId::from("w-idle".to_string());
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+            .await
+            .unwrap();
+
+        // Worker is Idle
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Idle)
+        );
+
+        // Re-registering an Idle worker should succeed (M4 fix)
+        let (sender2, _msgs2) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender2))
+            .await
+            .unwrap();
+
+        // Worker should still be Idle with incremented generation
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&worker_id).await,
+            Some(WorkerState::Idle)
+        );
     }
 }

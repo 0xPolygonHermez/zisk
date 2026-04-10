@@ -23,6 +23,8 @@ use zisk_core::{
 };
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
+use anyhow::Result;
+
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
     /// Zisk Rom
@@ -63,12 +65,16 @@ impl RomSM {
         })
     }
 
-    pub fn set_rh_data(&self, handler: AsmRunnerRH) {
-        *self.rh_data.lock().unwrap() = Some(handler);
+    pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
+        *self.rh_data.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
+            Some(handler);
+        Ok(())
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
-        *self.zisk_rom.lock().unwrap() = Some(zisk_rom);
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
+        *self.zisk_rom.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
+            Some(zisk_rom);
+        Ok(())
     }
 
     /// Computes the witness for the provided plan using the given ROM.

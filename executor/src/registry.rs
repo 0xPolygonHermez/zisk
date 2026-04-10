@@ -4,13 +4,16 @@
 //! state machine instances.
 
 use fields::PrimeField64;
-use proofman_common::{ProofCtx, ProofmanResult};
+use proofman_common::ProofCtx;
 use sm_main::MainInstance;
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
 
 use crate::AirClassifier;
 use crate::{state::ExecutionState, StaticSMBundle};
+
+use anyhow::Result;
 
 pub struct InstanceRegistry<F: PrimeField64> {
     /// State machine bundle for secondary instance creation.
@@ -40,7 +43,11 @@ impl<F: PrimeField64> InstanceRegistry<F> {
     /// # Arguments
     /// * `plan` - The plan for the instance.
     /// * `global_id` - The global ID assigned to this instance.
-    pub fn create_secn_instance(&self, plan: Plan, global_id: usize) -> Box<dyn Instance<F>> {
+    pub fn create_secn_instance(
+        &self,
+        plan: Plan,
+        global_id: usize,
+    ) -> Result<Box<dyn Instance<F>>> {
         let ictx = InstanceCtx::new(global_id, plan);
         self.sm_bundle.build_instance(ictx)
     }
@@ -54,15 +61,18 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         &self,
         state: &ExecutionState<F>,
         global_id: usize,
-    ) -> Box<dyn Instance<F>> {
-        let mut secn_planning_guard = state.secn_planning.write().unwrap();
+    ) -> Result<Box<dyn Instance<F>>> {
+        let mut secn_planning_guard = state
+            .secn_planning
+            .write()
+            .map_err(|e| anyhow::anyhow!("Planning lock poisoned: {e}"))?;
 
         // Find and remove in single operation using swap_remove for O(1) removal
         let plan = secn_planning_guard
             .iter()
             .position(|plan| plan.global_id == Some(global_id))
             .map(|idx| secn_planning_guard.swap_remove(idx))
-            .unwrap_or_else(|| panic!("Secondary instance not found for global_id: {}", global_id));
+            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
         self.create_secn_instance(plan, global_id)
     }
@@ -77,8 +87,9 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         assignments: Vec<(usize, Plan)>,
-    ) -> ProofmanResult<()> {
-        let mut main_instances = state.main_instances.write().unwrap();
+    ) -> Result<()> {
+        let mut main_instances =
+            state.main_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
         for (global_id, plan) in assignments {
             main_instances
                 .entry(global_id)
@@ -89,6 +100,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
                 pctx.set_witness_ready(global_id, false);
             }
         }
+
         Ok(())
     }
 
@@ -97,13 +109,21 @@ impl<F: PrimeField64> InstanceRegistry<F> {
     /// # Arguments
     /// * `state` - The execution state to populate.
     /// * `global_ids` - Vector of global IDs for instances to create.
-    pub fn populate_secn_instances(&self, state: &ExecutionState<F>, global_ids: &[usize]) {
-        let mut secn_instances = state.secn_instances.write().unwrap();
+    pub fn populate_secn_instances(
+        &self,
+        state: &ExecutionState<F>,
+        global_ids: &[usize],
+    ) -> Result<()> {
+        let mut secn_instances =
+            state.secn_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
         for &global_id in global_ids {
-            secn_instances
-                .entry(global_id)
-                .or_insert_with(|| self.create_secn_instance_from_state(state, global_id));
+            if let Entry::Vacant(e) = secn_instances.entry(global_id) {
+                let instance = self.create_secn_instance_from_state(state, global_id)?;
+                e.insert(instance);
+            }
         }
+
+        Ok(())
     }
 
     /// Gets a reference to the state machine bundle.
@@ -135,14 +155,18 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         global_ids: &[usize],
-    ) {
-        let secn_instances = state.secn_instances.read().unwrap();
+    ) -> Result<()> {
+        let secn_instances = state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         for &global_id in global_ids {
-            secn_instances[&global_id].reset();
+            let instance = secn_instances
+                .get(&global_id)
+                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
-            if secn_instances[&global_id].instance_type() == InstanceType::Instance {
-                let checkpoint = secn_instances[&global_id].check_point();
+            instance.reset();
+
+            if instance.instance_type() == InstanceType::Instance {
+                let checkpoint = instance.check_point();
                 let chunks = match checkpoint {
                     CheckPoint::None => vec![],
                     CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
@@ -151,11 +175,12 @@ impl<F: PrimeField64> InstanceRegistry<F> {
                     }
                 };
 
-                let (_, air_id) =
-                    pctx.dctx_get_instance_info(global_id).expect("Failed to get instance info");
+                let (_, air_id) = pctx.dctx_get_instance_info(global_id)?;
                 let is_memory_related = AirClassifier::is_memory_related(air_id);
                 pctx.dctx_set_chunks(global_id, chunks, is_memory_related);
             }
         }
+
+        Ok(())
     }
 }

@@ -110,6 +110,18 @@ pub struct WorkerRegisterRequestDto {
 pub struct WorkerReconnectRequestDto {
     pub worker_id: WorkerId,
     pub compute_capacity: ComputeCapacity,
+    pub last_known_job_id: Option<JobId>,
+}
+
+/// Reconciliation directive sent by the coordinator in the registration response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReconnectionDirectiveDto {
+    /// Worker has no stale state; proceed as idle.
+    Idle,
+    /// Worker's active job is still valid; keep computing.
+    KeepComputing,
+    /// Worker should cancel its stale local job and become idle.
+    CancelStaleJob,
 }
 
 pub enum CoordinatorMessageDto {

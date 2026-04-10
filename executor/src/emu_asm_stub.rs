@@ -40,14 +40,14 @@ impl EmulatorAsm {
         Vec<EmuTrace>,
         DeviceMetricsList,
         NestedDeviceMetricsList,
-        Option<JoinHandle<AsmRunnerMO>>,
-        Option<JoinHandle<AsmRunnerRH>>,
+        Option<JoinHandle<Result<AsmRunnerMO>>>,
+        Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
     )> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_asm_resources(&self, _asm_resources: AsmResources) {
+    pub fn set_asm_resources(&self, _asm_resources: AsmResources) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -55,19 +55,19 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn reset(&self) {
+    pub fn reset(&self) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn use_hints(&self) -> bool {
+    pub fn use_hints(&self) -> Result<bool> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 

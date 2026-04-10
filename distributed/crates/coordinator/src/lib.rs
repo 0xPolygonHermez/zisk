@@ -7,9 +7,13 @@ mod hooks;
 mod shutdown;
 mod workers_pool;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 pub use config::*;
-use coordinator::*;
+pub use coordinator::*;
+pub use coordinator_errors::*;
 pub use coordinator_grpc::*;
 pub use hints_relay::*;
 pub use shutdown::*;
-use workers_pool::*;
+pub use workers_pool::*;

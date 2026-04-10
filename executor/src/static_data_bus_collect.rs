@@ -186,7 +186,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         match bus_id {
             MEM_BUS_ID => {
                 MemCollectorProcessor::new(&mut self.mem_collector, &mut self.mem_align_collector)
-                    .process_mem_data(&data.try_into().unwrap());
+                    .process_mem_data(
+                        &data
+                            .try_into()
+                            .expect("MEM_BUS_ID payload must have the correct array length"),
+                    );
             }
             OPERATION_BUS_ID => match data[OP_TYPE] {
                 BINARY_TYPE => {

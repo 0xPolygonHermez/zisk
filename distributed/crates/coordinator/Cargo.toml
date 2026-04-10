@@ -33,7 +33,6 @@ prost-types = { workspace = true }
 config = { workspace = true }
 reqwest = { workspace = true }
 colored = { workspace = true }
-dashmap = "6.1"
 
 signal-hook = { version = "0.3" }
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
