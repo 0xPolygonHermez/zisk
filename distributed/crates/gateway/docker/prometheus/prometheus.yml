@@ -1,0 +1,9 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: zisk-gateway
+    static_configs:
+      - targets: ["gateway:9090"]
+    metrics_path: /metrics
