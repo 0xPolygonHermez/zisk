@@ -1,6 +1,6 @@
 # ZisK User API — Reference
 
-_Version 1.0 · Creation date: 17-03-2026 · Last update: 17-03-2026_
+_Version 1.0 · Creation date: 17-03-2026 · Last update: 11-04-2026_
 
 ## Summary
 
@@ -11,6 +11,7 @@ _Version 1.0 · Creation date: 17-03-2026 · Last update: 17-03-2026_
 | [`WaitJobResult`](#waitjobresult)               | Block until a job reaches a terminal state and return the result |
 | [`WatchJob`](#watchjob)                         | Subscribe to state events for a job (reconnectable)              |
 | [`PushJobInput`](#pushjobinput)                 | Push input data to a job waiting for input                       |
+| [`CancelJob`](#canceljob)                       | Cancel a running or queued job                                   |
 
 **Job Kinds** (submitted via [`JobRequest`](#jobrequest)):
 
@@ -58,6 +59,24 @@ struct Proof {
     public_inputs:    Vec<u8>,       // serialized public inputs committed to by the proof
     started_at:       DateTime<Utc>, // when the job started executing
     completed_at:     DateTime<Utc>, // when the proof was finalized
+}
+
+// RPC-level errors (method cannot complete)
+struct ApiError {
+    code:        u32,              // stable numeric code for programmatic handling
+    name:        String,           // e.g. "JOB_NOT_FOUND" for logs
+    message:     String,           // human-readable detail
+    retryable:   bool,
+    retry_after: Option<Duration>, // hint for retryable errors
+}
+
+// Job-level failures (job ran but failed)
+enum JobFailure {
+    Timeout { phase: Option<JobPhase>, limit: Duration },
+    Input { reason: String },
+    Execution { reason: String },
+    Internal { trace_id: String },
+    Cancelled,
 }
 ```
 
@@ -123,7 +142,7 @@ up to `timeout_seconds` (default 5s, minimum 1s): if the job reaches a terminal 
 This design means the caller can loop on `WaitJobResult` without any sleep or rate-limiting
 logic.
 
-Clients **must** set a request deadline greater than `timeout_seconds`.
+Clients **must** set a request timeout greater than `timeout_seconds`.
 
 ```
 WaitJobResultRequest → WaitJobResultResponse
@@ -146,89 +165,10 @@ enum JobStatus {
     Running(Option<JobPhase>), // Some(phase) for Prove jobs; None for Setup, Wrap, Execute
     WaitingForInput,           // waiting for input
     Completed,
-    Failed(String),            // error message
+    Failed(JobFailure),        // structured failure reason
     Cancelled,
 }
 ```
-
-### `SetupGuestProgram`
-
-Prepares the guest program to generate proofs. Submit via `JobRequest`; use `WatchJob` or `WaitJobResult` to observe completion.
-
-```rust
-struct SetupRequest {
-    hash_id: String, // hash of zisk_elf
-}
-
-struct SetupResponse {
-    // no payload; completion signals the program is ready for proving
-}
-```
-
-### `Prove`
-
-Creates a proof job against a registered program. Use `WatchJob` or `WaitJobResult` to observe the job.
-
-```rust
-struct ProveRequest {
-    hash_id:       String,           // Elf hash id
-    input:         InputKind,
-    proof_timeout: Option<DateTime<Utc>>, // proof generation deadline; server default if omitted
-}
-
-struct ProveResponse {
-    proof: Proof,
-}
-```
-
-### `Wrap`
-
-Converts an existing `Proof` to the format specified by `proof_dest`. Valid combinations: `Stark → Plonk` and `StarkMinimal → Plonk`.
-
-```rust
-struct WrapRequest {
-    proof:        Proof,
-    proof_dest:   ProofKind,         // target format
-    wrap_timeout: Option<DateTime<Utc>>,  // wrapping deadline; server default if omitted
-}
-
-struct WrapResponse {
-    proof: Proof,
-}
-```
-
-### `Aggregate`
-
-<!-- TODO: To be defined -->
-
-<!--
-```rust
-struct AggregateRequest {
-    proofs:            Vec<Proof>,
-    aggregate_timeout: Option<Duration>,
-}
-
-struct AggregateResponse {
-    // TODO: To be defined
-}
-```
--->
-
-### `Execute`
-
-```rust
-struct ExecuteRequest {
-    hash_id:         String,           // Elf hash id
-    input:           InputKind,
-    execute_timeout: Option<DateTime<Utc>>, // execution deadline; server default if omitted
-}
-
-struct ExecuteResponse {
-    // TODO: To be defined
-}
-```
-
-## Runtime Management
 
 ### `WatchJob`
 
@@ -295,7 +235,7 @@ struct JobEventCancelled {
 
 struct JobEventFailed {
     job_id:    Uuid,
-    error:     String,
+    failure:   JobFailure,
     timestamp: DateTime<Utc>,
 }
 
@@ -327,3 +267,127 @@ struct PushJobInputRequest {
     chunk:  InputChunk,
 }
 ```
+
+### `CancelJob`
+
+Cancel a job. The server blocks until the job reaches the `Cancelled` state, then returns.
+If the job is already in a terminal state (`Completed`, `Failed`, or `Cancelled`), returns
+immediately with `cancelled: false`.
+
+Idempotent: cancelling an already-cancelled or completed job returns success.
+
+```
+CancelJobRequest → CancelJobResponse
+```
+
+```rust
+struct CancelJobRequest {
+    job_id: Uuid,
+}
+
+struct CancelJobResponse {
+    job_id:    Uuid,
+    cancelled: bool, // true if job was cancelled; false if already terminal
+}
+```
+
+## Job Kinds
+
+### `SetupGuestProgram`
+
+Prepares the guest program to generate proofs. Submit via `JobRequest`; use `WatchJob` or `WaitJobResult` to observe completion.
+
+```rust
+struct SetupRequest {
+    hash_id: String, // hash of zisk_elf
+}
+
+struct SetupResponse {
+    // no payload; completion signals the program is ready for proving
+}
+```
+
+### `Prove`
+
+Creates a proof job against a registered program. Use `WatchJob` or `WaitJobResult` to observe the job.
+
+```rust
+struct ProveRequest {
+    hash_id:       String,           // Elf hash id
+    input:         InputKind,
+    proof_timeout: Option<DateTime<Utc>>, // proof generation timeout; server default if omitted
+}
+
+struct ProveResponse {
+    proof: Proof,
+}
+```
+
+### `Wrap`
+
+Converts an existing `Proof` to the format specified by `proof_dest`. Valid combinations: `Stark → Plonk` and `StarkMinimal → Plonk`.
+
+```rust
+struct WrapRequest {
+    proof:        Proof,
+    proof_dest:   ProofKind,         // target format
+    wrap_timeout: Option<DateTime<Utc>>,  // wrapping timeout; server default if omitted
+}
+
+struct WrapResponse {
+    proof: Proof,
+}
+```
+
+### `Aggregate`
+
+<!-- TODO: To be defined -->
+
+<!--
+```rust
+struct AggregateRequest {
+    proofs:            Vec<Proof>,
+    aggregate_timeout: Option<Duration>,
+}
+
+struct AggregateResponse {
+    // TODO: To be defined
+}
+```
+-->
+
+### `Execute`
+
+```rust
+struct ExecuteRequest {
+    hash_id:         String,           // Elf hash id
+    input:           InputKind,
+    execute_timeout: Option<DateTime<Utc>>, // execution timeout; server default if omitted
+}
+
+struct ExecuteResponse {
+    // TODO: To be defined
+}
+```
+
+## Error Handling
+
+All RPC methods may return `ApiError`. Common error codes:
+
+| Code | Name | Retryable | Description |
+|------|------|-----------|-------------|
+| 1001 | `JOB_NOT_FOUND` | No | Invalid `job_id` |
+| 1002 | `PROGRAM_NOT_FOUND` | No | Unknown `hash_id` |
+| 1003 | `PROGRAM_NOT_SETUP` | No | Program exists but setup not completed |
+| 1004 | `INVALID_JOB_STATE` | No | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
+| 1005 | `INVALID_PROOF_CONVERSION` | No | Unsupported `proof_dest` for given `proof_kind` |
+| 2001 | `CLUSTER_UNAVAILABLE` | Yes | No coordinator available; retry with backoff |
+| 3001 | `INTERNAL` | No | Unexpected server error; include `trace_id` in support requests |
+
+Jobs that fail during execution report `JobFailure` variants:
+
+| Variant | When |
+|---------|------|
+| `Timeout { phase, limit }` | Job exceeded timeout |
+| `Internal { trace_id }` | Execution crash or unexpected error |
+| `Cancelled` | Job was cancelled by the client or system |
