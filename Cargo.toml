@@ -45,6 +45,7 @@ members = [
     "common",
     "tools/circuit",
     "distributed/crates/coordinator",
+    "distributed/crates/gateway",
     "distributed/crates/grpc-api",
     "distributed/crates/common",
     "distributed/crates/worker",
@@ -111,6 +112,7 @@ zisk-distributed-common = { path = "distributed/crates/common" }
 zisk-distributed-coordinator = { path = "distributed/crates/coordinator" }
 zisk-distributed-grpc-api = { path = "distributed/crates/grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }
+zisk-gateway = { path = "distributed/crates/gateway" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }

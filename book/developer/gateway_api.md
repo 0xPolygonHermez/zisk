@@ -66,8 +66,6 @@ struct ApiError {
     code:        u32,              // stable numeric code for programmatic handling
     name:        String,           // e.g. "JOB_NOT_FOUND" for logs
     message:     String,           // human-readable detail
-    retryable:   bool,
-    retry_after: Option<Duration>, // hint for retryable errors
 }
 
 // Job-level failures (job ran but failed)
@@ -135,7 +133,7 @@ enum JobKindResponse {
 ### `WaitJobResult`
 
 The intended primitive for polling a job to completion. The server holds the response for
-up to `timeout_seconds` (default 5s, minimum 1s): if the job reaches a terminal state
+up to `timeout_seconds` (default 5s, range 1–60s): if the job reaches a terminal state
 (Completed, Failed, or Cancelled) within that window, it returns immediately with the final
 `WaitJobResultResponse`; otherwise it returns with the current status and the client can re-issue.
 
@@ -151,7 +149,7 @@ WaitJobResultRequest → WaitJobResultResponse
 ```rust
 struct WaitJobResultRequest {
     job_id:          Uuid,
-    timeout_seconds: Option<u32>, // server-side hold duration; min 1s
+    timeout_seconds: Option<u32>, // server-side hold duration; range [1, 60], default 5
 }
 
 struct WaitJobResultResponse {
@@ -270,11 +268,11 @@ struct PushJobInputRequest {
 
 ### `CancelJob`
 
-Cancel a job. The server blocks until the job reaches the `Cancelled` state, then returns.
-If the job is already in a terminal state (`Completed`, `Failed`, or `Cancelled`), returns
-immediately with `cancelled: false`.
+Cancel a job. Returns immediately.
+If the job was running or queued, it transitions to `Cancelled` and `cancelled: true` is returned.
+If the job is already in a terminal state (`Completed`, `Failed`, or `Cancelled`), returns `cancelled: false`.
 
-Idempotent: cancelling an already-cancelled or completed job returns success.
+Idempotent: cancelling an already-terminal job always succeeds (no error).
 
 ```
 CancelJobRequest → CancelJobResponse
@@ -374,15 +372,15 @@ struct ExecuteResponse {
 
 All RPC methods may return `ApiError`. Common error codes:
 
-| Code | Name | Retryable | Description |
-|------|------|-----------|-------------|
-| 1001 | `JOB_NOT_FOUND` | No | Invalid `job_id` |
-| 1002 | `PROGRAM_NOT_FOUND` | No | Unknown `hash_id` |
-| 1003 | `PROGRAM_NOT_SETUP` | No | Program exists but setup not completed |
-| 1004 | `INVALID_JOB_STATE` | No | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
-| 1005 | `INVALID_PROOF_CONVERSION` | No | Unsupported `proof_dest` for given `proof_kind` |
-| 2001 | `CLUSTER_UNAVAILABLE` | Yes | No coordinator available; retry with backoff |
-| 3001 | `INTERNAL` | No | Unexpected server error; include `trace_id` in support requests |
+| Code | Name |  Description |
+|------|------|-------------|
+| 1001 | `JOB_NOT_FOUND` | Invalid `job_id` |
+| 1002 | `PROGRAM_NOT_FOUND` | Unknown `hash_id` |
+| 1003 | `PROGRAM_NOT_SETUP` | Program exists but setup not completed |
+| 1004 | `INVALID_JOB_STATE` | Operation not valid for current job state (e.g., `PushJobInput` on non-input job) |
+| 1005 | `INVALID_PROOF_CONVERSION` | Unsupported `proof_dest` for given `proof_kind` |
+| 2001 | `CLUSTER_UNAVAILABLE` | No coordinator available |
+| 3001 | `INTERNAL` | Unexpected server error; include `trace_id` in support requests |
 
 Jobs that fail during execution report `JobFailure` variants:
 

@@ -1,0 +1,44 @@
+# docker-compose.yml — ZisK Gateway local development stack
+#
+# Usage (from the workspace root):
+#   docker compose -f distributed/crates/gateway/docker/docker-compose.yml up
+#
+# The gateway image is built from source; the build context is the workspace root.
+
+services:
+  gateway:
+    build:
+      context: ../../../..      # workspace root
+      dockerfile: distributed/crates/gateway/docker/Dockerfile
+    image: zisk-gateway:latest
+    container_name: zisk-gateway
+    restart: on-failure
+    ports:
+      - "7000:7000"   # gRPC API
+      - "9090:9090"   # Prometheus metrics
+    volumes:
+      - ./config/gateway.toml:/etc/zisk/gateway.toml:ro
+    networks:
+      - zisk
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: zisk-prometheus
+    restart: on-failure
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+    networks:
+      - zisk
+    depends_on:
+      - gateway
+
+networks:
+  zisk:
+    driver: bridge
