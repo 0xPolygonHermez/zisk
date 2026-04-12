@@ -1,19 +1,12 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sha_hasher_host::Output;
 use zisk_sdk::{
     load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskProofWithPublicValues,
     ZiskPublics, ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -27,15 +20,14 @@ fn main() -> Result<()> {
     // Create a `ProverClient` method.
     println!("Building prover client...");
     let proof_opts = ProverOpts::default().minimal_memory();
-    let client =
-        ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
+    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?;
+    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?;
     println!("Proof generated successfully in {:?}", result.get_duration());
     println!("Execution steps: {}", result.get_execution_steps());
 
@@ -55,19 +47,20 @@ fn main() -> Result<()> {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
+    let output = Output { hash: hash.into(), iterations: n, magic_number: 0xDEADBEEF };
     println!("Expected output hash: {:02x?}", &hash[..8]);
 
     println!("Verifying saved proofs from disk...");
-    let publics = ZiskPublics::write(&output)?;
-    println!("Loading proof from disk...");
+    let publics = ZiskPublics::write_abi(&output)?;
     let vk = client.vk(&PROGRAM)?;
 
     println!("Loading proof with publics from disk...");
     let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof.bin")?;
-    println!("Verifying proof with publics...");
+
+    println!("Verifying proof with embedded publics...");
+    // Verify the proof with its embedded publics (from guest's commit)
     proof_with_publics.with_program_vk(&vk).with_publics(&publics).verify()?;
-    println!("Proof with publics verification successful!");
+    println!("Proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified all proofs!");
 

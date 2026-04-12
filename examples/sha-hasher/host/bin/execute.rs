@@ -1,15 +1,8 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use sha_hasher_host::Output;
 use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
 
 fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
@@ -37,7 +30,7 @@ fn main() -> Result<()> {
     println!("Duration: {:?}", result.get_duration());
 
     println!("Reading public outputs...");
-    let output: Output = result.get_public_values()?;
+    let output: Output = result.get_public_values_abi()?;
     println!("Public outputs:");
     println!("  Hash: {:02x?}", output.hash);
     println!("  Iterations: {}", output.iterations);

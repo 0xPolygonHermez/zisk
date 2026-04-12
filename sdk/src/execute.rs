@@ -51,6 +51,13 @@ impl ExecuteResult {
     ) -> Result<T> {
         self.inner.get_public_values()
     }
+
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.inner.get_public_values_abi()
+    }
 }
 
 /// Builder for a dry-run execution request (no proof).

@@ -26,7 +26,8 @@ fn main() -> Result<()> {
     println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
 
     println!("Reducing proof (this may take a while)...");
-    let result = client.wrap(vadcop_result.get_proof(), ProofMode::VadcopFinalMinimal).run()?;
+    let result =
+        client.wrap_proof(vadcop_result.get_proof(), ProofMode::VadcopFinalMinimal).run()?;
 
     // Alternatively, you can also call `minimal()` on the `ProverClient.prove` method to generate a minimal proof directly.
     // let result = client.prove(&PROGRAM, stdin)?.with_prover_options(proof_opts).minimal().run()?;

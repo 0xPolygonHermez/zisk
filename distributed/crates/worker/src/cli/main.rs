@@ -98,7 +98,7 @@ struct Cli {
 
     /// GPU parameters
     #[clap(short = 'z', long, default_value_t = false)]
-    pub preallocate: bool,
+    pub preallocate_fixed_gpu: bool,
 
     /// Maximum number of GPU streams
     #[clap(short = 't', long)]
@@ -151,7 +151,7 @@ async fn main() -> Result<()> {
         debug: cli.debug.clone(),
         verify_constraints: cli.verify_constraints,
         aggregation: true, // we always aggregate
-        preallocate: cli.preallocate,
+        preallocate_fixed_gpu: cli.preallocate_fixed_gpu,
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,

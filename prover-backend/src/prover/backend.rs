@@ -1,6 +1,6 @@
 use crate::create_debug_info;
+use crate::BackendProverOpts;
 use crate::GuestProgram;
-use crate::ProverOpts;
 use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
@@ -295,7 +295,7 @@ impl ProverBackend {
         &self,
         stdin: ZiskStdin,
         mode: ProofMode,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
         if mode == ProofMode::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(

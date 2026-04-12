@@ -1,19 +1,12 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sha_hasher_host::Output;
 use zisk_sdk::{
     load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskProofWithPublicValues,
     ZiskPublics, ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -58,16 +51,16 @@ async fn main() -> Result<()> {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
+    let output = Output { hash: hash.into(), iterations: n, magic_number: 0xDEADBEEF };
     println!("Expected output hash: {:02x?}", &hash[..8]);
 
     println!("Verifying saved proofs from disk...");
-    let publics = ZiskPublics::write(&output)?;
+    let publics = ZiskPublics::write_abi(&output)?;
     let vk = client.vk(&PROGRAM)?;
 
     let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof_async.bin")?;
     proof_with_publics.with_program_vk(&vk).with_publics(&publics).verify()?;
-    println!("Proof with publics verification successful!");
+    println!("Proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified all proofs!");
 

@@ -4,16 +4,10 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use alloy_sol_types::{sol, SolValue};
+use alloy_sol_types::SolValue;
 use sha2::{Digest, Sha256};
+use sha_hasher_common::Output;
 
-sol! {
-    struct Output {
-        bytes32 hash;
-        uint32 iterations;
-        uint32 magic_number;
-    }
-}
 fn main() {
     // Read the input data
     let n: u32 = ziskos::io::read();
@@ -37,5 +31,6 @@ fn main() {
 
     println!("Bytes to commit: {:?}", bytes);
 
-    ziskos::io::commit(&bytes);
+    // Write raw ABI-encoded bytes directly (no bincode serialization)
+    ziskos::io::write(&bytes);
 }

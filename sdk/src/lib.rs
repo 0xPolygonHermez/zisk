@@ -4,6 +4,7 @@ mod embedded;
 mod execute;
 mod hints;
 mod input;
+mod opts;
 mod proof;
 mod prove;
 mod remote;
@@ -30,15 +31,16 @@ pub use wrap::WrapRequest;
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, ProgramId};
 
+pub use opts::ProverOpts;
+
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{
-    AsmOptions, ProveBuilder, ProverOpts, WrapBuilder, ZiskExecuteResult, ZiskProveResult,
+    AsmOptions, BackendProverOpts, ProveBuilder, WrapBuilder, ZiskExecuteResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 
 // Re-export common types
 pub use proofman_common::VerboseMode;
-
 // Re-export types from zisk_common (avoid glob io::* — it conflicts with our ZiskStdin wrapper)
 pub use zisk_common::{
     PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,

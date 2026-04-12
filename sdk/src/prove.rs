@@ -132,7 +132,7 @@ impl<C: Client + Clone + Send + Sync + 'static> ProveRequest<C> {
 
     /// Set the proof wrapping mode (alias for `proof_kind`).
     #[must_use]
-    pub fn wrap_proof(mut self, kind: ProofKind) -> Self {
+    pub fn wrap(mut self, kind: ProofKind) -> Self {
         self.proof_kind = kind;
         self
     }

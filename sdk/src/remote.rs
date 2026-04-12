@@ -11,7 +11,9 @@ use zisk_distributed_grpc_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, HealthCheckRequest, HintsMode,
     InputMode, JobStatusRequest, LaunchProofRequest,
 };
-use zisk_prover_backend::{GuestProgram, ProverOpts};
+use zisk_prover_backend::GuestProgram;
+
+use crate::opts::ProverOpts;
 
 use crate::cancel::CancellationToken;
 use crate::execute::ExecuteResult;

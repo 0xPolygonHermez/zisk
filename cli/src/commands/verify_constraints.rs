@@ -9,7 +9,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    AsmOptions, ProverClientBuilder, ProverOpts, ZiskVerifyConstraintsResult,
+    AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskVerifyConstraintsResult,
 };
 
 #[derive(Parser)]
@@ -149,7 +149,8 @@ impl ZiskVerifyConstraints {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options =
+            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
 
         if self.gpu {
             prover_options = prover_options.gpu();
@@ -175,7 +176,8 @@ impl ZiskVerifyConstraints {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options =
+            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
 
         if self.gpu {
             prover_options = prover_options.gpu();
