@@ -1,3 +1,4 @@
+use super::utils::{be_bytes_to_u64_4, u64_4_to_be_bytes};
 use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 pub fn mulmod256(
@@ -52,23 +53,6 @@ pub unsafe extern "C" fn mulmod256_c(
 
     // Convert result back to big-endian bytes
     let result_bytes = std::slice::from_raw_parts_mut(result_ptr, 32);
-    u64_4_to_be_bytes(&result, result_bytes.try_into().unwrap());
-}
-
-#[inline]
-fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
-    [
-        u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
-        u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
-        u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
-        u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
-    ]
-}
-
-#[inline]
-fn u64_4_to_be_bytes(limbs: &[u64; 4], out: &mut [u8; 32]) {
-    out[0..8].copy_from_slice(&limbs[3].to_be_bytes());
-    out[8..16].copy_from_slice(&limbs[2].to_be_bytes());
-    out[16..24].copy_from_slice(&limbs[1].to_be_bytes());
-    out[24..32].copy_from_slice(&limbs[0].to_be_bytes());
+    let result_be = u64_4_to_be_bytes(&result);
+    result_bytes.copy_from_slice(&result_be);
 }

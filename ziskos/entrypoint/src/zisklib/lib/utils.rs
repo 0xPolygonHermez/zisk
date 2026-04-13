@@ -4,6 +4,24 @@ pub fn is_aligned_8(ptr: *const u8) -> bool {
     (ptr as usize) & 0x7 == 0
 }
 
+#[inline]
+pub fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
+    [
+        u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+        u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+        u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+        u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+    ]
+}
+
+#[inline]
+pub fn u64_4_to_be_bytes(limbs: &[u64; 4]) -> [u8; 32] {
+    [limbs[3].to_be_bytes(), limbs[2].to_be_bytes(), limbs[1].to_be_bytes(), limbs[0].to_be_bytes()]
+        .concat()
+        .try_into()
+        .unwrap()
+}
+
 /// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.
 pub fn gt(x: &[u64], y: &[u64]) -> bool {
     debug_assert_eq!(x.len(), y.len(), "x and y must have the same length");
