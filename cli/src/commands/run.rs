@@ -119,8 +119,12 @@ impl ZiskRun {
             cmd += " -f";
         }
         if self.profiling.is_some() {
-            //TODO: handle profiling flags
             cmd += " -p ";
+            cmd += match self.profiling.unwrap() {
+                ProfilingMode::Inline => "—sdk —profile-tags",
+                ProfilingMode::Summary => "—sdk —opcodes —top-functions",
+                ProfilingMode::Complete => "—sdk —profiler-output",
+            };
         }
         cmd
     }

@@ -77,6 +77,12 @@ main() {
       ;;
   esac
 
+  # Detect NVIDIA CUDA
+  HAS_CUDA=false
+  if [ "${PLATFORM}" = "linux" ] && check_cmd nvidia-smi; then
+    HAS_CUDA=true
+  fi
+
   # Print the banner after successfully parsing args
   banner
 
@@ -111,6 +117,32 @@ main() {
   if [[ -n "${GH_RUNNER}" ]]; then
     warn "Running from GitHub action, installing proving key"
     SETUP_KEY="proving"
+  fi
+
+  # Determine whether to use GPU or CPU-only binaries (linux only)
+  USE_GPU=false
+  if [ "${PLATFORM}" = "linux" ]; then
+    if [ "${HAS_CUDA}" = "true" ]; then
+      USE_GPU=true
+    else
+      warn "NVIDIA CUDA was not detected on this system"
+      say "The version with only CPU support will be installed by default"
+      say ""
+      say "Do you want to:"
+      say "  1) Install CPU version (default - just press enter)"
+      say "  2) Install GPU version"
+      read -p ">" cuda_choice < /dev/tty
+      cuda_choice=${cuda_choice:-1}
+
+      case "${cuda_choice}" in
+        1) USE_GPU=false ;;
+        2) USE_GPU=true ;;
+        *)
+          err "invalid option, aborting installation"
+          exit 1
+          ;;
+      esac
+    fi
   fi
 
   # Ask user about key installation if SETUP_KEY is not set
@@ -169,6 +201,23 @@ main() {
     fi
 
     rm -f "${tmp}"
+
+    if [ "${PLATFORM}" = "linux" ]; then
+      # Set up binaries based on GPU/CPU selection (linux only)
+      if [ "${USE_GPU}" = "true" ]; then
+        step "Configuring GPU binaries..."
+        rm -f "${ZISK_BIN_DIR}/cargo-zisk-cpu"
+        rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
+        mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
+        mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
+      else
+        step "Configuring CPU binaries..."
+        rm -f "${ZISK_BIN_DIR}/cargo-zisk-gpu"
+        rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
+        mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
+        mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
+      fi
+    fi
   fi
 
   # Print installed version message
