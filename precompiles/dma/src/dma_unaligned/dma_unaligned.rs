@@ -116,14 +116,17 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
                 next_value = input.src_values[src_values_index];
             };
 
-            row.set_read_bytes(0, value as u8);
-            row.set_read_bytes(1, (value >> 8) as u8);
-            row.set_read_bytes(2, (value >> 16) as u8);
-            row.set_read_bytes(3, (value >> 24) as u8);
-            row.set_read_bytes(4, (value >> 32) as u8);
-            row.set_read_bytes(5, (value >> 40) as u8);
-            row.set_read_bytes(6, (value >> 48) as u8);
-            row.set_read_bytes(7, (value >> 56) as u8);
+            let read_bytes = [
+                value as u8,
+                (value >> 8) as u8,
+                (value >> 16) as u8,
+                (value >> 24) as u8,
+                (value >> 32) as u8,
+                (value >> 40) as u8,
+                (value >> 48) as u8,
+                (value >> 56) as u8,
+            ];
+            row.set_all_read_bytes(&read_bytes);
 
             // row.set_write_value(0, write_value as u32);
             // row.set_write_value(1, (write_value >> 32) as u32);
