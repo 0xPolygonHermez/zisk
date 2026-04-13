@@ -275,12 +275,11 @@ impl BackendProverOpts {
         options
     }
 
-    // Getter methods for external crate access
-    pub fn get_asm_options(&self) -> &AsmOptions {
+    pub fn asm_options(&self) -> &AsmOptions {
         &self.asm_options
     }
 
-    pub fn get_asm_options_mut(&mut self) -> &mut AsmOptions {
+    pub fn asm_options_mut(&mut self) -> &mut AsmOptions {
         &mut self.asm_options
     }
 
@@ -292,7 +291,7 @@ impl BackendProverOpts {
         self.proving_key_snark.as_ref()
     }
 
-    pub fn get_preload_plonk(&self) -> bool {
+    pub fn preload_plonk(&self) -> bool {
         self.preload_plonk
     }
 
