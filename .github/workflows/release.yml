@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
             tmp_log=$(mktemp)
-            cargo build --release --target "${{ matrix.target }}" 2>&1 | tee "${tmp_log}"
+            cargo build --release --target "${{ matrix.target }}" -vv 2>&1 | tee "${tmp_log}"
             if ! grep -qi "STARKS compiled with GPU support" "${tmp_log}"; then
               echo "Error: Zisk built without GPU support, aborting."
               exit 1
