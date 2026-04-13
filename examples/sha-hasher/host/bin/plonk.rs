@@ -16,21 +16,21 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::embedded().gpu().build()?;
+    let client = ProverClient::embedded().gpu().plonk().build()?;
 
     println!("Setting up program and generating verification key...");
     client.setup(&PROGRAM).run()?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(&PROGRAM, stdin).wrap_proof(ProofKind::Plonk).run()?;
+    let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?;
     println!("PLONK proof generated successfully in {:?}", snark_proof.get_duration());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 
     // Alternatively, it can also be done in two steps
     // let vadcop_result = client.prove(&PROGRAM, stdin)?.run()?;
     // let vkey = client.vk(&PROGRAM)?;
-    // let snark_proof = client.wrap(vadcop_result.get_proof(), ProofMode::Plonk)?;
+    // let snark_proof = client.wrap_proof(vadcop_result.get_proof(), ProofMode::Plonk)?;
 
     println!("Verifying PLONK proof...");
     snark_proof.verify()?;

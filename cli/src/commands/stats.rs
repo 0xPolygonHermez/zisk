@@ -8,7 +8,7 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ExecutorStatsHandle, Stats};
 use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
 
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 use crate::common::detect_current_project_elf;
@@ -182,7 +182,8 @@ impl ZiskStats {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let mut prover_options = ProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options =
+            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
 
         if self.packed {
             prover_options = prover_options.packed();
@@ -220,8 +221,9 @@ impl ZiskStats {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let mut prover_options =
-            ProverOpts::default().shared_tables(!self.no_shared_tables_mpi).verbose(self.verbose);
+        let mut prover_options = BackendProverOpts::default()
+            .shared_tables(!self.no_shared_tables_mpi)
+            .verbose(self.verbose);
 
         if self.packed {
             prover_options = prover_options.packed();

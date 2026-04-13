@@ -4,7 +4,7 @@ use crate::{Client, ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPub
 
 /// Builder for a proof wrapping/conversion request.
 ///
-/// Obtain via `client.wrap(&proof_with_publics, mode)`.
+/// Obtain via `client.wrap_proof(&proof_with_publics, mode)`.
 ///
 /// Wraps or reduces a proof to a different format based on the `ProofMode`:
 /// - `ProofMode::VadcopFinalMinimal`: Reduces a full STARK proof to a minimal form

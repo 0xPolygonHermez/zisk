@@ -27,6 +27,7 @@ tokio = { workspace = true }
 zisk-distributed-common = { workspace = true }
 zisk-distributed-grpc-api = { workspace = true }
 tonic = { workspace = true }
+alloy-sol-types = { version = "1.5.7" }
 
 # For utils.rs
 rom-setup = { workspace = true }

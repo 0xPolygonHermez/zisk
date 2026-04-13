@@ -55,6 +55,13 @@ impl ZiskExecuteResult {
         self.publics.read()
     }
 
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.publics.read_abi()
+    }
+
     pub fn get_execution_steps(&self) -> u64 {
         self.executor_summary.steps
     }
@@ -97,6 +104,13 @@ impl ZiskVerifyConstraintsResult {
         &self,
     ) -> Result<T> {
         self.publics.read()
+    }
+
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.publics.read_abi()
     }
 
     pub fn get_execution_steps(&self) -> u64 {
@@ -161,7 +175,7 @@ impl AsmOptions {
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
-pub struct ProverOpts {
+pub struct BackendProverOpts {
     // Proof settings
     pub aggregation: bool,
     pub verify_proofs: bool,
@@ -172,6 +186,8 @@ pub struct ProverOpts {
     // Proving keys
     pub proving_key: Option<PathBuf>,
     pub proving_key_snark: Option<PathBuf>,
+
+    pub plonk: bool,         // Whether to generate PLONK/SNARK proofs are allowed
     pub preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
 
     // MPI settings
@@ -179,7 +195,7 @@ pub struct ProverOpts {
     pub rma: bool,
 
     // ProofmanOptions fields (flattened)
-    pub preallocate: bool,
+    pub preallocate_fixed_gpu: bool,
     pub gpu: bool,
     pub packed: bool,
     pub max_witness_stored: Option<usize>,
@@ -190,7 +206,7 @@ pub struct ProverOpts {
     pub asm_options: AsmOptions,
 }
 
-impl Default for ProverOpts {
+impl Default for BackendProverOpts {
     fn default() -> Self {
         Self {
             aggregation: true,
@@ -202,8 +218,9 @@ impl Default for ProverOpts {
             proving_key: None,
             proving_key_snark: None,
             preload_plonk: false,
+            plonk: false,
             shared_tables: true,
-            preallocate: false,
+            preallocate_fixed_gpu: false,
             gpu: false,
             packed: false,
             max_witness_stored: None,
@@ -214,10 +231,10 @@ impl Default for ProverOpts {
     }
 }
 
-impl ProverOpts {
+impl BackendProverOpts {
     /// Build ProofmanOptions from the configuration fields
     pub fn build_proofman_options(&self) -> ProofmanOptions {
-        let mut options = ProofmanOptions::new(self.preallocate);
+        let mut options = ProofmanOptions::new(self.preallocate_fixed_gpu);
 
         if let Some(max_witness_stored) = self.max_witness_stored {
             options.with_max_witness_stored(max_witness_stored);
@@ -291,8 +308,11 @@ impl ProverOpts {
         self
     }
 
-    pub fn preload_plonk(mut self) -> Self {
-        self.preload_plonk = true;
+    pub fn plonk(mut self, preload: bool) -> Self {
+        self.plonk = true;
+        if preload {
+            self.preload_plonk = true;
+        }
         self
     }
 
@@ -301,8 +321,8 @@ impl ProverOpts {
         self
     }
 
-    pub fn preallocate(mut self) -> Self {
-        self.preallocate = true;
+    pub fn preallocate_fixed_gpu(mut self) -> Self {
+        self.preallocate_fixed_gpu = true;
         self
     }
 
@@ -428,6 +448,15 @@ impl ZiskProveResult {
         self.proof_with_publics.publics.read()
     }
 
+    /// Decode an ABI-encoded value from public outputs.
+    /// The value must have been previously written with ABI encoding using `write_abi()`.
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.proof_with_publics.publics.read_abi()
+    }
+
     pub fn verify(&self) -> Result<()> {
         self.proof_with_publics.verify()
     }
@@ -522,10 +551,10 @@ pub trait ProverEngine {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult>;
 
-    fn wrap(
+    fn wrap_proof(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,
@@ -602,12 +631,12 @@ pub trait ZiskBackend: Send + Sync {
 pub struct ZiskProver<C: ZiskBackend> {
     pub prover: C::Prover,
     program_cache: RwLock<HashMap<ProgramId, Arc<ZiskRom>>>,
-    prover_options: ProverOpts,
+    prover_options: BackendProverOpts,
 }
 
 impl<C: ZiskBackend> ZiskProver<C> {
     /// Create a new ZiskProver with the given prover engine and prover options.
-    pub fn new(prover: C::Prover, prover_options: ProverOpts) -> Self {
+    pub fn new(prover: C::Prover, prover_options: BackendProverOpts) -> Self {
         Self { prover, program_cache: RwLock::new(HashMap::new()), prover_options }
     }
 
@@ -729,14 +758,14 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// # Example
     /// ```ignore
     /// // Wrap to minimal
-    /// let minimal = prover.wrap(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
+    /// let minimal = prover.wrap_proof(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
     ///
     /// // Wrap to SNARK with custom verification key
-    /// let snark = prover.wrap(&proof_with_publics, ProofMode::Plonk)
+    /// let snark = prover.wrap_proof(&proof_with_publics, ProofMode::Plonk)
     ///     .with_program_vk(&custom_vk)
     ///     .run()?;
     /// ```
-    pub fn wrap<'a>(
+    pub fn wrap_proof<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
         mode: ProofMode,
@@ -889,7 +918,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     }
 
     /// Enable minimal proof generation.
-    pub fn wrap(mut self, proof_mode: ProofMode) -> Self {
+    pub fn wrap_proof(mut self, proof_mode: ProofMode) -> Self {
         assert!(
             matches!(proof_mode, ProofMode::VadcopFinalMinimal | ProofMode::Plonk),
             "Invalid proof mode for ProveBuilder: {:?}",
@@ -958,6 +987,6 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     pub fn run(self) -> Result<ZiskProofWithPublicValues> {
         let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.wrap(&self.proof_with_publics.proof, publics, program_vk, self.mode)
+        self.prover.wrap_proof(&self.proof_with_publics.proof, publics, program_vk, self.mode)
     }
 }

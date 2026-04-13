@@ -1,7 +1,7 @@
 use crate::get_asm_paths;
 use crate::guest::ProgramId;
+use crate::BackendProverOpts;
 use crate::GuestProgram;
-use crate::ProverOpts;
 use crate::{
     check_paths_exist, ensure_rom, get_rom_bin_path,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
@@ -322,13 +322,13 @@ impl ProverEngine for AsmProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
         self.core_prover.backend.prove(stdin, mode, prover_options)
     }
 
-    fn wrap(
+    fn wrap_proof(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,

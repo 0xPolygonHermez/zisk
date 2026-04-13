@@ -305,6 +305,28 @@ impl ZiskPublics {
         Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
     }
 
+    pub fn write_abi<T: alloy_sol_types::SolValue>(value: &T) -> Result<Self> {
+        let encoded = value.abi_encode();
+
+        if encoded.len() > ZISK_PUBLICS * 4 {
+            return Err(anyhow::anyhow!(
+                "ABI encoded data too large: {} bytes (max {} bytes)",
+                encoded.len(),
+                ZISK_PUBLICS * 4
+            ));
+        }
+
+        let mut data = [0u8; ZISK_PUBLICS * 4];
+        for (i, chunk) in encoded.chunks(4).enumerate() {
+            // copy chunk into 32-bit slot, padding with zeros if chunk < 4 bytes
+            let mut buf = [0u8; 4];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
+        }
+
+        Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
+    }
+
     /// Reset the reading pointer to the beginning.
     pub fn head(&self) {
         self.ptr.set(0);
@@ -327,6 +349,20 @@ impl ZiskPublics {
             .map_err(|e| anyhow::anyhow!("Failed to get serialized size: {}", e))?;
         self.ptr.set(ptr + nb_bytes as usize);
         Ok(result)
+    }
+
+    /// Decode an ABI-encoded value from public outputs.
+    /// The value must have been previously written with ABI encoding using `write_abi()`.
+    pub fn read_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        let ptr = self.ptr.get();
+        let decoded = T::abi_decode(&self.data[ptr..])
+            .map_err(|e| anyhow::anyhow!("ABI decoding failed: {}", e))?;
+        let encoded_size = decoded.abi_encode().len();
+        self.ptr.set(ptr + encoded_size);
+        Ok(decoded)
     }
 
     pub fn public_bytes(&self) -> Vec<u8> {

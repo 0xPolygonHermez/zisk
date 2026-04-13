@@ -9,7 +9,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProofMode, ZiskProof};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts, ZiskProveResult};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskProveResult};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -116,10 +116,8 @@ pub struct ZiskProve {
     #[arg(short = 'j', long, hide = true)]
     pub no_shared_tables_mpi: bool,
 
-    /// Pre-allocate memory buffers before proving
-    // TODO: Review description
-    #[arg(short = 'z', long, hide = true)]
-    pub preallocate: bool,
+    #[arg(short = 'z', long, default_value_t = false, hide = true)]
+    pub preallocate_fixed_gpu: bool,
 
     /// Maximum number of concurrent streams for proving
     // TODO: Review description
@@ -167,8 +165,8 @@ impl ZiskProve {
             anyhow::bail!("Minimal proofs are not supported for SNARK generation.");
         }
 
-        // Build ProverOpts once with all configuration
-        let mut prover_options = ProverOpts::default()
+        // Build BackendProverOpts once with all configuration
+        let mut prover_options = BackendProverOpts::default()
             .aggregation(self.aggregation)
             .rma(!self.no_rma_mpi)
             .output_dir(self.output_dir.clone())
@@ -181,14 +179,14 @@ impl ZiskProve {
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
         }
-        if self.preallocate {
-            prover_options = prover_options.preallocate();
+        if self.preallocate_fixed_gpu {
+            prover_options = prover_options.preallocate_fixed_gpu();
         }
         if self.gpu {
             prover_options = prover_options.gpu();
         }
         if self.plonk {
-            prover_options = prover_options.preload_plonk();
+            prover_options = prover_options.plonk(false);
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
@@ -283,7 +281,7 @@ impl ZiskProve {
     pub fn run_emu(
         &mut self,
         stdin: ZiskStdin,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover =
             ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?;
@@ -295,10 +293,10 @@ impl ZiskProve {
 
         let mut prover = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap(ProofMode::Plonk);
+            prover = prover.wrap_proof(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
+            prover = prover.wrap_proof(ProofMode::VadcopFinalMinimal);
         }
         let result = prover.run()?;
 
@@ -309,7 +307,7 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<(ZiskProveResult, i32)> {
         let prover =
             ProverClientBuilder::new().asm().with_prover_options(prover_options).build()?;
@@ -329,10 +327,10 @@ impl ZiskProve {
 
         let mut prover = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap(ProofMode::Plonk);
+            prover = prover.wrap_proof(ProofMode::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap(ProofMode::VadcopFinalMinimal);
+            prover = prover.wrap_proof(ProofMode::VadcopFinalMinimal);
         }
 
         let result = prover.run()?;

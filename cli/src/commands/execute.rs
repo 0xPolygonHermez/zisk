@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, ProverClientBuilder, ProverOpts, ZiskExecuteResult};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskExecuteResult};
 
 use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
@@ -136,7 +136,7 @@ impl ZiskExecute {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        let mut prover_options = ProverOpts::default().verbose(self.verbose);
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
@@ -158,7 +158,7 @@ impl ZiskExecute {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<ZiskExecuteResult> {
-        let mut prover_options = ProverOpts::default().verbose(self.verbose);
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());

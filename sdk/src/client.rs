@@ -5,13 +5,14 @@ use anyhow::Result;
 use zisk_common::ZiskProgramVK;
 
 use zisk_common::ProofMode;
-use zisk_prover_backend::{GuestProgram, ProverOpts};
+use zisk_prover_backend::{AsmOptions, GuestProgram};
 
 use crate::{
     cancel::CancellationToken,
     embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
+    opts::ProverOpts,
     proof::Proof,
     prove::ProveRequest,
     remote::{RemoteClient, RemoteClientBuilder, RemoteClientConfig},
@@ -46,6 +47,7 @@ pub struct ProverClientBuilder<B> {
     prover_options: ProverOpts,
     proof_kind: ProofKind,
     gpu: bool,
+    asm_options: Option<AsmOptions>,
     backend: B,
 }
 
@@ -101,6 +103,16 @@ impl<B> ProverClientBuilder<B> {
         self.proof_kind = ProofKind::Plonk;
         self
     }
+
+    /// Set ASM-specific options.
+    ///
+    /// Only valid when using the Assembly executor. Calling `.build()` with these
+    /// set on a non-Assembly client will panic.
+    #[must_use]
+    pub fn asm_options(mut self, opts: AsmOptions) -> Self {
+        self.asm_options = Some(opts);
+        self
+    }
 }
 
 /// Methods specific to the embedded backend.
@@ -121,6 +133,12 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
 
     /// Build the [`ProverClient`].
     pub fn build(self) -> Result<ProverClient> {
+        if self.asm_options.is_some() && self.executor != ExecutorKind::Assembly {
+            panic!(
+                "asm_options were set but the executor is not Assembly. \
+                 Call .assembly() on the builder before setting asm_options."
+            );
+        }
         ensure_single_instance();
         let mut builder = EmbeddedClientBuilder::new(self.backend)
             .executor(self.executor)
@@ -131,6 +149,9 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
         }
         if self.proof_kind == ProofKind::Plonk {
             builder = builder.plonk();
+        }
+        if let Some(opts) = self.asm_options {
+            builder = builder.asm_options(opts);
         }
         let client = builder.build()?;
         Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(Box::new(client))) })
@@ -189,6 +210,7 @@ impl ProverClient {
             prover_options: ProverOpts::default(),
             backend: EmbeddedClientConfig::default(),
             gpu: false,
+            asm_options: None,
         }
     }
 
@@ -206,6 +228,7 @@ impl ProverClient {
             prover_options: ProverOpts::default(),
             backend: RemoteClientConfig { url: url.into(), ..Default::default() },
             gpu: false,
+            asm_options: None,
         }
     }
 
@@ -253,7 +276,7 @@ impl ProverClient {
     ///
     /// See [`ProofMode`] for available formats.
     #[must_use]
-    pub fn wrap<'a>(
+    pub fn wrap_proof<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
         mode: ProofMode,

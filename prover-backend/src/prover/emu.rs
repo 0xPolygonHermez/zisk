@@ -6,7 +6,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
-use crate::{ensure_rom, get_rom_bin_path, ProverOpts};
+use crate::{ensure_rom, get_rom_bin_path, BackendProverOpts};
 use executor::initialize_executor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -203,13 +203,13 @@ impl ProverEngine for EmuProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         mode: ProofMode,
-        prover_options: ProverOpts,
+        prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
         self.core_prover.backend.prove(stdin, mode, prover_options)
     }
 
-    fn wrap(
+    fn wrap_proof(
         &self,
         proof: &ZiskProof,
         publics: &ZiskPublics,

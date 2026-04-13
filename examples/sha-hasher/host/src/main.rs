@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     client.setup(&PROGRAM).run()?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
+    let result = client.execute(&PROGRAM, stdin.clone()).executor(ExecutorKind::Assembly).run()?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
