@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh
+          ./install_deps.sh --cuda
 
       - name: Setup macOS env vars
         if: matrix.target == 'aarch64-apple-darwin'
@@ -95,13 +95,12 @@ jobs:
           echo "LIBFFI_LIB_DIR=/opt/homebrew/opt/libffi/lib" >> $GITHUB_ENV
           echo "LIBFFI_INCLUDE_DIR=/opt/homebrew/opt/libffi/include" >> $GITHUB_ENV
 
-      - name: Build binaries
+      - name: Build binaries (CPU-only)
         shell: bash
         run: |
-            cargo build --release --target "${{ matrix.target }}"
+            cargo build --release --target "${{ matrix.target }}" --features "cpu-only"
 
-      - name: Archive binaries
-        id: artifacts
+      - name: Copy binaries
         env:
           PLATFORM_NAME: ${{ matrix.platform }}
           TARGET: ${{ matrix.target }}
@@ -112,11 +111,11 @@ jobs:
 
           LIB_EXT=$([[ "${PLATFORM_NAME}" == "darwin" ]] && echo "dylib" || echo "so")
 
-          cp ./target/${TARGET}/release/cargo-zisk                 zisk-dist/bin/
+          cp ./target/${TARGET}/release/cargo-zisk                 zisk-dist/bin/cargo-zisk-cpu
           cp ./target/${TARGET}/release/ziskemu                    zisk-dist/bin/
           cp ./target/${TARGET}/release/riscv2zisk                 zisk-dist/bin/
           cp ./target/${TARGET}/release/zisk-coordinator           zisk-dist/bin/
-          cp ./target/${TARGET}/release/zisk-worker                zisk-dist/bin/
+          cp ./target/${TARGET}/release/zisk-worker                zisk-dist/bin/zisk-worker-cpu
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
 
@@ -127,6 +126,36 @@ jobs:
             cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
           fi
 
+          ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
+          tar -czvf "$ARCHIVE_FILE" -C zisk-dist .
+
+          echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT
+
+      - name: Build binaries (GPU)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+            cargo build --release --target "${{ matrix.target }}"
+
+      - name: Copy binaries (GPU)
+        if: matrix.platform == 'linux'
+        env:
+          PLATFORM_NAME: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          cp ./target/${TARGET}/release/cargo-zisk                 zisk-dist/bin/cargo-zisk-gpu
+          cp ./target/${TARGET}/release/zisk-worker                zisk-dist/bin/zisk-worker-gpu
+
+      - name: Archive binaries
+        id: artifacts
+        env:
+          PLATFORM_NAME: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
           ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
           tar -czvf "$ARCHIVE_FILE" -C zisk-dist .
 
