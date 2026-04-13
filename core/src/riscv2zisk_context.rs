@@ -1977,8 +1977,8 @@ impl Riscv2ZiskContext<'_> {
                 //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
                 //  addi  rd, reg(dst), count            addi rd, reg(dst), count              │ jmp+8
                 //  ..........                           ..........   <────────────────────────┘
-                let rs1 = i.rs1;
-                let rs2 = next_instructions[0].rs1;
+                let rs1 = next_instructions[0].rs1;
+                let rs2 = i.rs1;
                 let rd = next_instructions[0].rd;
                 let count = next_instructions[0].imm as i64; // count
                 let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
