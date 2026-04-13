@@ -77,6 +77,26 @@ impl ZiskExecuteResult {
     pub fn get_duration(&self) -> Duration {
         self.total_duration
     }
+
+    /// Construct a result from a remote gateway response.
+    pub fn from_remote(
+        steps: u64,
+        duration: Duration,
+        cost_per_type: StatsCostPerType,
+        publics: &[u8],
+    ) -> Self {
+        let executor_summary = ZiskExecutorSummary {
+            steps,
+            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
+            cost_per_type,
+        };
+        Self {
+            total_duration: duration,
+            executor_summary,
+            planning_info: PlanningInfo { planning_info: vec![], num_instances: 0 },
+            publics: ZiskPublics::new(publics),
+        }
+    }
 }
 
 pub struct ZiskVerifyConstraintsResult {
@@ -386,6 +406,27 @@ impl ZiskProveResult {
                 zisk_vk: ZiskVK { vk: Vec::new() },
                 plonk_vkey: None,
             },
+        }
+    }
+
+    /// Construct a result from a remote gateway response (no ExecutorStatsHandle).
+    pub fn from_remote(
+        proof_with_publics: ZiskProofWithPublicValues,
+        steps: u64,
+        duration: Duration,
+        cost_per_type: StatsCostPerType,
+    ) -> Self {
+        let executor_summary = ZiskExecutorSummary {
+            steps,
+            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
+            cost_per_type,
+        };
+        Self {
+            executor_summary,
+            duration,
+            stats: ExecutorStatsHandle::default(),
+            proof_id: None,
+            proof_with_publics,
         }
     }
 

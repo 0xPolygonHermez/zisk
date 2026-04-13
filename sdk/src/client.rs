@@ -7,15 +7,15 @@ use zisk_common::ZiskProgramVK;
 use zisk_common::ProofMode;
 use zisk_prover_backend::{AsmOptions, GuestProgram};
 
+use crate::job_handle::SubscriberList;
 use crate::{
-    cancel::CancellationToken,
-    embedded::{EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
+    embedded::{self, EmbeddedClient, EmbeddedClientBuilder, EmbeddedClientConfig},
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
     opts::ProverOpts,
     proof::Proof,
     prove::ProveRequest,
-    remote::{RemoteClient, RemoteClientBuilder, RemoteClientConfig},
+    remote::{self, RemoteClient, RemoteClientBuilder, RemoteClientConfig},
     setup::SetupRequest,
     upload::UploadRequest,
     wrap::WrapRequest,
@@ -24,7 +24,7 @@ use crate::{
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::ProofKind;
+use crate::{JobHandle, ProofKind};
 
 static PROVER_CLIENT_CREATED: AtomicBool = AtomicBool::new(false);
 
@@ -38,10 +38,6 @@ fn ensure_single_instance() {
 }
 
 /// Builder for [`ProverClient`].
-///
-/// Obtain via [`ProverClient::embedded`]. The type parameter `B` is the backend config
-/// (`EmbeddedConfig`, or `RemoteClientConfig`) — it determines which methods
-/// are available and which backend is constructed on `.build()`.
 pub struct ProverClientBuilder<B> {
     executor: ExecutorKind,
     prover_options: ProverOpts,
@@ -65,10 +61,7 @@ impl<B> ProverClientBuilder<B> {
         self.prover_options = opts;
         self
     }
-}
 
-/// Methods shared across all backends.
-impl<B> ProverClientBuilder<B> {
     /// Set the executor kind. Default is [`ExecutorKind::Emulator`].
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
@@ -140,6 +133,7 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
             );
         }
         ensure_single_instance();
+
         let mut builder = EmbeddedClientBuilder::new(self.backend)
             .executor(self.executor)
             .with_prover_options(self.prover_options);
@@ -154,7 +148,7 @@ impl ProverClientBuilder<EmbeddedClientConfig> {
             builder = builder.asm_options(opts);
         }
         let client = builder.build()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(Box::new(client))) })
+        Ok(ProverClient { inner: Arc::new(BackendClient::Embedded(Arc::new(client))) })
     }
 }
 
@@ -180,13 +174,13 @@ impl ProverClientBuilder<RemoteClientConfig> {
         let client = RemoteClientBuilder::new(self.backend)
             .with_prover_options(self.prover_options)
             .build_sync()?;
-        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(Box::new(client))) })
+        Ok(ProverClient { inner: Arc::new(BackendClient::Remote(Arc::new(client))) })
     }
 }
 
-enum BackendClient {
-    Embedded(Box<EmbeddedClient>),
-    Remote(Box<RemoteClient>),
+pub(crate) enum BackendClient {
+    Embedded(Arc<EmbeddedClient>),
+    Remote(Arc<RemoteClient>),
 }
 
 /// Prover client. Runs proofs using local (embedded) or remote infrastructure.
@@ -196,7 +190,7 @@ enum BackendClient {
 /// - `ProverClient::embedded().build()` — full embedded configuration
 /// - `ProverClient::remote(url).build()` — remote coordinator (future)
 pub struct ProverClient {
-    inner: Arc<BackendClient>,
+    pub(crate) inner: Arc<BackendClient>,
 }
 
 impl ProverClient {
@@ -240,17 +234,13 @@ impl ProverClient {
         }
     }
 
-    /// Build a prove request.
-    ///
-    /// Returns a [`ProveRequest`] builder.
-    /// Call `.run()` for blocking execution or `.submit()` for non-blocking execution.
     #[must_use]
-    pub fn prove(
-        &self,
-        program: &GuestProgram,
+    pub fn prove<'a>(
+        &'a self,
+        program: &'a GuestProgram,
         input: impl Into<ProgramInput>,
-    ) -> ProveRequest<Self> {
-        ProveRequest::new(self.clone(), program.clone(), input)
+    ) -> ProveRequest<'a, Self> {
+        ProveRequest::new(self, program, input)
     }
 
     #[must_use]
@@ -272,9 +262,6 @@ impl ProverClient {
         UploadRequest::new(self, program)
     }
 
-    /// Wrap an existing proof to a different format.
-    ///
-    /// See [`ProofMode`] for available formats.
     #[must_use]
     pub fn wrap_proof<'a>(
         &'a self,
@@ -299,7 +286,6 @@ impl Default for ProverClient {
 
 impl Drop for ProverClient {
     fn drop(&mut self) {
-        // Only reset the singleton guard when the last clone is dropped.
         if Arc::strong_count(&self.inner) == 1 {
             PROVER_CLIENT_CREATED.store(false, Ordering::Release);
         }
@@ -309,15 +295,23 @@ impl Drop for ProverClient {
 impl Client for ProverClient {
     fn run_upload(&self, program: &GuestProgram) -> Result<()> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_upload(program),
-            BackendClient::Remote(c) => c.run_upload(program),
+            BackendClient::Embedded(e) => embedded::upload::run(e, program),
+            BackendClient::Remote(r) => remote::upload::run(r, program),
         }
     }
 
-    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+    fn run_setup(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        timeout: Option<std::time::Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<()>> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_setup(program, with_hints),
-            BackendClient::Remote(c) => c.run_setup(program, with_hints),
+            BackendClient::Embedded(e) => {
+                embedded::setup::run(Arc::clone(e), program, with_hints, timeout, subs)
+            }
+            BackendClient::Remote(r) => remote::setup::run(r, program, with_hints, timeout, subs),
         }
     }
 
@@ -327,11 +321,16 @@ impl Client for ProverClient {
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<Proof> {
+        timeout: Option<std::time::Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<Proof>> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_prove(program, input, executor, mode, cancel),
-            BackendClient::Remote(c) => c.run_prove(program, input, executor, mode, cancel),
+            BackendClient::Embedded(e) => {
+                embedded::prove::run(Arc::clone(e), program, input, executor, mode, timeout, subs)
+            }
+            BackendClient::Remote(r) => {
+                remote::prove::run(r, program, input, executor, mode, timeout, subs)
+            }
         }
     }
 
@@ -340,11 +339,16 @@ impl Client for ProverClient {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<ExecuteResult> {
+        timeout: Option<std::time::Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ExecuteResult>> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.run_execute(program, input, executor, cancel),
-            BackendClient::Remote(c) => c.run_execute(program, input, executor, cancel),
+            BackendClient::Embedded(e) => {
+                embedded::execute::run(Arc::clone(e), program, input, executor, timeout, subs)
+            }
+            BackendClient::Remote(r) => {
+                remote::execute::run(r, program, input, executor, timeout, subs)
+            }
         }
     }
 
@@ -352,15 +356,23 @@ impl Client for ProverClient {
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         mode: ProofMode,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
+        override_publics: Option<ZiskPublics>,
+        override_program_vk: Option<ZiskProgramVK>,
+        timeout: Option<std::time::Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
         match self.inner.as_ref() {
-            BackendClient::Embedded(c) => {
-                c.run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
-            }
-            BackendClient::Remote(c) => {
-                c.run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
+            BackendClient::Embedded(e) => embedded::wrap::run(
+                Arc::clone(e),
+                proof_with_publics,
+                mode,
+                override_publics,
+                override_program_vk,
+                timeout,
+                subs,
+            ),
+            BackendClient::Remote(r) => {
+                remote::wrap::run(r, proof_with_publics, mode, timeout, subs)
             }
         }
     }

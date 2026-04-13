@@ -3,7 +3,8 @@ use zisk_sdk::{load_program, GuestProgram, ProofMode, ProverClient, ProverOpts, 
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client (Minimal proof mode)...");
 
     // Create an input stream and write '1000' to it.
@@ -18,16 +19,16 @@ fn main() -> Result<()> {
     let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating Vadcop proof...");
-    let vadcop_result = client.prove(&PROGRAM, stdin).run()?;
+    let vadcop_result = client.prove(&PROGRAM, stdin).run()?.await?;
     println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
 
     println!("Reducing proof (this may take a while)...");
     let result =
-        client.wrap_proof(vadcop_result.get_proof(), ProofMode::VadcopFinalMinimal).run()?;
+        client.wrap_proof(vadcop_result.get_proof(), ProofMode::VadcopFinalMinimal).run()?.await?;
 
     // Alternatively, you can also call `minimal()` on the `ProverClient.prove` method to generate a minimal proof directly.
     // let result = client.prove(&PROGRAM, stdin)?.with_prover_options(proof_opts).minimal().run()?;

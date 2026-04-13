@@ -1,6 +1,13 @@
-use std::path::PathBuf;
+pub(crate) mod execute;
+pub(crate) mod prove;
+pub(crate) mod setup;
+pub(crate) mod upload;
+pub(crate) mod wrap;
 
-use crate::cancel::CancellationToken;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
 use crate::ZiskStdin;
 use anyhow::Result;
 use zisk_common::ProofMode;
@@ -11,7 +18,12 @@ use zisk_prover_backend::{
 };
 
 use crate::{
-    execute::ExecuteResult, input::ProgramInput, opts::ProverOpts, proof::Proof, Client,
+    execute::ExecuteResult,
+    input::ProgramInput,
+    job_handle::{fire_event, fire_result_event, JobHandle, JobHandleInner, SubscriberList},
+    opts::ProverOpts,
+    proof::Proof,
+    prove::JobEvent,
     ExecutorKind, ProofKind,
 };
 
@@ -40,8 +52,8 @@ impl EmbeddedClientBuilder {
         if let Some(pk) = config.proving_key {
             prover_options.proving_key = Some(pk);
         }
-        if let Some(pk_snark) = config.proving_key_snark {
-            prover_options.proving_key_snark = Some(pk_snark);
+        if let Some(pk) = config.proving_key_snark {
+            prover_options.proving_key_snark = Some(pk);
         }
         Self {
             executor: ExecutorKind::Emulator,
@@ -154,15 +166,8 @@ impl EmbeddedClient {
             EmbeddedProver::Asm(p) => p.vk(program),
         }
     }
-}
 
-impl Client for EmbeddedClient {
-    fn run_upload(&self, _program: &GuestProgram) -> Result<()> {
-        // No upload step needed for embedded client since it has direct access to the ELF files.
-        Ok(())
-    }
-
-    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+    pub(crate) fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         match &self.prover {
             EmbeddedProver::Emu(p) => p.setup(program).run(),
             EmbeddedProver::Asm(p) => {
@@ -176,18 +181,13 @@ impl Client for EmbeddedClient {
         }
     }
 
-    fn run_prove(
+    pub(crate) fn run_prove(
         &self,
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        cancel: Option<&CancellationToken>,
     ) -> Result<Proof> {
-        // Check for cancellation before starting.
-        if cancel.is_some_and(|t| t.is_cancelled()) {
-            anyhow::bail!("Operation was cancelled");
-        }
         macro_rules! apply_mode {
             ($builder:expr) => {
                 match mode {
@@ -231,17 +231,12 @@ impl Client for EmbeddedClient {
         Ok(Proof::new(result))
     }
 
-    fn run_execute(
+    pub(crate) fn run_execute(
         &self,
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        cancel: Option<&CancellationToken>,
     ) -> Result<ExecuteResult> {
-        // Check for cancellation before starting.
-        if cancel.is_some_and(|t| t.is_cancelled()) {
-            anyhow::bail!("Operation was cancelled");
-        }
         let result = match (&self.prover, executor, input) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
                 p.execute(program, stdin.into_inner())?
@@ -274,7 +269,7 @@ impl Client for EmbeddedClient {
         Ok(ExecuteResult::new(result))
     }
 
-    fn run_wrap(
+    pub(crate) fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         mode: ProofMode,
@@ -292,4 +287,24 @@ impl Client for EmbeddedClient {
             }
         }
     }
+}
+
+/// Spawn a blocking embedded job, firing Started/Completed/Failed events around `f`.
+pub(crate) fn spawn_embedded_job<T, F>(
+    f: F,
+    timeout: Option<Duration>,
+    subs: SubscriberList,
+) -> Result<JobHandle<T>>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+{
+    let subs_task = Arc::clone(&subs);
+    let handle = tokio::task::spawn_blocking(move || {
+        fire_event(&subs_task, JobEvent::Started);
+        let result = f();
+        fire_result_event(&subs_task, &result);
+        result
+    });
+    Ok(JobHandle { inner: JobHandleInner::Embedded(handle), subscribers: subs, timeout })
 }

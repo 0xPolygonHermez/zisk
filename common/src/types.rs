@@ -75,7 +75,7 @@ pub enum StatsType {
     Other,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCostPerType {
     pub main_cost: u64,
     pub opcode_cost: u64,
@@ -140,7 +140,7 @@ impl fmt::Display for StatsCostPerType {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorTime {
     /// Total executor duration of the entire execution process.
     pub total_duration: Duration,
@@ -154,7 +154,7 @@ pub struct ZiskExecutorTime {
     pub asm_execution_duration: Option<AsmExecutionInfo>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorSummary {
     pub steps: u64,
     pub executor_time: ZiskExecutorTime,
@@ -262,7 +262,7 @@ impl Stats {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AsmExecutionInfo {
     pub time: f32,
     pub mhz: f32,

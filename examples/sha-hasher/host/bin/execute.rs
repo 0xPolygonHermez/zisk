@@ -4,7 +4,8 @@ use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -18,12 +19,12 @@ fn main() -> Result<()> {
     let client = ProverClient::embedded().build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?; // S'ha de fer un must use
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
+    let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

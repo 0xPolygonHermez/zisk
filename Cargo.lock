@@ -939,7 +939,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "futures",
  "indicatif",
  "proofman",
@@ -1529,9 +1529,8 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "num-traits",
 ]
@@ -1925,7 +1924,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -2012,7 +2011,6 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3045,7 +3043,7 @@ name = "mem-common"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3549,10 +3547,9 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3675,7 +3672,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3711,7 +3708,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-secp256k1",
  "ark-std 0.5.0",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3742,7 +3739,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3763,7 +3760,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3782,7 +3779,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3806,7 +3803,7 @@ name = "precomp-keccakf"
 version = "0.17.0"
 dependencies = [
  "circuit",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3826,7 +3823,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3846,7 +3843,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3865,7 +3862,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3971,7 +3968,6 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "bincode",
  "blake3",
@@ -3982,7 +3978,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4006,7 +4002,6 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "bincode",
  "borsh",
@@ -4016,7 +4011,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "lazy_static",
  "libc",
  "libloading",
@@ -4038,9 +4033,8 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4051,7 +4045,6 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4061,7 +4054,6 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4070,7 +4062,6 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -4082,10 +4073,9 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "bytemuck",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "proofman-util",
  "rayon",
  "tracing",
@@ -4576,7 +4566,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -5014,6 +5004,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha-hasher-common"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+]
+
+[[package]]
+name = "sha-hasher-host"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+ "anyhow",
+ "serde",
+ "sha-hasher-common",
+ "sha2",
+ "tokio",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5157,7 +5167,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5177,7 +5187,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5197,7 +5207,7 @@ name = "sm-frequent-ops"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -5211,7 +5221,7 @@ dependencies = [
 name = "sm-main"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -5230,7 +5240,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -5252,7 +5262,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "asm-runner",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -6932,10 +6942,9 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features#6a68087477724018f3c2e1757123376371fad165"
 dependencies = [
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7139,7 +7148,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "libc",
  "proofman",
  "proofman-common",
@@ -7163,7 +7172,7 @@ name = "zisk-core"
 version = "0.17.0"
 dependencies = [
  "elf",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "lib-c",
  "lib-float",
  "paste",
@@ -7264,7 +7273,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7320,10 +7329,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-gateway-grpc-api"
+version = "0.17.0"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "zisk-pil"
 version = "0.17.0"
 dependencies = [
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -7343,7 +7363,7 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7367,17 +7387,20 @@ dependencies = [
  "anyhow",
  "bincode",
  "colored",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
+ "futures",
  "proofman-common",
+ "prost-types",
  "rom-setup",
  "serde",
  "tokio",
  "tonic",
  "tracing",
+ "uuid",
  "zisk-build",
  "zisk-common",
  "zisk-distributed-common",
- "zisk-distributed-grpc-api",
+ "zisk-gateway-grpc-api",
  "zisk-prover-backend",
 ]
 
@@ -7403,7 +7426,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "mem-common",
  "memmap2",
  "num-format",
@@ -7465,7 +7488,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "fields 0.16.1",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",

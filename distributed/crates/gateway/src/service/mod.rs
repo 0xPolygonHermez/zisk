@@ -34,15 +34,16 @@ impl<B: BackendService> GatewayService<B> {
     /// Log a completed RPC call and update Prometheus counters.
     pub(crate) fn log_call(method: &str, start: Instant, result: Result<(), &Status>) {
         let elapsed_secs = start.elapsed().as_secs_f64();
-        let elapsed_ms   = (elapsed_secs * 1_000.0) as u128;
+        let elapsed_ms = (elapsed_secs * 1_000.0) as u128;
 
         let status_label = match result {
             Ok(()) => "ok",
-            Err(s)  => s.code().description(),
+            Err(s) => s.code().description(),
         };
 
         metrics::counter!("gateway_requests_total", "method" => method.to_owned(), "status" => status_label).increment(1);
-        metrics::histogram!("gateway_request_duration_seconds", "method" => method.to_owned()).record(elapsed_secs);
+        metrics::histogram!("gateway_request_duration_seconds", "method" => method.to_owned())
+            .record(elapsed_secs);
 
         match result {
             Ok(()) => {

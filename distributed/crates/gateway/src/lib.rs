@@ -38,6 +38,7 @@ pub mod shutdown;
 
 /// Proto-generated types for `zisk.gateway.v1`.
 pub mod proto {
+    #![allow(clippy::large_enum_variant)]
     tonic::include_proto!("zisk.gateway.v1");
 }
 

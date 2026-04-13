@@ -16,8 +16,7 @@ pub async fn handle_register_guest_program<B: BackendService>(
         return Err(Status::invalid_argument("zisk_elf must not be empty"));
     }
 
-    let hash_id =
-        backend.register_guest_program(req.zisk_elf).await.map_err(Status::from)?;
+    let hash_id = backend.register_guest_program(req.zisk_elf).await.map_err(Status::from)?;
 
     Ok(RegisterGuestProgramResponse { hash_id })
 }

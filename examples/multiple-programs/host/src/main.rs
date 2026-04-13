@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&PROGRAM1, stdin.clone()).run()?;
+    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
