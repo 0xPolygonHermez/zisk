@@ -69,12 +69,11 @@ impl ZiskProgramSetup {
             &pctx.global_info,
             &ProofType::Basic,
             false,
-            false,
             &[],
             self.gpu,
         )?);
         let setups_vadcop =
-            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, false, &[], self.gpu)?);
+            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], self.gpu)?);
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, self.gpu, 1)?;
         let pctx = Arc::new(pctx);
 
