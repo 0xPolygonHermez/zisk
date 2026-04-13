@@ -50,6 +50,21 @@ service ZiskGatewayApi {
 // Common data types
 // ============================================================================
 
+message CostPerType {
+  uint64 main       = 1;
+  uint64 opcode     = 2;
+  uint64 memory     = 3;
+  uint64 precompile = 4;
+  uint64 tables     = 5;
+  uint64 other      = 6;
+}
+
+message ExecutionStats {
+  uint64      steps          = 1;
+  uint64      duration_nanos = 2;
+  CostPerType cost_per_type  = 3;
+}
+
 enum ProofKind {
   PROOF_KIND_UNSPECIFIED  = 0;
   PROOF_KIND_STARK        = 1;
@@ -177,7 +192,8 @@ message ProveRequest {
 }
 
 message ProveResponse {
-  Proof proof = 1;
+  Proof          proof = 1;
+  ExecutionStats stats = 2;
 }
 
 message WrapRequest {
@@ -201,7 +217,8 @@ message ExecuteRequest {
 }
 
 message ExecuteResponse {
-  // TODO: to be defined
+  ExecutionStats stats          = 1;
+  bytes          public_outputs = 2;
 }
 
 message JobKindResponse {

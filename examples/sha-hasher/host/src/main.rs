@@ -3,7 +3,8 @@ use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpt
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -16,10 +17,11 @@ fn main() -> Result<()> {
     let client =
         ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
 
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
+    let result =
+        client.execute(&PROGRAM, stdin.clone()).executor(ExecutorKind::Assembly).run()?.await?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?}",
@@ -27,7 +29,8 @@ fn main() -> Result<()> {
         result.get_duration()
     );
 
-    let vadcop_result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?;
+    let vadcop_result =
+        client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?.await?;
 
     let vkey = client.vk(&PROGRAM)?;
     vadcop_result.with_program_vk(&vkey).verify()?;

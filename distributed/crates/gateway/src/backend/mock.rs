@@ -30,11 +30,11 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use super::{
-    BackendService, DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobKind, DomainJobKindResponse,
-    DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind, InputChunkStream,
-    JobEventStream, WaitResult,
+    BackendService, DomainExecutionStats, DomainInputChunk, DomainInputKind, DomainJobEvent,
+    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
+    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    InputChunkStream, JobEventStream, WaitResult,
 };
 use crate::errors::{GatewayError, GatewayResult};
 
@@ -576,17 +576,23 @@ fn blake3_hex(data: &[u8]) -> String {
 fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
     match kind {
         DomainJobKind::Setup(_) => DomainJobKindResponse::Setup,
-        DomainJobKind::Execute(_) => DomainJobKindResponse::Execute,
-        DomainJobKind::Prove(req) => DomainJobKindResponse::Prove(DomainProof {
-            proof_id: Uuid::new_v4(),
-            hash_id: req.hash_id.clone(),
-            verification_key: vec![0u8; 32],
-            proof_kind: DomainProofKind::Stark,
-            data: vec![1u8; 64],
-            public_inputs: vec![2u8; 32],
-            started_at: Utc::now(),
-            completed_at: Utc::now(),
-        }),
+        DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {
+            stats: DomainExecutionStats::default(),
+            public_outputs: vec![],
+        },
+        DomainJobKind::Prove(req) => DomainJobKindResponse::Prove {
+            proof: DomainProof {
+                proof_id: Uuid::new_v4(),
+                hash_id: req.hash_id.clone(),
+                verification_key: vec![0u8; 32],
+                proof_kind: DomainProofKind::Stark,
+                data: vec![1u8; 64],
+                public_inputs: vec![2u8; 32],
+                started_at: Utc::now(),
+                completed_at: Utc::now(),
+            },
+            stats: DomainExecutionStats::default(),
+        },
         DomainJobKind::Wrap(req) => {
             let mut proof = req.proof.clone();
             proof.proof_id = Uuid::new_v4();
@@ -605,7 +611,10 @@ fn synthesize_terminal_event(
     match status {
         DomainJobStatus::Completed => DomainJobEvent::Completed(DomainJobEventCompleted {
             job_id,
-            result: result.unwrap_or(DomainJobKindResponse::Execute),
+            result: result.unwrap_or(DomainJobKindResponse::Execute {
+                stats: DomainExecutionStats::default(),
+                public_outputs: vec![],
+            }),
             timestamp: now,
         }),
         DomainJobStatus::Cancelled => {

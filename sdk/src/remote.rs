@@ -1,28 +1,27 @@
-//! Remote backend client for distributed proof generation.
-//!
-//! Connects to a remote coordinator to offload proving work to a distributed network.
+//! Remote backend client — connects to a ZisK Gateway for distributed proving.
+
+pub(crate) mod execute;
+pub(crate) mod prove;
+pub(crate) mod setup;
+pub(crate) mod upload;
+pub(crate) mod wrap;
 
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use std::time::Duration;
 use tonic::transport::Channel;
-use zisk_common::{ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
-use zisk_distributed_grpc_api::{
-    zisk_distributed_api_client::ZiskDistributedApiClient, HealthCheckRequest, HintsMode,
-    InputMode, JobStatusRequest, LaunchProofRequest,
+use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues};
+use zisk_gateway_grpc_api::{
+    proto::{InputChunk, InputKind, JobKind, JobRequestMessage, RegisterGuestProgramRequest},
+    ZiskGatewayApiClient,
 };
-use zisk_prover_backend::{GuestProgram, ProverOpts};
+use zisk_prover_backend::GuestProgram;
 
-use crate::cancel::CancellationToken;
-use crate::execute::ExecuteResult;
-use crate::input::ProgramInput;
-use crate::proof::Proof;
-use crate::{Client, ExecutorKind};
+use crate::{input::ProgramInput, ProverOpts};
 
 /// Configuration for the remote prover backend.
 #[derive(Clone)]
 pub struct RemoteClientConfig {
-    /// Coordinator URL (e.g., "http://localhost:50051").
+    /// Gateway URL (e.g., "http://localhost:50051").
     pub(crate) url: String,
     /// Connection timeout.
     pub(crate) connect_timeout: Duration,
@@ -40,9 +39,9 @@ impl Default for RemoteClientConfig {
     }
 }
 
-/// Builder for a remote [`ProverClient`].
 pub(crate) struct RemoteClientBuilder {
     config: RemoteClientConfig,
+    #[allow(dead_code)]
     prover_options: ProverOpts,
 }
 
@@ -57,224 +56,114 @@ impl RemoteClientBuilder {
         self
     }
 
-    pub(crate) async fn build(self) -> Result<RemoteClient> {
-        let endpoint = tonic::transport::Endpoint::from_shared(self.config.url.clone())
-            .context("Invalid coordinator URL")?
-            .connect_timeout(self.config.connect_timeout)
-            .timeout(self.config.request_timeout);
-
-        let channel = endpoint.connect().await.context("Failed to connect to coordinator")?;
-
-        // Verify connectivity with health check
-        let mut client = ZiskDistributedApiClient::new(channel.clone());
-        client
-            .health_check(HealthCheckRequest {})
+    async fn connect(config: &RemoteClientConfig) -> Result<Channel> {
+        tonic::transport::Endpoint::from_shared(config.url.clone())
+            .context("Invalid gateway URL")?
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout)
+            .connect()
             .await
-            .context("Coordinator health check failed")?;
-
-        Ok(RemoteClient { channel, config: self.config, prover_options: self.prover_options })
+            .context("Failed to connect to gateway")
     }
 
-    /// Build synchronously (blocks on the async connection).
     pub(crate) fn build_sync(self) -> Result<RemoteClient> {
-        let config = self.config;
-        let prover_options = self.prover_options;
-        tokio::runtime::Handle::try_current()
-            .map(|handle| {
-                handle.block_on(
-                    RemoteClientBuilder::new(config.clone())
-                        .with_prover_options(prover_options.clone())
-                        .build(),
-                )
-            })
-            .unwrap_or_else(|_| {
-                // No runtime available, create a temporary one
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to create tokio runtime")
-                    .block_on(
-                        RemoteClientBuilder::new(config)
-                            .with_prover_options(prover_options)
-                            .build(),
-                    )
-            })
+        let channel = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(Self::connect(&self.config))
+        })?;
+        Ok(RemoteClient { gateway: ZiskGatewayApiClient::new(channel) })
     }
 }
 
-/// Remote client that delegates proving to a distributed coordinator.
 pub(crate) struct RemoteClient {
-    channel: Channel,
-    #[allow(dead_code)]
-    config: RemoteClientConfig,
-    #[allow(dead_code)]
-    prover_options: ProverOpts,
+    pub(crate) gateway: ZiskGatewayApiClient<Channel>,
 }
 
 impl RemoteClient {
-    fn client(&self) -> ZiskDistributedApiClient<Channel> {
-        ZiskDistributedApiClient::new(self.channel.clone())
+    pub(crate) async fn register_program(&self, elf: Vec<u8>) -> Result<String> {
+        let mut gw = self.gateway.clone();
+        let resp = gw
+            .register_guest_program(RegisterGuestProgramRequest { zisk_elf: elf })
+            .await
+            .context("RegisterGuestProgram RPC failed")?;
+        Ok(resp.into_inner().hash_id)
+    }
+
+    pub(crate) async fn submit_job(&self, kind: JobKind) -> Result<String> {
+        let mut gw = self.gateway.clone();
+        let resp = gw
+            .job_request(JobRequestMessage { job_kind: Some(kind) })
+            .await
+            .context("JobRequest RPC failed")?;
+        Ok(resp.into_inner().job_id)
+    }
+
+    /// Submit a job, blocking the calling thread. Requires a live tokio runtime.
+    pub(crate) fn submit_job_sync(&self, kind: JobKind) -> Result<String> {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.submit_job(kind))
+        })
+    }
+
+    /// Register a program, blocking the calling thread. Requires a live tokio runtime.
+    pub(crate) fn register_program_sync(&self, elf: &[u8]) -> Result<String> {
+        let elf = elf.to_vec();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.register_program(elf))
+        })
+    }
+
+    pub(crate) fn gateway_client(&self) -> ZiskGatewayApiClient<Channel> {
+        self.gateway.clone()
     }
 
     pub(crate) fn vk(&self, _program: &GuestProgram) -> Result<ZiskProgramVK> {
-        // TODO: Remote VK retrieval - may need to be computed locally or cached on coordinator
         anyhow::bail!("Remote VK retrieval not yet implemented")
     }
 }
 
-impl Client for RemoteClient {
-    fn run_upload(&self, program: &GuestProgram) -> Result<()> {
-        // TODO: Upload program ELF to coordinator for caching/setup
-        let _elf = program.elf();
-        tracing::info!("Remote upload: program upload not yet implemented");
-        Ok(())
-    }
+// ── Shared helpers used across remote sub-modules ─────────────────────────────
 
-    fn run_setup(&self, _program: &GuestProgram, _with_hints: bool) -> Result<()> {
-        // Setup is handled by the coordinator/workers when proving
-        tracing::info!("Remote setup: delegated to coordinator");
-        Ok(())
-    }
-
-    fn run_prove(
-        &self,
-        program: &GuestProgram,
-        input: ProgramInput,
-        _executor: ExecutorKind,
-        _mode: ProofMode,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<Proof> {
-        // Check for cancellation before starting
-        if cancel.is_some_and(|t| t.is_cancelled()) {
-            anyhow::bail!("Operation was cancelled");
+pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<InputKind> {
+    match input {
+        ProgramInput::Stdin(s) => {
+            let data = s.into_inner().read_data();
+            Ok(InputKind {
+                kind: Some(zisk_gateway_grpc_api::proto::input_kind::Kind::Inline(InputChunk {
+                    data,
+                    is_last: true,
+                })),
+            })
         }
-
-        // Note: prover_options are stored in self.prover_options but not yet used in remote proving
-        // TODO: Pass prover options to the remote coordinator
-
-        // For now, we use a blocking approach within the sync interface
-        let rt = tokio::runtime::Handle::try_current().map_err(|_| {
-            anyhow::anyhow!("Remote proving requires a Tokio runtime. Use prove_async() instead.")
-        })?;
-
-        rt.block_on(async {
-            let mut client = self.client();
-
-            // Compute data_id from program (first 8 chars of hash_id)
-            let data_id = program.program_id.hash_id.chars().take(16).collect::<String>();
-
-            // Determine input/hints mode
-            let (inputs_mode, inputs_uri) = match &input {
-                ProgramInput::Stdin(_) => (InputMode::Data as i32, None),
-                ProgramInput::Hints(_) => (InputMode::None as i32, None),
-            };
-
-            let hints_mode = match &input {
-                ProgramInput::Hints(_) => HintsMode::Stream as i32,
-                ProgramInput::Stdin(_) => HintsMode::None as i32,
-            };
-
-            // Launch the proof job
-            let response = client
-                .launch_proof(LaunchProofRequest {
-                    data_id: data_id.clone(),
-                    compute_capacity: 1,
-                    minimal_compute_capacity: 1,
-                    inputs_mode,
-                    inputs_uri,
-                    hints_mode,
-                    hints_uri: None,
-                    simulated_node: None,
-                    metadata: HashMap::new(),
-                    execution_only: false,
-                })
-                .await
-                .context("Failed to launch proof job")?;
-
-            let job_id = match response.into_inner().result {
-                Some(zisk_distributed_grpc_api::launch_proof_response::Result::JobId(id)) => id,
-                Some(zisk_distributed_grpc_api::launch_proof_response::Result::Error(e)) => {
-                    anyhow::bail!("Coordinator error: {} - {}", e.code, e.message)
-                }
-                None => anyhow::bail!("Empty response from coordinator"),
-            };
-
-            tracing::info!("Proof job launched: {}", job_id);
-
-            // Poll for completion
-            // TODO: Use streaming API for real-time progress updates
-            loop {
-                if cancel.is_some_and(|t| t.is_cancelled()) {
-                    // TODO: Send cancellation to coordinator
-                    anyhow::bail!("Operation was cancelled");
-                }
-
-                let status_response = client
-                    .job_status(JobStatusRequest { job_id: job_id.clone() })
-                    .await
-                    .context("Failed to get job status")?;
-
-                let status = match status_response.into_inner().result {
-                    Some(zisk_distributed_grpc_api::job_status_response::Result::Job(s)) => s,
-                    Some(zisk_distributed_grpc_api::job_status_response::Result::Error(e)) => {
-                        anyhow::bail!("Job status error: {} - {}", e.code, e.message)
-                    }
-                    None => anyhow::bail!("Empty job status response"),
-                };
-
-                match status.state.as_str() {
-                    "completed" => {
-                        // TODO: Fetch the actual proof from coordinator
-                        anyhow::bail!(
-                            "Proof completed but proof retrieval not yet implemented. Job ID: {}",
-                            job_id
-                        )
-                    }
-                    "failed" => {
-                        anyhow::bail!("Proof generation failed on coordinator. Job ID: {}", job_id)
-                    }
-                    "cancelled" => {
-                        anyhow::bail!("Proof was cancelled. Job ID: {}", job_id)
-                    }
-                    _ => {
-                        // Still in progress
-                        tracing::debug!(
-                            "Job {} state: {}, phase: {}",
-                            job_id,
-                            status.state,
-                            status.phase
-                        );
-                        tokio::time::sleep(Duration::from_secs(2)).await;
-                    }
-                }
-            }
-        })
-    }
-
-    fn run_execute(
-        &self,
-        _program: &GuestProgram,
-        _input: ProgramInput,
-        _executor: ExecutorKind,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<ExecuteResult> {
-        if cancel.is_some_and(|t| t.is_cancelled()) {
-            anyhow::bail!("Operation was cancelled");
+        ProgramInput::Hints(_) => {
+            anyhow::bail!("Hints input is not supported for remote proving")
         }
-        // TODO: Remote execution - may be implemented for cost estimation
-        anyhow::bail!(
-            "Remote execution not yet implemented. Use embedded client for dry-run execution."
-        )
     }
+}
 
-    fn run_wrap(
-        &self,
-        _proof_with_publics: &ZiskProofWithPublicValues,
-        _mode: ProofMode,
-        _override_publics: Option<&ZiskPublics>,
-        _override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        // TODO: Remote wrap
-        anyhow::bail!("Remote wrap not yet implemented")
+pub(crate) fn duration_to_proto_timestamp(d: Duration) -> prost_types::Timestamp {
+    let now =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let deadline = now + d;
+    prost_types::Timestamp {
+        seconds: deadline.as_secs() as i64,
+        nanos: deadline.subsec_nanos() as i32,
     }
+}
+
+pub(crate) fn proof_with_publics_to_proto(
+    proof: &ZiskProofWithPublicValues,
+    proof_kind: zisk_gateway_grpc_api::proto::ProofKind,
+) -> Result<zisk_gateway_grpc_api::proto::Proof> {
+    let data =
+        bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
+    Ok(zisk_gateway_grpc_api::proto::Proof {
+        proof_id: uuid::Uuid::new_v4().to_string(),
+        hash_id: String::new(),
+        verification_key: Vec::new(),
+        proof_kind: proof_kind as i32,
+        data,
+        public_inputs: Vec::new(),
+        started_at: None,
+        completed_at: None,
+    })
 }

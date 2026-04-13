@@ -9,6 +9,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 5;
+const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
+const WAIT_TIMEOUT_MAX_SECS: u32 = 3600;
+
 use futures::{Stream, StreamExt};
 use prost_types::Timestamp;
 use tonic::{Status, Streaming};
@@ -16,9 +20,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::backend::{
-    BackendService, DomainExecuteRequest, DomainInputChunk, DomainInputKind, DomainJobEvent,
-    DomainJobFailure, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
-    DomainProof, DomainProofKind, DomainProveRequest, DomainSetupRequest, DomainWrapRequest,
+    BackendService, DomainExecuteRequest, DomainExecutionStats, DomainInputChunk, DomainInputKind,
+    DomainJobEvent, DomainJobFailure, DomainJobKind, DomainJobKindResponse, DomainJobPhase,
+    DomainJobStatus, DomainProof, DomainProofKind, DomainProveRequest, DomainSetupRequest,
+    DomainWrapRequest,
 };
 use crate::errors::GatewayError;
 use crate::proto::*;
@@ -47,7 +52,10 @@ pub async fn handle_wait_job_result<B: BackendService>(
     req: WaitJobResultRequest,
 ) -> Result<WaitJobResultResponse, Status> {
     let job_id = parse_uuid(&req.job_id)?;
-    let timeout_secs = req.timeout_seconds.unwrap_or(5).clamp(1, 60);
+    let timeout_secs = req
+        .timeout_seconds
+        .unwrap_or(WAIT_TIMEOUT_DEFAULT_SECS)
+        .clamp(WAIT_TIMEOUT_MIN_SECS, WAIT_TIMEOUT_MAX_SECS);
     let timeout = Duration::from_secs(timeout_secs as u64);
 
     let wait = backend.wait_job_result(job_id, timeout).await.map_err(into_status)?;
@@ -251,15 +259,36 @@ fn domain_job_kind_response_to_proto(resp: DomainJobKindResponse) -> JobKindResp
     use job_kind_response::Kind;
     let kind = match resp {
         DomainJobKindResponse::Setup => Kind::Setup(SetupResponse {}),
-        DomainJobKindResponse::Prove(proof) => {
-            Kind::Prove(ProveResponse { proof: Some(domain_proof_to_proto(proof)) })
-        }
+        DomainJobKindResponse::Prove { proof, stats } => Kind::Prove(ProveResponse {
+            proof: Some(domain_proof_to_proto(proof)),
+            stats: Some(domain_stats_to_proto(stats)),
+        }),
         DomainJobKindResponse::Wrap(proof) => {
             Kind::Wrap(WrapResponse { proof: Some(domain_proof_to_proto(proof)) })
         }
-        DomainJobKindResponse::Execute => Kind::Execute(ExecuteResponse {}),
+        DomainJobKindResponse::Execute { stats, public_outputs } => {
+            Kind::Execute(ExecuteResponse {
+                stats: Some(domain_stats_to_proto(stats)),
+                public_outputs,
+            })
+        }
     };
     JobKindResponse { kind: Some(kind) }
+}
+
+fn domain_stats_to_proto(stats: DomainExecutionStats) -> ExecutionStats {
+    ExecutionStats {
+        steps: stats.steps,
+        duration_nanos: stats.duration_nanos,
+        cost_per_type: Some(CostPerType {
+            main: stats.main_cost,
+            opcode: stats.opcode_cost,
+            memory: stats.memory_cost,
+            precompile: stats.precompile_cost,
+            tables: stats.tables_cost,
+            other: stats.other_cost,
+        }),
+    }
 }
 
 fn domain_proof_to_proto(proof: DomainProof) -> Proof {

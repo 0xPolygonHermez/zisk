@@ -14,6 +14,9 @@ use crate::proto::zisk_gateway_api_server::ZiskGatewayApiServer;
 use crate::service::GatewayService;
 use crate::shutdown::shutdown_signal;
 
+/// Maximum inbound message size. Large ELF files can exceed the 4 MB tonic default.
+const MAX_DECODING_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
+
 pub struct GatewayServer<B: BackendService> {
     config: GatewayConfig,
     backend: Arc<B>,
@@ -38,9 +41,8 @@ impl<B: BackendService> GatewayServer<B> {
             "zisk-gateway listening on {addr}"
         );
 
-        // Large ELF files can exceed the 4 MB tonic default — configure on the service.
-        let svc = ZiskGatewayApiServer::new(service)
-            .max_decoding_message_size(64 * 1024 * 1024);
+        let svc =
+            ZiskGatewayApiServer::new(service).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE);
 
         let serve = Server::builder()
             // Keep WatchJob streams alive through NAT/firewall idle timeouts.
@@ -54,9 +56,7 @@ impl<B: BackendService> GatewayServer<B> {
 
         // Hard drain timeout: if in-flight RPCs don't finish within shutdown_secs,
         // we exit anyway. With no active RPCs this returns immediately.
-        tokio::time::timeout(Duration::from_secs(shutdown_secs), serve)
-            .await
-            .unwrap_or(Ok(()))?;
+        tokio::time::timeout(Duration::from_secs(shutdown_secs), serve).await.unwrap_or(Ok(()))?;
 
         info!("zisk-gateway stopped");
         Ok(())

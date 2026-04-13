@@ -13,7 +13,8 @@ use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, Emu, ProgramId, ProverClientBuilder, ProverOpts, ZiskBackend, ZiskProver,
+    Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ZiskBackend,
+    ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -137,7 +138,7 @@ impl ProverConfig {
         let guest_program =
             Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
 
-        let mut options = ProofmanOptions::new(prover_service_config.preallocate);
+        let mut options = ProofmanOptions::new(prover_service_config.preallocate_fixed_gpu);
         if let Some(max_streams) = prover_service_config.max_streams {
             options.with_max_number_streams(max_streams);
         }
@@ -208,7 +209,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Emu>> {
-        let mut prover_options = ProverOpts::default()
+        let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
             .shared_tables(prover_config.shared_tables)
@@ -244,7 +245,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         compute_capacity: ComputeCapacity,
         prover_config: ProverConfig,
     ) -> Result<Worker<Asm>> {
-        let mut prover_options = ProverOpts::default()
+        let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
             .shared_tables(prover_config.shared_tables)

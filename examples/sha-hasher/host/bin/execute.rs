@@ -1,17 +1,11 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use sha_hasher_host::Output;
 use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -25,19 +19,19 @@ fn main() -> Result<()> {
     let client = ProverClient::embedded().build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?; // S'ha de fer un must use
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?;
+    let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
     println!("Duration: {:?}", result.get_duration());
 
     println!("Reading public outputs...");
-    let output: Output = result.get_public_values()?;
+    let output: Output = result.get_public_values_abi()?;
     println!("Public outputs:");
     println!("  Hash: {:02x?}", output.hash);
     println!("  Iterations: {}", output.iterations);

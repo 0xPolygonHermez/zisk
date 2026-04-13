@@ -1,24 +1,12 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-
-use crate::cancel::CancellationToken;
-use crate::input::ProgramInput;
-use crate::GuestProgram;
-use crate::{Client, ExecutorKind};
 use zisk_common::StatsCostPerType;
-use zisk_prover_backend::ZiskExecuteResult;
+use zisk_prover_backend::{GuestProgram, ZiskExecuteResult};
 
-/// Tracing options for program execution.
-#[derive(Debug, Clone)]
-pub enum Tracing {
-    /// Trace the input data.
-    Input,
-    /// Trace the hints stream.
-    Hints,
-    /// Print an execution summary.
-    Summary,
-}
+use crate::job_handle::JobHandle;
+use crate::{Client, ExecutorKind};
 
 /// Result of a dry-run program execution (no proof generated).
 pub struct ExecuteResult {
@@ -51,19 +39,24 @@ impl ExecuteResult {
     ) -> Result<T> {
         self.inner.get_public_values()
     }
+
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.inner.get_public_values_abi()
+    }
 }
 
 /// Builder for a dry-run execution request (no proof).
 ///
 /// Obtain via `client.execute(&program, stdin)`.
-#[allow(dead_code)]
 pub struct ExecuteRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
-    input: ProgramInput,
+    input: crate::input::ProgramInput,
     executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
-    traces: Vec<Tracing>,
 }
 
 #[allow(private_bounds)]
@@ -71,16 +64,9 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     pub(crate) fn new(
         client: &'a C,
         program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
+        input: impl Into<crate::input::ProgramInput>,
     ) -> Self {
-        Self {
-            client,
-            program,
-            input: input.into(),
-            executor: None,
-            timeout: None,
-            traces: Vec::new(),
-        }
+        Self { client, program, input: input.into(), executor: None, timeout: None }
     }
 
     /// Override the executor for this execute call.
@@ -91,51 +77,16 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     }
 
     /// Set a timeout for the execution.
-    // TODO: timeout is stored but not enforced in run() yet.
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
         self
     }
 
-    /// Enable a tracing mode.
-    // TODO: traces are stored but not forwarded to run_execute yet.
-    #[must_use]
-    pub fn trace(mut self, tracing: Tracing) -> Self {
-        self.traces.push(tracing);
-        self
-    }
-
-    /// Run the execution synchronously.
-    pub fn run(self) -> Result<ExecuteResult> {
+    /// Submit the execution, returning a [`JobHandle<ExecuteResult>`].
+    pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        let client = self.client;
-        let program = self.program;
-        let input = self.input;
-
-        if let Some(dur) = self.timeout {
-            let cancel_token = CancellationToken::new();
-            let cancel_token2 = cancel_token.clone();
-            let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
-            let timed_out = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let timed_out2 = std::sync::Arc::clone(&timed_out);
-            let result = std::thread::scope(|s| {
-                s.spawn(move || {
-                    if stop_rx.recv_timeout(dur).is_err() {
-                        timed_out2.store(true, std::sync::atomic::Ordering::Relaxed);
-                        cancel_token2.cancel();
-                    }
-                });
-                let result = client.run_execute(program, input, executor, Some(&cancel_token));
-                let _ = stop_tx.send(());
-                result
-            });
-            if timed_out.load(std::sync::atomic::Ordering::Acquire) {
-                anyhow::bail!("execution timed out after {dur:?}");
-            }
-            result
-        } else {
-            client.run_execute(program, input, executor, None)
-        }
+        let subs = Arc::new(Mutex::new(Vec::new()));
+        self.client.run_execute(self.program, self.input, executor, self.timeout, subs)
     }
 }

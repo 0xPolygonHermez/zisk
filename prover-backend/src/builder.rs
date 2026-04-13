@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    get_proving_key, get_proving_key_snark, Asm, AsmProver, Emu, EmuProver, ProverOpts, ZiskProver,
+    get_proving_key, get_proving_key_snark, Asm, AsmProver, BackendProverOpts, Emu, EmuProver,
+    ZiskProver,
 };
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
@@ -44,7 +45,7 @@ enum OperationMode {
 #[derive(Default)]
 pub struct ProverClientBuilder<Backend = ()> {
     // Configuration
-    prover_options: ProverOpts,
+    prover_options: BackendProverOpts,
     logging_config: Option<LoggingConfig>,
     operation_mode: OperationMode,
 
@@ -56,7 +57,7 @@ impl ProverClientBuilder<()> {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            prover_options: ProverOpts::default(),
+            prover_options: BackendProverOpts::default(),
             logging_config: None,
             operation_mode: OperationMode::default(),
             _backend: std::marker::PhantomData,
@@ -104,15 +105,8 @@ impl<Backend> ProverClientBuilder<Backend> {
         self
     }
     #[must_use]
-    pub fn with_prover_options(mut self, opts: ProverOpts) -> Self {
+    pub fn with_prover_options(mut self, opts: BackendProverOpts) -> Self {
         self.prover_options = opts;
-        self
-    }
-
-    /// Configure whether to use SNARK wrapper  
-    #[must_use]
-    pub fn with_snark(mut self, snark: bool) -> Self {
-        self.prover_options.preload_plonk = snark;
         self
     }
 
@@ -160,8 +154,8 @@ impl ProverClientBuilder<EmuB> {
         }
 
         let emu = EmuProver::new(
+            self.prover_options.plonk,
             self.prover_options.preload_plonk,
-            false,
             proving_key,
             proving_key_snark,
             self.prover_options.shared_tables,
@@ -231,8 +225,8 @@ impl ProverClientBuilder<AsmB> {
         }
 
         let asm = AsmProver::new(
+            self.prover_options.plonk,
             self.prover_options.preload_plonk,
-            false,
             proving_key,
             proving_key_snark,
             self.prover_options.shared_tables,

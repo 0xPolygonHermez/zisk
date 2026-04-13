@@ -4,6 +4,8 @@ mod embedded;
 mod execute;
 mod hints;
 mod input;
+mod job_handle;
+mod opts;
 mod proof;
 mod prove;
 mod remote;
@@ -15,12 +17,12 @@ mod wrap;
 pub use cancel::CancellationToken;
 pub use client::{ProverClient, ProverClientBuilder};
 pub use embedded::EmbeddedClientConfig;
-pub use execute::{ExecuteRequest, ExecuteResult, Tracing};
+pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
-pub use prove::{ProofHandle, ProofKind, ProveRequest, WatchEvent};
-// pub use program::{Elf, GuestProgram, ProgramId};
+pub use job_handle::JobHandle;
 pub use proof::Proof;
+pub use prove::{JobEvent, ProofKind, ProveRequest};
 pub use remote::RemoteClientConfig;
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
@@ -30,16 +32,18 @@ pub use wrap::WrapRequest;
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, ProgramId};
 
+pub use opts::ProverOpts;
+
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{
-    AsmOptions, ProveBuilder, ProverOpts, WrapBuilder, ZiskExecuteResult, ZiskProveResult,
+    AsmOptions, BackendProverOpts, ProveBuilder, WrapBuilder, ZiskExecuteResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
 };
 
 // Re-export common types
 pub use proofman_common::VerboseMode;
 
-// Re-export types from zisk_common (avoid glob io::* — it conflicts with our ZiskStdin wrapper)
+// Re-export types from zisk_common
 pub use zisk_common::{
     PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
@@ -47,48 +51,6 @@ pub use zisk_common::{
 pub use zisk_build::*;
 
 use anyhow::Result;
-use std::sync::Arc;
-
-impl<C: Client + Send + Sync> Client for Arc<C> {
-    fn run_upload(&self, program: &GuestProgram) -> Result<()> {
-        (**self).run_upload(program)
-    }
-
-    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
-        (**self).run_setup(program, with_hints)
-    }
-
-    fn run_prove(
-        &self,
-        program: &GuestProgram,
-        input: ProgramInput,
-        executor: ExecutorKind,
-        mode: ProofMode,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<Proof> {
-        (**self).run_prove(program, input, executor, mode, cancel)
-    }
-
-    fn run_execute(
-        &self,
-        program: &GuestProgram,
-        input: ProgramInput,
-        executor: ExecutorKind,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<ExecuteResult> {
-        (**self).run_execute(program, input, executor, cancel)
-    }
-
-    fn run_wrap(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
-        mode: ProofMode,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        (**self).run_wrap(proof_with_publics, mode, override_publics, override_program_vk)
-    }
-}
 
 pub(crate) fn validate_stream_uri(uri: &str) -> Result<()> {
     let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
@@ -114,29 +76,43 @@ pub enum ExecutorKind {
     Assembly,
 }
 
-pub(crate) trait Client: Send + Sync {
+pub(crate) trait Client: Clone + Send + Sync + 'static {
     fn run_upload(&self, program: &GuestProgram) -> Result<()>;
-    fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()>;
+
+    fn run_setup(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<()>>;
+
     fn run_prove(
         &self,
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
         mode: ProofMode,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<Proof>;
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<Proof>>;
+
     fn run_execute(
         &self,
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        cancel: Option<&CancellationToken>,
-    ) -> Result<ExecuteResult>;
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<execute::ExecuteResult>>;
+
     fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
         mode: ProofMode,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues>;
+        override_publics: Option<ZiskPublics>,
+        override_program_vk: Option<ZiskProgramVK>,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<ZiskProofWithPublicValues>>;
 }

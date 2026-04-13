@@ -101,12 +101,24 @@ pub struct DomainExecuteRequest {
 
 // ── Job kind responses ────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Default)]
+pub struct DomainExecutionStats {
+    pub steps: u64,
+    pub duration_nanos: u64,
+    pub main_cost: u64,
+    pub opcode_cost: u64,
+    pub memory_cost: u64,
+    pub precompile_cost: u64,
+    pub tables_cost: u64,
+    pub other_cost: u64,
+}
+
 #[derive(Debug, Clone)]
 pub enum DomainJobKindResponse {
     Setup,
-    Prove(DomainProof),
+    Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
-    Execute,
+    Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
 }
 
 // ── Job status ────────────────────────────────────────────────────────────────
