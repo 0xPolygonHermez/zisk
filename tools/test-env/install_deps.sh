@@ -34,7 +34,7 @@ install_cuda() {
 install_dependencies_linux() {
     current_step=1
 
-    # Check if --gpu argument was passed
+    # Check if --cuda argument was passed
     INSTALL_CUDA=false
     for arg in "$@"; do
         if [[ "$arg" == "--cuda" ]]; then
@@ -44,31 +44,31 @@ install_dependencies_linux() {
     done
 
     if [[ "$INSTALL_CUDA" == true ]]; then
-        total_steps=4
+        total_steps=5
     else
-        total_steps=3
+        total_steps=4
     fi
 
-    step "Installing package dependencies for linux x86_64..."
+    # step "Installing package dependencies for linux x86_64..."
 
-    ensure_sudo apt-get update
-    ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
+    # ensure_sudo apt-get update
+    # ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
-    ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
-        nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
-        libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-        sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf || return 1
+    # ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
+    #     nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
+    #     libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
+    #     sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf || return 1
 
-    step "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
-    ensure_sudo apt-get install -y nodejs || return 1
+    # step "Installing Node.js 20.x..."
+    # curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
+    # ensure_sudo apt-get install -y nodejs || return 1
 
-    step "Installing Rust..."
-    # Create the profile file if it doesn't exist
-    touch $PROFILE
-    ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
-    export PATH="${HOME}/.cargo/bin:$PATH"
-    source "${HOME}/.cargo/env"
+    # step "Installing Rust..."
+    # # Create the profile file if it doesn't exist
+    # touch $PROFILE
+    # ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
+    # export PATH="${HOME}/.cargo/bin:$PATH"
+    # source "${HOME}/.cargo/env"
 
     if [[ "$INSTALL_CUDA" == true ]]; then
         step "Installing CUDA..."
@@ -93,7 +93,7 @@ main() {
 
     # Check the system type and call the respective function
     if [[ "${PLATFORM}" == "linux" ]]; then
-        install_dependencies_linux || return 1
+        install_dependencies_linux "$@" || return 1
     elif [[ "${PLATFORM}" == "darwin" ]]; then
         install_dependencies_darwin "$@" || return 1
     else
