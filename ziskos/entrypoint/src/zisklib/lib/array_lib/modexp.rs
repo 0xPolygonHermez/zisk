@@ -1,7 +1,8 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-use std::vec;
+extern crate alloc;
+use alloc::vec;
 
 use crate::zisklib::fcall_bin_decomp;
 

@@ -16,10 +16,15 @@ pub fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
 
 #[inline]
 pub fn u64_4_to_be_bytes(limbs: &[u64; 4]) -> [u8; 32] {
-    [limbs[3].to_be_bytes(), limbs[2].to_be_bytes(), limbs[1].to_be_bytes(), limbs[0].to_be_bytes()]
-        .concat()
-        .try_into()
-        .unwrap()
+    let b3 = limbs[3].to_be_bytes();
+    let b2 = limbs[2].to_be_bytes();
+    let b1 = limbs[1].to_be_bytes();
+    let b0 = limbs[0].to_be_bytes();
+    [
+        b3[0], b3[1], b3[2], b3[3], b3[4], b3[5], b3[6], b3[7], b2[0], b2[1], b2[2], b2[3], b2[4],
+        b2[5], b2[6], b2[7], b1[0], b1[1], b1[2], b1[3], b1[4], b1[5], b1[6], b1[7], b0[0], b0[1],
+        b0[2], b0[3], b0[4], b0[5], b0[6], b0[7],
+    ]
 }
 
 /// Given two n-bit number `x` and `y`, compares them and returns true if `x > y`; otherwise, false.

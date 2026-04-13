@@ -1,10 +1,9 @@
 use crate::syscalls::{
-    syscall_add256, syscall_arith256, syscall_arith256_mod, SyscallAdd256Params,
-    SyscallArith256ModParams, SyscallArith256Params,
+    syscall_add256, syscall_arith256, SyscallAdd256Params, SyscallArith256Params,
 };
 use crate::zisklib::fcall_uint256_div;
 use crate::zisklib::lib::{
-    constants::{MINUS_ONE_256 as MINUS_ONE, ONE_256 as ONE, ZERO_256 as ZERO},
+    constants::ZERO_256 as ZERO,
     utils::{is_zero, lt},
 };
 
@@ -54,6 +53,8 @@ pub fn div_rem256(
     b: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 4], [u64; 4]) {
+    assert!(!is_zero(b), "Division by zero");
+
     // Strategy: Hint the division result and then verify it satisfies Euclid's division lemma
 
     // Hint the quotient and remainder
@@ -135,18 +136,13 @@ pub fn wrapping_rem256(
     b: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
-    if is_zero(b) {
-        panic!("Division by zero");
-    }
-
-    let mut d = ZERO;
-    let mut params = SyscallArith256ModParams { a, b: &ONE, c: &ZERO, module: b, d: &mut d };
-    syscall_arith256_mod(
-        &mut params,
+    div_rem256(
+        a,
+        b,
         #[cfg(feature = "hints")]
         hints,
-    );
-    d
+    )
+    .1
 }
 
 // ==================== C FFI Functions ====================
