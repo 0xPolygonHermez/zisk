@@ -3,7 +3,7 @@ use crate::zisklib::fcall_bin_decomp;
 use crate::zisklib::fcall_uint256_inv_mod;
 use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
-    utils::{gt, is_one, is_zero},
+    utils::{be_bytes_to_u64_4, gt, is_one, is_zero, u64_4_to_be_bytes},
 };
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
@@ -294,6 +294,44 @@ pub unsafe extern "C" fn mul_mod256_c(
 
     let result = &mut *(result_ptr as *mut [u64; 4]);
     *result = res;
+}
+
+/// 256-bit modular multiplication.
+///
+/// # Safety
+/// - `a` must point to a valid array of 32 bytes (big endian)
+/// - `b` must point to a valid array of 32 bytes (big endian)
+/// - `m` must point to a valid array of 32 bytes (big endian)
+/// - `result` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_mul_mod_bytes256_c")]
+pub unsafe extern "C" fn mul_mod_bytes256_c(
+    a_ptr: *const u8,
+    b_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a_bytes = &*(a_ptr as *const [u8; 32]);
+    let b_bytes = &*(b_ptr as *const [u8; 32]);
+    let m_bytes = &*(m_ptr as *const [u8; 32]);
+
+    // Convert from big-endian bytes to little-endian
+    let a = be_bytes_to_u64_4(a_bytes);
+    let b = be_bytes_to_u64_4(b_bytes);
+    let m = be_bytes_to_u64_4(m_bytes);
+
+    let result = mul_mod256(
+        &a,
+        &b,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // Convert result back to big-endian bytes
+    let result_bytes = &mut *(result_ptr as *mut [u8; 32]);
+    *result_bytes = u64_4_to_be_bytes(&result);
 }
 
 /// 256-bit modular squaring.
