@@ -1,8 +1,8 @@
-use crate::zisklib::fcall_bin_decomp;
 use crate::zisklib::lib::{
     constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
     utils::{is_one, is_zero},
 };
+use crate::zisklib::{fcall_bin_decomp, fcall_msb_pos_256, is_power_of_two};
 
 use super::mul::{overflowing_mul256, overflowing_square256, wrapping_mul256, wrapping_square256};
 
@@ -48,6 +48,36 @@ pub fn overflowing_pow256(
         return (ONE, false);
     }
     // We can assume exp,base > 1 from now on
+
+    // Optimized path for power-of-two exponents: only squaring is needed
+    if is_power_of_two(exp) {
+        // Hint which bit is set in the exponent
+        let (limb, bit) = fcall_msb_pos_256(
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+
+        // Check that the hinted bit position matches the original exponent
+        let mut check_exp = [0u64; 4];
+        check_exp[limb as usize] = 1u64 << (bit as usize);
+        assert_eq!(check_exp, *exp, "Exponent bit position mismatch");
+
+        // Perform repeated squaring for the single set bit in the exponent
+        let mut overflow = false;
+        let mut result = *base;
+        for _ in 0..bit {
+            let (res, sq_overflow) = overflowing_square256(
+                &result,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            result = res;
+            overflow |= sq_overflow;
+        }
+
+        return (result, overflow);
+    }
 
     // Hint the binary decomposition of the exponent (MSB first)
     let (len, bits) = fcall_bin_decomp(
@@ -121,6 +151,32 @@ pub fn wrapping_pow256(
         return ONE;
     }
     // We can assume exp,base > 1 from now on
+
+    if is_power_of_two(exp) {
+        // Hint which bit is set in the exponent
+        let (limb, bit) = fcall_msb_pos_256(
+            exp,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+
+        // Check that the hinted bit position matches the original exponent
+        let mut check_exp = [0u64; 4];
+        check_exp[limb as usize] = 1u64 << (bit as usize);
+        assert_eq!(check_exp, *exp, "Exponent bit position mismatch");
+
+        // Perform repeated squaring for the single set bit in the exponent
+        let mut result = *base;
+        for _ in 0..bit {
+            result = wrapping_square256(
+                &result,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+        }
+
+        return result;
+    }
 
     // Hint the binary decomposition of the exponent (MSB first)
     let (len, bits) = fcall_bin_decomp(
