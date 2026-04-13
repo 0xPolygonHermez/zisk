@@ -115,13 +115,11 @@ pub struct ZiskProve {
     #[arg(short = 'z', long, default_value_t = false, hide = true)]
     pub preallocate_fixed_gpu: bool,
 
-    /// Maximum number of concurrent streams for proving
-    // TODO: Review description
+    /// Maximum number of concurrent GPU streams for proving
     #[arg(short = 't', long, hide = true)]
     pub max_streams: Option<usize>,
 
-    /// Number of threads for witness computation
-    // TODO: Review description
+    /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 }
