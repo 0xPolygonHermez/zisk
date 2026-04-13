@@ -341,7 +341,6 @@ impl ProverBackend {
                     compressed,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,
-                    proof_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -366,7 +365,6 @@ impl ProverBackend {
             (ProofMode::Plonk, Some(vadcop_proof)) => {
                 let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
                     &vadcop_proof,
-                    proof_options.output_dir_path.clone(),
                 )?;
 
                 let publics = ZiskPublics::new(&vadcop_proof.public_values);

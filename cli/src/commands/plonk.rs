@@ -53,8 +53,7 @@ impl ZiskPlonk {
 
         let proof = zisk_proof.get_vadcop_final_proof()?;
 
-        let snark_proof =
-            snark_wrapper.generate_final_snark_proof(&proof, Some(self.output_dir.clone()))?;
+        let snark_proof = snark_wrapper.generate_final_snark_proof(&proof)?;
         snark_proof.save(self.output_dir.join("final_snark_proof.bin")).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to save final SNARK proof to output dir {}: {}",

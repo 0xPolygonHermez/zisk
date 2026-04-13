@@ -85,7 +85,7 @@ pub struct ZiskProve {
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
-    
+
     /// Use GPU acceleration
     #[clap(long, default_value_t = false)]
     pub gpu: bool,
@@ -147,10 +147,8 @@ impl ZiskProve {
         }
 
         // Build BackendProverOpts once with all configuration
-        let mut prover_options = BackendProverOpts::default()
-            .aggregation(self.aggregation)
-            .output_dir(self.output_dir.clone())
-            .verbose(self.verbose);
+        let mut prover_options =
+            BackendProverOpts::default().aggregation(self.aggregation).verbose(self.verbose);
 
         if self.minimal_memory {
             prover_options = prover_options.minimal_memory();

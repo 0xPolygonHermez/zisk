@@ -209,7 +209,7 @@ impl ProverBackend {
         self.proofman
             .compute_witness_from_lib(
                 &debug_info,
-                ProofOptions::new(false, false, false, false, false, minimal_memory, None),
+                ProofOptions::new(false, false, false, false, false, minimal_memory),
             )
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
@@ -313,7 +313,6 @@ impl ProverBackend {
                     minimal,
                     prover_options.verify_proofs,
                     prover_options.minimal_memory,
-                    prover_options.output_dir_path.clone(),
                 ),
                 ProvePhase::Full,
             )
@@ -338,10 +337,11 @@ impl ProverBackend {
 
         match (mode, proof) {
             (ProofMode::Plonk, Some(vadcop_proof)) => {
-                let snark_proof = self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(
-                    &vadcop_proof,
-                    prover_options.output_dir_path.clone(),
-                )?;
+                let snark_proof = self
+                    .snark_wrapper
+                    .as_ref()
+                    .unwrap()
+                    .generate_final_snark_proof(&vadcop_proof)?;
 
                 let publics = ZiskPublics::new(&vadcop_proof.public_values);
                 let program_vk = ZiskProgramVK::new_from_publics(&vadcop_proof.public_values);
@@ -422,7 +422,7 @@ impl ProverBackend {
 
         let minimal_proof = self
             .proofman
-            .generate_vadcop_final_proof_compressed(&vadcop_final_proof, None)
+            .generate_vadcop_final_proof_compressed(&vadcop_final_proof)
             .map_err(|e| anyhow::anyhow!("Error generating minimal proof: {}", e))?;
 
         Ok(ZiskProofWithPublicValues {
@@ -459,11 +459,8 @@ impl ProverBackend {
         pubs.extend(publics.public_bytes());
         let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
 
-        let snark_proof = self
-            .snark_wrapper
-            .as_ref()
-            .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, None)?;
+        let snark_proof =
+            self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
 
         let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
