@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program...");
-    let result = client.execute(&program, hints).executor(ExecutorKind::Assembly).run()?;
+    let result = client.execute(&program, hints).executor(ExecutorKind::Assembly).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",

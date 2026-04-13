@@ -30,14 +30,14 @@ async fn main() -> Result<()> {
     // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 
     println!("Setting up first program...");
-    client.setup(&PROGRAM1).run()?;
+    client.setup(&PROGRAM1).run()?.await?;
 
     println!("Setting up second program...");
-    client.setup(&program2).run()?;
+    client.setup(&program2).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await;
+    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for first program...");
-    let vadcop_result = client.prove(&PROGRAM1, stdin).run()?;
+    let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
 
     println!("Verifying proof...");
     let vkey = client.vk(&PROGRAM1)?;
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing second program...");
-    let result2 = client.execute(&program2, stdin2.clone()).run()?;
+    let result2 = client.execute(&program2, stdin2.clone()).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for second program...");
-    let vadcop_result2 = client.prove(&program2, stdin2).run()?;
+    let vadcop_result2 = client.prove(&program2, stdin2).run()?.await?;
 
     println!("Verifying proof...");
     let vkey2 = client.vk(&program2)?;

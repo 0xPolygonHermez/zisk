@@ -254,7 +254,7 @@ impl Default for BackendProverOpts {
 impl BackendProverOpts {
     /// Build ProofmanOptions from the configuration fields
     pub fn build_proofman_options(&self) -> ProofmanOptions {
-        let mut options = ProofmanOptions::new(self.preallocate_fixed_gpu);
+        let mut options = ProofmanOptions::new();
 
         if let Some(max_witness_stored) = self.max_witness_stored {
             options.with_max_witness_stored(max_witness_stored);
