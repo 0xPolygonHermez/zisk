@@ -27,9 +27,6 @@ pub struct ProverOpts {
     /// Use Remote Memory Access for MPI communication.
     pub rma: bool,
 
-    /// Preallocate fixed GPU buffers before proving.
-    pub preallocate_fixed_gpu: bool,
-
     /// Maximum memory (bytes) for witness storage during proving.
     pub max_witness_stored: Option<usize>,
 
@@ -49,7 +46,6 @@ impl Default for ProverOpts {
             preload_plonk: false,
             shared_tables: true,
             rma: false,
-            preallocate_fixed_gpu: false,
             max_witness_stored: None,
             number_threads_witness: None,
             max_streams: None,
@@ -100,13 +96,6 @@ impl ProverOpts {
         self
     }
 
-    /// Preallocate fixed GPU buffers before proving.
-    #[must_use]
-    pub fn preallocate_fixed_gpu(mut self) -> Self {
-        self.preallocate_fixed_gpu = true;
-        self
-    }
-
     /// Set the maximum memory (bytes) for witness storage during proving.
     #[must_use]
     pub fn max_witness_stored(mut self, max: usize) -> Self {
@@ -141,7 +130,6 @@ impl ProverOpts {
             preload_plonk: self.preload_plonk,
             shared_tables: self.shared_tables,
             rma: self.rma,
-            preallocate_fixed_gpu: self.preallocate_fixed_gpu,
             gpu,
             packed: gpu,
             max_witness_stored: self.max_witness_stored,

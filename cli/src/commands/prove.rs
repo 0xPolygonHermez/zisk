@@ -179,9 +179,6 @@ impl ZiskProve {
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
         }
-        if self.preallocate_fixed_gpu {
-            prover_options = prover_options.preallocate_fixed_gpu();
-        }
         if self.gpu {
             prover_options = prover_options.gpu();
         }

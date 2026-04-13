@@ -389,7 +389,6 @@ The table below lists the available configuration options for the Worker:
 | - | `--hints` | - | Boolean | false | Enable precompile hints processing |
 | - | `-m`, `--minimal-memory` | - | Boolean | false | Use minimal memory mode |
 | - | `-r`, `--rma` | - | Boolean | false | Enable RMA mode |
-| - | `-z`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
 | - | `-t`, `--max-streams` | - | Number | - | Maximum number of GPU streams |
 | - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
 | - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |

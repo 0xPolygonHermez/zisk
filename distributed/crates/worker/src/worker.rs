@@ -138,7 +138,7 @@ impl ProverConfig {
         let guest_program =
             Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
 
-        let mut options = ProofmanOptions::new(prover_service_config.preallocate_fixed_gpu);
+        let mut options = ProofmanOptions::new();
         if let Some(max_streams) = prover_service_config.max_streams {
             options.with_max_number_streams(max_streams);
         }

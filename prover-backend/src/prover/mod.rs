@@ -195,7 +195,6 @@ pub struct BackendProverOpts {
     pub rma: bool,
 
     // ProofmanOptions fields (flattened)
-    pub preallocate_fixed_gpu: bool,
     pub gpu: bool,
     pub packed: bool,
     pub max_witness_stored: Option<usize>,
@@ -220,7 +219,6 @@ impl Default for BackendProverOpts {
             preload_plonk: false,
             plonk: false,
             shared_tables: true,
-            preallocate_fixed_gpu: false,
             gpu: false,
             packed: false,
             max_witness_stored: None,
@@ -234,7 +232,7 @@ impl Default for BackendProverOpts {
 impl BackendProverOpts {
     /// Build ProofmanOptions from the configuration fields
     pub fn build_proofman_options(&self) -> ProofmanOptions {
-        let mut options = ProofmanOptions::new(self.preallocate_fixed_gpu);
+        let mut options = ProofmanOptions::new();
 
         if let Some(max_witness_stored) = self.max_witness_stored {
             options.with_max_witness_stored(max_witness_stored);
@@ -318,11 +316,6 @@ impl BackendProverOpts {
 
     pub fn shared_tables(mut self, value: bool) -> Self {
         self.shared_tables = value;
-        self
-    }
-
-    pub fn preallocate_fixed_gpu(mut self) -> Self {
-        self.preallocate_fixed_gpu = true;
         self
     }
 
