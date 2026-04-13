@@ -5,7 +5,7 @@ use crate::{
 
 use super::constants::{NQR, P};
 
-pub fn secp256k1_fp_add(
+pub fn add_fp_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -21,7 +21,7 @@ pub fn secp256k1_fp_add(
     *params.d
 }
 
-pub fn secp256k1_fp_mul(
+pub fn mul_fp_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -37,7 +37,7 @@ pub fn secp256k1_fp_mul(
     *params.d
 }
 
-pub fn secp256k1_fp_square(
+pub fn square_fp_secp256k1(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
@@ -52,7 +52,7 @@ pub fn secp256k1_fp_square(
     *params.d
 }
 
-pub fn secp256k1_fp_sqrt(
+pub fn sqrt_fp_secp256k1(
     x: &[u64; 4],
     parity: u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -87,7 +87,7 @@ pub fn secp256k1_fp_sqrt(
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
-        let nqr = secp256k1_fp_mul(
+        let nqr = mul_fp_secp256k1(
             x,
             &NQR,
             #[cfg(feature = "hints")]

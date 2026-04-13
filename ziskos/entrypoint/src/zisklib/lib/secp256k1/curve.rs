@@ -14,8 +14,8 @@ use crate::{
 
 use super::{
     constants::{E_B, G, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
-    field::{secp256k1_fp_add, secp256k1_fp_mul, secp256k1_fp_sqrt, secp256k1_fp_square},
-    scalar::secp256k1_fn_sub,
+    field::{add_fp_secp256k1, mul_fp_secp256k1, sqrt_fp_secp256k1, square_fp_secp256k1},
+    scalar::sub_fn_secp256k1,
 };
 
 const IDENTITY_POINT256: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y };
@@ -23,30 +23,30 @@ const IDENTITY_POINT256: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: I
 const G_POINT256: SyscallPoint256 = SyscallPoint256 { x: G_X, y: G_Y };
 
 /// Given a x-coordinate and a parity bit, returns the corresponding point (x, y) on the curve if it exists
-pub fn secp256k1_lift_x(
+pub fn lift_x_secp256k1(
     x: &[u64; 4],
     y_is_odd: bool,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 8], bool> {
     // Calculate the y-coordinate of the point: y = sqrt(x³ + 7)
-    let x_sq = secp256k1_fp_square(
+    let x_sq = square_fp_secp256k1(
         x,
         #[cfg(feature = "hints")]
         hints,
     );
-    let x_cb = secp256k1_fp_mul(
+    let x_cb = mul_fp_secp256k1(
         &x_sq,
         x,
         #[cfg(feature = "hints")]
         hints,
     );
-    let y_sq = secp256k1_fp_add(
+    let y_sq = add_fp_secp256k1(
         &x_cb,
         &E_B,
         #[cfg(feature = "hints")]
         hints,
     );
-    let (y, has_sqrt) = secp256k1_fp_sqrt(
+    let (y, has_sqrt) = sqrt_fp_secp256k1(
         &y_sq,
         y_is_odd as u64,
         #[cfg(feature = "hints")]
@@ -66,28 +66,28 @@ pub fn secp256k1_lift_x(
 
 /// Checks whether the given point `p` is on the Secp256k1 curve.
 /// It assumes that `p` is not the point at infinity.
-pub fn secp256k1_is_on_curve(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
+pub fn is_on_curve_secp256k1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
 
     // p in E iff y² == x³ + 7
-    let lhs = secp256k1_fp_square(
+    let lhs = square_fp_secp256k1(
         &y,
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut rhs = secp256k1_fp_square(
+    let mut rhs = square_fp_secp256k1(
         &x,
         #[cfg(feature = "hints")]
         hints,
     );
-    rhs = secp256k1_fp_mul(
+    rhs = mul_fp_secp256k1(
         &rhs,
         &x,
         #[cfg(feature = "hints")]
         hints,
     );
-    rhs = secp256k1_fp_add(
+    rhs = add_fp_secp256k1(
         &rhs,
         &E_B,
         #[cfg(feature = "hints")]
@@ -128,7 +128,7 @@ fn secp256k1_add_non_infinity_points(
 
 /// Adds two points on the secp256k1 curve. Assumes both are non-infinity.
 /// Returns None if the result is the point at infinity.
-pub fn secp256k1_point_add(
+pub fn point_add_secp256k1(
     p1: &[u64; 8],
     p2: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -153,7 +153,7 @@ pub fn secp256k1_point_add(
 ///
 /// Note: There are no (non-infinity) points of order 2 in Secp256k1.
 ///       All (non-infinity) points are of prime order N.
-pub fn secp256k1_scalar_mul(
+pub fn scalar_mul_secp256k1(
     k: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -246,7 +246,7 @@ pub fn secp256k1_scalar_mul(
 
 /// Given a point `p` and scalars `k1` and `k2`, computes the double scalar multiplication `k1·G + k2·p`
 /// It assumes that `k1,k2 ∈ [0, N-1]` and that `p != 𝒪`
-pub fn secp256k1_double_scalar_mul_with_g(
+pub fn double_scalar_mul_with_g_secp256k1(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &[u64; 8],
@@ -259,7 +259,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
         return None;
     }
     if k1_zero {
-        return secp256k1_scalar_mul(
+        return scalar_mul_secp256k1(
             k2,
             p,
             #[cfg(feature = "hints")]
@@ -267,7 +267,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
         );
     }
     if k2_zero {
-        return secp256k1_scalar_mul(
+        return scalar_mul_secp256k1(
             k1,
             &G,
             #[cfg(feature = "hints")]
@@ -289,8 +289,8 @@ pub fn secp256k1_double_scalar_mul_with_g(
     // If G + P = 𝒪 => P = -G and therefore the operation is k1·G + (-k2)·G = (k1-k2)·G
     // Fall back to scalar mul
     if gp_is_infinity {
-        return secp256k1_scalar_mul(
-            &secp256k1_fn_sub(
+        return scalar_mul_secp256k1(
+            &sub_fn_secp256k1(
                 k1,
                 k2,
                 #[cfg(feature = "hints")]
@@ -491,7 +491,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
 
 /// Given two points `p` and `q` and scalars `r`, `s`, and `t`, computes the triple scalar multiplication `r·g + s·p + t·q`
 /// It assumes that `r,s,t ∈ [1, N-1]` and that `p,q != 𝒪`
-pub fn secp256k1_triple_scalar_mul_with_g(
+pub fn triple_scalar_mul_with_g_secp256k1(
     r: &[u64; 4],
     s: &[u64; 4],
     t: &[u64; 4],
@@ -939,7 +939,7 @@ fn optimal_window_size(n: usize) -> usize {
 /// Multi-scalar multiplication using Pippenger's bucket method: Σ kᵢ·Pᵢ.
 /// Returns None if the result is the point at infinity.
 /// Assumes all points are non-infinity and on the curve. Scalars must be in [0, N-1].
-pub fn secp256k1_multi_scalar_mul(
+pub fn multi_scalar_mul_secp256k1(
     scalars: &[[u64; 4]],
     points: &[[u64; 8]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

@@ -2,7 +2,7 @@ use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 use super::constants::P;
 
-pub fn secp256r1_fp_add(
+pub fn add_fp_secp256r1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -18,7 +18,7 @@ pub fn secp256r1_fp_add(
     *params.d
 }
 
-pub fn secp256r1_fp_mul(
+pub fn mul_fp_secp256r1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -34,7 +34,7 @@ pub fn secp256r1_fp_mul(
     *params.d
 }
 
-pub fn secp256r1_fp_square(
+pub fn square_fp_secp256r1(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
