@@ -71,10 +71,6 @@ pub struct ZiskVerifyConstraints {
     #[arg(short = 'n', long, default_value_t = false, hide = true)]
     pub no_auto_setup: bool,
 
-    /// Use shared tables for execution
-    #[arg(short = 'j', long, default_value_t = false, hide = true)]
-    pub no_shared_tables_mpi: bool,
-
     #[clap(short = 'd', long)]
     pub debug: Option<Option<String>>,
 }
@@ -149,8 +145,7 @@ impl ZiskVerifyConstraints {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        let mut prover_options =
-            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options = BackendProverOpts::default();
 
         if self.gpu {
             prover_options = prover_options.gpu();
@@ -176,8 +171,7 @@ impl ZiskVerifyConstraints {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<ZiskVerifyConstraintsResult> {
-        let mut prover_options =
-            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options = BackendProverOpts::default();
 
         if self.gpu {
             prover_options = prover_options.gpu();

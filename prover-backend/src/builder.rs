@@ -158,7 +158,7 @@ impl ProverClientBuilder<EmuB> {
             self.prover_options.preload_plonk,
             proving_key,
             proving_key_snark,
-            self.prover_options.shared_tables,
+            true,
             options,
             self.logging_config,
         )?;
@@ -229,7 +229,7 @@ impl ProverClientBuilder<AsmB> {
             self.prover_options.preload_plonk,
             proving_key,
             proving_key_snark,
-            self.prover_options.shared_tables,
+            true,
             self.prover_options.asm_options.base_port,
             self.prover_options.asm_options.unlock_mapped_memory,
             self.prover_options.asm_options.asm_out_file,

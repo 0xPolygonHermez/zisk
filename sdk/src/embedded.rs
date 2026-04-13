@@ -97,10 +97,10 @@ impl EmbeddedClientBuilder {
     pub(crate) fn build(self) -> Result<EmbeddedClient> {
         let mut backend_opts = self.prover_options.into_backend_opts(self.gpu);
         if let Some(asm_opts) = self.asm_options {
-            backend_opts.asm_options = asm_opts;
+            *backend_opts.get_asm_options_mut() = asm_opts;
         }
-        let pk = get_proving_key(backend_opts.proving_key.as_ref());
-        let pk_snark = get_proving_key_snark(backend_opts.proving_key_snark.as_ref());
+        let pk = get_proving_key(backend_opts.get_proving_key());
+        let pk_snark = get_proving_key_snark(backend_opts.get_proving_key_snark());
         let prover = match self.executor {
             ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, backend_opts, self.proof_kind)?,
             ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, backend_opts, self.proof_kind)?,
@@ -116,10 +116,10 @@ impl EmbeddedClientBuilder {
     ) -> Result<EmbeddedProver> {
         let emu = EmuProver::new(
             proof_kind == ProofKind::Plonk,        // plonk
-            backend_opts.preload_plonk,            // preload_snark
+            backend_opts.get_preload_plonk(),      // preload_snark
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
-            backend_opts.shared_tables,            // shared_tables
+            true,                                  // shared_tables
             backend_opts.build_proofman_options(), // options
             None,                                  // logging_config
         )?;
@@ -132,19 +132,20 @@ impl EmbeddedClientBuilder {
         backend_opts: zisk_prover_backend::BackendProverOpts,
         proof_kind: ProofKind,
     ) -> Result<EmbeddedProver> {
+        let asm_opts = backend_opts.get_asm_options();
         let asm = AsmProver::new(
-            proof_kind == ProofKind::Plonk,                // plonk
-            backend_opts.preload_plonk,                    // preload_snark
-            pk,                                            // proving_key
-            pk_snark,                                      // proving_key_snark
-            backend_opts.shared_tables,                    // shared_tables
-            backend_opts.asm_options.base_port,            // base_port
-            backend_opts.asm_options.unlock_mapped_memory, // unlock_mapped_memory
-            backend_opts.asm_options.asm_out_file,         // asm_out_file
-            backend_opts.asm_options.no_auto_setup,        // no_auto_setup
-            backend_opts.build_proofman_options(),         // options
-            false,                                         // is_distributed
-            None,                                          // logging_config
+            proof_kind == ProofKind::Plonk,        // plonk
+            backend_opts.get_preload_plonk(),      // preload_snark
+            pk,                                    // proving_key
+            pk_snark,                              // proving_key_snark
+            true,                                  // shared_tables
+            asm_opts.base_port,                    // base_port
+            asm_opts.unlock_mapped_memory,         // unlock_mapped_memory
+            asm_opts.asm_out_file,                 // asm_out_file
+            asm_opts.no_auto_setup,                // no_auto_setup
+            backend_opts.build_proofman_options(), // options
+            false,                                 // is_distributed
+            None,                                  // logging_config
         )?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))
     }

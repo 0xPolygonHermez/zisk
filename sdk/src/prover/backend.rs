@@ -341,7 +341,7 @@ impl ProverBackend {
                 ProofOptions::new(
                     false,
                     proof_options.aggregation,
-                    proof_options.rma,
+                    true,
                     compressed,
                     proof_options.verify_proofs,
                     proof_options.minimal_memory,

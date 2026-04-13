@@ -102,12 +102,6 @@ pub struct ProverConfig {
 
     pub options: ProofmanOptions,
 
-    /// Whether to use shared tables in the witness library
-    pub shared_tables: bool,
-
-    /// Whether to use RMA for communication
-    pub rma: bool,
-
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
@@ -165,8 +159,6 @@ impl ProverConfig {
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
             options,
-            shared_tables: prover_service_config.shared_tables,
-            rma: prover_service_config.rma,
             minimal_memory: prover_service_config.minimal_memory,
             hints: prover_service_config.hints,
         })
@@ -212,8 +204,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .shared_tables(prover_config.shared_tables)
-            .rma(prover_config.rma)
             .aggregation(prover_config.aggregation);
 
         if prover_config.minimal_memory {
@@ -248,8 +238,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .shared_tables(prover_config.shared_tables)
-            .rma(prover_config.rma)
             .aggregation(prover_config.aggregation);
 
         if prover_config.minimal_memory {
@@ -1035,7 +1023,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             aggregation: self.prover_config.aggregation,
             verify_proofs: false,
             output_dir_path: None,
-            rma: self.prover_config.rma,
+            rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
         }

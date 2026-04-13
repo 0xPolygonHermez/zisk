@@ -159,8 +159,6 @@ pub struct ProverServiceConfigDto {
     pub max_streams: Option<usize>,
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
-    pub shared_tables: bool,
-    pub rma: bool,
     pub minimal_memory: bool,
     pub gpu: bool,
 }
@@ -183,8 +181,6 @@ impl Default for ProverServiceConfigDto {
             max_streams: None,
             number_threads_witness: None,
             max_witness_stored: None,
-            shared_tables: false,
-            rma: true,
             minimal_memory: false,
             gpu: false,
         }
