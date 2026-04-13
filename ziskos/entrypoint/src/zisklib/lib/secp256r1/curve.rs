@@ -2,7 +2,7 @@ use crate::{
     syscalls::{
         syscall_secp256r1_add, syscall_secp256r1_dbl, SyscallPoint256, SyscallSecp256r1AddParams,
     },
-    zisklib::{eq, fcall_msb_pos_256, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256, ZERO_256},
+    zisklib::{eq, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256, ZERO_256},
 };
 
 use super::{

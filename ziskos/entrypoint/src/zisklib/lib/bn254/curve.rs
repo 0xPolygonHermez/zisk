@@ -248,7 +248,6 @@ pub fn scalar_mul_bn254(
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
         k,
-        &[0, 0, 0, 0],
         #[cfg(feature = "hints")]
         hints,
     );

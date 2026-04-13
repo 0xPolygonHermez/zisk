@@ -6,7 +6,10 @@ use crate::{
     syscalls::{
         syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
     },
-    zisklib::{eq, fcall_msb_pos_256, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256, ZERO_256},
+    zisklib::{
+        eq, fcall_msb_pos_256, fcall_msb_pos_256_2, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256,
+        ZERO_256,
+    },
 };
 
 use super::{
@@ -178,7 +181,6 @@ pub fn secp256k1_scalar_mul(
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
         k,
-        &ZERO_256,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -309,7 +311,7 @@ pub fn secp256k1_double_scalar_mul_with_g(
     // Hint the maximum length between the binary representations of k1 and k2
     // We will verify the output by recomposing both k1 and k2
     // Moreover, we should check that the first received bit (of either k1 or k2) is 1
-    let (max_limb, max_bit) = fcall_msb_pos_256(
+    let (max_limb, max_bit) = fcall_msb_pos_256_2(
         k1,
         k2,
         #[cfg(feature = "hints")]

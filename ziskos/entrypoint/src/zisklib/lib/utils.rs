@@ -84,3 +84,28 @@ pub fn is_one(x: &[u64]) -> bool {
     }
     true
 }
+
+/// Returns true if x is a power of two
+pub fn is_power_of_two(x: &[u64]) -> bool {
+    // A multiple-word number is a power of two if it has exactly one bit set across all words
+    let mut found_one = false;
+    for &word in x {
+        if word != 0 {
+            if found_one || (word & (word - 1)) != 0 {
+                return false;
+            }
+            found_one = true;
+        }
+    }
+    found_one
+}
+
+/// Returns true if x fits in a single 64-bit word (i.e., x < 2^64).
+pub fn is_short(x: &[u64]) -> bool {
+    for &word in &x[1..] {
+        if word != 0 {
+            return false;
+        }
+    }
+    true
+}
