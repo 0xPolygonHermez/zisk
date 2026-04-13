@@ -51,6 +51,12 @@ impl<F: PrimeField64> Add256SM<F> {
     ) {
         debug_assert!(input.cin < 2);
         trace.set_cin(input.cin != 0);
+
+        let mut a_values = [[0u32; 2]; 4];
+        let mut b_values = [[0u32; 2]; 4];
+        let mut c_chunks_values = [[0u16; 4]; 4];
+        let mut cout_values = [[false; 2]; 4];
+
         let mut cout_2 = input.cin as u32;
         for i in 0..4 {
             let al = input.a[i] as u32;
@@ -59,10 +65,11 @@ impl<F: PrimeField64> Add256SM<F> {
             let bl = input.b[i] as u32;
             let bh = (input.b[i] >> 32) as u32;
 
-            trace.set_a(i, 0, al);
-            trace.set_a(i, 1, ah);
-            trace.set_b(i, 0, bl);
-            trace.set_b(i, 1, bh);
+            a_values[i][0] = al;
+            a_values[i][1] = ah;
+            b_values[i][0] = bl;
+            b_values[i][1] = bh;
+
             let cl = al as u64 + bl as u64 + cout_2 as u64;
             let cout_1 = cl >> 32;
             let ch = ah as u64 + bh as u64 + cout_1;
@@ -73,19 +80,25 @@ impl<F: PrimeField64> Add256SM<F> {
             let chl = ch as u16;
             let chh = (ch >> 16) as u16;
 
-            trace.set_c_chunks(i, 0, cll);
-            trace.set_c_chunks(i, 1, clh);
-            trace.set_c_chunks(i, 2, chl);
-            trace.set_c_chunks(i, 3, chh);
+            c_chunks_values[i][0] = cll;
+            c_chunks_values[i][1] = clh;
+            c_chunks_values[i][2] = chl;
+            c_chunks_values[i][3] = chh;
 
-            trace.set_cout(i, 0, cout_1 != 0);
-            trace.set_cout(i, 1, cout_2 != 0);
+            cout_values[i][0] = cout_1 != 0;
+            cout_values[i][1] = cout_2 != 0;
 
             multiplicities[cll as usize] += 1;
             multiplicities[clh as usize] += 1;
             multiplicities[chl as usize] += 1;
             multiplicities[chh as usize] += 1;
         }
+
+        trace.set_all_a(&a_values);
+        trace.set_all_b(&b_values);
+        trace.set_all_c_chunks(&c_chunks_values);
+        trace.set_all_cout(&cout_values);
+
         trace.set_addr_params(input.addr_main);
         trace.set_addr_a(input.addr_a);
         trace.set_addr_b(input.addr_b);

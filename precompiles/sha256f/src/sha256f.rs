@@ -100,22 +100,24 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
             // Locate the state bits in the trace
             let is_a = i < 2;
-            for j in 0..32 {
-                let bit = ((word_first >> j) & 1) != 0;
-                if is_a {
-                    trace[row].set_a(j, bit);
-                } else {
-                    trace[row].set_e(j, bit);
-                }
+            let mut bits_first = [false; 32];
+            for (j, bit) in bits_first.iter_mut().enumerate() {
+                *bit = ((word_first >> j) & 1) != 0;
+            }
+            if is_a {
+                trace[row].set_all_a(&bits_first);
+            } else {
+                trace[row].set_all_e(&bits_first);
             }
             row -= 1;
-            for j in 0..32 {
-                let bit = ((word_second >> j) & 1) != 0;
-                if is_a {
-                    trace[row].set_a(j, bit);
-                } else {
-                    trace[row].set_e(j, bit);
-                }
+            let mut bits_second = [false; 32];
+            for (j, bit) in bits_second.iter_mut().enumerate() {
+                *bit = ((word_second >> j) & 1) != 0;
+            }
+            if is_a {
+                trace[row].set_all_a(&bits_second);
+            } else {
+                trace[row].set_all_e(&bits_second);
             }
         }
         offset += CLOCKS_LOAD_STATE;
@@ -148,14 +150,17 @@ impl<F: PrimeField64> Sha256fSM<F> {
             e_range_checks[e_carry as usize] += 1;
 
             // Locate the input bits in the trace
+            let mut bits_a = [false; 32];
+            let mut bits_e = [false; 32];
+            let mut bits_w = [false; 32];
             for j in 0..32 {
-                let bit_a = ((a >> j) & 1) != 0;
-                let bit_e = ((e >> j) & 1) != 0;
-                let bit_w = ((w[i] >> j) & 1) != 0;
-                trace[row].set_a(j, bit_a);
-                trace[row].set_e(j, bit_e);
-                trace[row].set_w(j, bit_w);
+                bits_a[j] = ((a >> j) & 1) != 0;
+                bits_e[j] = ((e >> j) & 1) != 0;
+                bits_w[j] = ((w[i] >> j) & 1) != 0;
             }
+            trace[row].set_all_a(&bits_a);
+            trace[row].set_all_e(&bits_e);
+            trace[row].set_all_w(&bits_w);
 
             // Update prev_state for the next iteration
             prev_state[7] = old_g;
@@ -196,14 +201,17 @@ impl<F: PrimeField64> Sha256fSM<F> {
             a_range_checks[a_carry as usize] += 1;
             e_range_checks[e_carry as usize] += 1;
 
+            let mut bits_a = [false; 32];
+            let mut bits_e = [false; 32];
+            let mut bits_w = [false; 32];
             for j in 0..32 {
-                let bit_a = ((a >> j) & 1) != 0;
-                let bit_e = ((e >> j) & 1) != 0;
-                let bit_w = ((new_w >> j) & 1) != 0;
-                trace[row].set_a(j, bit_a);
-                trace[row].set_e(j, bit_e);
-                trace[row].set_w(j, bit_w);
+                bits_a[j] = ((a >> j) & 1) != 0;
+                bits_e[j] = ((e >> j) & 1) != 0;
+                bits_w[j] = ((new_w >> j) & 1) != 0;
             }
+            trace[row].set_all_a(&bits_a);
+            trace[row].set_all_e(&bits_e);
+            trace[row].set_all_w(&bits_w);
 
             // Update prev_state for the next iteration
             prev_state[7] = old_g;
@@ -253,13 +261,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 e_range_checks[new_first_carry as usize] += 1;
             }
 
-            for j in 0..32 {
-                let bit = ((new_first >> j) & 1) != 0;
-                if is_a {
-                    trace[row].set_a(j, bit);
-                } else {
-                    trace[row].set_e(j, bit);
-                }
+            let mut bits_first = [false; 32];
+            for (j, bit) in bits_first.iter_mut().enumerate() {
+                *bit = ((new_first >> j) & 1) != 0;
+            }
+            if is_a {
+                trace[row].set_all_a(&bits_first);
+            } else {
+                trace[row].set_all_e(&bits_first);
             }
             row -= 1;
 
@@ -271,13 +280,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
                 e_range_checks[new_second_carry as usize] += 1;
             }
 
-            for j in 0..32 {
-                let bit = ((new_second >> j) & 1) != 0;
-                if is_a {
-                    trace[row].set_a(j, bit);
-                } else {
-                    trace[row].set_e(j, bit);
-                }
+            let mut bits_second = [false; 32];
+            for (j, bit) in bits_second.iter_mut().enumerate() {
+                *bit = ((new_second >> j) & 1) != 0;
+            }
+            if is_a {
+                trace[row].set_all_a(&bits_second);
+            } else {
+                trace[row].set_all_e(&bits_second);
             }
         }
 
@@ -410,12 +420,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let (e_carry, e) = ((e >> 32) as u8, (e & 0xFFFF_FFFF) as u32);
             mid_rows[i].set_new_a_carry_bits(a_carry);
             mid_rows[i].set_new_e_carry_bits(e_carry);
+            let mut bits_a = [false; 32];
+            let mut bits_e = [false; 32];
             for j in 0..32 {
-                let bit_a = ((a >> j) & 1) != 0;
-                let bit_e = ((e >> j) & 1) != 0;
-                mid_rows[i].set_a(j, bit_a);
-                mid_rows[i].set_e(j, bit_e);
+                bits_a[j] = ((a >> j) & 1) != 0;
+                bits_e[j] = ((e >> j) & 1) != 0;
             }
+            mid_rows[i].set_all_a(&bits_a);
+            mid_rows[i].set_all_e(&bits_e);
 
             a_range_checks[a_carry as usize] += (num_available_sha256fs - num_inputs) as u32;
             e_range_checks[e_carry as usize] += (num_available_sha256fs - num_inputs) as u32;
@@ -426,12 +438,14 @@ impl<F: PrimeField64> Sha256fSM<F> {
         for i in 0..4 {
             let a = (PC_A[60 + i] & 0xFFFF_FFFF) as u32;
             let e = (PC_E[60 + i] & 0xFFFF_FFFF) as u32;
+            let mut bits_a = [false; 32];
+            let mut bits_e = [false; 32];
             for j in 0..32 {
-                let bit_a = ((a >> j) & 1) != 0;
-                let bit_e = ((e >> j) & 1) != 0;
-                final_rows[i].set_a(j, bit_a);
-                final_rows[i].set_e(j, bit_e);
+                bits_a[j] = ((a >> j) & 1) != 0;
+                bits_e[j] = ((e >> j) & 1) != 0;
             }
+            final_rows[i].set_all_a(&bits_a);
+            final_rows[i].set_all_e(&bits_e);
         }
 
         const CLOCKS_OP: usize = CLOCKS_LOAD_STATE + CLOCKS_LOAD_INPUT + CLOCKS_MIXING;

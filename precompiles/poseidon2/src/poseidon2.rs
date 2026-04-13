@@ -99,10 +99,13 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         }
 
         for r in 0..CLOCKS {
-            for (i, &state) in round_states[r].iter().enumerate() {
-                trace[r].set_chunks(i, 0, state as u32);
-                trace[r].set_chunks(i, 1, (state >> 32) as u32);
+            let mut chunks = [[0u32; 2]; 16];
+            for i in 0..16 {
+                let state = round_states[r][i];
+                chunks[i][0] = state as u32;
+                chunks[i][1] = (state >> 32) as u32;
             }
+            trace[r].set_all_chunks(&chunks);
         }
 
         if !is_active {

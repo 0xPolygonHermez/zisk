@@ -149,23 +149,21 @@ impl<F: PrimeField64> DmaSM<F> {
                 //     DmaInfo::to_string(input.encoded)
                 // );
 
-                let diff_chunk = count_diff as u16;
-                trace.set_count_diff_chunks(0, diff_chunk);
-                local_16_bits_multiplicities[diff_chunk as usize] += 1;
+                let count_diff_chunks = [count_diff as u16, (count_diff >> 16) as u16];
+                trace.set_all_count_diff_chunks(&count_diff_chunks);
+                local_16_bits_multiplicities[count_diff_chunks[0] as usize] += 1;
+                local_16_bits_multiplicities[count_diff_chunks[1] as usize] += 1;
 
-                let diff_chunk = (count_diff >> 16) as u16;
-                trace.set_count_diff_chunks(1, diff_chunk);
-                local_16_bits_multiplicities[diff_chunk as usize] += 1;
                 if pre_result_nz {
                     let result = DmaInfo::get_memcmp_res_as_u64(input.encoded);
-                    trace.set_bus_pre_result(0, result as u32);
-                    trace.set_bus_pre_result(1, (result >> 32) as u32);
+                    let bus_pre_result = [result as u32, (result >> 32) as u32];
+                    trace.set_all_bus_pre_result(&bus_pre_result);
                     result_nz = true;
                 }
                 if post_result_nz {
                     let result = DmaInfo::get_memcmp_res_as_u64(input.encoded);
-                    trace.set_bus_post_result(0, result as u32);
-                    trace.set_bus_post_result(1, (result >> 32) as u32);
+                    let bus_post_result = [result as u32, (result >> 32) as u32];
+                    trace.set_all_bus_post_result(&bus_post_result);
                     result_nz = true;
                 }
             }
