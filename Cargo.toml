@@ -118,24 +118,24 @@ zisk-gateway = { path = "distributed/crates/gateway" }
 zisk-gateway-grpc-api = { path = "distributed/crates/gateway-grpc-api" }
 
 # Proofman
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
-# fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
 
 # Proofman Local development
-proofman = { path = "../pil2-proofman/proofman" }
-proofman-common = { path = "../pil2-proofman/common" }
-proofman-macros = { path = "../pil2-proofman/macros" }
-proofman-verifier = { path = "../pil2-proofman/verifier" }
-proofman-util = { path = "../pil2-proofman/util" }
-pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-witness = { path = "../pil2-proofman/witness" }
-fields = { path = "../pil2-proofman/fields" }
+# proofman = { path = "../pil2-proofman/proofman" }
+# proofman-common = { path = "../pil2-proofman/common" }
+# proofman-macros = { path = "../pil2-proofman/macros" }
+# proofman-verifier = { path = "../pil2-proofman/verifier" }
+# proofman-util = { path = "../pil2-proofman/util" }
+# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
+# witness = { path = "../pil2-proofman/witness" }
+# fields = { path = "../pil2-proofman/fields" }
 
 # External dependencies
 rayon = "1.10"
