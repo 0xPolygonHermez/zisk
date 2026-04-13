@@ -86,11 +86,6 @@ pub struct ZiskProve {
     #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
-    /// Disable RMA MPI optimization during proving
-    //TODO: Review desc, review if we want to keep this flag
-    #[arg(short = 'r', long)]
-    pub no_rma_mpi: bool,
-
     /// Use GPU acceleration
     #[arg(short = 'g', long)]
     pub gpu: bool,

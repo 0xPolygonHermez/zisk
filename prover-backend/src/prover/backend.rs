@@ -1,6 +1,5 @@
 use crate::create_debug_info;
 use crate::BackendProverOpts;
-use crate::GuestProgram;
 use crate::{
     ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
     ZiskVerifyConstraintsResult,
@@ -18,7 +17,6 @@ use proofman::{
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_util::VadcopFinalProof;
-use rom_setup::rom_merkle_setup_verkey;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -279,16 +277,6 @@ impl ProverBackend {
         let publics = self.proofman.get_publics();
 
         Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
-    }
-
-    pub(crate) fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
-        let vk = rom_merkle_setup_verkey(
-            elf.elf(),
-            &None,
-            &self.proving_key_path,
-            self.proofman.get_options().gpu,
-        )?;
-        Ok(ZiskProgramVK { vk })
     }
 
     pub(crate) fn prove(

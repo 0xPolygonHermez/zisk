@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
 
     println!("Verifying saved proofs from disk...");
     let publics = ZiskPublics::write_abi(&output)?;
-    let vk = client.vk(&PROGRAM)?;
+    let vk = PROGRAM.vk()?;
 
     println!("Loading proof with publics from disk...");
     let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof.bin")?;

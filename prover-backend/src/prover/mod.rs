@@ -275,12 +275,11 @@ impl BackendProverOpts {
         options
     }
 
-    // Getter methods for external crate access
-    pub fn get_asm_options(&self) -> &AsmOptions {
+    pub fn asm_options(&self) -> &AsmOptions {
         &self.asm_options
     }
 
-    pub fn get_asm_options_mut(&mut self) -> &mut AsmOptions {
+    pub fn asm_options_mut(&mut self) -> &mut AsmOptions {
         &mut self.asm_options
     }
 
@@ -292,7 +291,7 @@ impl BackendProverOpts {
         self.proving_key_snark.as_ref()
     }
 
-    pub fn get_preload_plonk(&self) -> bool {
+    pub fn preload_plonk(&self) -> bool {
         self.preload_plonk
     }
 
@@ -584,8 +583,6 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK>;
-
     fn prove(
         &self,
         program: &GuestProgram,
@@ -774,10 +771,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
         self.prover.verify_constraints(program, stdin, debug_info)
-    }
-
-    pub fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
-        self.prover.vk(elf)
     }
 
     /// Generate a proof with the given standard input.

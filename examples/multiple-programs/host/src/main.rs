@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey = client.vk(&PROGRAM1)?;
+    let vkey = PROGRAM1.vk()?;
     vadcop_result.with_program_vk(&vkey).verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     let vadcop_result2 = client.prove(&program2, stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey2 = client.vk(&program2)?;
+    let vkey2 = program2.vk()?;
     vadcop_result2.with_program_vk(&vkey2).verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 

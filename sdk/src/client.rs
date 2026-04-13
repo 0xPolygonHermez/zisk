@@ -227,13 +227,6 @@ impl ProverClient {
     }
 
     // -- Requests --
-    pub fn vk(&self, program: &GuestProgram) -> Result<ZiskProgramVK> {
-        match self.inner.as_ref() {
-            BackendClient::Embedded(c) => c.vk(program),
-            BackendClient::Remote(c) => c.vk(program),
-        }
-    }
-
     #[must_use]
     pub fn prove<'a>(
         &'a self,

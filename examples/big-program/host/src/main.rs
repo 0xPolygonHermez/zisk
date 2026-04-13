@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
         PathBuf::from(manifest_dir).join(format!("tmp/big_program_input_{}mb.bin", size_mb));
     println!("Loading input from: {} ({}MB)", input_path.display(), size_mb);
 
-    let stdin = ZiskStdin::file(&input_path)?;
+    let stdin = ZiskStdin::from_file(&input_path)?;
     println!("Input loaded successfully");
 
     // Create a `ProverClient` method.
