@@ -49,26 +49,26 @@ install_dependencies_linux() {
         total_steps=4
     fi
 
-    # step "Installing package dependencies for linux x86_64..."
+    step "Installing package dependencies for linux x86_64..."
 
-    # ensure_sudo apt-get update
-    # ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
+    ensure_sudo apt-get update
+    ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
-    # ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
-    #     nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
-    #     libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-    #     sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf || return 1
+    ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
+        nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev libsecp256k1-dev \
+        libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
+        sudo ca-certificates gnupg lsb-release wget libclang-dev clang gcc-riscv64-unknown-elf || return 1
 
-    # step "Installing Node.js 20.x..."
-    # curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
-    # ensure_sudo apt-get install -y nodejs || return 1
+    step "Installing Node.js 20.x..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
+    ensure_sudo apt-get install -y nodejs || return 1
 
-    # step "Installing Rust..."
-    # # Create the profile file if it doesn't exist
-    # touch $PROFILE
-    # ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
-    # export PATH="${HOME}/.cargo/bin:$PATH"
-    # source "${HOME}/.cargo/env"
+    step "Installing Rust..."
+    # Create the profile file if it doesn't exist
+    touch $PROFILE
+    ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
+    export PATH="${HOME}/.cargo/bin:$PATH"
+    source "${HOME}/.cargo/env"
 
     if [[ "$INSTALL_CUDA" == true ]]; then
         step "Installing CUDA..."
