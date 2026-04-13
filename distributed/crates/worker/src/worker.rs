@@ -1022,7 +1022,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             verify_constraints: self.prover_config.verify_constraints,
             aggregation: self.prover_config.aggregation,
             verify_proofs: false,
-            output_dir_path: None,
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,

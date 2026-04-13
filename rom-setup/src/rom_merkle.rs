@@ -1,8 +1,8 @@
+use crate::{ROM_BLOWUP_FACTOR, ROM_MERKLE_TREE_ARITY};
 use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::path::PathBuf;
-use crate::{ROM_BLOWUP_FACTOR, ROM_MERKLE_TREE_ARITY};
 
 use crate::{
     gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
@@ -16,16 +16,9 @@ pub fn get_rom_path<F: PrimeField64>(
 ) -> Result<PathBuf> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_bin_path = get_elf_bin_file_path_with_hash(
-        elf_hash,
-        &output_path,
-        pctx.gpu,
-    )?;
+    let elf_bin_path = get_elf_bin_file_path_with_hash(elf_hash, &output_path, pctx.gpu)?;
 
-    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        elf_hash,
-        &output_path,
-    )?;
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(elf_hash, &output_path)?;
 
     if !elf_bin_path.exists() || !elf_verkey_bin_path.exists() {
         return Err(anyhow::anyhow!(
@@ -47,16 +40,9 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 
     let elf_hash = get_elf_data_hash(elf)?;
 
-    let elf_bin_path = get_elf_bin_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-        pctx.gpu,
-    )?;
+    let elf_bin_path = get_elf_bin_file_path_with_hash(&elf_hash, &output_path, pctx.gpu)?;
 
-    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-    )?;
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
     if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
         return Ok(elf_bin_path);
@@ -87,10 +73,7 @@ pub fn rom_merkle_setup_verkey(
 
     let elf_hash = get_elf_data_hash(elf)?;
 
-    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-    )?;
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
     if elf_verkey_bin_path.exists() {
         let verkey = get_elf_vk(elf_verkey_bin_path.as_path())?

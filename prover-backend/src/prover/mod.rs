@@ -200,7 +200,6 @@ pub struct BackendProverOpts {
     pub(crate) aggregation: bool,
     pub(crate) verify_proofs: bool,
     pub(crate) minimal_memory: bool,
-    pub(crate) output_dir_path: Option<PathBuf>,
     pub(crate) verbose: u8,
 
     // Proving keys
@@ -228,7 +227,6 @@ impl Default for BackendProverOpts {
             verify_proofs: false,
 
             minimal_memory: false,
-            output_dir_path: None,
             verbose: 0,
             proving_key: None,
             proving_key_snark: None,
@@ -313,11 +311,6 @@ impl BackendProverOpts {
 
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
-        self
-    }
-
-    pub fn output_dir(mut self, path: PathBuf) -> Self {
-        self.output_dir_path = Some(path);
         self
     }
 

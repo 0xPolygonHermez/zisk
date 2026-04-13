@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use fields::{Goldilocks, PrimeField64};
-use proofman_common::{
-    write_custom_commit_trace, ProofCtx, ProofmanResult,
-};
+use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanResult};
 use sm_rom::RomSM;
 use std::env;
 use std::fs;

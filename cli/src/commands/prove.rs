@@ -155,10 +155,8 @@ impl ZiskProve {
         }
 
         // Build BackendProverOpts once with all configuration
-        let mut prover_options = BackendProverOpts::default()
-            .aggregation(self.aggregation)
-            .output_dir(self.output_dir.clone())
-            .verbose(self.verbose);
+        let mut prover_options =
+            BackendProverOpts::default().aggregation(self.aggregation).verbose(self.verbose);
 
         if self.minimal_memory {
             prover_options = prover_options.minimal_memory();

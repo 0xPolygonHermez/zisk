@@ -1,11 +1,11 @@
 use anyhow::Result;
+use rom_setup::rom_merkle_setup_verkey;
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ZiskProgramVK;
-use rom_setup::rom_merkle_setup_verkey;
 use zisk_core::Riscv2zisk;
 pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
@@ -118,10 +118,7 @@ impl GuestProgram {
     }
 
     pub fn vk(&self) -> Result<ZiskProgramVK> {
-         let vk = rom_merkle_setup_verkey(
-            self.elf(),
-            &None,
-        )?;
+        let vk = rom_merkle_setup_verkey(self.elf(), &None)?;
         Ok(ZiskProgramVK { vk })
     }
 
