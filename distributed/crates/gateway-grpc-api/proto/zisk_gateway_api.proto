@@ -1,0 +1,344 @@
+syntax = "proto3";
+
+package zisk.gateway.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+
+// ============================================================================
+// ZisK Gateway API
+//
+// Public interface for clients to register guest programs and manage proving
+// jobs. All methods are idempotent or safely retryable as documented.
+// ============================================================================
+
+service ZiskGatewayApi {
+  // Register a new guest program. Idempotent: the same ELF always returns
+  // the same hash_id.
+  rpc RegisterGuestProgram(RegisterGuestProgramRequest)
+      returns (RegisterGuestProgramResponse);
+
+  // Submit a new job (setup, prove, wrap, or execute).
+  rpc JobRequest(JobRequestMessage)
+      returns (JobResponse);
+
+  // Long-poll: block until the job reaches a terminal state or the server-side
+  // timeout elapses, then return the current status. Loop on this to poll to
+  // completion without application-level sleep.
+  rpc WaitJobResult(WaitJobResultRequest)
+      returns (WaitJobResultResponse);
+
+  // Subscribe to live state-transition events for a job. The stream closes
+  // after the terminal event. Safe to call after the job has already finished.
+  rpc WatchJob(WatchJobRequest)
+      returns (stream JobEvent);
+
+  // Stream additional input chunks to a job in WaitingForInput state.
+  // Set is_last=true on the final chunk to resume execution.
+  rpc PushJobInput(stream PushJobInputRequest)
+      returns (google.protobuf.Empty);
+
+  // Cancel a running or queued job. Blocks until the job reaches a terminal
+  // state (Cancelled or another terminal if it completed first).
+  // Idempotent: returns cancelled=false if the job is already in a terminal state.
+  rpc CancelJob(CancelJobRequest)
+      returns (CancelJobResponse);
+}
+
+// ============================================================================
+// Common data types
+// ============================================================================
+
+message CostPerType {
+  uint64 main       = 1;
+  uint64 opcode     = 2;
+  uint64 memory     = 3;
+  uint64 precompile = 4;
+  uint64 tables     = 5;
+  uint64 other      = 6;
+}
+
+message ExecutionStats {
+  uint64      steps          = 1;
+  uint64      duration_nanos = 2;
+  CostPerType cost_per_type  = 3;
+}
+
+enum ProofKind {
+  PROOF_KIND_UNSPECIFIED  = 0;
+  PROOF_KIND_STARK        = 1;
+  PROOF_KIND_STARK_MINIMAL = 2;
+  PROOF_KIND_PLONK        = 3;
+}
+
+enum JobPhase {
+  JOB_PHASE_UNSPECIFIED   = 0;
+  JOB_PHASE_CONTRIBUTIONS = 1; // witness generation and partial contributions
+  JOB_PHASE_PROVE         = 2; // proof generation
+  JOB_PHASE_AGGREGATE     = 3; // proof aggregation
+}
+
+message InputChunk {
+  bytes data    = 1;
+  bool  is_last = 2; // if true, input is complete
+}
+
+message InputKind {
+  oneof kind {
+    InputChunk inline     = 1; // first chunk; if is_last=false, continue with PushJobInput
+    string     stream_uri = 2; // file:// unix:// quic://
+  }
+}
+
+message Proof {
+  string                    proof_id         = 1; // UUID
+  string                    hash_id          = 2;
+  bytes                     verification_key = 3;
+  ProofKind                 proof_kind       = 4;
+  bytes                     data             = 5;
+  bytes                     public_inputs    = 6;
+  google.protobuf.Timestamp started_at       = 7;
+  google.protobuf.Timestamp completed_at     = 8;
+}
+
+// RPC-level error — returned in Status details for programmatic inspection.
+message ApiError {
+  uint32 code    = 1; // stable numeric code (see error table)
+  string name    = 2; // e.g. "JOB_NOT_FOUND"
+  string message = 3; // human-readable detail
+}
+
+// Job-level failure (the job ran but did not complete successfully).
+message JobFailure {
+  oneof kind {
+    JobFailureTimeout   timeout   = 1;
+    JobFailureInput     input     = 2;
+    JobFailureExecution execution = 3;
+    JobFailureInternal  internal  = 4;
+    JobFailureCancelled cancelled = 5;
+  }
+}
+
+message JobFailureTimeout {
+  optional JobPhase            phase = 1;
+  google.protobuf.Duration     limit = 2;
+}
+
+message JobFailureInput {
+  string reason = 1;
+}
+
+message JobFailureExecution {
+  string reason = 1;
+}
+
+message JobFailureInternal {
+  string trace_id = 1;
+}
+
+message JobFailureCancelled {}
+
+// ============================================================================
+// Program Management
+// ============================================================================
+
+message RegisterGuestProgramRequest {
+  bytes zisk_elf = 1;
+}
+
+message RegisterGuestProgramResponse {
+  string hash_id = 1; // blake3 content hash of zisk_elf
+}
+
+// ============================================================================
+// Job submission
+// ============================================================================
+
+message JobRequestMessage {
+  JobKind job_kind = 1;
+}
+
+message JobResponse {
+  string job_id = 1; // UUID
+}
+
+message JobKind {
+  oneof kind {
+    SetupRequest   setup   = 1;
+    ProveRequest   prove   = 2;
+    WrapRequest    wrap    = 3;
+    // AggregateRequest aggregate = 4; // TODO: not yet defined
+    ExecuteRequest execute = 5;
+  }
+}
+
+// ============================================================================
+// Job kind requests and responses
+// ============================================================================
+
+message SetupRequest {
+  string hash_id = 1;
+}
+
+message SetupResponse {
+  // empty — completion signals the program is ready for proving
+}
+
+message ProveRequest {
+  string                    hash_id       = 1;
+  InputKind                 input         = 2;
+  optional google.protobuf.Timestamp proof_timeout = 3;
+}
+
+message ProveResponse {
+  Proof          proof = 1;
+  ExecutionStats stats = 2;
+}
+
+message WrapRequest {
+  Proof                     proof        = 1;
+  ProofKind                 proof_dest   = 2;
+  optional google.protobuf.Timestamp wrap_timeout = 3;
+}
+
+message WrapResponse {
+  Proof proof = 1;
+}
+
+// TODO: AggregateRequest / AggregateResponse — to be defined
+// message AggregateRequest { … }
+// message AggregateResponse { … }
+
+message ExecuteRequest {
+  string                    hash_id         = 1;
+  InputKind                 input           = 2;
+  optional google.protobuf.Timestamp execute_timeout = 3;
+}
+
+message ExecuteResponse {
+  ExecutionStats stats          = 1;
+  bytes          public_outputs = 2;
+}
+
+message JobKindResponse {
+  oneof kind {
+    SetupResponse   setup   = 1;
+    ProveResponse   prove   = 2;
+    WrapResponse    wrap    = 3;
+    ExecuteResponse execute = 4;
+  }
+}
+
+// ============================================================================
+// WaitJobResult
+// ============================================================================
+
+message WaitJobResultRequest {
+  string          job_id          = 1;
+  optional uint32 timeout_seconds = 2; // server-side hold duration; min 1s, default 5s
+}
+
+message WaitJobResultResponse {
+  string              job_id     = 1;
+  JobStatus           job_status = 2;
+  optional JobKindResponse result = 3; // present when job_status is Completed
+}
+
+message JobStatus {
+  oneof status {
+    JobStatusQueued         queued          = 1;
+    JobStatusRunning        running         = 2;
+    JobStatusWaitingForInput waiting_for_input = 3;
+    JobStatusCompleted      completed       = 4;
+    JobStatusFailed         failed          = 5;
+    JobStatusCancelled      cancelled       = 6;
+  }
+}
+
+message JobStatusQueued {}
+message JobStatusRunning        { optional JobPhase phase = 1; }
+message JobStatusWaitingForInput {}
+message JobStatusCompleted {}
+message JobStatusFailed         { JobFailure failure = 1; }
+message JobStatusCancelled {}
+
+// ============================================================================
+// WatchJob
+// ============================================================================
+
+message WatchJobRequest {
+  string job_id = 1;
+}
+
+message JobEvent {
+  oneof event {
+    JobEventQueued          queued           = 1;
+    JobEventStarted         started          = 2;
+    JobEventProgress        progress         = 3;
+    JobEventWaitingForInput waiting_for_input = 4;
+    JobEventCompleted       completed        = 5;
+    JobEventCancelled       cancelled        = 6;
+    JobEventFailed          failed           = 7;
+  }
+}
+
+message JobEventQueued {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message JobEventStarted {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message JobEventProgress {
+  string                    job_id    = 1;
+  JobPhase                  phase     = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message JobEventWaitingForInput {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message JobEventCompleted {
+  string                    job_id    = 1;
+  JobKindResponse           result    = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message JobEventCancelled {
+  string                    job_id    = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message JobEventFailed {
+  string                    job_id    = 1;
+  JobFailure                failure   = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// ============================================================================
+// PushJobInput
+// ============================================================================
+
+message PushJobInputRequest {
+  string     job_id = 1;
+  InputChunk chunk  = 2;
+}
+
+// ============================================================================
+// CancelJob
+// ============================================================================
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  string job_id    = 1;
+  bool   cancelled = 2; // true if cancelled; false if already terminal
+}

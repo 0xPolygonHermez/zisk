@@ -1,14 +1,14 @@
 use anyhow::Result;
+use zisk_prover_backend::GuestProgram;
 
-use crate::{Client, GuestProgram};
+use crate::Client;
 
 /// Builder for a program upload request.
 ///
 /// Obtain via `client.upload(&program)`.
 ///
-/// - Embedded client: no-op (program is already available locally).
-/// - Remote client: uploads the ELF and registers the program on the coordinator.
-#[allow(dead_code)]
+/// - Embedded client: no-op (program is available locally).
+/// - Remote client: registers the ELF with the gateway and verifies the `hash_id` matches.
 pub struct UploadRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
@@ -20,7 +20,7 @@ impl<'a, C: Client> UploadRequest<'a, C> {
         Self { client, program }
     }
 
-    /// Run the upload.
+    /// Run the upload synchronously.
     pub fn run(self) -> Result<()> {
         self.client.run_upload(self.program)
     }

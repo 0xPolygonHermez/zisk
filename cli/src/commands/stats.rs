@@ -86,12 +86,6 @@ pub struct ZiskStats {
     #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
-    /// Use shared tables for execution
-    #[arg(short = 'j', long, hide = true)]
-    pub no_shared_tables_mpi: bool,
-
-    /// Number of threads for witness computation
-    // TODO: Review description
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
@@ -182,8 +176,7 @@ impl ZiskStats {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let mut prover_options =
-            BackendProverOpts::default().shared_tables(!self.no_shared_tables_mpi);
+        let mut prover_options = BackendProverOpts::default();
 
         if self.packed {
             prover_options = prover_options.packed();
@@ -221,9 +214,7 @@ impl ZiskStats {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let mut prover_options = BackendProverOpts::default()
-            .shared_tables(!self.no_shared_tables_mpi)
-            .verbose(self.verbose);
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if self.packed {
             prover_options = prover_options.packed();

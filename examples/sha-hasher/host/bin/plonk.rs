@@ -5,7 +5,8 @@ use zisk_sdk::{
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client (SNARK mode)...");
 
     // Create an input stream and write '1000' to it.
@@ -19,11 +20,11 @@ fn main() -> Result<()> {
     let client = ProverClient::embedded().gpu().plonk().build()?;
 
     println!("Setting up program and generating verification key...");
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?;
+    let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?.await?;
     println!("PLONK proof generated successfully in {:?}", snark_proof.get_duration());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 

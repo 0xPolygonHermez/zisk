@@ -77,6 +77,26 @@ impl ZiskExecuteResult {
     pub fn get_duration(&self) -> Duration {
         self.total_duration
     }
+
+    /// Construct a result from a remote gateway response.
+    pub fn from_remote(
+        steps: u64,
+        duration: Duration,
+        cost_per_type: StatsCostPerType,
+        publics: &[u8],
+    ) -> Self {
+        let executor_summary = ZiskExecutorSummary {
+            steps,
+            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
+            cost_per_type,
+        };
+        Self {
+            total_duration: duration,
+            executor_summary,
+            planning_info: PlanningInfo { planning_info: vec![], num_instances: 0 },
+            publics: ZiskPublics::new(publics),
+        }
+    }
 }
 
 pub struct ZiskVerifyConstraintsResult {
@@ -177,32 +197,28 @@ impl AsmOptions {
 #[derive(Clone)]
 pub struct BackendProverOpts {
     // Proof settings
-    pub aggregation: bool,
-    pub verify_proofs: bool,
-    pub minimal_memory: bool,
-    pub output_dir_path: Option<PathBuf>,
-    pub verbose: u8,
+    pub(crate) aggregation: bool,
+    pub(crate) verify_proofs: bool,
+    pub(crate) minimal_memory: bool,
+    pub(crate) output_dir_path: Option<PathBuf>,
+    pub(crate) verbose: u8,
 
     // Proving keys
-    pub proving_key: Option<PathBuf>,
-    pub proving_key_snark: Option<PathBuf>,
+    pub(crate) proving_key: Option<PathBuf>,
+    pub(crate) proving_key_snark: Option<PathBuf>,
 
-    pub plonk: bool,         // Whether to generate PLONK/SNARK proofs are allowed
-    pub preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
-
-    // MPI settings
-    pub shared_tables: bool,
-    pub rma: bool,
+    pub(crate) plonk: bool, // Whether to generate PLONK/SNARK proofs are allowed
+    pub(crate) preload_plonk: bool, // Whether to preload PLONK/SNARK proving keys
 
     // ProofmanOptions fields (flattened)
-    pub gpu: bool,
-    pub packed: bool,
-    pub max_witness_stored: Option<usize>,
-    pub number_threads_witness: Option<usize>,
-    pub max_streams: Option<usize>,
+    pub(crate) gpu: bool,
+    pub(crate) packed: bool,
+    pub(crate) max_witness_stored: Option<usize>,
+    pub(crate) number_threads_witness: Option<usize>,
+    pub(crate) max_streams: Option<usize>,
 
     // ASM-specific options
-    pub asm_options: AsmOptions,
+    pub(crate) asm_options: AsmOptions,
 }
 
 impl Default for BackendProverOpts {
@@ -210,7 +226,7 @@ impl Default for BackendProverOpts {
         Self {
             aggregation: true,
             verify_proofs: false,
-            rma: false,
+
             minimal_memory: false,
             output_dir_path: None,
             verbose: 0,
@@ -218,7 +234,6 @@ impl Default for BackendProverOpts {
             proving_key_snark: None,
             preload_plonk: false,
             plonk: false,
-            shared_tables: true,
             gpu: false,
             packed: false,
             max_witness_stored: None,
@@ -260,6 +275,27 @@ impl BackendProverOpts {
         options
     }
 
+    // Getter methods for external crate access
+    pub fn get_asm_options(&self) -> &AsmOptions {
+        &self.asm_options
+    }
+
+    pub fn get_asm_options_mut(&mut self) -> &mut AsmOptions {
+        &mut self.asm_options
+    }
+
+    pub fn get_proving_key(&self) -> Option<&PathBuf> {
+        self.proving_key.as_ref()
+    }
+
+    pub fn get_proving_key_snark(&self) -> Option<&PathBuf> {
+        self.proving_key_snark.as_ref()
+    }
+
+    pub fn get_preload_plonk(&self) -> bool {
+        self.preload_plonk
+    }
+
     // Builder methods for all configuration
     pub fn aggregation(mut self, value: bool) -> Self {
         self.aggregation = value;
@@ -273,11 +309,6 @@ impl BackendProverOpts {
 
     pub fn verify_proofs(mut self) -> Self {
         self.verify_proofs = true;
-        self
-    }
-
-    pub fn rma(mut self, value: bool) -> Self {
-        self.rma = value;
         self
     }
 
@@ -311,11 +342,6 @@ impl BackendProverOpts {
         if preload {
             self.preload_plonk = true;
         }
-        self
-    }
-
-    pub fn shared_tables(mut self, value: bool) -> Self {
-        self.shared_tables = value;
         self
     }
 
@@ -386,6 +412,27 @@ impl ZiskProveResult {
                 zisk_vk: ZiskVK { vk: Vec::new() },
                 plonk_vkey: None,
             },
+        }
+    }
+
+    /// Construct a result from a remote gateway response (no ExecutorStatsHandle).
+    pub fn from_remote(
+        proof_with_publics: ZiskProofWithPublicValues,
+        steps: u64,
+        duration: Duration,
+        cost_per_type: StatsCostPerType,
+    ) -> Self {
+        let executor_summary = ZiskExecutorSummary {
+            steps,
+            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
+            cost_per_type,
+        };
+        Self {
+            executor_summary,
+            duration,
+            stats: ExecutorStatsHandle::default(),
+            proof_id: None,
+            proof_with_publics,
         }
     }
 

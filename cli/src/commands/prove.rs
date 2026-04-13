@@ -112,10 +112,6 @@ pub struct ZiskProve {
     #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
-    /// Use shared tables for execution
-    #[arg(short = 'j', long, hide = true)]
-    pub no_shared_tables_mpi: bool,
-
     #[arg(short = 'z', long, default_value_t = false, hide = true)]
     pub preallocate_fixed_gpu: bool,
 
@@ -168,9 +164,7 @@ impl ZiskProve {
         // Build BackendProverOpts once with all configuration
         let mut prover_options = BackendProverOpts::default()
             .aggregation(self.aggregation)
-            .rma(!self.no_rma_mpi)
             .output_dir(self.output_dir.clone())
-            .shared_tables(!self.no_shared_tables_mpi)
             .verbose(self.verbose);
 
         if self.minimal_memory {

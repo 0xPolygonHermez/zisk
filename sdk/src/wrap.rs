@@ -1,21 +1,22 @@
-use anyhow::Result;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use crate::{Client, ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use anyhow::Result;
+use zisk_common::{ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+
+use crate::job_handle::JobHandle;
+use crate::Client;
 
 /// Builder for a proof wrapping/conversion request.
 ///
 /// Obtain via `client.wrap_proof(&proof_with_publics, mode)`.
-///
-/// Wraps or reduces a proof to a different format based on the `ProofMode`:
-/// - `ProofMode::VadcopFinalMinimal`: Reduces a full STARK proof to a minimal form
-/// - `ProofMode::Plonk`: Wraps a STARK proof into a PLONK/SNARK proof
-#[allow(dead_code)]
 pub struct WrapRequest<'a, C> {
     client: &'a C,
     proof_with_publics: &'a ZiskProofWithPublicValues,
     mode: ProofMode,
-    override_publics: Option<&'a ZiskPublics>,
-    override_program_vk: Option<&'a ZiskProgramVK>,
+    override_publics: Option<ZiskPublics>,
+    override_program_vk: Option<ZiskProgramVK>,
+    timeout: Option<Duration>,
 }
 
 #[allow(private_bounds)]
@@ -25,30 +26,47 @@ impl<'a, C: Client> WrapRequest<'a, C> {
         proof_with_publics: &'a ZiskProofWithPublicValues,
         mode: ProofMode,
     ) -> Self {
-        Self { client, proof_with_publics, mode, override_publics: None, override_program_vk: None }
+        Self {
+            client,
+            proof_with_publics,
+            mode,
+            override_publics: None,
+            override_program_vk: None,
+            timeout: None,
+        }
     }
 
     /// Override the public inputs used during wrapping.
     #[must_use]
-    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: ZiskPublics) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key used during wrapping.
     #[must_use]
-    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: ZiskProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
 
-    /// Run the proof wrapping/conversion.
-    pub fn run(self) -> Result<ZiskProofWithPublicValues> {
+    /// Set a timeout for the wrap job.
+    #[must_use]
+    pub fn timeout(mut self, duration: Duration) -> Self {
+        self.timeout = Some(duration);
+        self
+    }
+
+    /// Submit the wrap, returning a [`JobHandle<ZiskProofWithPublicValues>`].
+    pub fn run(self) -> Result<JobHandle<ZiskProofWithPublicValues>> {
+        let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_wrap(
             self.proof_with_publics,
             self.mode,
             self.override_publics,
             self.override_program_vk,
+            self.timeout,
+            subs,
         )
     }
 }

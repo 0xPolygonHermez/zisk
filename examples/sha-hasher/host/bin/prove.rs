@@ -8,7 +8,8 @@ use zisk_sdk::{
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -23,11 +24,11 @@ fn main() -> Result<()> {
     let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?;
+    client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?;
+    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?.await?;
     println!("Proof generated successfully in {:?}", result.get_duration());
     println!("Execution steps: {}", result.get_execution_steps());
 

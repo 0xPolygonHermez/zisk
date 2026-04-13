@@ -109,9 +109,6 @@ struct Cli {
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'r', long, default_value_t = false)]
-    pub no_rma_mpi: bool,
-
     #[clap(long, default_value_t = false)]
     pub hints: bool,
 
@@ -150,8 +147,6 @@ async fn main() -> Result<()> {
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
-        shared_tables: !cli.no_shared_tables_mpi,
-        rma: !cli.no_rma_mpi,
         minimal_memory: cli.minimal_memory,
         gpu: cli.gpu,
     };

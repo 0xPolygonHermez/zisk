@@ -2464,6 +2464,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls",
+ "rustls-native-certs",
  "tokio",
  "tokio-rustls",
  "tower-service",
@@ -3083,6 +3084,54 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "metrics"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d5312e9ba3771cfa961b585728215e3d972c950a3eed9252aa093d6301277e8"
+dependencies = [
+ "ahash",
+ "portable-atomic",
+]
+
+[[package]]
+name = "metrics-exporter-prometheus"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3589659543c04c7dc5526ec858591015b87cd8746583b51b48ef4353f99dbcda"
+dependencies = [
+ "base64 0.22.1",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "indexmap",
+ "ipnet",
+ "metrics",
+ "metrics-util",
+ "quanta",
+ "rustls",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "metrics-util"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdfb1365fea27e6dd9dc1dbc19f570198bc86914533ad639dae939635f096be4"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "hashbrown 0.16.1",
+ "metrics",
+ "quanta",
+ "rand 0.9.3",
+ "rand_xoshiro",
+ "sketches-ddsketch",
 ]
 
 [[package]]
@@ -4135,6 +4184,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "quanta"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ab5a9d756f0d97bdc89019bd2e4ea098cf9cde50ee7564dde6b81ccc8f06c7"
+dependencies = [
+ "crossbeam-utils",
+ "libc",
+ "once_cell",
+ "raw-cpuid",
+ "wasi",
+ "web-sys",
+ "winapi",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4295,12 +4359,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_xoshiro"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f703f4665700daf5512dcca5f43afa6af89f09db47fb56be587f80636bda2d41"
+dependencies = [
+ "rand_core 0.9.5",
+]
+
+[[package]]
 name = "rapidhash"
 version = "4.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e48930979c155e2f33aa36ab3119b5ee81332beb6482199a8ecd6029b80b59"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "raw-cpuid"
+version = "11.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
@@ -4932,6 +5014,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha-hasher-common"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+]
+
+[[package]]
+name = "sha-hasher-host"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+ "anyhow",
+ "serde",
+ "sha-hasher-common",
+ "sha2",
+ "tokio",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4994,6 +5096,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5011,7 +5123,19 @@ checksum = "213241f76fb1e37e27de3b6aa1b068a2c333233b59cca6634f634b80a27ecf1e"
 dependencies = [
  "futures-core",
  "libc",
- "signal-hook",
+ "signal-hook 0.3.18",
+ "tokio",
+]
+
+[[package]]
+name = "signal-hook-tokio"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e513e435a8898a0002270f29d0a708b7879708fb5c4d00e46983ca2d2d378cf0"
+dependencies = [
+ "futures-core",
+ "libc",
+ "signal-hook 0.4.4",
  "tokio",
 ]
 
@@ -5036,6 +5160,12 @@ name = "siphasher"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
+
+[[package]]
+name = "sketches-ddsketch"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c6f73aeb92d671e0cc4dca167e59b2deb6387c375391bc99ee743f326994a2b"
 
 [[package]]
 name = "slab"
@@ -7111,8 +7241,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "signal-hook",
- "signal-hook-tokio",
+ "signal-hook 0.3.18",
+ "signal-hook-tokio 0.3.1",
  "thiserror 2.0.18",
  "tokio",
  "tonic",
@@ -7177,6 +7307,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-gateway"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "clap",
+ "config",
+ "futures",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "signal-hook 0.4.4",
+ "signal-hook-tokio 0.4.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "uuid",
+ "zisk-distributed-common",
+]
+
+[[package]]
+name = "zisk-gateway-grpc-api"
+version = "0.17.0"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "zisk-pil"
 version = "0.17.0"
 dependencies = [
@@ -7225,16 +7399,19 @@ dependencies = [
  "bincode",
  "colored",
  "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "futures",
  "proofman-common",
+ "prost-types",
  "rom-setup",
  "serde",
  "tokio",
  "tonic",
  "tracing",
+ "uuid",
  "zisk-build",
  "zisk-common",
  "zisk-distributed-common",
- "zisk-distributed-grpc-api",
+ "zisk-gateway-grpc-api",
  "zisk-prover-backend",
 ]
 

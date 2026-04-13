@@ -1,0 +1,16 @@
+[package]
+name = "zisk-gateway-grpc-api"
+description = "ZisK Gateway gRPC client (generated from proto)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tonic       = { workspace = true }
+tonic-prost = { workspace = true }
+prost       = { workspace = true }
+prost-types = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
