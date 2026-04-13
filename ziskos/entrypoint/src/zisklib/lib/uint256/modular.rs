@@ -7,7 +7,7 @@ use crate::zisklib::lib::{
 };
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
-pub fn reduce_mod(
+pub fn reduce_mod256(
     a: &[u64; 4],
     modulus: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -32,7 +32,7 @@ pub fn reduce_mod(
 }
 
 /// Given 256-bit integers `a,b` and `modulus`, it computes `(a + b) (mod modulus)`.
-pub fn add_mod(
+pub fn add_mod256(
     a: &[u64; 4],
     b: &[u64; 4],
     modulus: &[u64; 4],
@@ -53,7 +53,7 @@ pub fn add_mod(
 }
 
 /// Given 256-bit integers `a,b` and `modulus`, it computes `(a * b) (mod modulus)`.
-pub fn mul_mod(
+pub fn mul_mod256(
     a: &[u64; 4],
     b: &[u64; 4],
     modulus: &[u64; 4],
@@ -74,12 +74,12 @@ pub fn mul_mod(
 }
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a^2 (mod modulus)`.
-pub fn square_mod(
+pub fn square_mod256(
     a: &[u64; 4],
     modulus: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
-    mul_mod(
+    mul_mod256(
         a,
         a,
         modulus,
@@ -89,7 +89,7 @@ pub fn square_mod(
 }
 
 /// Given 256-bit integers `base`, `exp` and `modulus`, it computes `base^exp (mod modulus)`.
-pub fn pow_mod(
+pub fn pow_mod256(
     base: &[u64; 4],
     exp: &[u64; 4],
     modulus: &[u64; 4],
@@ -125,10 +125,10 @@ pub fn pow_mod(
     );
 
     // The leading bit must be 1 for a non-zero exponent
-    assert!(len > 0 && bits[len - 1] == 1, "Exponent must be non-zero");
+    assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // Left-to-right square-and-multiply, starting from the second bit
-    let mut result = reduce_mod(
+    let mut result = reduce_mod256(
         base,
         modulus,
         #[cfg(feature = "hints")]
@@ -143,7 +143,7 @@ pub fn pow_mod(
         }
 
         // Compute result = result² (mod modulus)
-        result = square_mod(
+        result = square_mod256(
             &result,
             modulus,
             #[cfg(feature = "hints")]
@@ -152,7 +152,7 @@ pub fn pow_mod(
 
         if bit == 1 {
             // Compute result = (result * base) (mod modulus)
-            result = mul_mod(
+            result = mul_mod256(
                 &result,
                 base,
                 modulus,
@@ -172,7 +172,7 @@ pub fn pow_mod(
     result
 }
 
-pub fn inv_mod(
+pub fn inv_mod256(
     a: &[u64; 4],
     modulus: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -187,7 +187,7 @@ pub fn inv_mod(
 
     if let Some(inv) = inv {
         // Verify: a * inv ≡ 1 (mod modulus)
-        let result = mul_mod(
+        let result = mul_mod256(
             a,
             &inv,
             modulus,
@@ -199,5 +199,191 @@ pub fn inv_mod(
         Some(inv)
     } else {
         None
+    }
+}
+
+// ==================== C FFI Functions ====================
+
+/// 256-bit modular reduction`.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_reduce_mod256_c")]
+pub unsafe extern "C" fn reduce_mod256_c(
+    a_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = &*(a_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    let res = reduce_mod256(
+        a,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
+}
+
+/// 256-bit modular addition.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 4]` array
+/// - `b_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_mod256_c")]
+pub unsafe extern "C" fn add_mod256_c(
+    a_ptr: *const u64,
+    b_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = &*(a_ptr as *const [u64; 4]);
+    let b = &*(b_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    let res = add_mod256(
+        a,
+        b,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
+}
+
+/// 256-bit modular multiplication.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 4]` array
+/// - `b_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_mul_mod256_c")]
+pub unsafe extern "C" fn mul_mod256_c(
+    a_ptr: *const u64,
+    b_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = &*(a_ptr as *const [u64; 4]);
+    let b = &*(b_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    let res = mul_mod256(
+        a,
+        b,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
+}
+
+/// 256-bit modular squaring.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_square_mod256_c")]
+pub unsafe extern "C" fn square_mod256_c(
+    a_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = &*(a_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    let res = square_mod256(
+        a,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
+}
+
+/// 256-bit modular exponentiation.
+///
+/// # Safety
+/// - `base_ptr` must point to a valid `[u64; 4]` array
+/// - `exp_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_pow_mod256_c")]
+pub unsafe extern "C" fn pow_mod256_c(
+    base_ptr: *const u64,
+    exp_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let base = &*(base_ptr as *const [u64; 4]);
+    let exp = &*(exp_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    let res = pow_mod256(
+        base,
+        exp,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let result = &mut *(result_ptr as *mut [u64; 4]);
+    *result = res;
+}
+
+/// 256-bit modular inverse. Returns 1 if the inverse exists, 0 otherwise.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 4]` array
+/// - `modulus_ptr` must point to a valid `[u64; 4]` array
+/// - `result_ptr` must point to a valid `[u64; 4]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_inv_mod256_c")]
+pub unsafe extern "C" fn inv_mod256_c(
+    a_ptr: *const u64,
+    modulus_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let a = &*(a_ptr as *const [u64; 4]);
+    let modulus = &*(modulus_ptr as *const [u64; 4]);
+
+    match inv_mod256(
+        a,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Some(res) => {
+            let result = &mut *(result_ptr as *mut [u64; 4]);
+            *result = res;
+            1
+        }
+        None => 0,
     }
 }
