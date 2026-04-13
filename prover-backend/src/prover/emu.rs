@@ -194,10 +194,6 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
-    fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
-        self.core_prover.backend.vk(elf)
-    }
-
     fn prove(
         &self,
         program: &GuestProgram,

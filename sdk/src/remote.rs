@@ -9,12 +9,11 @@ pub(crate) mod wrap;
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
-use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues};
+use zisk_common::ZiskProofWithPublicValues;
 use zisk_gateway_grpc_api::{
     proto::{InputChunk, InputKind, JobKind, JobRequestMessage, RegisterGuestProgramRequest},
     ZiskGatewayApiClient,
 };
-use zisk_prover_backend::GuestProgram;
 
 use crate::{input::ProgramInput, ProverOpts};
 
@@ -114,10 +113,6 @@ impl RemoteClient {
 
     pub(crate) fn gateway_client(&self) -> ZiskGatewayApiClient<Channel> {
         self.gateway.clone()
-    }
-
-    pub(crate) fn vk(&self, _program: &GuestProgram) -> Result<ZiskProgramVK> {
-        anyhow::bail!("Remote VK retrieval not yet implemented")
     }
 }
 

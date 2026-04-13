@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
     // Alternatively, it can also be done in two steps
     // let vadcop_result = client.prove(&PROGRAM, stdin)?.run()?;
-    // let vkey = client.vk(&PROGRAM)?;
+    // let vkey = PROGRAM.vk()?;
     // let snark_proof = client.wrap_proof(vadcop_result.get_proof(), ProofMode::Plonk)?;
 
     println!("Verifying PLONK proof...");
@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
 
     println!("Loading and verifying saved PLONK proof...");
     let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark.bin")?;
-    let vkey = client.vk(&PROGRAM)?;
+    let vkey = PROGRAM.vk()?;
     proof.with_program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");
 

@@ -583,8 +583,6 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult>;
 
-    fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK>;
-
     fn prove(
         &self,
         program: &GuestProgram,
@@ -773,10 +771,6 @@ impl<C: ZiskBackend> ZiskProver<C> {
         debug_info: Option<Option<String>>,
     ) -> Result<ZiskVerifyConstraintsResult> {
         self.prover.verify_constraints(program, stdin, debug_info)
-    }
-
-    pub fn vk(&self, elf: &GuestProgram) -> Result<ZiskProgramVK> {
-        self.prover.vk(elf)
     }
 
     /// Generate a proof with the given standard input.

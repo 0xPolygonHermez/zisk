@@ -12,12 +12,18 @@ impl ZiskStdin {
         Self(ZiskStdinInner::new())
     }
 
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        let stdin = Self(ZiskStdinInner::new());
+        stdin.write_slice(&bytes);
+        stdin
+    }
+
     /// Creates stdin from a file path.
     ///
     /// # Errors
     /// Returns an error if the file does not exist, is not accessible, or the path contains
     /// invalid UTF-8.
-    pub fn file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
             anyhow::bail!("Stdin file not found: {}", path.display());
@@ -36,7 +42,7 @@ impl ZiskStdin {
     ///
     /// # Errors
     /// Returns an error if the URI scheme is not supported.
-    pub fn stream(uri: impl Into<String>) -> anyhow::Result<Self> {
+    pub fn from_stream(uri: impl Into<String>) -> anyhow::Result<Self> {
         let uri = uri.into();
         crate::validate_stream_uri(&uri)?;
         Ok(Self(ZiskStdinInner::from_uri(Some(uri))?))

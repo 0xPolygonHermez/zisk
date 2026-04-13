@@ -4,6 +4,8 @@ use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
+use zisk_common::ZiskProgramVK;
+use rom_setup::rom_merkle_setup_verkey;
 use zisk_core::Riscv2zisk;
 pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
@@ -113,6 +115,14 @@ impl GuestProgram {
     /// Get the computed hash of the ELF binary
     pub fn hash(&self) -> &str {
         &self.program_id.hash_id
+    }
+
+    pub fn vk(&self) -> Result<ZiskProgramVK> {
+         let vk = rom_merkle_setup_verkey(
+            self.elf(),
+            &None,
+        )?;
+        Ok(ZiskProgramVK { vk })
     }
 
     /// Run the ZisK emulator with the given stdin and options

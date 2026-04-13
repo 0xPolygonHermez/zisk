@@ -2,7 +2,7 @@ use crate::create_debug_info;
 use crate::ZiskProofWithPublicValues;
 use crate::ZiskPublics;
 use crate::{
-    get_program_vk_with_proving_key, verify_zisk_proof_with_proving_key,
+    verify_zisk_proof_with_proving_key,
     verify_zisk_snark_proof_with_proving_key, ZISK_PUBLICS,
 };
 use crate::{ProofMode, ProofOpts};
@@ -296,10 +296,6 @@ impl ProverBackend {
         stdin: ZiskStdin,
     ) -> Result<ZiskVerifyConstraintsResult> {
         self.verify_constraints_debug(pk, stdin, None)
-    }
-
-    pub(crate) fn vk(&self, elf: &impl ElfBinaryLike) -> Result<ZiskProgramVK> {
-        get_program_vk_with_proving_key(elf, self.proving_key_path.clone())
     }
 
     pub(crate) fn prove(

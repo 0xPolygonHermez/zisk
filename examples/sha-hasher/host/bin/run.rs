@@ -6,7 +6,7 @@ static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 fn main() -> Result<()> {
     let current_dir = std::env::current_dir()?;
     let stdin =
-        ZiskStdin::file(current_dir.join("sha-hasher/host/tmp/verify_constraints_input.bin"))?;
+        ZiskStdin::from_file(current_dir.join("sha-hasher/host/tmp/verify_constraints_input.bin"))?;
 
     let n: u32 = stdin.read()?;
     println!("Input prepared: {} iterations", n);

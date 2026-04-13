@@ -161,13 +161,6 @@ pub(crate) struct EmbeddedClient {
 }
 
 impl EmbeddedClient {
-    pub(crate) fn vk(&self, program: &GuestProgram) -> Result<ZiskProgramVK> {
-        match &self.prover {
-            EmbeddedProver::Emu(p) => p.vk(program),
-            EmbeddedProver::Asm(p) => p.vk(program),
-        }
-    }
-
     pub(crate) fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         match &self.prover {
             EmbeddedProver::Emu(p) => p.setup(program).run(),

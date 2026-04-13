@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
     let vadcop_result =
         client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?.await?;
 
-    let vkey = client.vk(&PROGRAM)?;
+    let vkey = PROGRAM.vk()?;
     vadcop_result.with_program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");
