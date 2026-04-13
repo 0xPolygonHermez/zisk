@@ -20,10 +20,6 @@ name = "prove"
 path = "bin/prove.rs"
 
 [[bin]]
-name = "prove_async"
-path = "bin/prove_async.rs"
-
-[[bin]]
 name = "execute"
 path = "bin/execute.rs"
 

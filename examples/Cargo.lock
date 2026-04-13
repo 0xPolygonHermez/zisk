@@ -15,6 +15,7 @@ dependencies = [
  "anyhow",
  "serde",
  "sha2",
+ "tokio",
  "zisk-sdk",
 ]
 
@@ -713,6 +714,7 @@ dependencies = [
  "anyhow",
  "serde",
  "sha2",
+ "tokio",
  "zisk-sdk",
 ]
 
@@ -2045,6 +2047,7 @@ dependencies = [
  "anyhow",
  "serde",
  "sha2",
+ "tokio",
  "zisk-sdk",
 ]
 
