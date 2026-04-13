@@ -80,7 +80,7 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         trace.set_sel_inputcpy(false);
 
         let mut value = input.src_values[0];
-        let mut rb = [0u8; 16];
+        let mut rb = [0u8; 8];
         let mut pb = [0u8; 8];
 
         rb[0] = value as u8;
@@ -115,23 +115,19 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         let _mask = 0xFFFF_FFFF_FFFF_FFFFu64 << (dst_offset * 8);
         let mask = _mask ^ (_mask << (count * 8));
 
-        trace.set_sb(0, (mask & 0x0000_0000_0000_00FF) != 0);
-        trace.set_sb(1, (mask & 0x0000_0000_0000_FF00) != 0);
-        trace.set_sb(2, (mask & 0x0000_0000_00FF_0000) != 0);
-        trace.set_sb(3, (mask & 0x0000_0000_FF00_0000) != 0);
-        trace.set_sb(4, (mask & 0x0000_00FF_0000_0000) != 0);
-        trace.set_sb(5, (mask & 0x0000_FF00_0000_0000) != 0);
-        trace.set_sb(6, (mask & 0x00FF_0000_0000_0000) != 0);
-        trace.set_sb(7, (mask & 0xFF00_0000_0000_0000) != 0);
-
-        for (index, byte) in rb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_rb(index, *byte);
-        }
-        for (index, byte) in pb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_pb(index, *byte);
-        }
+        let sb = [
+            (mask & 0x0000_0000_0000_00FF) != 0,
+            (mask & 0x0000_0000_0000_FF00) != 0,
+            (mask & 0x0000_0000_00FF_0000) != 0,
+            (mask & 0x0000_0000_FF00_0000) != 0,
+            (mask & 0x0000_00FF_0000_0000) != 0,
+            (mask & 0x0000_FF00_0000_0000) != 0,
+            (mask & 0x00FF_0000_0000_0000) != 0,
+            (mask & 0xFF00_0000_0000_0000) != 0,
+        ];
+        trace.set_all_sb(&sb);
+        trace.set_all_rb(&rb);
+        trace.set_all_pb(&pb);
 
         let table_row = DmaPrePostRom::get_row(dst_offset as usize, 0, count, false, false, false);
         // println!("PRE-POST-ROM [{table_row}] dst_offset: {dst_offset} src_offset: {src_offset} count: {count}");
@@ -153,15 +149,9 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         trace.set_sel_inputcpy(false);
         // intermediate: trace.set_last_dst_byte(0);
 
-        for index in 0..16 {
-            trace.set_rb(index, 0);
-        }
-        for index in 0..8 {
-            trace.set_pb(index, 0);
-        }
-        for index in 0..8 {
-            trace.set_sb(index, false);
-        }
+        trace.set_all_rb(&[0; 8]);
+        trace.set_all_pb(&[0; 8]);
+        trace.set_all_sb(&[false; 8]);
     }
     fn compute_witness_inner<R: DmaPrePostInputCpyTraceRowOps<F> + Copy + Send>(
         &self,

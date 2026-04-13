@@ -13,10 +13,10 @@ pub struct ArithOperation {
     pub op: u8,
     pub input_a: u64,
     pub input_b: u64,
-    pub a: [u64; 4],
-    pub b: [u64; 4],
-    pub c: [u64; 4],
-    pub d: [u64; 4],
+    pub a: [u16; 4],
+    pub b: [u16; 4],
+    pub c: [u16; 4],
+    pub d: [u16; 4],
     pub carry: [i64; 7],
     pub m32: bool,
     pub div: bool,
@@ -105,7 +105,7 @@ impl fmt::Debug for ArithOperation {
 
 impl ArithOperation {
     /// Dumps the chunks of a specified value into the provided formatter.
-    fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u64; 4]) -> fmt::Result {
+    fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u16; 4]) -> fmt::Result {
         writeln!(
             f,
             "{0}: [0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4})]",
@@ -726,7 +726,7 @@ impl ArithOperation {
     }
 
     /// Converts a 64-bit value into its four 16-bit chunks.
-    fn u64_to_chunks(a: u64) -> [u64; 4] {
-        [a & 0xFFFF, (a >> 16) & 0xFFFF, (a >> 32) & 0xFFFF, (a >> 48) & 0xFFFF]
+    fn u64_to_chunks(a: u64) -> [u16; 4] {
+        [a as u16, (a >> 16) as u16, (a >> 32) as u16, (a >> 48) as u16]
     }
 }

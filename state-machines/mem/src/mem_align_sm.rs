@@ -146,26 +146,43 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_pc(next_pc as u8);
                 value_row.set_sel_prove(true);
 
+                // Compute reg and sel arrays for read_row
+                let mut read_reg_values = [0u8; CHUNK_NUM];
+                let mut read_sel_values = [false; CHUNK_NUM];
                 for i in 0..CHUNK_NUM {
-                    read_row.set_reg(i, Self::get_byte(value_read, i, 0));
+                    read_reg_values[i] = Self::get_byte(value_read, i, 0);
                     if i >= offset && i < offset + width {
-                        read_row.set_sel(i, true);
-                    }
-
-                    value_row.set_reg(i, Self::get_byte(value, i, CHUNK_NUM - offset));
-                    if i == offset {
-                        value_row.set_sel(i, true);
+                        read_sel_values[i] = true;
                     }
                 }
+                read_row.set_all_reg(&read_reg_values);
+                read_row.set_all_sel(&read_sel_values);
 
+                // Compute reg and sel arrays for value_row
+                let mut value_reg_values = [0u8; CHUNK_NUM];
+                let mut value_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    value_reg_values[i] = Self::get_byte(value, i, CHUNK_NUM - offset);
+                    if i == offset {
+                        value_sel_values[i] = true;
+                    }
+                }
+                value_row.set_all_reg(&value_reg_values);
+                value_row.set_all_sel(&value_sel_values);
+
+                // Compute value arrays for both rows
+                let mut read_value_values = [0u32; RC];
+                let mut value_value_values = [0u32; RC];
                 let mut _value_read = value_read;
                 let mut _value = value;
                 for i in 0..RC {
-                    read_row.set_value(i, (_value_read & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
+                    read_value_values[i] = (_value_read & RC_MASK) as u32;
+                    value_value_values[i] = (_value & RC_MASK) as u32;
                     _value_read >>= RC_BITS;
                     _value >>= RC_BITS;
                 }
+                read_row.set_all_value(&read_value_values);
+                value_row.set_all_value(&value_value_values);
 
                 #[rustfmt::skip]
                 debug_info!(
@@ -181,13 +198,13 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     value_read.to_le_bytes(),
                     value.to_le_bytes(),
                     [
-                        read_row.get_sel(0), read_row.get_sel(1), read_row.get_sel(2), read_row.get_sel(3),
-                        read_row.get_sel(4), read_row.get_sel(5), read_row.get_sel(6), read_row.get_sel(7),
+                        read_row.getc_sel::<0>(), read_row.getc_sel::<1>(), read_row.getc_sel::<2>(), read_row.getc_sel::<3>(),
+                        read_row.getc_sel::<4>(), read_row.getc_sel::<5>(), read_row.getc_sel::<6>(), read_row.getc_sel::<7>(),
                         read_row.get_wr(), read_row.get_reset(), read_row.get_sel_up_to_down(), read_row.get_sel_down_to_up()
                     ],
                     [
-                        value_row.get_sel(0), value_row.get_sel(1), value_row.get_sel(2), value_row.get_sel(3),
-                        value_row.get_sel(4), value_row.get_sel(5), value_row.get_sel(6), value_row.get_sel(7),
+                        value_row.getc_sel::<0>(), value_row.getc_sel::<1>(), value_row.getc_sel::<2>(), value_row.getc_sel::<3>(),
+                        value_row.getc_sel::<4>(), value_row.getc_sel::<5>(), value_row.getc_sel::<6>(), value_row.getc_sel::<7>(),
                         value_row.get_wr(), value_row.get_reset(), value_row.get_sel_up_to_down(), value_row.get_sel_down_to_up()
                     ]
                 );
@@ -273,42 +290,64 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_pc(next_pc as u8 + 1);
                 value_row.set_sel_prove(true);
 
+                // Compute arrays for read_row
+                let mut read_reg_values = [0u8; CHUNK_NUM];
+                let mut read_sel_values = [false; CHUNK_NUM];
                 for i in 0..CHUNK_NUM {
-                    read_row.set_reg(i, Self::get_byte(value_read, i, 0));
+                    read_reg_values[i] = Self::get_byte(value_read, i, 0);
                     if i < offset || i >= offset + width {
-                        read_row.set_sel(i, true);
-                    }
-
-                    let write_reg = Self::get_byte(value_write, i, 0);
-                    write_row.set_reg(i, write_reg);
-                    if i >= offset && i < offset + width {
-                        write_row.set_sel(i, true);
-                    }
-
-                    value_row.set_reg(
-                        i,
-                        if i >= offset && i < offset + width {
-                            write_reg
-                        } else {
-                            Self::get_byte(value, i, CHUNK_NUM - offset)
-                        },
-                    );
-                    if i == offset {
-                        value_row.set_sel(i, true);
+                        read_sel_values[i] = true;
                     }
                 }
+                read_row.set_all_reg(&read_reg_values);
+                read_row.set_all_sel(&read_sel_values);
 
+                // Compute arrays for write_row
+                let mut write_reg_values = [0u8; CHUNK_NUM];
+                let mut write_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    write_reg_values[i] = Self::get_byte(value_write, i, 0);
+                    if i >= offset && i < offset + width {
+                        write_sel_values[i] = true;
+                    }
+                }
+                write_row.set_all_reg(&write_reg_values);
+                write_row.set_all_sel(&write_sel_values);
+
+                // Compute arrays for value_row
+                let mut value_reg_values = [0u8; CHUNK_NUM];
+                let mut value_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    value_reg_values[i] = if i >= offset && i < offset + width {
+                        write_reg_values[i]
+                    } else {
+                        Self::get_byte(value, i, CHUNK_NUM - offset)
+                    };
+                    if i == offset {
+                        value_sel_values[i] = true;
+                    }
+                }
+                value_row.set_all_reg(&value_reg_values);
+                value_row.set_all_sel(&value_sel_values);
+
+                // Compute value arrays
+                let mut read_value_values = [0u32; RC];
+                let mut write_value_values = [0u32; RC];
+                let mut value_value_values = [0u32; RC];
                 let mut _value_read = value_read;
                 let mut _value_write = value_write;
                 let mut _value = value;
                 for i in 0..RC {
-                    read_row.set_value(i, (_value_read & RC_MASK) as u32);
-                    write_row.set_value(i, (_value_write & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
+                    read_value_values[i] = (_value_read & RC_MASK) as u32;
+                    write_value_values[i] = (_value_write & RC_MASK) as u32;
+                    value_value_values[i] = (_value & RC_MASK) as u32;
                     _value_read >>= RC_BITS;
                     _value_write >>= RC_BITS;
                     _value >>= RC_BITS;
                 }
+                read_row.set_all_value(&read_value_values);
+                write_row.set_all_value(&write_value_values);
+                value_row.set_all_value(&value_value_values);
 
                 #[rustfmt::skip]
                 debug_info!(
@@ -327,18 +366,18 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     value_write.to_le_bytes(),
                     value.to_le_bytes(),
                     [
-                        read_row.get_sel(0), read_row.get_sel(1), read_row.get_sel(2), read_row.get_sel(3),
-                        read_row.get_sel(4), read_row.get_sel(5), read_row.get_sel(6), read_row.get_sel(7),
+                        read_row.getc_sel::<0>(), read_row.getc_sel::<1>(), read_row.getc_sel::<2>(), read_row.getc_sel::<3>(),
+                        read_row.getc_sel::<4>(), read_row.getc_sel::<5>(), read_row.getc_sel::<6>(), read_row.getc_sel::<7>(),
                         read_row.get_wr(), read_row.get_reset(), read_row.get_sel_up_to_down(), read_row.get_sel_down_to_up()
                     ],
                     [
-                        write_row.get_sel(0), write_row.get_sel(1), write_row.get_sel(2), write_row.get_sel(3),
-                        write_row.get_sel(4), write_row.get_sel(5), write_row.get_sel(6), write_row.get_sel(7),
+                        write_row.getc_sel::<0>(), write_row.getc_sel::<1>(), write_row.getc_sel::<2>(), write_row.getc_sel::<3>(),
+                        write_row.getc_sel::<4>(), write_row.getc_sel::<5>(), write_row.getc_sel::<6>(), write_row.getc_sel::<7>(),
                         write_row.get_wr(), write_row.get_reset(), write_row.get_sel_up_to_down(), write_row.get_sel_down_to_up()
                     ],
                     [
-                        value_row.get_sel(0), value_row.get_sel(1), value_row.get_sel(2), value_row.get_sel(3),
-                        value_row.get_sel(4), value_row.get_sel(5), value_row.get_sel(6), value_row.get_sel(7),
+                        value_row.getc_sel::<0>(), value_row.getc_sel::<1>(), value_row.getc_sel::<2>(), value_row.getc_sel::<3>(),
+                        value_row.getc_sel::<4>(), value_row.getc_sel::<5>(), value_row.getc_sel::<6>(), value_row.getc_sel::<7>(),
                         value_row.get_wr(), value_row.get_reset(), value_row.get_sel_up_to_down(), value_row.get_sel_down_to_up()
                     ]
                 );
@@ -414,35 +453,60 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 second_read_row.set_pc(next_pc as u8 + 1);
                 second_read_row.set_sel_down_to_up(true);
 
+                // Compute arrays for first_read_row
+                let mut first_read_reg_values = [0u8; CHUNK_NUM];
+                let mut first_read_sel_values = [false; CHUNK_NUM];
                 for i in 0..CHUNK_NUM {
-                    first_read_row.set_reg(i, Self::get_byte(value_first_read, i, 0));
+                    first_read_reg_values[i] = Self::get_byte(value_first_read, i, 0);
                     if i >= offset {
-                        first_read_row.set_sel(i, true);
-                    }
-
-                    value_row.set_reg(i, Self::get_byte(value, i, CHUNK_NUM - offset));
-
-                    if i == offset {
-                        value_row.set_sel(i, true);
-                    }
-
-                    second_read_row.set_reg(i, Self::get_byte(value_second_read, i, 0));
-                    if i < rem_bytes {
-                        second_read_row.set_sel(i, true);
+                        first_read_sel_values[i] = true;
                     }
                 }
+                first_read_row.set_all_reg(&first_read_reg_values);
+                first_read_row.set_all_sel(&first_read_sel_values);
 
+                // Compute arrays for value_row
+                let mut value_reg_values = [0u8; CHUNK_NUM];
+                let mut value_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    value_reg_values[i] = Self::get_byte(value, i, CHUNK_NUM - offset);
+                    if i == offset {
+                        value_sel_values[i] = true;
+                    }
+                }
+                value_row.set_all_reg(&value_reg_values);
+                value_row.set_all_sel(&value_sel_values);
+
+                // Compute arrays for second_read_row
+                let mut second_read_reg_values = [0u8; CHUNK_NUM];
+                let mut second_read_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    second_read_reg_values[i] = Self::get_byte(value_second_read, i, 0);
+                    if i < rem_bytes {
+                        second_read_sel_values[i] = true;
+                    }
+                }
+                second_read_row.set_all_reg(&second_read_reg_values);
+                second_read_row.set_all_sel(&second_read_sel_values);
+
+                // Compute value arrays
+                let mut first_read_value_values = [0u32; RC];
+                let mut value_value_values = [0u32; RC];
+                let mut second_read_value_values = [0u32; RC];
                 let mut _value_first_read = value_first_read;
                 let mut _value = value;
                 let mut _value_second_read = value_second_read;
                 for i in 0..RC {
-                    first_read_row.set_value(i, (_value_first_read & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    second_read_row.set_value(i, (_value_second_read & RC_MASK) as u32);
+                    first_read_value_values[i] = (_value_first_read & RC_MASK) as u32;
+                    value_value_values[i] = (_value & RC_MASK) as u32;
+                    second_read_value_values[i] = (_value_second_read & RC_MASK) as u32;
                     _value_first_read >>= RC_BITS;
                     _value >>= RC_BITS;
                     _value_second_read >>= RC_BITS;
                 }
+                first_read_row.set_all_value(&first_read_value_values);
+                value_row.set_all_value(&value_value_values);
+                second_read_row.set_all_value(&second_read_value_values);
 
                 #[rustfmt::skip]
                         debug_info!(
@@ -461,18 +525,18 @@ impl<F: PrimeField64> MemAlignSM<F> {
                             value.to_le_bytes(),
                             value_second_read.to_le_bytes(),
                             [
-                                first_read_row.get_sel(0), first_read_row.get_sel(1), first_read_row.get_sel(2), first_read_row.get_sel(3),
-                                first_read_row.get_sel(4), first_read_row.get_sel(5), first_read_row.get_sel(6), first_read_row.get_sel(7),
+                                first_read_row.getc_sel::<0>(), first_read_row.getc_sel::<1>(), first_read_row.getc_sel::<2>(), first_read_row.getc_sel::<3>(),
+                                first_read_row.getc_sel::<4>(), first_read_row.getc_sel::<5>(), first_read_row.getc_sel::<6>(), first_read_row.getc_sel::<7>(),
                                 first_read_row.get_wr(), first_read_row.get_reset(), first_read_row.get_sel_up_to_down(), first_read_row.get_sel_down_to_up()
                             ],
                             [
-                                value_row.get_sel(0), value_row.get_sel(1), value_row.get_sel(2), value_row.get_sel(3),
-                                value_row.get_sel(4), value_row.get_sel(5), value_row.get_sel(6), value_row.get_sel(7),
+                                value_row.getc_sel::<0>(), value_row.getc_sel::<1>(), value_row.getc_sel::<2>(), value_row.getc_sel::<3>(),
+                                value_row.getc_sel::<4>(), value_row.getc_sel::<5>(), value_row.getc_sel::<6>(), value_row.getc_sel::<7>(),
                                 value_row.get_wr(), value_row.get_reset(), value_row.get_sel_up_to_down(), value_row.get_sel_down_to_up()
                             ],
                             [
-                                second_read_row.get_sel(0), second_read_row.get_sel(1), second_read_row.get_sel(2), second_read_row.get_sel(3),
-                                second_read_row.get_sel(4), second_read_row.get_sel(5), second_read_row.get_sel(6), second_read_row.get_sel(7),
+                                second_read_row.getc_sel::<0>(), second_read_row.getc_sel::<1>(), second_read_row.getc_sel::<2>(), second_read_row.getc_sel::<3>(),
+                                second_read_row.getc_sel::<4>(), second_read_row.getc_sel::<5>(), second_read_row.getc_sel::<6>(), second_read_row.getc_sel::<7>(),
                                 second_read_row.get_wr(), second_read_row.get_reset(), second_read_row.get_sel_up_to_down(), second_read_row.get_sel_down_to_up()
                             ]
                         );
@@ -610,58 +674,100 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 second_read_row.set_reset(false);
                 second_read_row.set_sel_down_to_up(true);
 
+                // Compute arrays for first_read_row
+                let mut first_read_reg_values = [0u8; CHUNK_NUM];
+                let mut first_read_sel_values = [false; CHUNK_NUM];
                 for i in 0..CHUNK_NUM {
-                    first_read_row.set_reg(i, Self::get_byte(value_first_read, i, 0));
+                    first_read_reg_values[i] = Self::get_byte(value_first_read, i, 0);
                     if i < offset {
-                        first_read_row.set_sel(i, true);
-                    }
-
-                    first_write_row.set_reg(i, Self::get_byte(value_first_write, i, 0));
-                    if i >= offset {
-                        first_write_row.set_sel(i, true);
-                    }
-
-                    value_row.set_reg(i, {
-                        if i < rem_bytes {
-                            second_write_row.get_reg(i)
-                        } else if i >= offset {
-                            first_write_row.get_reg(i)
-                        } else {
-                            Self::get_byte(value, i, CHUNK_NUM - offset)
-                        }
-                    });
-                    if i == offset {
-                        value_row.set_sel(i, true);
-                    }
-
-                    second_write_row.set_reg(i, Self::get_byte(value_second_write, i, 0));
-                    if i < rem_bytes {
-                        second_write_row.set_sel(i, true);
-                    }
-
-                    second_read_row.set_reg(i, Self::get_byte(value_second_read, i, 0));
-                    if i >= rem_bytes {
-                        second_read_row.set_sel(i, true);
+                        first_read_sel_values[i] = true;
                     }
                 }
+                first_read_row.set_all_reg(&first_read_reg_values);
+                first_read_row.set_all_sel(&first_read_sel_values);
 
+                // Compute arrays for first_write_row
+                let mut first_write_reg_values = [0u8; CHUNK_NUM];
+                let mut first_write_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    first_write_reg_values[i] = Self::get_byte(value_first_write, i, 0);
+                    if i >= offset {
+                        first_write_sel_values[i] = true;
+                    }
+                }
+                first_write_row.set_all_reg(&first_write_reg_values);
+                first_write_row.set_all_sel(&first_write_sel_values);
+
+                // Compute arrays for second_write_row
+                let mut second_write_reg_values = [0u8; CHUNK_NUM];
+                let mut second_write_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    second_write_reg_values[i] = Self::get_byte(value_second_write, i, 0);
+                    if i < rem_bytes {
+                        second_write_sel_values[i] = true;
+                    }
+                }
+                second_write_row.set_all_reg(&second_write_reg_values);
+                second_write_row.set_all_sel(&second_write_sel_values);
+
+                // Compute arrays for value_row (depends on previous rows)
+                let mut value_reg_values = [0u8; CHUNK_NUM];
+                let mut value_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    value_reg_values[i] = if i < rem_bytes {
+                        second_write_reg_values[i]
+                    } else if i >= offset {
+                        first_write_reg_values[i]
+                    } else {
+                        Self::get_byte(value, i, CHUNK_NUM - offset)
+                    };
+                    if i == offset {
+                        value_sel_values[i] = true;
+                    }
+                }
+                value_row.set_all_reg(&value_reg_values);
+                value_row.set_all_sel(&value_sel_values);
+
+                // Compute arrays for second_read_row
+                let mut second_read_reg_values = [0u8; CHUNK_NUM];
+                let mut second_read_sel_values = [false; CHUNK_NUM];
+                for i in 0..CHUNK_NUM {
+                    second_read_reg_values[i] = Self::get_byte(value_second_read, i, 0);
+                    if i >= rem_bytes {
+                        second_read_sel_values[i] = true;
+                    }
+                }
+                second_read_row.set_all_reg(&second_read_reg_values);
+                second_read_row.set_all_sel(&second_read_sel_values);
+
+                // Compute value arrays
+                let mut first_read_value_values = [0u32; RC];
+                let mut first_write_value_values = [0u32; RC];
+                let mut value_value_values = [0u32; RC];
+                let mut second_write_value_values = [0u32; RC];
+                let mut second_read_value_values = [0u32; RC];
                 let mut _value_first_read = value_first_read;
                 let mut _value_first_write = value_first_write;
                 let mut _value = value;
                 let mut _value_second_write = value_second_write;
                 let mut _value_second_read = value_second_read;
                 for i in 0..RC {
-                    first_read_row.set_value(i, (_value_first_read & RC_MASK) as u32);
-                    first_write_row.set_value(i, (_value_first_write & RC_MASK) as u32);
-                    value_row.set_value(i, (_value & RC_MASK) as u32);
-                    second_write_row.set_value(i, (_value_second_write & RC_MASK) as u32);
-                    second_read_row.set_value(i, (_value_second_read & RC_MASK) as u32);
+                    first_read_value_values[i] = (_value_first_read & RC_MASK) as u32;
+                    first_write_value_values[i] = (_value_first_write & RC_MASK) as u32;
+                    value_value_values[i] = (_value & RC_MASK) as u32;
+                    second_write_value_values[i] = (_value_second_write & RC_MASK) as u32;
+                    second_read_value_values[i] = (_value_second_read & RC_MASK) as u32;
                     _value_first_read >>= RC_BITS;
                     _value_first_write >>= RC_BITS;
                     _value >>= RC_BITS;
                     _value_second_write >>= RC_BITS;
                     _value_second_read >>= RC_BITS;
                 }
+                first_read_row.set_all_value(&first_read_value_values);
+                first_write_row.set_all_value(&first_write_value_values);
+                value_row.set_all_value(&value_value_values);
+                second_write_row.set_all_value(&second_write_value_values);
+                second_read_row.set_all_value(&second_read_value_values);
 
                 #[rustfmt::skip]
                         debug_info!(
@@ -686,28 +792,28 @@ impl<F: PrimeField64> MemAlignSM<F> {
                             value_second_write.to_le_bytes(),
                             value_second_read.to_le_bytes(),
                             [
-                                first_read_row.get_sel(0), first_read_row.get_sel(1), first_read_row.get_sel(2), first_read_row.get_sel(3),
-                                first_read_row.get_sel(4), first_read_row.get_sel(5), first_read_row.get_sel(6), first_read_row.get_sel(7),
+                                first_read_row.getc_sel::<0>(), first_read_row.getc_sel::<1>(), first_read_row.getc_sel::<2>(), first_read_row.getc_sel::<3>(),
+                                first_read_row.getc_sel::<4>(), first_read_row.getc_sel::<5>(), first_read_row.getc_sel::<6>(), first_read_row.getc_sel::<7>(),
                                 first_read_row.get_wr(), first_read_row.get_reset(), first_read_row.get_sel_up_to_down(), first_read_row.get_sel_down_to_up()
                             ],
                             [
-                                first_write_row.get_sel(0), first_write_row.get_sel(1), first_write_row.get_sel(2), first_write_row.get_sel(3),
-                                first_write_row.get_sel(4), first_write_row.get_sel(5), first_write_row.get_sel(6), first_write_row.get_sel(7),
+                                first_write_row.getc_sel::<0>(), first_write_row.getc_sel::<1>(), first_write_row.getc_sel::<2>(), first_write_row.getc_sel::<3>(),
+                                first_write_row.getc_sel::<4>(), first_write_row.getc_sel::<5>(), first_write_row.getc_sel::<6>(), first_write_row.getc_sel::<7>(),
                                 first_write_row.get_wr(), first_write_row.get_reset(), first_write_row.get_sel_up_to_down(), first_write_row.get_sel_down_to_up()
                             ],
                             [
-                                value_row.get_sel(0), value_row.get_sel(1), value_row.get_sel(2), value_row.get_sel(3),
-                                value_row.get_sel(4), value_row.get_sel(5), value_row.get_sel(6), value_row.get_sel(7),
+                                value_row.getc_sel::<0>(), value_row.getc_sel::<1>(), value_row.getc_sel::<2>(), value_row.getc_sel::<3>(),
+                                value_row.getc_sel::<4>(), value_row.getc_sel::<5>(), value_row.getc_sel::<6>(), value_row.getc_sel::<7>(),
                                 value_row.get_wr(), value_row.get_reset(), value_row.get_sel_up_to_down(), value_row.get_sel_down_to_up()
                             ],
                             [
-                                second_write_row.get_sel(0), second_write_row.get_sel(1), second_write_row.get_sel(2), second_write_row.get_sel(3),
-                                second_write_row.get_sel(4), second_write_row.get_sel(5), second_write_row.get_sel(6), second_write_row.get_sel(7),
+                                second_write_row.getc_sel::<0>(), second_write_row.getc_sel::<1>(), second_write_row.getc_sel::<2>(), second_write_row.getc_sel::<3>(),
+                                second_write_row.getc_sel::<4>(), second_write_row.getc_sel::<5>(), second_write_row.getc_sel::<6>(), second_write_row.getc_sel::<7>(),
                                 second_write_row.get_wr(), second_write_row.get_reset(), second_write_row.get_sel_up_to_down(), second_write_row.get_sel_down_to_up()
                             ],
                             [
-                                second_read_row.get_sel(0), second_read_row.get_sel(1), second_read_row.get_sel(2), second_read_row.get_sel(3),
-                                second_read_row.get_sel(4), second_read_row.get_sel(5), second_read_row.get_sel(6), second_read_row.get_sel(7),
+                                second_read_row.getc_sel::<0>(), second_read_row.getc_sel::<1>(), second_read_row.getc_sel::<2>(), second_read_row.getc_sel::<3>(),
+                                second_read_row.getc_sel::<4>(), second_read_row.getc_sel::<5>(), second_read_row.getc_sel::<6>(), second_read_row.getc_sel::<7>(),
                                 second_read_row.get_wr(), second_read_row.get_reset(), second_read_row.get_sel_up_to_down(), second_read_row.get_sel_down_to_up()
                             ]
                         );
@@ -781,8 +887,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
         // Iterate over all traces to set range checks
         trace.buffer[0..total_index].iter_mut().for_each(|row| {
-            for j in 0..CHUNK_NUM {
-                reg_range_check[row.get_reg(j) as usize] += 1;
+            let reg_values = row.get_all_reg();
+            for i in 0..CHUNK_NUM {
+                reg_range_check[reg_values[i] as usize] += 1;
             }
         });
 

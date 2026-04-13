@@ -165,9 +165,7 @@ impl<F: PrimeField64> InputDataSM<F> {
 
                 // setting value to zero, is not relevant for internal reads
                 last_value = 0;
-                for j in 0..4 {
-                    trace[i].set_value_word(j, 0);
-                }
+                trace[i].set_all_value_word(&[0; 4]);
                 i += 1;
 
                 for _j in 1..internal_reads {
@@ -193,8 +191,8 @@ impl<F: PrimeField64> InputDataSM<F> {
             let value_words = self.get_u16_values(value);
             for j in 0..4 {
                 range_16bits[value_words[j] as usize] += 1;
-                trace[i].set_value_word(j, value_words[j]);
             }
+            trace[i].set_all_value_word(&value_words);
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
@@ -218,16 +216,14 @@ impl<F: PrimeField64> InputDataSM<F> {
         let is_free_read = last_addr == INPUT_DATA_W_ADDR_INIT;
 
         let padding_size = num_rows - count;
+        let last_value_word = trace[last_row_idx].get_all_value_word();
         for i in count..num_rows {
             last_step += 1;
 
             trace[i].set_addr(addr);
             trace[i].set_step(last_step);
             trace[i].set_sel(false);
-            for j in 0..4 {
-                let value = trace[last_row_idx].get_value_word(j);
-                trace[i].set_value_word(j, value);
-            }
+            trace[i].set_all_value_word(&last_value_word);
             trace[i].set_is_free_read(is_free_read);
 
             trace[i].set_addr_changes(false);
@@ -245,8 +241,7 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         // range of chunks
         for j in 0..4 {
-            let value = trace[last_row_idx].get_value_word(j);
-            range_16bits[value as usize] += padding_size as u32;
+            range_16bits[last_value_word[j] as usize] += padding_size as u32;
         }
 
         let mut air_values = InputDataAirValues::<F>::new();
