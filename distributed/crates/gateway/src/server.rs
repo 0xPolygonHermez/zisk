@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use tonic::transport::Server;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::backend::BackendService;
 use crate::config::Config as GatewayConfig;
@@ -44,7 +44,7 @@ impl<B: BackendService> GatewayServer<B> {
         let svc =
             ZiskGatewayApiServer::new(service).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE);
 
-        let serve = Server::builder()
+        Server::builder()
             // Keep WatchJob streams alive through NAT/firewall idle timeouts.
             .http2_keepalive_interval(Some(Duration::from_secs(30)))
             .http2_keepalive_timeout(Some(Duration::from_secs(10)))
@@ -52,13 +52,19 @@ impl<B: BackendService> GatewayServer<B> {
             .serve_with_shutdown(addr, async move {
                 shutdown_signal().await;
                 info!("shutdown signal received — draining in-flight requests");
-            });
+                // Drain timeout starts only AFTER the signal — the server runs indefinitely before
+                // that. If in-flight RPCs don't finish within shutdown_secs we force-close.
+                tokio::time::sleep(Duration::from_secs(shutdown_secs)).await;
+                warn!(
+                    timeout_secs = shutdown_secs,
+                    "graceful shutdown timed out — forcing close"
+                );
+            })
+            .await
+            .map_err(anyhow::Error::from)?;
 
-        // Hard drain timeout: if in-flight RPCs don't finish within shutdown_secs,
-        // we exit anyway. With no active RPCs this returns immediately.
-        tokio::time::timeout(Duration::from_secs(shutdown_secs), serve).await.unwrap_or(Ok(()))?;
+        info!("zisk-gateway stopped gracefully");
 
-        info!("zisk-gateway stopped");
         Ok(())
     }
 }

@@ -2,8 +2,10 @@ mod config;
 mod coordinator;
 mod coordinator_errors;
 mod coordinator_grpc;
+mod coordinator_management_grpc;
 mod hints_relay;
 mod hooks;
+pub mod job_events;
 mod shutdown;
 mod workers_pool;
 
@@ -14,6 +16,7 @@ pub use config::*;
 pub use coordinator::*;
 pub use coordinator_errors::*;
 pub use coordinator_grpc::*;
+pub use coordinator_management_grpc::*;
 pub use hints_relay::*;
 pub use shutdown::*;
 pub use workers_pool::*;

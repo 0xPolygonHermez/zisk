@@ -19,6 +19,9 @@ cargo-zisk = { workspace = true }
 proofman = { workspace = true }
 proofman-util = { workspace = true }
 
+bincode = { workspace = true }
+blake3 = "1.3.1"
+hex = "0.4"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

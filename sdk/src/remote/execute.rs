@@ -23,6 +23,7 @@ pub(crate) fn run(
     let hash_id = program.program_id.hash_id.to_string();
     let input_kind = stdin_to_input_kind(input)?;
     let execute_timeout = timeout.map(duration_to_proto_timestamp);
+    
     let job_kind = JobKind {
         kind: Some(GatewayKind::Execute(GatewayExecuteRequest {
             hash_id,

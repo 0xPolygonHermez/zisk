@@ -13,8 +13,8 @@ use zisk_distributed_common::{ContributionsMessage, ProveMessage};
 use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ZiskBackend,
-    ZiskProver,
+    Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
+    ZiskBackend, ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -289,6 +289,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Re-run setup with a new guest program (e.g., after receiving SetupProgram from coordinator).
+    /// Updates `self.guest_program` on success.
+    pub fn run_setup(&mut self, new_guest_program: Arc<GuestProgram>) -> Result<()> {
+        self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
+        self.guest_program = new_guest_program;
+        Ok(())
     }
 
     pub fn get_executed_steps(&self) -> u64 {

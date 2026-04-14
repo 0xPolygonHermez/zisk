@@ -23,7 +23,7 @@ use std::sync::OnceLock;
 use anyhow::Result;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::MetricsConfig;
 
@@ -69,7 +69,13 @@ pub async fn start(cfg: &MetricsConfig) -> Result<()> {
     }
 
     let addr = format!("{}:{}", cfg.host, cfg.port);
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            warn!("metrics server failed to bind {addr}: {e} — continuing without metrics");
+            return Ok(());
+        }
+    };
     info!("metrics server listening on http://{addr}/metrics");
 
     tokio::spawn(async move {

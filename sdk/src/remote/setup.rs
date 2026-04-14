@@ -16,6 +16,10 @@ pub(crate) fn run(
     timeout: Option<Duration>,
     subs: SubscriberList,
 ) -> Result<JobHandle<()>> {
+    // Register the ELF with the gateway before submitting the setup job so the
+    // coordinator has the bytes available to distribute to workers.
+    super::upload::run(remote, program)?;
+
     let hash_id = program.program_id.hash_id.to_string();
     let job_kind = JobKind { kind: Some(GatewayKind::Setup(GatewaySetupRequest { hash_id })) };
     let job_id = remote.submit_job_sync(job_kind)?;

@@ -176,9 +176,10 @@ message CoordinatorMessage {
     Heartbeat heartbeat = 1;
     Shutdown shutdown = 2;
     WorkerRegisterResponse register_response = 3;
-    ExecuteTaskRequest execute_task = 4;  
+    ExecuteTaskRequest execute_task = 4;
     JobCancelled job_cancelled = 5;
     StreamData stream_data = 6;
+    SetupProgram setup_program = 7;
   }
 }
 
@@ -191,7 +192,22 @@ message WorkerMessage {
     WorkerReconnectRequest reconnect = 4;
     ExecuteTaskResponse execute_task_response = 5;
     JobCancelledAck job_cancelled_ack = 6;
+    SetupProgramAck setup_program_ack = 7;
   }
+}
+
+message SetupProgram {
+  string job_id = 1;
+  bytes elf_bytes = 2;
+  string hash_id = 3;
+}
+
+message SetupProgramAck {
+  string job_id = 1;
+  string worker_id = 2;
+  string hash_id = 3;
+  bool success = 4;
+  string error_message = 5;
 }
 
 message JobCancelledAck {

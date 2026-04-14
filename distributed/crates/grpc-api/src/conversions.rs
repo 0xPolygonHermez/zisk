@@ -16,9 +16,10 @@ use crate::{
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, HintsMode, InputMode,
     JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
     LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ReconnectionAction,
-    ReconnectionDirective, Shutdown, StatusInfoResponse, StreamData, StreamPayload, StreamType,
-    SystemStatus, SystemStatusResponse, TaskType, WorkerError, WorkerInfo, WorkerReconnectRequest,
-    WorkerRegisterRequest, WorkerRegisterResponse, WorkersList, WorkersListResponse,
+    ReconnectionDirective, SetupProgram, Shutdown, StatusInfoResponse, StreamData,
+    StreamPayload, StreamType, SystemStatus, SystemStatusResponse, TaskType, WorkerError,
+    WorkerInfo, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
+    WorkersListResponse,
 };
 use zisk_distributed_common::*;
 
@@ -282,6 +283,13 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
             CoordinatorMessageDto::StreamData(data) => {
                 CoordinatorMessage { payload: Some(Payload::StreamData(data.into())) }
             }
+            CoordinatorMessageDto::SetupProgram(dto) => CoordinatorMessage {
+                payload: Some(Payload::SetupProgram(SetupProgram {
+                    job_id: dto.job_id,
+                    elf_bytes: dto.elf_bytes,
+                    hash_id: dto.hash_id,
+                })),
+            },
         }
     }
 }

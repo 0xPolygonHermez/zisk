@@ -14,6 +14,7 @@ use zisk_gateway_grpc_api::{
     proto::{InputChunk, InputKind, JobKind, JobRequestMessage, RegisterGuestProgramRequest},
     ZiskGatewayApiClient,
 };
+use zisk_prover_backend::GuestProgram;
 
 use crate::{input::ProgramInput, ProverOpts};
 
@@ -78,10 +79,12 @@ pub(crate) struct RemoteClient {
 }
 
 impl RemoteClient {
-    pub(crate) async fn register_program(&self, elf: Vec<u8>) -> Result<String> {
+    pub(crate) async fn register_program(&self, program: &GuestProgram) -> Result<String> {
         let mut gw = self.gateway.clone();
         let resp = gw
-            .register_guest_program(RegisterGuestProgramRequest { zisk_elf: elf })
+            .register_guest_program(RegisterGuestProgramRequest {
+                zisk_elf: program.elf().to_vec(),
+            })
             .await
             .context("RegisterGuestProgram RPC failed")?;
         Ok(resp.into_inner().hash_id)
@@ -104,10 +107,9 @@ impl RemoteClient {
     }
 
     /// Register a program, blocking the calling thread. Requires a live tokio runtime.
-    pub(crate) fn register_program_sync(&self, elf: &[u8]) -> Result<String> {
-        let elf = elf.to_vec();
+    pub(crate) fn register_program_sync(&self, program: &GuestProgram) -> Result<String> {
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.register_program(elf))
+            tokio::runtime::Handle::current().block_on(self.register_program(program))
         })
     }
 

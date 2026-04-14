@@ -2,11 +2,22 @@
 
 use anyhow::Result;
 use clap::Parser;
+use std::{sync::Arc, time::Duration};
 use tracing::error;
 use zisk_distributed_common::init as init_logging;
+use zisk_distributed_coordinator::{Coordinator, CoordinatorGrpc, Config as CoordinatorConfig};
+use zisk_distributed_grpc_api::{zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE};
+use tonic::transport::Server;
+use tokio::net::TcpListener;
+use tokio_stream::wrappers::TcpListenerStream;
 
 use zisk_gateway::{
-    backend::{mock::MockBackend, BackendService},
+    backend::{
+        coordinator::CoordinatorBackend,
+        embedded_coordinator::EmbeddedCoordinatorBackend,
+        mock::MockBackend,
+        BackendService,
+    },
     config::{BackendMode, Config},
     metrics, GatewayServer,
 };
@@ -63,10 +74,48 @@ async fn main() -> Result<()> {
             run(cfg, backend).await
         }
         BackendMode::Coordinator => {
-            anyhow::bail!(
-                "backend.mode = 'coordinator' is not yet implemented (phase 2). \
-                 Use --backend mock for development."
-            );
+            let backend = CoordinatorBackend::new(
+                cfg.coordinator.url.clone(),
+                Duration::from_secs(cfg.coordinator.connect_timeout_seconds),
+                Duration::from_secs(cfg.coordinator.request_timeout_seconds),
+            )?;
+            run(cfg, backend).await
+        }
+        BackendMode::Embedded => {
+            let coord_config = CoordinatorConfig::load(
+                cfg.embedded_coordinator.config_file.clone(),
+                Some(cfg.embedded_coordinator.worker_port),
+                None,
+                false,
+                false,
+                None,
+            )?;
+            let coordinator = Arc::new(Coordinator::new(coord_config));
+
+            // Pre-bind the worker-facing port at startup so we fail fast on conflicts.
+            let worker_addr: std::net::SocketAddr =
+                format!("0.0.0.0:{}", cfg.embedded_coordinator.worker_port).parse()?;
+            let worker_listener = TcpListener::bind(worker_addr).await?;
+
+            // Spawn the worker-facing gRPC server (ZiskDistributedApi) in the background.
+            let worker_coordinator = Arc::clone(&coordinator);
+            tokio::spawn(async move {
+                let svc = CoordinatorGrpc::from_arc(worker_coordinator);
+                if let Err(e) = Server::builder()
+                    .add_service(
+                        ZiskDistributedApiServer::new(svc)
+                            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+                            .max_encoding_message_size(MAX_MESSAGE_SIZE),
+                    )
+                    .serve_with_incoming(TcpListenerStream::new(worker_listener))
+                    .await
+                {
+                    error!("embedded coordinator worker gRPC server exited: {e:#}");
+                }
+            });
+
+            let backend = EmbeddedCoordinatorBackend::new(coordinator);
+            run(cfg, backend).await
         }
     }
 }

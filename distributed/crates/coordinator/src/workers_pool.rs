@@ -97,6 +97,11 @@ impl WorkersPool {
         self.workers.read().await.len()
     }
 
+    /// Returns the IDs of all currently connected workers.
+    pub async fn connected_worker_ids(&self) -> Vec<WorkerId> {
+        self.workers.read().await.keys().cloned().collect()
+    }
+
     /// Returns the number of workers currently available for new jobs.
     pub async fn idle_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()

@@ -10,7 +10,7 @@ use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
-use zisk_distributed_common::{CoordinatorMessageDto, JobId, WorkerId};
+use zisk_distributed_common::{CoordinatorMessageDto, JobId, SetupProgramAckDto, WorkerId};
 use zisk_distributed_grpc_api::{zisk_distributed_api_server::*, *};
 
 use crate::config::Config;
@@ -98,6 +98,19 @@ impl CoordinatorGrpc {
         let coordinator = Arc::new(Coordinator::new(config));
         let monitor_handle = coordinator.start_job_monitor();
         Ok(Self { coordinator, _monitor_handle: monitor_handle })
+    }
+
+    /// Creates a gRPC service from a pre-built shared `Arc<Coordinator>`.
+    ///
+    /// Use this when multiple services need to share the same coordinator instance.
+    pub fn from_arc(coordinator: Arc<Coordinator>) -> Self {
+        let monitor_handle = coordinator.start_job_monitor();
+        Self { coordinator, _monitor_handle: monitor_handle }
+    }
+
+    /// Returns a clone of the underlying `Arc<Coordinator>`.
+    pub fn coordinator(&self) -> Arc<Coordinator> {
+        Arc::clone(&self.coordinator)
     }
 
     /// Checks if the request originates from localhost for admin endpoint security.
@@ -202,6 +215,22 @@ impl CoordinatorGrpc {
                 worker_message::Payload::JobCancelledAck(ack) => {
                     Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
                     coordinator.handle_stream_job_cancelled_ack(worker_id, &ack.job_id.into()).await
+                }
+                worker_message::Payload::SetupProgramAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator
+                        .handle_stream_setup_program_ack(SetupProgramAckDto {
+                            job_id: ack.job_id,
+                            worker_id: worker_id.clone(),
+                            hash_id: ack.hash_id,
+                            success: ack.success,
+                            error_message: if ack.error_message.is_empty() {
+                                None
+                            } else {
+                                Some(ack.error_message)
+                            },
+                        })
+                        .await
                 }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),

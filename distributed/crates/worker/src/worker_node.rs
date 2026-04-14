@@ -9,11 +9,11 @@ use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info, warn};
 use zisk_common::ZiskExecutorTime;
+use zisk_distributed_common::{elf_cache_path, DataId, JobId};
 use zisk_distributed_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
     WorkerState,
 };
-use zisk_distributed_common::{DataId, JobId};
 use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;
@@ -770,6 +770,35 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 // Send heartbeat ack
                 self.send_heartbeat_ack(message_sender).await?;
             }
+            coordinator_message::Payload::SetupProgram(setup) => {
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id = setup.job_id.clone();
+                let hash_id = setup.hash_id.clone();
+
+                let (success, error_message) = match self.handle_setup_program(setup) {
+                    Ok(()) => (true, String::new()),
+                    Err(e) => {
+                        error!(
+                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
+                            job_id, hash_id, e
+                        );
+                        (false, e.to_string())
+                    }
+                };
+
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
+                        job_id,
+                        worker_id,
+                        hash_id,
+                        success,
+                        error_message,
+                    })),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send SetupProgramAck: {}", e);
+                }
+            }
             coordinator_message::Payload::Shutdown(shutdown) => {
                 info!(
                     "Coordinator shutdown: {} (grace period: {}s)",
@@ -780,6 +809,36 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
         }
 
+        Ok(())
+    }
+
+    /// Handles a `SetupProgram` message from the coordinator.
+    ///
+    /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
+    /// setup (generates ROM binary files on disk).
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<()> {
+        use std::sync::Arc;
+        use zisk_prover_backend::GuestProgram;
+
+        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
+
+        let elf_path = elf_cache_path(&setup.hash_id);
+
+        // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
+        // exists it is identical to what we received — skip write and re-setup.
+        if !elf_path.exists() {
+            if let Some(parent) = elf_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&elf_path, &setup.elf_bytes)?;
+        }
+
+        let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
+
+        // Runs setup and updates self.worker.guest_program
+        self.worker.run_setup(guest_program)?;
+
+        info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
         Ok(())
     }
 

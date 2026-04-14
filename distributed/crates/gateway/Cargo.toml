@@ -12,6 +12,8 @@ path = "src/cli/main.rs"
 
 [dependencies]
 zisk-distributed-common = { workspace = true }
+zisk-distributed-grpc-api = { workspace = true }
+zisk-distributed-coordinator = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }
@@ -32,6 +34,7 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 blake3 = "1"
+hex = "0.4"
 
 # Config & CLI
 config = { workspace = true }

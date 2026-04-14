@@ -33,7 +33,9 @@
 use crate::{
     config::Config,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
-    hooks, PrecompileHintsRelay, WorkersPool,
+    hooks,
+    job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
+    PrecompileHintsRelay, WorkersPool,
 };
 
 use chrono::{DateTime, Utc};
@@ -48,7 +50,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
@@ -61,9 +63,9 @@ use zisk_distributed_common::{
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
     JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, PhaseTimings, ProofDto,
-    ProveParamsDto, ReconnectionDirectiveDto, StatusInfoDto, StreamMessageKind, SystemStatusDto,
-    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
-    WorkersListDto, ZiskExecutorTimeDto,
+    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StatusInfoDto, StreamMessageKind,
+    SystemStatusDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto,
+    WorkerState, WorkersListDto, ZiskExecutorTimeDto,
 };
 
 /// Trait for sending messages to workers through various communication channels.
@@ -121,6 +123,17 @@ pub struct Coordinator {
 
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
+
+    /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
+    job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
+}
+
+fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
+    CoordinatorExecutionStats {
+        steps: job.executed_steps.unwrap_or(0),
+        duration_nanos: job.duration_ms.unwrap_or(0).saturating_mul(1_000_000),
+        ..Default::default()
+    }
 }
 
 impl Coordinator {
@@ -139,6 +152,7 @@ impl Coordinator {
             jobs: RwLock::new(HashMap::new()),
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
+            job_events: RwLock::new(HashMap::new()),
         }
     }
 
@@ -155,6 +169,127 @@ impl Coordinator {
     /// Returns a reference to the coordinator config.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    // -------------------------------------------------------------------------
+    // Job event broadcast helpers
+    // -------------------------------------------------------------------------
+
+    /// Allocates a broadcast channel for the given job. Must be called before any event is fired.
+    async fn alloc_job_events(&self, job_id: &JobId) {
+        let (tx, _) = broadcast::channel(64);
+        self.job_events.write().await.insert(job_id.clone(), tx);
+    }
+
+    /// Returns a live receiver for the job's event channel, or `None` if the job is unknown.
+    pub async fn subscribe_job_events(
+        &self,
+        job_id: &JobId,
+    ) -> Option<broadcast::Receiver<CoordinatorJobEvent>> {
+        self.job_events.read().await.get(job_id).map(|tx| tx.subscribe())
+    }
+
+    /// Fires an event on the job's channel. Drops silently when there are no receivers.
+    /// Removes the channel from the map after a terminal event.
+    async fn fire_job_event(&self, job_id: &JobId, event: CoordinatorJobEvent) {
+        let terminal = matches!(
+            event,
+            CoordinatorJobEvent::Completed(_)
+                | CoordinatorJobEvent::Failed(_)
+                | CoordinatorJobEvent::Cancelled
+        );
+
+        {
+            let map = self.job_events.read().await;
+            if let Some(tx) = map.get(job_id) {
+                // send() only errors when there are no receivers — safe to ignore
+                let _ = tx.send(event);
+            }
+        }
+
+        if terminal {
+            self.job_events.write().await.remove(job_id);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // cancel_job
+    // -------------------------------------------------------------------------
+
+    /// Cancels a running or queued job.
+    ///
+    /// Returns `true` if the job was cancelled, `false` if it was already in a terminal state.
+    pub async fn cancel_job(&self, job_id: &JobId) -> CoordinatorResult<bool> {
+        let jobs_map = self.jobs.read().await;
+        let job_entry =
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        drop(jobs_map);
+
+        let worker_ids = {
+            let mut job = job_entry.write().await;
+            if job.state().is_resolved() {
+                return Ok(false);
+            }
+            job.change_state(JobState::Cancelled);
+            job.workers.clone()
+        };
+
+        self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
+        self.ensure_workers_idle(&worker_ids).await;
+
+        self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
+
+        info!("Cancelled job {}", job_id);
+
+        Ok(true)
+    }
+
+    /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
+    pub fn register_guest_program(&self, elf_bytes: Vec<u8>) -> CoordinatorResult<String> {
+        use blake3::Hasher;
+        use zisk_distributed_common::elf_cache_path;
+
+        let mut hasher = Hasher::new();
+        hasher.update(&elf_bytes);
+        let hash_id = hasher.finalize().to_hex().to_string();
+
+        let path = elf_cache_path(&hash_id);
+        if !path.exists() {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| CoordinatorError::Internal(format!("create cache dir: {e}")))?;
+            }
+            fs::write(&path, &elf_bytes)
+                .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
+        }
+
+        Ok(hash_id)
+    }
+
+    /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
+    /// Returns a synthetic `JobId` (setup tracking is async via acks).
+    pub async fn setup_program(&self, hash_id: &str) -> CoordinatorResult<JobId> {
+        use zisk_distributed_common::{elf_cache_path, SetupProgramDto};
+
+        let path = elf_cache_path(hash_id);
+        let elf_bytes = fs::read(&path).map_err(|e| {
+            CoordinatorError::Internal(format!("ELF not found for hash_id {hash_id}: {e}"))
+        })?;
+
+        let job_id = JobId::new();
+        let workers = self.workers_pool.connected_worker_ids().await;
+        for worker_id in &workers {
+            let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
+                job_id: job_id.as_string(),
+                elf_bytes: elf_bytes.clone(),
+                hash_id: hash_id.to_string(),
+            });
+            if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
+                warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
+            }
+        }
+
+        Ok(job_id)
     }
 
     /// Retrieves comprehensive status information about the coordinator service.
@@ -394,6 +529,9 @@ impl Coordinator {
         // Store job in jobs map
         let job_arc = Arc::new(RwLock::new(job));
         self.jobs.write().await.insert(job_id.clone(), job_arc.clone());
+        self.alloc_job_events(&job_id).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
         // Send Phase1 tasks to selected workers
         let job = job_arc.read().await;
@@ -881,6 +1019,12 @@ impl Coordinator {
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
         self.ensure_workers_idle(&worker_ids).await;
 
+        self.fire_job_event(
+            job_id,
+            CoordinatorJobEvent::Failed(reason.as_ref().to_string()),
+        )
+        .await;
+
         error!("Failed job {} (reason: {})", job_id, reason.as_ref());
 
         drop(job_entry);
@@ -895,6 +1039,31 @@ impl Coordinator {
             }
         }
 
+        Ok(())
+    }
+
+    /// Handles a setup program acknowledgement from a worker.
+    ///
+    /// Called when a worker reports that it has completed (or failed) a setup operation.
+    pub async fn handle_stream_setup_program_ack(
+        &self,
+        ack: SetupProgramAckDto,
+    ) -> CoordinatorResult<()> {
+        if ack.success {
+            info!(
+                "[Setup] Worker {} completed setup for job_id {} hash_id {}",
+                ack.worker_id, ack.job_id, ack.hash_id
+            );
+        } else {
+            error!(
+                "[Setup] Worker {} failed setup for job_id {} hash_id {}: {}",
+                ack.worker_id,
+                ack.job_id,
+                ack.hash_id,
+                ack.error_message.as_deref().unwrap_or("unknown error")
+            );
+        }
+        // TODO: track per-job setup completion and fire Completed(Setup) event
         Ok(())
     }
 
@@ -1421,6 +1590,8 @@ impl Coordinator {
 
         drop(job); // Release jobs lock early
 
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Prove)).await;
+
         // Start Phase2 for all workers
         self.start_prove(&job_id, &active_workers, challenges_dto).await?;
 
@@ -1594,8 +1765,20 @@ impl Coordinator {
             self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
         }
 
+        let exec_stats = exec_stats_from_job(&job);
+
         // Release job lock before cleanup
         drop(job);
+
+        self.fire_job_event(
+            &job_id,
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Execute {
+                stats: exec_stats,
+                public_outputs: vec![], // TODO: thread public outputs through distributed exec path
+            }),
+        )
+        .await;
+
         let mut job = job_entry.write().await;
 
         // Clean up process data for the job (no webhook for execution-only)
@@ -2336,17 +2519,22 @@ impl Coordinator {
                 job.agg_worker_id = Some(candidate_worker_id.clone());
                 job.change_state(JobState::Running(JobPhase::Aggregate));
 
+                let job_id = job.job_id.clone();
+
                 // Update worker state
                 self.workers_pool
                     .mark_worker_with_state(
                         candidate_worker_id,
-                        WorkerState::Computing((job.job_id.clone(), JobPhase::Aggregate)),
+                        WorkerState::Computing((job_id.clone(), JobPhase::Aggregate)),
                     )
                     .await?;
 
+                self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Aggregate))
+                    .await;
+
                 info!(
                     "[Phase3] Assigned worker {} as aggregator for job {}",
-                    candidate_worker_id, job.job_id
+                    candidate_worker_id, job_id
                 );
 
                 Ok(candidate_worker_id.clone())
@@ -2855,8 +3043,32 @@ impl Coordinator {
             self.reconnections.load(Ordering::Relaxed)
         );
 
+        // Build proof bytes and stats for the event before releasing the lock
+        let prove_event = {
+            let proof_bytes = match (job.final_proof.as_ref(), job.final_verkey.as_ref()) {
+                (Some(final_proof), Some(final_verkey)) => {
+                    match ZiskProofWithPublicValues::new_from_vadcop_proof(
+                        final_proof,
+                        self.config.coordinator.minimal_proofs,
+                        final_verkey.clone(),
+                    ) {
+                        Ok(p) => bincode::serialize(&p).unwrap_or_default(),
+                        Err(e) => {
+                            warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                            vec![]
+                        }
+                    }
+                }
+                _ => vec![],
+            };
+            let stats = exec_stats_from_job(&job);
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove { proof_bytes, stats })
+        };
+
         // Release job lock before calling post_launch_proof
         drop(job);
+
+        self.fire_job_event(job_id, prove_event).await;
 
         self.post_launch_proof(job_id).await?;
 

@@ -2,6 +2,8 @@
 
 _Version 1.0 · Creation date: 17-03-2026 · Last update: 11-04-2026_
 
+gRPC Service definition: [`gateway_api.proto`](../../distributed/crates/gateway/gateway-grpc-api/proto/zisk_gateway_api.proto)
+
 ## Summary
 
 | Method                                          | Description                                                      |
@@ -55,10 +57,25 @@ struct Proof {
     hash_id:          String,        // guest program hash ID used to generate this proof
     verification_key: Vec<u8>,       // verification key
     proof_kind:       ProofKind,     // format of the proof data
-    data:             Vec<u8>,       // serialized proof bytes
+    data:             Vec<u8>,       // serialized proof bytes (bincode-encoded ZiskProofWithPublicValues)
     public_inputs:    Vec<u8>,       // serialized public inputs committed to by the proof
     started_at:       DateTime<Utc>, // when the job started executing
     completed_at:     DateTime<Utc>, // when the proof was finalized
+}
+
+struct CostPerType {
+    main:        u64, // main state machine cost (rows × witness columns)
+    opcode:      u64, // opcode state machine cost
+    memory:      u64, // memory state machine cost
+    precompile:  u64, // precompile state machine cost (SHA256, Keccak, etc.)
+    tables:      u64, // lookup table cost
+    other:       u64, // other cost
+}
+
+struct ExecutionStats {
+    steps:          u64,         // number of execution steps
+    duration_nanos: u64,         // wall-clock execution duration in nanoseconds
+    cost_per_type:  CostPerType, // AIR witness area breakdown by state machine type
 }
 
 // RPC-level errors (method cannot complete)
@@ -133,7 +150,7 @@ enum JobKindResponse {
 ### `WaitJobResult`
 
 The intended primitive for polling a job to completion. The server holds the response for
-up to `timeout_seconds` (default 5s, range 1–60s): if the job reaches a terminal state
+up to `timeout_seconds` (default 5s, minimum 1s): if the job reaches a terminal state
 (Completed, Failed, or Cancelled) within that window, it returns immediately with the final
 `WaitJobResultResponse`; otherwise it returns with the current status and the client can re-issue.
 
@@ -149,7 +166,7 @@ WaitJobResultRequest → WaitJobResultResponse
 ```rust
 struct WaitJobResultRequest {
     job_id:          Uuid,
-    timeout_seconds: Option<u32>, // server-side hold duration; range [1, 60], default 5
+    timeout_seconds: Option<u32>, // server-side hold duration; min 1s, default 5s
 }
 
 struct WaitJobResultResponse {
@@ -268,9 +285,9 @@ struct PushJobInputRequest {
 
 ### `CancelJob`
 
-Cancel a job. Returns immediately.
+Cancel a job. Blocks until the job reaches a terminal state, then returns.
 If the job was running or queued, it transitions to `Cancelled` and `cancelled: true` is returned.
-If the job is already in a terminal state (`Completed`, `Failed`, or `Cancelled`), returns `cancelled: false`.
+If the job is already in a terminal state (`Completed`, `Failed`, or `Cancelled`), returns `cancelled: false` immediately.
 
 Idempotent: cancelling an already-terminal job always succeeds (no error).
 
@@ -318,6 +335,7 @@ struct ProveRequest {
 
 struct ProveResponse {
     proof: Proof,
+    stats: ExecutionStats,
 }
 ```
 
@@ -364,7 +382,8 @@ struct ExecuteRequest {
 }
 
 struct ExecuteResponse {
-    // TODO: To be defined
+    stats:          ExecutionStats, // execution statistics (steps, duration, cost breakdown)
+    public_outputs: Vec<u8>,        // serialized public outputs produced by the program
 }
 ```
 
@@ -386,6 +405,8 @@ Jobs that fail during execution report `JobFailure` variants:
 
 | Variant | When |
 |---------|------|
-| `Timeout { phase, limit }` | Job exceeded timeout |
-| `Internal { trace_id }` | Execution crash or unexpected error |
+| `Timeout { phase, limit }` | Job exceeded its configured timeout |
+| `Input { reason }` | Input data was rejected (malformed, too large, etc.) |
+| `Execution { reason }` | Program execution failed (e.g. invalid instruction, OOM) |
+| `Internal { trace_id }` | Unexpected server error; include `trace_id` in support requests |
 | `Cancelled` | Job was cancelled by the client or system |

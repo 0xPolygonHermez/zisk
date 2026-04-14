@@ -18,6 +18,7 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub backend: BackendConfig,
     pub coordinator: CoordinatorConfig,
+    pub embedded_coordinator: EmbeddedCoordinatorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +52,7 @@ pub struct BackendConfig {
 pub enum BackendMode {
     Mock,
     Coordinator,
+    Embedded,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +60,15 @@ pub struct CoordinatorConfig {
     pub url: String,
     pub connect_timeout_seconds: u64,
     pub request_timeout_seconds: u64,
+}
+
+/// Config section used only when `backend.mode = "embedded"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedCoordinatorConfig {
+    /// Path to a coordinator TOML config file. `None` uses coordinator defaults.
+    pub config_file: Option<String>,
+    /// Port on which the embedded coordinator listens for worker connections.
+    pub worker_port: u16,
 }
 
 impl Config {
@@ -88,8 +99,18 @@ impl Config {
             // coordinator (used only when backend.mode = "coordinator")
             .set_default("coordinator.url", "http://127.0.0.1:50051")?
             .set_default("coordinator.connect_timeout_seconds", 5)?
-            .set_default("coordinator.request_timeout_seconds", 30)?;
+            .set_default("coordinator.request_timeout_seconds", 30)?
+            // embedded_coordinator (used only when backend.mode = "embedded")
+            .set_default("embedded_coordinator.worker_port", 50051u16)?;
 
+        // Well-known config file locations, searched in order (least to most specific).
+        // All are optional — the first one found wins for any given key.
+        for path in default_config_paths() {
+            builder = builder
+                .add_source(config::File::with_name(&path.to_string_lossy()).required(false));
+        }
+
+        // Explicit --config / ZISK_GATEWAY_CONFIG overrides the well-known paths.
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));
         }
@@ -121,6 +142,31 @@ impl Config {
     pub fn metrics_addr(&self) -> String {
         format!("{}:{}", self.metrics.host, self.metrics.port)
     }
+}
+
+/// Returns the well-known gateway config file paths, ordered from least to most specific.
+///
+/// Search order:
+/// 1. `/etc/zisk/gateway.toml`        — system-wide
+/// 2. `$XDG_CONFIG_HOME/zisk/gateway.toml` — user-level (falls back to `~/.config/`)
+/// 3. `./gateway.toml`                — current directory (dev / project-local)
+fn default_config_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = vec![
+        std::path::PathBuf::from("/etc/zisk/gateway.toml"),
+    ];
+
+    let xdg_base = std::env::var("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::env::var("HOME")
+                .map(|h| std::path::PathBuf::from(h).join(".config"))
+                .unwrap_or_else(|_| std::path::PathBuf::from(".config"))
+        });
+    paths.push(xdg_base.join("zisk").join("gateway.toml"));
+
+    paths.push(std::path::PathBuf::from("gateway.toml"));
+
+    paths
 }
 
 #[cfg(test)]

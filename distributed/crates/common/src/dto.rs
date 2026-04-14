@@ -131,6 +131,13 @@ pub enum CoordinatorMessageDto {
     ExecuteTaskRequest(ExecuteTaskRequestDto),
     JobCancelled(JobCancelledDto),
     StreamData(StreamDataDto),
+    SetupProgram(SetupProgramDto),
+}
+
+pub struct SetupProgramDto {
+    pub job_id: String,
+    pub elf_bytes: Vec<u8>,
+    pub hash_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -306,6 +313,14 @@ pub enum ExecuteTaskResponseResultDataDto {
 
 pub struct HeartbeatAckDto {
     pub worker_id: WorkerId,
+}
+
+pub struct SetupProgramAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub hash_id: String,
+    pub success: bool,
+    pub error_message: Option<String>,
 }
 
 pub struct WorkerErrorDto {

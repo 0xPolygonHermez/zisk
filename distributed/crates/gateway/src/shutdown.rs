@@ -9,8 +9,21 @@ use signal_hook::consts::signal::{SIGINT, SIGTERM};
 use signal_hook_tokio::Signals;
 
 /// Returns a future that resolves when SIGTERM or SIGINT is received.
+///
+/// If signal handler registration fails (rare system-level failure), logs a warning
+/// and returns a future that never resolves so the server keeps running.
 pub async fn shutdown_signal() {
-    let mut signals = Signals::new([SIGTERM, SIGINT]).expect("failed to register signal handlers");
+    let mut signals = match Signals::new([SIGTERM, SIGINT]) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                "failed to register signal handlers: {e} — graceful shutdown unavailable, \
+                 send SIGKILL to stop the process"
+            );
+            std::future::pending::<()>().await;
+            return;
+        }
+    };
 
     if let Some(sig) = signals.next().await {
         match sig {

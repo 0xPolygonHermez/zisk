@@ -1,0 +1,263 @@
+syntax = "proto3";
+
+package zisk.coordinator.api.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Internal coordinator management API.
+//
+// Used by the gateway (and any other internal client) to submit jobs,
+// watch their progress, and manage programs through the coordinator.
+// This is a private/internal API — not exposed directly to end users.
+// ============================================================================
+
+service ZiskCoordinatorApi {
+  // Register an ELF program with the coordinator (content-addressed, idempotent).
+  rpc RegisterGuestProgram(CoordRegisterGuestProgramRequest)
+      returns (CoordRegisterGuestProgramResponse);
+
+  // Provision and run ROM setup for a registered program across all workers.
+  rpc SetupProgram(CoordSetupProgramRequest)
+      returns (CoordJobResponse);
+
+  // Submit a prove or execute job.
+  rpc SubmitJob(CoordSubmitJobRequest)
+      returns (CoordJobResponse);
+
+  // Long-poll until the job reaches a terminal state (or the timeout elapses).
+  rpc WaitJobResult(CoordWaitJobResultRequest)
+      returns (CoordWaitJobResultResponse);
+
+  // Stream live job events until a terminal state is reached.
+  rpc WatchJob(CoordWatchJobRequest)
+      returns (stream CoordJobEvent);
+
+  // Cancel a running or queued job.
+  rpc CancelJob(CoordCancelJobRequest)
+      returns (CoordCancelJobResponse);
+
+  // Push additional input chunks to a job in WaitingForInput state.
+  rpc PushJobInput(stream CoordPushJobInputRequest)
+      returns (google.protobuf.Empty);
+}
+
+// ============================================================================
+// Program management
+// ============================================================================
+
+message CoordRegisterGuestProgramRequest {
+  bytes elf_bytes = 1;
+}
+
+message CoordRegisterGuestProgramResponse {
+  string hash_id = 1; // blake3 hex digest of elf_bytes
+}
+
+message CoordSetupProgramRequest {
+  string hash_id = 1; // from RegisterGuestProgram
+}
+
+// ============================================================================
+// Job submission
+// ============================================================================
+
+message CoordJobResponse {
+  string job_id = 1;
+}
+
+message CoordSubmitJobRequest {
+  oneof job_kind {
+    CoordProveRequest prove = 1;
+    CoordExecuteRequest execute = 2;
+    CoordWrapRequest wrap = 3;
+  }
+}
+
+message CoordProveRequest {
+  string hash_id = 1;
+  CoordInputKind input = 2;
+  optional google.protobuf.Timestamp proof_timeout = 3;
+}
+
+message CoordExecuteRequest {
+  string hash_id = 1;
+  CoordInputKind input = 2;
+  optional google.protobuf.Timestamp execute_timeout = 3;
+}
+
+// Wrap is not yet implemented in the coordinator; reserved for future use.
+message CoordWrapRequest {
+  bytes proof_data = 1;
+  CoordProofKind proof_dest = 2;
+  optional google.protobuf.Timestamp wrap_timeout = 3;
+}
+
+message CoordInputKind {
+  oneof source {
+    CoordInputChunk inline = 1; // first (possibly only) chunk
+    string stream_uri = 2;      // file:// unix:// quic://
+  }
+}
+
+message CoordInputChunk {
+  bytes data = 1;
+  bool is_last = 2;
+}
+
+enum CoordProofKind {
+  COORD_PROOF_KIND_STARK = 0;
+  COORD_PROOF_KIND_STARK_MINIMAL = 1;
+  COORD_PROOF_KIND_PLONK = 2;
+}
+
+// ============================================================================
+// Job status / results
+// ============================================================================
+
+message CoordWaitJobResultRequest {
+  string job_id = 1;
+  optional uint32 timeout_seconds = 2; // server-side hold duration; min 1s, default 5s
+}
+
+message CoordWaitJobResultResponse {
+  string job_id = 1;
+  CoordJobStatus job_status = 2;
+  optional CoordJobKindResult result = 3; // present when job_status is COMPLETED
+}
+
+enum CoordJobStatus {
+  COORD_JOB_STATUS_QUEUED = 0;
+  COORD_JOB_STATUS_RUNNING = 1;
+  COORD_JOB_STATUS_WAITING_FOR_INPUT = 2;
+  COORD_JOB_STATUS_COMPLETED = 3;
+  COORD_JOB_STATUS_FAILED = 4;
+  COORD_JOB_STATUS_CANCELLED = 5;
+}
+
+message CoordJobKindResult {
+  oneof result {
+    CoordProveResult prove = 1;
+    CoordExecuteResult execute = 2;
+    CoordSetupResult setup = 3;
+    CoordWrapResult wrap = 4;
+  }
+}
+
+message CoordProveResult {
+  bytes proof_data = 1; // bincode-encoded ZiskProofWithPublicValues
+  CoordExecutionStats stats = 2;
+}
+
+message CoordExecuteResult {
+  CoordExecutionStats stats = 1;
+  bytes public_outputs = 2;
+}
+
+message CoordSetupResult {}
+
+message CoordWrapResult {
+  bytes proof_data = 1;
+}
+
+message CoordExecutionStats {
+  uint64 steps = 1;
+  uint64 duration_nanos = 2;
+  CoordCostPerType cost_per_type = 3;
+}
+
+message CoordCostPerType {
+  uint64 main = 1;
+  uint64 opcode = 2;
+  uint64 memory = 3;
+  uint64 precompile = 4;
+  uint64 tables = 5;
+  uint64 other = 6;
+}
+
+// ============================================================================
+// WatchJob streaming
+// ============================================================================
+
+message CoordWatchJobRequest {
+  string job_id = 1;
+}
+
+message CoordJobEvent {
+  oneof event {
+    CoordJobEventQueued queued = 1;
+    CoordJobEventStarted started = 2;
+    CoordJobEventProgress progress = 3;
+    CoordJobEventWaitingForInput waiting_for_input = 4;
+    CoordJobEventCompleted completed = 5;
+    CoordJobEventFailed failed = 6;
+    CoordJobEventCancelled cancelled = 7;
+  }
+}
+
+enum CoordJobPhase {
+  COORD_JOB_PHASE_CONTRIBUTIONS = 0;
+  COORD_JOB_PHASE_PROVE = 1;
+  COORD_JOB_PHASE_AGGREGATE = 2;
+}
+
+message CoordJobEventQueued {
+  string job_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message CoordJobEventStarted {
+  string job_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message CoordJobEventProgress {
+  string job_id = 1;
+  CoordJobPhase phase = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message CoordJobEventWaitingForInput {
+  string job_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message CoordJobEventCompleted {
+  string job_id = 1;
+  CoordJobKindResult result = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message CoordJobEventFailed {
+  string job_id = 1;
+  string reason = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message CoordJobEventCancelled {
+  string job_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// ============================================================================
+// CancelJob
+// ============================================================================
+
+message CoordCancelJobRequest {
+  string job_id = 1;
+}
+
+message CoordCancelJobResponse {
+  string job_id = 1;
+  bool cancelled = 2;
+}
+
+// ============================================================================
+// PushJobInput
+// ============================================================================
+
+message CoordPushJobInputRequest {
+  string job_id = 1;
+  CoordInputChunk chunk = 2;
+}

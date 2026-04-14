@@ -42,8 +42,8 @@ pub enum GatewayError {
     #[error("Invalid proof conversion: {from:?} → {to:?}")]
     InvalidProofConversion { from: DomainProofKind, to: DomainProofKind },
 
-    #[error("Cluster unavailable — no coordinator reachable")]
-    ClusterUnavailable,
+    #[error("Cluster unavailable: {reason}")]
+    ClusterUnavailable { reason: &'static str },
 
     #[error("Internal error")]
     Internal(String),
@@ -57,7 +57,7 @@ impl GatewayError {
             Self::ProgramNotSetup(_) => codes::PROGRAM_NOT_SETUP,
             Self::InvalidJobState { .. } => codes::INVALID_JOB_STATE,
             Self::InvalidProofConversion { .. } => codes::INVALID_PROOF_CONVERSION,
-            Self::ClusterUnavailable => codes::CLUSTER_UNAVAILABLE,
+            Self::ClusterUnavailable { .. } => codes::CLUSTER_UNAVAILABLE,
             Self::Internal(_) => codes::INTERNAL,
         }
     }
@@ -69,7 +69,7 @@ impl GatewayError {
             Self::ProgramNotSetup(_) => "PROGRAM_NOT_SETUP",
             Self::InvalidJobState { .. } => "INVALID_JOB_STATE",
             Self::InvalidProofConversion { .. } => "INVALID_PROOF_CONVERSION",
-            Self::ClusterUnavailable => "CLUSTER_UNAVAILABLE",
+            Self::ClusterUnavailable { .. } => "CLUSTER_UNAVAILABLE",
             Self::Internal(_) => "INTERNAL",
         }
     }
@@ -82,7 +82,7 @@ impl GatewayError {
             Self::InvalidJobState { .. } | Self::InvalidProofConversion { .. } => {
                 Code::InvalidArgument
             }
-            Self::ClusterUnavailable => Code::Unavailable,
+            Self::ClusterUnavailable { .. } => Code::Unavailable,
             Self::Internal(_) => Code::Internal,
         }
     }
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(GatewayError::ProgramNotFound("x".into()).code(), 1002);
         assert_eq!(GatewayError::ProgramNotSetup("x".into()).code(), 1003);
         assert_eq!(GatewayError::InvalidJobState { reason: "x".into() }.code(), 1004);
-        assert_eq!(GatewayError::ClusterUnavailable.code(), 2001);
+        assert_eq!(GatewayError::ClusterUnavailable { reason: "test" }.code(), 2001);
         assert_eq!(GatewayError::Internal("x".into()).code(), 3001);
     }
 
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn cluster_unavailable_maps_to_unavailable_code() {
-        let status = Status::from(GatewayError::ClusterUnavailable);
+        let status = Status::from(GatewayError::ClusterUnavailable { reason: "test" });
         assert_eq!(status.code(), Code::Unavailable);
     }
 

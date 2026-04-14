@@ -8,6 +8,7 @@
 //! - [`CoordinatorBackend`] — forwards to a real coordinator (phase 2, stubs only).
 
 pub mod coordinator;
+pub mod embedded_coordinator;
 pub mod mock;
 
 use std::pin::Pin;

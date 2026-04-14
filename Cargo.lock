@@ -5014,6 +5014,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha-hasher-common"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+]
+
+[[package]]
+name = "sha-hasher-host"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+ "anyhow",
+ "serde",
+ "sha-hasher-common",
+ "sha2",
+ "tokio",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7207,6 +7227,8 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bincode",
+ "blake3",
  "cargo-zisk",
  "chrono",
  "clap",
@@ -7214,6 +7236,7 @@ dependencies = [
  "config",
  "futures",
  "futures-util",
+ "hex",
  "humantime",
  "proofman",
  "proofman-util",
@@ -7298,6 +7321,7 @@ dependencies = [
  "clap",
  "config",
  "futures",
+ "hex",
  "metrics",
  "metrics-exporter-prometheus",
  "prost",
@@ -7317,6 +7341,8 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "zisk-distributed-common",
+ "zisk-distributed-coordinator",
+ "zisk-distributed-grpc-api",
 ]
 
 [[package]]

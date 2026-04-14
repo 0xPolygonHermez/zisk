@@ -334,10 +334,11 @@ impl Job {
     }
 
     pub fn change_state(&mut self, new_state: JobState) {
-        // Validate transition. Failed is always reachable (abort from any state).
+        // Validate transition. Failed and Cancelled are always reachable (abort from any state).
         let valid = matches!(
             (&self.state, &new_state),
             (_, JobState::Failed)
+                | (_, JobState::Cancelled)
                 | (JobState::Created, JobState::Running(_))
                 | (JobState::Running(_), JobState::Running(_))
                 | (JobState::Running(_), JobState::Completed)
@@ -369,7 +370,7 @@ impl Job {
                     error!("Start time for phase {:?} was already set", phase);
                 }
             }
-            JobState::Completed | JobState::Failed => {
+            JobState::Completed | JobState::Failed | JobState::Cancelled => {
                 if let Some(start_time) = self.phase_start_time(&JobPhase::Contributions) {
                     let duration = Utc::now().signed_duration_since(start_time);
                     self.duration_ms = Some(duration.num_milliseconds() as u64);
@@ -404,11 +405,12 @@ pub enum JobState {
     Running(JobPhase),
     Completed,
     Failed,
+    Cancelled,
 }
 
 impl JobState {
     pub fn is_resolved(&self) -> bool {
-        matches!(self, JobState::Failed | JobState::Completed)
+        matches!(self, JobState::Failed | JobState::Completed | JobState::Cancelled)
     }
 }
 
@@ -419,6 +421,7 @@ impl fmt::Display for JobState {
             JobState::Running(phase) => write!(f, "Running ({:?})", phase),
             JobState::Completed => write!(f, "Completed"),
             JobState::Failed => write!(f, "Failed"),
+            JobState::Cancelled => write!(f, "Cancelled"),
         }
     }
 }
