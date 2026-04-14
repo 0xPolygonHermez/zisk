@@ -20,10 +20,12 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let proof_opts = ProverOpts::default().minimal_memory();
-    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
+    let prover_opts = ProverOpts::default().minimal_memory();
+    let client =
+        ProverClient::remote("http://127.0.0.1:7000").with_prover_options(prover_opts).build()?;
 
     println!("Setting up program...");
+    client.upload(&PROGRAM).run()?;
     client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 

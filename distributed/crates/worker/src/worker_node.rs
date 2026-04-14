@@ -835,8 +835,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
 
-        // Runs setup and updates self.worker.guest_program
-        self.worker.run_setup(guest_program)?;
+        // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
+        self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, guest_program)?;
 
         info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
         Ok(())

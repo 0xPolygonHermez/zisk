@@ -144,7 +144,6 @@ impl WorkerServiceConfig {
 /// Configuration for initializing a Prover Service
 #[derive(Debug, Clone)]
 pub struct ProverServiceConfigDto {
-    pub elf: PathBuf,
     pub asm: Option<PathBuf>,
     pub hints: bool,
     pub emulator: bool,
@@ -166,7 +165,6 @@ pub struct ProverServiceConfigDto {
 impl Default for ProverServiceConfigDto {
     fn default() -> Self {
         Self {
-            elf: PathBuf::new(),
             asm: None,
             hints: false,
             emulator: false,

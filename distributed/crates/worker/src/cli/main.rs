@@ -45,12 +45,6 @@ struct Cli {
     )]
     config: Option<String>,
 
-    /// ELF file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
-    pub elf: PathBuf,
-
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
     #[clap(short = 's', long)]
@@ -132,7 +126,6 @@ async fn main() -> Result<()> {
     print_banner();
 
     let prover_config_dto = ProverServiceConfigDto {
-        elf: cli.elf.clone(),
         asm: cli.asm.clone(),
         emulator: cli.emulator,
         hints: cli.hints,
@@ -195,7 +188,6 @@ fn print_command_info(
             .unwrap_or_default()
     );
 
-    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.guest_program.program_id);
     if !prover_config.emulator {
         if let Some(asm_port) = prover_config.asm_port.as_ref() {
             println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);

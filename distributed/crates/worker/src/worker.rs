@@ -1,4 +1,5 @@
 use anyhow::Result;
+use borsh::{BorshDeserialize, BorshSerialize};
 use cargo_zisk::common::get_proving_key;
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::sync::Arc;
@@ -22,12 +23,36 @@ use crate::stream_ordering::StreamOrderingActor;
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
 use proofman_common::ProofOptions;
-use proofman_common::ProofmanOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
 use crate::config::ProverServiceConfigDto;
+
+#[derive(BorshSerialize, BorshDeserialize)]
+struct SetupMessage {
+    hash_id: String,
+    elf_bytes: Vec<u8>,
+    with_hints: bool,
+}
+
+/// Tag byte used as the first byte of every MPI broadcast message.
+///
+/// Variants must stay in this order (Borsh encodes variant index, not the repr value).
+/// The first six entries intentionally mirror `JobPhase` so that existing messages
+/// remain wire-compatible; `Setup` is only used for the worker-internal setup broadcast
+/// and has no meaning in the coordinator's `JobPhase`.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq)]
+enum WorkerMpiTag {
+    Execution,
+    Contributions,
+    Prove,
+    Aggregate,
+    ContributionsInputsStream,
+    ContributionsHintsStream,
+    Setup,
+}
 
 /// Timeout for awaiting cancellation of blocking computation tasks.
 /// If a spawn_blocking task doesn't promptly observe the cancel signal,
@@ -67,9 +92,6 @@ pub enum ComputationResult {
 }
 
 pub struct ProverConfig {
-    /// GuestProgram
-    pub guest_program: Arc<GuestProgram>,
-
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
 
@@ -100,23 +122,27 @@ pub struct ProverConfig {
     /// Flag to enable aggregation
     pub aggregation: bool,
 
-    pub options: ProofmanOptions,
-
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
     /// Whether to include precompile hints in the assembly generation
     pub hints: bool,
+
+    /// Enable GPU acceleration
+    pub gpu: bool,
+
+    /// Maximum number of GPU streams
+    pub max_streams: Option<usize>,
+
+    /// Number of threads for witness computation
+    pub number_threads_witness: Option<usize>,
+
+    /// Maximum witness buffers stored in memory
+    pub max_witness_stored: Option<usize>,
 }
 
 impl ProverConfig {
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
-        if !prover_service_config.elf.exists() {
-            return Err(anyhow::anyhow!(
-                "ELF file '{}' not found.",
-                prover_service_config.elf.display()
-            ));
-        }
         let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
@@ -129,26 +155,7 @@ impl ProverConfig {
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
 
-        let guest_program =
-            Arc::new(GuestProgram::from_uri(prover_service_config.elf.to_str().unwrap())?);
-
-        let mut options = ProofmanOptions::new();
-        if let Some(max_streams) = prover_service_config.max_streams {
-            options.with_max_number_streams(max_streams);
-        }
-        if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
-            options.with_number_threads_pools_witness(number_threads_witness);
-        }
-        if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
-            options.with_max_witness_stored(max_witness_stored);
-        }
-
-        if prover_service_config.gpu {
-            options.gpu();
-        }
-
         Ok(ProverConfig {
-            guest_program,
             emulator,
             proving_key,
             verbose: prover_service_config.verbose,
@@ -158,9 +165,12 @@ impl ProverConfig {
             asm_out_file: prover_service_config.asm_out_file,
             verify_constraints: prover_service_config.verify_constraints,
             aggregation: prover_service_config.aggregation,
-            options,
             minimal_memory: prover_service_config.minimal_memory,
             hints: prover_service_config.hints,
+            gpu: prover_service_config.gpu,
+            max_streams: prover_service_config.max_streams,
+            number_threads_witness: prover_service_config.number_threads_witness,
+            max_witness_stored: prover_service_config.max_witness_stored,
         })
     }
 }
@@ -178,7 +188,6 @@ pub struct JobContext {
     pub executed_steps: u64,
     pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    pub guest_program: Arc<GuestProgram>,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -192,7 +201,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover_config: ProverConfig,
 
     stream_actor: Option<StreamOrderingActor>,
-    guest_program: Arc<GuestProgram>,
+    guest_program: Option<Arc<GuestProgram>>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -209,13 +218,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if prover_config.minimal_memory {
             prover_options = prover_options.minimal_memory();
         }
+        if prover_config.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(max_streams) = prover_config.max_streams {
+            prover_options = prover_options.max_streams(max_streams);
+        }
+        if let Some(threads) = prover_config.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = prover_config.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
 
         let prover = Arc::new(
             ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
         );
-
-        let guest_program = prover_config.guest_program.clone();
-        prover.setup(&guest_program).run()?;
 
         Ok(Worker::<Emu> {
             _worker_id: worker_id,
@@ -223,9 +241,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
+            guest_program: None,
             prover,
             prover_config,
-            guest_program,
             stream_actor: None,
         })
     }
@@ -242,6 +260,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         if prover_config.minimal_memory {
             prover_options = prover_options.minimal_memory();
+        }
+        if prover_config.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(max_streams) = prover_config.max_streams {
+            prover_options = prover_options.max_streams(max_streams);
+        }
+        if let Some(threads) = prover_config.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = prover_config.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
         }
 
         // ASM-specific options for distributed worker
@@ -262,14 +292,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             ProverClientBuilder::new().asm().prove().with_prover_options(prover_options).build()?,
         );
 
-        let guest_program = prover_config.guest_program.clone();
-
-        if prover_config.hints {
-            prover.setup(&guest_program).with_hints().run()?;
-        } else {
-            prover.setup(&guest_program).run()?;
-        }
-
         Ok(Worker::<Asm> {
             _worker_id: worker_id,
             _compute_capacity: compute_capacity,
@@ -278,8 +300,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_computation: None,
             prover,
             prover_config,
-            guest_program,
             stream_actor: None,
+            guest_program: None,
         })
     }
 
@@ -293,9 +315,24 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     /// Re-run setup with a new guest program (e.g., after receiving SetupProgram from coordinator).
     /// Updates `self.guest_program` on success.
-    pub fn run_setup(&mut self, new_guest_program: Arc<GuestProgram>) -> Result<()> {
+    pub fn run_setup(
+        &mut self,
+        hash_id: &str,
+        elf_bytes: &[u8],
+        new_guest_program: Arc<GuestProgram>,
+    ) -> Result<()> {
+        // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
+        let message = SetupMessage {
+            hash_id: hash_id.to_string(),
+            elf_bytes: elf_bytes.to_vec(),
+            with_hints: self.prover_config.hints,
+        };
+        let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
+            .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
+        self.prover.mpi_broadcast(&mut serialized)?;
+
         self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
-        self.guest_program = new_guest_program;
+        self.guest_program = Some(new_guest_program);
         Ok(())
     }
 
@@ -394,7 +431,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             phase: JobPhase::Contributions,
             executed_steps: 0,
             task_received_time,
-            guest_program: self.guest_program.clone(),
             instances: 0,
         }));
         self.current_job = Some(current_job.clone());
@@ -434,7 +470,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Contributions, message)).map_err(|e| {
+            borsh::to_vec(&(WorkerMpiTag::Contributions, message)).map_err(|e| {
                 anyhow::anyhow!("Failed to serialize Contributions MPI broadcast: {}", e)
             })?
         };
@@ -473,7 +509,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Execution, message)).map_err(|e| {
+            borsh::to_vec(&(WorkerMpiTag::Execution, message)).map_err(|e| {
                 anyhow::anyhow!("Failed to serialize Execution MPI broadcast: {}", e)
             })?
         };
@@ -506,7 +542,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
 
-            borsh::to_vec(&(JobPhase::Prove, message))
+            borsh::to_vec(&(WorkerMpiTag::Prove, message))
                 .map_err(|e| anyhow::anyhow!("Failed to serialize Prove MPI broadcast: {}", e))?
         };
 
@@ -530,12 +566,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_proof_options(false);
+        let program_id = self
+            .guest_program
+            .as_ref()
+            .expect("Guest program must be set before computing contribution")
+            .program_id
+            .clone();
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
             let job_id = guard.job_id.clone();
-
-            let program_id = guard.guest_program.program_id.clone();
 
             info!("Computing Contribution for {job_id}");
 
@@ -609,6 +649,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
+        let guest_program =
+            self.guest_program.clone().expect("Guest program must be set before executing");
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
@@ -623,7 +665,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 allocation: guard.allocation.clone(),
                 worker_idx: guard.rank_id as usize,
             };
-            let guest_program = guard.guest_program.clone();
             drop(guard);
 
             // Execute the program (same as contribution) but without generating challenges
@@ -1040,7 +1081,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // MPI Broadcast handlers for receiving and executing tasks
     // --------------------------------------------------------------------------
 
-    pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
+    pub async fn handle_mpi_broadcast_request(&mut self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
         self.prover.mpi_broadcast(&mut bytes)?;
@@ -1049,23 +1090,45 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             return Err(anyhow::anyhow!("Empty MPI broadcast received"));
         }
 
-        let phase: JobPhase = borsh::from_slice(&bytes[0..1])
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast phase: {}", e))?;
+        let tag: WorkerMpiTag = borsh::from_slice(&bytes[0..1])
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast tag: {}", e))?;
 
         let prover = self.prover.clone();
-        let program_id = self.guest_program.program_id.clone();
-        let guest_program = self.guest_program.clone();
         let options = self.get_proof_options(false);
 
-        if phase == JobPhase::ContributionsHintsStream {
+        if tag == WorkerMpiTag::ContributionsHintsStream {
             prover.submit_hint(&bytes)?;
-        } else if phase == JobPhase::ContributionsInputsStream {
+        } else if tag == WorkerMpiTag::ContributionsInputsStream {
             prover.submit_input(&bytes)?;
+        } else if tag == WorkerMpiTag::Setup {
+            let message: SetupMessage = borsh::from_slice(&bytes[1..])
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e))?;
+
+            let elf_path = zisk_distributed_common::elf_cache_path(&message.hash_id);
+            if !elf_path.exists() {
+                if let Some(parent) = elf_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&elf_path, &message.elf_bytes)?;
+            }
+
+            let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
+            let gp_clone = guest_program.clone();
+            let with_hints = message.with_hints;
+            tokio::task::spawn_blocking(move || {
+                prover.prover.setup_internal(&gp_clone, with_hints)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
+
+            self.guest_program = Some(guest_program);
         } else {
+            let program_id = self.guest_program.as_ref().map(|gp| gp.program_id.clone());
+            let guest_program = self.guest_program.clone();
             tokio::task::spawn_blocking(move || {
                 let deserialize_and_run = || -> Result<()> {
-                    match phase {
-                        JobPhase::Execution => {
+                    match tag {
+                        WorkerMpiTag::Execution => {
                             let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
                                 .map_err(|e| {
                                     anyhow::anyhow!(
@@ -1079,10 +1142,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.input_source,
                                 message.hints_source,
                                 message.partition_info,
-                                &guest_program,
+                                &*guest_program.ok_or_else(|| {
+                                    anyhow::anyhow!("Guest program not set for Execution task")
+                                })?,
                             )?;
                         }
-                        JobPhase::Contributions => {
+                        WorkerMpiTag::Contributions => {
                             let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
                                 .map_err(|e| {
                                     anyhow::anyhow!(
@@ -1098,11 +1163,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.input_source,
                                 message.hints_source,
                                 message.partition_info,
-                                &program_id,
+                                program_id.as_ref().ok_or_else(|| {
+                                    anyhow::anyhow!("Guest program not set for Contribution task")
+                                })?,
                                 message.options,
                             )?;
                         }
-                        JobPhase::Prove => {
+                        WorkerMpiTag::Prove => {
                             let message: ProveMessage =
                                 borsh::from_slice(&bytes[1..]).map_err(|e| {
                                     anyhow::anyhow!(
@@ -1118,15 +1185,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 options,
                             )?;
                         }
-                        JobPhase::Aggregate => {
+                        WorkerMpiTag::Aggregate => {
                             return Err(anyhow::anyhow!(
                                 "Aggregate phase is not supported in MPI broadcast"
                             ));
                         }
-                        JobPhase::ContributionsHintsStream
-                        | JobPhase::ContributionsInputsStream => {
+                        WorkerMpiTag::ContributionsHintsStream
+                        | WorkerMpiTag::ContributionsInputsStream => {
                             return Err(anyhow::anyhow!(
                                 "Stream phases should be handled separately and not reach this point"
+                            ));
+                        }
+                        WorkerMpiTag::Setup => {
+                            return Err(anyhow::anyhow!(
+                                "Setup phase should be handled outside the spawn_blocking block"
                             ));
                         }
                     }
