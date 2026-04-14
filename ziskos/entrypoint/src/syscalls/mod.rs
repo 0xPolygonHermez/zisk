@@ -88,16 +88,41 @@ pub use sha256f::*;
 macro_rules! ziskos_syscall {
     ($csr_addr:expr, $addr:expr) => {{
         unsafe {
-            asm!(
+            core::arch::asm!(
                 concat!("csrs {port}, {value}"),
                 port = const $csr_addr,
                 value = in(reg) $addr
             );
         }
     }};
+    ($csr_addr:expr, $cmd: expr, $arg0:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                concat!("csrs {port}, {p0}"),
+                "addi x0, x0, {imm}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                imm = const $cmd,
+                options(nostack)
+            );
+        }
+    }};
+    ($csr_addr:expr, $cmd: expr, $arg0:expr, $arg1:expr) => {{
+        unsafe {
+            core::arch::asm!(
+                concat!("csrs {port}, {p0}"),
+                "addi x0, {p1}, {imm}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                p1 = in(reg) $arg1,  // {1}
+                imm = const $cmd,
+                options(nostack)
+            );
+        }
+    }};
     ($csr_addr:expr, $arg0:expr, $arg1:expr, $arg2: expr) => {{
         unsafe {
-            asm!(
+            core::arch::asm!(
                 concat!("csrs {port}, {p0}"),
                 "add x0, {p1}, {p2}",
                 port = const $csr_addr,
@@ -115,11 +140,27 @@ macro_rules! ziskos_syscall_ret_u64 {
     ($csr_addr:expr, $addr:expr) => {{
         let v: u64;
         unsafe {
-            asm!(
+            core::arch::asm!(
                 concat!("csrrs {rd}, {port}, {rs1}"),
                 port = const $csr_addr,
                 rd = out(reg) v,
                 rs1 = in(reg) $addr,
+                options(nostack)
+            );
+        }
+        v
+    }};
+    ($csr_addr:expr, $arg0:expr, $arg1:expr, $arg2: expr) => {{
+        let v: u64;
+        unsafe {
+            core::arch::asm!(
+                concat!("csrrs {rd}, {port}, {p0}"),
+                "add x0, {p1}, {p2}",
+                port = const $csr_addr,
+                p0 = in(reg) $arg0,  // {0}
+                p1 = in(reg) $arg1,  // {1}
+                p2 = in(reg) $arg2,  // {2}
+                rd = out(reg) v,
                 options(nostack)
             );
         }

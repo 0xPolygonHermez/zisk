@@ -1,0 +1,21 @@
+mod mem_operations_stats;
+mod name_shortener;
+mod ops_costs;
+mod profiler;
+mod ram_monitor;
+mod regions_of_interest;
+#[allow(clippy::module_inception)]
+mod stats;
+mod stats_costs;
+mod stats_coverage_report;
+mod stats_report;
+pub use mem_operations_stats::*;
+pub use name_shortener::*;
+pub use ops_costs::*;
+pub use profiler::*;
+pub use ram_monitor::*;
+pub use regions_of_interest::*;
+pub use stats::*;
+pub use stats_costs::*;
+pub use stats_coverage_report::*;
+pub use stats_report::*;
