@@ -134,12 +134,12 @@ main() {
     USE_GPU=false
   fi
 
-  # Determine whether to use GPU or CPU binaries (linux only)
-  if [ "${PLATFORM}" = "linux" ]; then
-    if [ "${HAS_CUDA}" = "true" ]; then
-      USE_GPU=true
-    else
-      if [[ -z "${USE_GPU}" ]]; then
+  # Determine whether to use GPU or CPU binaries (linux only), if USE_GPU is not set
+  if [[ -z "${USE_GPU}" ]]; then
+    if [ "${PLATFORM}" = "linux" ]; then
+      if [ "${HAS_CUDA}" = "true" ]; then
+        USE_GPU=true
+      else
         warn "NVIDIA CUDA was not detected on this system"
         say "The version with only CPU support will be installed by default"
         say ""
@@ -158,10 +158,10 @@ main() {
             ;;
         esac
       fi
+    else
+      # For macOS, we only install the CPU version as GPU support is not available yet
+      USE_GPU=false
     fi
-  else
-    # For macOS, we only install the CPU version as GPU support is not available yet
-    USE_GPU=false
   fi
 
   # Ask user about key installation if SETUP_KEY is not set

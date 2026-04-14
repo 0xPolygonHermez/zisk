@@ -17,12 +17,16 @@ ensure_sudo() {
 install_cuda() {
     local CUDA_VER="${1:-12-1}"
 
-    echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER}..."
+    # Derive distro string from /etc/os-release (e.g. ubuntu2204, ubuntu2404, debian12)
+    local distro
+    distro="$(. /etc/os-release && echo "${ID}${VERSION_ID//./}")"
+
+    echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER} for ${distro}..."
 
     ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y --no-install-recommends gnupg2 curl ca-certificates software-properties-common || return 1
 
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+    ensure wget "https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/cuda-keyring_1.1-1_all.deb" || return 1
 
     ensure_sudo dpkg -i cuda-keyring_1.1-1_all.deb || return 1
     ensure_sudo apt-get update || return 1
