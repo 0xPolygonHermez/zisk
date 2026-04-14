@@ -32,6 +32,13 @@ fn secp256k1_fp_inv(a: &[u64; 4]) -> [u64; 4] {
 mod tests {
     use super::*;
 
+    fn secp256k1_fp_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+        let a_big = biguint_from_u64_digits(a);
+        let b_big = biguint_from_u64_digits(b);
+        let ab_big = (a_big * b_big) % &*P;
+        n_u64_digits_from_biguint::<4>(&ab_big)
+    }
+
     #[test]
     fn test_inv_one() {
         let x = [1, 0, 0, 0];
@@ -51,5 +58,15 @@ mod tests {
         let mut results = [0; 4];
         fcall_secp256k1_fp_inv(&x, &mut results);
         assert_eq!(results, expected_inv);
+        assert_eq!(secp256k1_fp_mul(&x, &results), [1, 0, 0, 0]);
+
+        let x = [0xffffffffbfffff0c, 0xffffffffffffffff, 0xffffffffffffffff, 0x3fffffffffffffff];
+        let expected_inv =
+            [0x0000000000000004, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000];
+
+        let mut results = [0; 4];
+        fcall_secp256k1_fp_inv(&x, &mut results);
+        assert_eq!(results, expected_inv);
+        assert_eq!(secp256k1_fp_mul(&x, &results), [1, 0, 0, 0]);
     }
 }
