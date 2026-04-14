@@ -17,17 +17,17 @@ ensure_sudo() {
 install_cuda() {
     local CUDA_VER="${1:-12-1}"
 
-    echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER} for ${distro}..."
+    echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER}..."
 
-    ensure_sudo apt-get update
+    ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y --no-install-recommends gnupg2 curl ca-certificates software-properties-common || return 1
 
     wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
 
-    ensure_sudo dpkg -i cuda-keyring_1.1-1_all.deb
-    ensure_sudo apt-get update
+    ensure_sudo dpkg -i cuda-keyring_1.1-1_all.deb || return 1
+    ensure_sudo apt-get update || return 1
 
-    ensure_sudo apt-get install -y cuda-toolkit-${CUDA_VER}
+    ensure_sudo apt-get install -y cuda-toolkit-${CUDA_VER} || return 1
 }
 
 # install_dependencies_linux: Install package dependencies for Linux
@@ -51,7 +51,7 @@ install_dependencies_linux() {
 
     step "Installing package dependencies for linux x86_64..."
 
-    ensure_sudo apt-get update
+    ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
     ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \

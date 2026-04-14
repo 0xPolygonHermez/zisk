@@ -131,11 +131,6 @@ jobs:
             cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
           fi
 
-          ARCHIVE_FILE="cargo_zisk_${PLATFORM_NAME}_${ARCH}.tar.gz"
-          tar -czvf "$ARCHIVE_FILE" -C zisk-dist .
-
-          echo "file_name=$ARCHIVE_FILE" >> $GITHUB_OUTPUT
-
       - name: Build binaries (GPU)
         if: matrix.platform == 'linux'
         shell: bash
