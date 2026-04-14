@@ -237,16 +237,14 @@ impl ZiskProve {
 
             if let Some(proof_id) = &result.get_proof_id() {
                 let output_file: PathBuf = match result.get_proof().proof {
-                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => {
-                        self.output
-                            .clone()
-                            .unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin"))
-                    }
-                    ZiskProof::Plonk(_) => {
-                        self.output
-                            .clone()
-                            .unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin"))
-                    }
+                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => self
+                        .output
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin")),
+                    ZiskProof::Plonk(_) => self
+                        .output
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin")),
                     _ => {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }

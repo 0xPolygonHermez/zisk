@@ -12,7 +12,7 @@ use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
 
 use crate::common::{detect_current_project_elf, get_proving_key};
-use crate::ux::{print_banner_field, print_banner};
+use crate::ux::{print_banner, print_banner_field};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

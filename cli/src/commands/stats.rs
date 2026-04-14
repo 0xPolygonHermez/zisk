@@ -10,8 +10,8 @@ use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
 
-use crate::ux::{print_banner, print_banner_command, print_banner_field};
 use crate::common::detect_current_project_elf;
+use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
