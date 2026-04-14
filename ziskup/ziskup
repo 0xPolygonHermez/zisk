@@ -338,6 +338,8 @@ OPTIONS:
     --platform      Install a specific platform (supports linux and darwin)
     --provingkey    Install the proving key
     --verifykey     Install the verify key
+    --gpu           Install the GPU version (linux only)
+    --cpu           Install the CPU version (linux only)
     --nokey         No proving/verify key installation
 
 COMMANDS:

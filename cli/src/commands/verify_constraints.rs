@@ -16,7 +16,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
 pub struct ZiskVerifyConstraints {
-    /// Path to the program ELF file
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 

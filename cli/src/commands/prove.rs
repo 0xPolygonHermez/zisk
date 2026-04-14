@@ -16,7 +16,7 @@ use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, Zi
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate a proof from the execution of the guest program
 pub struct ZiskProve {
-    /// Path to the program ELF file
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 

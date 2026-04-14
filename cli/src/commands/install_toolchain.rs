@@ -20,8 +20,8 @@ use crate::{get_target, get_toolchain_download_url, is_supported_target};
 /// Install the cargo-zisk toolchain
 pub struct ZiskInstallToolchain {
     /// Version of the toolchain to install (default: latest)
-    #[arg(short = 'v', long)]
-    version: Option<String>,
+    #[arg(short = 't', long)]
+    toolchain_version: Option<String>,
 
     /// Name assigned to the toolchain (default: zisk)
     #[arg(short = 'n', long)]
@@ -97,7 +97,7 @@ impl ZiskInstallToolchain {
                 let rt = tokio::runtime::Runtime::new()?;
 
                 let toolchain_download_url =
-                    rt.block_on(get_toolchain_download_url(&target, &self.version));
+                    rt.block_on(get_toolchain_download_url(&target, &self.toolchain_version));
 
                 let mut file = fs::File::create(&toolchain_archive_path)?;
                 rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))

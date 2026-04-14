@@ -18,7 +18,7 @@ use crate::ux::{print_banner_field, print_banner};
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Setup guest program
 pub struct ZiskProgramSetup {
-    /// Path to the program ELF file
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 
