@@ -83,11 +83,11 @@ pub struct ZiskStats {
     #[arg(long, hide = true)]
     pub mpi_node: Option<usize>,
 
-    /// Write generate trace in packed format
+    /// Disable packed format for trace generation
     #[arg(short = 'a', long, hide = true)]
     pub no_packed: bool,
 
-    /// Generate debug file
+    /// Path to a debug configuration file
     #[arg(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }
