@@ -194,7 +194,7 @@ test_elf() {
                 ensure cargo-zisk prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -o proof $PROVE_FLAGS \
+                    -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
                     err "prove failed for ${input_file}"
@@ -202,12 +202,12 @@ test_elf() {
                 fi
 
                 # move result.json into PROOF_RESULTS_DIR
-                mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
-                result_files+=("${input_file}")
+                # mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
+                # result_files+=("${input_file}")
 
                 step "Verifying proof for ${input_file}..."
                 ensure cargo-zisk verify \
-                    -p ./proof/vadcop_final_proof.bin \
+                    -p ./proof.bin \
                     2>&1 | tee "verify_${input_file}.log" || return 1
                 if ! grep -F "STARK proof was verified" "verify_${input_file}.log"; then
                     err "verify proof failed for ${input_file}"
@@ -234,7 +234,7 @@ test_elf() {
                 ensure $MPI_CMD cargo-zisk prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -o proof $PROVE_FLAGS \
+                    -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_dist_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" \
                         "prove_dist_${input_file}.log"; then
@@ -243,9 +243,9 @@ test_elf() {
                 fi
 
                 # move result.json into PROOF_RESULTS_DIR
-                dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
-                mv proof/result.json "${dest_result_file}"
-                result_dist_files+=("${input_file}")
+                # dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
+                # mv proof/result.json "${dest_result_file}"
+                # result_dist_files+=("${input_file}")
             done
         fi
     else

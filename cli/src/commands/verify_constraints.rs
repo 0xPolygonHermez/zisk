@@ -70,7 +70,8 @@ pub struct ZiskVerifyConstraints {
     #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
-    #[clap(short = 'd', long)]
+    /// Generate debug file
+    #[clap(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }
 

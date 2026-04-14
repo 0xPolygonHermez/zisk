@@ -44,9 +44,9 @@ pub struct ZiskProve {
     #[arg(short = 'w', long)]
     pub proving_key_plonk: Option<PathBuf>,
 
-    /// Save the generated proof to the specified directory
-    #[arg(short = 'o', long, default_value = "proof")]
-    pub output_dir: PathBuf,
+    /// Save the generated proof to the specified file path
+    #[arg(short = 'o', long)]
+    pub output: Option<PathBuf>,
 
     /// Enable proofs aggregation
     #[arg(short = 'a', long)]
@@ -78,7 +78,6 @@ pub struct ZiskProve {
     pub unlock_mapped_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
-    // TODO: Review default value
     #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
@@ -237,16 +236,24 @@ impl ZiskProve {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
             if let Some(proof_id) = &result.get_proof_id() {
-                let output_dir = match result.get_proof().proof {
+                let output_file = match result.get_proof().proof {
                     ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => {
-                        self.output_dir.join("vadcop_final_proof.bin")
+                        match &self.output {
+                            Some(path) => path,
+                            None => &PathBuf::from("vadcop_final_proof.bin"),
+                        }
                     }
-                    ZiskProof::Plonk(_) => self.output_dir.join("final_plonk_proof.bin"),
+                    ZiskProof::Plonk(_) => {
+                        match &self.output {
+                            Some(path) => path,
+                            None => &PathBuf::from("final_plonk_proof.bin"),
+                        }
+                    }
                     _ => {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }
                 };
-                result.save_proof(output_dir)?;
+                result.save_proof(output_file)?;
                 info!("Proof ID: {}", proof_id);
                 info!("Proof Time: {:.3} seconds", result.duration.as_secs_f64());
             }

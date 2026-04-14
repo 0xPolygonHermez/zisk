@@ -50,24 +50,13 @@ pub struct ZiskStats {
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// MPI node index for distributed execution
-    // TODO: Review description
-    #[arg(long)]
-    pub mpi_node: Option<usize>,
-
     /// Maximum memory (bytes) for witness storage during proving
-    // TODO: Review default value
     #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
     pub minimal_memory: bool,
-
-    /// Pack execution data into a compact representation for statistics
-    // TODO: Review desc, should be hidden?
-    #[arg(short = 'a', long)]
-    pub packed: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -86,11 +75,19 @@ pub struct ZiskStats {
     #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
+    /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
-    /// Enable debug mode with optional output path
-    // TODO: Review description
+    /// Simulate MPI node index
+    #[arg(long, hide = true)]
+    pub mpi_node: Option<usize>,
+
+    /// Write generate trace in packed format
+    #[arg(short = 'a', long, hide = true)]
+    pub no_packed: bool,
+
+    /// Generate debug file
     #[arg(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }
@@ -178,7 +175,7 @@ impl ZiskStats {
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let mut prover_options = BackendProverOpts::default();
 
-        if self.packed {
+        if !self.no_packed {
             prover_options = prover_options.packed();
         }
         if let Some(ref path) = self.proving_key {
@@ -216,7 +213,7 @@ impl ZiskStats {
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
-        if self.packed {
+        if !self.no_packed {
             prover_options = prover_options.packed();
         }
         if let Some(ref path) = self.proving_key {
