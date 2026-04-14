@@ -39,10 +39,10 @@ print_proofs_result() {
         cycles=$(sed -nE 's/.*"cycles"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$fullpath")
 
 
-        printf "| %-30s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
+        printf "| %-35s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
     done
 
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
 
     echo
 }
