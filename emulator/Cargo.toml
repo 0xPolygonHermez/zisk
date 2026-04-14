@@ -26,10 +26,13 @@ mem-common = { workspace = true }
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 proofman-common = { workspace = true }
+zisk-definitions = { workspace = true }
 
 fields = { workspace=true }
 clap = { workspace = true }
 sysinfo = { workspace = true }
+serde_json = { workspace = true }
+flate2 = "1.0"
 object = "0.37.3"
 memmap2 = "0.9.8"
 num-format = "0.4"
@@ -51,5 +54,6 @@ harness = false
 default = []
 debug_stats_trace = []
 minimal_trace_index_debug = []
+handle_stdout = []
 debug_call_stack = []
 # sp = []

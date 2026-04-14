@@ -27,8 +27,6 @@
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
-//! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
-//! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
@@ -49,14 +47,14 @@
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
 //! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xc0000000 - 0x10000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xbfff0000     (0xc0000000 - 0x10000)`
 //! `|`
 //! `| Contains float library memory, available for normal R/W`
 //! `| used during library execution (bottom-up).`
 //! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xc0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = 0xbffffff0           (0xc0000000 - 16)`
 //! `|`
 //! `|--------------- END OF RAM                          (0xc0000000)`
 //! `      ...`
@@ -125,8 +123,12 @@ pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
+/// Size of the BIOS instruction area
+pub const ROM_ENTRY_SIZE: u64 = 1 << 20;
 /// Last BIOS instruction address, i.e. last instruction executed
 pub const ROM_EXIT: u64 = 0x1004;
+/// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
+pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
@@ -375,6 +377,38 @@ impl Mem {
             ),
             _ => panic!("Mem::read() invalid width={width}"),
         }
+    }
+
+    #[inline(always)]
+    pub fn read_slice(&self, addr: u64, count: u64) -> &[u8] {
+        debug_assert!(!Mem::address_is_register(addr));
+
+        // First try to read in the write section
+        if (addr >= self.write_section.start) && ((addr + count) <= self.write_section.end) {
+            // Calculate the read position
+            let read_position: usize = (addr - self.write_section.start) as usize;
+            return &self.write_section.buffer[read_position..read_position + count as usize];
+        }
+
+        // Search for the section that contains the address using binary search (dicothomic search).
+        // Read sections are ordered by start address to allow this search.
+        let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
+            if addr < section.start {
+                std::cmp::Ordering::Greater
+            } else if addr > section.end - count {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            &self.read_sections[section]
+        } else {
+            panic!("Mem::read() section not found for addr: {addr}={addr:x} with count: {count}");
+        };
+
+        // Calculate the buffer relative read position
+        let read_position: usize = (addr - section.start) as usize;
+        &section.buffer[read_position..read_position + count as usize]
     }
 
     /*

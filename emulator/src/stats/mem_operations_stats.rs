@@ -56,7 +56,9 @@ impl MemoryOperationsStats {
     pub fn memory_write(&mut self, address: u64, width: u64, value: u64) {
         if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram.memory_write(address, width, value);
-            self.pages.entry(address >> 24).or_default().memory_write(address, width, value);
+            if self.full {
+                self.pages.entry(address >> 24).or_default().memory_write(address, width, value);
+            }
         } else if (ROM_ADDR..=ROM_ADDR_MAX).contains(&address) {
             self.rom.memory_write(address, width, value);
         } else if (INPUT_ADDR..(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
@@ -76,7 +78,9 @@ impl MemoryOperationsStats {
     pub fn memory_read(&mut self, address: u64, width: u64) {
         if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram.memory_read(address, width);
-            self.pages.entry(address >> 24).or_default().memory_read(address, width);
+            if self.full {
+                self.pages.entry(address >> 24).or_default().memory_read(address, width);
+            }
         } else if (ROM_ADDR..=ROM_ADDR_MAX).contains(&address) {
             self.rom.memory_read(address, width);
         } else if (INPUT_ADDR..=(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
