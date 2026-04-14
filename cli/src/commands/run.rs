@@ -120,9 +120,9 @@ impl ZiskRun {
         }
         if self.profiling.is_some() {
             cmd += match self.profiling.unwrap() {
-                ProfilingMode::Inline => "—-sdk —-profile-tags",
-                ProfilingMode::Summary => "—-sdk —-opcodes —-top-functions",
-                ProfilingMode::Complete => "—-sdk —-profiler-output",
+                ProfilingMode::Inline => " --sdk --profile-tags",
+                ProfilingMode::Summary => " --sdk --opcodes --top-functions",
+                ProfilingMode::Complete => " --sdk --profiler-output",
             };
         }
         cmd
