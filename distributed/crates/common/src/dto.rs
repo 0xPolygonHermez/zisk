@@ -90,6 +90,8 @@ pub struct LaunchProofRequestDto {
     pub inputs_mode: InputsModeDto,
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
+    pub metadata: std::collections::BTreeMap<String, String>,
+    pub execution_only: bool,
 }
 
 pub struct LaunchProofResponseDto {
@@ -173,6 +175,7 @@ pub enum ExecuteTaskRequestTypeDto {
     ContributionParams(ContributionParamsDto),
     ProveParams(ProveParamsDto),
     AggParams(AggParamsDto),
+    ExecutionParams(ContributionParamsDto),
 }
 
 pub struct ContributionParamsDto {
@@ -210,6 +213,7 @@ pub struct WitnessInfoDto {
     pub publics: Vec<u64>,
     pub proof_values: Vec<u64>,
     pub summary_info: String,
+    pub total_instances: u64,
 }
 
 #[derive(Clone)]
@@ -241,6 +245,12 @@ pub struct ChallengesDto {
     pub challenge: Vec<u64>,
 }
 
+pub struct ExecutionResultDataDto {
+    pub instances: u64,
+    pub executed_steps: u64,
+    pub zisk_executor_time: ZiskExecutorTimeDto,
+}
+
 pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
@@ -257,6 +267,7 @@ pub struct ProofDto {
 pub struct FinalProofDto {
     pub values: Vec<u64>,
     pub executed_steps: u64,
+    pub instances: u64,
 }
 
 pub struct ExecuteTaskResponseDto {
@@ -274,6 +285,7 @@ pub struct ContributionsResultDataDto {
 }
 
 pub enum ExecuteTaskResponseResultDataDto {
+    Execution(ExecutionResultDataDto),
     Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),

@@ -61,6 +61,8 @@ message LaunchProofRequest {
   HintsMode hints_mode = 6;
   optional string hints_uri = 7;
   optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
+  map<string, string> metadata = 9; // Optional metadata for extensibility and logging
+  bool execution_only = 10; // If true, only execute without generating proofs
 }
 
 enum InputMode {
@@ -230,6 +232,7 @@ message ExecuteTaskRequest {
     ContributionParams contribution_params = 4;
     ProveParams prove_params = 5;
     AggParams agg_params = 6;
+    ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
   }
 }
 
@@ -237,6 +240,7 @@ enum TaskType {
   PARTIAL_CONTRIBUTION = 0;
   PROVE = 1;
   AGGREGATE = 2;
+  EXECUTION = 3; // Execute-only mode without proof generation
 }
 
 message ContributionParams {
@@ -290,9 +294,10 @@ message ExecuteTaskResponse {
   bool success = 4;
   string error_message = 5; // Optional error message if success is false
   oneof result_data {
-    ChallengesList challenges = 6;
-    ProofList proofs = 7;
-    FinalProof final_proof = 8;
+    Execution execution = 6;
+    ChallengesList challenges = 7;
+    ProofList proofs = 8;
+    FinalProof final_proof = 9;
   }
 }
 
@@ -301,6 +306,7 @@ message WitnessExecInfo {
   repeated uint64 publics = 2;
   repeated uint64 proof_values = 3;
   string summary_info = 4;
+  uint64 total_instances = 5;
 }
 
 message AsmExecuteInfo {
@@ -323,6 +329,12 @@ message ChallengesList {
   ZiskExecuteTime zisk_execution_time = 3;
 }
 
+message Execution {
+  uint64 instances = 1;
+  uint64 executed_steps = 2;
+  ZiskExecuteTime zisk_execution_time = 3;
+}
+
 message Challenges {
   uint32 worker_index = 1;
   uint32 airgroup_id = 2;
@@ -342,6 +354,7 @@ message Proof {
 message FinalProof {
   repeated uint64 values = 1;
   uint64 executed_steps = 2;
+  uint64 instances = 3;
 }
 
 message WorkerError {

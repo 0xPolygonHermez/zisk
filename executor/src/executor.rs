@@ -168,6 +168,8 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         timer_start_info!(PLAN);
         let start_partial = Instant::now();
 
+        self.planner.assign_rom_instance(&pctx);
+
         let main_output = self.planner.plan_main::<F>(&output.min_traces, output.main_count);
         *self.state.min_traces.write().unwrap() = Some(output.min_traces);
 

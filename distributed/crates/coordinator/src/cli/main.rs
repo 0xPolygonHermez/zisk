@@ -2,6 +2,19 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
+fn parse_key_val<T, U>(
+    s: &str,
+) -> Result<(T, U), Box<dyn std::error::Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: std::error::Error + Send + Sync + 'static,
+{
+    let pos = s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
+
 mod handler_coordinator;
 mod handler_prove;
 
@@ -101,6 +114,14 @@ enum ZiskCoordinatorCommands {
 
         #[arg(long, help = "Simulated node ID")]
         simulated_node: Option<u32>,
+
+        /// Metadata key-value pairs (can be specified multiple times: --metadata key1=value1 --metadata key2=value2)
+        #[arg(long, value_parser = parse_key_val::<String, String>)]
+        metadata: Vec<(String, String)>,
+
+        /// If true, only execute without generating proofs
+        #[arg(long, default_value_t = false)]
+        execution_only: bool,
     },
 }
 
@@ -120,6 +141,8 @@ async fn main() -> Result<()> {
             compute_capacity,
             minimal_compute_capacity,
             simulated_node,
+            metadata,
+            execution_only,
         }) => {
             // Run the "prove" subcommand
             handler_prove::handle(
@@ -132,6 +155,8 @@ async fn main() -> Result<()> {
                 compute_capacity,
                 minimal_compute_capacity,
                 simulated_node,
+                metadata,
+                execution_only,
             )
             .await
         }

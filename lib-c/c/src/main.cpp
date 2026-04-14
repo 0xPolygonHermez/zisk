@@ -1318,8 +1318,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    setlocale(LC_NUMERIC, "en_US.UTF-8");  // usa locale del sistema
-    // o específico:    
+    setlocale(LC_NUMERIC, "en_US.UTF-8");  // use system locale
+    // or specific:
     uint64_t *data = (uint64_t *)malloc(N_TESTS * MAX_TEST_SIZE_U64 * sizeof(uint64_t));
     printf("Test                        |duration   (us)|average    (ns)|TP (Mcalls/sec)\n");
     printf("----------------------------|---------------|---------------|---------------\n");

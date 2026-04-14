@@ -175,6 +175,8 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
             hints_mode: hints_mode.into(),
             hints_uri,
             simulated_node: dto.simulated_node,
+            metadata: dto.metadata.into_iter().collect(),
+            execution_only: dto.execution_only,
         }
     }
 }
@@ -220,6 +222,8 @@ impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
                 }
             },
             simulated_node: req.simulated_node,
+            metadata: req.metadata.into_iter().collect(),
+            execution_only: req.execution_only,
         })
     }
 }
@@ -331,6 +335,9 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             ExecuteTaskRequestTypeDto::AggParams(ap) => {
                 (execute_task_request::Params::AggParams(ap.into()), TaskType::Aggregate)
             }
+            ExecuteTaskRequestTypeDto::ExecutionParams(ep) => {
+                (execute_task_request::Params::ExecutionParams(ep.into()), TaskType::Execution)
+            }
         };
 
         ExecuteTaskRequest {
@@ -425,6 +432,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     publics: witness_info.publics,
                     proof_values: witness_info.proof_values,
                     summary_info: witness_info.summary_info,
+                    total_instances: witness_info.total_instances,
                 };
                 let exec_time = challenges_list.zisk_execution_time.unwrap();
                 let zisk_executor_time = ZiskExecutorTimeDto {
@@ -444,6 +452,27 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     zisk_executor_time,
                 }))
             }
+            Some(execute_task_response::ResultData::Execution(exec_data)) => {
+                let zisk_execution_time = exec_data.zisk_execution_time.unwrap();
+
+                Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
+                    instances: exec_data.instances,
+                    executed_steps: exec_data.executed_steps,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        task_received_time: zisk_execution_time.task_received_time,
+                        total_duration: zisk_execution_time.total_duration,
+                        execution_duration: zisk_execution_time.execution_duration,
+                        count_and_plan_duration: zisk_execution_time.count_and_plan_duration,
+                        count_and_plan_mo_duration: zisk_execution_time.count_and_plan_mo_duration,
+                        asm_execution_duration: zisk_execution_time.asm_execution_duration.map(
+                            |asm_info| AsmExecutionInfoDto {
+                                time: asm_info.time,
+                                mhz: asm_info.mhz,
+                            },
+                        ),
+                    },
+                }))
+            }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
                 let proofs: Vec<ProofDto> = proof_list
                     .proofs
@@ -460,6 +489,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
                     values: final_proof.values,
                     executed_steps: final_proof.executed_steps,
+                    instances: final_proof.instances,
                 }))
             }
             None => None,

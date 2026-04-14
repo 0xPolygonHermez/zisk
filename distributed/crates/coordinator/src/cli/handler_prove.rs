@@ -20,6 +20,8 @@ pub async fn handle(
     compute_capacity: u32,
     minimal_compute_capacity: Option<u32>,
     simulated_node: Option<u32>,
+    metadata: Vec<(String, String)>,
+    execution_only: bool,
 ) -> Result<()> {
     // Initialize tracing - keep guard alive for application lifetime
     let _log_guard = zisk_distributed_common::tracing::init(None, None)?;
@@ -72,6 +74,8 @@ pub async fn handle(
         hints_mode: hints_mode.into(),
         hints_uri,
         simulated_node,
+        metadata: metadata.into_iter().collect(),
+        execution_only,
     };
 
     // Make the RPC call

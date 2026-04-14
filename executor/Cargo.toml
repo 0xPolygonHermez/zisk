@@ -60,6 +60,7 @@ packed = [
     "precomp-keccakf/packed",
     "precomp-sha256f/packed",
     "precomp-poseidon2/packed",
+    "precomp-blake2/packed",
     "precomp-arith-eq/packed",
     "precomp-arith-eq-384/packed",
     "precomp-big-int/packed",

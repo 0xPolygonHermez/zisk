@@ -314,7 +314,7 @@ mod memcpy_tests {
             println!("Auto-prefixed:       {:#x}", ptr as usize);
             println!("Debug format:        {:?}", ptr);
 
-            // También mostrar como imprimir la data
+            // Also show how to print the data
             println!("\nData at pointer:");
             println!("Hex bytes:           {:02x?}", data);
             println!("Hex UPPER bytes:     {:02X?}", data);
