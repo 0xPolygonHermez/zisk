@@ -469,5 +469,5 @@ where
         fire_result_event(&subs_task, &result);
         result
     });
-    Ok(JobHandle { inner: JobHandleInner::Embedded(handle), subscribers: subs, timeout })
+    Ok(JobHandle { inner: Some(JobHandleInner::Embedded(handle)), subscribers: subs, timeout })
 }

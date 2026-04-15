@@ -24,9 +24,10 @@ use crate::setup::SetupResult;
 use crate::Proof;
 
 const CANCELLED: &str = "Cancelled";
-const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 3600;
-const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
-const WAIT_TIMEOUT_MAX_SECS: u32 = 3600;
+/// Per-call hold duration sent to the gateway's WaitJobResult long-poll.
+/// The gateway returns early as soon as the job reaches a terminal state,
+/// so this only controls how often we re-poll when the job is still running.
+const WAIT_POLL_SECS: u32 = 30;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
@@ -62,7 +63,7 @@ pub(crate) trait FromJobResult: Sized + Send + 'static {
 
 pub(crate) enum JobHandleInner<T> {
     Embedded(JoinHandle<Result<T>>),
-    Remote { gateway: ZiskGatewayApiClient<Channel>, job_id: JobId },
+    Remote { gateway: ZiskGatewayApiClient<Channel>, job_id: JobId, watch_task: JoinHandle<()> },
 }
 
 /// Handle to an in-flight job (embedded or remote).
@@ -71,7 +72,7 @@ pub(crate) enum JobHandleInner<T> {
 /// Await the handle to get the result: `let proof = handle.await?`.
 #[must_use = "JobHandle does nothing unless awaited"]
 pub struct JobHandle<T> {
-    pub(crate) inner: JobHandleInner<T>,
+    pub(crate) inner: Option<JobHandleInner<T>>,
     pub(crate) subscribers: SubscriberList,
     pub(crate) timeout: Option<Duration>,
 }
@@ -82,7 +83,7 @@ impl<T> JobHandle<T> {
         subscribers: SubscriberList,
         timeout: Option<Duration>,
     ) -> Self {
-        Self { inner: JobHandleInner::Embedded(handle), subscribers, timeout }
+        Self { inner: Some(JobHandleInner::Embedded(handle)), subscribers, timeout }
     }
 
     pub fn new_remote(
@@ -91,7 +92,25 @@ impl<T> JobHandle<T> {
         subscribers: SubscriberList,
         timeout: Option<Duration>,
     ) -> Self {
-        Self { inner: JobHandleInner::Remote { gateway, job_id }, subscribers, timeout }
+        let mut watch_gw = gateway.clone();
+        let watch_jid = job_id.clone();
+        let subs_watch = Arc::clone(&subscribers);
+        let watch_task = tokio::spawn(async move {
+            if let Ok(resp) = watch_gw.watch_job(WatchJobRequest { job_id: watch_jid.into() }).await
+            {
+                let mut stream = resp.into_inner();
+                while let Some(Ok(event)) = stream.next().await {
+                    if map_and_fire_event(&subs_watch, event) {
+                        break;
+                    }
+                }
+            }
+        });
+        Self {
+            inner: Some(JobHandleInner::Remote { gateway, job_id, watch_task }),
+            subscribers,
+            timeout,
+        }
     }
 
     /// Register a post-submission event callback.
@@ -107,7 +126,17 @@ impl<T> JobHandle<T> {
         }
         self
     }
+}
 
+impl<T> Drop for JobHandle<T> {
+    fn drop(&mut self) {
+        if let Some(JobHandleInner::Remote { watch_task, .. }) = &self.inner {
+            watch_task.abort();
+        }
+    }
+}
+
+impl<T> JobHandle<T> {
     /// Cancel the in-flight job.
     ///
     /// - Embedded: aborts the blocking task (the thread runs to completion but the
@@ -117,10 +146,10 @@ impl<T> JobHandle<T> {
     ///   already reached a terminal state before the request arrived.
     pub async fn cancel(&mut self) -> Result<bool> {
         match &self.inner {
-            JobHandleInner::Embedded(_handle) => {
+            Some(JobHandleInner::Embedded(_handle)) => {
                 unimplemented!("cancelling embedded jobs is not supported yet")
             }
-            JobHandleInner::Remote { gateway, job_id, .. } => {
+            Some(JobHandleInner::Remote { gateway, job_id, .. }) => {
                 let mut gw = gateway.clone();
                 let resp = gw
                     .cancel_job(CancelJobRequest { job_id: job_id.clone().into() })
@@ -128,7 +157,84 @@ impl<T> JobHandle<T> {
                     .map_err(|e| anyhow::anyhow!("CancelJob RPC failed: {e}"))?;
                 Ok(resp.into_inner().cancelled)
             }
+            None => anyhow::bail!("cannot cancel: JobHandle already consumed"),
         }
+    }
+}
+
+#[allow(private_bounds)]
+impl<T: FromJobResult> JobHandle<T> {
+    async fn await_embedded(handle: JoinHandle<Result<T>>, timeout: Option<Duration>) -> Result<T> {
+        if let Some(dur) = timeout {
+            tokio::time::timeout(dur, handle)
+                .await
+                .map_err(|_| anyhow::anyhow!("job timed out after {dur:?}"))?
+                .map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
+        } else {
+            handle.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
+        }
+    }
+
+    /// WaitJobResult is a long-poll: the gateway holds the request for up to WAIT_POLL_SECS
+    /// and returns early when the job finishes. If it returns a non-terminal status we loop
+    /// until the job completes or the deadline is exceeded.
+    async fn await_remote(
+        mut gateway: ZiskGatewayApiClient<Channel>,
+        job_id: JobId,
+        watch_task: JoinHandle<()>,
+        timeout: Option<Duration>,
+        subscribers: SubscriberList,
+    ) -> Result<T> {
+        let deadline = timeout.map(|d| tokio::time::Instant::now() + d);
+
+        let inner = loop {
+            if let Some(dl) = deadline {
+                if tokio::time::Instant::now() >= dl {
+                    watch_task.abort();
+                    anyhow::bail!("job timed out after {:?}", timeout.unwrap());
+                }
+            }
+
+            let resp = match gateway
+                .wait_job_result(WaitJobResultRequest {
+                    job_id: job_id.clone().into(),
+                    timeout_seconds: Some(WAIT_POLL_SECS),
+                })
+                .await
+            {
+                Ok(r) => r.into_inner(),
+                Err(e) => {
+                    watch_task.abort();
+                    return Err(anyhow::anyhow!("WaitJobResult failed: {e}"));
+                }
+            };
+
+            match resp.job_status.as_ref().and_then(|s| s.status.as_ref()) {
+                Some(JobStatusVariant::Completed(_))
+                | Some(JobStatusVariant::Failed(_))
+                | Some(JobStatusVariant::Cancelled(_)) => break resp,
+                _ => continue,
+            }
+        };
+
+        watch_task.abort();
+
+        if let Some(status) = &inner.job_status {
+            match &status.status {
+                Some(JobStatusVariant::Completed(_)) => {
+                    fire_event(&subscribers, JobEvent::Completed);
+                }
+                Some(JobStatusVariant::Failed(f)) => {
+                    fire_event(&subscribers, JobEvent::Failed(format_failure(f.failure.as_ref())));
+                }
+                Some(JobStatusVariant::Cancelled(_)) => {
+                    fire_event(&subscribers, JobEvent::Failed(CANCELLED.to_string()));
+                }
+                _ => {}
+            }
+        }
+
+        T::from_job_result(inner)
     }
 }
 
@@ -136,79 +242,15 @@ impl<T: Send + 'static + FromJobResult> IntoFuture for JobHandle<T> {
     type Output = Result<T>;
     type IntoFuture = Pin<Box<dyn Future<Output = Result<T>> + Send>>;
 
-    fn into_future(self) -> Self::IntoFuture {
+    fn into_future(mut self) -> Self::IntoFuture {
+        let inner = self.inner.take().expect("JobHandle already consumed");
+        let timeout = self.timeout;
+        let subscribers = Arc::clone(&self.subscribers);
         Box::pin(async move {
-            match self.inner {
-                JobHandleInner::Embedded(handle) => {
-                    if let Some(dur) = self.timeout {
-                        tokio::time::timeout(dur, handle)
-                            .await
-                            .map_err(|_| anyhow::anyhow!("job timed out after {dur:?}"))?
-                            .map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
-                    } else {
-                        handle.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
-                    }
-                }
-                JobHandleInner::Remote { mut gateway, job_id } => {
-                    let timeout_secs = self
-                        .timeout
-                        .map(|d| {
-                            d.as_secs()
-                                .clamp(WAIT_TIMEOUT_MIN_SECS as u64, WAIT_TIMEOUT_MAX_SECS as u64)
-                                as u32
-                        })
-                        .unwrap_or(WAIT_TIMEOUT_DEFAULT_SECS);
-
-                    let subs_watch = Arc::clone(&self.subscribers);
-                    let mut watch_gw = gateway.clone();
-                    let jid = job_id.clone();
-                    let watch_task = tokio::spawn(async move {
-                        if let Ok(resp) =
-                            watch_gw.watch_job(WatchJobRequest { job_id: jid.into() }).await
-                        {
-                            let mut stream = resp.into_inner();
-                            while let Some(Ok(event)) = stream.next().await {
-                                if map_and_fire_event(&subs_watch, event) {
-                                    break;
-                                }
-                            }
-                        }
-                    });
-
-                    let resp = gateway
-                        .wait_job_result(WaitJobResultRequest {
-                            job_id: job_id.into(),
-                            timeout_seconds: Some(timeout_secs),
-                        })
-                        .await
-                        .map_err(|e| anyhow::anyhow!("WaitJobResult failed: {e}"))?;
-
-                    watch_task.abort();
-
-                    let inner = resp.into_inner();
-
-                    if let Some(status) = &inner.job_status {
-                        match &status.status {
-                            Some(JobStatusVariant::Completed(_)) => {
-                                fire_event(&self.subscribers, JobEvent::Completed);
-                            }
-                            Some(JobStatusVariant::Failed(f)) => {
-                                fire_event(
-                                    &self.subscribers,
-                                    JobEvent::Failed(format_failure(f.failure.as_ref())),
-                                );
-                            }
-                            Some(JobStatusVariant::Cancelled(_)) => {
-                                fire_event(
-                                    &self.subscribers,
-                                    JobEvent::Failed(CANCELLED.to_string()),
-                                );
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    T::from_job_result(inner)
+            match inner {
+                JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
+                JobHandleInner::Remote { gateway, job_id, watch_task } => {
+                    Self::await_remote(gateway, job_id, watch_task, timeout, subscribers).await
                 }
             }
         })

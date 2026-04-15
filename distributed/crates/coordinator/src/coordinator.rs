@@ -42,7 +42,7 @@ use chrono::{DateTime, Utc};
 use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -126,6 +126,10 @@ pub struct Coordinator {
 
     /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
     job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
+
+    /// Tracks in-flight setup jobs: maps job_id to the set of worker IDs that have not yet ACK'd.
+    /// Removed once all workers have acknowledged (or the job is cancelled/failed).
+    setup_pending: RwLock<HashMap<JobId, HashSet<WorkerId>>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -153,6 +157,7 @@ impl Coordinator {
             registrations: AtomicU64::new(0),
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
+            setup_pending: RwLock::new(HashMap::new()),
         }
     }
 
@@ -267,7 +272,7 @@ impl Coordinator {
     }
 
     /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
-    /// Returns a synthetic `JobId` (setup tracking is async via acks).
+    /// Returns a `JobId` that can be used to track completion via `subscribe_job_events`.
     pub async fn setup_program(&self, hash_id: &str) -> CoordinatorResult<JobId> {
         use zisk_distributed_common::{elf_cache_path, SetupProgramDto};
 
@@ -278,6 +283,19 @@ impl Coordinator {
 
         let job_id = JobId::new();
         let workers = self.workers_pool.connected_worker_ids().await;
+
+        if workers.is_empty() {
+            return Err(CoordinatorError::InsufficientCapacity);
+        }
+
+        // Allocate event channel before sending to workers so subscribers can't miss events.
+        self.alloc_job_events(&job_id).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
+
+        // Track which workers must ACK before the setup is considered complete.
+        let pending: HashSet<WorkerId> = workers.iter().cloned().collect();
+        self.setup_pending.write().await.insert(job_id.clone(), pending);
+
         for worker_id in &workers {
             let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
                 job_id: job_id.as_string(),
@@ -286,7 +304,23 @@ impl Coordinator {
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
+                // Remove unreachable worker from pending set — don't block on it.
+                self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
+                    s.remove(worker_id);
+                });
             }
+        }
+
+        // Edge case: all sends failed — complete immediately with failure.
+        let should_complete =
+            self.setup_pending.read().await.get(&job_id).map(|s| s.is_empty()).unwrap_or(true);
+        if should_complete {
+            self.setup_pending.write().await.remove(&job_id);
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Failed("all workers unreachable during setup".into()),
+            )
+            .await;
         }
 
         Ok(job_id)
@@ -1045,6 +1079,8 @@ impl Coordinator {
         &self,
         ack: SetupProgramAckDto,
     ) -> CoordinatorResult<()> {
+        let job_id = JobId::from(ack.job_id.clone());
+
         if ack.success {
             info!(
                 "[Setup] Worker {} completed setup for job_id {} hash_id {}",
@@ -1059,7 +1095,33 @@ impl Coordinator {
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
         }
-        // TODO: track per-job setup completion and fire Completed(Setup) event
+
+        // Remove this worker from the pending set (regardless of success/failure).
+        let all_done = {
+            let mut pending = self.setup_pending.write().await;
+            if let Some(workers) = pending.get_mut(&job_id) {
+                workers.remove(&ack.worker_id);
+                if workers.is_empty() {
+                    pending.remove(&job_id);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // Job already completed or unknown — nothing to do.
+                return Ok(());
+            }
+        };
+
+        if all_done {
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup),
+            )
+            .await;
+            info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
+        }
+
         Ok(())
     }
 

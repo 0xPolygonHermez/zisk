@@ -3,16 +3,11 @@
 //! Used when `backend.mode = "embedded"`: the coordinator runs in the same process as the
 //! gateway. Workers still connect over gRPC to the coordinator's worker-facing port.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_stream::stream;
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::stream::iter as stream_iter;
 use tokio::{sync::RwLock, time::timeout};
 use tracing::warn;
 use uuid::Uuid;
@@ -37,22 +32,11 @@ pub struct EmbeddedCoordinatorBackend {
     /// job_id (UUID string) → hash_id: needed to populate `DomainProof.hash_id`.
     /// Entries are removed once the job reaches a terminal state.
     job_hash: Arc<RwLock<HashMap<String, String>>>,
-    /// Setup job IDs whose broadcast has been sent.
-    ///
-    /// Setup jobs are fire-and-forget to workers — there is no per-worker ack
-    /// tracking yet, so they are considered immediately complete from the
-    /// gateway's perspective. Stored here so `wait_job_result` and `watch_job`
-    /// can return `Completed(Setup)` without going through the event channel.
-    setup_jobs: Arc<RwLock<HashSet<Uuid>>>,
 }
 
 impl EmbeddedCoordinatorBackend {
     pub fn new(coordinator: Arc<Coordinator>) -> Self {
-        Self {
-            coordinator,
-            job_hash: Arc::new(RwLock::new(HashMap::new())),
-            setup_jobs: Arc::new(RwLock::new(HashSet::new())),
-        }
+        Self { coordinator, job_hash: Arc::new(RwLock::new(HashMap::new())) }
     }
 }
 
@@ -209,12 +193,10 @@ impl BackendService for EmbeddedCoordinatorBackend {
                     .map_err(coord_err_to_gateway)?;
                 let job_id = Uuid::parse_str(&job_id_internal.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
-                // Setup is fire-and-forget to workers; track the id so that
-                // wait_job_result / watch_job can return Completed immediately.
-                self.setup_jobs.write().await.insert(job_id);
                 Ok(job_id)
             }
             DomainJobKind::Prove(r) => {
+                println!("** Submitting Prove job to coordinator with hash_id {}", r.hash_id);
                 let hash_id = r.hash_id.clone();
                 let response = self
                     .coordinator
@@ -230,6 +212,7 @@ impl BackendService for EmbeddedCoordinatorBackend {
                     })
                     .await
                     .map_err(coord_err_to_gateway)?;
+                println!("** Coordinator responded with job_id {}", response.job_id.as_string());
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
@@ -267,15 +250,6 @@ impl BackendService for EmbeddedCoordinatorBackend {
         job_id: Uuid,
         timeout_dur: Duration,
     ) -> GatewayResult<WaitResult> {
-        // Setup jobs complete as soon as the broadcast is sent — no event channel needed.
-        if self.setup_jobs.read().await.contains(&job_id) {
-            return Ok(WaitResult {
-                job_id,
-                job_status: DomainJobStatus::Completed,
-                result: Some(DomainJobKindResponse::Setup),
-            });
-        }
-
         let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
         let mut rx = self
             .coordinator
@@ -323,21 +297,6 @@ impl BackendService for EmbeddedCoordinatorBackend {
     }
 
     async fn watch_job(&self, job_id: Uuid) -> GatewayResult<JobEventStream> {
-        // Setup jobs complete immediately — synthesise the event sequence and close.
-        if self.setup_jobs.read().await.contains(&job_id) {
-            let ts = Utc::now();
-            let events: Vec<GatewayResult<DomainJobEvent>> = vec![
-                Ok(DomainJobEvent::Queued(DomainJobEventQueued { job_id, timestamp: ts })),
-                Ok(DomainJobEvent::Started(DomainJobEventStarted { job_id, timestamp: ts })),
-                Ok(DomainJobEvent::Completed(DomainJobEventCompleted {
-                    job_id,
-                    result: DomainJobKindResponse::Setup,
-                    timestamp: ts,
-                })),
-            ];
-            return Ok(Box::pin(stream_iter(events)));
-        }
-
         let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
         let rx = self
             .coordinator
@@ -379,11 +338,6 @@ impl BackendService for EmbeddedCoordinatorBackend {
     }
 
     async fn cancel_job(&self, job_id: Uuid) -> GatewayResult<bool> {
-        // Setup jobs are already complete — nothing to cancel.
-        if self.setup_jobs.write().await.remove(&job_id) {
-            return Ok(false); // already terminal, not cancelled
-        }
-
         let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
         let cancelled = self
             .coordinator
