@@ -85,8 +85,8 @@ pub enum HintsModeDto {
 
 pub struct LaunchProofRequestDto {
     pub data_id: DataId,
-    pub compute_capacity: u32,
-    pub minimal_compute_capacity: u32,
+    pub compute_capacity: Option<u32>,
+    pub minimal_compute_capacity: Option<u32>,
     pub inputs_mode: InputsModeDto,
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,

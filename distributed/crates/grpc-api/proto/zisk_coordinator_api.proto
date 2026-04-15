@@ -75,16 +75,23 @@ message CoordSubmitJobRequest {
   }
 }
 
+message CoordComputeConstraints {
+  uint32 requested = 1;
+  uint32 minimum   = 2;
+}
+
 message CoordProveRequest {
   string hash_id = 1;
   CoordInputKind input = 2;
   optional google.protobuf.Timestamp proof_timeout = 3;
+  optional CoordComputeConstraints constraints = 4;
 }
 
 message CoordExecuteRequest {
   string hash_id = 1;
   CoordInputKind input = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
+  optional CoordComputeConstraints constraints = 4;
 }
 
 // Wrap is not yet implemented in the coordinator; reserved for future use.

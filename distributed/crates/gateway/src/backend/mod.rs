@@ -74,6 +74,17 @@ pub enum DomainJobKind {
     Execute(DomainExecuteRequest),
 }
 
+/// Optional compute capacity hint attached to a job request.
+///
+/// When absent the coordinator applies its configured defaults.
+/// `requested` is clamped to available capacity; the job is rejected only if
+/// available capacity falls below `minimum`.
+#[derive(Debug, Clone)]
+pub struct DomainComputeConstraints {
+    pub requested: u32,
+    pub minimum: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct DomainSetupRequest {
     pub hash_id: String,
@@ -84,6 +95,7 @@ pub struct DomainProveRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
     pub proof_timeout: Option<DateTime<Utc>>,
+    pub compute_constraints: Option<DomainComputeConstraints>,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +110,7 @@ pub struct DomainExecuteRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
     pub execute_timeout: Option<DateTime<Utc>>,
+    pub compute_constraints: Option<DomainComputeConstraints>,
 }
 
 // ── Job kind responses ────────────────────────────────────────────────────────

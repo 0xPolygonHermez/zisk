@@ -198,7 +198,7 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
     ) -> Result<Response<CoordJobResponse>, Status> {
         let req = request.into_inner();
 
-        let (inputs_mode, hints_mode, execution_only) = match req.job_kind {
+        let (inputs_mode, hints_mode, execution_only, constraints) = match req.job_kind {
             Some(coord_submit_job_request::JobKind::Prove(ref prove)) => {
                 let input_mode = prove
                     .input
@@ -213,7 +213,7 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
                         }
                     })
                     .unwrap_or(InputsModeDto::InputsNone);
-                (input_mode, HintsModeDto::HintsNone, false)
+                (input_mode, HintsModeDto::HintsNone, false, prove.constraints.clone())
             }
             Some(coord_submit_job_request::JobKind::Execute(ref exec)) => {
                 let input_mode = exec
@@ -229,7 +229,7 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
                         }
                     })
                     .unwrap_or(InputsModeDto::InputsNone);
-                (input_mode, HintsModeDto::HintsNone, true)
+                (input_mode, HintsModeDto::HintsNone, true, exec.constraints.clone())
             }
             Some(coord_submit_job_request::JobKind::Wrap(_)) => {
                 return Err(Status::unimplemented("Wrap jobs are not yet supported"));
@@ -237,10 +237,15 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
             None => return Err(Status::invalid_argument("job_kind is required")),
         };
 
+        let (compute_capacity, minimal_compute_capacity) = constraints
+            .as_ref()
+            .map(|c| (Some(c.requested), Some(c.minimum)))
+            .unwrap_or((None, None));
+
         let request_dto = LaunchProofRequestDto {
             data_id: DataId::new(),
-            compute_capacity: 10,
-            minimal_compute_capacity: 10,
+            compute_capacity,
+            minimal_compute_capacity,
             inputs_mode,
             hints_mode,
             simulated_node: None,

@@ -770,6 +770,7 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
                 proof_timeout: None,
+                compute_constraints: None,
             }))
             .await
             .unwrap();
@@ -792,6 +793,7 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
                 execute_timeout: None,
+                compute_constraints: None,
             }))
             .await
             .unwrap();

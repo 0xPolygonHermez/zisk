@@ -202,8 +202,8 @@ impl BackendService for EmbeddedCoordinatorBackend {
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
                         data_id: DataId::new(),
-                        compute_capacity: 10,
-                        minimal_compute_capacity: 10,
+                        compute_capacity: None,
+                        minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode: HintsModeDto::HintsNone,
                         simulated_node: None,
@@ -224,8 +224,8 @@ impl BackendService for EmbeddedCoordinatorBackend {
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
                         data_id: DataId::new(),
-                        compute_capacity: 10,
-                        minimal_compute_capacity: 10,
+                        compute_capacity: None,
+                        minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode: HintsModeDto::HintsNone,
                         simulated_node: None,

@@ -11,18 +11,20 @@ use tonic::transport::{Channel, Endpoint};
 use uuid::Uuid;
 use zisk_distributed_grpc_api::coordinator_api::{
     coord_input_kind, coord_job_event, coord_job_kind_result, coord_submit_job_request,
-    zisk_coordinator_api_client, CoordCancelJobRequest, CoordExecuteRequest, CoordInputChunk,
-    CoordInputKind, CoordProveRequest, CoordRegisterGuestProgramRequest, CoordSetupProgramRequest,
-    CoordSubmitJobRequest, CoordWaitJobResultRequest, CoordWatchJobRequest,
+    zisk_coordinator_api_client, CoordCancelJobRequest, CoordComputeConstraints,
+    CoordExecuteRequest, CoordInputChunk, CoordInputKind, CoordProveRequest,
+    CoordRegisterGuestProgramRequest, CoordSetupProgramRequest, CoordSubmitJobRequest,
+    CoordWaitJobResultRequest, CoordWatchJobRequest,
 };
 use zisk_distributed_grpc_api::coordinator_api::{CoordJobPhase, CoordJobStatus};
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, WaitResult,
+    BackendService, DomainComputeConstraints, DomainExecutionStats, DomainInputKind,
+    DomainJobEvent, DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed,
+    DomainJobEventProgress, DomainJobEventQueued, DomainJobEventStarted,
+    DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind, DomainJobKindResponse,
+    DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind, InputChunkStream,
+    JobEventStream, WaitResult,
 };
 use crate::errors::{internal, GatewayResult};
 
@@ -210,6 +212,12 @@ fn domain_input_to_coord(input: &DomainInputKind) -> CoordInputKind {
     }
 }
 
+impl From<DomainComputeConstraints> for CoordComputeConstraints {
+    fn from(c: DomainComputeConstraints) -> Self {
+        CoordComputeConstraints { requested: c.requested, minimum: c.minimum }
+    }
+}
+
 // ── BackendService impl ──────────────────────────────────────────────────────
 
 #[async_trait]
@@ -246,6 +254,7 @@ impl BackendService for CoordinatorBackend {
                                 hash_id: r.hash_id,
                                 input: Some(domain_input_to_coord(&r.input)),
                                 proof_timeout: None,
+                                constraints: r.compute_constraints.map(Into::into),
                             },
                         )),
                     })
@@ -266,6 +275,7 @@ impl BackendService for CoordinatorBackend {
                                 hash_id: r.hash_id,
                                 input: Some(domain_input_to_coord(&r.input)),
                                 execute_timeout: None,
+                                constraints: r.compute_constraints.map(Into::into),
                             },
                         )),
                     })

@@ -37,7 +37,6 @@ use crate::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     PrecompileHintsRelay, WorkersPool,
 };
-
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
@@ -461,36 +460,6 @@ impl Coordinator {
         }
     }
 
-    /// Pre-launch validation for proof generation requests.
-    ///
-    /// Performs a validation of proof generation parameters before
-    /// allocating resources or starting the actual proof workflow.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The proof launch request containing all necessary parameters
-    pub fn pre_launch_proof(&self, request: &LaunchProofRequestDto) -> CoordinatorResult<()> {
-        // Check if compute_capacity is within allowed limits
-        if request.compute_capacity == 0 {
-            error!("Invalid requested compute capacity");
-            return Err(CoordinatorError::InvalidArgument(
-                "Compute capacity must be greater than zero".to_string(),
-            ));
-        }
-
-        if request.minimal_compute_capacity > request.compute_capacity {
-            error!("Invalid requested minimal compute capacity");
-            return Err(CoordinatorError::InvalidArgument(
-                "Minimal compute capacity must not exceed compute capacity".to_string(),
-            ));
-        }
-
-        // Check if we have enough capacity to compute the proof is already checked
-        // in create_job > partition_and_allocate_by_capacity
-
-        Ok(())
-    }
-
     /// Initiates a new distributed proof job.
     ///
     /// This is the main entry point for proof generation requests. It orchestrates the complete
@@ -526,17 +495,14 @@ impl Coordinator {
         &self,
         request: LaunchProofRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
-        self.pre_launch_proof(&request)?;
-
-        let required_compute_capacity = ComputeCapacity::from(request.compute_capacity);
-        let minimal_compute_capacity = ComputeCapacity::from(request.minimal_compute_capacity);
+        let (requested, minimum) = self.resolve_capacity(&request).await?;
 
         // Create and configure a new job
         let mut job = self
             .create_job(
                 request.data_id.clone(),
-                required_compute_capacity,
-                minimal_compute_capacity,
+                requested,
+                minimum,
                 request.inputs_mode,
                 request.hints_mode,
                 request.simulated_node,
@@ -574,6 +540,42 @@ impl Coordinator {
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
 
         Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Resolve the compute capacity for an incoming job request.
+    pub(crate) async fn resolve_capacity(
+        &self,
+        request: &LaunchProofRequestDto,
+    ) -> CoordinatorResult<(ComputeCapacity, ComputeCapacity)> {
+        let requested = &request.compute_capacity;
+        let minimum = &request.minimal_compute_capacity;
+        let cfg = &self.config.coordinator;
+
+        // Explicit caller constraint: minimum must not exceed requested.
+        if let (Some(req), Some(min)) = (requested, minimum) {
+            if min > req {
+                return Err(CoordinatorError::InvalidArgument(
+                    "minimal_compute_capacity must not exceed compute_capacity".to_string(),
+                ));
+            }
+        }
+
+        let available = self.workers_pool.available_compute_capacity().await.compute_units;
+
+        let default_requested =
+            if cfg.default_compute_units == 0 { available } else { cfg.default_compute_units };
+
+        let requested_units = requested.unwrap_or(default_requested);
+        let minimum_units = minimum.unwrap_or(cfg.min_compute_units);
+
+        // Clamp to available — not an error to ask for more than is free right now.
+        let resolved = requested_units.min(available);
+
+        if resolved < minimum_units {
+            return Err(CoordinatorError::InsufficientCapacity);
+        }
+
+        Ok((ComputeCapacity::from(resolved), ComputeCapacity::from(minimum_units)))
     }
 
     /// Post-completion processing for proof generation jobs.

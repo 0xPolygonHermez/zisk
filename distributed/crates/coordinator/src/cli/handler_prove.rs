@@ -67,8 +67,8 @@ pub async fn handle(
 
     let launch_proof_request = LaunchProofRequest {
         data_id,
-        compute_capacity,
-        minimal_compute_capacity,
+        compute_capacity: Some(compute_capacity),
+        minimal_compute_capacity: Some(minimal_compute_capacity),
         inputs_mode: inputs_mode.into(),
         inputs_uri,
         hints_mode: hints_mode.into(),
@@ -81,7 +81,8 @@ pub async fn handle(
     // Make the RPC call
     info!(
         "Sending Launch request for data id: {} with {} compute units",
-        launch_proof_request.data_id, launch_proof_request.compute_capacity
+        launch_proof_request.data_id,
+        launch_proof_request.compute_capacity.unwrap_or(0),
     );
     let response = client.launch_proof(launch_proof_request).await?;
 

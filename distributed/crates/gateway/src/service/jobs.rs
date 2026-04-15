@@ -148,6 +148,7 @@ fn proto_job_kind_to_domain(kind: Option<JobKind>) -> Result<DomainJobKind, Stat
                 hash_id: r.hash_id,
                 input,
                 proof_timeout,
+                compute_constraints: None,
             }))
         }
         job_kind::Kind::Wrap(r) => {
@@ -165,6 +166,7 @@ fn proto_job_kind_to_domain(kind: Option<JobKind>) -> Result<DomainJobKind, Stat
                 hash_id: r.hash_id,
                 input,
                 execute_timeout,
+                compute_constraints: None,
             }))
         }
     }
