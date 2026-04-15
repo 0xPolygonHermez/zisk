@@ -71,25 +71,15 @@ pub fn eq(x: &[u64], y: &[u64]) -> bool {
 
 /// Returns true if x == 0
 pub fn is_zero(x: &[u64]) -> bool {
-    for &word in x {
-        if word != 0 {
-            return false;
-        }
-    }
-    true
+    x.iter().all(|&w| w == 0)
 }
 
 /// Returns true if x == 1
 pub fn is_one(x: &[u64]) -> bool {
-    if x[0] != 1 {
-        return false;
+    match x.split_first() {
+        Some((&first, rest)) => first == 1 && rest.iter().all(|&w| w == 0),
+        None => false,
     }
-    for &word in &x[1..] {
-        if word != 0 {
-            return false;
-        }
-    }
-    true
 }
 
 /// Returns true if x is a power of two
@@ -109,10 +99,5 @@ pub fn is_power_of_two(x: &[u64]) -> bool {
 
 /// Returns true if x fits in a single 64-bit word (i.e., x < 2^64).
 pub fn is_short(x: &[u64]) -> bool {
-    for &word in &x[1..] {
-        if word != 0 {
-            return false;
-        }
-    }
-    true
+    x.iter().skip(1).all(|&word| word == 0)
 }
