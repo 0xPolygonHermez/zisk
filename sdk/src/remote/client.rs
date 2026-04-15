@@ -120,7 +120,7 @@ impl Client for RemoteClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<Proof>> {
-        super::remote_prove::prove(self, program, input, executor, mode, timeout, subs)
+        self.do_prove(program, input, executor, mode, timeout, subs)
     }
 
     fn run_execute(
