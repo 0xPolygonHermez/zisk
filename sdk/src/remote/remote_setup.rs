@@ -1,6 +1,6 @@
 use super::RemoteClient;
 use crate::{
-    job_handle::{check_completed, JobHandle, JobHandleInner, SubscriberList},
+    job_handle::{extract_setup, JobHandle, JobHandleInner, SubscriberList},
     setup::SetupResult,
 };
 use std::time::Duration;
@@ -28,7 +28,7 @@ impl RemoteClient {
             inner: JobHandleInner::Remote {
                 gateway,
                 job_id,
-                extract: Box::new(|resp| check_completed(&resp)),
+                extract: Box::new(|resp| extract_setup(resp)),
             },
             subscribers: subs,
             timeout,

@@ -235,13 +235,18 @@ fn format_failure(failure: Option<&JobFailure>) -> String {
 }
 
 /// Assert that a `WaitJobResultResponse` is in a completed terminal state.
-pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<SetupResult> {
+pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<()> {
     match resp.job_status.as_ref().and_then(|s| s.status.as_ref()) {
-        Some(JobStatusVariant::Completed(_)) => Ok(SetupResult),
+        Some(JobStatusVariant::Completed(_)) => Ok(()),
         Some(JobStatusVariant::Failed(f)) => anyhow::bail!(format_failure(f.failure.as_ref())),
         Some(JobStatusVariant::Cancelled(_)) => anyhow::bail!("job was cancelled"),
         other => anyhow::bail!("unexpected terminal status: {:?}", other),
     }
+}
+
+pub(crate) fn extract_setup(resp: WaitJobResultResponse) -> Result<SetupResult> {
+    check_completed(&resp)?;
+    Ok(SetupResult)
 }
 
 /// Extract `Proof` from a prove job result.
