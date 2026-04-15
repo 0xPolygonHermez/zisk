@@ -321,6 +321,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         elf_bytes: &[u8],
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<()> {
+        // Check if new guest program is different from the current one to avoid unnecessary setup
+        if let Some(current_program) = &self.guest_program {
+            if current_program.program_id == new_guest_program.program_id {
+                info!("Received same guest program for setup. Skipping setup");
+                return Ok(());
+            }
+        }
+
         // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
