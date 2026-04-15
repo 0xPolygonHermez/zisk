@@ -31,6 +31,7 @@ pub struct ZiskProgramSetup {
     pub hints: bool,
 
     /// Enable GPU acceleration in assembly generation
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
@@ -70,20 +71,25 @@ impl ZiskProgramSetup {
 
         println!();
 
+        #[cfg(not(feature = "cpu-only"))]
+        let gpu = self.gpu;
+        #[cfg(feature = "cpu-only")]
+        let gpu = false;
+
         let mpi_ctx = Arc::new(MpiCtx::new());
         let mut pctx =
-            ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, self.gpu)?;
+            ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, gpu)?;
 
         let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
             &pctx.global_info,
             &ProofType::Basic,
             false,
             &[],
-            self.gpu,
+            gpu,
         )?);
         let setups_vadcop =
-            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], self.gpu)?);
-        pctx.set_device_buffers(&sctx, &setups_vadcop, false, self.gpu, 1)?;
+            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
+        pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1)?;
         let pctx = Arc::new(pctx);
 
         tracing::info!("Computing setup for ROM {}", self.elf.as_ref().unwrap().display());

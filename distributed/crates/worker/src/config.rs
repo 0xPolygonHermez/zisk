@@ -82,20 +82,9 @@ impl WorkerServiceConfig {
         coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_capacity: Option<u32>,
-        inputs_folder: Option<PathBuf>,
     ) -> Result<Self> {
         // Config file is now optional - if not provided, defaults will be used
         let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
-
-        // Check inputs folder exists if provided
-        if let Some(ref path) = inputs_folder {
-            if !path.exists() || !path.is_dir() {
-                anyhow::bail!(
-                    "Inputs folder does not exist or is not a directory: {}",
-                    path.display()
-                );
-            }
-        }
 
         // Generate a random worker ID
         let random_worker_id = format!("{}", uuid::Uuid::new_v4().simple());
@@ -126,13 +115,6 @@ impl WorkerServiceConfig {
         if let Some(compute_capacity) = compute_capacity {
             builder =
                 builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
-        }
-
-        if let Some(inputs_folder) = inputs_folder {
-            builder = builder.set_override(
-                "worker.inputs_folder",
-                inputs_folder.to_string_lossy().to_string(),
-            )?;
         }
 
         let config = builder.build()?;

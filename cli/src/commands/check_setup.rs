@@ -31,6 +31,7 @@ pub struct ZiskCheckSetup {
     pub plonk: bool,
 
     /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
@@ -46,11 +47,16 @@ impl ZiskCheckSetup {
 
         setup_logger(self.verbose.into());
 
+        #[cfg(not(feature = "cpu-only"))]
+        let gpu = self.gpu;
+        #[cfg(feature = "cpu-only")]
+        let gpu = false;
+
         ProofMan::<Goldilocks>::check_setup(
             get_proving_key(self.proving_key.as_ref())?,
             self.aggregation,
             self.verbose.into(),
-            self.gpu,
+            gpu,
         )
         .map_err(|e| anyhow::anyhow!("Error checking setup: {}", e))?;
 
@@ -58,7 +64,7 @@ impl ZiskCheckSetup {
             check_setup_snark::<Goldilocks>(
                 &get_proving_key_snark(self.proving_key_plonk.as_ref())?,
                 self.verbose.into(),
-                self.gpu,
+                gpu,
             )
             .map_err(|e| anyhow::anyhow!("Error checking setup snark: {}", e))?
         }

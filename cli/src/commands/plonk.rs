@@ -26,6 +26,7 @@ pub struct ZiskPlonk {
     pub output_dir: PathBuf,
 
     /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
@@ -48,8 +49,13 @@ impl ZiskPlonk {
             )
         })?;
 
+        #[cfg(not(feature = "cpu-only"))]
+        let gpu = self.gpu;
+        #[cfg(feature = "cpu-only")]
+        let gpu = false;
+
         let snark_wrapper: SnarkWrapper<Goldilocks> =
-            SnarkWrapper::new(&self.proving_key_plonk, self.verbose.into(), true, self.gpu)?;
+            SnarkWrapper::new(&self.proving_key_plonk, self.verbose.into(), true, gpu)?;
 
         let proof = zisk_proof.get_vadcop_final_proof()?;
 

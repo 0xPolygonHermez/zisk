@@ -50,6 +50,7 @@ pub struct ZiskVerifyConstraints {
     pub unlock_mapped_memory: bool,
 
     /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
@@ -158,6 +159,7 @@ impl ZiskVerifyConstraints {
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
         let mut prover_options = BackendProverOpts::default();
 
+        #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
         }
@@ -184,6 +186,7 @@ impl ZiskVerifyConstraints {
     ) -> Result<ZiskVerifyConstraintsResult> {
         let mut prover_options = BackendProverOpts::default();
 
+        #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
         }

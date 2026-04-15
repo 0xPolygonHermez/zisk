@@ -86,6 +86,7 @@ pub struct ZiskProve {
     pub minimal_memory: bool,
 
     /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
@@ -163,6 +164,7 @@ impl ZiskProve {
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
         }
+        #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
         }

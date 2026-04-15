@@ -26,18 +26,6 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
-    /// This is the path where the worker will look for input files to process.
-    #[clap(short = 'i', long)]
-    inputs_folder: Option<PathBuf>,
-
-    #[clap(
-        short = 'j',
-        long,
-        default_value_t = false,
-        help = "Whether to disable shared tables when worker is running in a cluster"
-    )]
-    pub no_shared_tables_mpi: bool,
-
     /// Path to configuration file
     #[arg(
         long,
@@ -105,7 +93,8 @@ struct Cli {
 
     #[clap(long, default_value_t = false)]
     pub hints: bool,
-
+    
+    #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
 }
@@ -119,11 +108,15 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
-        cli.inputs_folder,
     )
     .await?;
 
     print_banner();
+
+    #[cfg(not(feature = "cpu-only"))]
+    let gpu = cli.gpu;
+    #[cfg(feature = "cpu-only")]
+    let gpu = false;
 
     let prover_config_dto = ProverServiceConfigDto {
         asm: cli.asm.clone(),
@@ -141,7 +134,7 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
-        gpu: cli.gpu,
+        gpu,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;
