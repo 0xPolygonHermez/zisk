@@ -1,5 +1,4 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
@@ -11,18 +10,17 @@ use zisk_pil::*;
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder};
 
+use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run the program and collect execution statistics
 pub struct ZiskStats {
-    /// Path to the program ELF file
-    // TODO: Optional?
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: PathBuf,
+    pub elf: Option<PathBuf>,
 
-    // TODO: Add program-id?
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
@@ -45,32 +43,24 @@ pub struct ZiskStats {
     /// it will use from this base port to base port + 2 * number_of_instances.
     /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
     /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
+    #[arg(short = 'p', long, conflicts_with = "emulator")]
     pub port: Option<u16>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    #[arg(long)]
-    pub mpi_node: Option<usize>,
-
     /// Maximum memory (bytes) for witness storage during proving
-    // TODO: Review default value
     #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long, default_value_t = false)]
+    #[arg(short = 'm', long)]
     pub minimal_memory: bool,
-
-    // TODO: Add desc, should be hidden?
-    #[clap(short = 'a', long, default_value_t = false)]
-    pub packed: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 
     // Hidden flags
     /// ASM file path
@@ -78,16 +68,26 @@ pub struct ZiskStats {
     pub asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
     /// Disable automatic ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
+    /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 
+    /// Simulate MPI node index
+    #[arg(long, hide = true)]
+    pub mpi_node: Option<usize>,
+
+    /// Disable packed format for trace generation
+    #[arg(short = 'a', long, hide = true)]
+    pub no_packed: bool,
+
+    /// Path to a debug configuration file
     #[arg(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
 }
@@ -99,11 +99,22 @@ impl ZiskStats {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
+        if self.elf.is_none() {
+            self.elf = match detect_current_project_elf()? {
+                Some(elf) => Some(elf),
+                None => {
+                    anyhow::bail!(
+                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                    );
+                }
+            };
+        }
+
         print_banner();
 
         print_banner_command("Stats");
 
-        print_banner_field("Elf", self.elf.display());
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -164,7 +175,7 @@ impl ZiskStats {
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let mut prover_options = BackendProverOpts::default();
 
-        if self.packed {
+        if !self.no_packed {
             prover_options = prover_options.packed();
         }
         if let Some(ref path) = self.proving_key {
@@ -183,7 +194,7 @@ impl ZiskStats {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
         prover.stats(
@@ -202,7 +213,7 @@ impl ZiskStats {
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
-        if self.packed {
+        if !self.no_packed {
             prover_options = prover_options.packed();
         }
         if let Some(ref path) = self.proving_key {
@@ -240,7 +251,7 @@ impl ZiskStats {
             .with_prover_options(prover_options)
             .build()?;
 
-        let guest_program = GuestProgram::from_uri(self.elf.to_str().unwrap())?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         if hints_stream.is_some() {
             prover.setup(&guest_program).with_hints().run()?;
         } else {

@@ -16,7 +16,7 @@ use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, Zi
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate a proof from the execution of the guest program
 pub struct ZiskProve {
-    /// Path to the program ELF file
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
 
@@ -44,24 +44,24 @@ pub struct ZiskProve {
     #[arg(short = 'w', long)]
     pub proving_key_plonk: Option<PathBuf>,
 
-    /// Save the generated proof to the specified directory
-    #[arg(short = 'o', long, default_value = "proof")]
-    pub output_dir: PathBuf,
+    /// Save the generated proof to the specified file path
+    #[arg(short = 'o', long)]
+    pub output: Option<PathBuf>,
 
     /// Enable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long)]
     pub aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
-    #[arg(short = 'c', long, default_value_t = false, conflicts_with = "plonk")]
+    #[arg(short = 'c', long, conflicts_with = "plonk")]
     pub minimal: bool,
 
     /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with minimal
-    #[arg(long, default_value_t = false, conflicts_with = "minimal")]
+    #[arg(long, conflicts_with = "minimal")]
     pub plonk: bool,
 
     /// Verify proofs after generation
-    #[arg(short = 'y', long, default_value_t = false)]
+    #[arg(short = 'y', long)]
     pub verify_proofs: bool,
 
     /// Base port for Assembly microservices (default: 23115).
@@ -78,21 +78,20 @@ pub struct ZiskProve {
     pub unlock_mapped_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
-    // TODO: Review default value
     #[arg(short = 'x', long)]
     pub max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
-    #[arg(short = 'm', long, default_value_t = false)]
+    #[arg(short = 'm', long)]
     pub minimal_memory: bool,
 
     /// Use GPU acceleration
-    #[clap(long, default_value_t = false)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 
     // Hidden flags
     /// ASM file path
@@ -100,16 +99,21 @@ pub struct ZiskProve {
     pub asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, default_value_t = false, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, conflicts_with = "emulator")]
     pub asm_out_file: bool,
 
     /// Disable automatic ROM setup
-    #[arg(short = 'n', long, default_value_t = false, hide = true)]
+    #[arg(short = 'n', long, hide = true)]
     pub no_auto_setup: bool,
 
+    #[arg(short = 'z', long, default_value_t = false, hide = true)]
+    pub preallocate_fixed_gpu: bool,
+
+    /// Maximum number of concurrent GPU streams for proving
     #[arg(short = 't', long, hide = true)]
     pub max_streams: Option<usize>,
 
+    /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     pub number_threads_witness: Option<usize>,
 }
@@ -117,11 +121,14 @@ pub struct ZiskProve {
 impl ZiskProve {
     pub fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
-            self.elf = detect_current_project_elf()?;
-        }
-
-        if self.elf.is_none() {
-            anyhow::bail!("No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf.");
+            self.elf = match detect_current_project_elf()? {
+                Some(elf) => Some(elf),
+                None => {
+                    anyhow::bail!(
+                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                    );
+                }
+            };
         }
 
         // Check if the deprecated alias was used
@@ -229,16 +236,20 @@ impl ZiskProve {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
             if let Some(proof_id) = &result.get_proof_id() {
-                let output_dir = match result.get_proof().proof {
-                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => {
-                        self.output_dir.join("vadcop_final_proof.bin")
-                    }
-                    ZiskProof::Plonk(_) => self.output_dir.join("final_plonk_proof.bin"),
+                let output_file: PathBuf = match result.get_proof().proof {
+                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => self
+                        .output
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin")),
+                    ZiskProof::Plonk(_) => self
+                        .output
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin")),
                     _ => {
                         return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
                     }
                 };
-                result.save_proof(output_dir)?;
+                result.save_proof(&output_file)?;
                 info!("Proof ID: {}", proof_id);
                 info!("Proof Time: {:.3} seconds", result.duration.as_secs_f64());
             }

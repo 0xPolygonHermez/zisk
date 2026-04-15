@@ -1,20 +1,20 @@
 use anyhow::Result;
-use clap::Parser;
 use colored::Colorize;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::{ZiskProof, ZiskProofWithPublicValues};
 use zisk_prover_backend::setup_logger;
 
-#[derive(Parser)]
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify a proof
 pub struct ZiskVerify {
+    /// Path to the proof file
     #[clap(short = 'p', long)]
     pub proof: String,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 }
 
 impl ZiskVerify {

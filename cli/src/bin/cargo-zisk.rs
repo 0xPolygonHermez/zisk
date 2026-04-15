@@ -66,7 +66,7 @@ fn main() -> Result<()> {
         Cargo::Plonk(cmd) => {
             cmd.run().context("Error executing Plonk command")?;
         }
-        Cargo::ProgramSetup(cmd) => {
+        Cargo::ProgramSetup(mut cmd) => {
             cmd.run().context("Error executing RomSetup command")?;
         }
         Cargo::Run(cmd) => {

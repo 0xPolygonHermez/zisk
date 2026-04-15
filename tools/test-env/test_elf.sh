@@ -16,15 +16,15 @@ print_proofs_result() {
     local files=("$@")
 
     # Header
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
-    printf "| %-30s | %-10s | %-15s |\n" "File"                           "Time (s)"   "Cycles"
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "File"                           "Time (s)"   "Cycles"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
 
     for f in "${files[@]}"; do
         local fullpath="${base_path}/${f}.json"
 
         if [[ ! -f "$fullpath" ]]; then
-            printf "| %-30s | %-10s | %-15s |\n" "$f" "N/A" "N/A"
+            printf "| %-35s | %-10s | %-15s |\n" "$f" "N/A" "N/A"
             continue
         fi
 
@@ -39,10 +39,10 @@ print_proofs_result() {
         cycles=$(sed -nE 's/.*"cycles"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$fullpath")
 
 
-        printf "| %-30s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
+        printf "| %-35s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
     done
 
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
 
     echo
 }
@@ -180,6 +180,7 @@ test_elf() {
 
                 ensure cargo-zisk verify-constraints \
                     -e "${ELF_FILE}" \
+                    -p 6100 \
                     ${input_flag} \
                     2>&1 | tee "constraints_${input_file}.log" || return 1
                 if ! grep -F "All global constraints were successfully verified" \
@@ -193,21 +194,26 @@ test_elf() {
                 step "Proving (non-distributed) for ${input_file}..."
                 ensure cargo-zisk prove \
                     -e "${ELF_FILE}" \
+                    -p 6100 \
                     ${input_flag} \
-                    -o proof $PROVE_FLAGS \
+                    -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
                     err "prove failed for ${input_file}"
                     return 1
                 fi
 
-                # move result.json into PROOF_RESULTS_DIR
-                mv proof/result.json "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
+                # Extract time and cycles from prove log and save to result JSON
+                local prove_time
+                prove_time=$(sed -nE 's/.*Execution completed in ([0-9.]+)s,.*/\1/p' "prove_${input_file}.log")
+                local prove_cycles
+                prove_cycles=$(sed -nE 's/.*steps:[[:space:]]*([0-9]+).*/\1/p' "prove_${input_file}.log")
+                echo "{\"time\": ${prove_time:-0}, \"cycles\": ${prove_cycles:-0}}" > "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
                 result_files+=("${input_file}")
 
                 step "Verifying proof for ${input_file}..."
                 ensure cargo-zisk verify \
-                    -p ./proof/vadcop_final_proof.bin \
+                    -p ./proof.bin \
                     2>&1 | tee "verify_${input_file}.log" || return 1
                 if ! grep -F "STARK proof was verified" "verify_${input_file}.log"; then
                     err "verify proof failed for ${input_file}"
@@ -233,8 +239,9 @@ test_elf() {
                 export RAYON_NUM_THREADS=$DISTRIBUTED_THREADS
                 ensure $MPI_CMD cargo-zisk prove \
                     -e "${ELF_FILE}" \
+                    -p 6100 \
                     ${input_flag} \
-                    -o proof $PROVE_FLAGS \
+                    -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_dist_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" \
                         "prove_dist_${input_file}.log"; then
@@ -242,9 +249,12 @@ test_elf() {
                     return 1
                 fi
 
-                # move result.json into PROOF_RESULTS_DIR
-                dest_result_file="${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
-                mv proof/result.json "${dest_result_file}"
+                # Extract time and cycles from prove log and save to result JSON
+                local prove_time
+                prove_time=$(sed -nE 's/.*Execution completed in ([0-9.]+)s,.*/\1/p' "prove_dist_${input_file}.log")
+                local prove_cycles
+                prove_cycles=$(sed -nE 's/.*steps:[[:space:]]*([0-9]+).*/\1/p' "prove_dist_${input_file}.log")
+                echo "{\"time\": ${prove_time:-0}, \"cycles\": ${prove_cycles:-0}}" > "${PROOF_RESULTS_DIR}/distributed/${input_file}.json"
                 result_dist_files+=("${input_file}")
             done
         fi

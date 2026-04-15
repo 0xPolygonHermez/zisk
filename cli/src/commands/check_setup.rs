@@ -23,20 +23,20 @@ pub struct ZiskCheckSetup {
     pub proving_key_plonk: Option<PathBuf>,
 
     /// Enable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    #[arg(short = 'a', long)]
     pub aggregation: bool,
 
     /// Enable PLONK proofs
-    #[arg(short = 's', long, default_value_t = false)]
+    #[arg(short = 's', long)]
     pub plonk: bool,
 
     /// Use GPU acceleration
-    #[clap(short = 'g', long, default_value_t = false)]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    pub verbose: u8,
 }
 
 impl ZiskCheckSetup {
