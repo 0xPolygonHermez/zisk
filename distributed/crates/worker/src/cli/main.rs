@@ -93,7 +93,7 @@ struct Cli {
 
     #[clap(long, default_value_t = false)]
     pub hints: bool,
-    
+
     #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,

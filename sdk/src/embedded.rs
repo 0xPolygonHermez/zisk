@@ -11,22 +11,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::setup::SetupResult;
-use crate::ZiskStdin;
 use anyhow::Result;
 use zisk_common::ProofKind;
 use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmOptions, AsmProver, Emu, EmuProver,
-    GuestProgram, ProverEngine, ZiskProver,
+    GuestProgram, ZiskProver,
 };
 
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
-    job_handle::{fire_event, fire_result_event, JobHandle, JobHandleInner, SubscriberList},
+    job_handle::{JobHandle, SubscriberList},
     opts::ProverOpts,
     proof::Proof,
-    prove::{JobEvent, ProveRequest},
+    prove::ProveRequest,
     setup::SetupRequest,
     upload::UploadRequest,
     wrap::WrapRequest,
@@ -212,140 +211,9 @@ impl Clone for EmbeddedClient {
     }
 }
 
-impl EmbeddedClient {
-    pub(crate) fn run_setup(
-        &self,
-        program: &GuestProgram,
-        with_hints: bool,
-    ) -> Result<SetupResult> {
-        match self.prover.as_ref() {
-            EmbeddedProver::Emu(p) => {
-                p.setup(program).run()?;
-                Ok(SetupResult)
-            }
-            EmbeddedProver::Asm(p) => {
-                let builder = p.setup(program);
-                if with_hints {
-                    builder.with_hints().run()?;
-                } else {
-                    builder.run()?;
-                }
-                Ok(SetupResult)
-            }
-        }
-    }
-
-    pub(crate) fn run_prove(
-        &self,
-        program: &GuestProgram,
-        input: ProgramInput,
-        executor: ExecutorKind,
-        proof_kind: ProofKind,
-    ) -> Result<Proof> {
-        macro_rules! apply_mode {
-            ($builder:expr) => {
-                match proof_kind {
-                    ProofKind::VadcopFinal => $builder,
-                    ProofKind::VadcopFinalMinimal => {
-                        $builder.wrap_proof(ProofKind::VadcopFinalMinimal)
-                    }
-                    ProofKind::Plonk => $builder.wrap_proof(ProofKind::Plonk),
-                }
-            };
-        }
-        let result = match (self.prover.as_ref(), executor, input) {
-            (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
-                apply_mode!(p.prove(program, stdin.into_inner())).run()?
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
-                anyhow::bail!("Hints require Assembly executor")
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly, _) => {
-                anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
-            }
-            (EmbeddedProver::Asm(_), ExecutorKind::Emulator, _) => {
-                unimplemented!("Assembly prover does not yet support emulation mode")
-            }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
-                if p.was_setup_with_hints()? {
-                    anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
-                }
-                apply_mode!(p.prove(program, stdin.into_inner())).run()?
-            }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
-                if !p.was_setup_with_hints()? {
-                    anyhow::bail!(
-                        "Program was set up without hints — pass ZiskStdin, not ZiskHints"
-                    );
-                }
-                p.register_hints_stream(hints.into_inner())?;
-                apply_mode!(p.prove(program, ZiskStdin::new().into_inner())).run()?
-            }
-        };
-        Ok(Proof::new(result))
-    }
-
-    pub(crate) fn run_execute(
-        &self,
-        program: &GuestProgram,
-        input: ProgramInput,
-        executor: ExecutorKind,
-    ) -> Result<ExecuteResult> {
-        let result = match (self.prover.as_ref(), executor, input) {
-            (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
-                p.execute(program, stdin.into_inner())?
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
-                anyhow::bail!("Hints require Assembly executor")
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly, _) => {
-                anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
-            }
-            (EmbeddedProver::Asm(_), ExecutorKind::Emulator, _) => {
-                unimplemented!("Assembly prover does not yet support emulation mode")
-            }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
-                if p.was_setup_with_hints()? {
-                    anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
-                }
-                p.execute(program, stdin.into_inner())?
-            }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
-                if !p.was_setup_with_hints()? {
-                    anyhow::bail!(
-                        "Program was set up without hints — pass ZiskStdin, not ZiskHints"
-                    );
-                }
-                p.register_hints_stream(hints.into_inner())?;
-                p.execute(program, ZiskStdin::new().into_inner())?
-            }
-        };
-        Ok(ExecuteResult::new(result))
-    }
-
-    pub(crate) fn run_wrap(
-        &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
-        proof_kind: ProofKind,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        let publics = override_publics.unwrap_or(&proof_with_publics.publics);
-        let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
-        match self.prover.as_ref() {
-            EmbeddedProver::Emu(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
-            }
-            EmbeddedProver::Asm(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
-            }
-        }
-    }
-}
-
 impl Client for EmbeddedClient {
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
-        upload::run(self, program)
+        self.do_upload(program)
     }
 
     fn run_setup(
@@ -355,7 +223,7 @@ impl Client for EmbeddedClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        setup::run(self.clone(), program, with_hints, timeout, subs)
+        self.do_setup(program, with_hints, timeout, subs)
     }
 
     fn run_prove(
@@ -367,7 +235,7 @@ impl Client for EmbeddedClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<Proof>> {
-        prove::run(self.clone(), program, input, executor, proof_kind, timeout, subs)
+        self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -378,7 +246,7 @@ impl Client for EmbeddedClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        execute::run(self.clone(), program, input, executor, timeout, subs)
+        self.do_execute(program, input, executor, timeout, subs)
     }
 
     fn run_wrap(
@@ -390,8 +258,7 @@ impl Client for EmbeddedClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
-        wrap::run(
-            self.clone(),
+        self.do_wrap(
             proof_with_publics,
             proof_kind,
             override_publics,
@@ -444,32 +311,4 @@ impl EmbeddedClient {
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof_with_publics, proof_kind)
     }
-}
-
-impl Default for EmbeddedClient {
-    fn default() -> Self {
-        EmbeddedClientBuilder::default()
-            .build()
-            .expect("Failed to initialize default EmbeddedClient")
-    }
-}
-
-/// Spawn a blocking embedded job, firing Started/Completed/Failed events around `f`.
-pub(crate) fn spawn_embedded_job<T, F>(
-    f: F,
-    timeout: Option<Duration>,
-    subs: SubscriberList,
-) -> Result<JobHandle<T>>
-where
-    T: Send + 'static,
-    F: FnOnce() -> Result<T> + Send + 'static,
-{
-    let subs_task = Arc::clone(&subs);
-    let handle = tokio::task::spawn_blocking(move || {
-        fire_event(&subs_task, JobEvent::Started);
-        let result = f();
-        fire_result_event(&subs_task, &result);
-        result
-    });
-    Ok(JobHandle { inner: Some(JobHandleInner::Embedded(handle)), subscribers: subs, timeout })
 }

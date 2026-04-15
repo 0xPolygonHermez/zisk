@@ -77,8 +77,7 @@ impl ZiskProgramSetup {
         let gpu = false;
 
         let mpi_ctx = Arc::new(MpiCtx::new());
-        let mut pctx =
-            ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, gpu)?;
+        let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, gpu)?;
 
         let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
             &pctx.global_info,
@@ -87,8 +86,7 @@ impl ZiskProgramSetup {
             &[],
             gpu,
         )?);
-        let setups_vadcop =
-            Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
+        let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1)?;
         let pctx = Arc::new(pctx);
 
