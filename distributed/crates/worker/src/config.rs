@@ -142,7 +142,7 @@ impl WorkerServiceConfig {
 }
 
 /// Configuration for initializing a Prover Service
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ProverServiceConfigDto {
     pub asm: Option<PathBuf>,
     pub hints: bool,
@@ -160,27 +160,4 @@ pub struct ProverServiceConfigDto {
     pub max_witness_stored: Option<usize>,
     pub minimal_memory: bool,
     pub gpu: bool,
-}
-
-impl Default for ProverServiceConfigDto {
-    fn default() -> Self {
-        Self {
-            asm: None,
-            hints: false,
-            emulator: false,
-            proving_key: None,
-            asm_port: None,
-            unlock_mapped_memory: false,
-            asm_out_file: false,
-            verbose: 0,
-            debug: None,
-            verify_constraints: false,
-            aggregation: false,
-            max_streams: None,
-            number_threads_witness: None,
-            max_witness_stored: None,
-            minimal_memory: false,
-            gpu: false,
-        }
-    }
 }

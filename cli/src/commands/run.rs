@@ -118,8 +118,8 @@ impl ZiskRun {
         if self.log_output_riscof {
             cmd += " -f";
         }
-        if self.profiling.is_some() {
-            cmd += match self.profiling.unwrap() {
+        if let Some(profiling_mode) = self.profiling {
+            cmd += match profiling_mode {
                 ProfilingMode::Inline => " --sdk --profile-tags",
                 ProfilingMode::Summary => " --sdk --opcodes --top-functions",
                 ProfilingMode::Complete => " --sdk --profiler-output",

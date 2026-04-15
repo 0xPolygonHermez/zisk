@@ -213,7 +213,7 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
                         }
                     })
                     .unwrap_or(InputsModeDto::InputsNone);
-                (input_mode, HintsModeDto::HintsNone, false, prove.constraints.clone())
+                (input_mode, HintsModeDto::HintsNone, false, prove.constraints)
             }
             Some(coord_submit_job_request::JobKind::Execute(ref exec)) => {
                 let input_mode = exec
@@ -229,7 +229,7 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
                         }
                     })
                     .unwrap_or(InputsModeDto::InputsNone);
-                (input_mode, HintsModeDto::HintsNone, true, exec.constraints.clone())
+                (input_mode, HintsModeDto::HintsNone, true, exec.constraints)
             }
             Some(coord_submit_job_request::JobKind::Wrap(_)) => {
                 return Err(Status::unimplemented("Wrap jobs are not yet supported"));

@@ -92,7 +92,7 @@ impl ZiskProgramSetup {
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
 
-        gen_assembly(&self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
+        gen_assembly(self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
 
         println!();
         tracing::info!("{}", "ROM setup successfully completed".bright_green().bold());

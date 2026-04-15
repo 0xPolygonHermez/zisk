@@ -727,19 +727,10 @@ impl JobKindExt for DomainJobKind {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        DomainExecuteRequest, DomainJobFailure, DomainProveRequest, DomainSetupRequest,
-        DomainWrapRequest,
+        DomainExecuteRequest, DomainProveRequest, DomainSetupRequest, DomainWrapRequest,
     };
     use super::*;
     use std::time::Duration;
-
-    fn dummy_hash(backend: &MockBackend) -> String {
-        // Register a dummy program synchronously via blocking
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { backend.register_guest_program(vec![0u8; 16]).await.unwrap() })
-        })
-    }
 
     #[tokio::test]
     async fn register_idempotent() {
