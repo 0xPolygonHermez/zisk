@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -8,7 +7,7 @@ use super::{spawn_embedded_job, EmbeddedClient};
 use crate::job_handle::{JobHandle, SubscriberList};
 
 pub(crate) fn run(
-    client: Arc<EmbeddedClient>,
+    client: EmbeddedClient,
     proof_with_publics: &ZiskProofWithPublicValues,
     mode: ProofMode,
     override_publics: Option<ZiskPublics>,

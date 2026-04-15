@@ -7,6 +7,8 @@ use zisk_prover_backend::GuestProgram;
 use crate::job_handle::JobHandle;
 use crate::Client;
 
+pub struct SetupResult;
+
 /// Builder for a program ROM setup request.
 ///
 /// Obtain via `client.setup(&program)`.
@@ -41,7 +43,7 @@ impl<'a, C: Client> SetupRequest<'a, C> {
     }
 
     /// Submit the setup, returning a [`JobHandle<()>`].
-    pub fn run(self) -> Result<JobHandle<()>> {
+    pub fn run(self) -> Result<JobHandle<SetupResult>> {
         let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_setup(self.program, self.with_hints, self.timeout, subs)
     }

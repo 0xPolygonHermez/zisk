@@ -55,10 +55,7 @@ impl<B: BackendService> GatewayServer<B> {
                 // Drain timeout starts only AFTER the signal — the server runs indefinitely before
                 // that. If in-flight RPCs don't finish within shutdown_secs we force-close.
                 tokio::time::sleep(Duration::from_secs(shutdown_secs)).await;
-                warn!(
-                    timeout_secs = shutdown_secs,
-                    "graceful shutdown timed out — forcing close"
-                );
+                warn!(timeout_secs = shutdown_secs, "graceful shutdown timed out — forcing close");
             })
             .await
             .map_err(anyhow::Error::from)?;

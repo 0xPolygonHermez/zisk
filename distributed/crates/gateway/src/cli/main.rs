@@ -3,20 +3,20 @@
 use anyhow::Result;
 use clap::Parser;
 use std::{sync::Arc, time::Duration};
-use tracing::error;
-use zisk_distributed_common::init as init_logging;
-use zisk_distributed_coordinator::{Coordinator, CoordinatorGrpc, Config as CoordinatorConfig};
-use zisk_distributed_grpc_api::{zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE};
-use tonic::transport::Server;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
+use tonic::transport::Server;
+use tracing::error;
+use zisk_distributed_common::init as init_logging;
+use zisk_distributed_coordinator::{Config as CoordinatorConfig, Coordinator, CoordinatorGrpc};
+use zisk_distributed_grpc_api::{
+    zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
+};
 
 use zisk_gateway::{
     backend::{
-        coordinator::CoordinatorBackend,
-        embedded_coordinator::EmbeddedCoordinatorBackend,
-        mock::MockBackend,
-        BackendService,
+        coordinator::CoordinatorBackend, embedded_coordinator::EmbeddedCoordinatorBackend,
+        mock::MockBackend, BackendService,
     },
     config::{BackendMode, Config},
     metrics, GatewayServer,

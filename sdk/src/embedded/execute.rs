@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -11,7 +10,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
 
 pub(crate) fn run(
-    client: Arc<EmbeddedClient>,
+    client: EmbeddedClient,
     program: &GuestProgram,
     input: ProgramInput,
     executor: ExecutorKind,

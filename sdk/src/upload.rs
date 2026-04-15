@@ -3,6 +3,8 @@ use zisk_prover_backend::GuestProgram;
 
 use crate::Client;
 
+pub struct UploadResult;
+
 /// Builder for a program upload request.
 ///
 /// Obtain via `client.upload(&program)`.
@@ -21,7 +23,7 @@ impl<'a, C: Client> UploadRequest<'a, C> {
     }
 
     /// Run the upload synchronously.
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> Result<UploadResult> {
         self.client.run_upload(self.program)
     }
 }

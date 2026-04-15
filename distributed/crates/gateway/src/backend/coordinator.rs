@@ -123,9 +123,9 @@ fn map_kind_result(
 fn map_wait_status(status_i32: i32) -> DomainJobStatus {
     match CoordJobStatus::try_from(status_i32).unwrap_or(CoordJobStatus::Running) {
         CoordJobStatus::Completed => DomainJobStatus::Completed,
-        CoordJobStatus::Failed => {
-            DomainJobStatus::Failed(DomainJobFailure::Execution { reason: "job failed".to_string() })
-        }
+        CoordJobStatus::Failed => DomainJobStatus::Failed(DomainJobFailure::Execution {
+            reason: "job failed".to_string(),
+        }),
         CoordJobStatus::Cancelled => DomainJobStatus::Cancelled,
         CoordJobStatus::WaitingForInput => DomainJobStatus::WaitingForInput,
         CoordJobStatus::Queued => DomainJobStatus::Queued,
@@ -176,7 +176,11 @@ fn coord_event_to_domain(
                 .result
                 .and_then(|r| map_kind_result(r, hash_id.to_string()))
                 .unwrap_or(DomainJobKindResponse::Setup);
-            Some(DomainJobEvent::Completed(DomainJobEventCompleted { job_id, result, timestamp: ts }))
+            Some(DomainJobEvent::Completed(DomainJobEventCompleted {
+                job_id,
+                result,
+                timestamp: ts,
+            }))
         }
         coord_job_event::Event::Failed(e) => Some(DomainJobEvent::Failed(DomainJobEventFailed {
             job_id,
@@ -200,9 +204,9 @@ fn domain_input_to_coord(input: &DomainInputKind) -> CoordInputKind {
                 is_last: chunk.is_last,
             })),
         },
-        DomainInputKind::StreamUri(uri) => CoordInputKind {
-            source: Some(coord_input_kind::Source::StreamUri(uri.clone())),
-        },
+        DomainInputKind::StreamUri(uri) => {
+            CoordInputKind { source: Some(coord_input_kind::Source::StreamUri(uri.clone())) }
+        }
     }
 }
 
@@ -237,11 +241,13 @@ impl BackendService for CoordinatorBackend {
                     .client
                     .clone()
                     .submit_job(CoordSubmitJobRequest {
-                        job_kind: Some(coord_submit_job_request::JobKind::Prove(CoordProveRequest {
-                            hash_id: r.hash_id,
-                            input: Some(domain_input_to_coord(&r.input)),
-                            proof_timeout: None,
-                        })),
+                        job_kind: Some(coord_submit_job_request::JobKind::Prove(
+                            CoordProveRequest {
+                                hash_id: r.hash_id,
+                                input: Some(domain_input_to_coord(&r.input)),
+                                proof_timeout: None,
+                            },
+                        )),
                     })
                     .await
                     .map_err(|e| internal(format!("submit_job failed: {e}")))?;
@@ -293,13 +299,7 @@ impl BackendService for CoordinatorBackend {
         let job_status = map_wait_status(response.job_status);
 
         let result = if matches!(job_status, DomainJobStatus::Completed) {
-            let hash_id = self
-                .job_hash
-                .read()
-                .await
-                .get(&job_id_str)
-                .cloned()
-                .unwrap_or_default();
+            let hash_id = self.job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
             response.result.and_then(|r| map_kind_result(r, hash_id))
         } else {
             None

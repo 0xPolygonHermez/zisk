@@ -2,8 +2,8 @@ use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sha_hasher_host::Output;
 use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskProofWithPublicValues,
-    ZiskPublics, ZiskStdin,
+    load_program, ExecutorKind, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskPublics,
+    ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
@@ -20,9 +20,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let prover_opts = ProverOpts::default().minimal_memory();
-    let client =
-        ProverClient::remote("http://127.0.0.1:7000").with_prover_options(prover_opts).build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");
     client.upload(&PROGRAM).run()?;

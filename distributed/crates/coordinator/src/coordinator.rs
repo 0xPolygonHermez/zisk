@@ -1019,11 +1019,7 @@ impl Coordinator {
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
         self.ensure_workers_idle(&worker_ids).await;
 
-        self.fire_job_event(
-            job_id,
-            CoordinatorJobEvent::Failed(reason.as_ref().to_string()),
-        )
-        .await;
+        self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
 
         error!("Failed job {} (reason: {})", job_id, reason.as_ref());
 

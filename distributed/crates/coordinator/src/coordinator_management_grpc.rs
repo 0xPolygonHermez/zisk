@@ -5,12 +5,12 @@ use tokio::time::{timeout, Duration};
 use tonic::{Request, Response, Status};
 use tracing::warn;
 use zisk_distributed_grpc_api::coordinator_api::{
-    zisk_coordinator_api_server::ZiskCoordinatorApi, coord_job_event, coord_job_kind_result,
-    coord_submit_job_request, CoordCancelJobRequest, CoordCancelJobResponse, CoordCostPerType,
-    CoordExecuteResult, CoordExecutionStats, CoordJobEvent, CoordJobEventCancelled,
-    CoordJobEventCompleted, CoordJobEventFailed, CoordJobEventProgress, CoordJobEventQueued,
-    CoordJobEventStarted, CoordJobEventWaitingForInput, CoordJobKindResult, CoordJobPhase,
-    CoordJobResponse, CoordJobStatus, CoordProveResult, CoordPushJobInputRequest,
+    coord_job_event, coord_job_kind_result, coord_submit_job_request,
+    zisk_coordinator_api_server::ZiskCoordinatorApi, CoordCancelJobRequest, CoordCancelJobResponse,
+    CoordCostPerType, CoordExecuteResult, CoordExecutionStats, CoordJobEvent,
+    CoordJobEventCancelled, CoordJobEventCompleted, CoordJobEventFailed, CoordJobEventProgress,
+    CoordJobEventQueued, CoordJobEventStarted, CoordJobEventWaitingForInput, CoordJobKindResult,
+    CoordJobPhase, CoordJobResponse, CoordJobStatus, CoordProveResult, CoordPushJobInputRequest,
     CoordRegisterGuestProgramRequest, CoordRegisterGuestProgramResponse, CoordSetupProgramRequest,
     CoordSetupResult, CoordSubmitJobRequest, CoordWaitJobResultRequest, CoordWaitJobResultResponse,
     CoordWatchJobRequest,
@@ -21,9 +21,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
-use zisk_distributed_common::{
-    DataId, HintsModeDto, InputsModeDto, JobId, LaunchProofRequestDto,
-};
+use zisk_distributed_common::{DataId, HintsModeDto, InputsModeDto, JobId, LaunchProofRequestDto};
 
 /// gRPC server implementing the internal `ZiskCoordinatorApi` service.
 ///
@@ -132,9 +130,10 @@ fn coordinator_event_to_grpc(job_id: &str, event: CoordinatorJobEvent) -> CoordJ
             })),
         },
         CoordinatorJobEvent::WaitingForInput => CoordJobEvent {
-            event: Some(coord_job_event::Event::WaitingForInput(
-                CoordJobEventWaitingForInput { job_id, timestamp: ts },
-            )),
+            event: Some(coord_job_event::Event::WaitingForInput(CoordJobEventWaitingForInput {
+                job_id,
+                timestamp: ts,
+            })),
         },
         CoordinatorJobEvent::Completed(result) => CoordJobEvent {
             event: Some(coord_job_event::Event::Completed(CoordJobEventCompleted {
@@ -168,7 +167,6 @@ fn is_terminal_event(event: &CoordJobEvent) -> bool {
     )
 }
 
-
 #[tonic::async_trait]
 impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
     type WatchJobStream =
@@ -179,10 +177,8 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
         request: Request<CoordRegisterGuestProgramRequest>,
     ) -> Result<Response<CoordRegisterGuestProgramResponse>, Status> {
         let req = request.into_inner();
-        let hash_id = self
-            .coordinator
-            .register_guest_program(req.elf_bytes)
-            .map_err(Self::map_status)?;
+        let hash_id =
+            self.coordinator.register_guest_program(req.elf_bytes).map_err(Self::map_status)?;
         Ok(Response::new(CoordRegisterGuestProgramResponse { hash_id }))
     }
 
@@ -191,11 +187,8 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
         request: Request<CoordSetupProgramRequest>,
     ) -> Result<Response<CoordJobResponse>, Status> {
         let req = request.into_inner();
-        let job_id = self
-            .coordinator
-            .setup_program(&req.hash_id)
-            .await
-            .map_err(Self::map_status)?;
+        let job_id =
+            self.coordinator.setup_program(&req.hash_id).await.map_err(Self::map_status)?;
         Ok(Response::new(CoordJobResponse { job_id: job_id.as_string() }))
     }
 
@@ -255,11 +248,8 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
             execution_only,
         };
 
-        let response = self
-            .coordinator
-            .launch_proof(request_dto)
-            .await
-            .map_err(Self::map_status)?;
+        let response =
+            self.coordinator.launch_proof(request_dto).await.map_err(Self::map_status)?;
 
         Ok(Response::new(CoordJobResponse { job_id: response.job_id.as_string() }))
     }
@@ -380,13 +370,9 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
         let req = request.into_inner();
         let job_id = JobId::from(req.job_id.clone());
 
-        let cancelled =
-            self.coordinator.cancel_job(&job_id).await.map_err(Self::map_status)?;
+        let cancelled = self.coordinator.cancel_job(&job_id).await.map_err(Self::map_status)?;
 
-        Ok(Response::new(CoordCancelJobResponse {
-            job_id: req.job_id,
-            cancelled,
-        }))
+        Ok(Response::new(CoordCancelJobResponse { job_id: req.job_id, cancelled }))
     }
 
     async fn push_job_input(

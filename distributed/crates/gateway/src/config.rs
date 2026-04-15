@@ -151,13 +151,10 @@ impl Config {
 /// 2. `$XDG_CONFIG_HOME/zisk/gateway.toml` — user-level (falls back to `~/.config/`)
 /// 3. `./gateway.toml`                — current directory (dev / project-local)
 fn default_config_paths() -> Vec<std::path::PathBuf> {
-    let mut paths = vec![
-        std::path::PathBuf::from("/etc/zisk/gateway.toml"),
-    ];
+    let mut paths = vec![std::path::PathBuf::from("/etc/zisk/gateway.toml")];
 
-    let xdg_base = std::env::var("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
+    let xdg_base =
+        std::env::var("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
             std::env::var("HOME")
                 .map(|h| std::path::PathBuf::from(h).join(".config"))
                 .unwrap_or_else(|_| std::path::PathBuf::from(".config"))

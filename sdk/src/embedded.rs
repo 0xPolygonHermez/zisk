@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::setup::SetupResult;
 use crate::ZiskStdin;
 use anyhow::Result;
 use zisk_common::ProofMode;
@@ -18,84 +19,127 @@ use zisk_prover_backend::{
 };
 
 use crate::{
-    execute::ExecuteResult,
+    execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
     job_handle::{fire_event, fire_result_event, JobHandle, JobHandleInner, SubscriberList},
     opts::ProverOpts,
     proof::Proof,
-    prove::JobEvent,
-    ExecutorKind, ProofKind,
+    prove::{JobEvent, ProveRequest},
+    setup::SetupRequest,
+    upload::UploadRequest,
+    wrap::WrapRequest,
+    Client, ExecutorKind, ProofKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
     "Assembly executor not enabled — call .assembly() on the builder";
 
-/// Configuration for embedded (local) prover client.
-#[derive(Clone, Default)]
-pub struct EmbeddedClientConfig {
-    pub proving_key: Option<PathBuf>,
-    pub proving_key_snark: Option<PathBuf>,
-}
-
 /// Builder for an embedded [`ProverClient`].
-pub(crate) struct EmbeddedClientBuilder {
+pub struct EmbeddedClientBuilder {
     executor: ExecutorKind,
     proof_kind: ProofKind,
     prover_options: ProverOpts,
     gpu: bool,
     asm_options: Option<AsmOptions>,
+    proving_key: Option<PathBuf>,
+    proving_key_snark: Option<PathBuf>,
 }
 
-impl EmbeddedClientBuilder {
-    pub(crate) fn new(config: EmbeddedClientConfig) -> Self {
-        let mut prover_options = ProverOpts::default();
-        if let Some(pk) = config.proving_key {
-            prover_options.proving_key = Some(pk);
-        }
-        if let Some(pk) = config.proving_key_snark {
-            prover_options.proving_key_snark = Some(pk);
-        }
+impl Default for EmbeddedClientBuilder {
+    fn default() -> Self {
         Self {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::StarkMinimal,
-            prover_options,
+            prover_options: ProverOpts::default(),
             gpu: false,
             asm_options: None,
+            proving_key: None,
+            proving_key_snark: None,
         }
     }
+}
 
+impl EmbeddedClientBuilder {
+    /// Set the executor kind. Default is [`ExecutorKind::Emulator`].
     #[must_use]
-    pub(crate) fn executor(mut self, executor: ExecutorKind) -> Self {
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
         self.executor = executor;
         self
     }
 
+    /// Use the Emulator executor (default). Not compatible with hints.
     #[must_use]
-    pub(crate) fn with_prover_options(mut self, opts: ProverOpts) -> Self {
+    pub fn emulator(mut self) -> Self {
+        self.executor = ExecutorKind::Emulator;
+        self
+    }
+
+    /// Use the Assembly executor.
+    #[must_use]
+    pub fn assembly(mut self) -> Self {
+        self.executor = ExecutorKind::Assembly;
+        self
+    }
+
+    /// Set proof generation options (e.g. minimal memory mode).
+    #[must_use]
+    pub fn with_prover_options(mut self, opts: ProverOpts) -> Self {
         self.prover_options = opts;
         self
     }
 
+    /// Enable GPU acceleration.
     #[must_use]
-    pub(crate) fn gpu(mut self) -> Self {
+    pub fn gpu(mut self) -> Self {
         self.gpu = true;
         self
     }
 
+    /// Enable PLONK proof mode.
     #[must_use]
-    pub(crate) fn plonk(mut self) -> Self {
+    pub fn plonk(mut self) -> Self {
         self.proof_kind = ProofKind::Plonk;
         self
     }
 
+    /// Set ASM-specific options. Only valid with the Assembly executor.
     #[must_use]
-    pub(crate) fn asm_options(mut self, opts: AsmOptions) -> Self {
+    pub fn asm_options(mut self, opts: AsmOptions) -> Self {
         self.asm_options = Some(opts);
         self
     }
 
-    pub(crate) fn build(self) -> Result<EmbeddedClient> {
-        let mut backend_opts = self.prover_options.into_backend_opts(self.gpu);
+    /// Set the path to the proving key directory.
+    #[must_use]
+    pub fn proving_key(mut self, path: impl Into<PathBuf>) -> Self {
+        self.proving_key = Some(path.into());
+        self
+    }
+
+    /// Set the path to the PLONK proving key directory.
+    #[must_use]
+    pub fn proving_key_plonk(mut self, path: impl Into<PathBuf>) -> Self {
+        self.proving_key_snark = Some(path.into());
+        self
+    }
+
+    /// Build the [`EmbeddedClient`].
+    pub fn build(self) -> Result<EmbeddedClient> {
+        crate::client::ensure_single_instance();
+        if self.asm_options.is_some() && self.executor != ExecutorKind::Assembly {
+            panic!(
+                "asm_options were set but the executor is not Assembly. \
+                 Call .assembly() on the builder before setting asm_options."
+            );
+        }
+        let mut prover_options = self.prover_options;
+        if let Some(pk) = self.proving_key {
+            prover_options.proving_key = Some(pk);
+        }
+        if let Some(pk) = self.proving_key_snark {
+            prover_options.proving_key_snark = Some(pk);
+        }
+        let mut backend_opts = prover_options.into_backend_opts(self.gpu);
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
         }
@@ -105,7 +149,7 @@ impl EmbeddedClientBuilder {
             ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, backend_opts, self.proof_kind)?,
             ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, backend_opts, self.proof_kind)?,
         };
-        Ok(EmbeddedClient { prover })
+        Ok(EmbeddedClient { prover: Arc::new(prover) })
     }
 
     fn build_emu(
@@ -156,21 +200,35 @@ enum EmbeddedProver {
     Asm(ZiskProver<Asm>),
 }
 
-pub(crate) struct EmbeddedClient {
-    prover: EmbeddedProver,
+pub struct EmbeddedClient {
+    prover: Arc<EmbeddedProver>,
+}
+
+impl Clone for EmbeddedClient {
+    fn clone(&self) -> Self {
+        Self { prover: Arc::clone(&self.prover) }
+    }
 }
 
 impl EmbeddedClient {
-    pub(crate) fn run_setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
-        match &self.prover {
-            EmbeddedProver::Emu(p) => p.setup(program).run(),
+    pub(crate) fn run_setup(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<SetupResult> {
+        match self.prover.as_ref() {
+            EmbeddedProver::Emu(p) => {
+                p.setup(program).run()?;
+                Ok(SetupResult)
+            }
             EmbeddedProver::Asm(p) => {
                 let builder = p.setup(program);
                 if with_hints {
-                    builder.with_hints().run()
+                    builder.with_hints().run()?;
                 } else {
-                    builder.run()
+                    builder.run()?;
                 }
+                Ok(SetupResult)
             }
         }
     }
@@ -193,7 +251,7 @@ impl EmbeddedClient {
                 }
             };
         }
-        let result = match (&self.prover, executor, input) {
+        let result = match (self.prover.as_ref(), executor, input) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
                 apply_mode!(p.prove(program, stdin.into_inner())).run()?
             }
@@ -231,7 +289,7 @@ impl EmbeddedClient {
         input: ProgramInput,
         executor: ExecutorKind,
     ) -> Result<ExecuteResult> {
-        let result = match (&self.prover, executor, input) {
+        let result = match (self.prover.as_ref(), executor, input) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
                 p.execute(program, stdin.into_inner())?
             }
@@ -272,7 +330,7 @@ impl EmbeddedClient {
     ) -> Result<ZiskProofWithPublicValues> {
         let publics = override_publics.unwrap_or(&proof_with_publics.publics);
         let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
-        match &self.prover {
+        match self.prover.as_ref() {
             EmbeddedProver::Emu(p) => {
                 p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, mode)
             }
@@ -280,6 +338,117 @@ impl EmbeddedClient {
                 p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, mode)
             }
         }
+    }
+}
+
+impl Client for EmbeddedClient {
+    fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
+        upload::run(self, program)
+    }
+
+    fn run_setup(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<SetupResult>> {
+        setup::run(self.clone(), program, with_hints, timeout, subs)
+    }
+
+    fn run_prove(
+        &self,
+        program: &GuestProgram,
+        input: ProgramInput,
+        executor: ExecutorKind,
+        mode: ProofMode,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<Proof>> {
+        prove::run(self.clone(), program, input, executor, mode, timeout, subs)
+    }
+
+    fn run_execute(
+        &self,
+        program: &GuestProgram,
+        input: ProgramInput,
+        executor: ExecutorKind,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ExecuteResult>> {
+        execute::run(self.clone(), program, input, executor, timeout, subs)
+    }
+
+    fn run_wrap(
+        &self,
+        proof_with_publics: &ZiskProofWithPublicValues,
+        mode: ProofMode,
+        override_publics: Option<ZiskPublics>,
+        override_program_vk: Option<ZiskProgramVK>,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
+        wrap::run(
+            self.clone(),
+            proof_with_publics,
+            mode,
+            override_publics,
+            override_program_vk,
+            timeout,
+            subs,
+        )
+    }
+}
+
+impl EmbeddedClient {
+    /// Submit a prove request.
+    #[must_use]
+    pub fn prove<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        input: impl Into<ProgramInput>,
+    ) -> ProveRequest<'a, Self> {
+        ProveRequest::new(self, program, input)
+    }
+
+    /// Submit an execute request (dry-run, no proof).
+    #[must_use]
+    pub fn execute<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        input: impl Into<ProgramInput>,
+    ) -> ExecuteRequest<'a, Self> {
+        ExecuteRequest::new(self, program, input)
+    }
+
+    /// Submit a ROM setup request.
+    #[must_use]
+    pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
+        SetupRequest::new(self, program)
+    }
+
+    /// Submit an upload request (no-op for embedded — program is available locally).
+    #[must_use]
+    pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
+        UploadRequest::new(self, program)
+    }
+
+    /// Submit a wrap/convert proof request.
+    #[must_use]
+    pub fn wrap_proof<'a>(
+        &'a self,
+        proof_with_publics: &'a ZiskProofWithPublicValues,
+        mode: ProofMode,
+    ) -> WrapRequest<'a, Self> {
+        WrapRequest::new(self, proof_with_publics, mode)
+    }
+}
+
+impl Default for EmbeddedClient {
+    fn default() -> Self {
+        EmbeddedClientBuilder::default()
+            .build()
+            .expect("Failed to initialize default EmbeddedClient")
     }
 }
 

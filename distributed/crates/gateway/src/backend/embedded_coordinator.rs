@@ -3,12 +3,16 @@
 //! Used when `backend.mode = "embedded"`: the coordinator runs in the same process as the
 //! gateway. Workers still connect over gRPC to the coordinator's worker-facing port.
 
-use std::{collections::{HashMap, HashSet}, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_stream::stream;
-use futures::stream::iter as stream_iter;
 use async_trait::async_trait;
 use chrono::Utc;
+use futures::stream::iter as stream_iter;
 use tokio::{sync::RwLock, time::timeout};
 use tracing::warn;
 use uuid::Uuid;
@@ -26,9 +30,7 @@ use super::{
     InputChunkStream, JobEventStream, WaitResult,
 };
 use crate::errors::{internal, GatewayError, GatewayResult};
-use zisk_distributed_common::{
-    DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto,
-};
+use zisk_distributed_common::{DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto};
 
 pub struct EmbeddedCoordinatorBackend {
     coordinator: Arc<Coordinator>,
@@ -90,10 +92,7 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
             stats: coord_stats_to_domain(stats),
         },
         CoordinatorJobResult::Execute { stats, public_outputs } => {
-            DomainJobKindResponse::Execute {
-                stats: coord_stats_to_domain(stats),
-                public_outputs,
-            }
+            DomainJobKindResponse::Execute { stats: coord_stats_to_domain(stats), public_outputs }
         }
         CoordinatorJobResult::Wrap { proof_bytes } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
@@ -132,9 +131,12 @@ fn coord_event_to_domain(
                 timestamp: ts,
             }))
         }
-        CoordinatorJobEvent::WaitingForInput => Some(DomainJobEvent::WaitingForInput(
-            DomainJobEventWaitingForInput { job_id, timestamp: ts },
-        )),
+        CoordinatorJobEvent::WaitingForInput => {
+            Some(DomainJobEvent::WaitingForInput(DomainJobEventWaitingForInput {
+                job_id,
+                timestamp: ts,
+            }))
+        }
         CoordinatorJobEvent::Completed(result) => {
             Some(DomainJobEvent::Completed(DomainJobEventCompleted {
                 job_id,
@@ -142,13 +144,11 @@ fn coord_event_to_domain(
                 timestamp: ts,
             }))
         }
-        CoordinatorJobEvent::Failed(reason) => {
-            Some(DomainJobEvent::Failed(DomainJobEventFailed {
-                job_id,
-                failure: DomainJobFailure::Execution { reason },
-                timestamp: ts,
-            }))
-        }
+        CoordinatorJobEvent::Failed(reason) => Some(DomainJobEvent::Failed(DomainJobEventFailed {
+            job_id,
+            failure: DomainJobFailure::Execution { reason },
+            timestamp: ts,
+        })),
         CoordinatorJobEvent::Cancelled => {
             Some(DomainJobEvent::Cancelled(DomainJobEventCancelled { job_id, timestamp: ts }))
         }
@@ -262,7 +262,11 @@ impl BackendService for EmbeddedCoordinatorBackend {
         }
     }
 
-    async fn wait_job_result(&self, job_id: Uuid, timeout_dur: Duration) -> GatewayResult<WaitResult> {
+    async fn wait_job_result(
+        &self,
+        job_id: Uuid,
+        timeout_dur: Duration,
+    ) -> GatewayResult<WaitResult> {
         // Setup jobs complete as soon as the broadcast is sent — no event channel needed.
         if self.setup_jobs.read().await.contains(&job_id) {
             return Ok(WaitResult {
@@ -297,18 +301,16 @@ impl BackendService for EmbeddedCoordinatorBackend {
         .await;
 
         let job_id_str = job_id.to_string();
-        let hash_id =
-            self.job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
+        let hash_id = self.job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
 
         let (job_status, kind_result) = match result {
             Ok(Some(CoordinatorJobEvent::Completed(r))) => {
                 let kr = coord_result_to_domain(r, &hash_id);
                 (DomainJobStatus::Completed, Some(kr))
             }
-            Ok(Some(CoordinatorJobEvent::Failed(reason))) => (
-                DomainJobStatus::Failed(DomainJobFailure::Execution { reason }),
-                None,
-            ),
+            Ok(Some(CoordinatorJobEvent::Failed(reason))) => {
+                (DomainJobStatus::Failed(DomainJobFailure::Execution { reason }), None)
+            }
             Ok(Some(CoordinatorJobEvent::Cancelled)) => (DomainJobStatus::Cancelled, None),
             _ => (DomainJobStatus::Running(None), None),
         };

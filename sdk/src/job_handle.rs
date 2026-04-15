@@ -19,6 +19,8 @@ use zisk_gateway_grpc_api::{
 };
 
 use crate::prove::JobEvent;
+use crate::remote::JobId;
+use crate::setup::SetupResult;
 
 const CANCELLED: &str = "Cancelled";
 const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 3600;
@@ -53,7 +55,7 @@ pub(crate) enum JobHandleInner<T> {
     Embedded(JoinHandle<Result<T>>),
     Remote {
         gateway: ZiskGatewayApiClient<Channel>,
-        job_id: String,
+        job_id: JobId,
         extract: Box<dyn FnOnce(WaitJobResultResponse) -> Result<T> + Send>,
     },
 }
@@ -99,7 +101,7 @@ impl<T> JobHandle<T> {
             JobHandleInner::Remote { gateway, job_id, .. } => {
                 let mut gw = gateway.clone();
                 let resp = gw
-                    .cancel_job(CancelJobRequest { job_id: job_id.clone() })
+                    .cancel_job(CancelJobRequest { job_id: job_id.clone().into() })
                     .await
                     .map_err(|e| anyhow::anyhow!("CancelJob RPC failed: {e}"))?;
                 Ok(resp.into_inner().cancelled)
@@ -139,7 +141,8 @@ impl<T: Send + 'static> IntoFuture for JobHandle<T> {
                     let mut watch_gw = gateway.clone();
                     let jid = job_id.clone();
                     let watch_task = tokio::spawn(async move {
-                        if let Ok(resp) = watch_gw.watch_job(WatchJobRequest { job_id: jid }).await
+                        if let Ok(resp) =
+                            watch_gw.watch_job(WatchJobRequest { job_id: jid.into() }).await
                         {
                             let mut stream = resp.into_inner();
                             while let Some(Ok(event)) = stream.next().await {
@@ -152,7 +155,7 @@ impl<T: Send + 'static> IntoFuture for JobHandle<T> {
 
                     let resp = gateway
                         .wait_job_result(WaitJobResultRequest {
-                            job_id,
+                            job_id: job_id.into(),
                             timeout_seconds: Some(timeout_secs),
                         })
                         .await
@@ -232,9 +235,9 @@ fn format_failure(failure: Option<&JobFailure>) -> String {
 }
 
 /// Assert that a `WaitJobResultResponse` is in a completed terminal state.
-pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<()> {
+pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<SetupResult> {
     match resp.job_status.as_ref().and_then(|s| s.status.as_ref()) {
-        Some(JobStatusVariant::Completed(_)) => Ok(()),
+        Some(JobStatusVariant::Completed(_)) => Ok(SetupResult),
         Some(JobStatusVariant::Failed(f)) => anyhow::bail!(format_failure(f.failure.as_ref())),
         Some(JobStatusVariant::Cancelled(_)) => anyhow::bail!("job was cancelled"),
         other => anyhow::bail!("unexpected terminal status: {:?}", other),

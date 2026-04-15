@@ -1,20 +1,21 @@
+use super::{duration_to_proto_timestamp, stdin_to_input_kind, RemoteClient};
+use crate::{
+    input::ProgramInput,
+    job_handle::{extract_prove, JobHandle, JobHandleInner, SubscriberList},
+    proof::Proof,
+    ExecutorKind,
+};
 use std::time::Duration;
-
-use anyhow::Result;
 use zisk_common::ProofMode;
 use zisk_gateway_grpc_api::proto::{
     job_kind::Kind as GatewayKind, JobKind, ProveRequest as GatewayProveRequest,
 };
 use zisk_prover_backend::GuestProgram;
 
-use super::{duration_to_proto_timestamp, stdin_to_input_kind, RemoteClient};
-use crate::input::ProgramInput;
-use crate::job_handle::{extract_prove, JobHandle, JobHandleInner, SubscriberList};
-use crate::proof::Proof;
-use crate::ExecutorKind;
+use anyhow::Result;
 
-pub(crate) fn run(
-    remote: &RemoteClient,
+pub(crate) fn prove(
+    client: &RemoteClient,
     program: &GuestProgram,
     input: ProgramInput,
     _executor: ExecutorKind,
@@ -32,8 +33,8 @@ pub(crate) fn run(
             proof_timeout,
         })),
     };
-    let job_id = remote.submit_job_sync(job_kind)?;
-    let gateway = remote.gateway_client();
+    let job_id = client.submit_job(job_kind)?;
+    let gateway = client.gw_client.clone();
     Ok(JobHandle {
         inner: JobHandleInner::Remote { gateway, job_id, extract: Box::new(extract_prove) },
         subscribers: subs,

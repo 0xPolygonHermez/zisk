@@ -15,15 +15,15 @@ mod upload;
 mod wrap;
 
 pub use cancel::CancellationToken;
-pub use client::{ProverClient, ProverClientBuilder};
-pub use embedded::EmbeddedClientConfig;
+pub use client::ProverClient;
+pub use embedded::{EmbeddedClient, EmbeddedClientBuilder};
 pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
 pub use job_handle::JobHandle;
 pub use proof::Proof;
 pub use prove::{JobEvent, ProofKind, ProveRequest};
-pub use remote::RemoteClientConfig;
+pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
@@ -52,6 +52,8 @@ pub use zisk_build::*;
 
 use anyhow::Result;
 
+use crate::{setup::SetupResult, upload::UploadResult};
+
 pub(crate) fn validate_stream_uri(uri: &str) -> Result<()> {
     let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
     if !is_valid {
@@ -77,7 +79,7 @@ pub enum ExecutorKind {
 }
 
 pub(crate) trait Client: Clone + Send + Sync + 'static {
-    fn run_upload(&self, program: &GuestProgram) -> Result<()>;
+    fn run_upload(&self, program: &GuestProgram) -> Result<UploadResult>;
 
     fn run_setup(
         &self,
@@ -85,7 +87,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         with_hints: bool,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
-    ) -> Result<job_handle::JobHandle<()>>;
+    ) -> Result<job_handle::JobHandle<SetupResult>>;
 
     fn run_prove(
         &self,
