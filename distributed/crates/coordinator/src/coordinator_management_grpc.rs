@@ -21,7 +21,9 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
-use zisk_distributed_common::{DataId, HintsModeDto, InputsModeDto, JobId, LaunchProofRequestDto};
+use zisk_distributed_common::{
+    DataId, HintsModeDto, InputsModeDto, JobId, LaunchProofRequestDto, LaunchWrapRequestDto,
+};
 
 /// gRPC server implementing the internal `ZiskCoordinatorApi` service.
 ///
@@ -231,8 +233,17 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
                     .unwrap_or(InputsModeDto::InputsNone);
                 (input_mode, HintsModeDto::HintsNone, true, exec.constraints)
             }
-            Some(coord_submit_job_request::JobKind::Wrap(_)) => {
-                return Err(Status::unimplemented("Wrap jobs are not yet supported"));
+            Some(coord_submit_job_request::JobKind::Wrap(wrap)) => {
+                // Handle wrap directly: dispatch to a worker without the full proof pipeline
+                let response = self
+                    .coordinator
+                    .launch_wrap(LaunchWrapRequestDto {
+                        proof_data: wrap.proof_data,
+                        proof_dest: wrap.proof_dest,
+                    })
+                    .await
+                    .map_err(Self::map_status)?;
+                return Ok(Response::new(CoordJobResponse { job_id: response.job_id.as_string() }));
             }
             None => return Err(Status::invalid_argument("job_kind is required")),
         };

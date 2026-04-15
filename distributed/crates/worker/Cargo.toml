@@ -28,6 +28,7 @@ fields = { workspace = true }
 witness = { workspace = true }
 rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
+bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 
 precompiles-hints = { workspace = true }

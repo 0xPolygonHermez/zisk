@@ -55,16 +55,18 @@ use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::ZiskProofWithPublicValues;
+use zisk_common::ZISK_PUBLICS;
 use zisk_distributed_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, MetricsDto, PhaseTimings, ProofDto,
-    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StatusInfoDto, StreamMessageKind,
-    SystemStatusDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto,
-    WorkerState, WorkersListDto, ZiskExecutorTimeDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, MetricsDto,
+    PhaseTimings, ProofDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto,
+    StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    WrapParamsDto, ZiskExecutorTimeDto,
 };
 
 /// Trait for sending messages to workers through various communication channels.
@@ -576,6 +578,128 @@ impl Coordinator {
         }
 
         Ok((ComputeCapacity::from(resolved), ComputeCapacity::from(minimum_units)))
+    }
+
+    /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
+    ///
+    /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
+    /// The proof data must be a bincode-encoded `ZiskProofWithPublicValues`.
+    pub async fn launch_wrap(
+        &self,
+        request: LaunchWrapRequestDto,
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
+        // Select any single idle worker
+        let worker_id = {
+            let ids = self.workers_pool.connected_worker_ids().await;
+            let mut found: Option<WorkerId> = None;
+            for id in ids {
+                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Idle)) {
+                    found = Some(id);
+                    break;
+                }
+            }
+            found.ok_or(CoordinatorError::InsufficientCapacity)?
+        };
+
+        // Create a minimal job entry (no partitions / inputs needed for wrap)
+        let job = Job::new(
+            DataId::new(),
+            InputsModeDto::InputsNone,
+            HintsModeDto::HintsNone,
+            ComputeCapacity::from(1),
+            ComputeCapacity::from(1),
+            vec![worker_id.clone()],
+            vec![],
+            JobExecutionMode::Standard,
+            Default::default(),
+            false,
+        );
+
+        let job_id = job.job_id.clone();
+
+        let mut job = job;
+        job.change_state(JobState::Running(JobPhase::Aggregate)); // reuse Aggregate phase as wrap phase
+
+        let job_arc = Arc::new(RwLock::new(job));
+        self.jobs.write().await.insert(job_id.clone(), job_arc);
+        self.alloc_job_events(&job_id).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
+
+        // Mark worker as computing and send the task
+        self.workers_pool
+            .mark_worker_with_state(
+                &worker_id,
+                WorkerState::Computing((
+                    job_id.clone(),
+                    zisk_distributed_common::JobPhase::Aggregate,
+                )),
+            )
+            .await?;
+
+        let req = ExecuteTaskRequestDto {
+            worker_id: worker_id.clone(),
+            job_id: job_id.clone(),
+            params: ExecuteTaskRequestTypeDto::WrapParams(WrapParamsDto {
+                proof_data: request.proof_data,
+                proof_dest: request.proof_dest,
+            }),
+        };
+
+        let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
+        self.workers_pool.send_message(&worker_id, message).await?;
+
+        info!("[Wrap] Job {} started on worker {}", job_id, worker_id);
+
+        Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Handle completion of a wrap task from a worker.
+    async fn handle_wrap_completion(
+        &self,
+        execute_task_response: ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = &execute_task_response.job_id;
+        let worker_id = &execute_task_response.worker_id;
+
+        let jobs_map = self.jobs.read().await;
+        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let mut job = job_entry.write().await;
+
+        self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+
+        if !execute_task_response.success {
+            job.change_state(JobState::Failed);
+            let reason = execute_task_response.error_message.unwrap_or_default();
+            drop(job);
+            self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.clone())).await;
+            return Err(CoordinatorError::Internal(format!("Wrap task failed: {}", reason)));
+        }
+
+        let ExecuteTaskResponseResultDataDto::WrapResult(wrap_result) =
+            execute_task_response.result_data
+        else {
+            return Err(CoordinatorError::Internal(
+                "Expected WrapResult in wrap completion".to_string(),
+            ));
+        };
+
+        job.wrap_data = Some(wrap_result.proof_data.clone());
+        job.change_state(JobState::Completed);
+
+        info!("[Wrap] Job {} completed successfully", job_id);
+
+        drop(job);
+
+        self.fire_job_event(
+            job_id,
+            CoordinatorJobEvent::Completed(CoordinatorJobResult::Wrap {
+                proof_bytes: wrap_result.proof_data,
+            }),
+        )
+        .await;
+
+        Ok(())
     }
 
     /// Post-completion processing for proof generation jobs.
@@ -1555,6 +1679,9 @@ impl Coordinator {
             ExecuteTaskResponseResultDataDto::FinalProof(_) => {
                 self.handle_aggregation_completion(message).await
             }
+            ExecuteTaskResponseResultDataDto::WrapResult(_) => {
+                self.handle_wrap_completion(message).await
+            }
         }
     }
 
@@ -1827,6 +1954,19 @@ impl Coordinator {
 
         let exec_stats = exec_stats_from_job(&job);
 
+        let public_outputs = job
+            .results
+            .get(&JobPhase::Execution)
+            .and_then(|m| m.values().next())
+            .and_then(|r| {
+                if let JobResultData::Execution(ref e) = r.data {
+                    Some(e.public_outputs.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
         // Release job lock before cleanup
         drop(job);
 
@@ -1834,7 +1974,7 @@ impl Coordinator {
             &job_id,
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Execute {
                 stats: exec_stats,
-                public_outputs: vec![], // TODO: thread public outputs through distributed exec path
+                public_outputs,
             }),
         )
         .await;
@@ -2008,6 +2148,7 @@ impl Coordinator {
                     executed_steps,
                     zisk_executor_time,
                     task_received_time,
+                    public_outputs: Self::publics_u64_to_bytes(&exec_data.publics),
                 }))
             }
             _ => {
@@ -2018,6 +2159,21 @@ impl Coordinator {
 
     /// Extracts and converts execution timing information from DTO to internal representation.
     ///
+    /// Serializes a `Vec<u64>` of public values into the byte format expected by
+    /// [`zisk_common::ZiskPublics::new`]: a 32-byte zero header followed by each u64
+    /// as 8 little-endian bytes (total = `ZISK_PUBLICS * 8 + 32` = 544 bytes).
+    /// Returns an empty Vec if the slice doesn't have exactly `ZISK_PUBLICS` elements.
+    fn publics_u64_to_bytes(publics: &[u64]) -> Vec<u8> {
+        if publics.len() != ZISK_PUBLICS {
+            return vec![];
+        }
+        let mut bytes = vec![0u8; 32]; // header
+        for v in publics {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        bytes
+    }
+
     /// # Parameters
     ///
     /// * `exec_time_dto` - The execution time DTO from the worker's response
@@ -3359,6 +3515,7 @@ mod tests {
                     asm_execution_duration: None,
                     task_received_time: 0.0,
                 },
+                publics: vec![],
             }),
         };
 

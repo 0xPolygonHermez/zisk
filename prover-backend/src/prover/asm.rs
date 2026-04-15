@@ -471,6 +471,8 @@ impl AsmCoreProver {
         let executor =
             initialize_executor(options.verbose_mode, shared_tables, true, &proofman.get_wcm())?;
 
+        executor.set_packed(options.packed);
+
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,

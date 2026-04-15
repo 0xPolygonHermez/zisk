@@ -256,6 +256,7 @@ message ExecuteTaskRequest {
     ProveParams prove_params = 5;
     AggParams agg_params = 6;
     ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
+    WrapParams wrap_params = 8;
   }
 }
 
@@ -264,6 +265,7 @@ enum TaskType {
   PROVE = 1;
   AGGREGATE = 2;
   EXECUTION = 3; // Execute-only mode without proof generation
+  WRAP = 4;    // Wrap an existing vadcop proof into a minimal/snark proof
 }
 
 message ContributionParams {
@@ -289,6 +291,15 @@ message AggParams {
   bool last_proof = 2;
   bool final_proof = 3;
   bool minimal = 4;
+}
+
+message WrapParams {
+  bytes proof_data = 1; // bincode-encoded ZiskProofWithPublicValues
+  int32 proof_dest = 2; // ProofKind: 1=VadcopFinalMinimal, 2=Plonk (VadcopFinal is not valid here)
+}
+
+message WrapResult {
+  bytes proof_data = 1; // bincode-encoded ZiskProofWithPublicValues (wrapped proof)
 }
 
 // Stream type enumeration
@@ -321,6 +332,7 @@ message ExecuteTaskResponse {
     ChallengesList challenges = 7;
     ProofList proofs = 8;
     FinalProof final_proof = 9;
+    WrapResult wrap_result = 10;
   }
 }
 
@@ -356,6 +368,7 @@ message Execution {
   uint64 instances = 1;
   uint64 executed_steps = 2;
   ZiskExecuteTime zisk_execution_time = 3;
+  optional WitnessExecInfo witness_info = 4;
 }
 
 message Challenges {

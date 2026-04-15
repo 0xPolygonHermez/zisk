@@ -286,6 +286,7 @@ pub struct Job {
     pub instances: Option<u64>,
     pub metadata: BTreeMap<String, String>,
     pub execution_only: bool,
+    pub wrap_data: Option<Vec<u8>>, // bincode-encoded ZiskProofWithPublicValues from a wrap job
 }
 
 impl Job {
@@ -326,6 +327,7 @@ impl Job {
             instances: None,
             metadata,
             execution_only,
+            wrap_data: None,
         }
     }
 
@@ -448,6 +450,7 @@ pub struct ExecutionResult {
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub public_outputs: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]

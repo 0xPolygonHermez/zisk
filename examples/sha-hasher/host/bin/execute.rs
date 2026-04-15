@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::embedded().build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");
     client.setup(&PROGRAM).run()?.await?; // S'ha de fer un must use

@@ -98,6 +98,11 @@ pub struct LaunchProofResponseDto {
     pub job_id: JobId,
 }
 
+pub struct LaunchWrapRequestDto {
+    pub proof_data: Vec<u8>, // bincode-encoded ZiskProofWithPublicValues
+    pub proof_dest: i32,     // ProofKind value
+}
+
 pub struct MetricsDto {
     pub active_connections: u32,
 }
@@ -195,6 +200,12 @@ pub enum ExecuteTaskRequestTypeDto {
     ProveParams(ProveParamsDto),
     AggParams(AggParamsDto),
     ExecutionParams(ContributionParamsDto),
+    WrapParams(WrapParamsDto),
+}
+
+pub struct WrapParamsDto {
+    pub proof_data: Vec<u8>,
+    pub proof_dest: i32,
 }
 
 pub struct ContributionParamsDto {
@@ -268,6 +279,7 @@ pub struct ExecutionResultDataDto {
     pub instances: u64,
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTimeDto,
+    pub publics: Vec<u64>,
 }
 
 pub struct AggParamsDto {
@@ -309,6 +321,11 @@ pub enum ExecuteTaskResponseResultDataDto {
     Challenges(ContributionsResultDataDto),
     Proofs(Vec<ProofDto>),
     FinalProof(FinalProofDto),
+    WrapResult(WrapResultDto),
+}
+
+pub struct WrapResultDto {
+    pub proof_data: Vec<u8>,
 }
 
 pub struct HeartbeatAckDto {

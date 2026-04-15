@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ZiskExecutorTime;
+use zisk_common::{ProofKind, ZiskExecutorTime, ZiskProofWithPublicValues};
 use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
 use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_distributed_common::{ContributionsMessage, ProveMessage};
@@ -377,6 +377,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(vk.vk)
     }
 
+    pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
+        self.prover.clone()
+    }
+
     pub async fn cancel_current_computation(&mut self) {
         self.prover.cancel();
 
@@ -686,23 +690,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             match result {
-                Ok(num_instances) => {
+                Ok((num_instances, publics)) => {
                     let instances = num_instances as u64;
                     let executed_steps = prover.executed_steps();
                     guard = job.blocking_lock();
                     guard.instances = instances;
                     drop(guard);
 
+                    // witness_info.publics is empty in execution-only mode (no witness phase),
+                    // so override with the publics from ZiskExecuteResult.
+                    let mut wi = witness_info;
+                    wi.publics = publics;
+
                     if tx
                         .send(ComputationResult::Execution {
                             job_id,
                             success: true,
-                            result: Ok((
-                                witness_info,
-                                zisk_execution_time,
-                                instances,
-                                executed_steps,
-                            )),
+                            result: Ok((wi, zisk_execution_time, instances, executed_steps)),
                             task_received_time,
                         })
                         .is_err()
@@ -801,7 +805,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
         guest_program: &GuestProgram,
-    ) -> Result<usize> {
+    ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
             InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
@@ -836,8 +840,39 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let result = prover.execute(guest_program, stdin)?;
 
         let num_instances = result.planning_info.num_instances;
+        let publics_u64: Vec<u64> = result
+            .publics
+            .public_bytes()
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .collect();
 
-        Ok(num_instances)
+        Ok((num_instances, publics_u64))
+    }
+
+    /// Wrap an existing vadcop proof into a minimal or SNARK proof.
+    /// `proof_data` is a bincode-encoded `ZiskProofWithPublicValues`.
+    /// Returns the bincode-encoded wrapped `ZiskProofWithPublicValues`.
+    pub fn execute_wrap_task(
+        prover: &ZiskProver<T>,
+        proof_data: Vec<u8>,
+        proof_dest: i32,
+    ) -> Result<Vec<u8>> {
+        let proof_kind = match proof_dest {
+            1 => ProofKind::VadcopFinalMinimal,
+            2 => ProofKind::Plonk,
+            _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
+        };
+
+        let proof_with_publics: ZiskProofWithPublicValues = bincode::deserialize(&proof_data)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+
+        let wrapped = prover.wrap_proof(&proof_with_publics, proof_kind).run()?;
+
+        let result_bytes = bincode::serialize(&wrapped)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize wrapped proof: {}", e))?;
+
+        Ok(result_bytes)
     }
 
     /// Routes an incoming `StreamData` message to the per-job ordering actor.

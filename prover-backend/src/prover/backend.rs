@@ -182,8 +182,6 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin)?;
 
-        self.executor.set_packed(self.proofman.get_options().packed);
-
         let rank_info = self.proofman.get_rank_info();
 
         let mut is_active = true;
@@ -260,8 +258,6 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin)?;
 
-        self.executor.set_packed(self.proofman.get_options().packed);
-
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
@@ -294,8 +290,6 @@ impl ProverBackend {
         let start = std::time::Instant::now();
 
         self.executor.set_stdin(stdin)?;
-
-        self.executor.set_packed(self.proofman.get_options().packed);
 
         let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 

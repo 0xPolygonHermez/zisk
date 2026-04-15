@@ -14,7 +14,7 @@ use zisk_distributed_grpc_api::coordinator_api::{
     zisk_coordinator_api_client, CoordCancelJobRequest, CoordComputeConstraints,
     CoordExecuteRequest, CoordInputChunk, CoordInputKind, CoordProveRequest,
     CoordRegisterGuestProgramRequest, CoordSetupProgramRequest, CoordSubmitJobRequest,
-    CoordWaitJobResultRequest, CoordWatchJobRequest,
+    CoordWaitJobResultRequest, CoordWatchJobRequest, CoordWrapRequest,
 };
 use zisk_distributed_grpc_api::coordinator_api::{CoordJobPhase, CoordJobStatus};
 
@@ -285,8 +285,26 @@ impl BackendService for CoordinatorBackend {
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
                 Ok(job_id)
             }
-            DomainJobKind::Wrap(_) => {
-                Err(internal("Wrap jobs are not yet supported by the coordinator backend"))
+            DomainJobKind::Wrap(r) => {
+                let proof_dest = match r.proof_dest {
+                    DomainProofKind::StarkMinimal => 1,
+                    DomainProofKind::Plonk => 2,
+                    DomainProofKind::Stark => 1,
+                };
+                let response = self
+                    .client
+                    .clone()
+                    .submit_job(CoordSubmitJobRequest {
+                        job_kind: Some(coord_submit_job_request::JobKind::Wrap(CoordWrapRequest {
+                            proof_data: r.proof.data,
+                            proof_dest,
+                            wrap_timeout: None,
+                        })),
+                    })
+                    .await
+                    .map_err(|e| internal(format!("submit_job wrap failed: {e}")))?;
+                let job_id = parse_job_id(response.into_inner().job_id)?;
+                Ok(job_id)
             }
         }
     }

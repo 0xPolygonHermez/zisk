@@ -478,7 +478,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
         };
 
-        let (_, zisk_exec_time, instances, executed_steps) = result_data;
+        let (witness_info, zisk_exec_time, instances, executed_steps) = result_data;
+
+        let witness_info_msg = WitnessExecInfo {
+            witness_time: witness_info.witness_time,
+            publics: witness_info.publics,
+            proof_values: witness_info.proof_values,
+            summary_info: witness_info.summary_info,
+            total_instances: instances,
+        };
 
         let zisk_execution_time = ZiskExecuteTime {
             total_duration: zisk_exec_time.total_duration.as_millis() as f32,
@@ -499,6 +507,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             instances,
             executed_steps,
             zisk_execution_time: Some(zisk_execution_time),
+            witness_info: Some(witness_info_msg),
         }));
 
         let message = WorkerMessage {
@@ -733,6 +742,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                     Ok(TaskType::Aggregate) => {
                         self.aggregate(request, computation_tx).await?;
+                    }
+                    Ok(TaskType::Wrap) => {
+                        self.handle_wrap_task(request, message_sender).await?;
                     }
                     Err(_) => {
                         error!("Unknown task type: {}", request.task_type);
@@ -1166,5 +1178,55 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         self.worker.route_stream_data(stream_data_dto, is_first_partition).await
+    }
+
+    async fn handle_wrap_task(
+        &mut self,
+        request: ExecuteTaskRequest,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let job_id = JobId::from(request.job_id.clone());
+
+        let Some(execute_task_request::Params::WrapParams(wrap_params)) = request.params else {
+            return Err(anyhow!("Expected WrapParams for Wrap task"));
+        };
+
+        let proof_data = wrap_params.proof_data;
+        let proof_dest = wrap_params.proof_dest;
+
+        let prover = self.worker.prover_arc();
+        let worker_id_str = self.worker_config.worker.worker_id.as_string();
+        let job_id_str = job_id.as_string();
+
+        let (success, result_data, error_message) = tokio::task::spawn_blocking(move || {
+            match Worker::<T>::execute_wrap_task(&prover, proof_data, proof_dest) {
+                Ok(wrapped_bytes) => (
+                    true,
+                    Some(ResultData::WrapResult(zisk_distributed_grpc_api::WrapResult {
+                        proof_data: wrapped_bytes,
+                    })),
+                    String::new(),
+                ),
+                Err(e) => {
+                    error!("Wrap task failed for {}: {}", job_id_str, e);
+                    (false, None, e.to_string())
+                }
+            }
+        })
+        .await?;
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: worker_id_str,
+                job_id: job_id.as_string(),
+                task_type: TaskType::Wrap as i32,
+                success,
+                result_data,
+                error_message,
+            })),
+        };
+
+        message_sender.send(message)?;
+        Ok(())
     }
 }

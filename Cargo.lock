@@ -7281,6 +7281,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "asm-runner",
+ "bincode",
  "borsh",
  "cargo-zisk",
  "chrono",

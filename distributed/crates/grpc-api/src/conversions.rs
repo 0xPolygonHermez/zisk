@@ -364,6 +364,13 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             ExecuteTaskRequestTypeDto::ExecutionParams(ep) => {
                 (execute_task_request::Params::ExecutionParams(ep.into()), TaskType::Execution)
             }
+            ExecuteTaskRequestTypeDto::WrapParams(wp) => (
+                execute_task_request::Params::WrapParams(crate::WrapParams {
+                    proof_data: wp.proof_data,
+                    proof_dest: wp.proof_dest,
+                }),
+                TaskType::Wrap,
+            ),
         };
 
         ExecuteTaskRequest {
@@ -480,10 +487,12 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             }
             Some(execute_task_response::ResultData::Execution(exec_data)) => {
                 let zisk_execution_time = exec_data.zisk_execution_time.unwrap();
+                let publics = exec_data.witness_info.map(|wi| wi.publics).unwrap_or_default();
 
                 Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
                     instances: exec_data.instances,
                     executed_steps: exec_data.executed_steps,
+                    publics,
                     zisk_executor_time: ZiskExecutorTimeDto {
                         task_received_time: zisk_execution_time.task_received_time,
                         total_duration: zisk_execution_time.total_duration,
@@ -517,6 +526,11 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     executed_steps: final_proof.executed_steps,
                     verkey: final_proof.verkey,
                     instances: final_proof.instances,
+                }))
+            }
+            Some(execute_task_response::ResultData::WrapResult(wrap_result)) => {
+                Some(ExecuteTaskResponseResultDataDto::WrapResult(WrapResultDto {
+                    proof_data: wrap_result.proof_data,
                 }))
             }
             None => None,

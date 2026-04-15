@@ -25,7 +25,9 @@ use super::{
     InputChunkStream, JobEventStream, WaitResult,
 };
 use crate::errors::{internal, GatewayError, GatewayResult};
-use zisk_distributed_common::{DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto};
+use zisk_distributed_common::{
+    DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto, LaunchWrapRequestDto,
+};
 
 pub struct EmbeddedCoordinatorBackend {
     coordinator: Arc<Coordinator>,
@@ -239,8 +241,20 @@ impl BackendService for EmbeddedCoordinatorBackend {
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
                 Ok(job_id)
             }
-            DomainJobKind::Wrap(_) => {
-                Err(internal("Wrap jobs are not yet supported by the embedded coordinator backend"))
+            DomainJobKind::Wrap(r) => {
+                let proof_dest = match r.proof_dest {
+                    DomainProofKind::StarkMinimal => 1,
+                    DomainProofKind::Plonk => 2,
+                    DomainProofKind::Stark => 1, // treat Stark as minimal (same as VadcopFinalMinimal)
+                };
+                let response = self
+                    .coordinator
+                    .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .await
+                    .map_err(coord_err_to_gateway)?;
+                let job_id = Uuid::parse_str(&response.job_id.as_string())
+                    .map_err(|e| internal(format!("invalid job_id: {e}")))?;
+                Ok(job_id)
             }
         }
     }
