@@ -158,7 +158,7 @@ impl From<LaunchProofRequestDto> for LaunchProofRequest {
         let (inputs_mode, inputs_uri) = match dto.inputs_mode {
             InputsModeDto::InputsNone => (InputMode::None, None),
             InputsModeDto::InputsPath(inputs_path) => (InputMode::Path, Some(inputs_path)),
-            InputsModeDto::InputsData(inputs_uri) => (InputMode::Data, Some(inputs_uri)),
+            InputsModeDto::InputsData(inputs_data) => (InputMode::Data, Some(inputs_data)),
         };
 
         let (hints_mode, hints_uri) = match dto.hints_mode {

@@ -850,10 +850,10 @@ impl Coordinator {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputsModeDto::InputsData(ref inputs_uri) => {
-                let inputs = tokio::fs::read(inputs_uri).await.map_err(|e| {
+            InputsModeDto::InputsData(ref inputs_hex) => {
+                let inputs = hex::decode(inputs_hex).map_err(|e| {
                     CoordinatorError::Internal(format!(
-                        "Failed to read input data for job {}: {}",
+                        "Failed to decode inline input data for job {}: {}",
                         job.job_id, e
                     ))
                 })?;
