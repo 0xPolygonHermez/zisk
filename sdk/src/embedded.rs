@@ -1,3 +1,5 @@
+//! Embedded backend client
+
 pub(crate) mod execute;
 pub(crate) mod prove;
 pub(crate) mod setup;

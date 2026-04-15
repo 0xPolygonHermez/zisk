@@ -19,7 +19,6 @@ use zisk_gateway_grpc_api::{
 };
 
 use crate::prove::JobEvent;
-use crate::remote::JobId;
 use crate::setup::SetupResult;
 use crate::Proof;
 
@@ -50,6 +49,27 @@ pub(crate) fn fire_result_event<T>(subs: &SubscriberList, result: &Result<T>) {
     match result {
         Ok(_) => fire_event(subs, JobEvent::Completed),
         Err(e) => fire_event(subs, JobEvent::Failed(e.to_string())),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct JobId(String);
+
+impl From<String> for JobId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for JobId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<JobId> for String {
+    fn from(id: JobId) -> Self {
+        id.0
     }
 }
 

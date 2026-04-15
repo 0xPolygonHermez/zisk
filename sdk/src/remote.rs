@@ -1,5 +1,11 @@
 //! Remote backend client — connects to a ZisK Gateway for distributed proving.
 
+pub(crate) mod execute;
+pub(crate) mod prove;
+pub(crate) mod setup;
+pub(crate) mod upload;
+pub(crate) mod wrap;
+
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
@@ -13,10 +19,9 @@ use zisk_prover_backend::GuestProgram;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
-    job_handle::{JobHandle, SubscriberList},
+    job_handle::{JobHandle, JobId, SubscriberList},
     proof::Proof,
     prove::ProveRequest,
-    remote::JobId,
     setup::{SetupRequest, SetupResult},
     upload::{UploadRequest, UploadResult},
     wrap::WrapRequest,
