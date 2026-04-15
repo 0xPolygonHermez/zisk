@@ -239,8 +239,8 @@ impl ZiskCoordinatorApi for CoordinatorManagementGrpc {
 
         let request_dto = LaunchProofRequestDto {
             data_id: DataId::new(),
-            compute_capacity: 1,
-            minimal_compute_capacity: 1,
+            compute_capacity: 10,
+            minimal_compute_capacity: 10,
             inputs_mode,
             hints_mode,
             simulated_node: None,
