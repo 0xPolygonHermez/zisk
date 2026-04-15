@@ -23,6 +23,7 @@ use std::sync::OnceLock;
 use anyhow::Result;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::config::MetricsConfig;
@@ -63,7 +64,8 @@ fn register_descriptions() {
 
 /// Start the HTTP server that serves `/metrics` and `/health`.
 /// No-ops if `cfg.enabled` is false.
-pub async fn start(cfg: &MetricsConfig) -> Result<()> {
+/// The server stops accepting new connections when `cancel` is cancelled.
+pub async fn start(cfg: &MetricsConfig, cancel: CancellationToken) -> Result<()> {
     if !cfg.enabled {
         return Ok(());
     }
@@ -80,8 +82,13 @@ pub async fn start(cfg: &MetricsConfig) -> Result<()> {
 
     tokio::spawn(async move {
         loop {
-            let Ok((stream, _)) = listener.accept().await else { continue };
-            tokio::spawn(serve_connection(stream));
+            tokio::select! {
+                _ = cancel.cancelled() => break,
+                result = listener.accept() => {
+                    let Ok((stream, _)) = result else { continue };
+                    tokio::spawn(serve_connection(stream));
+                }
+            }
         }
     });
 

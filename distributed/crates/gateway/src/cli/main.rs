@@ -5,6 +5,7 @@ use clap::Parser;
 use std::{sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
+use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
 use tracing::error;
 use zisk_distributed_common::init as init_logging;
@@ -68,10 +69,12 @@ async fn main() -> Result<()> {
     // Install Prometheus recorder before any metrics are recorded
     metrics::install_prometheus()?;
 
+    let cancel = CancellationToken::new();
+
     match cfg.backend.mode {
         BackendMode::Mock => {
-            let backend = MockBackend::new();
-            run(cfg, backend).await
+            let backend = MockBackend::new(cancel.clone());
+            run(cfg, backend, cancel).await
         }
         BackendMode::Coordinator => {
             let backend = CoordinatorBackend::new(
@@ -79,7 +82,7 @@ async fn main() -> Result<()> {
                 Duration::from_secs(cfg.coordinator.connect_timeout_seconds),
                 Duration::from_secs(cfg.coordinator.request_timeout_seconds),
             )?;
-            run(cfg, backend).await
+            run(cfg, backend, cancel).await
         }
         BackendMode::Embedded => {
             let coord_config = CoordinatorConfig::load(
@@ -97,8 +100,9 @@ async fn main() -> Result<()> {
                 format!("0.0.0.0:{}", cfg.embedded_coordinator.worker_port).parse()?;
             let worker_listener = TcpListener::bind(worker_addr).await?;
 
-            // Spawn the worker-facing gRPC server (ZiskDistributedApi) in the background.
+            // Spawn the worker-facing gRPC server — shuts down when the cancel token fires.
             let worker_coordinator = Arc::clone(&coordinator);
+            let cancel_worker = cancel.clone();
             tokio::spawn(async move {
                 let svc = CoordinatorGrpc::from_arc(worker_coordinator);
                 if let Err(e) = Server::builder()
@@ -107,7 +111,10 @@ async fn main() -> Result<()> {
                             .max_decoding_message_size(MAX_MESSAGE_SIZE)
                             .max_encoding_message_size(MAX_MESSAGE_SIZE),
                     )
-                    .serve_with_incoming(TcpListenerStream::new(worker_listener))
+                    .serve_with_incoming_shutdown(
+                        TcpListenerStream::new(worker_listener),
+                        cancel_worker.cancelled_owned(),
+                    )
                     .await
                 {
                     error!("embedded coordinator worker gRPC server exited: {e:#}");
@@ -115,13 +122,13 @@ async fn main() -> Result<()> {
             });
 
             let backend = EmbeddedCoordinatorBackend::new(coordinator);
-            run(cfg, backend).await
+            run(cfg, backend, cancel).await
         }
     }
 }
 
-async fn run<B: BackendService>(cfg: Config, backend: B) -> Result<()> {
-    GatewayServer::new(cfg, backend).run().await.map_err(|e| {
+async fn run<B: BackendService>(cfg: Config, backend: B, cancel: CancellationToken) -> Result<()> {
+    GatewayServer::new(cfg, backend, cancel).run().await.map_err(|e| {
         error!("gateway exited with error: {e:#}");
         e
     })

@@ -27,6 +27,7 @@ use chrono::Utc;
 use futures::stream;
 use tokio::sync::{broadcast, mpsc, Mutex, Notify};
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
@@ -76,11 +77,12 @@ const JOB_TTL: Duration = Duration::from_secs(5 * 60);
 #[derive(Clone)]
 pub struct MockBackend {
     state: Arc<Mutex<MockState>>,
+    cancel: CancellationToken,
 }
 
 impl MockBackend {
-    pub fn new() -> Self {
-        Self { state: Arc::new(Mutex::new(MockState::new())) }
+    pub fn new(cancel: CancellationToken) -> Self {
+        Self { state: Arc::new(Mutex::new(MockState::new())), cancel }
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
@@ -89,6 +91,7 @@ impl MockBackend {
     /// broadcast the event. Also fires `notify` so `wait_job_result` unblocks.
     async fn transition(
         state: &Arc<Mutex<MockState>>,
+        cancel: &CancellationToken,
         job_id: Uuid,
         status: DomainJobStatus,
         result: Option<DomainJobKindResponse>,
@@ -110,13 +113,7 @@ impl MockBackend {
                     // Drop channels — job is done, no more events or input.
                     s.event_txs.remove(&job_id);
                     s.input_txs.remove(&job_id);
-                    // Schedule removal of the job record after a TTL so that
-                    // wait_job_result still works for a reasonable window post-completion.
-                    let state_ttl = Arc::clone(state);
-                    tokio::spawn(async move {
-                        sleep(JOB_TTL).await;
-                        state_ttl.lock().await.jobs.remove(&job_id);
-                    });
+                    Self::schedule_ttl_eviction(Arc::clone(state), cancel, job_id);
                 }
                 notify
             } else {
@@ -130,7 +127,11 @@ impl MockBackend {
     /// - `None`        — job not found
     /// - `Some(false)` — already terminal (idempotent cancel)
     /// - `Some(true)`  — successfully cancelled
-    async fn do_cancel(state: &Arc<Mutex<MockState>>, job_id: Uuid) -> Option<bool> {
+    async fn do_cancel(
+        state: &Arc<Mutex<MockState>>,
+        cancel: &CancellationToken,
+        job_id: Uuid,
+    ) -> Option<bool> {
         let notify = {
             let mut s = state.lock().await;
             let rec = match s.jobs.get_mut(&job_id) {
@@ -151,20 +152,35 @@ impl MockBackend {
             }
             s.event_txs.remove(&job_id);
             s.input_txs.remove(&job_id);
-            let state_ttl = Arc::clone(state);
-            tokio::spawn(async move {
-                sleep(JOB_TTL).await;
-                state_ttl.lock().await.jobs.remove(&job_id);
-            });
+            Self::schedule_ttl_eviction(Arc::clone(state), cancel, job_id);
             notify
         };
         notify.notify_waiters();
         Some(true)
     }
 
+    /// Remove `job_id` from state after `JOB_TTL`, unless shutdown fires first.
+    /// Keeps the record alive long enough for `wait_job_result` to collect it.
+    fn schedule_ttl_eviction(
+        state: Arc<Mutex<MockState>>,
+        cancel: &CancellationToken,
+        job_id: Uuid,
+    ) {
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = cancel.cancelled() => {}
+                _ = sleep(JOB_TTL) => {
+                    state.lock().await.jobs.remove(&job_id);
+                }
+            }
+        });
+    }
+
     /// Spawn the background task that drives a job through its lifecycle.
     fn spawn_job_task(
         state: Arc<Mutex<MockState>>,
+        cancel: CancellationToken,
         job_id: Uuid,
         kind: DomainJobKind,
         needs_input_gate: bool,
@@ -173,6 +189,7 @@ impl MockBackend {
             // ── Queued ────────────────────────────────────────────────────
             Self::transition(
                 &state,
+                &cancel,
                 job_id,
                 DomainJobStatus::Queued,
                 None,
@@ -199,6 +216,7 @@ impl MockBackend {
             };
             Self::transition(
                 &state,
+                &cancel,
                 job_id,
                 DomainJobStatus::Running(phase),
                 None,
@@ -211,6 +229,7 @@ impl MockBackend {
                 // Transition to WaitingForInput
                 Self::transition(
                     &state,
+                    &cancel,
                     job_id,
                     DomainJobStatus::WaitingForInput,
                     None,
@@ -256,6 +275,7 @@ impl MockBackend {
                 // Back to Running after input received
                 Self::transition(
                     &state,
+                    &cancel,
                     job_id,
                     DomainJobStatus::Running(None),
                     None,
@@ -282,6 +302,7 @@ impl MockBackend {
 
                 Self::transition(
                     &state,
+                    &cancel,
                     job_id,
                     DomainJobStatus::Running(Some(DomainJobPhase::Contributions)),
                     None,
@@ -306,6 +327,7 @@ impl MockBackend {
 
                 Self::transition(
                     &state,
+                    &cancel,
                     job_id,
                     DomainJobStatus::Running(Some(DomainJobPhase::Prove)),
                     None,
@@ -336,6 +358,7 @@ impl MockBackend {
 
             Self::transition(
                 &state,
+                &cancel,
                 job_id,
                 DomainJobStatus::Completed,
                 Some(result),
@@ -352,7 +375,7 @@ impl MockBackend {
 
 impl Default for MockBackend {
     fn default() -> Self {
-        Self::new()
+        Self::new(CancellationToken::new())
     }
 }
 
@@ -410,7 +433,13 @@ impl BackendService for MockBackend {
         // The notify-based approach (see spawn_job_task) doesn't need the rx side.
         drop(input_rx);
 
-        Self::spawn_job_task(Arc::clone(&self.state), job_id, kind, needs_input_gate);
+        Self::spawn_job_task(
+            Arc::clone(&self.state),
+            self.cancel.clone(),
+            job_id,
+            kind,
+            needs_input_gate,
+        );
 
         tracing::debug!(%job_id, "submitted job");
         Ok(job_id)
@@ -563,7 +592,9 @@ impl BackendService for MockBackend {
     }
 
     async fn cancel_job(&self, job_id: Uuid) -> GatewayResult<bool> {
-        Self::do_cancel(&self.state, job_id).await.ok_or(GatewayError::JobNotFound(job_id))
+        Self::do_cancel(&self.state, &self.cancel, job_id)
+            .await
+            .ok_or(GatewayError::JobNotFound(job_id))
     }
 }
 
@@ -712,7 +743,7 @@ mod tests {
 
     #[tokio::test]
     async fn register_idempotent() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let elf = vec![1u8, 2, 3];
         let h1 = b.register_guest_program(elf.clone()).await.unwrap();
         let h2 = b.register_guest_program(elf).await.unwrap();
@@ -721,7 +752,7 @@ mod tests {
 
     #[tokio::test]
     async fn setup_job_completes() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id =
             b.submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id })).await.unwrap();
@@ -732,7 +763,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_running_job() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
             .submit_job(DomainJobKind::Prove(DomainProveRequest {
@@ -754,7 +785,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_completed_job_returns_false() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
             .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
@@ -774,7 +805,7 @@ mod tests {
 
     #[tokio::test]
     async fn program_not_found_error() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let err = b
             .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id: "nonexistent".into() }))
             .await
@@ -784,7 +815,7 @@ mod tests {
 
     #[tokio::test]
     async fn job_not_found_error() {
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let fake_id = Uuid::new_v4();
         let err = b.wait_job_result(fake_id, Duration::from_millis(100)).await.unwrap_err();
         assert!(matches!(err, GatewayError::JobNotFound(_)));
@@ -793,7 +824,7 @@ mod tests {
     #[tokio::test]
     async fn wrap_job_produces_proof() {
         use chrono::Utc;
-        let b = MockBackend::new();
+        let b = MockBackend::default();
         let src_proof = DomainProof {
             proof_id: Uuid::new_v4(),
             hash_id: "h".into(),

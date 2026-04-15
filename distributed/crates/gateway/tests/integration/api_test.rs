@@ -31,7 +31,7 @@ async fn start_test_server() -> ZiskGatewayApiClient<Channel> {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    let backend = Arc::new(MockBackend::new());
+    let backend = Arc::new(MockBackend::default());
     let service = GatewayService::new(Arc::clone(&backend));
 
     tokio::spawn(async move {
