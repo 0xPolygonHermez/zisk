@@ -1,6 +1,7 @@
 //! Core library for guest programs running on the Zisk zkVM.
 //!
 //! ## Arithmetic
+//! - [`bigint`] — Arbitrary-precision integer arithmetic.
 //! - [`uint256`] — Low-level 256-bit add, subtract, multiply, divide, and power.
 //! - [`constants`] — Common 256-bit constants (`ZERO_256`, `ONE_256`, etc.).
 //! - [`utils`] — Comparison helpers and alignment checks.
@@ -11,7 +12,7 @@
 //! ## Elliptic curves
 //! - [`secp256k1`], [`secp256r1`], [`bn254`], [`bls12_381`]
 
-mod array_lib;
+mod bigint;
 mod blake2b;
 mod bls12_381;
 mod bn254;
@@ -26,7 +27,7 @@ mod utils;
 pub mod zkvm_accelerators;
 
 // For public consumption
-pub use array_lib::*;
+pub use bigint::*;
 pub use blake2b::*;
 pub use bls12_381::*;
 pub use bn254::*;

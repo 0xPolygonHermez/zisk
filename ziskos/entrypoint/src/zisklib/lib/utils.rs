@@ -4,6 +4,7 @@ pub fn is_aligned_8(ptr: *const u8) -> bool {
     (ptr as usize) & 0x7 == 0
 }
 
+/// Convert a big-endian byte array to an array of 4 u64 limbs (little-endian order).
 #[inline]
 pub fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
     [
@@ -14,6 +15,7 @@ pub fn be_bytes_to_u64_4(bytes: &[u8; 32]) -> [u64; 4] {
     ]
 }
 
+/// Convert an array of 4 u64 limbs (little-endian order) to a big-endian byte array.
 #[inline]
 pub fn u64_4_to_be_bytes(limbs: &[u64; 4]) -> [u8; 32] {
     let b3 = limbs[3].to_be_bytes();
