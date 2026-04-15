@@ -1,6 +1,6 @@
 use super::RemoteClient;
 use crate::{
-    job_handle::{extract_setup, JobHandle, JobHandleInner, SubscriberList},
+    job_handle::{JobHandle, SubscriberList},
     setup::SetupResult,
 };
 use std::time::Duration;
@@ -24,14 +24,7 @@ impl RemoteClient {
 
         let job_id = self.submit_job(job_kind)?;
         let gateway = self.gw_client.clone();
-        Ok(JobHandle {
-            inner: JobHandleInner::Remote {
-                gateway,
-                job_id,
-                extract: Box::new(|resp| extract_setup(resp)),
-            },
-            subscribers: subs,
-            timeout,
-        })
+
+        Ok(JobHandle::new_remote(gateway, job_id, subs, timeout))
     }
 }

@@ -1,7 +1,7 @@
 use super::{duration_to_proto_timestamp, stdin_to_input_kind, RemoteClient};
 use crate::{
     input::ProgramInput,
-    job_handle::{extract_prove, JobHandle, JobHandleInner, SubscriberList},
+    job_handle::{JobHandle, SubscriberList},
     proof::Proof,
     ExecutorKind,
 };
@@ -36,10 +36,7 @@ impl RemoteClient {
         };
         let job_id = self.submit_job(job_kind)?;
         let gateway = self.gw_client.clone();
-        Ok(JobHandle {
-            inner: JobHandleInner::Remote { gateway, job_id, extract: Box::new(extract_prove) },
-            subscribers: subs,
-            timeout,
-        })
+
+        Ok(JobHandle::new_remote(gateway, job_id, subs, timeout))
     }
 }

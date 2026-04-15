@@ -21,6 +21,7 @@ use zisk_gateway_grpc_api::{
 use crate::prove::JobEvent;
 use crate::remote::JobId;
 use crate::setup::SetupResult;
+use crate::Proof;
 
 const CANCELLED: &str = "Cancelled";
 const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 3600;
@@ -51,13 +52,17 @@ pub(crate) fn fire_result_event<T>(subs: &SubscriberList, result: &Result<T>) {
     }
 }
 
+/// Implemented by every type that can be produced from a remote job result.
+///
+/// The impl lives in `job_handle` (not in the individual result types) because the
+/// conversion requires gateway proto imports that should not leak into domain types.
+pub(crate) trait FromJobResult: Sized + Send + 'static {
+    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self>;
+}
+
 pub(crate) enum JobHandleInner<T> {
     Embedded(JoinHandle<Result<T>>),
-    Remote {
-        gateway: ZiskGatewayApiClient<Channel>,
-        job_id: JobId,
-        extract: Box<dyn FnOnce(WaitJobResultResponse) -> Result<T> + Send>,
-    },
+    Remote { gateway: ZiskGatewayApiClient<Channel>, job_id: JobId },
 }
 
 /// Handle to an in-flight job (embedded or remote).
@@ -72,6 +77,23 @@ pub struct JobHandle<T> {
 }
 
 impl<T> JobHandle<T> {
+    pub fn new_embedded(
+        handle: JoinHandle<Result<T>>,
+        subscribers: SubscriberList,
+        timeout: Option<Duration>,
+    ) -> Self {
+        Self { inner: JobHandleInner::Embedded(handle), subscribers, timeout }
+    }
+
+    pub fn new_remote(
+        gateway: ZiskGatewayApiClient<Channel>,
+        job_id: JobId,
+        subscribers: SubscriberList,
+        timeout: Option<Duration>,
+    ) -> Self {
+        Self { inner: JobHandleInner::Remote { gateway, job_id }, subscribers, timeout }
+    }
+
     /// Register a post-submission event callback.
     ///
     /// Use [`JobEvent::All`] to subscribe to all events.
@@ -110,7 +132,7 @@ impl<T> JobHandle<T> {
     }
 }
 
-impl<T: Send + 'static> IntoFuture for JobHandle<T> {
+impl<T: Send + 'static + FromJobResult> IntoFuture for JobHandle<T> {
     type Output = Result<T>;
     type IntoFuture = Pin<Box<dyn Future<Output = Result<T>> + Send>>;
 
@@ -127,7 +149,7 @@ impl<T: Send + 'static> IntoFuture for JobHandle<T> {
                         handle.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
                     }
                 }
-                JobHandleInner::Remote { mut gateway, job_id, extract } => {
+                JobHandleInner::Remote { mut gateway, job_id } => {
                     let timeout_secs = self
                         .timeout
                         .map(|d| {
@@ -186,7 +208,7 @@ impl<T: Send + 'static> IntoFuture for JobHandle<T> {
                         }
                     }
 
-                    extract(inner)
+                    T::from_job_result(inner)
                 }
             }
         })
@@ -244,77 +266,81 @@ pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<()> {
     }
 }
 
-pub(crate) fn extract_setup(resp: WaitJobResultResponse) -> Result<SetupResult> {
-    check_completed(&resp)?;
-    Ok(SetupResult)
+// FromJobResult impls for each type that can be returned by a remote job.
+// Each impl extracts the relevant data from the WaitJobResultResponse and converts it into the appropriate Rust type.
+impl FromJobResult for SetupResult {
+    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
+        check_completed(&resp)?;
+        Ok(SetupResult)
+    }
 }
 
-/// Extract `Proof` from a prove job result.
-pub(crate) fn extract_prove(resp: WaitJobResultResponse) -> Result<crate::proof::Proof> {
-    check_completed(&resp)?;
+impl FromJobResult for Proof {
+    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
+        check_completed(&resp)?;
+        let result = resp
+            .result
+            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
+        match result.kind {
+            Some(KindResponse::Prove(prove_resp)) => {
+                let proof_msg = prove_resp
+                    .proof
+                    .ok_or_else(|| anyhow::anyhow!("missing proof in ProveResponse"))?;
+                let proof_with_pv: zisk_common::ZiskProofWithPublicValues =
+                    bincode::deserialize(&proof_msg.data)
+                        .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
+                let (steps, duration, cost) = proto_stats_to_rust(prove_resp.stats);
+                let result = zisk_prover_backend::ZiskProveResult::from_remote(
+                    proof_with_pv,
+                    steps,
+                    duration,
+                    cost,
+                );
+                Ok(crate::proof::Proof::new(result))
+            }
+            other => anyhow::bail!("unexpected job kind response for prove: {:?}", other),
+        }
+    }
+}
 
-    let result =
-        resp.result.ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-    match result.kind {
-        Some(KindResponse::Prove(prove_resp)) => {
-            let proof_msg = prove_resp
-                .proof
-                .ok_or_else(|| anyhow::anyhow!("missing proof in ProveResponse"))?;
-            let proof_with_pv: zisk_common::ZiskProofWithPublicValues =
+impl FromJobResult for crate::execute::ExecuteResult {
+    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
+        check_completed(&resp)?;
+        let result = resp
+            .result
+            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
+        match result.kind {
+            Some(KindResponse::Execute(execute_resp)) => {
+                let (steps, duration, cost) = proto_stats_to_rust(execute_resp.stats);
+                let inner = zisk_prover_backend::ZiskExecuteResult::from_remote(
+                    steps,
+                    duration,
+                    cost,
+                    &execute_resp.public_outputs,
+                );
+                Ok(crate::execute::ExecuteResult::new(inner))
+            }
+            other => anyhow::bail!("unexpected job kind response for execute: {:?}", other),
+        }
+    }
+}
+
+impl FromJobResult for zisk_common::ZiskProofWithPublicValues {
+    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
+        check_completed(&resp)?;
+        let result = resp
+            .result
+            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
+        match result.kind {
+            Some(KindResponse::Wrap(wrap_resp)) => {
+                let proof_msg = wrap_resp
+                    .proof
+                    .ok_or_else(|| anyhow::anyhow!("missing proof in WrapResponse"))?;
                 bincode::deserialize(&proof_msg.data)
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
-            let (steps, duration, cost) = proto_stats_to_rust(prove_resp.stats);
-            let result = zisk_prover_backend::ZiskProveResult::from_remote(
-                proof_with_pv,
-                steps,
-                duration,
-                cost,
-            );
-            Ok(crate::proof::Proof::new(result))
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))
+            }
+            other => anyhow::bail!("unexpected job kind response for wrap: {:?}", other),
         }
-        other => anyhow::bail!("unexpected job kind response for prove: {:?}", other),
-    }
-}
-
-/// Extract `ExecuteResult` from an execute job result.
-pub(crate) fn extract_execute(
-    resp: WaitJobResultResponse,
-) -> Result<crate::execute::ExecuteResult> {
-    check_completed(&resp)?;
-
-    let result =
-        resp.result.ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-    match result.kind {
-        Some(KindResponse::Execute(execute_resp)) => {
-            let (steps, duration, cost) = proto_stats_to_rust(execute_resp.stats);
-            let inner = zisk_prover_backend::ZiskExecuteResult::from_remote(
-                steps,
-                duration,
-                cost,
-                &execute_resp.public_outputs,
-            );
-            Ok(crate::execute::ExecuteResult::new(inner))
-        }
-        other => anyhow::bail!("unexpected job kind response for execute: {:?}", other),
-    }
-}
-
-/// Extract `ZiskProofWithPublicValues` from a wrap job result.
-pub(crate) fn extract_wrap(
-    resp: WaitJobResultResponse,
-) -> Result<zisk_common::ZiskProofWithPublicValues> {
-    check_completed(&resp)?;
-
-    let result =
-        resp.result.ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-    match result.kind {
-        Some(KindResponse::Wrap(wrap_resp)) => {
-            let proof_msg =
-                wrap_resp.proof.ok_or_else(|| anyhow::anyhow!("missing proof in WrapResponse"))?;
-            bincode::deserialize(&proof_msg.data)
-                .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))
-        }
-        other => anyhow::bail!("unexpected job kind response for wrap: {:?}", other),
     }
 }
 

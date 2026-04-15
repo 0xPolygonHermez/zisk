@@ -1,5 +1,5 @@
 use super::{duration_to_proto_timestamp, proof_with_publics_to_proto, RemoteClient};
-use crate::job_handle::{extract_wrap, JobHandle, JobHandleInner, SubscriberList};
+use crate::job_handle::{JobHandle, SubscriberList};
 use std::time::Duration;
 use zisk_common::{ProofKind, ZiskProofWithPublicValues};
 use zisk_gateway_grpc_api::proto::{
@@ -27,10 +27,7 @@ impl RemoteClient {
         };
         let job_id = self.submit_job(job_kind)?;
         let gateway = self.gw_client.clone();
-        Ok(JobHandle {
-            inner: JobHandleInner::Remote { gateway, job_id, extract: Box::new(extract_wrap) },
-            subscribers: subs,
-            timeout,
-        })
+
+        Ok(JobHandle::new_remote(gateway, job_id, subs, timeout))
     }
 }
