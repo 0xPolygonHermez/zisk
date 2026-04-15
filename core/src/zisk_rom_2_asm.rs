@@ -8351,6 +8351,10 @@ impl ZiskRom2Asm {
         let mut previous_size = 0;
 
         for (i, size) in load_sizes.iter().enumerate() {
+            if *size == 0 {
+                continue;
+            }
+
             // Store next aligned address value in mem_reads, and advance it
             *code += &format!(
                 "\tmov {REG_VALUE}, [{REG_ADDRESS} + {i}*8] {}\n",
