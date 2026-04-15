@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::setup::SetupResult;
 use crate::ZiskStdin;
 use anyhow::Result;
-use zisk_common::ProofMode;
+use zisk_common::ProofKind;
 use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmOptions, AsmProver, Emu, EmuProver,
@@ -28,7 +28,7 @@ use crate::{
     setup::SetupRequest,
     upload::UploadRequest,
     wrap::WrapRequest,
-    Client, ExecutorKind, ProofKind,
+    Client, ExecutorKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
@@ -49,7 +49,7 @@ impl Default for EmbeddedClientBuilder {
     fn default() -> Self {
         Self {
             executor: ExecutorKind::Emulator,
-            proof_kind: ProofKind::StarkMinimal,
+            proof_kind: ProofKind::VadcopFinalMinimal,
             prover_options: ProverOpts::default(),
             gpu: false,
             asm_options: None,
@@ -238,16 +238,16 @@ impl EmbeddedClient {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Result<Proof> {
         macro_rules! apply_mode {
             ($builder:expr) => {
-                match mode {
-                    ProofMode::VadcopFinal => $builder,
-                    ProofMode::VadcopFinalMinimal => {
-                        $builder.wrap_proof(ProofMode::VadcopFinalMinimal)
+                match proof_kind {
+                    ProofKind::VadcopFinal => $builder,
+                    ProofKind::VadcopFinalMinimal => {
+                        $builder.wrap_proof(ProofKind::VadcopFinalMinimal)
                     }
-                    ProofMode::Plonk => $builder.wrap_proof(ProofMode::Plonk),
+                    ProofKind::Plonk => $builder.wrap_proof(ProofKind::Plonk),
                 }
             };
         }
@@ -324,7 +324,7 @@ impl EmbeddedClient {
     pub(crate) fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         override_publics: Option<&ZiskPublics>,
         override_program_vk: Option<&ZiskProgramVK>,
     ) -> Result<ZiskProofWithPublicValues> {
@@ -332,10 +332,10 @@ impl EmbeddedClient {
         let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
         match self.prover.as_ref() {
             EmbeddedProver::Emu(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, mode)
+                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
             }
             EmbeddedProver::Asm(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, mode)
+                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
             }
         }
     }
@@ -361,11 +361,11 @@ impl Client for EmbeddedClient {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<Proof>> {
-        prove::run(self.clone(), program, input, executor, mode, timeout, subs)
+        prove::run(self.clone(), program, input, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -382,7 +382,7 @@ impl Client for EmbeddedClient {
     fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         override_publics: Option<ZiskPublics>,
         override_program_vk: Option<ZiskProgramVK>,
         timeout: Option<Duration>,
@@ -391,7 +391,7 @@ impl Client for EmbeddedClient {
         wrap::run(
             self.clone(),
             proof_with_publics,
-            mode,
+            proof_kind,
             override_publics,
             override_program_vk,
             timeout,
@@ -438,9 +438,9 @@ impl EmbeddedClient {
     pub fn wrap_proof<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
-        WrapRequest::new(self, proof_with_publics, mode)
+        WrapRequest::new(self, proof_with_publics, proof_kind)
     }
 }
 

@@ -29,7 +29,7 @@ use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStatsHandle;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{
-    ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
+    ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 use zisk_distributed_common::LoggingConfig;
@@ -317,11 +317,11 @@ impl ProverEngine for AsmProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, mode, prover_options)
+        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -329,12 +329,12 @@ impl ProverEngine for AsmProver {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Result<ZiskProofWithPublicValues> {
-        match mode {
-            ProofMode::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofMode::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
-            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", mode)),
+        match proof_kind {
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
 

@@ -2,12 +2,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
+use zisk_common::ProofKind;
 use zisk_prover_backend::GuestProgram;
 
 use crate::input::ProgramInput;
 use crate::job_handle::{JobHandle, Subscriber, SubscriberList};
 use crate::proof::Proof;
-use crate::{Client, ExecutorKind, ProofMode};
+use crate::{Client, ExecutorKind};
 
 /// Events emitted during proof generation.
 ///
@@ -25,18 +26,6 @@ pub enum JobEvent {
     Completed,
     /// Proof generation failed.
     Failed(String),
-}
-
-/// The kind of proof to generate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ProofKind {
-    /// Full STARK proof (default).
-    #[default]
-    Stark,
-    /// STARK proof in minimal-memory mode.
-    StarkMinimal,
-    /// PLONK/SNARK proof (requires a prior STARK reduction).
-    Plonk,
 }
 
 /// Builder for a prove request.
@@ -101,12 +90,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
-    fn resolve_mode(&self) -> ProofMode {
-        match self.proof_kind {
-            ProofKind::Stark => ProofMode::VadcopFinal,
-            ProofKind::StarkMinimal => ProofMode::VadcopFinalMinimal,
-            ProofKind::Plonk => ProofMode::Plonk,
-        }
+    fn resolve_mode(&self) -> ProofKind {
+        self.proof_kind
     }
 
     /// Submit proof generation, returning a [`JobHandle<Proof>`] immediately.

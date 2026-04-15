@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use zisk_common::{ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 
 use crate::job_handle::JobHandle;
 use crate::Client;
@@ -13,7 +13,7 @@ use crate::Client;
 pub struct WrapRequest<'a, C> {
     client: &'a C,
     proof_with_publics: &'a ZiskProofWithPublicValues,
-    mode: ProofMode,
+    proof_kind: ProofKind,
     override_publics: Option<ZiskPublics>,
     override_program_vk: Option<ZiskProgramVK>,
     timeout: Option<Duration>,
@@ -24,12 +24,12 @@ impl<'a, C: Client> WrapRequest<'a, C> {
     pub(crate) fn new(
         client: &'a C,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Self {
         Self {
             client,
             proof_with_publics,
-            mode,
+            proof_kind,
             override_publics: None,
             override_program_vk: None,
             timeout: None,
@@ -62,7 +62,7 @@ impl<'a, C: Client> WrapRequest<'a, C> {
         let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_wrap(
             self.proof_with_publics,
-            self.mode,
+            self.proof_kind,
             self.override_publics,
             self.override_program_vk,
             self.timeout,

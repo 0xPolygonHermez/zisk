@@ -23,7 +23,7 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProofMode, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
+    ExecutorStatsHandle, ProofKind, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
     ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK, ZiskVerifyBuilder,
 };
 use zisk_core::ZiskRom;
@@ -580,7 +580,7 @@ pub trait ProverEngine {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult>;
 
@@ -589,7 +589,7 @@ pub trait ProverEngine {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Result<ZiskProofWithPublicValues>;
 
     fn prove_phase(
@@ -794,9 +794,9 @@ impl<C: ZiskBackend> ZiskProver<C> {
     pub fn wrap_proof<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> WrapBuilder<'a, C> {
-        WrapBuilder::new(&self.prover, proof_with_publics, mode)
+        WrapBuilder::new(&self.prover, proof_with_publics, proof_kind)
     }
 
     pub fn prove_phase(
@@ -930,7 +930,7 @@ pub struct ProveBuilder<'a, C: ZiskBackend> {
     zisk_prover: &'a ZiskProver<C>,
     guest_program: &'a GuestProgram,
     stdin: ZiskStdin,
-    mode: ProofMode,
+    proof_kind: ProofKind,
 }
 
 impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
@@ -940,17 +940,17 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         guest_program: &'a GuestProgram,
         stdin: ZiskStdin,
     ) -> Self {
-        Self { prover, zisk_prover, guest_program, stdin, mode: ProofMode::VadcopFinal }
+        Self { prover, zisk_prover, guest_program, stdin, proof_kind: ProofKind::VadcopFinal }
     }
 
     /// Enable minimal proof generation.
-    pub fn wrap_proof(mut self, proof_mode: ProofMode) -> Self {
+    pub fn wrap_proof(mut self, proof_kind: ProofKind) -> Self {
         assert!(
-            matches!(proof_mode, ProofMode::VadcopFinalMinimal | ProofMode::Plonk),
+            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Plonk),
             "Invalid proof mode for ProveBuilder: {:?}",
-            proof_mode
+            proof_kind
         );
-        self.mode = proof_mode;
+        self.proof_kind = proof_kind;
         self
     }
 
@@ -959,7 +959,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         self.prover.prove(
             self.guest_program,
             self.stdin,
-            self.mode,
+            self.proof_kind,
             self.zisk_prover.prover_options.clone(),
         )
     }
@@ -983,7 +983,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 pub struct WrapBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     proof_with_publics: &'a ZiskProofWithPublicValues,
-    mode: ProofMode,
+    proof_kind: ProofKind,
     override_publics: Option<&'a ZiskPublics>,
     override_program_vk: Option<&'a ZiskProgramVK>,
 }
@@ -992,9 +992,15 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     fn new(
         prover: &'a C::Prover,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Self {
-        Self { prover, proof_with_publics, mode, override_publics: None, override_program_vk: None }
+        Self {
+            prover,
+            proof_with_publics,
+            proof_kind,
+            override_publics: None,
+            override_program_vk: None,
+        }
     }
 
     /// Override the publics from the original proof.
@@ -1013,6 +1019,6 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     pub fn run(self) -> Result<ZiskProofWithPublicValues> {
         let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.wrap_proof(&self.proof_with_publics.proof, publics, program_vk, self.mode)
+        self.prover.wrap_proof(&self.proof_with_publics.proof, publics, program_vk, self.proof_kind)
     }
 }

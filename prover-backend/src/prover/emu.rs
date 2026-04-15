@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zisk_common::{
-    io::ZiskStdin, ExecutorStatsHandle, ProofMode, ZiskExecutorTime, ZiskProgramVK, ZiskProof,
+    io::ZiskStdin, ExecutorStatsHandle, ProofKind, ZiskExecutorTime, ZiskProgramVK, ZiskProof,
     ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
@@ -198,11 +198,11 @@ impl ProverEngine for EmuProver {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
         self.register_program(&program.program_id)?;
-        self.core_prover.backend.prove(stdin, mode, prover_options)
+        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
     fn wrap_proof(
@@ -210,12 +210,12 @@ impl ProverEngine for EmuProver {
         proof: &ZiskProof,
         publics: &ZiskPublics,
         vk: &ZiskProgramVK,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> Result<ZiskProofWithPublicValues> {
-        match mode {
-            ProofMode::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofMode::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
-            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", mode)),
+        match proof_kind {
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
 

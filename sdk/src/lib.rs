@@ -22,7 +22,7 @@ pub use hints::ZiskHints;
 pub use input::ProgramInput;
 pub use job_handle::JobHandle;
 pub use proof::Proof;
-pub use prove::{JobEvent, ProofKind, ProveRequest};
+pub use prove::{JobEvent, ProveRequest};
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
@@ -45,7 +45,7 @@ pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
 pub use zisk_common::{
-    PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
+    PlonkVkey, ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 
 pub use zisk_build::*;
@@ -94,7 +94,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<Proof>>;
@@ -111,7 +111,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
     fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         override_publics: Option<ZiskPublics>,
         override_program_vk: Option<ZiskProgramVK>,
         timeout: Option<std::time::Duration>,

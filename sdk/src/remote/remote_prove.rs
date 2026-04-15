@@ -6,7 +6,7 @@ use crate::{
     ExecutorKind,
 };
 use std::time::Duration;
-use zisk_common::ProofMode;
+use zisk_common::ProofKind;
 use zisk_gateway_grpc_api::proto::{
     job_kind::Kind as GatewayKind, JobKind, ProveRequest as GatewayProveRequest,
 };
@@ -20,7 +20,7 @@ impl RemoteClient {
         program: &GuestProgram,
         input: ProgramInput,
         _executor: ExecutorKind,
-        _mode: ProofMode,
+        _kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<Proof>> {

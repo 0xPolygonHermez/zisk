@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofMode, ZiskProof};
+use zisk_common::{ProofKind, ZiskProof};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskProveResult};
 
@@ -278,10 +278,10 @@ impl ZiskProve {
 
         let mut prover = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap_proof(ProofMode::Plonk);
+            prover = prover.wrap_proof(ProofKind::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap_proof(ProofMode::VadcopFinalMinimal);
+            prover = prover.wrap_proof(ProofKind::VadcopFinalMinimal);
         }
         let result = prover.run()?;
 
@@ -312,10 +312,10 @@ impl ZiskProve {
 
         let mut prover = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap_proof(ProofMode::Plonk);
+            prover = prover.wrap_proof(ProofKind::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap_proof(ProofMode::VadcopFinalMinimal);
+            prover = prover.wrap_proof(ProofKind::VadcopFinalMinimal);
         }
 
         let result = prover.run()?;

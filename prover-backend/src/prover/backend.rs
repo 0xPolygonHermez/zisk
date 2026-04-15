@@ -25,7 +25,7 @@ use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
-    PlonkVkey, ProofMode, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
+    PlonkVkey, ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 use zisk_distributed_common::StreamMessage;
 
@@ -282,10 +282,10 @@ impl ProverBackend {
     pub(crate) fn prove(
         &self,
         stdin: ZiskStdin,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ZiskProveResult> {
-        if mode == ProofMode::Plonk && self.snark_wrapper.is_none() {
+        if proof_kind == ProofKind::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
@@ -297,7 +297,7 @@ impl ProverBackend {
 
         self.executor.set_packed(self.proofman.get_options().packed);
 
-        let minimal = matches!(mode, ProofMode::VadcopFinalMinimal);
+        let minimal = matches!(proof_kind, ProofKind::VadcopFinalMinimal);
 
         self.proofman.set_partition(1, vec![0], 0)?;
 
@@ -335,8 +335,8 @@ impl ProverBackend {
 
         let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
 
-        match (mode, proof) {
-            (ProofMode::Plonk, Some(vadcop_proof)) => {
+        match (proof_kind, proof) {
+            (ProofKind::Plonk, Some(vadcop_proof)) => {
                 let snark_proof = self
                     .snark_wrapper
                     .as_ref()

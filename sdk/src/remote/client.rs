@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
-use zisk_common::{ProofMode, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
 use zisk_gateway_grpc_api::{
     proto::{InputChunk, InputKind, JobKind, JobRequestMessage},
     ZiskGatewayApiClient,
@@ -116,11 +116,11 @@ impl Client for RemoteClient {
         program: &GuestProgram,
         input: ProgramInput,
         executor: ExecutorKind,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<Proof>> {
-        self.do_prove(program, input, executor, mode, timeout, subs)
+        self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
@@ -137,13 +137,13 @@ impl Client for RemoteClient {
     fn run_wrap(
         &self,
         proof_with_publics: &ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
         _override_publics: Option<ZiskPublics>,
         _override_program_vk: Option<ZiskProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
-        self.do_wrap(proof_with_publics, mode, timeout, subs)
+        self.do_wrap(proof_with_publics, proof_kind, timeout, subs)
     }
 }
 
@@ -185,9 +185,9 @@ impl RemoteClient {
     pub fn wrap_proof<'a>(
         &'a self,
         proof_with_publics: &'a ZiskProofWithPublicValues,
-        mode: ProofMode,
+        proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
-        WrapRequest::new(self, proof_with_publics, mode)
+        WrapRequest::new(self, proof_with_publics, proof_kind)
     }
 }
 
@@ -222,7 +222,7 @@ pub(crate) fn duration_to_proto_timestamp(d: Duration) -> prost_types::Timestamp
 
 pub(crate) fn proof_with_publics_to_proto(
     proof: &ZiskProofWithPublicValues,
-    proof_kind: zisk_gateway_grpc_api::proto::ProofKind,
+    proof_kind: ProofKind,
 ) -> Result<zisk_gateway_grpc_api::proto::Proof> {
     let data =
         bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;

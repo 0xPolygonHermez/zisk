@@ -30,8 +30,9 @@ impl ZiskProgramVK {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum ProofMode {
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ProofKind {
+    #[default]
     VadcopFinal,
     VadcopFinalMinimal,
     Plonk,

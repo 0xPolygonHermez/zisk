@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use zisk_common::ProofMode;
+use zisk_common::ProofKind;
 use zisk_prover_backend::GuestProgram;
 
 use super::{spawn_embedded_job, EmbeddedClient};
@@ -15,10 +15,14 @@ pub(crate) fn run(
     program: &GuestProgram,
     input: ProgramInput,
     executor: ExecutorKind,
-    mode: ProofMode,
+    proof_kind: ProofKind,
     timeout: Option<Duration>,
     subs: SubscriberList,
 ) -> Result<JobHandle<Proof>> {
     let program = program.clone();
-    spawn_embedded_job(move || client.run_prove(&program, input, executor, mode), timeout, subs)
+    spawn_embedded_job(
+        move || client.run_prove(&program, input, executor, proof_kind),
+        timeout,
+        subs,
+    )
 }

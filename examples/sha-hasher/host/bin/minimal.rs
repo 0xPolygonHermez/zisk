@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProofMode, ProverClient, ProverOpts, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProofKind, ProverClient, ProverOpts, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
 
     println!("Reducing proof (this may take a while)...");
     let result =
-        client.wrap_proof(vadcop_result.get_proof(), ProofMode::VadcopFinalMinimal).run()?.await?;
+        client.wrap_proof(vadcop_result.get_proof(), ProofKind::VadcopFinalMinimal).run()?.await?;
 
     // Alternatively, you can also call `minimal()` on the `ProverClient.prove` method to generate a minimal proof directly.
     // let result = client.prove(&PROGRAM, stdin)?.with_prover_options(proof_opts).minimal().run()?;

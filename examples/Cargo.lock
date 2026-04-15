@@ -6389,6 +6389,7 @@ dependencies = [
  "clap",
  "data-bus",
  "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "flate2",
  "mem-common",
  "memmap2",
  "num-format",
@@ -6397,6 +6398,7 @@ dependencies = [
  "rayon",
  "regex",
  "riscv",
+ "serde_json",
  "sm-arith",
  "sm-binary",
  "symbolic-common",
@@ -6405,6 +6407,7 @@ dependencies = [
  "vergen-git2",
  "zisk-common",
  "zisk-core",
+ "zisk-definitions",
  "zisk-pil",
 ]
 
