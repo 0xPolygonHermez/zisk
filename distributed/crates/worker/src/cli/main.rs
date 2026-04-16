@@ -3,11 +3,11 @@ use cargo_zisk::ux::print_banner;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
-use zisk_distributed_worker::{
+use zisk_prover_backend::{Asm, Emu};
+use zisk_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
-use zisk_prover_backend::{Asm, Emu};
 
 #[derive(Parser)]
 #[command(name = "zisk-worker")]

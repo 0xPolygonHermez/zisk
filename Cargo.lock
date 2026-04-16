@@ -7276,41 +7276,6 @@ name = "zisk-definitions"
 version = "0.17.0"
 
 [[package]]
-name = "zisk-distributed-worker"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "asm-runner",
- "bincode",
- "borsh",
- "cargo-zisk",
- "chrono",
- "clap",
- "colored",
- "config",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
- "precompiles-hints",
- "proofman",
- "proofman-common",
- "rom-setup",
- "serde",
- "tokio",
- "tokio-stream",
- "toml 0.9.12+spec-1.1.0",
- "tonic",
- "tracing",
- "uuid",
- "vergen-git2",
- "witness",
- "zisk-cluster-api",
- "zisk-cluster-common",
- "zisk-common",
- "zisk-coordinator",
- "zisk-pil",
- "zisk-prover-backend",
-]
-
-[[package]]
 name = "zisk-gateway"
 version = "0.17.0"
 dependencies = [
@@ -7428,6 +7393,41 @@ name = "zisk-verifier"
 version = "0.17.0"
 dependencies = [
  "proofman-verifier",
+]
+
+[[package]]
+name = "zisk-worker"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "asm-runner",
+ "bincode",
+ "borsh",
+ "cargo-zisk",
+ "chrono",
+ "clap",
+ "colored",
+ "config",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "precompiles-hints",
+ "proofman",
+ "proofman-common",
+ "rom-setup",
+ "serde",
+ "tokio",
+ "tokio-stream",
+ "toml 0.9.12+spec-1.1.0",
+ "tonic",
+ "tracing",
+ "uuid",
+ "vergen-git2",
+ "witness",
+ "zisk-cluster-api",
+ "zisk-cluster-common",
+ "zisk-common",
+ "zisk-coordinator",
+ "zisk-pil",
+ "zisk-prover-backend",
 ]
 
 [[package]]

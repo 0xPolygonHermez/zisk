@@ -113,7 +113,7 @@ zisk-definitions = { path = "definitions" }
 zisk-cluster-common = { path = "distributed/crates/cluster-common" }
 zisk-coordinator = { path = "distributed/crates/coordinator" }
 zisk-cluster-api = { path = "distributed/crates/cluster-api" }
-zisk-distributed-prover = { path = "distributed/crates/worker" }
+zisk-worker = { path = "distributed/crates/worker" }
 zisk-gateway = { path = "distributed/crates/gateway" }
 zisk-gateway-api = { path = "distributed/crates/gateway-api" }
 

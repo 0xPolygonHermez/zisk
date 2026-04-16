@@ -32,7 +32,7 @@ COPY . .
 RUN ulimit -n 65535 && \
     cargo build --release \
     --package zisk-coordinator \
-    --package zisk-distributed-worker \
+    --package zisk-worker \
     --package zisk-witness
 
 # Runtime stage - minimal image
