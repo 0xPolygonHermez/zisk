@@ -3,11 +3,7 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
-        use crate::{ziskos_fcall, ziskos_fcall_param, zisklib::FCALL_UINT256_INV_MOD_ID};
-        #[cfg(not(feature = "inputcpy"))]
-        use crate::ziskos_fcall_get;
-        #[cfg(feature = "inputcpy")]
-        use crate::ziskos_inputcpy;
+        use crate::{ziskos_fcall, ziskos_fcall_param, ziskos_fcall_get, zisklib::FCALL_UINT256_INV_MOD_ID};
     } else {
         use crate::zisklib::fcalls_impl::uint256::uint256_inv_mod;
     }
@@ -48,23 +44,11 @@ pub fn fcall_uint256_inv_mod(
         ziskos_fcall_param!(b, 4);
         ziskos_fcall!(FCALL_UINT256_INV_MOD_ID);
 
-        #[cfg(not(feature = "inputcpy"))]
-        {
-            let has_inv = ziskos_fcall_get();
-            if has_inv == 0 {
-                None
-            } else {
-                Some([
-                    ziskos_fcall_get(),
-                    ziskos_fcall_get(),
-                    ziskos_fcall_get(),
-                    ziskos_fcall_get(),
-                ])
-            }
-        }
-        #[cfg(feature = "inputcpy")]
-        {
-            unimplemented!("inputcpy is not yet implemented for fcall_uint256_inv_mod");
+        let has_inv = ziskos_fcall_get();
+        if has_inv == 0 {
+            None
+        } else {
+            Some([ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get(), ziskos_fcall_get()])
         }
     }
 }
