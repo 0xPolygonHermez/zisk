@@ -12,7 +12,7 @@ path = "src/cli/main.rs"
 
 [dependencies]
 zisk-cluster-common = { workspace = true }
-zisk-distributed-grpc-api = { workspace = true }
+zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
 
 # gRPC

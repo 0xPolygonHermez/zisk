@@ -6,7 +6,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
 
 use std::time::Duration;
-use zisk_gateway_grpc_api::proto::{
+use zisk_gateway_api::proto::{
     job_kind::Kind as GatewayKind, ExecuteRequest as GatewayExecuteRequest, JobKind,
 };
 use zisk_prover_backend::GuestProgram;

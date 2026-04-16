@@ -2,7 +2,7 @@ use super::{duration_to_proto_timestamp, proof_with_publics_to_proto, RemoteClie
 use crate::job_handle::{JobHandle, SubscriberList};
 use std::time::Duration;
 use zisk_common::{ProofKind, ZiskProofWithPublicValues};
-use zisk_gateway_grpc_api::proto::{
+use zisk_gateway_api::proto::{
     job_kind::Kind as GatewayKind, JobKind, WrapRequest as GatewayWrapRequest,
 };
 

@@ -10,8 +10,8 @@ use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
+use zisk_cluster_api::{zisk_distributed_api_server::*, *};
 use zisk_cluster_common::{CoordinatorMessageDto, JobId, SetupProgramAckDto, WorkerId};
-use zisk_distributed_grpc_api::{zisk_distributed_api_server::*, *};
 
 use crate::config::Config;
 use crate::coordinator::MessageSender;

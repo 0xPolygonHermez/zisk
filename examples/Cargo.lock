@@ -6300,7 +6300,7 @@ name = "zisk-definitions"
 version = "0.17.0"
 
 [[package]]
-name = "zisk-gateway-grpc-api"
+name = "zisk-gateway-api"
 version = "0.17.0"
 dependencies = [
  "prost",
@@ -6371,7 +6371,7 @@ dependencies = [
  "zisk-build",
  "zisk-cluster-common",
  "zisk-common",
- "zisk-gateway-grpc-api",
+ "zisk-gateway-api",
  "zisk-prover-backend",
 ]
 

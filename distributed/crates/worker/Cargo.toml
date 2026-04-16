@@ -15,7 +15,7 @@ vergen-git2.workspace = true
 
 [dependencies]
 zisk-cluster-common = { workspace = true }
-zisk-distributed-grpc-api = { workspace = true }
+zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
 
 cargo-zisk = { workspace = true }

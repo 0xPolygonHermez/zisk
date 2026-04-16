@@ -2,7 +2,7 @@
 
 _Version 1.0 · Creation date: 17-03-2026 · Last update: 11-04-2026_
 
-gRPC Service definition: [`gateway_api.proto`](../../distributed/crates/gateway/gateway-grpc-api/proto/zisk_gateway_api.proto)
+gRPC Service definition: [`gateway_api.proto`](../../distributed/crates/gateway/gateway-api/proto/zisk_gateway_api.proto)
 
 ## Summary
 

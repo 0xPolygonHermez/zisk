@@ -4,7 +4,7 @@ use crate::{
     setup::SetupResult,
 };
 use std::time::Duration;
-use zisk_gateway_grpc_api::proto::{
+use zisk_gateway_api::proto::{
     job_kind::Kind as GatewayKind, JobKind, SetupRequest as GatewaySetupRequest,
 };
 use zisk_prover_backend::GuestProgram;

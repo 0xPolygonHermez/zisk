@@ -126,7 +126,7 @@ For testing the bidirectional `WorkerStream`, you need a streaming-capable clien
 Import this crate in coordinator or worker implementations:
 
 ```rust
-use zisk_distributed_grpc_api::zisk_distributed_api::{
+use zisk_cluster_api::zisk_distributed_api::{
     ZiskDistributedApiServer, ZiskDistributedApiClient,
     WorkerMessage, CoordinatorMessage,
     ExecuteTaskRequest, ExecuteTaskResponse,
@@ -139,7 +139,7 @@ use zisk_distributed_grpc_api::zisk_distributed_api::{
 
 ```rust
 use tonic::transport::Channel;
-zisk_distributed_grpc_api
+zisk_cluster_api
 
 async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
     let channel = Channel::from_static("http://[::1]:50051")

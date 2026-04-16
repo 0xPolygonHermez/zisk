@@ -1,7 +1,7 @@
 use crate::upload::UploadResult;
 
 use super::RemoteClient;
-use zisk_gateway_grpc_api::proto::RegisterGuestProgramRequest;
+use zisk_gateway_api::proto::RegisterGuestProgramRequest;
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::{Context, Result};

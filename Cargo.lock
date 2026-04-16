@@ -7153,6 +7153,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-cluster-api"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "uuid",
+ "zisk-cluster-common",
+]
+
+[[package]]
 name = "zisk-cluster-common"
 version = "0.1.0"
 dependencies = [
@@ -7229,9 +7247,9 @@ dependencies = [
  "tracing",
  "uuid",
  "witness",
+ "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-grpc-api",
 ]
 
 [[package]]
@@ -7256,24 +7274,6 @@ dependencies = [
 [[package]]
 name = "zisk-definitions"
 version = "0.17.0"
-
-[[package]]
-name = "zisk-distributed-grpc-api"
-version = "0.17.0"
-dependencies = [
- "anyhow",
- "chrono",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
- "zisk-cluster-common",
-]
 
 [[package]]
 name = "zisk-distributed-worker"
@@ -7302,10 +7302,10 @@ dependencies = [
  "uuid",
  "vergen-git2",
  "witness",
+ "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-common",
  "zisk-coordinator",
- "zisk-distributed-grpc-api",
  "zisk-pil",
  "zisk-prover-backend",
 ]
@@ -7342,13 +7342,13 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
+ "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-coordinator",
- "zisk-distributed-grpc-api",
 ]
 
 [[package]]
-name = "zisk-gateway-grpc-api"
+name = "zisk-gateway-api"
 version = "0.17.0"
 dependencies = [
  "prost",
@@ -7419,7 +7419,7 @@ dependencies = [
  "zisk-build",
  "zisk-cluster-common",
  "zisk-common",
- "zisk-gateway-grpc-api",
+ "zisk-gateway-api",
  "zisk-prover-backend",
 ]
 

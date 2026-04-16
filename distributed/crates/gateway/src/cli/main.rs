@@ -8,11 +8,9 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
 use tracing::error;
+use zisk_cluster_api::{zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE};
 use zisk_cluster_common::init as init_logging;
 use zisk_coordinator::{Config as CoordinatorConfig, Coordinator, CoordinatorGrpc};
-use zisk_distributed_grpc_api::{
-    zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
-};
 
 use zisk_gateway::{
     backend::{coordinator::CoordinatorBackend, mock::MockBackend, BackendService},

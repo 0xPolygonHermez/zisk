@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
 use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
-use zisk_gateway_grpc_api::{
+use zisk_gateway_api::{
     proto::{InputChunk, InputKind, JobKind, JobRequestMessage},
     ZiskGatewayApiClient,
 };
@@ -203,7 +203,7 @@ pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<InputKind> {
         ProgramInput::Stdin(s) => {
             let data = s.into_inner().read_data();
             Ok(InputKind {
-                kind: Some(zisk_gateway_grpc_api::proto::input_kind::Kind::Inline(InputChunk {
+                kind: Some(zisk_gateway_api::proto::input_kind::Kind::Inline(InputChunk {
                     data,
                     is_last: true,
                 })),
@@ -228,10 +228,10 @@ pub(crate) fn duration_to_proto_timestamp(d: Duration) -> prost_types::Timestamp
 pub(crate) fn proof_with_publics_to_proto(
     proof: &ZiskProofWithPublicValues,
     proof_kind: ProofKind,
-) -> Result<zisk_gateway_grpc_api::proto::Proof> {
+) -> Result<zisk_gateway_api::proto::Proof> {
     let data =
         bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
-    Ok(zisk_gateway_grpc_api::proto::Proof {
+    Ok(zisk_gateway_api::proto::Proof {
         proof_id: uuid::Uuid::new_v4().to_string(),
         hash_id: String::new(),
         verification_key: Vec::new(),

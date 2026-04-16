@@ -8,7 +8,7 @@ use anyhow::Result;
 use futures::StreamExt;
 use tokio::task::JoinHandle;
 use tonic::transport::Channel;
-use zisk_gateway_grpc_api::{
+use zisk_gateway_api::{
     proto::{
         job_event::Event as GatewayEvent, job_failure::Kind as FailureKind,
         job_kind_response::Kind as KindResponse, job_status::Status as JobStatusVariant,
@@ -286,9 +286,9 @@ fn map_and_fire_event(subs: &SubscriberList, event: GatewayJobEvent) -> bool {
         }
         Some(GatewayEvent::Progress(p)) => {
             let pct = match p.phase() {
-                zisk_gateway_grpc_api::proto::JobPhase::Contributions => 25,
-                zisk_gateway_grpc_api::proto::JobPhase::Prove => 75,
-                zisk_gateway_grpc_api::proto::JobPhase::Aggregate => 90,
+                zisk_gateway_api::proto::JobPhase::Contributions => 25,
+                zisk_gateway_api::proto::JobPhase::Prove => 75,
+                zisk_gateway_api::proto::JobPhase::Aggregate => 90,
                 _ => 0,
             };
             fire_event(subs, JobEvent::Progress(pct));
@@ -407,7 +407,7 @@ impl FromJobResult for zisk_common::ZiskProofWithPublicValues {
 }
 
 fn proto_stats_to_rust(
-    stats: Option<zisk_gateway_grpc_api::proto::ExecutionStats>,
+    stats: Option<zisk_gateway_api::proto::ExecutionStats>,
 ) -> (u64, Duration, zisk_common::StatsCostPerType) {
     let stats = stats.unwrap_or_default();
     let cost = stats.cost_per_type.unwrap_or_default();

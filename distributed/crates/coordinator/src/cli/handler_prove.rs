@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tonic::transport::Channel;
 use tracing::{error, info};
-use zisk_coordinator::Config;
-use zisk_distributed_grpc_api::{
+use zisk_cluster_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, HintsMode, InputMode, LaunchProofRequest,
 };
+use zisk_coordinator::Config;
 
 /// Handle the prove subcommand - makes RPC request to coordinator
 #[allow(clippy::too_many_arguments)]
@@ -87,10 +87,10 @@ pub async fn handle(
     let response = client.launch_proof(launch_proof_request).await?;
 
     match response.into_inner().result {
-        Some(zisk_distributed_grpc_api::launch_proof_response::Result::JobId(job_id)) => {
+        Some(zisk_cluster_api::launch_proof_response::Result::JobId(job_id)) => {
             info!("Proof job started successfully with job_id: {}", job_id);
         }
-        Some(zisk_distributed_grpc_api::launch_proof_response::Result::Error(error)) => {
+        Some(zisk_cluster_api::launch_proof_response::Result::Error(error)) => {
             error!("Proof job failed: {} - {}", error.code, error.message);
         }
         None => {

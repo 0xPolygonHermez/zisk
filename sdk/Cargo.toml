@@ -27,7 +27,7 @@ tokio = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 zisk-cluster-common = { workspace = true }
-zisk-gateway-grpc-api = { workspace = true }
+zisk-gateway-api = { workspace = true }
 tonic = { workspace = true }
 prost-types = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }

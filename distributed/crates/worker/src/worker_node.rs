@@ -8,15 +8,15 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info, warn};
+use zisk_cluster_api::contribution_params::InputSource;
+use zisk_cluster_api::execute_task_response::ResultData;
+use zisk_cluster_api::*;
 use zisk_cluster_common::{elf_cache_path, DataId, JobId};
 use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
     WorkerState,
 };
 use zisk_common::ZiskExecutorTime;
-use zisk_distributed_grpc_api::contribution_params::InputSource;
-use zisk_distributed_grpc_api::execute_task_response::ResultData;
-use zisk_distributed_grpc_api::*;
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -1202,7 +1202,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             match Worker::<T>::execute_wrap_task(&prover, proof_data, proof_dest) {
                 Ok(wrapped_bytes) => (
                     true,
-                    Some(ResultData::WrapResult(zisk_distributed_grpc_api::WrapResult {
+                    Some(ResultData::WrapResult(zisk_cluster_api::WrapResult {
                         proof_data: wrapped_bytes,
                     })),
                     String::new(),

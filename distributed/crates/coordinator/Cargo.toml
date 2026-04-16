@@ -11,7 +11,7 @@ name = "zisk-coordinator"
 path = "src/cli/main.rs"
 
 [dependencies]
-zisk-distributed-grpc-api = { workspace = true }
+zisk-cluster-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-common = { workspace = true }
 
