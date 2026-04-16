@@ -1,14 +1,11 @@
 use anyhow::Result;
 use cargo_zisk::ux::print_banner;
 use colored::Colorize;
-use std::{net::TcpListener, path::PathBuf, sync::Arc};
+use std::{net::TcpListener, path::PathBuf};
 use tonic::transport::Server;
 use tracing::{error, info};
-use zisk_distributed_coordinator::{
-    create_shutdown_signal, Config, Coordinator, CoordinatorGrpc, CoordinatorManagementGrpc,
-};
+use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::{
-    coordinator_api::zisk_coordinator_api_server::ZiskCoordinatorApiServer,
     zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
 };
 
@@ -52,10 +49,8 @@ pub async fn handle(
     // Start the gRPC server with graceful shutdown
     info!("Starting Coordinator Network gRPC service on {addr}");
 
-    // Create a shared coordinator instance used by both services
-    let coordinator = Arc::new(Coordinator::new(config.clone()));
-    let worker_service = CoordinatorGrpc::from_arc(Arc::clone(&coordinator));
-    let mgmt_service = CoordinatorManagementGrpc::new(Arc::clone(&coordinator));
+    // Create coordinator service
+    let coordinator_service = CoordinatorGrpc::new(config.clone()).await?;
 
     // Create shutdown signal handler
     let shutdown_signal = create_shutdown_signal();
@@ -63,10 +58,7 @@ pub async fn handle(
     // Run the gRPC server with shutdown signal
     tokio::select! {
         result = Server::builder()
-            .add_service(ZiskDistributedApiServer::new(worker_service)
-                .max_decoding_message_size(MAX_MESSAGE_SIZE)
-                .max_encoding_message_size(MAX_MESSAGE_SIZE))
-            .add_service(ZiskCoordinatorApiServer::new(mgmt_service)
+            .add_service(ZiskDistributedApiServer::new(coordinator_service)
                 .max_decoding_message_size(MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(MAX_MESSAGE_SIZE))
             .serve(grpc_addr) => {
