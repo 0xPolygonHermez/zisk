@@ -1,5 +1,5 @@
 [package]
-name = "zisk-distributed-common"
+name = "zisk-cluster-common"
 version = "0.1.0"
 edition = "2021"
 

@@ -17,7 +17,7 @@ proofman-verifier = { workspace = true }
 # Zisk internal crates
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
-zisk-distributed-common = { workspace = true }
+zisk-cluster-common = { workspace = true }
 executor = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }

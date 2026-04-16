@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_distributed_common::{Environment, LoggingConfig};
+use zisk_cluster_common::{Environment, LoggingConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     dto::{WebhookErrorDto, WebhookPayloadDto},
     JobId,
 };

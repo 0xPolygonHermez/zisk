@@ -14,7 +14,7 @@ path = "src/cli/main.rs"
 vergen-git2.workspace = true
 
 [dependencies]
-zisk-distributed-common = { workspace = true }
+zisk-cluster-common = { workspace = true }
 zisk-distributed-grpc-api = { workspace = true }
 zisk-distributed-coordinator = { workspace = true }
 

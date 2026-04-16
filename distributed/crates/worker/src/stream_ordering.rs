@@ -4,9 +4,9 @@ use std::collections::BinaryHeap;
 use std::sync::mpsc;
 use std::sync::Arc;
 use tracing::{error, info};
+use zisk_cluster_common::{JobId, StreamDataDto, StreamMessageKind};
 use zisk_common::io::StreamProcessor;
 use zisk_common::reinterpret_vec;
-use zisk_distributed_common::{JobId, StreamDataDto, StreamMessageKind};
 
 /// Per-job actor that reorders out-of-order stream chunks and feeds them
 /// to `HintsProcessor::process_hints` in strict sequence order.

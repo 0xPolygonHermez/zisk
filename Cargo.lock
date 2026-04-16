@@ -3902,8 +3902,8 @@ dependencies = [
  "rayon",
  "rustls",
  "tracing",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "ziskos-hints",
 ]
 
@@ -7153,6 +7153,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-cluster-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "chrono",
+ "proofman",
+ "proofman-common",
+ "proofman-util",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "uuid",
+ "zisk-common",
+]
+
+[[package]]
 name = "zisk-common"
 version = "0.17.0"
 dependencies = [
@@ -7202,26 +7222,6 @@ name = "zisk-definitions"
 version = "0.17.0"
 
 [[package]]
-name = "zisk-distributed-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borsh",
- "chrono",
- "proofman",
- "proofman-common",
- "proofman-util",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "uuid",
- "zisk-common",
-]
-
-[[package]]
 name = "zisk-distributed-coordinator"
 version = "0.17.0"
 dependencies = [
@@ -7252,8 +7252,8 @@ dependencies = [
  "tracing",
  "uuid",
  "witness",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "zisk-distributed-grpc-api",
 ]
 
@@ -7272,7 +7272,7 @@ dependencies = [
  "tonic-prost-build",
  "tracing",
  "uuid",
- "zisk-distributed-common",
+ "zisk-cluster-common",
 ]
 
 [[package]]
@@ -7302,8 +7302,8 @@ dependencies = [
  "uuid",
  "vergen-git2",
  "witness",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "zisk-distributed-coordinator",
  "zisk-distributed-grpc-api",
  "zisk-pil",
@@ -7342,7 +7342,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "zisk-distributed-common",
+ "zisk-cluster-common",
  "zisk-distributed-coordinator",
  "zisk-distributed-grpc-api",
 ]
@@ -7392,9 +7392,9 @@ dependencies = [
  "serde",
  "sha2",
  "tracing",
+ "zisk-cluster-common",
  "zisk-common",
  "zisk-core",
- "zisk-distributed-common",
  "ziskemu",
 ]
 
@@ -7417,8 +7417,8 @@ dependencies = [
  "tracing",
  "uuid",
  "zisk-build",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "zisk-gateway-grpc-api",
  "zisk-prover-backend",
 ]

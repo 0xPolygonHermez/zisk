@@ -6,12 +6,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
+use zisk_cluster_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
+use zisk_cluster_common::{ContributionsMessage, ProveMessage};
+use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProofKind, ZiskExecutorTime, ZiskProofWithPublicValues};
-use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
-use zisk_distributed_common::{ContributionsMessage, ProveMessage};
-use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
@@ -1147,7 +1147,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let message: SetupMessage = borsh::from_slice(&bytes[1..])
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e))?;
 
-            let elf_path = zisk_distributed_common::elf_cache_path(&message.hash_id);
+            let elf_path = zisk_cluster_common::elf_cache_path(&message.hash_id);
             if !elf_path.exists() {
                 if let Some(parent) = elf_path.parent() {
                     std::fs::create_dir_all(parent)?;

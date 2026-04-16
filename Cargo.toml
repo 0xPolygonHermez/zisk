@@ -48,11 +48,11 @@ members = [
     "distributed/crates/gateway",
     "distributed/crates/gateway-grpc-api",
     "distributed/crates/distributed-grpc-api",
-    "distributed/crates/common",
+    "distributed/crates/cluster-common",
     "distributed/crates/worker",
     "sdk",
     "ziskbuild",
-	"definitions",
+    "definitions",
     "zkvm-interface",
     "examples/sha-hasher/host",
 ]
@@ -110,7 +110,7 @@ zisk-verifier = { path = "verifier" }
 zisk-definitions = { path = "definitions" }
 
 # Distributed crates
-zisk-distributed-common = { path = "distributed/crates/common" }
+zisk-cluster-common = { path = "distributed/crates/cluster-common" }
 zisk-distributed-coordinator = { path = "distributed/crates/coordinator" }
 zisk-distributed-grpc-api = { path = "distributed/crates/distributed-grpc-api" }
 zisk-distributed-prover = { path = "distributed/crates/worker" }

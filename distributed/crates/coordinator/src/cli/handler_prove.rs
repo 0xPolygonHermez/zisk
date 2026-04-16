@@ -24,7 +24,7 @@ pub async fn handle(
     execution_only: bool,
 ) -> Result<()> {
     // Initialize tracing - keep guard alive for application lifetime
-    let _log_guard = zisk_distributed_common::tracing::init(None, None)?;
+    let _log_guard = zisk_cluster_common::tracing::init(None, None)?;
 
     let coordinator_url = coordinator_url.unwrap_or_else(Config::default_url);
 

@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use zisk_distributed_common::{CoordinatorMessageDto, WorkerId};
+use zisk_cluster_common::{CoordinatorMessageDto, WorkerId};
 
 use crate::coordinator::MessageSender;
 use crate::coordinator_errors::CoordinatorResult;

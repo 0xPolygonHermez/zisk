@@ -20,6 +20,7 @@ use proofman_util::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
@@ -27,7 +28,6 @@ use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     PlonkVkey, ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
-use zisk_distributed_common::StreamMessage;
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,

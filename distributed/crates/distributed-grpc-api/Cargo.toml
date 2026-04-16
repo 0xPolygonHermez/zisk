@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-zisk-distributed-common = { workspace = true }
+zisk-cluster-common = { workspace = true }
 
 tonic = { workspace = true }
 tonic-prost = { workspace = true }

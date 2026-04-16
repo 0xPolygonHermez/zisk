@@ -11,7 +11,7 @@ use chrono::Utc;
 use tokio::{sync::RwLock, time::timeout};
 use tracing::warn;
 use uuid::Uuid;
-use zisk_distributed_common::JobPhase;
+use zisk_cluster_common::JobPhase;
 use zisk_distributed_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
@@ -25,7 +25,7 @@ use super::{
     InputChunkStream, JobEventStream, WaitResult,
 };
 use crate::errors::{internal, GatewayError, GatewayResult};
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto, LaunchWrapRequestDto,
 };
 
@@ -264,7 +264,7 @@ impl BackendService for CoordinatorBackend {
         job_id: Uuid,
         timeout_dur: Duration,
     ) -> GatewayResult<WaitResult> {
-        let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
         let mut rx = self
             .coordinator
             .subscribe_job_events(&job_id_internal)
@@ -311,7 +311,7 @@ impl BackendService for CoordinatorBackend {
     }
 
     async fn watch_job(&self, job_id: Uuid) -> GatewayResult<JobEventStream> {
-        let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
         let rx = self
             .coordinator
             .subscribe_job_events(&job_id_internal)
@@ -352,7 +352,7 @@ impl BackendService for CoordinatorBackend {
     }
 
     async fn cancel_job(&self, job_id: Uuid) -> GatewayResult<bool> {
-        let job_id_internal = zisk_distributed_common::JobId::from(job_id.to_string());
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
         let cancelled = self
             .coordinator
             .cancel_job(&job_id_internal)

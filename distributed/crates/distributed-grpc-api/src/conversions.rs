@@ -21,7 +21,7 @@ use crate::{
     WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
     WorkersListResponse,
 };
-use zisk_distributed_common::*;
+use zisk_cluster_common::*;
 
 use anyhow::Result;
 

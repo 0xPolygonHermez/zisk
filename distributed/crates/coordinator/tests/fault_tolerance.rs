@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use tokio::sync::RwLock;
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, JobId, JobPhase, JobState, PhaseTimings,
     ReconnectionDirectiveDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
     WorkerRegisterRequestDto, WorkerState,
@@ -47,10 +47,10 @@ async fn setup_running_job(
 struct SetupResult {
     coordinator: Arc<Coordinator>,
     workers: Vec<(
-        zisk_distributed_common::WorkerId,
+        zisk_cluster_common::WorkerId,
         std::sync::Arc<std::sync::Mutex<Vec<CoordinatorMessageDto>>>,
     )>,
-    job_id: zisk_distributed_common::JobId,
+    job_id: zisk_cluster_common::JobId,
 }
 
 // ──────────────────────────────────────────────────────────────────────

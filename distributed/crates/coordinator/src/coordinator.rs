@@ -51,12 +51,7 @@ use std::{
 };
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
-use zisk_common::io::{StreamSource, ZiskStream};
-use zisk_common::AsmExecutionInfo;
-use zisk_common::ZiskExecutorTime;
-use zisk_common::ZiskProofWithPublicValues;
-use zisk_common::ZISK_PUBLICS;
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
@@ -68,6 +63,11 @@ use zisk_distributed_common::{
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
     WrapParamsDto, ZiskExecutorTimeDto,
 };
+use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::AsmExecutionInfo;
+use zisk_common::ZiskExecutorTime;
+use zisk_common::ZiskProofWithPublicValues;
+use zisk_common::ZISK_PUBLICS;
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -253,7 +253,7 @@ impl Coordinator {
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
     pub fn register_guest_program(&self, elf_bytes: Vec<u8>) -> CoordinatorResult<String> {
         use blake3::Hasher;
-        use zisk_distributed_common::elf_cache_path;
+        use zisk_cluster_common::elf_cache_path;
 
         let mut hasher = Hasher::new();
         hasher.update(&elf_bytes);
@@ -275,7 +275,7 @@ impl Coordinator {
     /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
     /// Returns a `JobId` that can be used to track completion via `subscribe_job_events`.
     pub async fn setup_program(&self, hash_id: &str) -> CoordinatorResult<JobId> {
-        use zisk_distributed_common::{elf_cache_path, SetupProgramDto};
+        use zisk_cluster_common::{elf_cache_path, SetupProgramDto};
 
         let path = elf_cache_path(hash_id);
         let elf_bytes = fs::read(&path).map_err(|e| {
@@ -630,10 +630,7 @@ impl Coordinator {
         self.workers_pool
             .mark_worker_with_state(
                 &worker_id,
-                WorkerState::Computing((
-                    job_id.clone(),
-                    zisk_distributed_common::JobPhase::Aggregate,
-                )),
+                WorkerState::Computing((job_id.clone(), zisk_cluster_common::JobPhase::Aggregate)),
             )
             .await?;
 
@@ -1094,7 +1091,7 @@ impl Coordinator {
         let dispatcher =
             move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
                 use futures::future::join_all;
-                use zisk_distributed_common::{StreamDataDto, StreamPayloadDto};
+                use zisk_cluster_common::{StreamDataDto, StreamPayloadDto};
 
                 let job_id = job_id_clone.clone();
                 let workers = Arc::clone(&workers_clone);
@@ -1255,11 +1252,10 @@ impl Coordinator {
     /// Best-effort: logs warnings on failure but continues.
     async fn cancel_job_workers(&self, worker_ids: &[WorkerId], job_id: &JobId, reason: &str) {
         for worker_id in worker_ids {
-            let msg =
-                CoordinatorMessageDto::JobCancelled(zisk_distributed_common::JobCancelledDto {
-                    job_id: job_id.clone(),
-                    reason: reason.to_string(),
-                });
+            let msg = CoordinatorMessageDto::JobCancelled(zisk_cluster_common::JobCancelledDto {
+                job_id: job_id.clone(),
+                reason: reason.to_string(),
+            });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("Failed to send cancellation to worker {}: {}", worker_id, e);
             }
@@ -3297,7 +3293,7 @@ mod tests {
     use super::*;
     use crate::test_utils::*;
     use std::collections::BTreeMap;
-    use zisk_distributed_common::{
+    use zisk_cluster_common::{
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
         PhaseTimings, WorkerState,
     };
@@ -3486,7 +3482,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_late_task_response_ignored_for_failed_job() {
-        use zisk_distributed_common::{
+        use zisk_cluster_common::{
             ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ExecutionResultDataDto,
             ZiskExecutorTimeDto,
         };

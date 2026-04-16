@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
-use zisk_distributed_common::Environment;
-use zisk_distributed_common::LoggingConfig;
+use zisk_cluster_common::Environment;
+use zisk_cluster_common::LoggingConfig;
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 

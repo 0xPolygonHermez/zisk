@@ -15,12 +15,12 @@ use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProofKind, ZiskExecutorTime, ZiskProgramVK, ZiskProof,
     ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
-use zisk_distributed_common::LoggingConfig;
 
 use anyhow::Result;
 
@@ -288,7 +288,7 @@ impl EmuCoreProver {
         let rank_info = proofman.get_rank_info();
 
         if logging_config.is_some() {
-            zisk_distributed_common::init(logging_config.as_ref(), Some(&rank_info))?;
+            zisk_cluster_common::init(logging_config.as_ref(), Some(&rank_info))?;
         } else {
             initialize_logger(options.verbose_mode, Some(&rank_info));
         }

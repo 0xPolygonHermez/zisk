@@ -6,7 +6,7 @@ use crate::{
 };
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
-use zisk_distributed_common::LoggingConfig;
+use zisk_cluster_common::LoggingConfig;
 
 use anyhow::Result;
 

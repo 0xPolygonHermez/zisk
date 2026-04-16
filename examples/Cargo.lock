@@ -3365,8 +3365,8 @@ dependencies = [
  "rayon",
  "rustls",
  "tracing",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "ziskos-hints",
 ]
 
@@ -6231,6 +6231,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-cluster-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "chrono",
+ "proofman",
+ "proofman-common",
+ "proofman-util",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "uuid",
+ "zisk-common",
+]
+
+[[package]]
 name = "zisk-common"
 version = "0.17.0"
 dependencies = [
@@ -6280,26 +6300,6 @@ name = "zisk-definitions"
 version = "0.17.0"
 
 [[package]]
-name = "zisk-distributed-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borsh",
- "chrono",
- "proofman",
- "proofman-common",
- "proofman-util",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "uuid",
- "zisk-common",
-]
-
-[[package]]
 name = "zisk-gateway-grpc-api"
 version = "0.17.0"
 dependencies = [
@@ -6344,9 +6344,9 @@ dependencies = [
  "serde",
  "sha2",
  "tracing",
+ "zisk-cluster-common",
  "zisk-common",
  "zisk-core",
- "zisk-distributed-common",
  "ziskemu",
 ]
 
@@ -6369,8 +6369,8 @@ dependencies = [
  "tracing",
  "uuid",
  "zisk-build",
+ "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-common",
  "zisk-gateway-grpc-api",
  "zisk-prover-backend",
 ]

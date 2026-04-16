@@ -8,12 +8,12 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
 use tracing::{error, info, warn};
-use zisk_common::ZiskExecutorTime;
-use zisk_distributed_common::{elf_cache_path, DataId, JobId};
-use zisk_distributed_common::{
+use zisk_cluster_common::{elf_cache_path, DataId, JobId};
+use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
     WorkerState,
 };
+use zisk_common::ZiskExecutorTime;
 use zisk_distributed_grpc_api::contribution_params::InputSource;
 use zisk_distributed_grpc_api::execute_task_response::ResultData;
 use zisk_distributed_grpc_api::*;

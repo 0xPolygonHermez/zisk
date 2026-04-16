@@ -25,7 +25,7 @@ pub async fn handle(
         Config::load(config_file, port, proofs_dir, no_save_proofs, minimal_proofs, webhook_url)?;
 
     // Initialize tracing - keep guard alive for application lifetime
-    let _log_guard = zisk_distributed_common::tracing::init(Some(&config.logging), None)?;
+    let _log_guard = zisk_cluster_common::tracing::init(Some(&config.logging), None)?;
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     let grpc_addr = addr.parse().map_err(|e| {

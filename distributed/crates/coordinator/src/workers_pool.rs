@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, JobId, JobPhase, WorkerId,
     WorkerInfoDto, WorkerState, WorkersListDto,
 };
@@ -680,7 +680,7 @@ impl WorkersPool {
 mod tests {
     use super::*;
     use crate::test_utils::*;
-    use zisk_distributed_common::WorkerState;
+    use zisk_cluster_common::WorkerState;
 
     #[tokio::test]
     async fn test_disconnect_idempotent() {

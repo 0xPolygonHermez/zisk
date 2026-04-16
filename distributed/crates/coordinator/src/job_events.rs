@@ -1,4 +1,4 @@
-use zisk_distributed_common::JobPhase;
+use zisk_cluster_common::JobPhase;
 
 /// Events broadcast on the per-job channel as the job transitions through states.
 #[derive(Debug, Clone)]

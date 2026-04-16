@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use zisk_distributed_common::Environment;
-use zisk_distributed_common::{ComputeCapacity, LoggingConfig, WorkerId};
+use zisk_cluster_common::Environment;
+use zisk_cluster_common::{ComputeCapacity, LoggingConfig, WorkerId};
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

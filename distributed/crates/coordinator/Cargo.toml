@@ -12,7 +12,7 @@ path = "src/cli/main.rs"
 
 [dependencies]
 zisk-distributed-grpc-api = { workspace = true }
-zisk-distributed-common = { workspace = true }
+zisk-cluster-common = { workspace = true }
 zisk-common = { workspace = true }
 
 cargo-zisk = { workspace = true }
