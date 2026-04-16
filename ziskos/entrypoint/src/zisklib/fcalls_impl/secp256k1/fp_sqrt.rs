@@ -41,7 +41,7 @@ pub fn secp256k1_fp_sqrt(a: &[u64; 4], parity: u64, results: &mut [u64]) {
 
     // Flip the sqrt if needed to match the requested parity
     let sqrt_r = n_u64_digits_from_biguint::<4>(&sqrt);
-    let sqrt_parity = (sqrt_r[0] & 1) as u64;
+    let sqrt_parity = sqrt_r[0] & 1;
     if parity != sqrt_parity {
         sqrt = (&*P - &sqrt) % &*P;
     }
