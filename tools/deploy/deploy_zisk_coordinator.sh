@@ -153,11 +153,11 @@ build_program_args_plist() {
     args+=("${extra_arr[@]}")
   fi
 
-  printf '    <array>\n'
+  printf "    <array>\n"
   for arg in "${args[@]}"; do
-    printf '        <string>%s</string>\n' "$arg"
+    printf "        <string>%s</string>\n" "$arg"
   done
-  printf '    </array>\n'
+  printf "    </array>\n"
 }
 
 
@@ -166,15 +166,15 @@ build_program_args_plist() {
 # Step: build ExecStart line(s) for the systemd unit (Linux)
 # =============================================================================
 build_exec_start() {
-  printf 'ExecStart=%s \\\n' "${DATA_DIR}/${COORDINATOR_BIN_NAME}"
-  printf '    -p %s \\\n' "$PORT"
-  printf '    --webhook-url %s \\\n' "$WEBHOOK_URL"
-  printf '    --no-save-proofs \\\n'
-  printf '    --compressed-proofs'
+  printf "ExecStart=%s \\\n" "${DATA_DIR}/${COORDINATOR_BIN_NAME}"
+  printf "    -p %s \\\n" "$PORT"
+  printf "    --webhook-url %s \\\n" "$WEBHOOK_URL"
+  printf "    --no-save-proofs \\\n"
+  printf "    --compressed-proofs"
   if [[ -n "$EXTRA_ARGS" ]]; then
-    printf ' \\\n    %s' "$EXTRA_ARGS"
+    printf " \\\n    %s" "$EXTRA_ARGS"
   fi
-  printf '\n'
+  printf "\n"
 }
 
 

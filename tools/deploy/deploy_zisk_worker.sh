@@ -22,7 +22,7 @@ DEFAULT_WORKER_GROUP="zisk"
 DEFAULT_WORKER_USER="zisk"
 DEFAULT_DATA_DIR="/var/lib/${WORKER_BIN_NAME}"
 DEFAULT_COORDINATOR_URL="http://localhost:8080"
-DEFAULT_USE_MPI="false"
+DEFAULT_NO_MPI="false"
 DEFAULT_COMPUTE_CAPACITY="1"
 DEFAULT_HINTS_ENABLED="false"
 DEFAULT_ELF_NAME="zec-reth.elf"
@@ -40,9 +40,9 @@ DATA_DIR="${ZISK_WORKER_DATA_DIR:-$DEFAULT_DATA_DIR}"
 INPUTS_FOLDER="${ZISK_WORKER_INPUTS_FOLDER:-}"
 WORKER_BIN="${ZISK_WORKER_BIN:-}"
 COORDINATOR_URL="${ZISK_WORKER_COORDINATOR_URL:-$DEFAULT_COORDINATOR_URL}"
-USE_MPI="${ZISK_WORKER_USE_MPI:-$DEFAULT_USE_MPI}"
+NO_MPI="${ZISK_WORKER_NO_MPI:-$DEFAULT_NO_MPI}"
 MPI_PROCESSES="${ZISK_WORKER_MPI_PROCESSES:-}"
-MPI_PPR="${ZISK_WORKER_MPI_PPR:-}"
+MPI_PPR_NUMA="${ZISK_WORKER_MPI_PPR_NUMA:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
 PROVINGKEY_DIR="${ZISK_PROVINGKEY_DIR:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
@@ -87,10 +87,10 @@ OPTIONS:
   --inputs-folder DIR         Inputs folder              (env: ZISK_WORKER_INPUTS_FOLDER, default: DATA_DIR/inputs)
   --worker-bin PATH           Path to zisk-worker binary (env: ZISK_WORKER_BIN, required)
   --coordinator-url URL       Coordinator URL            (env: ZISK_WORKER_COORDINATOR_URL, default: $DEFAULT_COORDINATOR_URL)
-  --use-mpi                   Enable MPI mode            (env: ZISK_WORKER_USE_MPI)
-  --mpi-processes N           Number of MPI processes    (env: ZISK_WORKER_MPI_PROCESSES, auto-detected if --use-mpi)
-  --mpi-ppr N                 Processes per NUMA node    (env: ZISK_WORKER_MPI_PPR, auto-detected if --use-mpi)
-  --mpi-threads N             Threads per MPI process    (env: ZISK_WORKER_MPI_THREADS, auto-detected if --use-mpi)
+  --no-mpi                    Disable MPI mode           (env: ZISK_WORKER_NO_MPI)
+  --mpi-processes N           Number of MPI processes    (env: ZISK_WORKER_MPI_PROCESSES, auto-detected unless --no-mpi)
+  --mpi-numa-ppr N            Processes per NUMA node    (env: ZISK_WORKER_MPI_PPR_NUMA, auto-detected unless --no-mpi)
+  --mpi-threads N             Threads per MPI process    (env: ZISK_WORKER_MPI_THREADS, auto-detected unless --no-mpi)
   --provingkey-dir DIR        Proving key directory      (env: ZISK_PROVINGKEY_DIR, optional)
   --worker-id ID              Worker identifier          (env: ZISK_WORKER_ID, required)
   --compute-capacity N        Compute capacity           (env: ZISK_WORKER_COMPUTE_CAPACITY, default: $DEFAULT_COMPUTE_CAPACITY)
@@ -108,18 +108,18 @@ cat <<EOF
   -h, --help                  Show this help
 
 EXAMPLES:
-  # Basic install
+  # Install without MPI
   sudo ./$SCRIPT_NAME install \\
     --worker-bin /opt/zisk/bin/zisk-worker \\
     --coordinator-url http://192.168.1.10:8080 \\
-    --worker-id worker-01
+    --worker-id worker-01 \\
+    --no-mpi
 
-  # Install with MPI
+  # Install with custom MPI parameters
   sudo ./$SCRIPT_NAME install \\
     --worker-bin /opt/zisk/zisk-worker \\
     --coordinator-url http://192.168.1.10:8080 \\
     --worker-id worker-01 \\
-    --use-mpi \\
     --mpi-processes 4 \\
     --mpi-threads 8
 
@@ -142,11 +142,11 @@ while [[ $# -gt 0 ]]; do
     --worker-user)       WORKER_USER="$2";       shift 2 ;;
     --data-dir)          DATA_DIR="$2";          shift 2 ;;
     --inputs-folder)     INPUTS_FOLDER="$2";     shift 2 ;;
-    --worker-bin)        WORKER_BIN="$2";   shift 2 ;;
+    --worker-bin)        WORKER_BIN="$2";        shift 2 ;;
     --coordinator-url)   COORDINATOR_URL="$2";   shift 2 ;;
-    --use-mpi)           USE_MPI="true";         shift   ;;
+    --no-mpi)            NO_MPI="true";          shift   ;;
     --mpi-processes)     MPI_PROCESSES="$2";     shift 2 ;;
-    --mpi-ppr)           MPI_PPR="$2";           shift 2 ;;
+    --mpi-numa-ppr)      MPI_PPR_NUMA="$2";      shift 2 ;;
     --mpi-threads)       MPI_THREADS="$2";       shift 2 ;;
     --provingkey-dir)    PROVINGKEY_DIR="$2";    shift 2 ;;
     --worker-id)         WORKER_ID="$2";         shift 2 ;;
@@ -172,30 +172,28 @@ validate_args() {
   [[ -z "$WORKER_BIN" ]] && { echo "[ERROR] --worker-bin (or ZISK_WORKER_BIN) is required." >&2; usage_install; }
   [[ -z "$WORKER_ID" ]] && { echo "[ERROR] --worker-id (or ZISK_WORKER_ID) is required." >&2; usage_install; }
 
-  # Enforce that MPI flags are only used with --use-mpi
-  if [[ "$USE_MPI" != "true" ]]; then
-    [[ -n "$MPI_PROCESSES" ]] && die "--mpi-processes requires --use-mpi to be set."
-    [[ -n "$MPI_PPR" ]]       && die "--mpi-ppr requires --use-mpi to be set."
-    [[ -n "$MPI_THREADS" ]]   && die "--mpi-threads requires --use-mpi to be set."
-  fi
-
-  if [[ "$USE_MPI" == "true" ]]; then
-    # Enforce that MPI_PROCESSES, MPI_PPR and MPI_THREADS are all set or all unset
+  # Enforce that MPI flags are only used without --no-mpi
+  if [[ "$NO_MPI" == "true" ]]; then
+    [[ -n "$MPI_PROCESSES" ]] && die "--mpi-processes cannot be used with --no-mpi."
+    [[ -n "$MPI_PPR_NUMA" ]]  && die "--mpi-numa-ppr cannot be used with --no-mpi."
+    [[ -n "$MPI_THREADS" ]]   && die "--mpi-threads cannot be used with --no-mpi."
+  else
+    # Enforce that MPI_PROCESSES, MPI_PPR_NUMA and MPI_THREADS are all set or all unset
     local mpi_set=0
     [[ -n "$MPI_PROCESSES" ]] && (( mpi_set++ ))
-    [[ -n "$MPI_PPR" ]]       && (( mpi_set++ ))
+    [[ -n "$MPI_PPR_NUMA" ]]  && (( mpi_set++ ))
     [[ -n "$MPI_THREADS" ]]   && (( mpi_set++ ))
     if [[ "$mpi_set" -gt 0 && "$mpi_set" -lt 3 ]]; then
-      die "--mpi-processes, --mpi-ppr and --mpi-threads must all be specified together."
+      die "--mpi-processes, --mpi-numa-ppr and --mpi-threads must all be specified together."
     fi
     # Auto-detect MPI parameters if none were provided
     if [[ "$mpi_set" -eq 0 ]]; then
       info "MPI parameters not specified, detecting from hardware..."
       mpi_params
       MPI_PROCESSES="$MPI_NP"
-      MPI_PPR="$MPI_PPR"
+      MPI_PPR_NUMA="$MPI_PPR"
       MPI_THREADS="$MPI_RAYON_NUM_THREADS"
-      info "Auto-detected: MPI_PROCESSES=${MPI_PROCESSES}, MPI_PPR=${MPI_PPR}, MPI_THREADS=${MPI_THREADS}"
+      info "Auto-detected: MPI_PROCESSES=${MPI_PROCESSES}, MPI_PPR_NUMA=${MPI_PPR_NUMA}, MPI_THREADS=${MPI_THREADS}"
     fi
   fi
 }
@@ -205,14 +203,14 @@ validate_args() {
 # =============================================================================
 build_program_args_plist() {
   local args=()
-  if [[ "$USE_MPI" == "true" ]]; then
+  if [[ "$NO_MPI" == "true" ]]; then
+    args+=("${DATA_DIR}/${WORKER_BIN_NAME}")
+  else
     args+=(mpirun --report-bindings --allow-run-as-root
            -np "$MPI_PROCESSES"
-           -map-by "ppr:${MPI_PPR}:numa" --bind-to numa --rank-by slot
+           -map-by "ppr:${MPI_PPR_NUMA}:numa" --bind-to numa --rank-by slot
            -x "RAYON_NUM_THREADS=${MPI_THREADS}"
            "${DATA_DIR}/${WORKER_BIN_NAME}")
-  else
-    args+=("${DATA_DIR}/${WORKER_BIN_NAME}")
   fi
   args+=(-e "${DATA_DIR}/${ELF_NAME}"
          --coordinator-url "${COORDINATOR_URL}")
@@ -222,14 +220,12 @@ build_program_args_plist() {
          --compute-capacity "${COMPUTE_CAPACITY}")
   [[ "$HINTS_ENABLED" == "true" ]] && args+=(--hints)
 
-  printf '    <array>\n'
+  printf "    <array>\n"
   for arg in "${args[@]}"; do
-    printf '        <string>%s</string>\n' "$arg"
+    printf "        <string>%s</string>\n" "$arg"
   done
-  printf '    </array>\n'
+  printf "    </array>\n"
 }
-
-
 
 # =============================================================================
 # Step: build ExecStart line(s) for the service unit
@@ -248,24 +244,22 @@ build_exec_start() {
     --worker-id \"${WORKER_ID}\" \\
     --compute-capacity ${COMPUTE_CAPACITY}${hints_arg}"
 
-  if [[ "$USE_MPI" == "true" ]]; then
-    printf 'ExecStart=mpirun \\\n'
-    printf '    --report-bindings \\\n'
-    printf '    --allow-run-as-root \\\n'
-    printf '    -np %s \\\n' "$MPI_PROCESSES"
-    printf '    -map-by ppr:%s:numa \\\n' "$MPI_PPR"
-    printf '    --bind-to numa \\\n'
-    printf '    --rank-by slot \\\n'
-    printf '    -x RAYON_NUM_THREADS=%s \\\n' "$MPI_THREADS"
-    printf '    %s \\\'\''\n' "${DATA_DIR}/${WORKER_BIN_NAME}"
-    printf '%s\n' "$common_args"
+  if [[ "$NO_MPI" == "true" ]]; then
+    printf "ExecStart=%s \\\n" "${DATA_DIR}/${WORKER_BIN_NAME}"
+    printf "%s\n" "$common_args"
   else
-    printf 'ExecStart=%s \\\n' "${DATA_DIR}/${WORKER_BIN_NAME}"
-    printf '%s\n' "$common_args"
+    printf "ExecStart=mpirun \\\n"
+    printf "    --report-bindings \\\n"
+    printf "    --allow-run-as-root \\\n"
+    printf "    -np %s \\\n" "$MPI_PROCESSES"
+    printf "    -map-by ppr:%s:numa \\\n" "$MPI_PPR_NUMA"
+    printf "    --bind-to numa \\\n"
+    printf "    --rank-by slot \\\n"
+    printf "    -x RAYON_NUM_THREADS=%s \\\n" "$MPI_THREADS"
+    printf "    %s \\\n" "${DATA_DIR}/${WORKER_BIN_NAME}"
+    printf "%s\n" "$common_args"
   fi
 }
-
-
 
 # =============================================================================
 # Main
