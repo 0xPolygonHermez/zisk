@@ -29,20 +29,24 @@
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
+//! `|--------------- RAM_ADDR                            (0xa0000000)`
+//! `|`
+//! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xa03ffff0)`
+//! `|`
+//! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xa0400000)`
 //! `|`
 //! `| Contains system address.`
 //! `| The first 256 bytes contain 32 8-byte registers`
-//! `| The address UART_ADDR is used as a stdout at addr = 0xa0000200`
-//! `| The first float register is at         FREG_FIRST = 0xa0001000`
-//! `| The first CSR register is at             CSR_ADDR = 0xa0008000`
+//! `| The address UART_ADDR is used as a stdout at addr = 0xa0400200`
+//! `| The first float register is at         FREG_FIRST = 0xa0401000`
+//! `| The first CSR register is at             CSR_ADDR = 0xa0408000`
 //! `|`
-//! `|--------------- OUTPUT_ADDR                         (0xa0010000)`
+//! `|--------------- OUTPUT_ADDR                         (0xa0410000)`
 //! `|`
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0030000)`
+//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0430000)`
 //! `|`
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
@@ -109,18 +113,16 @@ pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x20000000; // 512M
+/// Program stack size
+pub const STACK_SIZE: u64 = 0x400000; // 4MB
 /// First system RW memory address
-pub const SYS_ADDR: u64 = RAM_ADDR;
+pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
 /// Size of the system RW memory
 pub const SYS_SIZE: u64 = 0x10000;
 /// First output RW memory address
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
 pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
-/// First general purpose RW memory address
-pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
-/// Size of the general purpose RW memory address
-pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
