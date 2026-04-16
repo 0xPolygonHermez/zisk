@@ -280,24 +280,19 @@ impl ZiskPublics {
         Self { data: [0u8; ZISK_PUBLICS * 4].to_vec(), ptr: Cell::new(0) }
     }
 
-    /// Create ZiskPublics from a serializable value.
-    /// The value is serialized with bincode and stored in the public outputs as 64-bit chunks.
-    pub fn write<T: serde::Serialize>(value: &T) -> Result<Self> {
-        let serialized = bincode::serialize(value)
-            .map_err(|e| anyhow::anyhow!("Serialization failed: {}", e))?;
-
-        if serialized.len() > ZISK_PUBLICS * 4 {
+    /// Create ZiskPublics from raw bytes.
+    /// The caller is responsible for any serialization or encoding before calling this.
+    pub fn write(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() > ZISK_PUBLICS * 4 {
             return Err(anyhow::anyhow!(
-                "Serialized data too large: {} bytes (max {} bytes)",
-                serialized.len(),
+                "Data too large: {} bytes (max {} bytes)",
+                bytes.len(),
                 ZISK_PUBLICS * 4
             ));
         }
 
         let mut data = [0u8; ZISK_PUBLICS * 4];
-        // Chunk into 8-byte (u64) values
-        for (i, chunk) in serialized.chunks(4).enumerate() {
-            // copy chunk into 32-bit slot, padding with zeros if chunk < 4 bytes
+        for (i, chunk) in bytes.chunks(4).enumerate() {
             let mut buf = [0u8; 4];
             buf[..chunk.len()].copy_from_slice(chunk);
             data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
@@ -306,54 +301,27 @@ impl ZiskPublics {
         Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
     }
 
-    pub fn write_abi<T: alloy_sol_types::SolValue>(value: &T) -> Result<Self> {
-        let encoded = value.abi_encode();
-
-        if encoded.len() > ZISK_PUBLICS * 4 {
-            return Err(anyhow::anyhow!(
-                "ABI encoded data too large: {} bytes (max {} bytes)",
-                encoded.len(),
-                ZISK_PUBLICS * 4
-            ));
-        }
-
-        let mut data = [0u8; ZISK_PUBLICS * 4];
-        for (i, chunk) in encoded.chunks(4).enumerate() {
-            // copy chunk into 32-bit slot, padding with zeros if chunk < 4 bytes
-            let mut buf = [0u8; 4];
-            buf[..chunk.len()].copy_from_slice(chunk);
-            data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
-        }
-
-        Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
+    /// Return the raw stored public output bytes without advancing the cursor.
+    pub fn read_bytes(&self) -> &[u8] {
+        &self.data
     }
 
-    /// Reset the reading pointer to the beginning.
+    /// Reset the reading cursor to the beginning.
     pub fn head(&self) {
         self.ptr.set(0);
     }
 
-    /// Read raw bytes from public outputs.
-    pub fn read_slice(&self, slice: &mut [u8]) {
+    /// Deserialize a value from public outputs using bincode, advancing the cursor.
+    pub fn read<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
         let ptr = self.ptr.get();
-        slice.copy_from_slice(&self.data[ptr..ptr + slice.len()]);
-        self.ptr.set(ptr + slice.len());
-    }
-
-    /// Deserialize a value from public outputs.
-    /// The value must have been previously written with bincode serialization using `commit()`.
-    pub fn read<T: serde::Serialize + serde::de::DeserializeOwned>(&self) -> Result<T> {
-        let ptr = self.ptr.get();
-        let result: T = bincode::deserialize(&self.data[ptr..])
+        let mut cursor = std::io::Cursor::new(&self.data[ptr..]);
+        let result: T = bincode::deserialize_from(&mut cursor)
             .map_err(|e| anyhow::anyhow!("Deserialization failed: {}", e))?;
-        let nb_bytes = bincode::serialized_size(&result)
-            .map_err(|e| anyhow::anyhow!("Failed to get serialized size: {}", e))?;
-        self.ptr.set(ptr + nb_bytes as usize);
+        self.ptr.set(ptr + cursor.position() as usize);
         Ok(result)
     }
 
-    /// Decode an ABI-encoded value from public outputs.
-    /// The value must have been previously written with ABI encoding using `write_abi()`.
+    /// Decode an ABI-encoded value from public outputs, advancing the cursor.
     pub fn read_abi<T>(&self) -> Result<T>
     where
         T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,

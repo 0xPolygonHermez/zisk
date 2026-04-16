@@ -1,3 +1,4 @@
+use alloy_sol_types::SolValue;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sha_hasher_host::Output;
@@ -52,7 +53,7 @@ async fn main() -> Result<()> {
     println!("Expected output hash: {:02x?}", &hash[..8]);
 
     println!("Verifying saved proofs from disk...");
-    let publics = ZiskPublics::write_abi(&output)?;
+    let publics = ZiskPublics::write(&output.abi_encode())?;
     let vk = PROGRAM.vk()?;
 
     println!("Loading proof with publics from disk...");

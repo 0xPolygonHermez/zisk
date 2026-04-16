@@ -19,6 +19,6 @@ fn main() {
         sum = sum.wrapping_add(value);
     }
 
-    // Commit the result
-    ziskos::io::commit(&sum);
+    // Write the result to public outputs
+    ziskos::io::write_output(&sum.to_le_bytes());
 }

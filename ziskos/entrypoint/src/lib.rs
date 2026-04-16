@@ -222,6 +222,24 @@ pub(crate) fn set_output(id: usize, value: u32) {
     println!("public {id}: {value:#010x}");
 }
 
+/// C FFI: `void write_output(const uint8_t* output, size_t size)`
+///
+/// Appends `size` bytes from `output` to the public output stream.
+/// May be called multiple times; successive calls concatenate.
+///
+/// # Safety
+///
+/// `output` must be a valid pointer to at least `size` bytes of readable memory.
+/// The memory must remain valid for the duration of this call.
+#[export_name = "write_output"]
+pub unsafe extern "C" fn ffi_write_output(output: *const u8, size: usize) {
+    if size == 0 {
+        return;
+    }
+    let buf = core::slice::from_raw_parts(output, size);
+    crate::io::write_output(buf);
+}
+
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub mod ziskos {
     use crate::ziskos_definitions::ziskos_config::*;

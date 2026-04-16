@@ -49,17 +49,9 @@ impl ZiskExecuteResult {
         &self.publics
     }
 
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.publics.read()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.publics.read_abi()
+    /// Return the raw public output bytes as written by the guest.
+    pub fn get_public_values(&self) -> &[u8] {
+        self.publics.read_bytes()
     }
 
     pub fn get_execution_steps(&self) -> u64 {
@@ -120,17 +112,9 @@ impl ZiskVerifyConstraintsResult {
         &self.publics
     }
 
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.publics.read()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.publics.read_abi()
+    /// Return the raw public output bytes as written by the guest.
+    pub fn get_public_values(&self) -> &[u8] {
+        self.publics.read_bytes()
     }
 
     pub fn get_execution_steps(&self) -> u64 {
@@ -472,21 +456,9 @@ impl ZiskProveResult {
         self.proof_with_publics.save(path)
     }
 
-    /// Deserialize a value from public outputs.
-    /// The value must have been previously written with bincode serialization using `commit()`.
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.proof_with_publics.publics.read()
-    }
-
-    /// Decode an ABI-encoded value from public outputs.
-    /// The value must have been previously written with ABI encoding using `write_abi()`.
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.proof_with_publics.publics.read_abi()
+    /// Return the raw public output bytes as written by the guest.
+    pub fn get_public_values(&self) -> &[u8] {
+        self.proof_with_publics.publics.read_bytes()
     }
 
     pub fn verify(&self) -> Result<()> {

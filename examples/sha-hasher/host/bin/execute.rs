@@ -1,3 +1,4 @@
+use alloy_sol_types::SolValue;
 use anyhow::Result;
 use sha_hasher_host::Output;
 use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
@@ -31,7 +32,8 @@ async fn main() -> Result<()> {
     println!("Duration: {:?}", result.get_duration());
 
     println!("Reading public outputs...");
-    let output: Output = result.get_public_values_abi()?;
+    let publics = result.get_public_values();
+    let output: Output = Output::abi_decode(publics)?;
     println!("Public outputs:");
     println!("  Hash: {:02x?}", output.hash);
     println!("  Iterations: {}", output.iterations);

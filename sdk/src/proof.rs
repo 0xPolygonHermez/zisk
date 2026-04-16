@@ -41,17 +41,8 @@ impl Proof {
         self.inner.save_proof(path)
     }
 
-    pub fn get_public_values<T: serde::de::DeserializeOwned + serde::Serialize>(
-        &self,
-    ) -> Result<T> {
+    pub fn get_public_values(&self) -> &[u8] {
         self.inner.get_public_values()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.inner.get_public_values_abi()
     }
 
     /// Verify the proof using the public values and verification key embedded in the proof.

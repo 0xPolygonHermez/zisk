@@ -3,7 +3,10 @@
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
 use crate::{read_input, set_output};
-use serde::{de::DeserializeOwned, Serialize};
+use core::sync::atomic::{AtomicUsize, Ordering};
+use serde::de::DeserializeOwned;
+
+static OUTPUT_SLOT: AtomicUsize = AtomicUsize::new(0);
 
 /// Read a deserializable object from the input stream.
 ///
@@ -47,17 +50,12 @@ pub fn read_input_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
 }
 
-/// Commit a serializable value to public outputs.
-/// The value is serialized with bincode and written as 32-bit chunks.
-pub fn commit<T: Serialize>(value: &T) {
-    let bytes = bincode::serialize(value).expect("Serialization failed");
-    write(&bytes);
-}
-
 /// Write raw bytes to public outputs.
+/// May be called multiple times; successive calls concatenate their output.
 /// Bytes are written as 32-bit little-endian values.
-pub fn write(buf: &[u8]) {
+pub fn write_output(buf: &[u8]) {
     let chunks = buf.len().div_ceil(4);
+    let base = OUTPUT_SLOT.fetch_add(chunks, Ordering::Relaxed);
 
     for i in 0..chunks {
         let start = i * 4;
@@ -65,7 +63,7 @@ pub fn write(buf: &[u8]) {
         let mut bytes = [0u8; 4];
         bytes[..end - start].copy_from_slice(&buf[start..end]);
         let val = u32::from_le_bytes(bytes);
-        set_output(i, val);
+        set_output(base + i, val);
     }
 }
 

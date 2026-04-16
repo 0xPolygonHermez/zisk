@@ -8,13 +8,13 @@ fn main() {
     // Read the input data
     let n: u32 = ziskos::io::read();
 
-    let module = 253;
+    let module: u32 = 253;
 
-    ziskos::io::commit(&n);
-    ziskos::io::commit(&module);
+    ziskos::io::write_output(&n.to_le_bytes());
+    ziskos::io::write_output(&module.to_le_bytes());
 
-    let mut a = 0;
-    let mut b = 1;
+    let mut a: u32 = 0;
+    let mut b: u32 = 1;
     for _ in 0..n {
         let mut c = a + b;
         c %= module;
@@ -22,5 +22,5 @@ fn main() {
         b = c;
     }
 
-    ziskos::io::commit(&b);
+    ziskos::io::write_output(&b.to_le_bytes());
 }
