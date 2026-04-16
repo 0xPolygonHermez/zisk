@@ -7199,30 +7199,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-core"
-version = "0.17.0"
-dependencies = [
- "elf",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
- "lib-c",
- "lib-float",
- "paste",
- "precompiles-helpers",
- "rayon",
- "riscv",
- "serde",
- "sha2",
- "tiny-keccak",
- "zisk-definitions",
- "ziskos-hints",
-]
-
-[[package]]
-name = "zisk-definitions"
-version = "0.17.0"
-
-[[package]]
-name = "zisk-distributed-coordinator"
+name = "zisk-coordinator"
 version = "0.17.0"
 dependencies = [
  "anyhow",
@@ -7256,6 +7233,29 @@ dependencies = [
  "zisk-common",
  "zisk-distributed-grpc-api",
 ]
+
+[[package]]
+name = "zisk-core"
+version = "0.17.0"
+dependencies = [
+ "elf",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "lib-c",
+ "lib-float",
+ "paste",
+ "precompiles-helpers",
+ "rayon",
+ "riscv",
+ "serde",
+ "sha2",
+ "tiny-keccak",
+ "zisk-definitions",
+ "ziskos-hints",
+]
+
+[[package]]
+name = "zisk-definitions"
+version = "0.17.0"
 
 [[package]]
 name = "zisk-distributed-grpc-api"
@@ -7304,7 +7304,7 @@ dependencies = [
  "witness",
  "zisk-cluster-common",
  "zisk-common",
- "zisk-distributed-coordinator",
+ "zisk-coordinator",
  "zisk-distributed-grpc-api",
  "zisk-pil",
  "zisk-prover-backend",
@@ -7343,7 +7343,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "zisk-cluster-common",
- "zisk-distributed-coordinator",
+ "zisk-coordinator",
  "zisk-distributed-grpc-api",
 ]
 

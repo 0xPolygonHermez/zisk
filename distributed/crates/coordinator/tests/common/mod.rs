@@ -5,7 +5,7 @@ use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, HintsModeDto, InputsModeDto, Job, JobExecutionMode,
     JobId, JobState, WorkerId, WorkerState,
 };
-use zisk_distributed_coordinator::{Config, Coordinator, CoordinatorResult, MessageSender};
+use zisk_coordinator::{Config, Coordinator, CoordinatorResult, MessageSender};
 
 /// A mock message sender that records all sent messages for test assertions.
 pub struct MockMessageSender {

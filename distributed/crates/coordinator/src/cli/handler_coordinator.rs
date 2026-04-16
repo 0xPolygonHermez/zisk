@@ -4,7 +4,7 @@ use colored::Colorize;
 use std::{net::TcpListener, path::PathBuf};
 use tonic::transport::Server;
 use tracing::{error, info};
-use zisk_distributed_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
+use zisk_coordinator::{create_shutdown_signal, Config, CoordinatorGrpc};
 use zisk_distributed_grpc_api::{
     zisk_distributed_api_server::ZiskDistributedApiServer, MAX_MESSAGE_SIZE,
 };

@@ -31,7 +31,7 @@ COPY . .
 
 RUN ulimit -n 65535 && \
     cargo build --release \
-    --package zisk-distributed-coordinator \
+    --package zisk-coordinator \
     --package zisk-distributed-worker \
     --package zisk-witness
 

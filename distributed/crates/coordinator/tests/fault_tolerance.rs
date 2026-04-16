@@ -9,7 +9,7 @@ use zisk_cluster_common::{
     ReconnectionDirectiveDto, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
     WorkerRegisterRequestDto, WorkerState,
 };
-use zisk_distributed_coordinator::Coordinator;
+use zisk_coordinator::Coordinator;
 
 use common::*;
 
@@ -18,7 +18,7 @@ use common::*;
 async fn setup_running_job(
     n_workers: usize,
     phase: JobPhase,
-    config_overrides: impl FnOnce(&mut zisk_distributed_coordinator::Config),
+    config_overrides: impl FnOnce(&mut zisk_coordinator::Config),
 ) -> SetupResult {
     let config = test_config(config_overrides);
     let coordinator = Arc::new(Coordinator::new(config));

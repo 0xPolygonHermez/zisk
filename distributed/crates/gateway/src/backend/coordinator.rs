@@ -12,7 +12,7 @@ use tokio::{sync::RwLock, time::timeout};
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::JobPhase;
-use zisk_distributed_coordinator::{
+use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
@@ -148,8 +148,8 @@ fn domain_input_to_dto(input: &DomainInputKind) -> InputsModeDto {
     }
 }
 
-fn coord_err_to_gateway(e: zisk_distributed_coordinator::CoordinatorError) -> GatewayError {
-    use zisk_distributed_coordinator::CoordinatorError;
+fn coord_err_to_gateway(e: zisk_coordinator::CoordinatorError) -> GatewayError {
+    use zisk_coordinator::CoordinatorError;
     match e {
         CoordinatorError::InsufficientCapacity => {
             GatewayError::ClusterUnavailable { reason: "no workers connected" }

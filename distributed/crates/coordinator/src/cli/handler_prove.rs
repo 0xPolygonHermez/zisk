@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tonic::transport::Channel;
 use tracing::{error, info};
-use zisk_distributed_coordinator::Config;
+use zisk_coordinator::Config;
 use zisk_distributed_grpc_api::{
     zisk_distributed_api_client::ZiskDistributedApiClient, HintsMode, InputMode, LaunchProofRequest,
 };

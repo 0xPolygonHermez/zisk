@@ -94,7 +94,7 @@ impl WorkerServiceConfig {
             .set_default("worker.compute_capacity.compute_units", 10)?
             .set_default("worker.environment", "development")?
             .set_default("worker.inputs_folder", ".")?
-            .set_default("coordinator.url", zisk_distributed_coordinator::Config::default_url())?
+            .set_default("coordinator.url", zisk_coordinator::Config::default_url())?
             .set_default("connection.reconnect_interval_seconds", 5)?
             .set_default("connection.heartbeat_timeout_seconds", 30)?
             .set_default("logging.level", "info")?

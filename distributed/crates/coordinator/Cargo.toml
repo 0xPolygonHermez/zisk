@@ -1,5 +1,5 @@
 [package]
-name = "zisk-distributed-coordinator"
+name = "zisk-coordinator"
 description = "Core types and functionality for Distributed Network"
 version.workspace = true
 edition.workspace = true
