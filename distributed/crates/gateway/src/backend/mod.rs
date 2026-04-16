@@ -3,12 +3,11 @@
 //! [`BackendService`] is the single trait that decouples the gRPC handlers
 //! from the underlying implementation. Two implementations exist:
 //!
-//! - [`MockBackend`] — in-memory, auto-progresses jobs; used for development
-//!   and testing without a coordinator.
-//! - [`CoordinatorBackend`] — forwards to a real coordinator (phase 2, stubs only).
+//! - [`MockBackend`] — in-memory, auto-progresses jobs; used for testing only.
+//! - [`CoordinatorBackend`] — runs the coordinator in-process; the
+//!   production deployment mode.
 
 pub mod coordinator;
-pub mod embedded_coordinator;
 pub mod mock;
 
 use std::pin::Pin;

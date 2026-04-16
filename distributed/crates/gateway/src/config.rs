@@ -18,7 +18,6 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub backend: BackendConfig,
     pub coordinator: CoordinatorConfig,
-    pub embedded_coordinator: EmbeddedCoordinatorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,19 +51,11 @@ pub struct BackendConfig {
 pub enum BackendMode {
     Mock,
     Coordinator,
-    Embedded,
 }
 
+/// Config section for the coordinator that runs in-process with the gateway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
-    pub url: String,
-    pub connect_timeout_seconds: u64,
-    pub request_timeout_seconds: u64,
-}
-
-/// Config section used only when `backend.mode = "embedded"`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddedCoordinatorConfig {
     /// Path to a coordinator TOML config file. `None` uses coordinator defaults.
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
@@ -96,12 +87,8 @@ impl Config {
             .set_default("logging.format", "pretty")?
             // backend
             .set_default("backend.mode", "mock")?
-            // coordinator (used only when backend.mode = "coordinator")
-            .set_default("coordinator.url", "http://127.0.0.1:50051")?
-            .set_default("coordinator.connect_timeout_seconds", 5)?
-            .set_default("coordinator.request_timeout_seconds", 30)?
-            // embedded_coordinator (used only when backend.mode = "embedded")
-            .set_default("embedded_coordinator.worker_port", 50051u16)?;
+            // coordinator
+            .set_default("coordinator.worker_port", 50051u16)?;
 
         // Well-known config file locations, searched in order (least to most specific).
         // All are optional — the first one found wins for any given key.

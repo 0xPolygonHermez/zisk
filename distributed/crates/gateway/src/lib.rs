@@ -24,9 +24,9 @@
 //! Business logic is delegated to a [`backend::BackendService`] implementation:
 //!
 //! - [`backend::mock::MockBackend`] — in-memory, no coordinator required;
-//!   suitable for development and testing.
-//! - [`backend::coordinator::CoordinatorBackend`] — forwards to a real
-//!   coordinator (phase 2, currently stubs).
+//!   suitable for testing.
+//! - [`backend::coordinator::CoordinatorBackend`] — runs the
+//!   coordinator in-process; the production deployment mode.
 
 pub mod backend;
 pub mod config;

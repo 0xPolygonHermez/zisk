@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
@@ -15,10 +15,7 @@ use zisk_distributed_grpc_api::{
 };
 
 use zisk_gateway::{
-    backend::{
-        coordinator::CoordinatorBackend, embedded_coordinator::EmbeddedCoordinatorBackend,
-        mock::MockBackend, BackendService,
-    },
+    backend::{coordinator::CoordinatorBackend, mock::MockBackend, BackendService},
     config::{BackendMode, Config},
     metrics, GatewayServer,
 };
@@ -77,17 +74,9 @@ async fn main() -> Result<()> {
             run(cfg, backend, cancel).await
         }
         BackendMode::Coordinator => {
-            let backend = CoordinatorBackend::new(
-                cfg.coordinator.url.clone(),
-                Duration::from_secs(cfg.coordinator.connect_timeout_seconds),
-                Duration::from_secs(cfg.coordinator.request_timeout_seconds),
-            )?;
-            run(cfg, backend, cancel).await
-        }
-        BackendMode::Embedded => {
             let coord_config = CoordinatorConfig::load(
-                cfg.embedded_coordinator.config_file.clone(),
-                Some(cfg.embedded_coordinator.worker_port),
+                cfg.coordinator.config_file.clone(),
+                Some(cfg.coordinator.worker_port),
                 None,
                 false,
                 false,
@@ -97,7 +86,7 @@ async fn main() -> Result<()> {
 
             // Pre-bind the worker-facing port at startup so we fail fast on conflicts.
             let worker_addr: std::net::SocketAddr =
-                format!("0.0.0.0:{}", cfg.embedded_coordinator.worker_port).parse()?;
+                format!("0.0.0.0:{}", cfg.coordinator.worker_port).parse()?;
             let worker_listener = TcpListener::bind(worker_addr).await?;
 
             // Spawn the worker-facing gRPC server — shuts down when the cancel token fires.
@@ -121,7 +110,7 @@ async fn main() -> Result<()> {
                 }
             });
 
-            let backend = EmbeddedCoordinatorBackend::new(coordinator);
+            let backend = CoordinatorBackend::new(coordinator);
             run(cfg, backend, cancel).await
         }
     }
