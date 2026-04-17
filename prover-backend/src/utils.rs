@@ -93,8 +93,7 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
     let stem = elf.name();
     let stem = if with_hints { format!("{}-hints", stem) } else { stem.to_string() };
-    let hash = get_elf_data_hash(elf.elf())
-        .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
+    let hash = get_elf_data_hash(elf.elf());
 
     Ok((format!("{stem}-{hash}-mt.bin"), format!("{stem}-{hash}-rh.bin")))
 }

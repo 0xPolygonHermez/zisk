@@ -71,7 +71,7 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> Result<Path
 pub fn resolve_elf_path(elf: &Option<PathBuf>) -> Result<&PathBuf> {
     elf.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
-            "No ELF available. Pass --elf or run from a Rust project with a built guest at target/riscv64ima-zisk-zkvm-elf/<binary-name>."
+            "No ELF available. Pass --elf or run from a Rust project with a built guest at target/elf/riscv64ima-zisk-zkvm-elf/<binary-name>."
         )
     })
 }
@@ -90,7 +90,7 @@ pub fn detect_current_project_elf() -> Result<Option<PathBuf>> {
         return Ok(None);
     };
 
-    let candidate = current_dir.join("target").join("riscv64ima-zisk-zkvm-elf");
+    let candidate = current_dir.join("target").join("elf").join("riscv64ima-zisk-zkvm-elf");
 
     let release_candidate = candidate.join("release").join(&binary_name);
     if release_candidate.exists() {

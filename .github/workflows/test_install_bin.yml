@@ -130,7 +130,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/guest
-          cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -a -y -p 8000 -u 2>&1 | tee prove_output.log
+          cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -y -p 8000 -u 2>&1 | tee prove_output.log
           if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
             echo "❌ Prove program failed"
             exit 1

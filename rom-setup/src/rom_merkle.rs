@@ -38,7 +38,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 ) -> Result<PathBuf, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_hash = get_elf_data_hash(elf)?;
+    let elf_hash = get_elf_data_hash(elf);
 
     let elf_bin_path = get_elf_bin_file_path_with_hash(&elf_hash, &output_path, pctx.gpu)?;
 
@@ -71,7 +71,7 @@ pub fn rom_merkle_setup_verkey(
 ) -> Result<Vec<u8>, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_hash = get_elf_data_hash(elf)?;
+    let elf_hash = get_elf_data_hash(elf);
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
