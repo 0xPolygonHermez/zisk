@@ -6,7 +6,7 @@ use super::fp_inv::{
     bls12_381_fp_square, bls12_381_fp_sub,
 };
 
-/// Perform the inversion of a non-zero field element in Fp2
+/// Perform the inversion of a NON-ZERO field element in Fp2
 pub fn fcall_bls12_381_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..12].try_into().unwrap();

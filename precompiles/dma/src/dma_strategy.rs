@@ -1,8 +1,8 @@
-//! The `DmaPlanner` module defines a planner for generating execution plans specific to
-//! arithmetic operations.
+//! The `DmaStrategy` module defines a strategy planner for generating execution plans specific to
+//! DMA operations.
 //!
-//! It organizes execution plans for both regular instances and table instances,
-//! leveraging arithmetic operation counts and metadata to construct detailed plans.
+//! It organizes execution plans for DMA instance types (full, memcpy, memset, inputcpy, mem),
+//! leveraging operation counters to select the assignment that minimises total proving cost.
 
 use core::panic;
 use std::fmt;
@@ -20,6 +20,11 @@ use crate::get_dma_air_name;
 
 use fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
+use zisk_core::{
+    DMA_64_ALIGNED_COST, DMA_64_ALIGNED_INPUTCPY_COST, DMA_64_ALIGNED_MEMCPY_COST,
+    DMA_64_ALIGNED_MEMSET_COST, DMA_64_ALIGNED_MEM_COST,
+};
+
 #[cfg(not(feature = "packed"))]
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
@@ -80,6 +85,7 @@ pub struct Dma64AlignedInstances {
     pub inputcpy: usize,
     pub mem: usize,
     pub memset: usize,
+
     pub rows_memcpy_to_mem: usize,
     pub rows_memcpy_to_full: usize,
     pub rows_inputcpy_to_full: usize,
@@ -93,11 +99,11 @@ impl fmt::Display for Dma64AlignedInstances {
         write!(
             f,
             "  full      {:>3}\n  \
-               memcpy    {:>3} {:>6} → mem   {:>6} → full\n  \
-               inputcpy  {:>3} {:>6} → full\n  \
+               memcpy    {:>3} {:>12} → mem   {:>12} → full\n  \
+               inputcpy  {:>3} {:>12} → full\n  \
                mem       {:>3}\n  \
-               memset    {:>3} {:>6} → mem   {:>6} → full\n  \
-               memcmp      - {:>6} → full\n",
+               memset    {:>3} {:>12} → mem   {:>12} → full\n  \
+               memcmp      - {:>12} → full\n",
             self.full,
             self.memcpy,
             self.rows_memcpy_to_mem,
@@ -113,10 +119,8 @@ impl fmt::Display for Dma64AlignedInstances {
     }
 }
 
-/// The `DmaStrategy` struct organizes execution plans for arithmetic instances and tables.
-///
-/// It allows adding metadata about instances and tables and generates plans
-/// based on the provided counters.
+/// The `DmaStrategy` struct selects the optimal assignment of DMA operation types to instance
+/// types and generates the execution plans for each instance.
 #[derive(Default)]
 pub struct DmaStrategy<F> {
     pub dma: DmaInstances,
@@ -143,11 +147,16 @@ impl<F> fmt::Display for DmaStrategy<F> {
     }
 }
 
+/// Describes an instance type for use in the alignment strategy optimizer.
+pub struct AlignmentInstanceInfo {
+    /// Number of rows available per instance.
+    pub rows: usize,
+    /// Cost per instance (applies to the whole instance, regardless of fill level).
+    pub cost: usize,
+}
+
 impl<F: PrimeField64> DmaStrategy<F> {
-    /// Creates a new `DmaStrategy`.
-    ///
-    /// # Returns
-    /// A new `DmaStrategy` instance with no preconfigured instances or tables.
+    /// Creates a new `DmaStrategy` with default (zero) counters.
     pub fn new() -> Self {
         Self::default()
     }
@@ -193,6 +202,7 @@ impl<F: PrimeField64> DmaStrategy<F> {
     const DMA_64_ALIGNED_INPUTCPY_ROWS: usize = Dma64AlignedInputCpyTrace::<F>::NUM_ROWS;
     const DMA_64_ALIGNED_MEM_ROWS: usize = Dma64AlignedMemTrace::<F>::NUM_ROWS;
     const DMA_UNALIGNED_ROWS: usize = DmaUnalignedTrace::<F>::NUM_ROWS;
+
     // Dma
     // DmaMemCpy
     // DmaInputCpy
@@ -248,6 +258,129 @@ impl<F: PrimeField64> DmaStrategy<F> {
             info.rows_inputcpy_to_full = remain_dma_inputcpy;
         }
     }
+
+    /// Finds the assignment of operation types to instance types that minimises total cost.
+    ///
+    /// # Parameters
+    /// - `ops`       – for each operation type, a list of valid `(instance_index, total_rows)`
+    ///   pairs. `total_rows` is the number of rows this operation would occupy in
+    ///   that instance and may differ per instance alternative.
+    /// - `instances` – for each instance type, its row capacity and per-instance cost.
+    ///
+    /// # Returns
+    /// A tuple `(instance_counts, op_assignments)` where:
+    /// - `instance_counts[j]` = number of instances of type `j` needed (`ceil(rows/capacity)`).
+    /// - `op_assignments[i]`  = index into `instances` of the selected instance type for op `i`.
+    ///
+    /// # Cost model
+    /// For every instance type `j` that receives at least one operation:
+    ///
+    /// ```text
+    /// cost_j = ceil(total_rows_j / instances[j].rows) * instances[j].cost
+    /// ```
+    ///
+    /// where `total_rows_j = Σ rows` for all operations `i` assigned to `j`.
+    /// Instance types with zero total rows incur no cost.
+    pub fn calculate_alignment_strategy(
+        ops: &[Vec<(usize, usize)>],
+        instances: &[AlignmentInstanceInfo],
+    ) -> (Vec<usize>, Vec<usize>) {
+        let num_ops = ops.len();
+        if num_ops == 0 {
+            return (vec![0; instances.len()], vec![]);
+        }
+
+        let mut best_cost = usize::MAX;
+        let mut best_assignment: Vec<usize> = ops.iter().map(|op| op[0].0).collect();
+        let mut best_instance_rows = vec![0usize; instances.len()];
+
+        // Mixed-radix counter: combo_indices[i] indexes into ops[i].
+        let mut combo_indices = vec![0usize; num_ops];
+
+        loop {
+            // Accumulate rows per instance type for this combination.
+            let mut instance_rows = vec![0usize; instances.len()];
+            for (op_idx, &ci) in combo_indices.iter().enumerate() {
+                let (inst_idx, rows) = ops[op_idx][ci];
+                instance_rows[inst_idx] += rows;
+            }
+
+            // Evaluate total cost.
+            let total_cost: usize = instances
+                .iter()
+                .enumerate()
+                .map(|(j, inst)| {
+                    if instance_rows[j] == 0 {
+                        0
+                    } else {
+                        instance_rows[j].div_ceil(inst.rows) * inst.cost
+                    }
+                })
+                .sum();
+
+            if total_cost < best_cost {
+                best_cost = total_cost;
+                best_assignment =
+                    combo_indices.iter().zip(ops.iter()).map(|(&ci, op)| op[ci].0).collect();
+                best_instance_rows = instance_rows;
+            }
+
+            // Advance the mixed-radix counter from the rightmost digit.
+            let mut pos = num_ops;
+            loop {
+                if pos == 0 {
+                    let instance_counts = instances
+                        .iter()
+                        .enumerate()
+                        .map(|(j, inst)| {
+                            if best_instance_rows[j] == 0 {
+                                0
+                            } else {
+                                best_instance_rows[j].div_ceil(inst.rows)
+                            }
+                        })
+                        .collect();
+                    return (instance_counts, best_assignment);
+                }
+                pos -= 1;
+                combo_indices[pos] += 1;
+                if combo_indices[pos] < ops[pos].len() {
+                    break;
+                }
+                combo_indices[pos] = 0;
+            }
+        }
+    }
+
+    const DMA_64_ALIGNED_AGGREGATE_COST: usize = 100;
+    const DMA_64_ALIGNED_INSTANCE_INFO: [AlignmentInstanceInfo; 5] = [
+        AlignmentInstanceInfo {
+            rows: Self::DMA_64_ALIGNED_ROWS,
+            cost: DMA_64_ALIGNED_COST as usize * Self::DMA_64_ALIGNED_ROWS
+                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+        }, // full
+        AlignmentInstanceInfo {
+            rows: Self::DMA_64_ALIGNED_MEMCPY_ROWS,
+            cost: DMA_64_ALIGNED_MEMCPY_COST as usize * Self::DMA_64_ALIGNED_MEMCPY_ROWS
+                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+        }, // memcpy
+        AlignmentInstanceInfo {
+            rows: Self::DMA_64_ALIGNED_MEMSET_ROWS,
+            cost: DMA_64_ALIGNED_MEMSET_COST as usize * Self::DMA_64_ALIGNED_MEMSET_ROWS
+                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+        }, // memset
+        AlignmentInstanceInfo {
+            rows: Self::DMA_64_ALIGNED_INPUTCPY_ROWS,
+            cost: DMA_64_ALIGNED_INPUTCPY_COST as usize * Self::DMA_64_ALIGNED_INPUTCPY_ROWS
+                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+        }, // inputcpy
+        AlignmentInstanceInfo {
+            rows: Self::DMA_64_ALIGNED_MEM_ROWS,
+            cost: DMA_64_ALIGNED_MEM_COST as usize * Self::DMA_64_ALIGNED_MEM_ROWS
+                + Self::DMA_64_ALIGNED_AGGREGATE_COST,
+        }, // memcmp
+    ];
+
     // DmaPrePost
     // DmaPrePostMemCpy
     // DmaPrePostInputCpy
@@ -257,20 +390,41 @@ impl<F: PrimeField64> DmaStrategy<F> {
     // inputcpy: input_cpy ==> full
 
     pub fn calculate_dma_64_alignment_strategy(rows: &[usize], info: &mut Dma64AlignedInstances) {
-        info.full = 0;
-        info.memcpy = rows[DMA_COUNTER_MEMCPY_8].div_ceil(Self::DMA_64_ALIGNED_MEMCPY_ROWS);
-        info.memset = rows[DMA_COUNTER_MEMSET_8].div_ceil(Self::DMA_64_ALIGNED_MEMSET_ROWS);
-        info.inputcpy = rows[DMA_COUNTER_INPUTCPY].div_ceil(Self::DMA_64_ALIGNED_INPUTCPY_ROWS);
+        // Further optimization by mixing instance types within each chunk is not done here
+        // because the per-operation row distribution within a chunk is not known at this stage.
 
-        let rows_mem = rows[DMA_COUNTER_MEMCMP];
-        info.mem = rows_mem.div_ceil(Self::DMA_64_ALIGNED_ROWS);
-        // TBO: To Be Optimized
-        info.rows_inputcpy_to_full = 0;
-        info.rows_memcpy_to_mem = 0;
-        info.rows_memcpy_to_full = 0;
-        info.rows_memset_to_mem = 0;
-        info.rows_memset_to_full = 0;
-        info.rows_memcmp_to_full = 0;
+        // INSTANCES: 0-FULL, 1-MEMCPY, 2-MEMSET, 3-INPUTCPY, 4-MEM
+        // OPS: MEMCPY, MEMSET, MEMCMP, INPUTCPY
+        let ops = [
+            vec![
+                (0, rows[DMA_COUNTER_MEMCPY]),
+                (4, rows[DMA_COUNTER_MEMCPY]),
+                (1, rows[DMA_COUNTER_MEMCPY_8]),
+            ], // memcpy
+            vec![
+                (0, rows[DMA_COUNTER_MEMSET]),
+                (4, rows[DMA_COUNTER_MEMSET]),
+                (2, rows[DMA_COUNTER_MEMSET_8]),
+            ], // memset
+            vec![(0, rows[DMA_COUNTER_MEMCMP]), (4, rows[DMA_COUNTER_MEMCMP])], // memcmp
+            vec![(0, rows[DMA_COUNTER_INPUTCPY]), (3, rows[DMA_COUNTER_INPUTCPY])], // inputcpy
+        ];
+        let (instances, ops_instance) =
+            Self::calculate_alignment_strategy(&ops, &Self::DMA_64_ALIGNED_INSTANCE_INFO);
+
+        info.full = instances[0];
+        info.memcpy = instances[1];
+        info.memset = instances[2];
+        info.inputcpy = instances[3];
+        info.mem = instances[4];
+
+        info.rows_memcpy_to_full = if ops_instance[0] == 0 { rows[DMA_COUNTER_MEMCPY] } else { 0 };
+        info.rows_memcpy_to_mem = if ops_instance[0] == 4 { rows[DMA_COUNTER_MEMCPY] } else { 0 };
+        info.rows_memset_to_full = if ops_instance[1] == 0 { rows[DMA_COUNTER_MEMSET] } else { 0 };
+        info.rows_memset_to_mem = if ops_instance[1] == 4 { rows[DMA_COUNTER_MEMSET] } else { 0 };
+        info.rows_memcmp_to_full = if ops_instance[2] == 0 { rows[DMA_COUNTER_MEMCMP] } else { 0 };
+        info.rows_inputcpy_to_full =
+            if ops_instance[3] == 0 { rows[DMA_COUNTER_INPUTCPY] } else { 0 };
     }
     pub fn calculate_dma_unalignment_strategy(rows: &[usize]) -> usize {
         let rows = rows[DMA_COUNTER_MEMCPY]
@@ -496,38 +650,80 @@ impl<F: PrimeField64> DmaStrategy<F> {
             }
 
             // DMA_64_ALIGNED
-
+            // Each operation type is routed to a single instance type to avoid the complexity
+            // of splitting rows across instance types within a chunk. A per-chunk split
+            // could further reduce cost but requires knowledge of intra-chunk distribution.
             for op in 0..DMA_COUNTER_OPS {
                 let inputs = counters[DMA_64_ALIGNED_INPUTS_OFFSET + op];
                 match op {
-                    DMA_COUNTER_INPUTCPY => dma_64_aligned_inputcpy.add_op_rows(
-                        *current_chunk,
-                        0,
-                        counters[DMA_64_ALIGNED_OFFSET + op],
-                        inputs,
-                        op,
-                    ),
-                    DMA_COUNTER_MEMSET => dma_64_aligned_memset.add_op_rows(
-                        *current_chunk,
-                        0,
-                        counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMSET_8],
-                        inputs,
-                        op,
-                    ),
-                    DMA_COUNTER_MEMCMP => dma_64_aligned_mem.add_op_rows(
-                        *current_chunk,
-                        0,
-                        counters[DMA_64_ALIGNED_OFFSET + op],
-                        inputs,
-                        op,
-                    ),
-                    DMA_COUNTER_MEMCPY => dma_64_aligned_memcpy.add_op_rows(
-                        *current_chunk,
-                        0,
-                        counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMCPY_8],
-                        inputs,
-                        op,
-                    ),
+                    DMA_COUNTER_INPUTCPY => {
+                        let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_INPUTCPY];
+                        if self.dma_64_aligned.rows_inputcpy_to_full > 0 {
+                            assert!(rows <= self.dma_64_aligned.rows_inputcpy_to_full);
+                            dma_64_aligned_full.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_inputcpy_to_full -= rows;
+                        } else {
+                            dma_64_aligned_inputcpy.add_op_rows(
+                                *current_chunk,
+                                0,
+                                rows,
+                                inputs,
+                                op,
+                            );
+                        }
+                    }
+                    DMA_COUNTER_MEMSET => {
+                        if self.dma_64_aligned.rows_memset_to_mem > 0 {
+                            let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMSET];
+                            assert!(rows <= self.dma_64_aligned.rows_memset_to_mem);
+                            dma_64_aligned_mem.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_memset_to_mem -= rows;
+                        } else if self.dma_64_aligned.rows_memset_to_full > 0 {
+                            let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMSET];
+                            assert!(rows <= self.dma_64_aligned.rows_memset_to_full);
+                            dma_64_aligned_full.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_memset_to_full -= rows;
+                        } else {
+                            dma_64_aligned_memset.add_op_rows(
+                                *current_chunk,
+                                0,
+                                counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMSET_8],
+                                inputs,
+                                op,
+                            )
+                        }
+                    }
+                    DMA_COUNTER_MEMCMP => {
+                        let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMCMP];
+                        if self.dma_64_aligned.rows_memcmp_to_full > 0 {
+                            assert!(rows <= self.dma_64_aligned.rows_memcmp_to_full);
+                            dma_64_aligned_full.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_memcmp_to_full -= rows;
+                        } else {
+                            dma_64_aligned_mem.add_op_rows(*current_chunk, 0, rows, inputs, op)
+                        }
+                    }
+                    DMA_COUNTER_MEMCPY => {
+                        if self.dma_64_aligned.rows_memcpy_to_mem > 0 {
+                            let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMCPY];
+                            assert!(rows <= self.dma_64_aligned.rows_memcpy_to_mem);
+                            dma_64_aligned_mem.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_memcpy_to_mem -= rows;
+                        } else if self.dma_64_aligned.rows_memcpy_to_full > 0 {
+                            let rows = counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMCPY];
+                            assert!(rows <= self.dma_64_aligned.rows_memcpy_to_full);
+                            dma_64_aligned_full.add_op_rows(*current_chunk, 0, rows, inputs, op);
+                            self.dma_64_aligned.rows_memcpy_to_full -= rows;
+                        } else {
+                            dma_64_aligned_memcpy.add_op_rows(
+                                *current_chunk,
+                                0,
+                                counters[DMA_64_ALIGNED_OFFSET + DMA_COUNTER_MEMCPY_8],
+                                inputs,
+                                op,
+                            )
+                        }
+                    }
                     _ => panic!("Unexpected op code {op} in DMA 64 aligned counters"),
                 };
             }
@@ -541,8 +737,6 @@ impl<F: PrimeField64> DmaStrategy<F> {
                     dma_unaligned.add_op_rows(*current_chunk, 0, rows, inputs, op);
                 }
             }
-
-            // println!("chunk {current_chunk} counter: {counters:?}");
         }
 
         let plans = vec![

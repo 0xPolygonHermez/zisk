@@ -10,6 +10,13 @@ cfg_if! {
     }
 }
 
+/// Returns `(limb, bit)` — the index of the highest-order limb and bit position of the
+/// most significant set bit across two 384-bit values `x` and `y`.
+///
+/// Panics if both values are zero.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
+/// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_msb_pos_384(
     x: &[u64; 6],

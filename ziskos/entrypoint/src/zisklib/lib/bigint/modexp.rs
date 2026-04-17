@@ -1,7 +1,8 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-use std::vec;
+extern crate alloc;
+use alloc::vec;
 
 use crate::zisklib::fcall_bin_decomp;
 
@@ -111,6 +112,7 @@ fn modexp_short(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
     let mut rec_exp = vec![0u64; len_e];
@@ -188,6 +190,7 @@ fn modexp_long(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
     let mut rec_exp = vec![0u64; len_e];

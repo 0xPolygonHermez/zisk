@@ -38,9 +38,7 @@ pub fn generate_blake2_mem_inputs<P: MemProcessor>(
 
     // Generate memory load params
     for iparam in 0..READ_PARAMS {
-        // let param_idx = if iparam >= DIRECT_READ_PARAM_POS { iparam + 1 } else { iparam };
         let param_idx = iparam + 1;
-
         let param_addr = data[OPERATION_PRECOMPILED_BUS_DATA_SIZE + param_idx] as u32;
         for ichunk in 0..PARAM_CHUNKS {
             MemBusHelpers::mem_aligned_read(

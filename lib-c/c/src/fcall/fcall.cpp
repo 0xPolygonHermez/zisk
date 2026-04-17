@@ -16,42 +16,47 @@ int Fcall (
     int iresult;
     switch (ctx->function_id)
     {
-        case FCALL_ID_INVERSE_FP_EC:
+        case FCALL_SECP256K1_FP_INV_ID:
         {
             iresult = InverseFpEcCtx(ctx);
             break;
         }
-        case FCALL_ID_INVERSE_FN_EC:
+        case FCALL_SECP256K1_FN_INV_ID:
         {
             iresult = InverseFnEcCtx(ctx);
             break;
         }
-        case FCALL_ID_SQRT_FP_EC_PARITY:
+        case FCALL_SECP256K1_FP_SQRT_ID:
         {
             iresult = SqrtFpEcParityCtx(ctx);
             break;
         }
-        case FCALL_ID_MSB_POS_256:
+        case FCALL_SECP256K1_ECDSA_VERIFY_ID:
         {
-            iresult = MsbPos256Ctx(ctx);
+            iresult = Secp256k1EcdsaVerifyCtx(ctx);
             break;
         }
-        case FCALL_ID_BN254_FP_INV:
+        case FCALL_SECP256R1_ECDSA_VERIFY_ID:
+        {
+            iresult = Secp256r1EcdsaVerifyCtx(ctx);
+            break;
+        }
+        case FCALL_BN254_FP_INV_ID:
         {
             iresult = BN254FpInvCtx(ctx);
             break;
         }
-        case FCALL_ID_BN254_FP2_INV:
+        case FCALL_BN254_FP2_INV_ID:
         {
             iresult = BN254ComplexInvCtx(ctx);
             break;
         }
-        case FCALL_ID_BN254_TWIST_ADD_LINE_COEFFS:
+        case FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID:
         {
             iresult = BN254TwistAddLineCoeffsCtx(ctx);
             break;
         }
-        case FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS:
+        case FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID:
         {
             iresult = BN254TwistDblLineCoeffsCtx(ctx);
             break;
@@ -71,6 +76,11 @@ int Fcall (
             iresult = BLS12_381ComplexInvCtx(ctx);
             break;
         }
+        case FCALL_BLS12_381_FP2_SQRT_ID:
+        {
+            iresult = BLS12_381Fp2SqrtCtx(ctx);
+            break;
+        }
         case FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID:
         {
             iresult = BLS12_381TwistAddLineCoeffsCtx(ctx);
@@ -81,39 +91,39 @@ int Fcall (
             iresult = BLS12_381TwistDblLineCoeffsCtx(ctx);
             break;
         }
-        case FCALL_MSB_POS_384_ID:
-        {
-            iresult = MsbPos384Ctx(ctx);
-            break;
-        }
-        case FCALL_BIGINT256_DIV_ID:
-        {
-            iresult = BigInt256DivCtx(ctx);
-            break;
-        }
-        case FCALL_BIG_INT_DIV_ID:
-        {
-            iresult = BigIntDivCtx(ctx);
-            break;
-        }
         case FCALL_BIN_DECOMP_ID:
         {
             iresult = BinDecompCtx(ctx);
             break;
         }
-        case FCALL_BLS12_381_FP2_SQRT_ID:
+        case FCALL_MSB_POS_256_ID:
         {
-            iresult = BLS12_381Fp2SqrtCtx(ctx);
+            iresult = MsbPos256Ctx(ctx);
             break;
         }
-        case FCALL_SECP256K1_ECDSA_VERIFY_ID:
+        case FCALL_MSB_POS_384_ID:
         {
-            iresult = Secp256k1EcdsaVerifyCtx(ctx);
+            iresult = MsbPos384Ctx(ctx);
             break;
         }
-        case FCALL_SECP256R1_ECDSA_VERIFY_ID:
+        case FCALL_UINT256_DIV_ID:
         {
-            iresult = Secp256r1EcdsaVerifyCtx(ctx);
+            iresult = Uint256DivCtx(ctx);
+            break;
+        }
+        case FCALL_UINT256_INV_ID:
+        {
+            iresult = Uint256InvCtx(ctx);
+            break;
+        }
+        case FCALL_UINT256_INV_MOD_ID:
+        {
+            iresult = Uint256InvModCtx(ctx);
+            break;
+        }
+        case FCALL_BIGINT_DIV_ID:
+        {
+            iresult = BigIntDivCtx(ctx);
             break;
         }
         default:
@@ -858,10 +868,10 @@ int MsbPos384Ctx (
 }
 
 /*************************************/
-/* BIT INT 256 DIVISION AND REMINDER */
+/*  UINT 256 DIVISION AND REMAINDER  */
 /*************************************/
 
-int BigInt256Div (
+int Uint256Div (
     const uint64_t * _a, // 8 x 64 bits
           uint64_t * _r  // 8 x 64 bits
 )
@@ -879,15 +889,121 @@ int BigInt256Div (
     return 0;
 }
 
-int BigInt256DivCtx (
+int Uint256DivCtx (
     struct FcallContext * ctx  // fcall context
 )
 {
-    int iresult = BigInt256Div(ctx->params, ctx->result);
+    int iresult = Uint256Div(ctx->params, ctx->result);
     if (iresult == 0)
     {
         iresult = 8;
         ctx->result_size = 8;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/**********************/
+/* UINT 256 INVERSION */
+/**********************/
+
+// Compute a^(-1) mod 2^256.
+// Output: _r[0] = flag (1 if inverse exists, i.e. a is odd; 0 otherwise)
+//         _r[1..4] = 4 x u64 little-endian inverse (zeroed when flag == 0)
+int Uint256Inv (
+    const uint64_t * _a, // 4 x 64 bits
+          uint64_t * _r  // 1 x 64 bits (flag) + 4 x 64 bits (inverse)
+)
+{
+    mpz_class a;
+    array2scalar(_a, a);
+
+    // 2^256 = ScalarMask256 + 1
+    mpz_class mod256 = ScalarMask256 + 1;
+
+    mpz_class inv;
+    int exists = mpz_invert(inv.get_mpz_t(), a.get_mpz_t(), mod256.get_mpz_t());
+
+    _r[0] = exists ? 1 : 0;
+    if (exists)
+    {
+        scalar2array(inv, &_r[1]);
+    }
+    else
+    {
+        _r[1] = 0;
+        _r[2] = 0;
+        _r[3] = 0;
+        _r[4] = 0;
+    }
+
+    return 0;
+}
+
+int Uint256InvCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = Uint256Inv(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 5;
+        ctx->result_size = 5;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
+}
+
+/******************************/
+/* UINT 256 MODULAR INVERSION */
+/******************************/
+
+// Compute a^(-1) mod modulus.
+// Output: _r[0] = flag (1 if inverse exists; 0 otherwise)
+//         _r[1..4] = 4 x u64 little-endian inverse (zeroed when flag == 0)
+int Uint256InvMod (
+    const uint64_t * _a, // 4 x 64 bits (a) + 4 x 64 bits (modulus)
+          uint64_t * _r  // 1 x 64 bits (flag) + 4 x 64 bits (inverse)
+)
+{
+    mpz_class a, modulus;
+    array2scalar(_a, a);
+    array2scalar(_a + 4, modulus);
+
+    mpz_class inv;
+    int exists = mpz_invert(inv.get_mpz_t(), a.get_mpz_t(), modulus.get_mpz_t());
+
+    _r[0] = exists ? 1 : 0;
+    if (exists)
+    {
+        scalar2array(inv, &_r[1]);
+    }
+    else
+    {
+        _r[1] = 0;
+        _r[2] = 0;
+        _r[3] = 0;
+        _r[4] = 0;
+    }
+
+    return 0;
+}
+
+int Uint256InvModCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    int iresult = Uint256InvMod(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 5;
+        ctx->result_size = 5;
     }
     else
     {

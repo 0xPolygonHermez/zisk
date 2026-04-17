@@ -558,7 +558,6 @@ pub fn exp_fp12_bn254(
 
     let (_, max_bit) = fcall_msb_pos_256(
         &[e, 0, 0, 0],
-        &[0, 0, 0, 0],
         #[cfg(feature = "hints")]
         hints,
     );

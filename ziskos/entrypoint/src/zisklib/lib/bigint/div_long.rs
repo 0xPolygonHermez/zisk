@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
-use crate::zisklib::fcall_division;
+use crate::zisklib::fcall_bigint_div;
 
 use super::{add_agtb, mul_long, U256};
 
@@ -49,7 +49,7 @@ pub fn div_long(
     // Hint the quotient and remainder
     let mut quo_flat = vec![0u64; len_a * 4];
     let mut rem_flat = vec![0u64; len_b * 4];
-    let (limbs_quo, limbs_rem) = fcall_division(
+    let (limbs_quo, limbs_rem) = fcall_bigint_div(
         a_flat,
         b_flat,
         &mut quo_flat,

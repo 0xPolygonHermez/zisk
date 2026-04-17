@@ -12,16 +12,27 @@ cfg_if! {
     }
 }
 
-/// Computes the binary decomposition of a NON-ZERO unsigned integer `x` into its bits.
+/// Given an unsigned big integer `x`, it computes the binary decomposition of `x`,
+/// returning the individual bits as a vector of `u64` values (each 0 or 1),
+/// from most significant to least significant.
+///
+/// Returns `(len_bits, bits)` where `len_bits` is the number of bits and `bits[i]` is the `i`-th bit.
+///
+/// ### Safety
+///
+/// The caller must ensure that the input pointer is valid and aligned to an 8-byte boundary.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
+/// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bin_decomp(
-    x_val: &[u64],
+    a: &[u64],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> (usize, Vec<u64>) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let len_x = x_val.len();
-        let bits = bin_decomp(x_val, len_x);
+        let len_a = a.len();
+        let bits = bin_decomp(a, len_a);
         let len_bits = bits.len();
         let bits_u64: Vec<u64> = bits.into_iter().map(|b| b as u64).collect();
         #[cfg(feature = "hints")]
@@ -35,10 +46,10 @@ pub fn fcall_bin_decomp(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        let len_x = x_val.len() as usize;
-        ziskos_fcall_param!(len_x, 1);
-        for i in 0..len_x {
-            ziskos_fcall_param!(x_val[i], 1);
+        let len_a = a.len() as usize;
+        ziskos_fcall_param!(len_a, 1);
+        for i in 0..len_a {
+            ziskos_fcall_param!(a[i], 1);
         }
 
         ziskos_fcall!(FCALL_BIN_DECOMP_ID);

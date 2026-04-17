@@ -10,7 +10,7 @@ use super::{
     I, NQR_FP2, ONE, P_MINUS_1_DIV_2, P_MINUS_3_DIV_4, P_MINUS_ONE,
 };
 
-/// Computes the square root of a non-zero field element in Fp2
+/// Computes the square root of a field element in Fp2
 pub fn fcall_bls12_381_fp2_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a: &[u64; 12] = &params[0..12].try_into().unwrap();
@@ -125,6 +125,20 @@ pub(crate) fn bls12_381_fp2_exp(a: &[u64; 12], e: &BigUint) -> [u64; 12] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_sqrt_zero() {
+        let x = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let expected_sqrt = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        let mut results = [0; 13];
+        fcall_bls12_381_fp2_sqrt(&x, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..13].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(bls12_381_fp2_mul(sqrt, sqrt), x);
+    }
 
     #[test]
     fn test_sqrt_one() {

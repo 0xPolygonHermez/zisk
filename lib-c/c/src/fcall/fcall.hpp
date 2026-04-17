@@ -8,26 +8,28 @@ extern "C" {
 #endif
 
 // Identifiers of the functions supported by free call
-#define FCALL_ID_INVERSE_FP_EC 1
-#define FCALL_ID_INVERSE_FN_EC 2
-#define FCALL_ID_SQRT_FP_EC_PARITY 3
-#define FCALL_ID_MSB_POS_256 4
-#define FCALL_ID_BN254_FP_INV 6
-#define FCALL_ID_BN254_FP2_INV 7
-#define FCALL_ID_BN254_TWIST_ADD_LINE_COEFFS 8
-#define FCALL_ID_BN254_TWIST_DBL_LINE_COEFFS 9
+#define FCALL_SECP256K1_FP_INV_ID 1
+#define FCALL_SECP256K1_FN_INV_ID 2
+#define FCALL_SECP256K1_FP_SQRT_ID 3
+#define FCALL_SECP256K1_ECDSA_VERIFY_ID 4
+#define FCALL_SECP256R1_ECDSA_VERIFY_ID 5
+#define FCALL_BN254_FP_INV_ID 6
+#define FCALL_BN254_FP2_INV_ID 7
+#define FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID 8
+#define FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID 9
 #define FCALL_BLS12_381_FP_INV_ID 10
 #define FCALL_BLS12_381_FP_SQRT_ID 11
 #define FCALL_BLS12_381_FP2_INV_ID 12
-#define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID 13
-#define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID 14
-#define FCALL_MSB_POS_384_ID 15
-#define FCALL_BIGINT256_DIV_ID 16
-#define FCALL_BIG_INT_DIV_ID 17
-#define FCALL_BIN_DECOMP_ID 18
-#define FCALL_BLS12_381_FP2_SQRT_ID 19
-#define FCALL_SECP256K1_ECDSA_VERIFY_ID 20
-#define FCALL_SECP256R1_ECDSA_VERIFY_ID 21
+#define FCALL_BLS12_381_FP2_SQRT_ID 13
+#define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID 14
+#define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID 15
+#define FCALL_BIN_DECOMP_ID 16
+#define FCALL_MSB_POS_256_ID 17
+#define FCALL_MSB_POS_384_ID 18
+#define FCALL_UINT256_DIV_ID 19
+#define FCALL_UINT256_INV_ID 20
+#define FCALL_UINT256_INV_MOD_ID 21
+#define FCALL_BIGINT_DIV_ID 22
 
 #define FCALL_PARAMS_MAX_SIZE 386
 #define FCALL_RESULT_MAX_SIZE 8193
@@ -92,10 +94,16 @@ int BLS12_381TwistDblLineCoeffsCtx (
 int MsbPos384Ctx (
     struct FcallContext * ctx  // fcall context
 );
-int BigInt256DivCtx (
+int Uint256DivCtx (
     struct FcallContext * ctx  // fcall context
 );
 int BigIntDivCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int Uint256InvCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int Uint256InvModCtx (
     struct FcallContext * ctx  // fcall context
 );
 int BinDecompCtx (
@@ -169,9 +177,17 @@ int MsbPos384 (
     const uint64_t * a, // 12 x 64 bits
           uint64_t * r  // 2 x 64 bits
 );
-int BigInt256Div (
+int Uint256Div (
     const uint64_t * a, // 8 x 64 bits
           uint64_t * r  // 8 x 64 bits
+);
+int Uint256Inv (
+    const uint64_t * a, // 4 x 64 bits
+          uint64_t * r  // 1 x 64 bits (flag) + 4 x 64 bits (inverse)
+);
+int Uint256InvMod (
+    const uint64_t * a, // 4 x 64 bits (a) + 4 x 64 bits (modulus)
+          uint64_t * r  // 1 x 64 bits (flag) + 4 x 64 bits (inverse)
 );
 
 #ifdef __cplusplus
