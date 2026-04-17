@@ -11,6 +11,7 @@ mod program_setup;
 mod prove;
 mod run;
 mod stats;
+mod utils;
 mod verify;
 mod verify_constraints;
 
@@ -27,5 +28,6 @@ pub use program_setup::*;
 pub use prove::*;
 pub use run::*;
 pub use stats::*;
+pub use utils::*;
 pub use verify::*;
 pub use verify_constraints::*;

@@ -86,9 +86,8 @@ pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
     Ok(hash)
 }
 
-pub fn get_elf_data_hash(elf: &[u8]) -> Result<String> {
-    let hash = blake3::hash(elf).to_hex().to_string();
-    Ok(hash)
+pub fn get_elf_data_hash(elf: &[u8]) -> String {
+    blake3::hash(elf).to_hex().to_string()
 }
 
 pub fn get_elf_bin_file_path_with_hash(

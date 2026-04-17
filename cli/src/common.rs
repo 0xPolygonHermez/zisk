@@ -90,7 +90,7 @@ pub fn detect_current_project_elf() -> Result<Option<PathBuf>> {
         return Ok(None);
     };
 
-    let candidate = current_dir.join("target").join("riscv64ima-zisk-zkvm-elf");
+    let candidate = current_dir.join("target").join("elf").join("riscv64ima-zisk-zkvm-elf");
 
     let release_candidate = candidate.join("release").join(&binary_name);
     if release_candidate.exists() {

@@ -91,9 +91,11 @@ main() {
       ;;
   esac
 
-  # Detect NVIDIA CUDA
+  # Detect CUDA toolkit availability.
   HAS_CUDA=false
-  if [ "${PLATFORM}" = "linux" ] && check_cmd nvidia-smi; then
+  if [ "${PLATFORM}" = "linux" ] && {
+    [ -d "/usr/local/cuda" ] || [ -n "${CUDA_HOME+x}" ] || (check_cmd nvcc && nvcc --version >/dev/null 2>&1)
+  }; then
     HAS_CUDA=true
   fi
 
@@ -140,7 +142,7 @@ main() {
       if [ "${HAS_CUDA}" = "true" ]; then
         USE_GPU=true
       else
-        warn "NVIDIA CUDA was not detected on this system"
+        warn "CUDA was not detected on this system"
         say "The version with only CPU support will be installed by default"
         say ""
         say "Do you want to:"

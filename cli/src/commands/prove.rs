@@ -48,9 +48,9 @@ pub struct ZiskProve {
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
 
-    /// Enable proofs aggregation
+    /// Disable proofs aggregation
     #[arg(short = 'a', long)]
-    pub aggregation: bool,
+    pub no_aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
     #[arg(short = 'c', long, conflicts_with = "plonk")]
@@ -156,7 +156,7 @@ impl ZiskProve {
 
         // Build BackendProverOpts once with all configuration
         let mut prover_options =
-            BackendProverOpts::default().aggregation(self.aggregation).verbose(self.verbose);
+            BackendProverOpts::default().aggregation(!self.no_aggregation).verbose(self.verbose);
 
         if self.minimal_memory {
             prover_options = prover_options.minimal_memory();

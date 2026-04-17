@@ -6,6 +6,7 @@ use std::{
 };
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
+use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
@@ -220,7 +221,7 @@ pub fn generate_assembly(
     hints: bool,
     verbose: bool,
 ) -> Result<(), anyhow::Error> {
-    let elf_hash = blake3::hash(elf).to_hex().to_string();
+    let elf_hash = get_elf_data_hash(elf);
 
     if !is_elf_file(elf).context("Error reading ROM file")? {
         anyhow::bail!("ROM file is not a valid ELF file");

@@ -36,7 +36,7 @@ impl ZiskBuild {
     pub fn run(&self) -> Result<()> {
         // Construct the cargo run command
         let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
-            println!("using toolchain_name: {name}");
+            println!("Using toolchain_name: {name}");
             name
         } else {
             "zisk"

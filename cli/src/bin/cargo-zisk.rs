@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute,
     ZiskInstallToolchain, ZiskNew, ZiskPlonk, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats,
-    ZiskVerify, ZiskVerifyConstraints,
+    ZiskUtils, ZiskVerify, ZiskVerifyConstraints,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -30,6 +30,7 @@ pub enum Cargo {
     ProgramSetup(ZiskProgramSetup),
     Run(ZiskRun),
     Stats(ZiskStats),
+    Utils(ZiskUtils),
     Verify(ZiskVerify),
     VerifyConstraints(ZiskVerifyConstraints),
 }
@@ -74,6 +75,9 @@ fn main() -> Result<()> {
         }
         Cargo::Stats(mut cmd) => {
             cmd.run().context("Error executing Stats command")?;
+        }
+        Cargo::Utils(mut cmd) => {
+            cmd.run().context("Error executing Utils command")?;
         }
         Cargo::Execute(mut cmd) => {
             cmd.run().context("Error executing Execute command")?;
