@@ -162,7 +162,7 @@ mod tests {
         let cfg = Config::load(None, None, None, None).unwrap();
         assert_eq!(cfg.server.port, 7000);
         assert_eq!(cfg.metrics.port, 9090);
-        assert_eq!(cfg.backend.mode, BackendMode::Mock);
+        assert_eq!(cfg.backend.mode, BackendMode::Coordinator);
         assert_eq!(cfg.service.version, env!("CARGO_PKG_VERSION"));
     }
 

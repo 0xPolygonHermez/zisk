@@ -10,8 +10,9 @@ use tracing::{info, warn};
 
 use crate::backend::BackendService;
 use crate::config::Config as GatewayConfig;
+use crate::health::HealthService;
 use crate::metrics;
-use crate::proto::zisk_gateway_api_server::ZiskGatewayApiServer;
+use crate::proto::{health_server::HealthServer, zisk_gateway_api_server::ZiskGatewayApiServer};
 use crate::service::GatewayService;
 use crate::shutdown::shutdown_signal;
 
@@ -44,6 +45,7 @@ impl<B: BackendService> GatewayServer<B> {
 
         let svc =
             ZiskGatewayApiServer::new(service).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE);
+        let health_svc = HealthServer::new(HealthService::new(self.cancel.clone()));
 
         let cancel = self.cancel.clone();
         let drain_cancel = cancel.clone();
@@ -57,6 +59,7 @@ impl<B: BackendService> GatewayServer<B> {
             // Keep WatchJob streams alive through NAT/firewall idle timeouts.
             .http2_keepalive_interval(Some(Duration::from_secs(30)))
             .http2_keepalive_timeout(Some(Duration::from_secs(10)))
+            .add_service(health_svc)
             .add_service(svc)
             .serve_with_shutdown(addr, async move {
                 shutdown_signal().await;
