@@ -86,7 +86,7 @@ impl Config {
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
             // backend
-            .set_default("backend.mode", "mock")?
+            .set_default("backend.mode", "coordinator")?
             // coordinator
             .set_default("coordinator.worker_port", 50051u16)?;
 
