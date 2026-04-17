@@ -154,12 +154,12 @@ message AggParams {
 }
 
 message WrapParams {
-  bytes proof_data = 1; // bincode-encoded ZiskProofWithPublicValues
+  bytes proof_data = 1; // bincode-encoded Proof
   int32 proof_dest = 2; // ProofKind: 1=VadcopFinalMinimal, 2=Plonk (VadcopFinal is not valid here)
 }
 
 message WrapResult {
-  bytes proof_data = 1; // bincode-encoded ZiskProofWithPublicValues (wrapped proof)
+  bytes proof_data = 1; // bincode-encoded Proof (wrapped proof)
 }
 
 // Stream type enumeration
@@ -238,10 +238,10 @@ message Challenges {
 }
 
 message ProofList {
-  repeated Proof proofs = 1;
+  repeated ProofStark proofs = 1;
 }
 
-message Proof {
+message ProofStark {
   uint32 worker_idx = 1;
   uint64 airgroup_id = 2;
   repeated uint64 values = 3;

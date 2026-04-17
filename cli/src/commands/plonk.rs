@@ -5,7 +5,7 @@ use colored::Colorize;
 use fields::Goldilocks;
 use proofman::SnarkWrapper;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::ZiskProofWithPublicValues;
+use zisk_common::Proof;
 
 use crate::ux::{print_banner, print_banner_command};
 
@@ -41,12 +41,8 @@ impl ZiskPlonk {
 
         print_banner_command("Prove SNARK");
 
-        let zisk_proof = ZiskProofWithPublicValues::load(&self.proof).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to load ZiskProofWithPublicValues from file {}: {}",
-                self.proof.display(),
-                e
-            )
+        let zisk_proof = Proof::load(&self.proof).map_err(|e| {
+            anyhow::anyhow!("Failed to load Proof from file {}: {}", self.proof.display(), e)
         })?;
 
         #[cfg(not(feature = "cpu-only"))]

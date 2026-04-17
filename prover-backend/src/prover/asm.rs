@@ -5,8 +5,7 @@ use crate::GuestProgram;
 use crate::{
     check_paths_exist, ensure_rom, get_rom_bin_path,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
-    ZiskVerifyConstraintsResult,
+    ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
 };
 use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
@@ -29,9 +28,7 @@ use zisk_common::io::StreamSource;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ExecutorStatsHandle;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{
-    ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
-};
+use zisk_common::{ProgramVK, ProofKind, PublicValues, ZiskVK};
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 use anyhow::Result;
@@ -257,14 +254,9 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_execution_info()
     }
 
-    fn execute(
-        &self,
-        program: &GuestProgram,
-        stdin: ZiskStdin,
-        output_path: Option<PathBuf>,
-    ) -> Result<ZiskExecuteResult> {
+    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         self.register_program(&program.program_id)?;
-        self.core_prover.backend.execute(stdin, output_path)
+        self.core_prover.backend.execute(stdin)
     }
 
     fn stats(
@@ -319,21 +311,23 @@ impl ProverEngine for AsmProver {
         stdin: ZiskStdin,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
-    ) -> Result<ZiskProveResult> {
+    ) -> Result<ProveOutput> {
         self.register_program(&program.program_id)?;
         self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
     fn wrap_proof(
         &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
+        proof_bytes: &[u8],
+        publics: &PublicValues,
+        vk: &ProgramVK,
         proof_kind: ProofKind,
-    ) -> Result<ZiskProofWithPublicValues> {
+    ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            ProofKind::VadcopFinalMinimal => {
+                self.core_prover.backend.minimal(proof_bytes, publics, vk)
+            }
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof_bytes, publics, vk),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }

@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofKind, ZiskProof};
+use zisk_common::{ProofKind, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskProveResult};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClientBuilder};
 
 // Structure representing the 'prove' subcommand of cargo.
 #[derive(clap::Args)]
@@ -228,37 +228,31 @@ impl ZiskProve {
             self.emulator
         };
 
-        let (result, world_rank) = if emulator {
+        let (result, executor_time) = if emulator {
             self.run_emu(stdin, prover_options)?
         } else {
             self.run_asm(stdin, hints_stream, prover_options)?
         };
 
-        if world_rank == 0 {
+        if !result.get_proof().proof_bytes.is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
-            if let Some(proof_id) = &result.get_proof_id() {
-                let output_file: PathBuf = match result.get_proof().proof {
-                    ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => self
-                        .output
-                        .clone()
-                        .unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin")),
-                    ZiskProof::Plonk(_) => self
-                        .output
-                        .clone()
-                        .unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin")),
-                    _ => {
-                        return Err(anyhow::anyhow!("Unsupported proof type for saving proof file"))
-                    }
-                };
-                result.save_proof(&output_file)?;
-                info!("Proof ID: {}", proof_id);
-                info!("Proof Time: {:.3} seconds", result.duration.as_secs_f64());
-            }
+            let output_file: PathBuf = match result.get_proof().proof_kind {
+                ProofKind::VadcopFinal
+                | ProofKind::VadcopFinalMinimal => {
+                    self.output.clone().unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin"))
+                }
+                ProofKind::Plonk => {
+                    self.output.clone().unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin"))
+                }
+            };
+            result.save_proof(&output_file)?;
+            info!("Proof Time: {:.3} seconds", result.get_proving_time().as_secs_f64());
+
             print_execution_summary(
-                &result.executor_summary.executor_time,
-                result.duration,
-                result.executor_summary.steps,
+                &executor_time,
+                result.get_proving_time(),
+                result.get_execution_steps(),
             );
         }
 
@@ -269,25 +263,24 @@ impl ZiskProve {
         &mut self,
         stdin: ZiskStdin,
         prover_options: BackendProverOpts,
-    ) -> Result<(ZiskProveResult, i32)> {
+    ) -> Result<(ProveOutput, ZiskExecutorTime)> {
         let prover =
             ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?;
 
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
 
-        let world_rank = prover.world_rank();
-
-        let mut prover = prover.prove(&guest_program, stdin);
+        let mut builder = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap_proof(ProofKind::Plonk);
+            builder = builder.wrap_proof(ProofKind::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap_proof(ProofKind::VadcopFinalMinimal);
+            builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
         }
-        let result = prover.run()?;
+        let result = builder.run()?;
+        let executor_time = prover.get_executor_time()?;
 
-        Ok((result, world_rank))
+        Ok((result, executor_time))
     }
 
     pub fn run_asm(
@@ -295,7 +288,7 @@ impl ZiskProve {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
         prover_options: BackendProverOpts,
-    ) -> Result<(ZiskProveResult, i32)> {
+    ) -> Result<(ProveOutput, ZiskExecutorTime)> {
         let prover =
             ProverClientBuilder::new().asm().with_prover_options(prover_options).build()?;
 
@@ -310,18 +303,17 @@ impl ZiskProve {
             prover.register_hints_stream(hints_stream)?;
         }
 
-        let world_rank = prover.world_rank();
-
-        let mut prover = prover.prove(&guest_program, stdin);
+        let mut builder = prover.prove(&guest_program, stdin);
         if self.plonk {
-            prover = prover.wrap_proof(ProofKind::Plonk);
+            builder = builder.wrap_proof(ProofKind::Plonk);
         }
         if self.minimal {
-            prover = prover.wrap_proof(ProofKind::VadcopFinalMinimal);
+            builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
         }
 
-        let result = prover.run()?;
+        let result = builder.run()?;
+        let executor_time = prover.get_executor_time()?;
 
-        Ok((result, world_rank))
+        Ok((result, executor_time))
     }
 }

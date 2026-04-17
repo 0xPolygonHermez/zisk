@@ -13,18 +13,17 @@ use std::time::Duration;
 use crate::setup::SetupResult;
 use anyhow::Result;
 use zisk_common::ProofKind;
-use zisk_common::{ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{ProgramVK, Proof, PublicValues};
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmOptions, AsmProver, Emu, EmuProver,
-    GuestProgram, ZiskProver,
+    GuestProgram, ProveOutput, ZiskProver,
 };
 
 use crate::{
-    execute::{ExecuteRequest, ExecuteResult},
+    execute::ExecuteRequest,
     input::ProgramInput,
     job_handle::{JobHandle, SubscriberList},
     opts::ProverOpts,
-    proof::Proof,
     prove::ProveRequest,
     setup::SetupRequest,
     upload::UploadRequest,
@@ -234,7 +233,7 @@ impl Client for EmbeddedClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<Proof>> {
+    ) -> Result<JobHandle<ProveOutput>> {
         self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
@@ -245,27 +244,20 @@ impl Client for EmbeddedClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
+    ) -> Result<JobHandle<zisk_prover_backend::ExecuteOutput>> {
         self.do_execute(program, input, executor, timeout, subs)
     }
 
     fn run_wrap(
         &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
+        proof: &Proof,
         proof_kind: ProofKind,
-        override_publics: Option<ZiskPublics>,
-        override_program_vk: Option<ZiskProgramVK>,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
-        self.do_wrap(
-            proof_with_publics,
-            proof_kind,
-            override_publics,
-            override_program_vk,
-            timeout,
-            subs,
-        )
+    ) -> Result<JobHandle<ProveOutput>> {
+        self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
 }
 
@@ -306,9 +298,9 @@ impl EmbeddedClient {
     #[must_use]
     pub fn wrap_proof<'a>(
         &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
+        proof: &'a Proof,
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
-        WrapRequest::new(self, proof_with_publics, proof_kind)
+        WrapRequest::new(self, proof, proof_kind)
     }
 }

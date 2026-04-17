@@ -14,96 +14,26 @@ use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
-use proofman::PlanningInfo;
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, RwLock},
     time::Duration,
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProofKind, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK, ZiskVerifyBuilder,
+    ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, StatsCostPerType,
+    ZiskExecutorSummary, ZiskExecutorTime, ZiskVK,
 };
 use zisk_core::ZiskRom;
 
-pub struct ZiskExecuteResult {
-    pub total_duration: Duration,
-    pub executor_summary: ZiskExecutorSummary,
-    pub planning_info: PlanningInfo,
-    pub publics: ZiskPublics,
-}
-
-impl ZiskExecuteResult {
-    pub fn new(
-        total_duration: Duration,
-        executor_summary: ZiskExecutorSummary,
-        planning_info: PlanningInfo,
-        publics: &[u8],
-    ) -> Self {
-        Self { total_duration, executor_summary, planning_info, publics: ZiskPublics::new(publics) }
-    }
-
-    pub fn get_publics(&self) -> &ZiskPublics {
-        &self.publics
-    }
-
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.publics.read()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.publics.read_abi()
-    }
-
-    pub fn get_execution_steps(&self) -> u64 {
-        self.executor_summary.steps
-    }
-
-    pub fn get_execution_total_cost(&self) -> u64 {
-        self.executor_summary.cost_per_type.total_cost()
-    }
-
-    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
-        &self.executor_summary.cost_per_type
-    }
-
-    pub fn get_duration(&self) -> Duration {
-        self.total_duration
-    }
-
-    /// Construct a result from a remote gateway response.
-    pub fn from_remote(
-        steps: u64,
-        duration: Duration,
-        cost_per_type: StatsCostPerType,
-        publics: &[u8],
-    ) -> Self {
-        let executor_summary = ZiskExecutorSummary {
-            steps,
-            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
-            cost_per_type,
-        };
-        Self {
-            total_duration: duration,
-            executor_summary,
-            planning_info: PlanningInfo { planning_info: vec![], num_instances: 0 },
-            publics: ZiskPublics::new(publics),
-        }
-    }
-}
+use crate::{ExecuteOutput, ProveOutput};
 
 pub struct ZiskVerifyConstraintsResult {
     pub executor_summary: ZiskExecutorSummary,
     pub duration: Duration,
     pub stats: ExecutorStatsHandle,
-    pub publics: ZiskPublics,
+    pub publics: PublicValues,
 }
 
 impl ZiskVerifyConstraintsResult {
@@ -113,10 +43,10 @@ impl ZiskVerifyConstraintsResult {
         stats: ExecutorStatsHandle,
         publics: &[u8],
     ) -> Self {
-        Self { executor_summary: execution, duration, stats, publics: ZiskPublics::new(publics) }
+        Self { executor_summary: execution, duration, stats, publics: PublicValues::new(publics) }
     }
 
-    pub fn get_publics(&self) -> &ZiskPublics {
+    pub fn get_publics(&self) -> &PublicValues {
         &self.publics
     }
 
@@ -143,6 +73,10 @@ impl ZiskVerifyConstraintsResult {
 
     pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
         &self.executor_summary.cost_per_type
+    }
+
+    pub fn get_executor_time(&self) -> &ZiskExecutorTime {
+        &self.executor_summary.executor_time
     }
 
     pub fn get_duration(&self) -> Duration {
@@ -368,140 +302,6 @@ impl BackendProverOpts {
     }
 }
 
-pub struct ZiskProveResult {
-    pub executor_summary: ZiskExecutorSummary,
-    pub duration: Duration,
-    stats: ExecutorStatsHandle,
-    proof_id: Option<String>,
-    proof_with_publics: ZiskProofWithPublicValues,
-}
-
-impl ZiskProveResult {
-    pub fn new(
-        execution: ZiskExecutorSummary,
-        duration: Duration,
-        stats: ExecutorStatsHandle,
-        proof_id: Option<String>,
-        proof_with_publics: ZiskProofWithPublicValues,
-    ) -> Self {
-        Self { executor_summary: execution, duration, stats, proof_id, proof_with_publics }
-    }
-
-    pub fn new_null(
-        execution: ZiskExecutorSummary,
-        duration: Duration,
-        stats: ExecutorStatsHandle,
-    ) -> Self {
-        Self {
-            executor_summary: execution,
-            duration,
-            stats,
-            proof_id: None,
-            proof_with_publics: ZiskProofWithPublicValues {
-                proof: ZiskProof::Null(),
-                publics: ZiskPublics::new_empty(),
-                program_vk: ZiskProgramVK::new_empty(),
-                zisk_vk: ZiskVK { vk: Vec::new() },
-                plonk_vkey: None,
-            },
-        }
-    }
-
-    /// Construct a result from a remote gateway response (no ExecutorStatsHandle).
-    pub fn from_remote(
-        proof_with_publics: ZiskProofWithPublicValues,
-        steps: u64,
-        duration: Duration,
-        cost_per_type: StatsCostPerType,
-    ) -> Self {
-        let executor_summary = ZiskExecutorSummary {
-            steps,
-            executor_time: ZiskExecutorTime { total_duration: duration, ..Default::default() },
-            cost_per_type,
-        };
-        Self {
-            executor_summary,
-            duration,
-            stats: ExecutorStatsHandle::default(),
-            proof_id: None,
-            proof_with_publics,
-        }
-    }
-
-    pub fn get_stats(&self) -> &ExecutorStatsHandle {
-        &self.stats
-    }
-
-    pub fn get_duration(&self) -> Duration {
-        self.duration
-    }
-
-    pub fn get_execution_steps(&self) -> u64 {
-        self.executor_summary.steps
-    }
-
-    pub fn get_execution_total_cost(&self) -> u64 {
-        self.executor_summary.cost_per_type.total_cost()
-    }
-
-    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
-        &self.executor_summary.cost_per_type
-    }
-
-    pub fn get_proof_id(&self) -> Option<&String> {
-        self.proof_id.as_ref()
-    }
-
-    pub fn get_proof(&self) -> &ZiskProofWithPublicValues {
-        &self.proof_with_publics
-    }
-
-    pub fn get_proof_bytes(&self) -> Vec<u8> {
-        self.proof_with_publics.get_proof_bytes()
-    }
-
-    pub fn get_publics(&self) -> &ZiskPublics {
-        &self.proof_with_publics.publics
-    }
-
-    pub fn get_program_vk(&self) -> &ZiskProgramVK {
-        &self.proof_with_publics.program_vk
-    }
-
-    pub fn save_proof(&self, path: impl AsRef<Path>) -> Result<()> {
-        self.proof_with_publics.save(path)
-    }
-
-    /// Deserialize a value from public outputs.
-    /// The value must have been previously written with bincode serialization using `commit()`.
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.proof_with_publics.publics.read()
-    }
-
-    /// Decode an ABI-encoded value from public outputs.
-    /// The value must have been previously written with ABI encoding using `write_abi()`.
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.proof_with_publics.publics.read_abi()
-    }
-
-    pub fn verify(&self) -> Result<()> {
-        self.proof_with_publics.verify()
-    }
-
-    pub fn with_publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
-        self.proof_with_publics.with_publics(publics)
-    }
-
-    pub fn with_program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
-        self.proof_with_publics.with_program_vk(program_vk)
-    }
-}
-
 pub type ZiskPhaseResult = ProvePhaseResult;
 
 pub struct ZiskAggPhaseResult {
@@ -553,12 +353,7 @@ pub trait ProverEngine {
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>>;
 
-    fn execute(
-        &self,
-        program: &GuestProgram,
-        stdin: ZiskStdin,
-        output_path: Option<PathBuf>,
-    ) -> Result<ZiskExecuteResult>;
+    fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput>;
 
     fn stats(
         &self,
@@ -582,15 +377,15 @@ pub trait ProverEngine {
         stdin: ZiskStdin,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
-    ) -> Result<ZiskProveResult>;
+    ) -> Result<ProveOutput>;
 
     fn wrap_proof(
         &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        vk: &ZiskProgramVK,
+        proof_bytes: &[u8],
+        publics: &PublicValues,
+        vk: &ProgramVK,
         proof_kind: ProofKind,
-    ) -> Result<ZiskProofWithPublicValues>;
+    ) -> Result<ProveOutput>;
 
     fn prove_phase(
         &self,
@@ -703,6 +498,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.executed_steps()
     }
 
+    /// Get the executor time from the last execution or proof run.
+    pub fn get_executor_time(&self) -> Result<ZiskExecutorTime> {
+        Ok(self.prover.get_execution_info()?.1)
+    }
+
     pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
     }
@@ -710,8 +510,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Execute the prover with the given standard input and output path.
     /// It only runs the execution without generating a proof.
     /// The program must have been setup previously using `.setup()`.
-    pub fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
-        self.prover.execute(program, stdin, None)
+    pub fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+        self.prover.execute(program, stdin)
     }
 
     /// Get the execution statistics with the given standard input and debug information.
@@ -784,19 +584,15 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// # Example
     /// ```ignore
     /// // Wrap to minimal
-    /// let minimal = prover.wrap_proof(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
+    /// let minimal = prover.wrap_proof(&proof, ProofMode::VadcopFinalMinimal).run()?;
     ///
     /// // Wrap to SNARK with custom verification key
-    /// let snark = prover.wrap_proof(&proof_with_publics, ProofMode::Plonk)
+    /// let snark = prover.wrap_proof(&proof, ProofMode::Plonk)
     ///     .with_program_vk(&custom_vk)
     ///     .run()?;
     /// ```
-    pub fn wrap_proof<'a>(
-        &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-        proof_kind: ProofKind,
-    ) -> WrapBuilder<'a, C> {
-        WrapBuilder::new(&self.prover, proof_with_publics, proof_kind)
+    pub fn wrap_proof<'a>(&'a self, proof: &'a Proof, proof_kind: ProofKind) -> WrapBuilder<'a, C> {
+        WrapBuilder::new(&self.prover, proof, proof_kind)
     }
 
     pub fn prove_phase(
@@ -943,10 +739,13 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
         Self { prover, zisk_prover, guest_program, stdin, proof_kind: ProofKind::VadcopFinal }
     }
 
-    /// Enable minimal proof generation.
+    /// Enable minimal/compressed/SNARK proof generation.
     pub fn wrap_proof(mut self, proof_kind: ProofKind) -> Self {
         assert!(
-            matches!(proof_kind, ProofKind::VadcopFinalMinimal | ProofKind::Plonk),
+            matches!(
+                proof_kind,
+                ProofKind::VadcopFinalMinimal | ProofKind::Plonk
+            ),
             "Invalid proof mode for ProveBuilder: {:?}",
             proof_kind
         );
@@ -955,7 +754,7 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
     }
 
     /// Execute the proof generation with the configured options.
-    pub fn run(self) -> Result<ZiskProveResult> {
+    pub fn run(self) -> Result<ProveOutput> {
         self.prover.prove(
             self.guest_program,
             self.stdin,
@@ -973,52 +772,42 @@ impl<'a, C: ZiskBackend> ProveBuilder<'a, C> {
 /// # Example
 /// ```ignore
 /// // Wrap to minimal
-/// let minimal = prover.wrap(&proof_with_publics, ProofMode::VadcopFinalMinimal).run()?;
+/// let minimal = prover.wrap(&proof, ProofMode::VadcopFinalMinimal).run()?;
 ///
 /// // Wrap to SNARK with custom publics
-/// let snark = prover.wrap(&proof_with_publics, ProofMode::Plonk)
+/// let snark = prover.wrap(&proof, ProofMode::Plonk)
 ///     .with_publics(&custom_publics)
 ///     .run()?;
 /// ```
 pub struct WrapBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
-    proof_with_publics: &'a ZiskProofWithPublicValues,
+    proof: &'a Proof,
     proof_kind: ProofKind,
-    override_publics: Option<&'a ZiskPublics>,
-    override_program_vk: Option<&'a ZiskProgramVK>,
+    override_publics: Option<&'a PublicValues>,
+    override_program_vk: Option<&'a ProgramVK>,
 }
 
 impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
-    fn new(
-        prover: &'a C::Prover,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-        proof_kind: ProofKind,
-    ) -> Self {
-        Self {
-            prover,
-            proof_with_publics,
-            proof_kind,
-            override_publics: None,
-            override_program_vk: None,
-        }
+    fn new(prover: &'a C::Prover, proof: &'a Proof, proof_kind: ProofKind) -> Self {
+        Self { prover, proof, proof_kind, override_publics: None, override_program_vk: None }
     }
 
     /// Override the publics from the original proof.
-    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a PublicValues) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key from the original proof.
-    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
 
     /// Execute the proof wrapping with the configured options.
-    pub fn run(self) -> Result<ZiskProofWithPublicValues> {
-        let publics = self.override_publics.unwrap_or(&self.proof_with_publics.publics);
-        let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_publics.program_vk);
-        self.prover.wrap_proof(&self.proof_with_publics.proof, publics, program_vk, self.proof_kind)
+    pub fn run(self) -> Result<ProveOutput> {
+        let publics = self.override_publics.unwrap_or(&self.proof.publics);
+        let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
+        self.prover.wrap_proof(&self.proof.proof_bytes, publics, program_vk, self.proof_kind)
     }
 }

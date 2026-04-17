@@ -15,7 +15,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::{ZiskExecutorTime, ZiskProofWithPublicValues};
+use zisk_common::{Proof, ZiskExecutorTime};
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
@@ -280,7 +280,7 @@ pub struct Job {
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
-    pub proof: Option<ZiskProofWithPublicValues>,
+    pub proof: Option<Proof>,
     pub executed_steps: Option<u64>,
     pub instances: Option<u64>,
     pub metadata: BTreeMap<String, String>,

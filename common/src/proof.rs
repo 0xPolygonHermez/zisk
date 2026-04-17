@@ -10,12 +10,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const ZISK_PUBLICS: usize = 64;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiskProgramVK {
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct ProgramVK {
     pub vk: Vec<u8>,
 }
 
-impl ZiskProgramVK {
+impl ProgramVK {
     pub fn new_from_publics(publics: &[u8]) -> Self {
         assert!(
             publics.len() >= 32,
@@ -30,7 +30,7 @@ impl ZiskProgramVK {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProofKind {
     #[default]
     VadcopFinal,
@@ -55,156 +55,6 @@ impl From<ProofKind> for i32 {
             ProofKind::VadcopFinalMinimal => 1,
             ProofKind::Plonk => 2,
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ZiskProof {
-    Null(),
-    VadcopFinal(Vec<u8>),
-    VadcopFinalMinimal(Vec<u8>),
-    Plonk(Vec<u8>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiskVadcopFinalProof {
-    pub proof: Vec<u8>,
-    pub minimal: bool,
-}
-
-impl ZiskVadcopFinalProof {
-    pub fn new(proof: Vec<u8>, minimal: bool) -> Self {
-        Self { proof, minimal }
-    }
-
-    pub fn save(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let path = path.as_ref();
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let file = File::create(path).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to create file for saving Vadcop Final proof: {}: {}",
-                    path.display(),
-                    e
-                ),
-            )
-        })?;
-
-        bincode::serialize_into(file, self)?;
-        Ok(())
-    }
-
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let file = File::open(path.as_ref()).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to open file for loading proof: {}: {}",
-                    path.as_ref().display(),
-                    e
-                ),
-            )
-        })?;
-        let proof: ZiskVadcopFinalProof = bincode::deserialize_from(file)?;
-        Ok(proof)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiskSnarkProof {
-    pub proof: Vec<u8>,
-    pub protocol_id: u64,
-}
-
-impl ZiskSnarkProof {
-    pub fn new(proof: Vec<u8>, protocol_id: u64) -> Self {
-        Self { proof, protocol_id }
-    }
-
-    pub fn save(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let path = path.as_ref();
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let file = File::create(path).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!("Failed to create file for saving SNARK proof: {}: {}", path.display(), e),
-            )
-        })?;
-
-        bincode::serialize_into(file, self)?;
-        Ok(())
-    }
-
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let file = File::open(path.as_ref()).map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!(
-                    "Failed to open file for loading SNARK proof: {}: {}",
-                    path.as_ref().display(),
-                    e
-                ),
-            )
-        })?;
-        let proof: ZiskSnarkProof = bincode::deserialize_from(file)?;
-        Ok(proof)
-    }
-}
-
-impl ZiskProof {
-    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
-        match self {
-            ZiskProof::Null() => Err(anyhow::anyhow!("No proof to save")),
-            ZiskProof::VadcopFinal(proof) | ZiskProof::VadcopFinalMinimal(proof) => {
-                let minimal = matches!(self, ZiskProof::VadcopFinalMinimal(_));
-                let zisk_proof = ZiskVadcopFinalProof::new(proof.clone(), minimal);
-                zisk_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
-            }
-            ZiskProof::Plonk(snark_proof) => {
-                let protocol_id = match self {
-                    ZiskProof::Plonk(_) => SnarkProtocol::Plonk.protocol_id(),
-                    _ => unreachable!(),
-                };
-                let snark_proof = ZiskSnarkProof::new(snark_proof.clone(), protocol_id);
-                snark_proof.save(path).map_err(|e| anyhow::anyhow!("{}", e))
-            }
-        }
-    }
-
-    pub fn load(path: impl AsRef<Path>) -> Result<ZiskProof> {
-        if let Ok(vadcop_proof) = ZiskVadcopFinalProof::load(path.as_ref()) {
-            let proof = if vadcop_proof.minimal {
-                ZiskProof::VadcopFinalMinimal(vadcop_proof.proof)
-            } else {
-                ZiskProof::VadcopFinal(vadcop_proof.proof)
-            };
-            return Ok(proof);
-        }
-
-        if let Ok(snark_proof) = ZiskSnarkProof::load(path.as_ref()) {
-            let proof = match SnarkProtocol::from_protocol_id(snark_proof.protocol_id)? {
-                SnarkProtocol::Plonk => ZiskProof::Plonk(snark_proof.proof),
-                _ => unreachable!(),
-            };
-            return Ok(proof);
-        }
-
-        Err(anyhow::anyhow!("Failed to load proof: unsupported format or corrupted file"))
     }
 }
 
@@ -269,29 +119,30 @@ impl PlonkVkey {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ZiskVK {
     pub vk: Vec<u8>,
+    pub plonk_vkey: Option<PlonkVkey>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ZiskPublics {
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct PublicValues {
     data: Vec<u8>,
     #[serde(skip)]
     ptr: AtomicUsize,
 }
 
-impl Clone for ZiskPublics {
+impl Clone for PublicValues {
     fn clone(&self) -> Self {
         Self { data: self.data.clone(), ptr: AtomicUsize::new(self.ptr.load(Ordering::Relaxed)) }
     }
 }
 
-impl ZiskPublics {
+impl PublicValues {
     pub fn new(publics_bytes: &[u8]) -> Self {
         assert!(
             publics_bytes.len() == ZISK_PUBLICS * 8 + 32,
-            "Not enough bytes to fill ZiskPublics"
+            "Not enough bytes to fill PublicValues"
         );
 
         let mut data = [0u8; ZISK_PUBLICS * 4];
@@ -307,7 +158,7 @@ impl ZiskPublics {
         Self { data: [0u8; ZISK_PUBLICS * 4].to_vec(), ptr: AtomicUsize::new(0) }
     }
 
-    /// Create ZiskPublics from a serializable value.
+    /// Create PublicValues from a serializable value.
     /// The value is serialized with bincode and stored in the public outputs as 64-bit chunks.
     pub fn write<T: serde::Serialize>(value: &T) -> Result<Self> {
         let serialized = bincode::serialize(value)
@@ -412,7 +263,7 @@ impl ZiskPublics {
         bytes.to_vec()
     }
 
-    pub fn hash_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
+    pub fn hash_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
         let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
 
         // SHA-256
@@ -422,8 +273,8 @@ impl ZiskPublics {
     }
 }
 
-impl ZiskPublics {
-    pub fn bytes_u64(&self, program_vk: &ZiskProgramVK) -> Vec<u8> {
+impl PublicValues {
+    pub fn bytes_u64(&self, program_vk: &ProgramVK) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(program_vk.vk.len() + ZISK_PUBLICS * 8);
 
         bytes.extend(&program_vk.vk);
@@ -432,7 +283,7 @@ impl ZiskPublics {
         bytes
     }
 
-    pub fn bytes_solidity(&self, program_vk: &ZiskProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
+    pub fn bytes_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
         let mut prefix = [0u8; 32];
         for (i, chunk) in program_vk.vk.chunks_exact(8).enumerate() {
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
@@ -451,13 +302,13 @@ impl ZiskPublics {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ZiskProofWithPublicValues {
-    pub proof: ZiskProof,
-    pub publics: ZiskPublics,
-    pub program_vk: ZiskProgramVK,
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct Proof {
+    pub proof_kind: ProofKind,
+    pub proof_bytes: Vec<u8>,
+    pub publics: PublicValues,
+    pub program_vk: ProgramVK,
     pub zisk_vk: ZiskVK,
-    pub plonk_vkey: Option<PlonkVkey>,
 }
 
 /// Builder for customizing verification parameters before calling verify.
@@ -482,24 +333,24 @@ pub struct ZiskProofWithPublicValues {
 /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
 /// ```
 pub struct ZiskVerifyBuilder<'a> {
-    proof_with_values: &'a ZiskProofWithPublicValues,
-    override_publics: Option<&'a ZiskPublics>,
-    override_program_vk: Option<&'a ZiskProgramVK>,
+    proof_with_values: &'a Proof,
+    override_publics: Option<&'a PublicValues>,
+    override_program_vk: Option<&'a ProgramVK>,
 }
 
 impl<'a> ZiskVerifyBuilder<'a> {
-    fn new(proof_with_values: &'a ZiskProofWithPublicValues) -> Self {
+    fn new(proof_with_values: &'a Proof) -> Self {
         Self { proof_with_values, override_publics: None, override_program_vk: None }
     }
 
     /// Override the publics used for verification.
-    pub fn with_publics(mut self, publics: &'a ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: &'a PublicValues) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key used for verification.
-    pub fn with_program_vk(mut self, program_vk: &'a ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: &'a ProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
@@ -513,10 +364,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
         let zisk_vk = &self.proof_with_values.zisk_vk;
 
-        match &self.proof_with_values.proof {
-            ZiskProof::Null() => Err(anyhow::anyhow!("No proof to verify")),
-            ZiskProof::Plonk(proof_bytes) => {
-                let protocol_id = SnarkProtocol::Plonk.protocol_id();
+        match self.proof_with_values.proof_kind {
+            ProofKind::Plonk => {
+                let proof_bytes = &self.proof_with_values.proof_bytes;
+                let protocol_id = match self.proof_with_values.proof_kind {
+                    ProofKind::Plonk => SnarkProtocol::Plonk.protocol_id(),
+                    _ => unreachable!(),
+                };
 
                 let pubs = publics.bytes_solidity(program_vk, &zisk_vk.vk);
 
@@ -529,8 +383,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     protocol_id,
                 };
 
-                let plonk_vkey = self.proof_with_values.plonk_vkey.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("Plonk vkey is required for Plonk proof verification")
+                let plonk_vkey = zisk_vk.plonk_vkey.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Plonk vkey is required for SNARK proof verification")
                 })?;
 
                 let temp_dir = std::env::temp_dir();
@@ -549,9 +403,10 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result?;
                 Ok(())
             }
-            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
-                let minimal =
-                    matches!(self.proof_with_values.proof, ZiskProof::VadcopFinalMinimal(_));
+            ProofKind::VadcopFinal
+            | ProofKind::VadcopFinalMinimal => {
+                let minimal = self.proof_with_values.proof_kind != ProofKind::VadcopFinal;
+                let proof_bytes = &self.proof_with_values.proof_bytes;
                 let mut pubs = program_vk.vk.clone();
                 pubs.extend(publics.public_bytes());
                 let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
@@ -572,14 +427,15 @@ impl<'a> ZiskVerifyBuilder<'a> {
     }
 }
 
-impl ZiskProofWithPublicValues {
+impl Proof {
     pub fn new(
-        proof: ZiskProof,
-        publics: ZiskPublics,
-        program_vk: ZiskProgramVK,
+        proof_kind: ProofKind,
+        proof_bytes: Vec<u8>,
+        publics: PublicValues,
+        program_vk: ProgramVK,
         zisk_vk: ZiskVK,
     ) -> Self {
-        Self { proof, publics, program_vk, zisk_vk, plonk_vkey: None }
+        Self { proof_kind, proof_bytes, publics, program_vk, zisk_vk }
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -596,27 +452,26 @@ impl ZiskProofWithPublicValues {
         let file = File::open(path.as_ref()).with_context(|| {
             format!("failed to open file for loading proof: {}", path.as_ref().display())
         })?;
-        let proof_with_publics: ZiskProofWithPublicValues = bincode::deserialize_from(file)?;
-        Ok(proof_with_publics)
+        let proof: Proof = bincode::deserialize_from(file)?;
+        Ok(proof)
     }
 
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
-        match &self.proof {
-            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
-                let minimal = matches!(self.proof, ZiskProof::VadcopFinalMinimal(_));
+        match self.proof_kind {
+            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
+                let minimal = self.proof_kind == ProofKind::VadcopFinalMinimal;
                 let mut pubs = self.program_vk.vk.clone();
                 pubs.extend(self.publics.public_bytes());
-                Ok(VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal))
+                Ok(VadcopFinalProof::new(self.proof_bytes.clone(), pubs, minimal))
             }
-
             _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
         }
     }
 
     pub fn get_proof_bytes(&self) -> Vec<u8> {
-        match &self.proof {
-            ZiskProof::VadcopFinal(proof_bytes) | ZiskProof::VadcopFinalMinimal(proof_bytes) => {
-                let minimal = matches!(self.proof, ZiskProof::VadcopFinalMinimal(_));
+        match self.proof_kind {
+            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
+                let minimal = self.proof_kind == ProofKind::VadcopFinalMinimal;
 
                 let mut pubs = self.program_vk.vk.clone();
                 pubs.extend(self.publics.public_bytes());
@@ -626,7 +481,7 @@ impl ZiskProofWithPublicValues {
                 bytes.extend_from_slice(&(minimal as u64).to_le_bytes());
                 bytes.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
                 bytes.extend_from_slice(&pubs);
-                bytes.extend_from_slice(proof_bytes);
+                bytes.extend_from_slice(&self.proof_bytes);
                 bytes.extend_from_slice(&self.zisk_vk.vk);
 
                 bytes
@@ -635,15 +490,11 @@ impl ZiskProofWithPublicValues {
         }
     }
 
-    pub fn get_proof(&self) -> &ZiskProof {
-        &self.proof
-    }
-
-    pub fn get_publics(&self) -> &ZiskPublics {
+    pub fn get_publics(&self) -> &PublicValues {
         &self.publics
     }
 
-    pub fn get_program_vk(&self) -> &ZiskProgramVK {
+    pub fn get_program_vk(&self) -> &ProgramVK {
         &self.program_vk
     }
 
@@ -651,7 +502,7 @@ impl ZiskProofWithPublicValues {
         &self.zisk_vk
     }
 
-    /// Create ZiskProofWithPublicValues directly from a Vadcop proof byte array.
+    /// Create Proof directly from a Vadcop proof byte array.
     ///
     /// This method parses the proof format (n_publics, publics..., proof...) and extracts
     /// the public values and program VK directly, without creating an intermediate VadcopFinalProof.
@@ -663,23 +514,20 @@ impl ZiskProofWithPublicValues {
     ///
     /// # Returns
     ///
-    /// A ZiskProofWithPublicValues containing the parsed proof, publics, and program VK
+    /// A Proof containing the parsed proof, publics, and program VK
     pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u8>) -> Result<Self> {
         let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal)
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
-        let zisk_proof = if minimal {
-            ZiskProof::VadcopFinalMinimal(vadcop_proof.proof)
-        } else {
-            ZiskProof::VadcopFinal(vadcop_proof.proof)
-        };
+        let proof_kind =
+            if minimal { ProofKind::VadcopFinalMinimal } else { ProofKind::VadcopFinal };
 
         Ok(Self {
-            proof: zisk_proof,
-            publics: ZiskPublics::new(&vadcop_proof.public_values),
-            program_vk: ZiskProgramVK::new_from_publics(&vadcop_proof.public_values),
-            zisk_vk: ZiskVK { vk: zisk_vk },
-            plonk_vkey: None,
+            proof_kind,
+            proof_bytes: vadcop_proof.proof,
+            publics: PublicValues::new(&vadcop_proof.public_values),
+            program_vk: ProgramVK::new_from_publics(&vadcop_proof.public_values),
+            zisk_vk: ZiskVK { vk: zisk_vk, plonk_vkey: None },
         })
     }
 
@@ -715,7 +563,7 @@ impl ZiskProofWithPublicValues {
     /// proof.publics(&custom_publics).verify()?;
     /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
     /// ```
-    pub fn with_publics<'a>(&'a self, publics: &'a ZiskPublics) -> ZiskVerifyBuilder<'a> {
+    pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_publics(publics)
     }
 
@@ -729,7 +577,7 @@ impl ZiskProofWithPublicValues {
     /// proof.program_vk(&custom_program_vk).verify()?;
     /// proof.program_vk(&custom_program_vk).publics(&custom_publics).verify()?;
     /// ```
-    pub fn with_program_vk<'a>(&'a self, program_vk: &'a ZiskProgramVK) -> ZiskVerifyBuilder<'a> {
+    pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_program_vk(program_vk)
     }
 }

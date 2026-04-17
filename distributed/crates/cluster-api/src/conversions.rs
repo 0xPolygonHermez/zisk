@@ -12,7 +12,7 @@ use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
     execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
     ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
-    HeartbeatAck, JobCancelled, Proof, ProofList, ProveParams, ReconnectionAction,
+    HeartbeatAck, JobCancelled, ProofList, ProofStark, ProveParams, ReconnectionAction,
     ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
     WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
@@ -30,9 +30,9 @@ impl From<GrpcComputeCapacity> for ComputeCapacity {
     }
 }
 
-impl From<AggProofData> for Proof {
+impl From<AggProofData> for ProofStark {
     fn from(row_data: AggProofData) -> Self {
-        Proof {
+        ProofStark {
             airgroup_id: row_data.airgroup_id,
             values: row_data.values,
             worker_idx: row_data.worker_idx,
@@ -40,8 +40,8 @@ impl From<AggProofData> for Proof {
     }
 }
 
-impl From<Proof> for AggProofData {
-    fn from(grpc_row_data: Proof) -> Self {
+impl From<ProofStark> for AggProofData {
+    fn from(grpc_row_data: ProofStark) -> Self {
         AggProofData {
             airgroup_id: grpc_row_data.airgroup_id,
             values: grpc_row_data.values,
@@ -236,7 +236,8 @@ impl From<ChallengesDto> for Challenges {
 
 impl From<AggParamsDto> for AggParams {
     fn from(dto: AggParamsDto) -> Self {
-        let agg_proofs: Vec<Proof> = dto.agg_proofs.into_iter().map(|proof| proof.into()).collect();
+        let agg_proofs: Vec<ProofStark> =
+            dto.agg_proofs.into_iter().map(|proof| proof.into()).collect();
 
         AggParams {
             agg_proofs: Some(ProofList { proofs: agg_proofs }),
@@ -247,9 +248,9 @@ impl From<AggParamsDto> for AggParams {
     }
 }
 
-impl From<ProofDto> for Proof {
-    fn from(dto: ProofDto) -> Self {
-        Proof { worker_idx: dto.worker_idx, airgroup_id: dto.airgroup_id, values: dto.values }
+impl From<ProofStarkDto> for ProofStark {
+    fn from(dto: ProofStarkDto) -> Self {
+        ProofStark { worker_idx: dto.worker_idx, airgroup_id: dto.airgroup_id, values: dto.values }
     }
 }
 
@@ -316,10 +317,10 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {
-                let proofs: Vec<ProofDto> = proof_list
+                let proofs: Vec<ProofStarkDto> = proof_list
                     .proofs
                     .into_iter()
-                    .map(|p| ProofDto {
+                    .map(|p| ProofStarkDto {
                         worker_idx: p.worker_idx,
                         airgroup_id: p.airgroup_id,
                         values: p.values,

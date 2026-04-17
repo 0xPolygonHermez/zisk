@@ -1,9 +1,9 @@
 use super::{deadline_from_now, stdin_to_input_kind, RemoteClient};
 
-use crate::execute::ExecuteResult;
 use crate::input::ProgramInput;
 use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
+use zisk_prover_backend::ExecuteOutput;
 
 use std::time::Duration;
 use zisk_gateway::backend::{DomainExecuteRequest, DomainJobKind};
@@ -19,7 +19,7 @@ impl RemoteClient {
         _executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
+    ) -> Result<JobHandle<ExecuteOutput>> {
         let hash_id = program.program_id.hash_id.to_string();
         let input = stdin_to_input_kind(input)?;
         let execute_timeout = timeout.map(deadline_from_now);

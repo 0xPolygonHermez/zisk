@@ -1,8 +1,7 @@
 use crate::create_debug_info;
 use crate::BackendProverOpts;
 use crate::{
-    ZiskAggPhaseResult, ZiskExecuteResult, ZiskPhaseResult, ZiskProveResult,
-    ZiskVerifyConstraintsResult,
+    ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
 };
 use anyhow::Result;
 use asm_runner::HintsShmem;
@@ -25,9 +24,7 @@ use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
-use zisk_common::{
-    PlonkVkey, ProofKind, ZiskProgramVK, ZiskProof, ZiskProofWithPublicValues, ZiskPublics, ZiskVK,
-};
+use zisk_common::{PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
@@ -148,19 +145,10 @@ impl ProverBackend {
         Ok(self.executor.get_execution_result())
     }
 
-    pub(crate) fn execute(
-        &self,
-        stdin: ZiskStdin,
-        output_path: Option<PathBuf>,
-    ) -> Result<ZiskExecuteResult> {
+    pub(crate) fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         self.executor.set_stdin(stdin)?;
 
         let start = std::time::Instant::now();
-
-        let planning_info = self
-            .proofman
-            .execute_from_lib(output_path)
-            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let elapsed = start.elapsed();
 
@@ -168,7 +156,7 @@ impl ProverBackend {
 
         let publics = self.proofman.get_publics();
 
-        Ok(ZiskExecuteResult::new(elapsed, result, planning_info, &publics))
+        Ok(ExecuteOutput::new(elapsed, result, &publics))
     }
 
     pub(crate) fn stats(
@@ -280,7 +268,7 @@ impl ProverBackend {
         stdin: ZiskStdin,
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
-    ) -> Result<ZiskProveResult> {
+    ) -> Result<ProveOutput> {
         if proof_kind == ProofKind::Plonk && self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
@@ -312,22 +300,25 @@ impl ProverBackend {
             )
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
 
-        let (proof_id, proof) = match proof {
-            ProvePhaseResult::Full(proof_id, proof) => (proof_id, proof),
-            _ => (None, None),
+        let proof = match proof {
+            ProvePhaseResult::Full(_, proof) => proof,
+            _ => None,
         };
 
-        let (execution_result, stats) = self.executor.get_execution_result();
+        let (execution_result, _stats) = self.executor.get_execution_result();
 
         // Store the stats in stats.json
-        stats_mark!(stats, 0, "END", 0);
+        stats_mark!(_stats, 0, "END", 0);
 
         #[cfg(feature = "stats")]
-        stats.store_stats();
+        _stats.store_stats();
 
         self.proofman.set_barrier();
 
-        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)? };
+        let zisk_vk = ZiskVK {
+            vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?,
+            plonk_vkey: None,
+        };
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
@@ -337,8 +328,8 @@ impl ProverBackend {
                     .unwrap()
                     .generate_final_snark_proof(&vadcop_proof)?;
 
-                let publics = ZiskPublics::new(&vadcop_proof.public_values);
-                let program_vk = ZiskProgramVK::new_from_publics(&vadcop_proof.public_values);
+                let publics = PublicValues::new(&vadcop_proof.public_values);
+                let program_vk = ProgramVK::new_from_publics(&vadcop_proof.public_values);
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     let proving_key_snark =
                         self.proving_key_snark_path.as_ref().ok_or_else(|| {
@@ -351,17 +342,15 @@ impl ProverBackend {
                         "final"
                     ));
                     let plonk_vkey = PlonkVkey::load(&verkey_path)?;
-                    Ok(ZiskProveResult::new(
+                    Ok(ProveOutput::new(
                         execution_result,
                         start.elapsed(),
-                        stats,
-                        proof_id,
-                        ZiskProofWithPublicValues {
-                            proof: ZiskProof::Plonk(snark_proof.proof_bytes),
+                        Proof {
+                            proof_kind: ProofKind::Plonk,
+                            proof_bytes: snark_proof.proof_bytes,
                             publics,
                             program_vk,
-                            zisk_vk,
-                            plonk_vkey: Some(plonk_vkey),
+                            zisk_vk: ZiskVK { vk: zisk_vk.vk, plonk_vkey: Some(plonk_vkey) },
                         },
                     ))
                 } else {
@@ -372,89 +361,79 @@ impl ProverBackend {
                 }
             }
             (_, Some(p)) => {
-                let proof = if minimal {
-                    ZiskProof::VadcopFinalMinimal(p.proof)
-                } else {
-                    ZiskProof::VadcopFinal(p.proof)
-                };
-                Ok(ZiskProveResult::new(
+                let proof_kind =
+                    if minimal { ProofKind::VadcopFinalMinimal } else { ProofKind::VadcopFinal };
+                Ok(ProveOutput::new(
                     execution_result,
                     start.elapsed(),
-                    stats,
-                    proof_id,
-                    ZiskProofWithPublicValues {
-                        proof,
-                        publics: ZiskPublics::new(&p.public_values),
-                        program_vk: ZiskProgramVK::new_from_publics(&p.public_values),
+                    Proof {
+                        proof_kind,
+                        proof_bytes: p.proof,
+                        publics: PublicValues::new(&p.public_values),
+                        program_vk: ProgramVK::new_from_publics(&p.public_values),
                         zisk_vk,
-                        plonk_vkey: None,
                     },
                 ))
             }
-            (_, None) => Ok(ZiskProveResult::new_null(execution_result, start.elapsed(), stats)),
+            (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
     }
 
     pub(crate) fn minimal(
         &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        program_vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
-        let proof_bytes = match proof {
-            ZiskProof::VadcopFinal(bytes) => bytes.clone(),
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Cannot generate SNARK proof. Only VadcopFinal proofs can be converted to SNARK proofs.",
-                ));
-            }
-        };
+        proof_bytes: &[u8],
+        publics: &PublicValues,
+        program_vk: &ProgramVK,
+    ) -> Result<ProveOutput> {
+        let start = std::time::Instant::now();
 
         let mut pubs = program_vk.vk.clone();
         pubs.extend(publics.public_bytes());
-        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
+        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.to_vec(), pubs, false);
 
         let minimal_proof = self
             .proofman
             .generate_vadcop_final_proof_compressed(&vadcop_final_proof)
             .map_err(|e| anyhow::anyhow!("Error generating minimal proof: {}", e))?;
 
-        Ok(ZiskProofWithPublicValues {
-            proof: ZiskProof::VadcopFinalMinimal(minimal_proof.proof),
-            publics: ZiskPublics::new(&minimal_proof.public_values),
-            program_vk: ZiskProgramVK::new_from_publics(&minimal_proof.public_values),
-            zisk_vk: ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)? },
-            plonk_vkey: None,
-        })
+        let time = start.elapsed();
+
+        let proof = Proof {
+            proof_kind: ProofKind::VadcopFinalMinimal,
+            proof_bytes: minimal_proof.proof.clone(),
+            publics: PublicValues::new(&minimal_proof.public_values),
+            program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
+            zisk_vk: ZiskVK {
+                vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)?,
+                plonk_vkey: None,
+            },
+        };
+
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
 
     pub(crate) fn plonk(
         &self,
-        proof: &ZiskProof,
-        publics: &ZiskPublics,
-        program_vk: &ZiskProgramVK,
-    ) -> Result<ZiskProofWithPublicValues> {
+        proof_bytes: &[u8],
+        publics: &PublicValues,
+        program_vk: &ProgramVK,
+    ) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
             ));
         }
 
-        let proof_bytes = match proof {
-            ZiskProof::VadcopFinal(bytes) => bytes.clone(),
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Cannot generate SNARK proof. Only VadcopFinal proofs can be converted to SNARK proofs.",
-                ));
-            }
-        };
+        let start = std::time::Instant::now();
 
         let mut pubs = program_vk.vk.clone();
         pubs.extend(publics.public_bytes());
-        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes, pubs, false);
+        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.to_vec(), pubs, false);
 
         let snark_proof =
             self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
+
+        let time = start.elapsed();
 
         let proving_key_snark = self.proving_key_snark_path.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Proving key snark path is required for Plonk proofs")
@@ -467,19 +446,18 @@ impl ProverBackend {
         ));
         let plonk_vkey = PlonkVkey::load(&verkey_path)?;
 
-        let zisk_vk = ZiskVK { vk: get_vadcop_final_proof_vkey(&self.proving_key_path, false)? };
+        let proof = Proof {
+            proof_kind: ProofKind::Plonk,
+            proof_bytes: snark_proof.proof_bytes.clone(),
+            publics: PublicValues::new(&vadcop_final_proof.public_values),
+            program_vk: ProgramVK::new_from_publics(&vadcop_final_proof.public_values),
+            zisk_vk: ZiskVK {
+                vk: get_vadcop_final_proof_vkey(&self.proving_key_path, false)?,
+                plonk_vkey: Some(plonk_vkey.clone()),
+            },
+        };
 
-        if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
-            Ok(ZiskProofWithPublicValues {
-                proof: ZiskProof::Plonk(snark_proof.proof_bytes),
-                publics: publics.clone(),
-                program_vk: program_vk.clone(),
-                zisk_vk,
-                plonk_vkey: Some(plonk_vkey),
-            })
-        } else {
-            Err(anyhow::anyhow!("Unsupported snark protocol id: {}", snark_proof.protocol_id))
-        }
+        Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
 
     pub(crate) fn prove_phase(
@@ -534,7 +512,7 @@ impl ProverBackend {
 
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?;
-        Ok(ZiskVK { vk })
+        Ok(ZiskVK { vk, plonk_vkey: None })
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {

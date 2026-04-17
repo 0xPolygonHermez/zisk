@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
         result.get_execution_steps(),
-        result.get_duration()
+        result.get_execution_time()
     );
 
     println!("Generating first proof for program...");

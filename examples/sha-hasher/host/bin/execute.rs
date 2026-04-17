@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
-    println!("Duration: {:?}", result.get_duration());
+    println!("Duration: {:?}", result.get_execution_time());
 
     println!("Reading public outputs...");
     let output: Output = result.get_public_values_abi()?;

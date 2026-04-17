@@ -6,29 +6,29 @@ use crate::{
 };
 use anyhow::Result;
 use std::{sync::Arc, time::Duration};
-use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
-use zisk_prover_backend::ProverEngine;
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_prover_backend::{ProveOutput, ProverEngine};
 
 impl EmbeddedClient {
     pub(crate) fn do_wrap(
         &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
+        proof: &Proof,
         proof_kind: ProofKind,
-        override_publics: Option<ZiskPublics>,
-        override_program_vk: Option<ZiskProgramVK>,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
+    ) -> Result<JobHandle<ProveOutput>> {
         let subs_cloned = Arc::clone(&subs);
         let prover = self.prover.clone();
-        let proof_with_publics = proof_with_publics.clone();
+        let proof = proof.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
             let result = Self::do_wrap_inner(
                 prover,
-                &proof_with_publics,
+                &proof,
                 proof_kind,
                 override_publics.as_ref(),
                 override_program_vk.as_ref(),
@@ -44,20 +44,20 @@ impl EmbeddedClient {
 
     fn do_wrap_inner(
         prover: Arc<EmbeddedProver>,
-        proof_with_publics: &ZiskProofWithPublicValues,
+        proof: &Proof,
         proof_kind: ProofKind,
-        override_publics: Option<&ZiskPublics>,
-        override_program_vk: Option<&ZiskProgramVK>,
-    ) -> Result<ZiskProofWithPublicValues> {
-        let publics = override_publics.unwrap_or(&proof_with_publics.publics);
-        let program_vk = override_program_vk.unwrap_or(&proof_with_publics.program_vk);
+        override_publics: Option<&PublicValues>,
+        override_program_vk: Option<&ProgramVK>,
+    ) -> Result<ProveOutput> {
+        let publics = override_publics.unwrap_or(&proof.publics);
+        let program_vk = override_program_vk.unwrap_or(&proof.program_vk);
 
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
+                p.prover.wrap_proof(&proof.proof_bytes, publics, program_vk, proof_kind)
             }
             EmbeddedProver::Asm(p) => {
-                p.prover.wrap_proof(&proof_with_publics.proof, publics, program_vk, proof_kind)
+                p.prover.wrap_proof(&proof.proof_bytes, publics, program_vk, proof_kind)
             }
         }
     }

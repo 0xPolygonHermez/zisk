@@ -48,7 +48,7 @@ pub struct LaunchProofResponseDto {
 }
 
 pub struct LaunchWrapRequestDto {
-    pub proof_data: Vec<u8>, // bincode-encoded ZiskProofWithPublicValues
+    pub proof_data: Vec<u8>, // bincode-encoded Proof
     pub proof_dest: i32,     // ProofKind value
 }
 
@@ -228,13 +228,13 @@ pub struct ExecutionResultDataDto {
 }
 
 pub struct AggParamsDto {
-    pub agg_proofs: Vec<ProofDto>,
+    pub agg_proofs: Vec<ProofStarkDto>,
     pub last_proof: bool,
     pub final_proof: bool,
     pub proof_type: ProofKind,
 }
 
-pub struct ProofDto {
+pub struct ProofStarkDto {
     pub worker_idx: u32,
     pub airgroup_id: u64,
     pub values: Vec<u64>,
@@ -263,7 +263,7 @@ pub struct ContributionsResultDataDto {
 pub enum ExecuteTaskResponseResultDataDto {
     Execution(ExecutionResultDataDto),
     Challenges(ContributionsResultDataDto),
-    Proofs(Vec<ProofDto>),
+    Proofs(Vec<ProofStarkDto>),
     FinalProof(FinalProofDto),
     WrapResult(WrapResultDto),
 }

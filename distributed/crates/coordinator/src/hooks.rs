@@ -13,7 +13,7 @@ use zisk_cluster_common::{
 ///   will be appended to the URL as a path segment.
 /// * `job_id` - The ID of the job that has completed or failed.
 /// * `duration_ms` - Duration of the job in milliseconds.
-/// * `proof_data` - Optional bincode-encoded `ZiskProofWithPublicValues` to include in the payload.
+/// * `proof_data` - Optional bincode-encoded `Proof` to include in the payload.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,

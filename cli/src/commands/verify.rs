@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::{ZiskProof, ZiskProofWithPublicValues};
+use zisk_common::{Proof, ProofKind};
 use zisk_prover_backend::setup_logger;
 
 #[derive(clap::Args)]
@@ -29,13 +29,13 @@ impl ZiskVerify {
 
         let start = std::time::Instant::now();
 
-        let proof = ZiskProofWithPublicValues::load(&self.proof)
+        let proof = Proof::load(&self.proof)
             .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", &self.proof, e))?;
 
-        let proof_type = match &proof.get_proof() {
-            ZiskProof::VadcopFinal(_) | ZiskProof::VadcopFinalMinimal(_) => "STARK",
-            ZiskProof::Plonk(_) => "PLONK",
-            _ => panic!("Unsupported proof type"),
+        let proof_type = match proof.proof_kind {
+            ProofKind::VadcopFinal
+            | ProofKind::VadcopFinalMinimal => "STARK",
+            ProofKind::Plonk => "PLONK",
         };
 
         let result = proof.verify();

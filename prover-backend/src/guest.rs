@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
-use zisk_common::ZiskProgramVK;
+use zisk_common::ProgramVK;
 use zisk_core::Riscv2zisk;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
@@ -116,9 +116,9 @@ impl GuestProgram {
         &self.program_id.hash_id
     }
 
-    pub fn vk(&self) -> Result<ZiskProgramVK> {
+    pub fn vk(&self) -> Result<ProgramVK> {
         let vk = rom_merkle_setup_verkey(self.elf(), &None)?;
-        Ok(ZiskProgramVK { vk })
+        Ok(ProgramVK { vk })
     }
 
     /// Run the ZisK emulator with the given stdin.

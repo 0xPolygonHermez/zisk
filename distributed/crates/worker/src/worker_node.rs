@@ -16,7 +16,7 @@ use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
     StreamDataDto, WorkerState,
 };
-use zisk_common::{ZiskExecutorTime, ZiskProofWithPublicValues};
+use zisk_common::{Proof, ZiskExecutorTime};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -546,7 +546,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 (
                     data.into_iter()
-                        .map(|v| Proof {
+                        .map(|v| ProofStark {
                             airgroup_id: v.airgroup_id,
                             values: v.proof,
                             // NOTE: in this context we take always the first worker index
@@ -619,20 +619,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             error!("Failed to get vadcop verification key: {}", e);
                             vec![]
                         });
-                        match ZiskProofWithPublicValues::new_from_vadcop_proof(
-                            &flat_proof,
-                            minimal,
-                            verkey,
-                        ) {
+                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey) {
                             Ok(zisk_proof) => {
-                                let final_proof = if is_plonk {
+                                let final_proof: Proof = if is_plonk {
                                     match self
                                         .worker
                                         .prover_arc()
                                         .wrap_proof(&zisk_proof, ProofKind::Plonk)
                                         .run()
                                     {
-                                        Ok(wrapped) => wrapped,
+                                        Ok(wrapped) => wrapped.get_proof().clone(),
                                         Err(e) => {
                                             error!(
                                                 "Failed to wrap Plonk proof for {}: {}",
@@ -647,7 +643,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 bincode::serialize(&final_proof).unwrap_or_default()
                             }
                             Err(e) => {
-                                error!("Failed to build ZiskProofWithPublicValues: {}", e);
+                                error!("Failed to build Proof: {}", e);
                                 vec![]
                             }
                         }

@@ -9,16 +9,15 @@ pub(crate) mod wrap;
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
-use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_gateway::backend::{DomainInputChunk, DomainInputKind, DomainJobKind, DomainProof};
 use zisk_gateway_api::{proto::JobRequestMessage, ZiskGatewayApiClient};
-use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::{
-    execute::{ExecuteRequest, ExecuteResult},
+    execute::ExecuteRequest,
     input::ProgramInput,
     job_handle::{JobHandle, JobId, SubscriberList},
-    proof::Proof,
     prove::ProveRequest,
     setup::{SetupRequest, SetupResult},
     upload::{UploadRequest, UploadResult},
@@ -122,7 +121,7 @@ impl Client for RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<Proof>> {
+    ) -> Result<JobHandle<ProveOutput>> {
         self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
@@ -133,20 +132,20 @@ impl Client for RemoteClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
+    ) -> Result<JobHandle<zisk_prover_backend::ExecuteOutput>> {
         self.do_execute(program, input, executor, timeout, subs)
     }
 
     fn run_wrap(
         &self,
-        proof_with_publics: &ZiskProofWithPublicValues,
+        proof: &Proof,
         proof_kind: ProofKind,
-        _override_publics: Option<ZiskPublics>,
-        _override_program_vk: Option<ZiskProgramVK>,
+        _override_publics: Option<PublicValues>,
+        _override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ZiskProofWithPublicValues>> {
-        self.do_wrap(proof_with_publics, proof_kind, timeout, subs)
+    ) -> Result<JobHandle<ProveOutput>> {
+        self.do_wrap(proof, proof_kind, timeout, subs)
     }
 }
 
@@ -187,10 +186,10 @@ impl RemoteClient {
     #[must_use]
     pub fn wrap_proof<'a>(
         &'a self,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
+        proof: &'a Proof,
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
-        WrapRequest::new(self, proof_with_publics, proof_kind)
+        WrapRequest::new(self, proof, proof_kind)
     }
 }
 
@@ -212,10 +211,7 @@ pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<DomainInputKind
     }
 }
 
-pub(crate) fn proof_with_publics_to_proto(
-    proof: &ZiskProofWithPublicValues,
-    proof_kind: ProofKind,
-) -> Result<DomainProof> {
+pub(crate) fn proof_to_proto(proof: &Proof, proof_kind: ProofKind) -> Result<DomainProof> {
     let data =
         bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
     Ok(DomainProof {

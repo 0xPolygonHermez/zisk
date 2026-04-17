@@ -2,51 +2,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use zisk_common::StatsCostPerType;
-use zisk_prover_backend::{GuestProgram, ZiskExecuteResult};
+use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::job_handle::JobHandle;
 use crate::{Client, ExecutorKind};
-
-/// Result of a dry-run program execution (no proof generated).
-pub struct ExecuteResult {
-    pub(crate) inner: ZiskExecuteResult,
-}
-
-impl ExecuteResult {
-    pub(crate) fn new(inner: ZiskExecuteResult) -> Self {
-        Self { inner }
-    }
-
-    pub fn get_execution_steps(&self) -> u64 {
-        self.inner.get_execution_steps()
-    }
-
-    pub fn get_execution_total_cost(&self) -> u64 {
-        self.inner.get_execution_total_cost()
-    }
-
-    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
-        self.inner.get_execution_cost_per_type()
-    }
-
-    pub fn get_duration(&self) -> Duration {
-        self.inner.get_duration()
-    }
-
-    pub fn get_public_values<T: serde::de::DeserializeOwned + serde::Serialize>(
-        &self,
-    ) -> Result<T> {
-        self.inner.get_public_values()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.inner.get_public_values_abi()
-    }
-}
 
 /// Builder for a dry-run execution request (no proof).
 ///
@@ -83,8 +42,8 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         self
     }
 
-    /// Submit the execution, returning a [`JobHandle<ExecuteResult>`].
-    pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
+    /// Submit the execution, returning a [`JobHandle<ExecuteOutput>`].
+    pub fn run(self) -> Result<JobHandle<ExecuteOutput>> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_execute(self.program, self.input, executor, self.timeout, subs)

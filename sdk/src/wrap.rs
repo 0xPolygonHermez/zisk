@@ -2,33 +2,30 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
+use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_prover_backend::ProveOutput;
 
 use crate::job_handle::JobHandle;
 use crate::Client;
 
 /// Builder for a proof wrapping/conversion request.
 ///
-/// Obtain via `client.wrap_proof(&proof_with_publics, mode)`.
+/// Obtain via `client.wrap_proof(&proof, mode)`.
 pub struct WrapRequest<'a, C> {
     client: &'a C,
-    proof_with_publics: &'a ZiskProofWithPublicValues,
+    proof: &'a Proof,
     proof_kind: ProofKind,
-    override_publics: Option<ZiskPublics>,
-    override_program_vk: Option<ZiskProgramVK>,
+    override_publics: Option<PublicValues>,
+    override_program_vk: Option<ProgramVK>,
     timeout: Option<Duration>,
 }
 
 #[allow(private_bounds)]
 impl<'a, C: Client> WrapRequest<'a, C> {
-    pub(crate) fn new(
-        client: &'a C,
-        proof_with_publics: &'a ZiskProofWithPublicValues,
-        proof_kind: ProofKind,
-    ) -> Self {
+    pub(crate) fn new(client: &'a C, proof: &'a Proof, proof_kind: ProofKind) -> Self {
         Self {
             client,
-            proof_with_publics,
+            proof,
             proof_kind,
             override_publics: None,
             override_program_vk: None,
@@ -38,14 +35,14 @@ impl<'a, C: Client> WrapRequest<'a, C> {
 
     /// Override the public inputs used during wrapping.
     #[must_use]
-    pub fn with_publics(mut self, publics: ZiskPublics) -> Self {
+    pub fn with_publics(mut self, publics: PublicValues) -> Self {
         self.override_publics = Some(publics);
         self
     }
 
     /// Override the program verification key used during wrapping.
     #[must_use]
-    pub fn with_program_vk(mut self, program_vk: ZiskProgramVK) -> Self {
+    pub fn with_program_vk(mut self, program_vk: ProgramVK) -> Self {
         self.override_program_vk = Some(program_vk);
         self
     }
@@ -57,11 +54,11 @@ impl<'a, C: Client> WrapRequest<'a, C> {
         self
     }
 
-    /// Submit the wrap, returning a [`JobHandle<ZiskProofWithPublicValues>`].
-    pub fn run(self) -> Result<JobHandle<ZiskProofWithPublicValues>> {
+    /// Submit the wrap, returning a [`JobHandle<ProveOutput>`].
+    pub fn run(self) -> Result<JobHandle<ProveOutput>> {
         let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_wrap(
-            self.proof_with_publics,
+            self.proof,
             self.proof_kind,
             self.override_publics,
             self.override_program_vk,

@@ -6,8 +6,6 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "stats")]
-use zisk_pil::*;
 
 use crate::Stats;
 

@@ -36,5 +36,5 @@ let output = Output {
     iterations: n, 
     magic_number: 0xDEADBEEF 
 };
-let publics = ZiskPublics::write_abi(&output)?;
+let publics = PublicValues::write_abi(&output)?;
 ```

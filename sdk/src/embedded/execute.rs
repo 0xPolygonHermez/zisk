@@ -1,12 +1,12 @@
 use super::EmbeddedClient;
 use crate::embedded::{EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
-use crate::execute::ExecuteResult;
 use crate::input::ProgramInput;
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
 use crate::{ExecutorKind, JobEvent, ZiskStdin};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
+use zisk_prover_backend::ExecuteOutput;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
@@ -17,7 +17,7 @@ impl EmbeddedClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ExecuteResult>> {
+    ) -> Result<JobHandle<ExecuteOutput>> {
         let program = program.clone();
         let subs_cloned = Arc::clone(&subs);
         let prover = self.prover.clone();
@@ -40,7 +40,7 @@ impl EmbeddedClient {
         executor: ExecutorKind,
         program: GuestProgram,
         prover: Arc<EmbeddedProver>,
-    ) -> Result<std::result::Result<ExecuteResult, anyhow::Error>, anyhow::Error> {
+    ) -> Result<std::result::Result<ExecuteOutput, anyhow::Error>, anyhow::Error> {
         let result = {
             let result = match (prover.as_ref(), executor, input) {
                 (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
@@ -73,7 +73,7 @@ impl EmbeddedClient {
                     p.execute(&program, ZiskStdin::new().into_inner())?
                 }
             };
-            Ok(ExecuteResult::new(result))
+            Ok(result)
         };
         Ok(result)
     }

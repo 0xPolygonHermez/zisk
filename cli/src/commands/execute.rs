@@ -3,8 +3,9 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::ZiskExecutorTime;
 use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskExecuteResult};
+use zisk_prover_backend::{AsmOptions, BackendProverOpts, ExecuteOutput, ProverClientBuilder};
 
 use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
@@ -122,20 +123,20 @@ impl ZiskExecute {
             self.emulator
         };
 
-        let result =
+        let (result, executor_time) =
             if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
         info!("{}", "--- EXECUTE SUMMARY ------------------------".bright_green().bold());
         print_execution_summary(
-            &result.executor_summary.executor_time,
-            result.total_duration,
-            result.executor_summary.steps,
+            &executor_time,
+            result.get_execution_time(),
+            result.get_execution_steps(),
         );
 
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskExecuteResult> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if let Some(ref path) = self.proving_key {
@@ -150,14 +151,16 @@ impl ZiskExecute {
 
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
-        prover.execute(&guest_program, stdin)
+        let result = prover.execute(&guest_program, stdin)?;
+        let executor_time = prover.get_executor_time()?;
+        Ok((result, executor_time))
     }
 
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-    ) -> Result<ZiskExecuteResult> {
+    ) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if let Some(ref path) = self.proving_key {
@@ -198,6 +201,8 @@ impl ZiskExecute {
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
-        prover.execute(&guest_program, stdin)
+        let result = prover.execute(&guest_program, stdin)?;
+        let executor_time = prover.get_executor_time()?;
+        Ok((result, executor_time))
     }
 }

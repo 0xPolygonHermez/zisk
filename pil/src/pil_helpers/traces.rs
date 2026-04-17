@@ -113,7 +113,7 @@ fn default_array_inputs() -> [u64; 64] {
 
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ZiskPublics {
+pub struct PublicValues {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
@@ -121,7 +121,7 @@ pub struct ZiskPublics {
     
 }
 
-impl Default for ZiskPublics {
+impl Default for PublicValues {
     fn default() -> Self {
         Self {  
             rom_root: [0; 4],  

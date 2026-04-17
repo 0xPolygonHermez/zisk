@@ -3,11 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use zisk_common::ProofKind;
-use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::input::ProgramInput;
 use crate::job_handle::{JobHandle, Subscriber, SubscriberList};
-use crate::proof::Proof;
 use crate::{Client, ExecutorKind};
 
 /// Events emitted during proof generation.
@@ -31,7 +30,7 @@ pub enum JobEvent {
 /// Builder for a prove request.
 ///
 /// Obtain via [`crate::ProverClient::prove`].
-/// Finalize with `.run()` which returns a [`JobHandle<Proof>`].
+/// Finalize with `.run()` which returns a [`JobHandle<ProveOutput>`].
 pub struct ProveRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
@@ -94,8 +93,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self.proof_kind
     }
 
-    /// Submit proof generation, returning a [`JobHandle<Proof>`] immediately.
-    pub fn run(self) -> Result<JobHandle<Proof>> {
+    /// Submit proof generation, returning a [`JobHandle<ProveOutput>`] immediately.
+    pub fn run(self) -> Result<JobHandle<ProveOutput>> {
         let mode = self.resolve_mode();
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let subs: SubscriberList = Arc::new(Mutex::new(self.subscribers));

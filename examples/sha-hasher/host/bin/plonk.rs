@@ -1,7 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{
-    load_program, GuestProgram, ProofKind, ProverClient, ZiskProofWithPublicValues, ZiskStdin,
-};
+use zisk_sdk::{load_program, GuestProgram, Proof, ProofKind, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -17,7 +15,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::embedded().gpu().plonk().build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program and generating verification key...");
     client.setup(&PROGRAM).run()?.await?;
@@ -25,7 +23,7 @@ async fn main() -> Result<()> {
 
     println!("Generating PLONK proof (this may take a while)...");
     let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?.await?;
-    println!("PLONK proof generated successfully in {:?}", snark_proof.get_duration());
+    println!("PLONK proof generated successfully in {:?}", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 
     // Alternatively, it can also be done in two steps
@@ -42,7 +40,7 @@ async fn main() -> Result<()> {
     println!("Proof saved to /tmp/sha_hasher_proof_snark.bin");
 
     println!("Loading and verifying saved PLONK proof...");
-    let proof = ZiskProofWithPublicValues::load("/tmp/sha_hasher_proof_snark.bin")?;
+    let proof = Proof::load("/tmp/sha_hasher_proof_snark.bin")?;
     let vkey = PROGRAM.vk()?;
     proof.with_program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");

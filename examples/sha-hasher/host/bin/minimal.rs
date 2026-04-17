@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
 
     println!("Generating Vadcop proof...");
     let vadcop_result = client.prove(&PROGRAM, stdin).run()?.await?;
-    println!("Vadcop proof generated in {:?}", vadcop_result.get_duration());
+    println!("Vadcop proof generated in {:?}", vadcop_result.get_proving_time());
 
     println!("Reducing proof (this may take a while)...");
     let result =

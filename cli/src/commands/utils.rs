@@ -44,7 +44,7 @@ pub struct ZiskCleanCache {
 
     /// Clean cache for all programs (mutually exclusive with `--elf`)
     #[arg(short = 'a', long, conflicts_with = "elf")]
-    pub all: bool
+    pub all: bool,
 }
 
 impl ZiskCleanCache {
@@ -65,7 +65,12 @@ impl ZiskCleanCache {
                     format!("Failed to remove directory {}", cache_zisk_path.display())
                 })?;
 
-                tracing::info!("{}", format!("Successfully removed {}", cache_zisk_path.display()).bright_green().bold());
+                tracing::info!(
+                    "{}",
+                    format!("Successfully removed {}", cache_zisk_path.display())
+                        .bright_green()
+                        .bold()
+                );
             } else {
                 if self.elf.is_none() {
                     self.elf = match detect_current_project_elf()? {
@@ -109,10 +114,8 @@ impl ZiskCleanCache {
                     .file_name()
                     .context("Error getting ELF file name")?
                     .to_string_lossy();
-                let hints_marker = cache_zisk_path.join(format!(
-                    "{}.assembly_hints",
-                    elf_file_name
-                ));
+                let hints_marker =
+                    cache_zisk_path.join(format!("{}.assembly_hints", elf_file_name));
                 if hints_marker.exists() {
                     std::fs::remove_file(&hints_marker)?;
                     files_deleted += 1;
@@ -121,9 +124,15 @@ impl ZiskCleanCache {
 
                 // Show success or info message based on files deleted
                 if files_deleted > 0 {
-                    tracing::info!("{}", "Successfully removed files from zisk cache".bright_green().bold());
+                    tracing::info!(
+                        "{}",
+                        "Successfully removed files from zisk cache".bright_green().bold()
+                    );
                 } else {
-                    tracing::info!("{}", "No cache files found for the specified ELF".bright_yellow().bold());
+                    tracing::info!(
+                        "{}",
+                        "No cache files found for the specified ELF".bright_yellow().bold()
+                    );
                 }
             }
         } else {

@@ -20,7 +20,7 @@ use zisk_gateway_api::{
 
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
-use crate::Proof;
+use zisk_prover_backend::ProveOutput;
 
 const CANCELLED: &str = "Cancelled";
 /// Per-call hold duration sent to the gateway's WaitJobResult long-poll.
@@ -337,7 +337,7 @@ impl FromJobResult for SetupResult {
     }
 }
 
-impl FromJobResult for Proof {
+impl FromJobResult for ProveOutput {
     fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
         check_completed(&resp)?;
         let result = resp
@@ -348,24 +348,36 @@ impl FromJobResult for Proof {
                 let proof_msg = prove_resp
                     .proof
                     .ok_or_else(|| anyhow::anyhow!("missing proof in ProveResponse"))?;
-                let proof_with_pv: zisk_common::ZiskProofWithPublicValues =
-                    bincode::deserialize(&proof_msg.data)
-                        .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
+                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof_msg.data)
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
                 let (steps, duration, cost) = proto_stats_to_rust(prove_resp.stats);
-                let result = zisk_prover_backend::ZiskProveResult::from_remote(
+                let result = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     steps,
                     duration,
                     cost,
                 );
-                Ok(crate::proof::Proof::new(result))
+                Ok(result)
             }
-            other => anyhow::bail!("unexpected job kind response for prove: {:?}", other),
+            Some(KindResponse::Wrap(wrap_resp)) => {
+                let proof_msg = wrap_resp
+                    .proof
+                    .ok_or_else(|| anyhow::anyhow!("missing proof in WrapResponse"))?;
+                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof_msg.data)
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
+                Ok(zisk_prover_backend::ProveOutput::from_remote(
+                    proof_with_pv,
+                    0,
+                    Duration::ZERO,
+                    zisk_common::StatsCostPerType::default(),
+                ))
+            }
+            other => anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other),
         }
     }
 }
 
-impl FromJobResult for crate::execute::ExecuteResult {
+impl FromJobResult for zisk_prover_backend::ExecuteOutput {
     fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
         check_completed(&resp)?;
         let result = resp
@@ -374,34 +386,15 @@ impl FromJobResult for crate::execute::ExecuteResult {
         match result.kind {
             Some(KindResponse::Execute(execute_resp)) => {
                 let (steps, duration, cost) = proto_stats_to_rust(execute_resp.stats);
-                let inner = zisk_prover_backend::ZiskExecuteResult::from_remote(
+                let inner = zisk_prover_backend::ExecuteOutput::from_remote(
                     steps,
                     duration,
                     cost,
                     &execute_resp.public_outputs,
                 );
-                Ok(crate::execute::ExecuteResult::new(inner))
+                Ok(inner)
             }
             other => anyhow::bail!("unexpected job kind response for execute: {:?}", other),
-        }
-    }
-}
-
-impl FromJobResult for zisk_common::ZiskProofWithPublicValues {
-    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
-        check_completed(&resp)?;
-        let result = resp
-            .result
-            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-        match result.kind {
-            Some(KindResponse::Wrap(wrap_resp)) => {
-                let proof_msg = wrap_resp
-                    .proof
-                    .ok_or_else(|| anyhow::anyhow!("missing proof in WrapResponse"))?;
-                bincode::deserialize(&proof_msg.data)
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))
-            }
-            other => anyhow::bail!("unexpected job kind response for wrap: {:?}", other),
         }
     }
 }

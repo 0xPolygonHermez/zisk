@@ -11,7 +11,7 @@ use zisk_cluster_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProofKind, ZiskExecutorTime, ZiskProofWithPublicValues};
+use zisk_common::{Proof, ProofKind, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
@@ -747,7 +747,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     drop(guard);
 
                     // witness_info.publics is empty in execution-only mode (no witness phase),
-                    // so override with the publics from ZiskExecuteResult.
+                    // so override with the publics from ExecuteOutput.
                     let mut wi = witness_info;
                     wi.publics = publics;
 
@@ -888,9 +888,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let result = prover.execute(guest_program, stdin)?;
 
-        let num_instances = result.planning_info.num_instances;
+        let num_instances = prover.get_execution_info()?.0.total_instances;
+
         let publics_u64: Vec<u64> = result
-            .publics
+            .get_publics()
             .public_bytes()
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
@@ -900,8 +901,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Wrap an existing vadcop proof into a minimal or SNARK proof.
-    /// `proof_data` is a bincode-encoded `ZiskProofWithPublicValues`.
-    /// Returns the bincode-encoded wrapped `ZiskProofWithPublicValues`.
+    /// `proof_data` is a bincode-encoded `Proof`.
+    /// Returns the bincode-encoded wrapped `Proof`.
     pub fn execute_wrap_task(
         prover: &ZiskProver<T>,
         proof_data: Vec<u8>,
@@ -913,10 +914,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof_with_publics: ZiskProofWithPublicValues = bincode::deserialize(&proof_data)
+        let proof: Proof = bincode::deserialize(&proof_data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
 
-        let wrapped = prover.wrap_proof(&proof_with_publics, proof_kind).run()?;
+        let result = prover.wrap_proof(&proof, proof_kind).run()?;
+
+        let wrapped = result.get_proof();
 
         let result_bytes = bincode::serialize(&wrapped)
             .map_err(|e| anyhow::anyhow!("Failed to serialize wrapped proof: {}", e))?;

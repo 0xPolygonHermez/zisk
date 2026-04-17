@@ -2,8 +2,7 @@ use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sha_hasher_host::Output;
 use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, ProverClient, ZiskProofWithPublicValues, ZiskPublics,
-    ZiskStdin,
+    load_program, ExecutorKind, GuestProgram, Proof, ProverClient, PublicValues, ZiskStdin,
 };
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
@@ -29,7 +28,7 @@ async fn main() -> Result<()> {
 
     println!("Generating proof (this may take a while)...");
     let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?.await?;
-    println!("Proof generated successfully in {:?}", result.get_duration());
+    println!("Proof generated successfully in {:?}", result.get_proving_time());
     println!("Execution steps: {}", result.get_execution_steps());
 
     println!("Verifying proof...");
@@ -52,15 +51,15 @@ async fn main() -> Result<()> {
     println!("Expected output hash: {:02x?}", &hash[..8]);
 
     println!("Verifying saved proofs from disk...");
-    let publics = ZiskPublics::write_abi(&output)?;
+    let publics = PublicValues::write_abi(&output)?;
     let vk = PROGRAM.vk()?;
 
     println!("Loading proof with publics from disk...");
-    let proof_with_publics = ZiskProofWithPublicValues::load("tmp/sha_hasher_proof.bin")?;
+    let proof = Proof::load("tmp/sha_hasher_proof.bin")?;
 
     println!("Verifying proof with embedded publics...");
     // Verify the proof with its embedded publics (from guest's commit)
-    proof_with_publics.with_program_vk(&vk).with_publics(&publics).verify()?;
+    proof.with_program_vk(&vk).with_publics(&publics).verify()?;
     println!("Proof verification successful!");
 
     println!("\u{2713} Successfully generated and verified all proofs!");

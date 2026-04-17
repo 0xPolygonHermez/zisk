@@ -57,15 +57,15 @@ use zisk_cluster_common::{
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
-    LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofDto,
-    ProofKind, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
+    LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind,
+    ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
     WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
     WrapParamsDto, ZiskExecutorTimeDto,
 };
 use zisk_common::io::{StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
+use zisk_common::Proof;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::ZiskProofWithPublicValues;
 use zisk_common::ZISK_PUBLICS;
 
 /// Trait for sending messages to workers through various communication channels.
@@ -448,7 +448,7 @@ impl Coordinator {
     /// Launch a wrap job: compress/reduce an existing vadcop proof to minimal or SNARK format.
     ///
     /// Selects any single idle worker, sends a WRAP task to it, and returns the job ID.
-    /// The proof data must be a bincode-encoded `ZiskProofWithPublicValues`.
+    /// The proof data must be a bincode-encoded `Proof`.
     pub async fn launch_wrap(
         &self,
         request: LaunchWrapRequestDto,
@@ -547,10 +547,9 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = bincode::deserialize::<ZiskProofWithPublicValues>(&wrap_result.proof_data)
-            .map_err(|e| {
-                CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
-            })?;
+        let zisk_proof = bincode::deserialize::<Proof>(&wrap_result.proof_data).map_err(|e| {
+            CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
+        })?;
         job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);
 
@@ -2005,7 +2004,7 @@ impl Coordinator {
     /// Extracts and converts execution timing information from DTO to internal representation.
     ///
     /// Serializes a `Vec<u64>` of public values into the byte format expected by
-    /// [`zisk_common::ZiskPublics::new`]: a 32-byte zero header followed by each u64
+    /// [`zisk_common::PublicValues::new`]: a 32-byte zero header followed by each u64
     /// as 8 little-endian bytes (total = `ZISK_PUBLICS * 8 + 32` = 544 bytes).
     /// Returns an empty Vec if the slice doesn't have exactly `ZISK_PUBLICS` elements.
     fn publics_u64_to_bytes(publics: &[u64]) -> Vec<u8> {
@@ -2735,9 +2734,9 @@ impl Coordinator {
         all_done: bool,
         proof_type: ProofKind,
     ) -> CoordinatorResult<()> {
-        let proofs: Vec<ProofDto> = proofs
+        let proofs: Vec<ProofStarkDto> = proofs
             .into_iter()
-            .map(|p| ProofDto {
+            .map(|p| ProofStarkDto {
                 airgroup_id: p.airgroup_id,
                 values: p.values,
                 worker_idx: p.worker_idx,
@@ -2838,10 +2837,9 @@ impl Coordinator {
         self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
 
         // Finalize completed job
-        let zisk_proof = bincode::deserialize::<ZiskProofWithPublicValues>(&proof_data.proof_data)
-            .map_err(|e| {
-                CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
-            })?;
+        let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
+            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
+        })?;
         job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);

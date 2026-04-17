@@ -57,7 +57,7 @@ struct Proof {
     hash_id:          String,        // guest program hash ID used to generate this proof
     verification_key: Vec<u8>,       // verification key
     proof_kind:       ProofKind,     // format of the proof data
-    data:             Vec<u8>,       // serialized proof bytes (bincode-encoded ZiskProofWithPublicValues)
+    data:             Vec<u8>,       // serialized proof bytes (bincode-encoded Proof)
     public_inputs:    Vec<u8>,       // serialized public inputs committed to by the proof
     started_at:       DateTime<Utc>, // when the job started executing
     completed_at:     DateTime<Utc>, // when the proof was finalized

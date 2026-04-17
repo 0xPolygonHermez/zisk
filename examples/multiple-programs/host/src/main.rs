@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
         result.get_execution_steps(),
-        result.get_duration()
+        result.get_execution_time()
     );
 
     println!("Generating proof for first program...");
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     println!(
         "Program executed successfully: {} cycles in {:.2?}",
         result2.get_execution_steps(),
-        result2.get_duration()
+        result2.get_execution_time()
     );
 
     println!("Generating proof for second program...");
