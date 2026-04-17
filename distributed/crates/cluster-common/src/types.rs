@@ -15,9 +15,9 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::ZiskExecutorTime;
+use zisk_common::{ZiskExecutorTime, ZiskProofWithPublicValues};
 
-use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto};
+use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
 /// Job ID wrapper for type safety
 #[derive(
@@ -261,7 +261,7 @@ impl Display for PhaseTimings {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Job {
     pub job_id: JobId,
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
@@ -280,13 +280,12 @@ pub struct Job {
     pub challenges: Option<Vec<ContributionsInfo>>,
     pub witness_info: Option<WitnessInfo>,
     pub execution_mode: JobExecutionMode,
-    pub final_proof: Option<Vec<u64>>,
-    pub final_verkey: Option<Vec<u8>>,
+    pub proof: Option<ZiskProofWithPublicValues>,
     pub executed_steps: Option<u64>,
     pub instances: Option<u64>,
     pub metadata: BTreeMap<String, String>,
     pub execution_only: bool,
-    pub wrap_data: Option<Vec<u8>>, // bincode-encoded ZiskProofWithPublicValues from a wrap job
+    pub proof_type: ProofKind,
 }
 
 impl Job {
@@ -302,6 +301,7 @@ impl Job {
         execution_mode: JobExecutionMode,
         metadata: BTreeMap<String, String>,
         execution_only: bool,
+        proof_type: ProofKind,
     ) -> Self {
         Self {
             job_id: JobId::new(),
@@ -321,13 +321,12 @@ impl Job {
             challenges: None,
             witness_info: None,
             execution_mode,
-            final_proof: None,
-            final_verkey: None,
+            proof: None,
             executed_steps: None,
             instances: None,
             metadata,
             execution_only,
-            wrap_data: None,
+            proof_type,
         }
     }
 
@@ -396,8 +395,6 @@ impl Job {
         self.results.clear();
         self.phase_timings.clear();
         self.challenges = None;
-        self.final_proof = None;
-        self.final_verkey = None;
     }
 }
 
@@ -524,7 +521,7 @@ pub struct AggregationParams {
     pub agg_proofs: Vec<AggProofData>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub minimal: bool,
+    pub proof_type: ProofKind,
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
@@ -573,6 +570,7 @@ mod tests {
             JobExecutionMode::Standard,
             BTreeMap::new(),
             false,
+            crate::ProofKind::VadcopFinal,
         )
     }
 

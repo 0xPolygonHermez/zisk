@@ -121,6 +121,13 @@ enum TaskType {
   WRAP = 4;    // Wrap an existing vadcop proof into a minimal/snark proof
 }
 
+/// Target proof format for a job.
+enum DistributedProofType {
+  DISTRIBUTED_PROOF_TYPE_STARK         = 0; // VadcopFinal (default)
+  DISTRIBUTED_PROOF_TYPE_STARK_MINIMAL = 1; // VadcopFinalMinimal
+  DISTRIBUTED_PROOF_TYPE_PLONK         = 2; // Plonk/SNARK
+}
+
 message ContributionParams {
   string data_id = 1;
   oneof input_source {
@@ -143,7 +150,7 @@ message AggParams {
   ProofList agg_proofs = 1;
   bool last_proof = 2;
   bool final_proof = 3;
-  bool minimal = 4;
+  DistributedProofType proof_type = 4;
 }
 
 message WrapParams {
@@ -241,10 +248,9 @@ message Proof {
 }
 
 message FinalProof {
-  repeated uint64 values = 1;
+  bytes proof_data = 1;
   uint64 executed_steps = 2;
-  bytes verkey = 3;
-  uint64 instances = 4;
+  uint64 instances = 3;
 }
 
 message WorkerError {

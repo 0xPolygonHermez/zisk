@@ -35,7 +35,7 @@ struct Cli {
 
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
+    #[clap(short = 'a', long)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -45,6 +45,10 @@ struct Cli {
     /// Setup folder path
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
+
+    /// Setup folder path
+    #[clap(short = 's', long)]
+    pub proving_key_snark: Option<PathBuf>,
 
     /// Base port for Assembly microservices (default: 23115).
     /// A single execution will use 3 consecutive ports, from this port to port + 2.
@@ -97,6 +101,12 @@ struct Cli {
     #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
+
+    #[clap(short = 'p', long, default_value_t = false)]
+    pub plonk: bool,
+
+    #[clap(short = 'P', long, default_value_t = false)]
+    pub preload_plonk: bool,
 }
 
 #[tokio::main]
@@ -123,6 +133,7 @@ async fn main() -> Result<()> {
         emulator: cli.emulator,
         hints: cli.hints,
         proving_key: cli.proving_key.clone(),
+        proving_key_snark: cli.proving_key_snark.clone(),
         asm_port: cli.asm_port,
         unlock_mapped_memory: cli.unlock_mapped_memory,
         asm_out_file: cli.asm_out_file,
@@ -134,7 +145,9 @@ async fn main() -> Result<()> {
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
+        preload_plonk: cli.preload_plonk,
         gpu,
+        plonk: cli.plonk,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;

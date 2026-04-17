@@ -4,9 +4,9 @@ use proofman_util::VadcopFinalProof;
 use proofman_verifier::{verify_vadcop_final, verify_vadcop_final_compressed};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::cell::Cell;
 use std::fs::File;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const ZISK_PUBLICS: usize = 64;
 
@@ -36,6 +36,26 @@ pub enum ProofKind {
     VadcopFinal,
     VadcopFinalMinimal,
     Plonk,
+}
+
+impl From<i32> for ProofKind {
+    fn from(v: i32) -> Self {
+        match v {
+            1 => ProofKind::VadcopFinalMinimal,
+            2 => ProofKind::Plonk,
+            _ => ProofKind::VadcopFinal,
+        }
+    }
+}
+
+impl From<ProofKind> for i32 {
+    fn from(k: ProofKind) -> Self {
+        match k {
+            ProofKind::VadcopFinal => 0,
+            ProofKind::VadcopFinalMinimal => 1,
+            ProofKind::Plonk => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,10 +274,17 @@ pub struct ZiskVK {
     pub vk: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ZiskPublics {
     data: Vec<u8>,
-    ptr: Cell<usize>,
+    #[serde(skip)]
+    ptr: AtomicUsize,
+}
+
+impl Clone for ZiskPublics {
+    fn clone(&self) -> Self {
+        Self { data: self.data.clone(), ptr: AtomicUsize::new(self.ptr.load(Ordering::Relaxed)) }
+    }
 }
 
 impl ZiskPublics {
@@ -273,11 +300,11 @@ impl ZiskPublics {
             data[i * 4..(i + 1) * 4].copy_from_slice(&v32.to_le_bytes());
         }
 
-        Self { data: data.to_vec(), ptr: Cell::new(0) }
+        Self { data: data.to_vec(), ptr: AtomicUsize::new(0) }
     }
 
     pub fn new_empty() -> Self {
-        Self { data: [0u8; ZISK_PUBLICS * 4].to_vec(), ptr: Cell::new(0) }
+        Self { data: [0u8; ZISK_PUBLICS * 4].to_vec(), ptr: AtomicUsize::new(0) }
     }
 
     /// Create ZiskPublics from a serializable value.
@@ -303,7 +330,7 @@ impl ZiskPublics {
             data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
         }
 
-        Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
+        Ok(Self { data: data.to_vec(), ptr: AtomicUsize::new(0) })
     }
 
     pub fn write_abi<T: alloy_sol_types::SolValue>(value: &T) -> Result<Self> {
@@ -325,30 +352,30 @@ impl ZiskPublics {
             data[i * 4..(i + 1) * 4].copy_from_slice(&buf);
         }
 
-        Ok(Self { data: data.to_vec(), ptr: Cell::new(0) })
+        Ok(Self { data: data.to_vec(), ptr: AtomicUsize::new(0) })
     }
 
     /// Reset the reading pointer to the beginning.
     pub fn head(&self) {
-        self.ptr.set(0);
+        self.ptr.store(0, Ordering::Relaxed);
     }
 
     /// Read raw bytes from public outputs.
     pub fn read_slice(&self, slice: &mut [u8]) {
-        let ptr = self.ptr.get();
+        let ptr = self.ptr.load(Ordering::Relaxed);
         slice.copy_from_slice(&self.data[ptr..ptr + slice.len()]);
-        self.ptr.set(ptr + slice.len());
+        self.ptr.store(ptr + slice.len(), Ordering::Relaxed);
     }
 
     /// Deserialize a value from public outputs.
     /// The value must have been previously written with bincode serialization using `commit()`.
     pub fn read<T: serde::Serialize + serde::de::DeserializeOwned>(&self) -> Result<T> {
-        let ptr = self.ptr.get();
+        let ptr = self.ptr.load(Ordering::Relaxed);
         let result: T = bincode::deserialize(&self.data[ptr..])
             .map_err(|e| anyhow::anyhow!("Deserialization failed: {}", e))?;
         let nb_bytes = bincode::serialized_size(&result)
             .map_err(|e| anyhow::anyhow!("Failed to get serialized size: {}", e))?;
-        self.ptr.set(ptr + nb_bytes as usize);
+        self.ptr.store(ptr + nb_bytes as usize, Ordering::Relaxed);
         Ok(result)
     }
 
@@ -358,11 +385,11 @@ impl ZiskPublics {
     where
         T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
     {
-        let ptr = self.ptr.get();
+        let ptr = self.ptr.load(Ordering::Relaxed);
         let decoded = T::abi_decode(&self.data[ptr..])
             .map_err(|e| anyhow::anyhow!("ABI decoding failed: {}", e))?;
         let encoded_size = decoded.abi_encode().len();
-        self.ptr.set(ptr + encoded_size);
+        self.ptr.store(ptr + encoded_size, Ordering::Relaxed);
         Ok(decoded)
     }
 

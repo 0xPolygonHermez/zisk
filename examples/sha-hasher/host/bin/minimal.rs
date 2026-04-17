@@ -15,7 +15,6 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let proof_opts = ProverOpts::default().minimal_memory();
     let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");

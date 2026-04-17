@@ -82,9 +82,9 @@ pub struct DomainInputChunk {
     pub is_last: bool,
 }
 
-impl Into<DomainInputChunk> for InputChunk {
-    fn into(self) -> DomainInputChunk {
-        DomainInputChunk { data: self.data, is_last: self.is_last }
+impl From<InputChunk> for DomainInputChunk {
+    fn from(val: InputChunk) -> Self {
+        DomainInputChunk { data: val.data, is_last: val.is_last }
     }
 }
 
@@ -190,11 +190,14 @@ impl TryFrom<JobKind> for DomainJobKind {
                     .try_into()
                     .map_err(|e: String| e)?;
                 let proof_timeout = r.proof_timeout.map(ts_to_datetime);
+                let proof_dest =
+                    DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
                 Ok(DomainJobKind::Prove(DomainProveRequest {
                     hash_id: r.hash_id,
                     input,
                     proof_timeout,
                     compute_constraints: None,
+                    proof_dest,
                 }))
             }
             job_kind::Kind::Wrap(r) => {
@@ -246,6 +249,7 @@ pub struct DomainProveRequest {
     pub input: DomainInputKind,
     pub proof_timeout: Option<DateTime<Utc>>,
     pub compute_constraints: Option<DomainComputeConstraints>,
+    pub proof_dest: DomainProofKind,
 }
 
 #[derive(Debug, Clone)]

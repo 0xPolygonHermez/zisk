@@ -1,6 +1,6 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use cargo_zisk::common::get_proving_key;
+use cargo_zisk::common::{get_proving_key, get_proving_key_snark};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::sync::Arc;
 use std::time::Duration;
@@ -86,7 +86,7 @@ pub enum ComputationResult {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
-        minimal: bool,
+        proof_type: ProofKind,
         instances: u64,
     },
 }
@@ -97,6 +97,9 @@ pub struct ProverConfig {
 
     /// Path to the proving key
     pub proving_key: PathBuf,
+
+    /// Path to the PLONK proving key
+    pub proving_key_snark: Option<PathBuf>,
 
     /// Verbosity level for logging
     pub verbose: u8,
@@ -131,6 +134,12 @@ pub struct ProverConfig {
     /// Enable GPU acceleration
     pub gpu: bool,
 
+    /// Enable PLONK proofs
+    pub plonk: bool,
+
+    /// Whether to preload PLONK proving key and verification key into the prover service on startup (only applies if `plonk` is true)
+    pub preload_plonk: bool,
+
     /// Maximum number of GPU streams
     pub max_streams: Option<usize>,
 
@@ -144,6 +153,11 @@ pub struct ProverConfig {
 impl ProverConfig {
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
         let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
+        let proving_key_snark = if prover_service_config.plonk {
+            Some(get_proving_key_snark(prover_service_config.proving_key_snark.as_ref())?)
+        } else {
+            None
+        };
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -152,12 +166,15 @@ impl ProverConfig {
             }
         };
 
+        let preload_plonk = prover_service_config.plonk && prover_service_config.preload_plonk;
+
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
 
         Ok(ProverConfig {
             emulator,
             proving_key,
+            proving_key_snark,
             verbose: prover_service_config.verbose,
             debug_info,
             asm_port: prover_service_config.asm_port,
@@ -171,6 +188,8 @@ impl ProverConfig {
             max_streams: prover_service_config.max_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
             max_witness_stored: prover_service_config.max_witness_stored,
+            plonk: prover_service_config.plonk,
+            preload_plonk,
         })
     }
 }
@@ -215,6 +234,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .verbose(prover_config.verbose)
             .aggregation(prover_config.aggregation);
 
+        if prover_config.plonk {
+            if prover_config.proving_key_snark.is_none() {
+                return Err(anyhow::anyhow!(
+                    "PLONK proving key must be provided when PLONK is enabled"
+                ));
+            }
+            prover_options = prover_options
+                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
+                .plonk(prover_config.preload_plonk);
+        }
+
         if prover_config.minimal_memory {
             prover_options = prover_options.minimal_memory();
         }
@@ -257,6 +287,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
             .aggregation(prover_config.aggregation);
+
+        if prover_config.plonk {
+            if prover_config.proving_key_snark.is_none() {
+                return Err(anyhow::anyhow!(
+                    "PLONK proving key must be provided when PLONK is enabled"
+                ));
+            }
+            prover_options = prover_options
+                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
+                .plonk(prover_config.preload_plonk);
+        }
 
         if prover_config.minimal_memory {
             prover_options = prover_options.minimal_memory();
@@ -1011,7 +1052,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(agg_params.minimal);
+        let options =
+            self.get_proof_options(agg_params.proof_type == ProofKind::VadcopFinalMinimal);
 
         let agg_proofs_register: Vec<AggProofsRegister> = agg_params
             .agg_proofs
@@ -1034,7 +1076,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     success: false,
                     result: Err(error),
                     executed_steps,
-                    minimal: agg_params.minimal,
+                    proof_type: agg_params.proof_type,
                     instances,
                 })
                 .is_err()
@@ -1072,16 +1114,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let proof = data
+                    let proof: Vec<Vec<u64>> = data
                         .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
                         .unwrap_or_default();
+
                     if tx
                         .send(ComputationResult::AggProof {
                             job_id,
                             success: true,
                             result: Ok(Some(proof)),
                             executed_steps,
-                            minimal: agg_params.minimal,
+                            proof_type: agg_params.proof_type,
                             instances,
                         })
                         .is_err()
@@ -1097,7 +1140,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             success: false,
                             result: Err(error),
                             executed_steps,
-                            minimal: agg_params.minimal,
+                            proof_type: agg_params.proof_type,
                             instances,
                         })
                         .is_err()

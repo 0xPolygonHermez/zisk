@@ -13,10 +13,10 @@ use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
 use zisk_cluster_common::{elf_cache_path, DataId, JobId};
 use zisk_cluster_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
-    WorkerState,
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
+    StreamDataDto, WorkerState,
 };
-use zisk_common::ZiskExecutorTime;
+use zisk_common::{ZiskExecutorTime, ZiskProofWithPublicValues};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -310,7 +310,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result,
                 executed_steps,
-                minimal,
+                proof_type,
                 instances,
             } => {
                 self.send_aggregation(
@@ -319,7 +319,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     result,
                     message_sender,
                     executed_steps,
-                    minimal,
+                    proof_type,
                     instances,
                 )
                 .await
@@ -592,7 +592,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
-        minimal: bool,
+        proof_type: ProofKind,
         instances: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -611,23 +611,59 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 if let Some(final_proof) = data {
                     reset_current_job = !final_proof.is_empty();
 
-                    // Get the verification key for the final proof
-                    let verkey = self.worker.get_vadcop_vk(minimal).unwrap_or_else(|e| {
-                        error!("Failed to get vadcop verification key: {}", e);
+                    let proof_data = if !final_proof.is_empty() {
+                        let is_plonk = proof_type == ProofKind::Plonk;
+                        let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
+                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
+                        let verkey = self.worker.get_vadcop_vk(minimal).unwrap_or_else(|e| {
+                            error!("Failed to get vadcop verification key: {}", e);
+                            vec![]
+                        });
+                        match ZiskProofWithPublicValues::new_from_vadcop_proof(
+                            &flat_proof,
+                            minimal,
+                            verkey,
+                        ) {
+                            Ok(zisk_proof) => {
+                                let final_proof = if is_plonk {
+                                    match self
+                                        .worker
+                                        .prover_arc()
+                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                        .run()
+                                    {
+                                        Ok(wrapped) => wrapped,
+                                        Err(e) => {
+                                            error!(
+                                                "Failed to wrap Plonk proof for {}: {}",
+                                                job_id, e
+                                            );
+                                            zisk_proof
+                                        }
+                                    }
+                                } else {
+                                    zisk_proof
+                                };
+                                bincode::serialize(&final_proof).unwrap_or_default()
+                            }
+                            Err(e) => {
+                                error!("Failed to build ZiskProofWithPublicValues: {}", e);
+                                vec![]
+                            }
+                        }
+                    } else {
                         vec![]
-                    });
+                    };
 
                     Some(ResultData::FinalProof(FinalProof {
-                        values: final_proof.into_iter().flatten().collect(),
+                        proof_data,
                         executed_steps,
-                        verkey,
                         instances,
                     }))
                 } else {
                     Some(ResultData::FinalProof(FinalProof {
-                        values: vec![],
+                        proof_data: vec![],
                         executed_steps,
-                        verkey: vec![],
                         instances,
                     }))
                 }
@@ -638,9 +674,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 error_message = e.to_string();
                 Some(ResultData::FinalProof(FinalProof {
-                    values: vec![],
+                    proof_data: vec![],
                     executed_steps,
-                    verkey: vec![],
                     instances,
                 }))
             }
@@ -919,7 +954,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Start computation in background task
         self.worker.set_current_computation(
-            self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
+            self.worker.handle_partial_contribution(job, computation_tx.clone()).await?,
         );
 
         Ok(())
@@ -990,7 +1025,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Start execution-only computation in background task
         self.worker.set_current_computation(
-            self.worker.handle_execution_only(job.clone(), computation_tx.clone()).await?,
+            self.worker.handle_execution_only(job, computation_tx.clone()).await?,
         );
 
         Ok(())
@@ -1145,7 +1180,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            minimal: agg_params.minimal,
+            proof_type: ProofKind::from(agg_params.proof_type),
         };
         self.worker.set_current_computation(self.worker.handle_aggregate(
             job,

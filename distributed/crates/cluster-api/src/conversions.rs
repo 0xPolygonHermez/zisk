@@ -242,7 +242,7 @@ impl From<AggParamsDto> for AggParams {
             agg_proofs: Some(ProofList { proofs: agg_proofs }),
             last_proof: dto.last_proof,
             final_proof: dto.final_proof,
-            minimal: dto.minimal,
+            proof_type: i32::from(dto.proof_type),
         }
     }
 }
@@ -329,9 +329,8 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             }
             Some(execute_task_response::ResultData::FinalProof(final_proof)) => {
                 Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
-                    values: final_proof.values,
+                    proof_data: final_proof.proof_data,
                     executed_steps: final_proof.executed_steps,
-                    verkey: final_proof.verkey,
                     instances: final_proof.instances,
                 }))
             }

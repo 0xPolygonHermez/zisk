@@ -77,7 +77,6 @@ async fn main() -> Result<()> {
                 Some(cfg.coordinator.worker_port),
                 None,
                 false,
-                false,
                 None,
             )?;
             let coordinator = Arc::new(Coordinator::new(coord_config));

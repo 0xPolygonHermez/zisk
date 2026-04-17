@@ -26,7 +26,7 @@ use super::{
 };
 use crate::errors::{internal, GatewayError, GatewayResult};
 use zisk_cluster_common::{
-    DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto, LaunchWrapRequestDto,
+    DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto, LaunchWrapRequestDto, ProofKind,
 };
 
 pub struct CoordinatorBackend {
@@ -200,6 +200,11 @@ impl BackendService for CoordinatorBackend {
             DomainJobKind::Prove(r) => {
                 println!("** Submitting Prove job to coordinator with hash_id {}", r.hash_id);
                 let hash_id = r.hash_id.clone();
+                let proof_type = match r.proof_dest {
+                    DomainProofKind::StarkMinimal => ProofKind::VadcopFinalMinimal,
+                    DomainProofKind::Plonk => ProofKind::Plonk,
+                    _ => ProofKind::VadcopFinal,
+                };
                 let response = self
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
@@ -211,6 +216,7 @@ impl BackendService for CoordinatorBackend {
                         simulated_node: None,
                         metadata: Default::default(),
                         execution_only: false,
+                        proof_type,
                     })
                     .await
                     .map_err(coord_err_to_gateway)?;
@@ -233,6 +239,7 @@ impl BackendService for CoordinatorBackend {
                         simulated_node: None,
                         metadata: Default::default(),
                         execution_only: true,
+                        proof_type: ProofKind::VadcopFinal,
                     })
                     .await
                     .map_err(coord_err_to_gateway)?;

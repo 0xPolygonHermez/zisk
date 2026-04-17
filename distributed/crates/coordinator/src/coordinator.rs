@@ -58,7 +58,7 @@ use zisk_cluster_common::{
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
     LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofDto,
-    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
+    ProofKind, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
     WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
     WrapParamsDto, ZiskExecutorTimeDto,
 };
@@ -374,6 +374,7 @@ impl Coordinator {
                 request.simulated_node,
                 request.metadata.clone(),
                 request.execution_only,
+                request.proof_type,
             )
             .await?;
 
@@ -477,6 +478,7 @@ impl Coordinator {
             JobExecutionMode::Standard,
             Default::default(),
             false,
+            ProofKind::VadcopFinal,
         );
 
         let job_id = job.job_id.clone();
@@ -545,7 +547,11 @@ impl Coordinator {
             ));
         };
 
-        job.wrap_data = Some(wrap_result.proof_data.clone());
+        let zisk_proof = bincode::deserialize::<ZiskProofWithPublicValues>(&wrap_result.proof_data)
+            .map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
+            })?;
+        job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);
 
         info!("[Wrap] Job {} completed successfully", job_id);
@@ -597,27 +603,6 @@ impl Coordinator {
         let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let job = job_entry.read().await;
 
-        // Clone job.final_proof and final_verkey and error if does not exist
-        let final_proof = if job.state == JobState::Completed {
-            Some(job.final_proof.clone().ok_or_else(|| {
-                CoordinatorError::Internal(
-                    "Final proof is missing during post-launch processing".to_string(),
-                )
-            })?)
-        } else {
-            None
-        };
-
-        let final_verkey = if job.state == JobState::Completed {
-            Some(job.final_verkey.clone().ok_or_else(|| {
-                CoordinatorError::Internal(
-                    "Final verification key is missing during post-launch processing".to_string(),
-                )
-            })?)
-        } else {
-            None
-        };
-
         // Check if webhook URL is configured and spawn it in a separate task
         if let Some(webhook_url) = &self.config.coordinator.webhook_url {
             self.send_webhook(webhook_url.clone(), &job);
@@ -629,14 +614,12 @@ impl Coordinator {
 
         // Save proof to disk
         if state == JobState::Completed && !self.config.server.no_save_proofs {
+            let zisk_proof = job.proof.as_ref().ok_or_else(|| {
+                CoordinatorError::Internal(
+                    "Proof is missing during post-launch processing".to_string(),
+                )
+            })?;
             let folder = self.config.server.proofs_dir.clone();
-
-            let zisk_proof = ZiskProofWithPublicValues::new_from_vadcop_proof(
-                &final_proof.unwrap(),
-                self.config.coordinator.minimal_proofs,
-                final_verkey.unwrap(),
-            )
-            .map_err(|e| CoordinatorError::Internal(format!("Failed to create proof: {}", e)))?;
             fs::create_dir_all(&folder).map_err(|e| {
                 CoordinatorError::Internal(format!("Failed to create proofs directory: {}", e))
             })?;
@@ -664,8 +647,8 @@ impl Coordinator {
         let job_id = job.job_id.clone();
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
-        let final_proof = job.final_proof.clone();
         let executed_steps = job.executed_steps;
+        let proof_data = job.proof.as_ref().and_then(|p| bincode::serialize(p).ok());
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;
@@ -689,8 +672,8 @@ impl Coordinator {
                         webhook_url.clone(),
                         job_id.clone(),
                         duration_ms,
-                        final_proof.clone(),
                         executed_steps,
+                        proof_data.clone(),
                     )
                     .await
                 };
@@ -750,6 +733,7 @@ impl Coordinator {
         simulated_node: Option<u32>,
         metadata: std::collections::BTreeMap<String, String>,
         execution_only: bool,
+        proof_type: ProofKind,
     ) -> CoordinatorResult<Job> {
         let execution_mode = if let Some(node) = simulated_node {
             JobExecutionMode::Simulating(node)
@@ -781,6 +765,7 @@ impl Coordinator {
             execution_mode,
             metadata,
             execution_only,
+            proof_type,
         ))
     }
 
@@ -2454,10 +2439,11 @@ impl Coordinator {
         }
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
+        let proof_type = job.proof_type;
 
         drop(job); // Release jobs lock early
 
-        self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done).await?;
+        self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done, proof_type).await?;
 
         Ok(())
     }
@@ -2747,6 +2733,7 @@ impl Coordinator {
         agg_worker_id: &WorkerId,
         proofs: Vec<AggProofData>,
         all_done: bool,
+        proof_type: ProofKind,
     ) -> CoordinatorResult<()> {
         let proofs: Vec<ProofDto> = proofs
             .into_iter()
@@ -2764,7 +2751,7 @@ impl Coordinator {
                 agg_proofs: proofs,
                 last_proof: all_done,
                 final_proof: all_done,
-                minimal: self.config.coordinator.minimal_proofs,
+                proof_type,
             }),
         };
 
@@ -2834,9 +2821,9 @@ impl Coordinator {
         };
 
         // Check if the final proof has no values.
-        // An empty proof means this was not the last aggregation step,
+        // An empty proof_data means this was not the last aggregation step,
         // so we need to wait for additional results to complete the job.
-        if proof_data.values.is_empty() {
+        if proof_data.proof_data.is_empty() {
             return Ok(());
         }
 
@@ -2851,8 +2838,11 @@ impl Coordinator {
         self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
 
         // Finalize completed job
-        job.final_proof = Some(proof_data.values);
-        job.final_verkey = Some(proof_data.verkey);
+        let zisk_proof = bincode::deserialize::<ZiskProofWithPublicValues>(&proof_data.proof_data)
+            .map_err(|e| {
+                CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
+            })?;
+        job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
 
@@ -3121,21 +3111,12 @@ impl Coordinator {
 
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
-            let proof_bytes = match (job.final_proof.as_ref(), job.final_verkey.as_ref()) {
-                (Some(final_proof), Some(final_verkey)) => {
-                    match ZiskProofWithPublicValues::new_from_vadcop_proof(
-                        final_proof,
-                        self.config.coordinator.minimal_proofs,
-                        final_verkey.clone(),
-                    ) {
-                        Ok(p) => bincode::serialize(&p).unwrap_or_default(),
-                        Err(e) => {
-                            warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                            vec![]
-                        }
-                    }
-                }
-                _ => vec![],
+            let proof_bytes = match job.proof.as_ref() {
+                Some(p) => bincode::serialize(p).unwrap_or_else(|e| {
+                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                    vec![]
+                }),
+                None => vec![],
             };
             let stats = exec_stats_from_job(&job);
             CoordinatorJobEvent::Completed(CoordinatorJobResult::Prove { proof_bytes, stats })
@@ -3163,7 +3144,7 @@ mod tests {
     };
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, true, false, None)
+        let mut config = Config::load(None, None, None, true, None)
             .expect("Failed to create default test config");
         overrides(&mut config);
         config
@@ -3183,6 +3164,7 @@ mod tests {
             JobExecutionMode::Standard,
             BTreeMap::new(),
             false,
+            ProofKind::VadcopFinal,
         )
     }
 

@@ -762,6 +762,7 @@ mod tests {
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
                 proof_timeout: None,
                 compute_constraints: None,
+                proof_dest: DomainProofKind::Stark,
             }))
             .await
             .unwrap();

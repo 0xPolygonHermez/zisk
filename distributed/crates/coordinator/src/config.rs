@@ -83,8 +83,6 @@ pub struct CoordinatorConfig {
     pub stale_disconnected_threshold_seconds: u64,
     /// Optional webhook URL to POST job completion/failure notifications.
     pub webhook_url: Option<String>,
-    /// Whether to generate compressed (Snark) proofs in the aggregation phase.
-    pub minimal_proofs: bool,
     /// Default compute units for a job when the caller does not specify.
     /// `0` means "use all currently available capacity".
     pub default_compute_units: u32,
@@ -104,7 +102,6 @@ impl Config {
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
         no_save_proofs: bool,
-        minimal_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -137,7 +134,6 @@ impl Config {
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
-            .set_default("coordinator.minimal_proofs", minimal_proofs)?
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 1)?;
 

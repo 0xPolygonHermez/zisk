@@ -105,6 +105,7 @@ async fn prove_job_wait_result_completes() {
                     hash_id,
                     input: inline_input(true),
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })
@@ -147,6 +148,7 @@ async fn prove_job_watch_stream_receives_all_events() {
                     hash_id,
                     input: inline_input(true),
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })
@@ -264,6 +266,7 @@ async fn wrap_job_completes() {
                     hash_id,
                     input: inline_input(true),
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })
@@ -345,6 +348,7 @@ async fn cancel_running_job_returns_true() {
                     hash_id,
                     input: inline_input(true),
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })
@@ -444,6 +448,7 @@ async fn wait_result_timeout_returns_current_status() {
                     hash_id,
                     input: inline_input(true),
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })
@@ -477,6 +482,7 @@ async fn push_input_multi_chunk_completes() {
                     hash_id,
                     input: inline_input(false), // is_last = false
                     proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
                 })),
             }),
         })

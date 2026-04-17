@@ -19,6 +19,8 @@ pub enum InputsModeDto {
     InputsData(String),
 }
 
+pub use zisk_common::ProofKind;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HintsModeDto {
     /// No hints are provided.
@@ -38,6 +40,7 @@ pub struct LaunchProofRequestDto {
     pub simulated_node: Option<u32>,
     pub metadata: std::collections::BTreeMap<String, String>,
     pub execution_only: bool,
+    pub proof_type: ProofKind,
 }
 
 pub struct LaunchProofResponseDto {
@@ -228,7 +231,7 @@ pub struct AggParamsDto {
     pub agg_proofs: Vec<ProofDto>,
     pub last_proof: bool,
     pub final_proof: bool,
-    pub minimal: bool,
+    pub proof_type: ProofKind,
 }
 
 pub struct ProofDto {
@@ -238,9 +241,8 @@ pub struct ProofDto {
 }
 
 pub struct FinalProofDto {
-    pub values: Vec<u64>,
+    pub proof_data: Vec<u8>,
     pub executed_steps: u64,
-    pub verkey: Vec<u8>,
     pub instances: u64,
 }
 
@@ -301,10 +303,11 @@ pub struct WebhookPayloadDto {
     pub job_id: String,
     pub success: bool,
     pub duration_ms: u64,
-    pub proof: Option<Vec<u64>>,
     pub executed_steps: Option<u64>,
     pub timestamp: String,
     pub error: Option<WebhookErrorDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_data: Option<Vec<u8>>,
 }
 
 impl WebhookPayloadDto {
@@ -312,17 +315,17 @@ impl WebhookPayloadDto {
     pub fn success(
         job_id: String,
         duration_ms: u64,
-        proof: Option<Vec<u64>>,
         executed_steps: Option<u64>,
+        proof_data: Option<Vec<u8>>,
     ) -> Self {
         Self {
             job_id,
             success: true,
             duration_ms,
-            proof,
             executed_steps,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: None,
+            proof_data,
         }
     }
 
@@ -332,10 +335,10 @@ impl WebhookPayloadDto {
             job_id,
             success: false,
             duration_ms,
-            proof: None,
             executed_steps: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
             error: Some(error),
+            proof_data: None,
         }
     }
 }

@@ -130,6 +130,7 @@ pub struct ProverServiceConfigDto {
     pub hints: bool,
     pub emulator: bool,
     pub proving_key: Option<PathBuf>,
+    pub proving_key_snark: Option<PathBuf>,
     pub asm_port: Option<u16>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
@@ -142,4 +143,6 @@ pub struct ProverServiceConfigDto {
     pub max_witness_stored: Option<usize>,
     pub minimal_memory: bool,
     pub gpu: bool,
+    pub plonk: bool,
+    pub preload_plonk: bool,
 }
