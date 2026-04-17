@@ -126,7 +126,7 @@ For testing the bidirectional `WorkerStream`, you need a streaming-capable clien
 Import this crate in coordinator or worker implementations:
 
 ```rust
-use zisk_cluster_api::zisk_distributed_api::{
+use zisk_cluster_api::zisk_cluster_api::{
     ZiskDistributedApiServer, ZiskDistributedApiClient,
     WorkerMessage, CoordinatorMessage,
     ExecuteTaskRequest, ExecuteTaskResponse,
@@ -173,7 +173,7 @@ async fn connect_worker() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Protocol Buffer Schema
 
-The complete gRPC service definition is in `proto/zisk_distributed_api.proto` with detailed message schemas for all request/response types.
+The complete gRPC service definition is in `proto/zisk_cluster_api.proto` with detailed message schemas for all request/response types.
 
 ### Key Message Types
 
