@@ -67,13 +67,6 @@ message JobStatus {
   uint64 duration_ms = 7;
 }
 
-message LaunchProofResponse {
-  oneof result {
-    string job_id = 1;
-    ErrorResponse error = 2;
-  }
-}
-
 // ============================================================================
 // STREAM MESSAGES from COORDINATOR <-> WORKER
 // ============================================================================
