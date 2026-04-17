@@ -22,9 +22,9 @@ pub struct ZiskCheckSetup {
     #[arg(short = 'w', long)]
     pub proving_key_plonk: Option<PathBuf>,
 
-    /// Enable proofs aggregation
+    /// Disable proofs aggregation
     #[arg(short = 'a', long)]
-    pub aggregation: bool,
+    pub no_aggregation: bool,
 
     /// Enable PLONK proofs
     #[arg(short = 's', long)]
@@ -54,7 +54,7 @@ impl ZiskCheckSetup {
 
         ProofMan::<Goldilocks>::check_setup(
             get_proving_key(self.proving_key.as_ref())?,
-            self.aggregation,
+            !self.no_aggregation,
             self.verbose.into(),
             gpu,
         )

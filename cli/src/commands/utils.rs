@@ -22,7 +22,7 @@ pub struct ZiskUtils {
 
 #[derive(clap::Subcommand)]
 pub enum ZiskUtilsCommand {
-    /// Remove the zisk cache directory
+    /// Clean the zisk cache for a specific program or remove the entire cache
     CleanCache(ZiskCleanCache),
 }
 
