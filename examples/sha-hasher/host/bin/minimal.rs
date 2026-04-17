@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProofKind, ProverClient, ProverOpts, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProofKind, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 

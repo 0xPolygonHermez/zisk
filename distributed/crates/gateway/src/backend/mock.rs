@@ -619,8 +619,8 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
                 proof_kind: DomainProofKind::Stark,
                 data: vec![1u8; 64],
                 public_inputs: vec![2u8; 32],
-                started_at: Utc::now(),
-                completed_at: Utc::now(),
+                started_at: Some(Utc::now()),
+                completed_at: Some(Utc::now()),
             },
             stats: DomainExecutionStats::default(),
         },
@@ -761,7 +761,6 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
                 proof_timeout: None,
-                compute_constraints: None,
                 proof_dest: DomainProofKind::Stark,
             }))
             .await
@@ -785,7 +784,6 @@ mod tests {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
                 execute_timeout: None,
-                compute_constraints: None,
             }))
             .await
             .unwrap();
@@ -826,8 +824,8 @@ mod tests {
             proof_kind: DomainProofKind::Stark,
             data: vec![],
             public_inputs: vec![],
-            started_at: Utc::now(),
-            completed_at: Utc::now(),
+            started_at: Some(Utc::now()),
+            completed_at: Some(Utc::now()),
         };
         let job_id = b
             .submit_job(DomainJobKind::Wrap(DomainWrapRequest {

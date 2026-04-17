@@ -52,8 +52,8 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
         proof_kind: DomainProofKind::Stark,
         data,
         public_inputs: vec![],
-        started_at: Utc::now(),
-        completed_at: Utc::now(),
+        started_at: Some(Utc::now()),
+        completed_at: Some(Utc::now()),
     }
 }
 

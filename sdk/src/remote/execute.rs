@@ -1,4 +1,4 @@
-use super::{duration_to_proto_timestamp, stdin_to_input_kind, RemoteClient};
+use super::{deadline_from_now, stdin_to_input_kind, RemoteClient};
 
 use crate::execute::ExecuteResult;
 use crate::input::ProgramInput;
@@ -6,9 +6,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
 
 use std::time::Duration;
-use zisk_gateway_api::proto::{
-    job_kind::Kind as GatewayKind, ExecuteRequest as GatewayExecuteRequest, JobKind,
-};
+use zisk_gateway::backend::{DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
@@ -23,16 +21,12 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
         let hash_id = program.program_id.hash_id.to_string();
-        let input_kind = stdin_to_input_kind(input)?;
-        let execute_timeout = timeout.map(duration_to_proto_timestamp);
+        let input = stdin_to_input_kind(input)?;
+        let execute_timeout = timeout.map(deadline_from_now);
 
-        let job_kind = JobKind {
-            kind: Some(GatewayKind::Execute(GatewayExecuteRequest {
-                hash_id,
-                input: Some(input_kind),
-                execute_timeout,
-            })),
-        };
+        let job_kind =
+            DomainJobKind::Execute(DomainExecuteRequest { hash_id, input, execute_timeout });
+
         let job_id = self.submit_job(job_kind)?;
         let gateway = self.gw_client.clone();
 

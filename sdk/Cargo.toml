@@ -28,9 +28,11 @@ futures = { workspace = true }
 uuid = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-gateway-api = { workspace = true }
+zisk-gateway = { workspace = true }
 tonic = { workspace = true }
 prost-types = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }
+chrono = { workspace = true }
 
 # For utils.rs
 rom-setup = { workspace = true }

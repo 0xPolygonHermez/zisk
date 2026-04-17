@@ -4,9 +4,7 @@ use crate::{
     setup::SetupResult,
 };
 use std::time::Duration;
-use zisk_gateway_api::proto::{
-    job_kind::Kind as GatewayKind, JobKind, SetupRequest as GatewaySetupRequest,
-};
+use zisk_gateway::backend::{DomainJobKind, DomainSetupRequest};
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
@@ -20,7 +18,7 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
         let hash_id = program.program_id.hash_id.to_string();
-        let job_kind = JobKind { kind: Some(GatewayKind::Setup(GatewaySetupRequest { hash_id })) };
+        let job_kind = DomainJobKind::Setup(DomainSetupRequest { hash_id });
 
         let job_id = self.submit_job(job_kind)?;
         let gateway = self.gw_client.clone();

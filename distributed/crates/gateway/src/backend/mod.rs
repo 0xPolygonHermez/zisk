@@ -46,6 +46,16 @@ impl From<DomainProofKind> for ProofKind {
     }
 }
 
+impl From<zisk_common::ProofKind> for DomainProofKind {
+    fn from(pk: zisk_common::ProofKind) -> Self {
+        match pk {
+            zisk_common::ProofKind::VadcopFinal => DomainProofKind::Stark,
+            zisk_common::ProofKind::VadcopFinalMinimal => DomainProofKind::StarkMinimal,
+            zisk_common::ProofKind::Plonk => DomainProofKind::Plonk,
+        }
+    }
+}
+
 impl TryFrom<i32> for DomainProofKind {
     type Error = i32;
 
@@ -88,6 +98,12 @@ impl From<InputChunk> for DomainInputChunk {
     }
 }
 
+impl From<DomainInputChunk> for InputChunk {
+    fn from(chunk: DomainInputChunk) -> Self {
+        InputChunk { data: chunk.data, is_last: chunk.is_last }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum DomainInputKind {
     Inline(DomainInputChunk),
@@ -114,8 +130,8 @@ pub struct DomainProof {
     pub proof_kind: DomainProofKind,
     pub data: Vec<u8>,
     pub public_inputs: Vec<u8>,
-    pub started_at: DateTime<Utc>,
-    pub completed_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 impl From<DomainProof> for Proof {
@@ -124,11 +140,11 @@ impl From<DomainProof> for Proof {
             proof_id: proof.proof_id.to_string(),
             hash_id: proof.hash_id,
             verification_key: proof.verification_key,
-            proof_kind: ProofKind::from(proof.proof_kind) as i32,
+            proof_kind: ProofKind::from(proof.proof_kind).into(),
             data: proof.data,
             public_inputs: proof.public_inputs,
-            started_at: Some(datetime_to_ts(proof.started_at)),
-            completed_at: Some(datetime_to_ts(proof.completed_at)),
+            started_at: proof.started_at.map(datetime_to_ts),
+            completed_at: proof.completed_at.map(datetime_to_ts),
         }
     }
 }
@@ -145,8 +161,8 @@ impl TryFrom<Proof> for DomainProof {
                 .map_err(|_| format!("invalid proof_kind {}", p.proof_kind))?,
             data: p.data,
             public_inputs: p.public_inputs,
-            started_at: p.started_at.map(ts_to_datetime).unwrap_or_else(chrono::Utc::now),
-            completed_at: p.completed_at.map(ts_to_datetime).unwrap_or_else(chrono::Utc::now),
+            started_at: Some(p.started_at.map(ts_to_datetime).unwrap_or_else(chrono::Utc::now)),
+            completed_at: Some(p.completed_at.map(ts_to_datetime).unwrap_or_else(chrono::Utc::now)),
         })
     }
 }
@@ -196,7 +212,6 @@ impl TryFrom<JobKind> for DomainJobKind {
                     hash_id: r.hash_id,
                     input,
                     proof_timeout,
-                    compute_constraints: None,
                     proof_dest,
                 }))
             }
@@ -221,10 +236,56 @@ impl TryFrom<JobKind> for DomainJobKind {
                     hash_id: r.hash_id,
                     input,
                     execute_timeout,
-                    compute_constraints: None,
                 }))
             }
         }
+    }
+}
+
+impl From<DomainJobKind> for JobKind {
+    fn from(domain: DomainJobKind) -> Self {
+        use job_kind::Kind;
+        let kind = match domain {
+            DomainJobKind::Setup(r) => Kind::Setup(SetupRequest { hash_id: r.hash_id }),
+            DomainJobKind::Prove(r) => {
+                let input = match r.input {
+                    DomainInputKind::Inline(chunk) => {
+                        InputKind { kind: Some(input_kind::Kind::Inline(chunk.into())) }
+                    }
+                    DomainInputKind::StreamUri(uri) => {
+                        InputKind { kind: Some(input_kind::Kind::StreamUri(uri)) }
+                    }
+                };
+
+                Kind::Prove(ProveRequest {
+                    hash_id: r.hash_id,
+                    input: Some(input),
+                    proof_timeout: r.proof_timeout.map(datetime_to_ts),
+                    proof_dest: ProofKind::from(r.proof_dest).into(),
+                })
+            }
+            DomainJobKind::Wrap(r) => Kind::Wrap(WrapRequest {
+                proof: Some(r.proof.into()),
+                proof_dest: ProofKind::from(r.proof_dest).into(),
+                wrap_timeout: r.wrap_timeout.map(datetime_to_ts),
+            }),
+            DomainJobKind::Execute(r) => {
+                let input = match r.input {
+                    DomainInputKind::Inline(chunk) => {
+                        InputKind { kind: Some(input_kind::Kind::Inline(chunk.into())) }
+                    }
+                    DomainInputKind::StreamUri(uri) => {
+                        InputKind { kind: Some(input_kind::Kind::StreamUri(uri)) }
+                    }
+                };
+                Kind::Execute(ExecuteRequest {
+                    hash_id: r.hash_id,
+                    input: Some(input),
+                    execute_timeout: r.execute_timeout.map(datetime_to_ts),
+                })
+            }
+        };
+        JobKind { kind: Some(kind) }
     }
 }
 /// Optional compute capacity hint attached to a job request.
@@ -248,7 +309,6 @@ pub struct DomainProveRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
     pub proof_timeout: Option<DateTime<Utc>>,
-    pub compute_constraints: Option<DomainComputeConstraints>,
     pub proof_dest: DomainProofKind,
 }
 
@@ -264,7 +324,6 @@ pub struct DomainExecuteRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
     pub execute_timeout: Option<DateTime<Utc>>,
-    pub compute_constraints: Option<DomainComputeConstraints>,
 }
 
 // ── Job kind responses ────────────────────────────────────────────────────────
@@ -348,7 +407,7 @@ impl From<&DomainJobStatus> for JobStatus {
         let s = match status {
             DomainJobStatus::Queued => job_status::Status::Queued(JobStatusQueued {}),
             DomainJobStatus::Running(phase) => job_status::Status::Running(JobStatusRunning {
-                phase: phase.as_ref().map(|p| JobPhase::from(p.clone()) as i32),
+                phase: phase.as_ref().map(|p| JobPhase::from(p.clone()).into()),
             }),
             DomainJobStatus::WaitingForInput => {
                 job_status::Status::WaitingForInput(JobStatusWaitingForInput {})
@@ -377,7 +436,7 @@ impl From<&DomainJobFailure> for JobFailure {
         use job_failure::Kind;
         let kind = match failure {
             DomainJobFailure::Timeout { phase, limit } => Kind::Timeout(JobFailureTimeout {
-                phase: phase.as_ref().map(|p| JobPhase::from(p.clone()) as i32),
+                phase: phase.as_ref().map(|p| JobPhase::from(p.clone()).into()),
                 limit: Some(prost_types::Duration { seconds: limit.as_secs() as i64, nanos: 0 }),
             }),
             DomainJobFailure::Input { reason } => {
@@ -422,7 +481,7 @@ impl From<DomainJobEvent> for JobEvent {
             }),
             DomainJobEvent::Progress(e) => Event::Progress(JobEventProgress {
                 job_id: e.job_id.to_string(),
-                phase: JobPhase::from(e.phase) as i32,
+                phase: JobPhase::from(e.phase).into(),
                 timestamp: Some(datetime_to_ts(e.timestamp)),
             }),
             DomainJobEvent::WaitingForInput(e) => Event::WaitingForInput(JobEventWaitingForInput {

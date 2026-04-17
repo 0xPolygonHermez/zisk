@@ -49,7 +49,7 @@ impl Health for HealthService {
         request: Request<HealthCheckRequest>,
     ) -> Result<Response<HealthCheckResponse>, Status> {
         Self::check_known(&request.into_inner().service)?;
-        Ok(Response::new(HealthCheckResponse { status: self.current_status() as i32 }))
+        Ok(Response::new(HealthCheckResponse { status: self.current_status().into() }))
     }
 
     type WatchStream = WatchStream;
@@ -66,14 +66,14 @@ impl Health for HealthService {
         let initial = self.current_status();
 
         let stream = async_stream::stream! {
-            yield Ok(HealthCheckResponse { status: initial as i32 });
+            yield Ok(HealthCheckResponse { status: initial.into() });
 
             if initial == ServingStatus::NotServing {
                 return; // already draining — close immediately
             }
 
             cancel.cancelled().await;
-            yield Ok(HealthCheckResponse { status: ServingStatus::NotServing as i32 });
+            yield Ok(HealthCheckResponse { status: ServingStatus::NotServing.into() });
         };
 
         Ok(Response::new(Box::pin(stream)))

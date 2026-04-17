@@ -10,10 +10,8 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use tonic::transport::Channel;
 use zisk_common::{ProofKind, ZiskProgramVK, ZiskProofWithPublicValues, ZiskPublics};
-use zisk_gateway_api::{
-    proto::{InputChunk, InputKind, JobKind, JobRequestMessage},
-    ZiskGatewayApiClient,
-};
+use zisk_gateway::backend::{DomainInputChunk, DomainInputKind, DomainJobKind, DomainProof};
+use zisk_gateway_api::{proto::JobRequestMessage, ZiskGatewayApiClient};
 use zisk_prover_backend::GuestProgram;
 
 use crate::{
@@ -84,12 +82,12 @@ pub struct RemoteClient {
 }
 
 impl RemoteClient {
-    pub(crate) fn submit_job(&self, kind: JobKind) -> Result<JobId> {
+    pub(crate) fn submit_job(&self, kind: DomainJobKind) -> Result<JobId> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let mut gw = self.gw_client.clone();
                 let resp = gw
-                    .job_request(JobRequestMessage { job_kind: Some(kind) })
+                    .job_request(JobRequestMessage { job_kind: Some(kind.into()) })
                     .await
                     .context("JobRequest RPC failed")?;
 
@@ -198,16 +196,15 @@ impl RemoteClient {
 
 // ── Shared helpers used across remote sub-modules ─────────────────────────────
 
-pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<InputKind> {
+pub(crate) fn deadline_from_now(d: Duration) -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now() + chrono::Duration::from_std(d).unwrap()
+}
+
+pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<DomainInputKind> {
     match input {
         ProgramInput::Stdin(s) => {
             let data = s.into_inner().read_data();
-            Ok(InputKind {
-                kind: Some(zisk_gateway_api::proto::input_kind::Kind::Inline(InputChunk {
-                    data,
-                    is_last: true,
-                })),
-            })
+            Ok(DomainInputKind::Inline(DomainInputChunk { data, is_last: true }))
         }
         ProgramInput::Hints(_) => {
             anyhow::bail!("Hints input is not supported for remote proving")
@@ -215,27 +212,17 @@ pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<InputKind> {
     }
 }
 
-pub(crate) fn duration_to_proto_timestamp(d: Duration) -> prost_types::Timestamp {
-    let now =
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-    let deadline = now + d;
-    prost_types::Timestamp {
-        seconds: deadline.as_secs() as i64,
-        nanos: deadline.subsec_nanos() as i32,
-    }
-}
-
 pub(crate) fn proof_with_publics_to_proto(
     proof: &ZiskProofWithPublicValues,
     proof_kind: ProofKind,
-) -> Result<zisk_gateway_api::proto::Proof> {
+) -> Result<DomainProof> {
     let data =
         bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
-    Ok(zisk_gateway_api::proto::Proof {
-        proof_id: uuid::Uuid::new_v4().to_string(),
+    Ok(DomainProof {
+        proof_id: uuid::Uuid::new_v4(),
         hash_id: String::new(),
         verification_key: Vec::new(),
-        proof_kind: proof_kind as i32,
+        proof_kind: proof_kind.into(),
         data,
         public_inputs: Vec::new(),
         started_at: None,
