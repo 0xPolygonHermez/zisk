@@ -876,6 +876,12 @@ impl Stats {
     }
 
     fn sdk_report(&self) -> String {
+        // Save profiler data to file if profiling is enabled
+        if let Some(profiler) = &self.profiler {
+            println!("Saving profiler data to {}...", self.profiler_output);
+            profiler.save_to_file(&self.profiler_output, &self.rois).unwrap();
+        }
+
         let ops_cost = self.costs.base_ops_cost();
         let precompiled_cost = self.costs.precompiled_ops_cost();
         let total_steps = self.costs.steps;

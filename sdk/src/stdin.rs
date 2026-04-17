@@ -85,3 +85,9 @@ impl Default for ZiskStdin {
         Self::new()
     }
 }
+
+impl From<ZiskStdin> for ZiskStdinInner {
+    fn from(s: ZiskStdin) -> Self {
+        s.0
+    }
+}

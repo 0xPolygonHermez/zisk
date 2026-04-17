@@ -30,7 +30,9 @@ pub use upload::UploadRequest;
 pub use wrap::WrapRequest;
 
 // Re-export guest types from backend (public API for loading programs)
-pub use zisk_prover_backend::{load_program, Elf, EmuOptions, GuestProgram, ProgramId};
+pub use zisk_prover_backend::{
+    load_program, Elf, EmuOptions, GuestProgram, ProfilingMode, ProgramId,
+};
 
 pub use opts::ProverOpts;
 

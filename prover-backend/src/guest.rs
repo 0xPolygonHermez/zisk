@@ -1,14 +1,13 @@
 use anyhow::Result;
 use rom_setup::rom_merkle_setup_verkey;
 use std::borrow::Cow;
-use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ZiskProgramVK;
 use zisk_core::Riscv2zisk;
-pub use ziskemu::EmuOptions;
 use ziskemu::ZiskEmulator;
+pub use ziskemu::{EmuOptions, ProfilingMode};
 
 /// Program identifier containing name and hash
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,8 +121,11 @@ impl GuestProgram {
         Ok(ZiskProgramVK { vk })
     }
 
-    /// Run the ZisK emulator with the given stdin and options
-    pub fn run(&self, stdin: ZiskStdin, options: &EmuOptions) -> Result<()> {
+    /// Run the ZisK emulator with the given stdin.
+    ///
+    /// Pass `Some(ProfilingMode)` to enable profiling output, or `None` for a plain run.
+    pub fn run(&self, stdin: impl Into<ZiskStdin>, profiling: Option<ProfilingMode>) -> Result<()> {
+        let stdin = stdin.into();
         let riscv2zisk = Riscv2zisk::new(self.elf());
 
         let zisk_rom = riscv2zisk
@@ -134,13 +136,36 @@ impl GuestProgram {
 
         let inputs = stdin.read_data();
 
-        let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, options, callback);
+        let mut options = EmuOptions::default();
+        // Temporary file written only when profiling needs symbol resolution.
+        // Stored in a variable so it lives until after process_rom returns.
+        let _tmp_elf;
+        if let Some(mode) = profiling {
+            mode.apply(&mut options);
+            let tmp_path =
+                std::env::temp_dir().join(format!("zisk_elf_{}.elf", self.program_id.hash_id));
+            if std::fs::write(&tmp_path, self.elf()).is_ok() {
+                options.elf = Some(tmp_path.to_string_lossy().into_owned());
+                _tmp_elf = Some(tmp_path);
+            } else {
+                _tmp_elf = None;
+            }
+        } else {
+            _tmp_elf = None;
+        }
+
+        let result = ZiskEmulator::process_rom(&zisk_rom, &inputs, &options, callback);
+
+        // Clean up temp ELF file used for symbol resolution
+        if let Some(path) = _tmp_elf {
+            let _ = std::fs::remove_file(path);
+        }
+
         match result {
-            Ok(result) => {
-                result.iter().fold(String::new(), |mut acc, byte| {
-                    write!(&mut acc, "{byte:02x}").unwrap();
-                    acc
-                });
+            Ok(_) => {
+                if let Some(path) = &options.profiler_output {
+                    println!("Profiler output written to: {path}");
+                }
                 Ok(())
             }
             Err(e) => {
