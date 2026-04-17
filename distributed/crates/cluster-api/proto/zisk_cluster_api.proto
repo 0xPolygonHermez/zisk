@@ -13,7 +13,6 @@ service ZiskDistributedApi {
   rpc WorkerStream(stream WorkerMessage) returns (stream CoordinatorMessage);
   
   // Admin endpoints (optional, for monitoring)
-  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
   rpc JobsList(JobsListRequest) returns (JobsListResponse);
   rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);  
 }
@@ -27,8 +26,6 @@ message ErrorResponse {
 // ============================================================================
 // Admin Commands Request Messages
 // ============================================================================
-
-message HealthCheckRequest {}
 
 message JobsListRequest {
   bool active_only = 1;
@@ -67,8 +64,6 @@ enum HintsMode {
 // ============================================================================
 // Admin Commands Response Messages
 // ============================================================================
-
-message HealthCheckResponse {}
 
 message JobsListResponse {
   oneof result {

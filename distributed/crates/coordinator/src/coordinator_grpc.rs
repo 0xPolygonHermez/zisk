@@ -272,18 +272,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     type WorkerStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
 
-    /// Basic health check endpoint for service monitoring.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming HealthCheckRequest gRPC request.
-    async fn health_check(
-        &self,
-        _request: Request<HealthCheckRequest>,
-    ) -> Result<Response<HealthCheckResponse>, Status> {
-        Ok(Response::new(HealthCheckResponse {}))
-    }
-
     /// Returns list of all jobs with their current status.
     ///
     /// Admin-only endpoint for job monitoring and management.
