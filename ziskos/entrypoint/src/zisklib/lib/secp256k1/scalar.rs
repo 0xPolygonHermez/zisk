@@ -5,7 +5,7 @@ use crate::{
 
 use super::constants::{N, N_MINUS_ONE};
 
-pub fn secp256k1_fn_reduce(
+pub fn reduce_fn_secp256k1(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
@@ -30,7 +30,7 @@ pub fn secp256k1_fn_reduce(
     *params.d
 }
 
-pub fn secp256k1_fn_neg(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 4] {
+pub fn neg_fn_secp256k1(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 4] {
     // x·(-1) + 0
     let mut params = SyscallArith256ModParams {
         a: x,
@@ -48,7 +48,7 @@ pub fn secp256k1_fn_neg(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
     *params.d
 }
 
-pub fn secp256k1_fn_add(
+pub fn add_fn_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -65,7 +65,7 @@ pub fn secp256k1_fn_add(
     *params.d
 }
 
-pub fn secp256k1_fn_mul(
+pub fn mul_fn_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -82,7 +82,7 @@ pub fn secp256k1_fn_mul(
     *params.d
 }
 
-pub fn secp256k1_fn_sub(
+pub fn sub_fn_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

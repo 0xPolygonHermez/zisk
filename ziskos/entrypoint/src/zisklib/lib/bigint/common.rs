@@ -1,4 +1,4 @@
-use std::{
+use core::{
     cmp::Ordering,
     fmt::{self, Debug, Display},
 };

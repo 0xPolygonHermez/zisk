@@ -3,39 +3,36 @@ use cfg_if::cfg_if;
 cfg_if! {
     if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
         use core::arch::asm;
-        use crate::{ziskos_fcall, ziskos_fcall_param};
-        use super::FCALL_BIG_INT256_DIV_ID;
+        use crate::{ziskos_fcall, ziskos_fcall_param, zisklib::FCALL_UINT256_DIV_ID};
         #[cfg(not(feature = "inputcpy"))]
         use crate::ziskos_fcall_get;
         #[cfg(feature = "inputcpy")]
         use crate::ziskos_inputcpy;
     } else {
-        use crate::zisklib::fcalls_impl::big_int256_div::big_int256_div;
+        use crate::zisklib::fcalls_impl::uint256::uint256_div;
     }
 }
 
-/// Executes the inverse computation
+/// Given 256-bit unsigned integers `a` and `b`, it computes `(quotient, remainder)`
+/// such that `a = b * quotient + remainder` with `0 <= remainder < b`.
 ///
-/// `fcall_bigint256_div` performs an inversion of a 256-bit field element,
-/// represented as an array of four `u64` values.
-///
-/// - `fcall_bigint256_div` performs the inversion and **returns the result directly**.
+/// Requires `b != 0`.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that the input pointers are valid and aligned to an 8-byte boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
-pub fn fcall_bigint256_div(
-    a_value: &[u64; 4],
-    b_value: &[u64; 4],
+pub fn fcall_uint256_div(
+    a: &[u64; 4],
+    b: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 4], [u64; 4]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let (quotient, remainder) = big_int256_div(a_value, b_value);
+        let (quotient, remainder) = uint256_div(a, b);
         #[cfg(feature = "hints")]
         {
             hints.push(8);
@@ -47,9 +44,9 @@ pub fn fcall_bigint256_div(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(a_value, 4);
-        ziskos_fcall_param!(b_value, 4);
-        ziskos_fcall!(FCALL_BIG_INT256_DIV_ID);
+        ziskos_fcall_param!(a, 4);
+        ziskos_fcall_param!(b, 4);
+        ziskos_fcall!(FCALL_UINT256_DIV_ID);
         #[cfg(not(feature = "inputcpy"))]
         {
             (

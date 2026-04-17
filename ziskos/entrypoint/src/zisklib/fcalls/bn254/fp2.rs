@@ -13,27 +13,27 @@ cfg_if! {
     }
 }
 
-/// Executes the multiplicative inverse computation over the complex extension field of the `bn254` curve.
+/// Compute the multiplicative inverse of a field element in the complex extension field of the BN254 curve.
 ///
-/// `fcall_bn254_fp2_inv` performs an inversion of a 512-bit extension field element,
-/// represented as an array of eight `u64` values.
-///
-/// - `fcall_bn254_fp2_inv` performs the inversion and **returns the result directly**.
+/// `fcall_bn254_fp2_inv` operates on a 512-bit field element represented as an array of eight `u64` values,
+/// and returns the inverse as an array of eight `u64` values.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// The caller must also ensure that the input value is non-zero.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bn254_fp2_inv(
-    p_value: &[u64; 8],
+    x: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 8] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let result: [u64; 8] = bn254_fp2_inv(p_value);
+        let result: [u64; 8] = bn254_fp2_inv(x);
         #[cfg(feature = "hints")]
         {
             hints.push(result.len() as u64);
@@ -43,7 +43,7 @@ pub fn fcall_bn254_fp2_inv(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(p_value, 8);
+        ziskos_fcall_param!(x, 8);
         ziskos_fcall!(FCALL_BN254_FP2_INV_ID);
         #[cfg(not(feature = "inputcpy"))]
         {

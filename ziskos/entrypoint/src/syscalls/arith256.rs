@@ -19,9 +19,6 @@ pub struct SyscallArith256Params<'a> {
 /// Executes the `Arith256` operation, performing a 256-bit multiplication and addition:
 /// `a * b + c = dh | dl`.
 ///
-/// The `Arith256` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Arith256`.
-///
 /// `Arith256` operates on arrays of four `u64` elements. The first parameter is a pointer to a structure
 /// containing five values: `a`, `b`, `c`, and the result, two 256-bit chunks for `d`:
 /// - `dh`: The most significant 256-bit chunk.
