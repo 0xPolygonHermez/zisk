@@ -10,17 +10,15 @@
 
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
-    execute_task_response, job_status_response, jobs_list_response, launch_proof_response,
-    AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
-    CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
-    HintsMode, InputMode, JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse,
-    LaunchProofRequest, LaunchProofResponse, Proof, ProofList, ProveParams, ReconnectionAction,
-    ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
-    WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    execute_task_response, job_status_response, jobs_list_response, AggParams, Challenges,
+    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
+    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, JobCancelled, JobStatus,
+    JobStatusResponse, JobsList, JobsListResponse, Proof, ProofList, ProveParams,
+    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
+    StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
+    WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
-
-use anyhow::Result;
 
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
@@ -91,89 +89,7 @@ impl From<JobStatusDto> for JobStatusResponse {
     }
 }
 
-impl From<LaunchProofRequestDto> for LaunchProofRequest {
-    fn from(dto: LaunchProofRequestDto) -> Self {
-        let (inputs_mode, inputs_uri) = match dto.inputs_mode {
-            InputsModeDto::InputsNone => (InputMode::None, None),
-            InputsModeDto::InputsPath(inputs_path) => (InputMode::Path, Some(inputs_path)),
-            InputsModeDto::InputsData(inputs_data) => (InputMode::Data, Some(inputs_data)),
-        };
-
-        let (hints_mode, hints_uri) = match dto.hints_mode {
-            HintsModeDto::HintsNone => (HintsMode::None, None),
-            HintsModeDto::HintsPath(hints_path) => (HintsMode::Path, Some(hints_path)),
-            HintsModeDto::HintsStream(hints_uri) => (HintsMode::Stream, Some(hints_uri)),
-        };
-
-        LaunchProofRequest {
-            data_id: dto.data_id.into(),
-            compute_capacity: dto.compute_capacity,
-            minimal_compute_capacity: dto.minimal_compute_capacity,
-            inputs_mode: inputs_mode.into(),
-            inputs_uri,
-            hints_mode: hints_mode.into(),
-            hints_uri,
-            simulated_node: dto.simulated_node,
-            metadata: dto.metadata.into_iter().collect(),
-            execution_only: dto.execution_only,
-        }
-    }
-}
-
 use std::convert::TryFrom;
-
-impl TryFrom<LaunchProofRequest> for LaunchProofRequestDto {
-    type Error = anyhow::Error;
-
-    fn try_from(req: LaunchProofRequest) -> Result<Self> {
-        Ok(LaunchProofRequestDto {
-            data_id: req.data_id.into(),
-            compute_capacity: req.compute_capacity,
-            minimal_compute_capacity: req.minimal_compute_capacity,
-            inputs_mode: match InputMode::try_from(req.inputs_mode).unwrap_or(InputMode::None) {
-                InputMode::None => InputsModeDto::InputsNone,
-                InputMode::Path => {
-                    let inputs_uri = req.inputs_uri.ok_or_else(|| {
-                        anyhow::anyhow!("Input mode is Uri but inputs_uri is missing")
-                    })?;
-                    InputsModeDto::InputsPath(inputs_uri)
-                }
-                InputMode::Data => {
-                    let inputs_uri = req.inputs_uri.ok_or_else(|| {
-                        anyhow::anyhow!("Input mode is Data but inputs_uri is missing")
-                    })?;
-                    InputsModeDto::InputsData(inputs_uri)
-                }
-            },
-            hints_mode: match HintsMode::try_from(req.hints_mode).unwrap_or(HintsMode::None) {
-                HintsMode::None => HintsModeDto::HintsNone,
-                HintsMode::Path => {
-                    let hints_uri = req.hints_uri.ok_or_else(|| {
-                        anyhow::anyhow!("Hints mode is Uri but hints_uri is missing")
-                    })?;
-                    HintsModeDto::HintsPath(hints_uri)
-                }
-                HintsMode::Stream => {
-                    let hints_uri = req.hints_uri.ok_or_else(|| {
-                        anyhow::anyhow!("Hints mode is Stream but hints_uri is missing")
-                    })?;
-                    HintsModeDto::HintsStream(hints_uri)
-                }
-            },
-            simulated_node: req.simulated_node,
-            metadata: req.metadata.into_iter().collect(),
-            execution_only: req.execution_only,
-        })
-    }
-}
-
-impl From<LaunchProofResponseDto> for LaunchProofResponse {
-    fn from(dto: LaunchProofResponseDto) -> Self {
-        LaunchProofResponse {
-            result: Some(launch_proof_response::Result::JobId(dto.job_id.into())),
-        }
-    }
-}
 
 impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
     fn from(req: WorkerRegisterRequest) -> Self {

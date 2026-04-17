@@ -35,32 +35,6 @@ message JobStatusRequest {
   string job_id = 1;
 }
 
-message LaunchProofRequest {
-  string data_id = 1;
-  optional uint32 compute_capacity = 2;
-  optional uint32 minimal_compute_capacity = 3;
-  InputMode inputs_mode = 4;
-  optional string inputs_uri = 5;
-  HintsMode hints_mode = 6;
-  optional string hints_uri = 7;
-  optional uint32 simulated_node = 8; // If set, indicates this is a simulated worker
-  map<string, string> metadata = 9; // Optional metadata for extensibility and logging
-  bool execution_only = 10; // If true, only execute without generating proofs
-}
-
-enum InputMode {
-  INPUT_MODE_NONE = 0;  // No input provided
-  INPUT_MODE_PATH = 1;   // Input will be provided as a PATH
-  INPUT_MODE_DATA = 2;  // Input data will be sent directly
-}
-
-enum HintsMode {
-  HINTS_MODE_NONE = 0;  // No hints provided
-  HINTS_MODE_PATH = 1;   // Hints will be provided as a PATH
-  HINTS_MODE_STREAM = 2;  // Hints will be sent as a stream
-}
-
-
 // ============================================================================
 // Admin Commands Response Messages
 // ============================================================================
