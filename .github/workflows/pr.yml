@@ -62,7 +62,7 @@ jobs:
       ZISK_TESTVECTORS_BRANCH: "main"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
-      PROVE_FLAGS: "-a -y"
+      PROVE_FLAGS: "-y"
       TERM: xterm
     steps:
       - name: Checkout sources
