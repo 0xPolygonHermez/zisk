@@ -272,24 +272,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
     type WorkerStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
 
-    /// Returns detailed coordinator status information.
-    ///
-    /// Admin-only endpoint that provides system metrics and operational status.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming StatusInfoRequest gRPC request.
-    async fn status_info(
-        &self,
-        request: Request<StatusInfoRequest>,
-    ) -> Result<Response<StatusInfoResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let status_info = self.coordinator.handle_status_info().await;
-
-        Ok(Response::new(status_info.into()))
-    }
-
     /// Basic health check endpoint for service monitoring.
     ///
     /// # Parameters
@@ -320,24 +302,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
         Ok(Response::new(jobs_list.into()))
     }
 
-    /// Returns list of all registered workers and their states.
-    ///
-    /// Admin-only endpoint for worker fleet monitoring.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming WorkersListRequest gRPC request.
-    async fn workers_list(
-        &self,
-        request: Request<WorkersListRequest>,
-    ) -> Result<Response<WorkersListResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let workers_list = self.coordinator.handle_workers_list().await;
-
-        Ok(Response::new(workers_list.into()))
-    }
-
     /// Returns detailed status for a specific job.
     ///
     /// Admin-only endpoint for job inspection and debugging.
@@ -357,24 +321,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             .await
             .map(|status_dto| Response::new(status_dto.into()))
             .map_err(Status::from)
-    }
-
-    /// Returns overall system status and health metrics.
-    ///
-    /// Admin-only endpoint for system monitoring and alerting.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming SystemStatusRequest gRPC request.
-    async fn system_status(
-        &self,
-        request: Request<SystemStatusRequest>,
-    ) -> Result<Response<SystemStatusResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let system_status = self.coordinator.handle_system_status().await;
-
-        Ok(Response::new(system_status.into()))
     }
 
     /// Starts a new proof generation job.

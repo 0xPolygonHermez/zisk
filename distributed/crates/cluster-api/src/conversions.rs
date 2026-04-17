@@ -11,15 +11,12 @@
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
     execute_task_response, job_status_response, jobs_list_response, launch_proof_response,
-    system_status_response, workers_list_response, AggParams, Challenges,
-    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
-    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, HintsMode, InputMode,
-    JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse, LaunchProofRequest,
-    LaunchProofResponse, Metrics, Proof, ProofList, ProveParams, ReconnectionAction,
-    ReconnectionDirective, SetupProgram, Shutdown, StatusInfoResponse, StreamData, StreamPayload,
-    StreamType, SystemStatus, SystemStatusResponse, TaskType, WorkerError, WorkerInfo,
-    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse, WorkersList,
-    WorkersListResponse,
+    AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity, ContributionParams,
+    CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck,
+    HintsMode, InputMode, JobCancelled, JobStatus, JobStatusResponse, JobsList, JobsListResponse,
+    LaunchProofRequest, LaunchProofResponse, Proof, ProofList, ProveParams, ReconnectionAction,
+    ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
+    WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -53,22 +50,6 @@ impl From<Proof> for AggProofData {
             airgroup_id: grpc_row_data.airgroup_id,
             values: grpc_row_data.values,
             worker_idx: grpc_row_data.worker_idx,
-        }
-    }
-}
-
-/// Alternative implementation using From trait for more idiomatic conversion
-impl From<StatusInfoDto> for StatusInfoResponse {
-    fn from(dto: StatusInfoDto) -> Self {
-        StatusInfoResponse {
-            service_name: dto.service_name,
-            version: dto.version,
-            uptime_seconds: dto.uptime_seconds,
-            start_time: Some(prost_types::Timestamp {
-                seconds: dto.start_time.timestamp(),
-                nanos: dto.start_time.timestamp_subsec_nanos() as i32,
-            }),
-            metrics: Some(dto.metrics.into()),
         }
     }
 }
@@ -107,49 +88,6 @@ impl From<JobStatusDto> for JobStatusResponse {
             duration_ms: dto.duration_ms,
         };
         JobStatusResponse { result: Some(job_status_response::Result::Job(job_status)) }
-    }
-}
-
-impl From<WorkersListDto> for WorkersListResponse {
-    fn from(dto: WorkersListDto) -> Self {
-        let workers_info: Vec<WorkerInfo> =
-            dto.workers.into_iter().map(|worker| worker.into()).collect();
-        let workers_list = WorkersList { workers: workers_info };
-        WorkersListResponse {
-            result: Some(workers_list_response::Result::WorkersList(workers_list)),
-        }
-    }
-}
-
-impl From<WorkerInfoDto> for WorkerInfo {
-    fn from(dto: WorkerInfoDto) -> Self {
-        WorkerInfo {
-            worker_id: dto.worker_id.into(),
-            state: dto.state.to_string(),
-            compute_capacity: Some(dto.compute_capacity.into()),
-            last_heartbeat: Some(prost_types::Timestamp {
-                seconds: dto.last_heartbeat.timestamp(),
-                nanos: dto.last_heartbeat.timestamp_subsec_nanos() as i32,
-            }),
-            connected_at: Some(prost_types::Timestamp {
-                seconds: dto.connected_at.timestamp(),
-                nanos: dto.connected_at.timestamp_subsec_nanos() as i32,
-            }),
-        }
-    }
-}
-
-impl From<SystemStatusDto> for SystemStatusResponse {
-    fn from(dto: SystemStatusDto) -> Self {
-        let system_status = SystemStatus {
-            total_workers: dto.total_workers,
-            compute_capacity: dto.compute_capacity.compute_units,
-            idle_workers: dto.idle_workers,
-            busy_workers: dto.busy_workers,
-            active_jobs: dto.active_jobs,
-        };
-
-        SystemStatusResponse { result: Some(system_status_response::Result::Status(system_status)) }
     }
 }
 
@@ -234,12 +172,6 @@ impl From<LaunchProofResponseDto> for LaunchProofResponse {
         LaunchProofResponse {
             result: Some(launch_proof_response::Result::JobId(dto.job_id.into())),
         }
-    }
-}
-
-impl From<MetricsDto> for Metrics {
-    fn from(dto: MetricsDto) -> Self {
-        Metrics { active_connections: dto.active_connections }
     }
 }
 

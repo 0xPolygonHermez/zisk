@@ -4,30 +4,10 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId, WorkerState};
+use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
-pub struct StatusInfoDto {
-    pub service_name: String,
-    pub version: String,
-    pub uptime_seconds: u64,
-    pub start_time: DateTime<Utc>,
-    pub metrics: MetricsDto,
-}
-
-impl StatusInfoDto {
-    pub fn new(
-        service_name: String,
-        version: String,
-        uptime_seconds: u64,
-        start_time: DateTime<Utc>,
-        metrics: MetricsDto,
-    ) -> Self {
-        Self { service_name, version, uptime_seconds, start_time, metrics }
-    }
-}
 
 pub struct JobsListDto {
     pub jobs: Vec<JobStatusDto>,
@@ -41,26 +21,6 @@ pub struct JobStatusDto {
     pub assigned_workers: Vec<WorkerId>,
     pub start_time: u64,
     pub duration_ms: u64,
-}
-
-pub struct WorkersListDto {
-    pub workers: Vec<WorkerInfoDto>,
-}
-
-pub struct WorkerInfoDto {
-    pub worker_id: WorkerId,
-    pub state: WorkerState,
-    pub compute_capacity: ComputeCapacity,
-    pub connected_at: DateTime<Utc>,
-    pub last_heartbeat: DateTime<Utc>,
-}
-
-pub struct SystemStatusDto {
-    pub total_workers: u32,
-    pub compute_capacity: ComputeCapacity,
-    pub idle_workers: u32,
-    pub busy_workers: u32,
-    pub active_jobs: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

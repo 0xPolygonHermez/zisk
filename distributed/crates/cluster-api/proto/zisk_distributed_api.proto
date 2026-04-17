@@ -14,11 +14,8 @@ service ZiskDistributedApi {
   
   // Admin endpoints (optional, for monitoring)
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
-  rpc SystemStatus(SystemStatusRequest) returns (SystemStatusResponse);
-  rpc StatusInfo(StatusInfoRequest) returns (StatusInfoResponse);
   rpc JobsList(JobsListRequest) returns (JobsListResponse);
   rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);
-  rpc WorkersList(WorkersListRequest) returns (WorkersListResponse);
   
   // Coordinator control
   rpc LaunchProof(LaunchProofRequest) returns (LaunchProofResponse);
@@ -36,20 +33,12 @@ message ErrorResponse {
 
 message HealthCheckRequest {}
 
-message SystemStatusRequest {}
-
-message StatusInfoRequest {}
-
 message JobsListRequest {
   bool active_only = 1;
 }
 
 message JobStatusRequest {
   string job_id = 1;
-}
-
-message WorkersListRequest {
-  bool available_only = 1;
 }
 
 message LaunchProofRequest {
@@ -84,34 +73,6 @@ enum HintsMode {
 
 message HealthCheckResponse {}
 
-message SystemStatusResponse {
-  oneof result {
-    SystemStatus status = 1;
-    ErrorResponse error = 2;
-  }
-}
-
-message SystemStatus {
-  uint32 total_workers = 1;
-  uint32 compute_capacity = 2;
-  uint32 idle_workers = 3;
-  uint32 busy_workers = 4;
-  uint32 active_jobs = 5;
-}
-
-message StatusInfoResponse {
-  string service_name = 1;
-  string version = 2;
-  uint64 uptime_seconds = 3;
-  google.protobuf.Timestamp start_time = 4;
-  Metrics metrics = 5;
-}
-
-// Metrics information
-message Metrics {
-  uint32 active_connections = 1;
-}
-
 message JobsListResponse {
   oneof result {
     JobsList jobs_list = 1;    // Success case
@@ -138,25 +99,6 @@ message JobStatus {
   repeated string assigned_workers = 5;
   uint64 start_time = 6;
   uint64 duration_ms = 7;
-}
-
-message WorkersListResponse {
-  oneof result {
-    WorkersList workers_list = 1;
-    ErrorResponse error = 2;
-  }
-}
-
-message WorkersList {
-  repeated WorkerInfo workers = 1;
-}
-    
-message WorkerInfo {
-  string worker_id = 1;
-  string state = 2;
-  ComputeCapacity compute_capacity = 3;
-  google.protobuf.Timestamp connected_at = 4;
-  google.protobuf.Timestamp last_heartbeat = 5;
 }
 
 message LaunchProofResponse {

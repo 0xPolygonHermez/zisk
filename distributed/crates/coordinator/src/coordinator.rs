@@ -57,10 +57,9 @@ use zisk_cluster_common::{
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
     Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, MetricsDto,
-    PhaseTimings, ProofDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto,
-    StatusInfoDto, StreamMessageKind, SystemStatusDto, WorkerErrorDto, WorkerId,
-    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState, WorkersListDto,
+    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings,
+    ProofDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
+    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
     WrapParamsDto, ZiskExecutorTimeDto,
 };
 use zisk_common::io::{StreamSource, ZiskStream};
@@ -327,27 +326,6 @@ impl Coordinator {
         Ok(job_id)
     }
 
-    /// Retrieves comprehensive status information about the coordinator service.
-    ///
-    /// # Returns
-    ///
-    /// A `StatusInfoDto` containing detailed information about the service name,
-    /// version, uptime, and current metrics of the coordinator.
-    pub async fn handle_status_info(&self) -> StatusInfoDto {
-        let uptime_seconds = (Utc::now() - self.start_time_utc).num_seconds() as u64;
-
-        let metrics =
-            MetricsDto { active_connections: self.workers_pool.num_workers().await as u32 };
-
-        StatusInfoDto::new(
-            self.config.service.name.clone(),
-            self.config.service.version.clone(),
-            uptime_seconds,
-            self.start_time_utc,
-            metrics,
-        )
-    }
-
     /// Retrieves a list of currently running proof generation jobs.
     ///
     /// Returns information about all jobs that are running.
@@ -389,15 +367,6 @@ impl Coordinator {
         JobsListDto { jobs }
     }
 
-    /// Retrieves information about all registered workers in the system.
-    ///
-    /// # Returns
-    ///
-    /// A `WorkersListDto` containing detailed information about each registered worker.
-    pub async fn handle_workers_list(&self) -> WorkersListDto {
-        self.workers_pool.workers_list().await
-    }
-
     /// Retrieves detailed status information for a specific job.
     ///
     /// # Parameters
@@ -432,34 +401,6 @@ impl Coordinator {
             start_time,
             duration_ms: job.duration_ms.unwrap_or(0),
         })
-    }
-
-    /// Provides a high-level overview of the entire distributed system status.
-    ///
-    /// # Returns
-    ///
-    /// A `SystemStatusDto` containing information about total workers, compute capacity,
-    /// idle and busy workers, and active jobs.
-    pub async fn handle_system_status(&self) -> SystemStatusDto {
-        let total_workers = self.workers_pool.num_workers().await;
-        let busy_workers = self.workers_pool.busy_workers().await;
-
-        let mut active_jobs = 0;
-        let jobs_map = self.jobs.read().await;
-        for job_lock in jobs_map.values() {
-            let job = job_lock.read().await;
-            if matches!(job.state(), JobState::Running(_)) {
-                active_jobs += 1;
-            }
-        }
-
-        SystemStatusDto {
-            total_workers: total_workers as u32,
-            compute_capacity: self.workers_pool.compute_capacity().await,
-            idle_workers: self.workers_pool.idle_workers().await as u32,
-            busy_workers: busy_workers as u32,
-            active_jobs: active_jobs as u32,
-        }
     }
 
     /// Initiates a new distributed proof job.

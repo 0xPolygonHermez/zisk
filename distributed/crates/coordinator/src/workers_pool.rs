@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, JobId, JobPhase, WorkerId,
-    WorkerInfoDto, WorkerState, WorkersListDto,
+    WorkerState,
 };
 
 use crate::{
@@ -166,25 +166,6 @@ impl WorkersPool {
             }
         }
         (total, ComputeCapacity::from(cc), ComputeCapacity::from(acc))
-    }
-
-    /// Returns detailed information about all registered workers.
-    pub async fn workers_list(&self) -> WorkersListDto {
-        let workers = self
-            .workers
-            .read()
-            .await
-            .values()
-            .map(|worker_info| WorkerInfoDto {
-                worker_id: worker_info.worker_id.clone(),
-                state: worker_info.state.clone(),
-                compute_capacity: worker_info.compute_capacity,
-                connected_at: worker_info.connected_at,
-                last_heartbeat: worker_info.last_heartbeat,
-            })
-            .collect();
-
-        WorkersListDto { workers }
     }
 
     /// Registers a new worker with the pool.
