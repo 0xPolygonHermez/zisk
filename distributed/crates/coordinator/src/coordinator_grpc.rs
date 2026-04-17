@@ -323,28 +323,6 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             .map_err(Status::from)
     }
 
-    /// Starts a new proof generation job.
-    ///
-    /// Admin-only endpoint for initiating distributed proof computation.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming LaunchProofRequest gRPC request.
-    async fn launch_proof(
-        &self,
-        request: Request<LaunchProofRequest>,
-    ) -> Result<Response<LaunchProofResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let launch_proof_request_dto = request
-            .into_inner()
-            .try_into()
-            .map_err(|e| Status::invalid_argument(format!("Invalid request: {}", e)))?;
-        let result = self.coordinator.launch_proof(launch_proof_request_dto).await;
-
-        result.map(|response_dto| Response::new(response_dto.into())).map_err(Status::from)
-    }
-
     /// Bidirectional streaming endpoint for worker communication.
     async fn worker_stream(
         &self,

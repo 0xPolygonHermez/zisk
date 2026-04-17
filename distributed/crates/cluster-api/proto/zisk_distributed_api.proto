@@ -15,10 +15,7 @@ service ZiskDistributedApi {
   // Admin endpoints (optional, for monitoring)
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
   rpc JobsList(JobsListRequest) returns (JobsListResponse);
-  rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);
-  
-  // Coordinator control
-  rpc LaunchProof(LaunchProofRequest) returns (LaunchProofResponse);
+  rpc JobStatus(JobStatusRequest) returns (JobStatusResponse);  
 }
 
 // Standardized error response

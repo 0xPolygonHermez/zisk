@@ -6,10 +6,6 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[[bin]]
-name = "zisk-coordinator"
-path = "src/cli/main.rs"
-
 [dependencies]
 zisk-cluster-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
