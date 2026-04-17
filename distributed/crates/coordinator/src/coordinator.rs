@@ -56,9 +56,9 @@ use zisk_cluster_common::{
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
     ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState, JobStatusDto,
-    JobsListDto, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings,
-    ProofDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
+    Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
+    LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofDto,
+    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
     WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
     WrapParamsDto, ZiskExecutorTimeDto,
 };
@@ -324,83 +324,6 @@ impl Coordinator {
         }
 
         Ok(job_id)
-    }
-
-    /// Retrieves a list of currently running proof generation jobs.
-    ///
-    /// Returns information about all jobs that are running.
-    ///
-    /// # Returns
-    ///
-    /// A `JobsListDto` containing an array of job status information including:
-    pub async fn handle_jobs_list(&self) -> JobsListDto {
-        let mut jobs = Vec::new();
-
-        let jobs_map = self.jobs.read().await;
-        for job_lock in jobs_map.values() {
-            let job = job_lock.read().await;
-
-            if let JobState::Running(phase) = &job.state() {
-                let start_time = job
-                    .phase_start_time(phase)
-                    .map(|t| t.timestamp() as u64)
-                    .unwrap_or_else(|| {
-                        error!(
-                            "Start time for phase {:?} is missing for job {}",
-                            phase, job.job_id
-                        );
-                        0
-                    });
-
-                jobs.push(JobStatusDto {
-                    job_id: job.job_id.clone(),
-                    data_id: job.data_id.clone(),
-                    phase: Some(phase.clone()),
-                    state: job.state().clone(),
-                    assigned_workers: job.workers.clone(),
-                    start_time,
-                    duration_ms: job.duration_ms.unwrap_or(0),
-                });
-            }
-        }
-
-        JobsListDto { jobs }
-    }
-
-    /// Retrieves detailed status information for a specific job.
-    ///
-    /// # Parameters
-    ///
-    /// * `job_id` - Unique identifier of the job to query
-    ///
-    /// # Returns
-    ///
-    /// On success, returns a JobStatusDto with detailed job status information
-    pub async fn handle_job_status(&self, job_id: &JobId) -> CoordinatorResult<JobStatusDto> {
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-        let job = job_entry.read().await;
-
-        let phase = JobPhase::Contributions;
-        let start_time =
-            job.phase_start_time(&phase).map(|t| t.timestamp() as u64).unwrap_or_else(|| {
-                error!("Start time for phase {:?} is missing for job {}", phase, job.job_id);
-                0
-            });
-
-        Ok(JobStatusDto {
-            job_id: job.job_id.clone(),
-            data_id: job.data_id.clone(),
-            state: job.state().clone(),
-            phase: if let JobState::Running(phase) = &job.state() {
-                Some(phase.clone())
-            } else {
-                None
-            },
-            assigned_workers: job.workers.clone(),
-            start_time,
-            duration_ms: job.duration_ms.unwrap_or(0),
-        })
     }
 
     /// Initiates a new distributed proof job.

@@ -10,13 +10,11 @@
 
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
-    execute_task_response, job_status_response, jobs_list_response, AggParams, Challenges,
-    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
-    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, JobCancelled, JobStatus,
-    JobStatusResponse, JobsList, JobsListResponse, Proof, ProofList, ProveParams,
-    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
-    StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
-    WorkerRegisterResponse,
+    execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
+    ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
+    HeartbeatAck, JobCancelled, Proof, ProofList, ProveParams, ReconnectionAction,
+    ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
+    WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -51,45 +49,6 @@ impl From<Proof> for AggProofData {
         }
     }
 }
-
-impl From<JobsListDto> for JobsListResponse {
-    fn from(dto: JobsListDto) -> Self {
-        let job_statuses: Vec<JobStatus> = dto.jobs.into_iter().map(|job| job.into()).collect();
-        let jobs_list = JobsList { jobs: job_statuses };
-        JobsListResponse { result: Some(jobs_list_response::Result::JobsList(jobs_list)) }
-    }
-}
-
-impl From<JobStatusDto> for JobStatus {
-    fn from(dto: JobStatusDto) -> Self {
-        JobStatus {
-            job_id: dto.job_id.into(),
-            data_id: dto.data_id.into(),
-            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
-            state: dto.state.to_string(),
-            assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
-            start_time: dto.start_time,
-            duration_ms: dto.duration_ms,
-        }
-    }
-}
-
-impl From<JobStatusDto> for JobStatusResponse {
-    fn from(dto: JobStatusDto) -> Self {
-        let job_status = JobStatus {
-            job_id: dto.job_id.into(),
-            data_id: dto.data_id.into(),
-            phase: dto.phase.map_or("None".to_string(), |p| p.to_string()),
-            state: dto.state.to_string(),
-            assigned_workers: dto.assigned_workers.into_iter().map(|id| id.into()).collect(),
-            start_time: dto.start_time,
-            duration_ms: dto.duration_ms,
-        };
-        JobStatusResponse { result: Some(job_status_response::Result::Job(job_status)) }
-    }
-}
-
-use std::convert::TryFrom;
 
 impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
     fn from(req: WorkerRegisterRequest) -> Self {

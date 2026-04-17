@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
 use zisk_cluster_api::{zisk_distributed_api_server::*, *};
-use zisk_cluster_common::{CoordinatorMessageDto, JobId, SetupProgramAckDto, WorkerId};
+use zisk_cluster_common::{CoordinatorMessageDto, SetupProgramAckDto, WorkerId};
 
 use crate::config::Config;
 use crate::coordinator::MessageSender;
@@ -111,45 +111,6 @@ impl CoordinatorGrpc {
     /// Returns a clone of the underlying `Arc<Coordinator>`.
     pub fn coordinator(&self) -> Arc<Coordinator> {
         Arc::clone(&self.coordinator)
-    }
-
-    /// Checks if the request originates from localhost for admin endpoint security.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming gRPC request to check.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the request is from localhost, `false` otherwise.
-    fn is_local_request(&self, request: &Request<impl std::fmt::Debug>) -> bool {
-        if let Some(remote_addr) = request.remote_addr() {
-            let ip = remote_addr.ip();
-            ip.is_loopback() || ip.to_string() == "127.0.0.1" || ip.to_string() == "::1"
-        } else {
-            false
-        }
-    }
-
-    /// Validates that admin requests come from localhost only.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming gRPC request to validate.
-    ///
-    /// # Returns
-    ///
-    /// `Status::permission_denied` if request is not from localhost.
-    fn validate_admin_request<T: std::fmt::Debug>(
-        &self,
-        request: &Request<T>,
-    ) -> Result<(), Status> {
-        if !self.is_local_request(request) {
-            return Err(Status::permission_denied(
-                "Admin endpoints are restricted to localhost access only",
-            ));
-        }
-        Ok(())
     }
 
     /// Validates that the worker ID in the message matches the authenticated worker.
@@ -271,45 +232,6 @@ impl CoordinatorGrpc {
 impl ZiskDistributedApi for CoordinatorGrpc {
     type WorkerStreamStream =
         Pin<Box<dyn Stream<Item = Result<CoordinatorMessage, Status>> + Send>>;
-
-    /// Returns list of all jobs with their current status.
-    ///
-    /// Admin-only endpoint for job monitoring and management.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming JobsListRequest gRPC request.
-    async fn jobs_list(
-        &self,
-        request: Request<JobsListRequest>,
-    ) -> Result<Response<JobsListResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let jobs_list = self.coordinator.handle_jobs_list().await;
-
-        Ok(Response::new(jobs_list.into()))
-    }
-
-    /// Returns detailed status for a specific job.
-    ///
-    /// Admin-only endpoint for job inspection and debugging.
-    ///
-    /// # Parameters
-    ///
-    /// * `request` - The incoming JobStatusRequest gRPC request.
-    async fn job_status(
-        &self,
-        request: Request<JobStatusRequest>,
-    ) -> Result<Response<JobStatusResponse>, Status> {
-        self.validate_admin_request(&request)?;
-
-        let job_id = JobId::from(request.into_inner().job_id);
-        self.coordinator
-            .handle_job_status(&job_id)
-            .await
-            .map(|status_dto| Response::new(status_dto.into()))
-            .map_err(Status::from)
-    }
 
     /// Bidirectional streaming endpoint for worker communication.
     async fn worker_stream(

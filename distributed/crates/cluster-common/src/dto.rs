@@ -4,24 +4,10 @@
 //! These DTOs serve as the canonical data structures for business logic, separate from external
 //! representations like gRPC protobuf types or serialization formats.
 
-use crate::{ComputeCapacity, DataId, JobId, JobPhase, JobState, WorkerId};
+use crate::{ComputeCapacity, DataId, JobId, WorkerId};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-
-pub struct JobsListDto {
-    pub jobs: Vec<JobStatusDto>,
-}
-
-pub struct JobStatusDto {
-    pub job_id: JobId,
-    pub data_id: DataId,
-    pub state: JobState,
-    pub phase: Option<JobPhase>,
-    pub assigned_workers: Vec<WorkerId>,
-    pub start_time: u64,
-    pub duration_ms: u64,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
@@ -61,10 +47,6 @@ pub struct LaunchProofResponseDto {
 pub struct LaunchWrapRequestDto {
     pub proof_data: Vec<u8>, // bincode-encoded ZiskProofWithPublicValues
     pub proof_dest: i32,     // ProofKind value
-}
-
-pub struct MetricsDto {
-    pub active_connections: u32,
 }
 
 pub struct WorkerRegisterRequestDto {
