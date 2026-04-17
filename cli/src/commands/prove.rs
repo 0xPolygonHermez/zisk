@@ -238,8 +238,7 @@ impl ZiskProve {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
             let output_file: PathBuf = match result.get_proof().proof_kind {
-                ProofKind::VadcopFinal
-                | ProofKind::VadcopFinalMinimal => {
+                ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
                     self.output.clone().unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin"))
                 }
                 ProofKind::Plonk => {

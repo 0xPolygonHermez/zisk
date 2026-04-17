@@ -403,8 +403,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result?;
                 Ok(())
             }
-            ProofKind::VadcopFinal
-            | ProofKind::VadcopFinalMinimal => {
+            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
                 let minimal = self.proof_with_values.proof_kind != ProofKind::VadcopFinal;
                 let proof_bytes = &self.proof_with_values.proof_bytes;
                 let mut pubs = program_vk.vk.clone();

@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute,
-    ZiskInstallToolchain, ZiskNew, ZiskPlonk, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats,
-    ZiskUtils, ZiskVerify, ZiskVerifyConstraints,
+    ZiskInstallToolchain, ZiskNew, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats, ZiskUtils,
+    ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -25,7 +25,7 @@ pub enum Cargo {
     InstallToolchain(ZiskInstallToolchain),
     Execute(ZiskExecute),
     New(ZiskNew),
-    Plonk(ZiskPlonk),
+    WrapProof(ZiskWrap),
     Prove(ZiskProve),
     ProgramSetup(ZiskProgramSetup),
     Run(ZiskRun),
@@ -64,8 +64,8 @@ fn main() -> Result<()> {
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
-        Cargo::Plonk(cmd) => {
-            cmd.run().context("Error executing Plonk command")?;
+        Cargo::WrapProof(cmd) => {
+            cmd.run().context("Error executing WrapProof command")?;
         }
         Cargo::ProgramSetup(mut cmd) => {
             cmd.run().context("Error executing RomSetup command")?;
