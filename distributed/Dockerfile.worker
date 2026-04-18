@@ -1,0 +1,82 @@
+# Dockerfile.worker — ZisK Worker service
+#
+# Supports optional GPU acceleration via ARG GPU=true.
+# Workers connect to the gateway's embedded coordinator (port 50051).
+#
+# Build context must be the workspace root:
+#   docker build -f distributed/Dockerfile.worker -t zisk-worker .
+#   docker build --build-arg GPU=true -f distributed/Dockerfile.worker -t zisk-worker:gpu .
+
+# ── Build stage ────────────────────────────────────────────────────────────────
+FROM rust:bookworm AS builder
+
+ARG GPU=false
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    bash \
+    sudo \
+    curl \
+    gnupg \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY tools/test-env/ ./tools/test-env/
+RUN chmod +x ./tools/test-env/*.sh && \
+    cd tools/test-env && \
+    if [ "$GPU" = "true" ]; then \
+        echo "Installing build dependencies with GPU support..." && \
+        ./install_deps.sh --gpu; \
+    else \
+        echo "Installing build dependencies (CPU only)..." && \
+        ./install_deps.sh; \
+    fi
+
+COPY . .
+
+RUN cargo build --release -p zisk-worker
+
+# ── Runtime stage ──────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+ARG GPU=false
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    bash \
+    sudo \
+    curl \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY tools/test-env/ /tmp/tools/test-env/
+RUN chmod +x /tmp/tools/test-env/*.sh && \
+    cd /tmp/tools/test-env && \
+    if [ "$GPU" = "true" ]; then \
+        echo "Installing runtime dependencies with GPU support..." && \
+        ./install_deps.sh --gpu; \
+    else \
+        echo "Installing runtime dependencies (CPU only)..." && \
+        ./install_deps.sh; \
+    fi && \
+    rm -rf /tmp/tools
+
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin zisk
+
+RUN mkdir -p /etc/zisk /app/.zisk/cache /var/log/zisk \
+    && chown -R zisk:zisk /app /var/log/zisk
+
+COPY --from=builder /app/target/release/zisk-worker /usr/local/bin/zisk-worker
+
+# Rust tooling and the worker itself resolve $HOME to locate ~/.zisk/cache
+ENV HOME=/app
+
+USER zisk
+
+ENTRYPOINT ["zisk-worker"]
+CMD ["--config", "/etc/zisk/worker.toml"]

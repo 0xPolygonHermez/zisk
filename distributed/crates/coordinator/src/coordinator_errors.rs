@@ -31,7 +31,7 @@ impl From<CoordinatorError> for Status {
         match err {
             CoordinatorError::InvalidRequest(msg) => Status::new(Code::InvalidArgument, msg),
             CoordinatorError::NotFoundOrInaccessible => {
-                Status::new(Code::Internal, "An internal error occurred")
+                Status::new(Code::NotFound, "Resource not found or inaccessible")
             }
             CoordinatorError::InvalidArgument(msg) => Status::new(Code::InvalidArgument, msg),
             CoordinatorError::InsufficientCapacity => {

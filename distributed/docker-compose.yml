@@ -1,54 +1,87 @@
-version: '3.8'
+# docker-compose.yml — ZisK distributed proving stack
+#
+# Usage (from the workspace root):
+#
+#   Start the gateway only:
+#     docker compose -f distributed/docker-compose.yml up gateway
+#
+#   Start the full stack with N workers:
+#     docker compose -f distributed/docker-compose.yml up --scale worker=4
+#
+#   Build with GPU support for workers:
+#     docker compose -f distributed/docker-compose.yml build --build-arg GPU=true worker
 
 services:
-  coordinator:
-    build:
-      context: ..
-      dockerfile: distributed/Dockerfile
-      args:
-        GPU: false
-    ports:
-      - "50051:50051"
-    volumes:
-      - ./logs:/var/log/distributed
-      # Uncomment to override config
-      # - ./crates/coordinator/config:/app/config/coordinator
-    environment:
-      - RUST_LOG=info
-    restart: unless-stopped
-    command: [ "zisk-coordinator", "--config", "/app/config/coordinator/prod.toml" ]
 
-  worker:
+  # ── Gateway ─────────────────────────────────────────────────────────────────
+  # Public gRPC API + embedded coordinator.
+  # Workers connect to the coordinator on port 50051 (internal to this container).
+  gateway:
     build:
       context: ..
-      dockerfile: distributed/Dockerfile
-      args:
-        GPU: false # Set to true if GPU support is needed
+      dockerfile: distributed/Dockerfile.gateway
+    image: zisk-gateway:latest
+    container_name: zisk-gateway
+    restart: on-failure
+    ports:
+      - "7000:7000"    # public gRPC API
+      - "9090:9090"    # Prometheus metrics
     volumes:
-      - ./logs:/var/log/distributed
-      # Uncomment to override config
-      # - ./crates/worker/config:/app/config/worker
-      # Mount proving key and ELF directories if needed
-      # - ${ZISK_CACHE_FOLDER}:/app/.zisk/cache:ro
-      # - ${PROVING_KEY_PATH}:/app/proving-keys:ro
-      # - ${ELF_INPUTS_PATH}:/app/elf-inputs:ro
+      - ./config/gateway.toml:/etc/zisk/gateway.toml:ro
     environment:
       - RUST_LOG=info
-    restart: unless-stopped
-    command: [ "zisk-worker", "--config", "/app/config/worker/prod.toml" ]
-    depends_on:
-      - coordinator
+    networks:
+      - zisk
     healthcheck:
-      test: [ "CMD", "pgrep", "-f", "zisk-worker" ]
+      test: ["CMD", "grpc_health_probe", "-addr=:7000"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 15s
+
+  # ── Worker ───────────────────────────────────────────────────────────────────
+  # Scale with: docker compose up --scale worker=N
+  # Each instance gets a unique auto-generated worker_id (no worker_id in config).
+  worker:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile.worker
+      args:
+        GPU: false    # set to true for GPU-accelerated workers
+    image: zisk-worker:latest
+    restart: on-failure
+    volumes:
+      - ./config/worker.toml:/etc/zisk/worker.toml:ro
+      # Mount the ZisK cache (proving keys, ELF cache) from the host:
+      # - ${ZISK_CACHE_DIR:-~/.zisk/cache}:/app/.zisk/cache:ro
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      gateway:
+        condition: service_started   # workers reconnect automatically, no need to wait for healthy
+    networks:
+      - zisk
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: zisk-prometheus
+    restart: on-failure
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+    networks:
+      - zisk
+    depends_on:
+      gateway:
+        condition: service_healthy   # wait for gateway to pass health check before scraping
 
 networks:
-  default:
-    name: zisk-distributed
-
-volumes:
-  logs:
-    driver: local
+  zisk:
+    driver: bridge
