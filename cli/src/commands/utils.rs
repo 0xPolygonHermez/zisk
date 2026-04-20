@@ -17,9 +17,8 @@ pub struct ZiskUtils {
 
 #[derive(clap::Subcommand)]
 pub enum ZiskUtilsCommand {
-    /// Clean the zisk cache for a specific program or remove the entire cache
     CleanCache(ZiskCleanCache),
-    /// Convert old input files to new ZiskStdin format
+    #[command(hide = true)]
     ConvertInput(ZiskConvertInput),
 }
 
