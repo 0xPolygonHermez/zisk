@@ -4,11 +4,9 @@ use crate::{
     ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
 };
 use anyhow::Result;
-use asm_runner::HintsShmem;
 use colored::Colorize;
 use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use fields::Goldilocks;
-use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
@@ -92,7 +90,9 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))
     }
 
-    pub(crate) fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub(crate) fn get_hints_processor(
+        &self,
+    ) -> Result<Option<Arc<dyn zisk_common::io::StreamProcessor>>> {
         match self.asm_emulator() {
             Some(a) => a.get_hints_processor(),
             None => Ok(None),

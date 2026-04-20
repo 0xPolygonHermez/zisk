@@ -32,8 +32,8 @@ use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
-use crate::AsmRunnerRH;
 use crate::{state::ChunkCollector, ExecutionState, StaticSMBundle};
+use zisk_common::RomHistogramData;
 
 pub struct ChunkDataCollector<F: PrimeField64> {
     /// State machine bundle for building data buses.
@@ -53,7 +53,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         self.sm_bundle.set_rom(zisk_rom)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: RomHistogramData) -> Result<()> {
         self.sm_bundle.set_rh_data(rh_data)
     }
 

@@ -1,9 +1,7 @@
 use named_sem::NamedSemaphore;
 use zisk_common::{stats_begin, stats_end, stats_mark, AsmExecutionInfo};
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
 use std::time::Instant;

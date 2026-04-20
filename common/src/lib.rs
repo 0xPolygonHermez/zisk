@@ -10,6 +10,7 @@ mod proof;
 mod proof_log;
 mod regular_counters;
 mod regular_planner;
+mod rom_histogram_data;
 mod types;
 mod utils;
 
@@ -24,5 +25,6 @@ pub use proof::*;
 pub use proof_log::*;
 pub use regular_counters::*;
 pub use regular_planner::*;
+pub use rom_histogram_data::*;
 pub use types::*;
 pub use utils::*;

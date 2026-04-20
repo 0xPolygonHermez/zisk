@@ -7,10 +7,8 @@ use crate::{
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
 };
-use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
 use executor::{initialize_executor, AsmResources};
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
@@ -384,7 +382,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.register_hints_stream(stream)
     }
 
-    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    fn get_hints_processor(&self) -> Result<Option<Arc<dyn zisk_common::io::StreamProcessor>>> {
         self.core_prover.backend.get_hints_processor()
     }
 

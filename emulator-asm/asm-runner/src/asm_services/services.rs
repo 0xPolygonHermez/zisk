@@ -204,7 +204,6 @@ impl AsmServices {
         let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
 
         let mut command = Command::new(command_path);
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         {
             use std::os::unix::process::CommandExt;
 
@@ -354,7 +353,6 @@ impl AsmServices {
         Ok(Res::from_response_payload(response))
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
         let port = AsmServices::port_base_for(Some(self.base_port), self.local_rank);
 
@@ -411,11 +409,6 @@ impl AsmServices {
             }
         }
 
-        Ok(())
-    }
-
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
 }

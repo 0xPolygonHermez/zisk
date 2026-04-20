@@ -144,8 +144,10 @@ impl AsmResources {
     }
 
     /// Returns the concrete hints processor for passing to `StreamOrderingActor`.
-    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
-        self.hints_stream.as_ref().map(|stream| stream.lock().unwrap().get_processor())
+    pub fn get_hints_processor(&self) -> Option<Arc<dyn zisk_common::io::StreamProcessor>> {
+        self.hints_stream.as_ref().map(|stream| {
+            stream.lock().unwrap().get_processor() as Arc<dyn zisk_common::io::StreamProcessor>
+        })
     }
 
     /// Update the active ASM services for this partition.

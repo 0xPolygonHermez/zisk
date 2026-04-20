@@ -11,12 +11,12 @@
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use crate::{RomInstance, RomPlanner};
-use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
 use itertools::Itertools;
 use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
+    RomHistogramData,
 };
 use zisk_core::{
     zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
@@ -36,7 +36,7 @@ pub struct RomSM {
     /// Shared program instruction counter for monitoring ROM operations.
     prog_inst_count: Arc<Vec<AtomicU64>>,
 
-    rh_data: Mutex<Option<AsmRunnerRH>>,
+    rh_data: Mutex<Option<RomHistogramData>>,
 }
 
 impl RomSM {
@@ -65,9 +65,9 @@ impl RomSM {
         })
     }
 
-    pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: RomHistogramData) -> Result<()> {
         *self.rh_data.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
-            Some(handler);
+            Some(rh_data);
         Ok(())
     }
 
@@ -143,7 +143,7 @@ impl RomSM {
 
     pub fn compute_witness_from_asm<F: PrimeField64>(
         rom: &ZiskRom,
-        asm_romh: &AsmRHData,
+        asm_romh: &RomHistogramData,
         mut trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);

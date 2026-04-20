@@ -35,7 +35,6 @@ pub trait AsmShmemHeader: Debug {
     fn allocated_size(&self) -> u64;
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     fn drop(&mut self) {
         self.unmap().unwrap_or_else(|err| {
@@ -73,11 +72,7 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
                 return Err(anyhow::anyhow!("shm_unlink('{name}') failed: {err}"));
             }
 
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            let flags = MAP_SHARED;
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             let mut flags = MAP_SHARED;
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if !_unlock_mapped_memory {
                 flags |= libc::MAP_LOCKED;
             }
@@ -161,48 +156,18 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     /// The caller must ensure that:
     /// - `new_size` is the desired new size for the mapping.
     pub fn remap_region(&self, new_size: usize) -> Result<*mut c_void> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let flags = libc::MREMAP_MAYMOVE;
-            let new_ptr =
-                unsafe { libc::mremap(self.mapped_ptr, self.mapped_size, new_size, flags) };
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "Failed to remap shared memory '{}' from size {} to {}: {}",
-                    self.shmem_name,
-                    self.mapped_size,
-                    new_size,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
-        }
-
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            // On macOS / other systems without mremap:
-            // just unmap and remap a fresh region — no data copy.
-            if unsafe { munmap(self.mapped_ptr, self.mapped_size) } != 0 {
-                return Err(anyhow::anyhow!(
-                    "munmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ));
-            }
-
-            let new_ptr =
-                unsafe { mmap(ptr::null_mut(), new_size, PROT_READ, MAP_SHARED, self._fd, 0) };
-
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "mmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
+        let flags = libc::MREMAP_MAYMOVE;
+        let new_ptr = unsafe { libc::mremap(self.mapped_ptr, self.mapped_size, new_size, flags) };
+        if new_ptr == MAP_FAILED {
+            Err(anyhow::anyhow!(
+                "Failed to remap shared memory '{}' from size {} to {}: {}",
+                self.shmem_name,
+                self.mapped_size,
+                new_size,
+                io::Error::last_os_error()
+            ))
+        } else {
+            Ok(new_ptr)
         }
     }
 
@@ -280,26 +245,17 @@ pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
 
     if fd == -1 {
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            return Err(anyhow!(format!("shm_open('{name}') failed")));
-        }
-
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let errno_value = unsafe { *libc::__errno_location() };
-            let err = io::Error::from_raw_os_error(errno_value);
-            let err2 = io::Error::last_os_error();
-            return Err(anyhow!(format!(
-                "shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}"
-            )));
-        }
+        let errno_value = unsafe { *libc::__errno_location() };
+        let err = io::Error::from_raw_os_error(errno_value);
+        let err2 = io::Error::last_os_error();
+        return Err(anyhow!(format!(
+            "shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}"
+        )));
     }
 
     Ok(fd)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
     let mut flags = MAP_SHARED;
     if !unlock_mapped_memory {
@@ -311,11 +267,6 @@ pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &s
         panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
     }
     mapped
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
-    ptr::null_mut()
 }
 
 /// Unmaps memory at the given raw pointer.

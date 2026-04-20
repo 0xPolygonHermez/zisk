@@ -8,15 +8,14 @@ use crate::AsmResources;
 use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
+use asm_runner::AsmRunnerMT;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
-use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
-use zisk_common::io::StreamSource;
+use zisk_common::io::{StreamProcessor, StreamSource};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
-    ExecutorStatsHandle, StatsScope,
+    ExecutorStatsHandle, Plan, RomHistogramData, StatsScope,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
@@ -83,7 +82,7 @@ impl EmulatorAsm {
             .unwrap_or(false))
     }
 
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub fn get_hints_processor(&self) -> Result<Option<Arc<dyn StreamProcessor>>> {
         Ok(self
             .asm_resources
             .lock()
@@ -155,7 +154,7 @@ impl EmulatorAsm {
     /// * `Vec<EmuTrace>` - The computed minimal traces.
     /// * `DeviceMetricsList` - Flat device metrics collected during execution.
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
-    /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
+    /// * `Option<JoinHandle<Vec<Plan>>>` - Optional join handle for the memory-only ASM runner.
     /// * `u64` - Total number of steps.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
@@ -172,8 +171,8 @@ impl EmulatorAsm {
         Vec<EmuTrace>,
         DeviceMetricsList,
         NestedDeviceMetricsList,
-        Option<JoinHandle<Result<AsmRunnerMO>>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
+        Option<JoinHandle<Result<Vec<Plan>>>>,
+        Option<JoinHandle<Result<RomHistogramData>>>,
         u64,
     )> {
         let asm_resources_guard = self
@@ -210,11 +209,11 @@ impl EmulatorAsm {
         let handle_mo = std::thread::spawn({
             let asm_shmem_mo = asm_resources.mo_shmem_reader.clone();
             let base_port = config.base_port;
-            move || -> Result<AsmRunnerMO> {
+            move || -> Result<Vec<Plan>> {
                 let mut guard = asm_shmem_mo
                     .lock()
                     .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
-                AsmRunnerMO::run(
+                let runner = asm_runner::AsmRunnerMO::run(
                     &mut guard,
                     MAX_NUM_STEPS,
                     chunk_size,
@@ -222,7 +221,8 @@ impl EmulatorAsm {
                     local_rank,
                     base_port,
                     _stats,
-                )
+                )?;
+                Ok(runner.plans)
             }
         });
 
@@ -235,12 +235,12 @@ impl EmulatorAsm {
             let asm_shmem_rh = asm_resources.rh_shmem_reader.clone();
             let base_port = config.base_port;
             let unlock_mapped_memory = config.unlock_mapped_memory;
-            std::thread::spawn(move || -> Result<AsmRunnerRH> {
+            std::thread::spawn(move || -> Result<RomHistogramData> {
                 let mut guard = asm_shmem_rh
                     .lock()
                     .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;
 
-                AsmRunnerRH::run(
+                let mut runner = asm_runner::AsmRunnerRH::run(
                     &mut guard,
                     MAX_NUM_STEPS,
                     world_rank,
@@ -248,7 +248,8 @@ impl EmulatorAsm {
                     base_port,
                     unlock_mapped_memory,
                     _stats,
-                )
+                )?;
+                Ok(std::mem::take(&mut runner.rom_histogram))
             })
         });
         drop(asm_resources_guard);

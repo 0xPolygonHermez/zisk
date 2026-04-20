@@ -23,7 +23,6 @@ zisk-common = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-asm-runner = { workspace = true }
 fields = { workspace = true }
 witness = { workspace = true }
 rom-setup = { workspace = true }

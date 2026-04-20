@@ -17,7 +17,7 @@ pub struct StreamOrderingActor {
 
 impl StreamOrderingActor {
     /// Spawns the ordering thread and returns the actor handle.
-    pub fn new<P: StreamProcessor>(processor: Arc<P>, job_id: JobId) -> Self {
+    pub fn new(processor: Arc<dyn StreamProcessor>, job_id: JobId) -> Self {
         let (tx, rx) = mpsc::channel::<StreamDataDto>();
 
         let handle = std::thread::spawn(move || Self::run(rx, processor, job_id));
@@ -38,19 +38,15 @@ impl StreamOrderingActor {
 
     // Error propagation: when run_inner returns Err, rx is dropped, closing the channel.
     // The next actor.send() in the gRPC loop then returns Err.
-    fn run<P: StreamProcessor>(
-        rx: mpsc::Receiver<StreamDataDto>,
-        processor: Arc<P>,
-        job_id: JobId,
-    ) {
+    fn run(rx: mpsc::Receiver<StreamDataDto>, processor: Arc<dyn StreamProcessor>, job_id: JobId) {
         if let Err(e) = Self::run_inner(rx, &*processor, &job_id) {
             error!("Stream ordering actor failed for job {}: {}", job_id, e);
         }
     }
 
-    fn run_inner<P: StreamProcessor>(
+    fn run_inner(
         rx: mpsc::Receiver<StreamDataDto>,
-        processor: &P,
+        processor: &dyn StreamProcessor,
         job_id: &JobId,
     ) -> Result<()> {
         // Min-heap ordered by sequence number (Reverse makes BinaryHeap a min-heap)

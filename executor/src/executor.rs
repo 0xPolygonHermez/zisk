@@ -220,7 +220,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         if let Some(handle_mo) = output.handle_mo {
             stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
 
-            let asm_runner_mo = handle_mo
+            let mo_plans = handle_mo
                 .join()
                 .map_err(|_| {
                     proofman_common::ProofmanError::InvalidSetup(
@@ -241,7 +241,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             secn_planning
                 .entry(self.registry.sm_bundle().get_mem_sm_id())
                 .or_default()
-                .extend(asm_runner_mo.plans);
+                .extend(mo_plans);
 
             stats_end!(self.state.stats, &_mo_add_scope);
         }

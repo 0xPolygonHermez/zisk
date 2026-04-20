@@ -1,9 +1,9 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::{mmap, msync, shm_open, MAP_FAILED, MAP_SHARED, MS_SYNC};
+use libc::{
+    c_void, close, mmap, msync, munmap, shm_open, MAP_FAILED, MAP_SHARED, MS_SYNC, PROT_READ,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
+};
 use std::io::{self, Result};
 use std::ptr;
-
-use libc::{c_void, close, munmap, PROT_READ, PROT_WRITE, S_IRUSR, S_IWUSR};
 
 pub struct SharedMemoryWriter {
     ptr: *mut u8,
@@ -19,11 +19,7 @@ unsafe impl Sync for SharedMemoryWriter {}
 impl SharedMemoryWriter {
     pub fn new(name: &str, size: usize, unlock_mapped_memory: bool) -> Result<Self> {
         // Open existing shared memory (read/write)
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let fd = Self::open_shmem(name, libc::O_RDWR, S_IRUSR | S_IWUSR);
-
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        let fd = Self::open_shmem(name, libc::O_RDWR, S_IRUSR as u32 | S_IWUSR as u32);
 
         // Map the memory region for read/write
         let ptr = Self::map(fd, size, PROT_READ | PROT_WRITE, unlock_mapped_memory, name);
@@ -32,7 +28,6 @@ impl SharedMemoryWriter {
         Ok(Self { ptr: ptr_u8, current_ptr: ptr_u8, size, fd, name: name.to_string() })
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
         let c_name = std::ffi::CString::new(name).expect("CString::new failed");
         let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
@@ -45,12 +40,6 @@ impl SharedMemoryWriter {
         fd
     }
 
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    fn open_shmem(_name: &str, _flags: i32, _mode: u32) -> i32 {
-        0
-    }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
         let mut flags = MAP_SHARED;
         if !unlock_mapped_memory {
@@ -62,11 +51,6 @@ impl SharedMemoryWriter {
             panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
         }
         mapped
-    }
-
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
-        ptr::null_mut()
     }
 
     unsafe fn unmap(&mut self) {
@@ -107,7 +91,6 @@ impl SharedMemoryWriter {
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr() as *const u8, self.ptr.add(offset), byte_size);
             // Force changes to be flushed to the shared memory
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if msync(self.ptr as *mut _, self.size, MS_SYNC /*| MS_INVALIDATE*/) != 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -143,7 +126,6 @@ impl SharedMemoryWriter {
         unsafe {
             ptr::copy_nonoverlapping(data.as_ptr() as *const u8, self.current_ptr, byte_size);
             // Force changes to be flushed to the shared memory
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -199,7 +181,6 @@ impl SharedMemoryWriter {
             }
 
             // Force changes to be flushed to the shared memory
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
                 return Err(io::Error::last_os_error());
             }
@@ -245,7 +226,6 @@ impl SharedMemoryWriter {
             (self.ptr.add(offset) as *mut u64).write(value);
 
             // Force changes to be flushed to the shared memory
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
                 panic!("msync failed in write_u64_at: {:?}", io::Error::last_os_error());
             }

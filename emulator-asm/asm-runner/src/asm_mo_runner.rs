@@ -1,4 +1,3 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use named_sem::NamedSemaphore;
 use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan};
 

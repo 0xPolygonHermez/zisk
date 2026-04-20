@@ -945,7 +945,6 @@ name = "cargo-zisk"
 version = "0.17.0"
 dependencies = [
  "anyhow",
- "asm-runner",
  "clap",
  "colored",
  "dirs",
@@ -5123,7 +5122,6 @@ name = "sm-rom"
 version = "0.17.0"
 dependencies = [
  "anyhow",
- "asm-runner",
  "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
  "itertools 0.14.0",
  "proofman-common",

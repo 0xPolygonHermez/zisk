@@ -1,21 +1,19 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread::JoinHandle,
-};
+use std::sync::Mutex;
 
-use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle};
 use anyhow::Result;
-use asm_runner::{AsmRunnerMO, AsmRunnerRH, HintsShmem};
-use precompiles_hints::HintsProcessor;
 
-use crate::AsmResources;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope,
+    AsmExecutionInfo, ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
+
+/// Stub for `AsmResources` on non-x86_64 platforms.
+#[derive(Clone, Debug)]
+pub struct AsmResources;
 
 pub struct EmulatorAsm {}
 
@@ -36,14 +34,7 @@ impl EmulatorAsm {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<(
-        Vec<EmuTrace>,
-        DeviceMetricsList,
-        NestedDeviceMetricsList,
-        Option<JoinHandle<Result<AsmRunnerMO>>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
-        u64,
-    )> {
+    ) -> Result<EmulatorResult> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -67,7 +58,9 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub fn get_hints_processor(
+        &self,
+    ) -> Result<Option<std::sync::Arc<dyn zisk_common::io::StreamProcessor>>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 

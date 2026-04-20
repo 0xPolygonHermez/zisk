@@ -1,4 +1,5 @@
 mod air_classifier;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod asm_resources;
 mod collector;
 mod dummy_counter;
@@ -21,6 +22,7 @@ mod witness_generator;
 mod witness_orchestrator;
 
 use air_classifier::*;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_resources::*;
 use collector::*;
 pub use dummy_counter::*;
@@ -45,11 +47,12 @@ use zisk_core::ZiskRom;
 pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
 pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
 
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{
+    io::ZiskStdin, EmuTrace, ExecutorStatsHandle, Plan, RomHistogramData, StatsScope,
+};
 
 use anyhow::Result;
 
@@ -57,8 +60,8 @@ pub type EmulatorResult = (
     Vec<EmuTrace>,
     DeviceMetricsList,
     NestedDeviceMetricsList,
-    Option<JoinHandle<Result<AsmRunnerMO>>>,
-    Option<JoinHandle<Result<AsmRunnerRH>>>,
+    Option<JoinHandle<Result<Vec<Plan>>>>,
+    Option<JoinHandle<Result<RomHistogramData>>>,
     u64,
 );
 

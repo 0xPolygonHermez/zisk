@@ -20,13 +20,11 @@ zisk-core = { workspace = true }
 zisk-cluster-common = { workspace = true }
 executor = { workspace = true }
 rom-setup = { workspace = true }
-asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
 fields = { workspace = true }
 borsh = { workspace = true }
-
-# Optional dependencies
 ziskemu = { workspace = true }
+asm-runner = { workspace = true }
 
 # External dependencies
 anyhow = { workspace = true }

@@ -22,7 +22,6 @@ executor = { workspace = true }
 rom-setup = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-asm-runner = { workspace = true }
 
 colored = { workspace = true }
 fields = { workspace = true }

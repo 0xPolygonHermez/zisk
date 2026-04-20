@@ -3,7 +3,6 @@
 //! This module handles the logic for witness computation, coordinating between collectors and
 //! witness generators
 
-use crate::AsmRunnerRH;
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
@@ -12,6 +11,7 @@ use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use zisk_common::RomHistogramData;
 use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -87,7 +87,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         Self { collector, witness_generator, trace_buffer_rom }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: RomHistogramData) -> Result<()> {
         self.collector.set_rh_data(rh_data)
     }
 

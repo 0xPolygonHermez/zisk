@@ -1,11 +1,11 @@
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
-    AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
+    sem_chunk_done_name, shmem_output_name, AsmRHHeader, AsmRunError, AsmService, AsmServices,
+    AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
 };
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
 use tracing::error;
-use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
+use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle, RomHistogramData};
 
 use anyhow::{Context, Result};
 
@@ -32,19 +32,19 @@ impl RHShMemReader {
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
-    pub asm_rowh_output: AsmRHData,
+    pub rom_histogram: RomHistogramData,
 }
 
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
         // Forget all mem_reads Vec<u64> before unmapping
-        std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
+        std::mem::forget(std::mem::take(&mut self.rom_histogram));
     }
 }
 
 impl AsmRunnerRH {
-    pub fn new(asm_rowh_output: AsmRHData) -> Self {
-        AsmRunnerRH { asm_rowh_output }
+    pub fn new(rom_histogram: RomHistogramData) -> Self {
+        AsmRunnerRH { rom_histogram }
     }
 
     pub fn run(
@@ -94,10 +94,38 @@ impl AsmRunnerRH {
                 Some(RHShMemReader::new(local_rank, base_port, unlock_mapped_memory)?);
         }
 
-        let asm_rowh_output =
-            AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
+        let rom_histogram =
+            rom_histogram_from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
 
         stats_end!(_stats, &_runner_scope);
-        Ok(AsmRunnerRH::new(asm_rowh_output))
+        Ok(AsmRunnerRH::new(rom_histogram))
+    }
+}
+
+/// Reads ROM histogram data from shared memory produced by the assembly runner.
+fn rom_histogram_from_shared_memory(
+    asm_shared_memory: &AsmSharedMemory<AsmRHHeader>,
+) -> RomHistogramData {
+    unsafe {
+        let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
+        // BIOS chunk data
+        let bios_data_ptr = data_ptr;
+        let bios_len = std::ptr::read(bios_data_ptr) as usize;
+        let bios_data_ptr = bios_data_ptr.add(1);
+        let bios_inst_count = Vec::from_raw_parts(bios_data_ptr, bios_len, bios_len);
+
+        // Advance pointer after BIOS
+        let prog_data_ptr = bios_data_ptr.add(bios_len);
+
+        // Program chunk data
+        let prog_len = std::ptr::read(prog_data_ptr) as usize;
+        let prog_data_ptr = prog_data_ptr.add(1);
+        let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
+
+        RomHistogramData {
+            steps: asm_shared_memory.map_header().steps,
+            bios_inst_count,
+            prog_inst_count,
+        }
     }
 }

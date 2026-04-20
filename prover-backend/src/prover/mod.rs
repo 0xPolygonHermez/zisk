@@ -12,8 +12,6 @@ use proofman::{
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 
 use anyhow::{anyhow, Result};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -21,7 +19,7 @@ use std::{
     time::Duration,
 };
 use zisk_common::{
-    io::{StreamSource, ZiskStdin},
+    io::{StreamProcessor, StreamSource, ZiskStdin},
     ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, StatsCostPerType,
     ZiskExecutorSummary, ZiskExecutorTime, ZiskVK,
 };
@@ -434,7 +432,7 @@ pub trait ProverEngine {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
     }
 
-    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    fn get_hints_processor(&self) -> Result<Option<Arc<dyn StreamProcessor>>> {
         Ok(None)
     }
 
@@ -654,7 +652,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.register_hints_stream(stream)
     }
 
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub fn get_hints_processor(&self) -> Result<Option<Arc<dyn StreamProcessor>>> {
         self.prover.get_hints_processor()
     }
 

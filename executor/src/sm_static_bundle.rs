@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::AsmRunnerRH;
 use crate::{NestedDeviceMetricsList, StaticDataBusCollect};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -27,6 +26,7 @@ use sm_mem::{
 };
 use sm_rom::{RomInstance, RomSM};
 use std::collections::{BTreeMap, HashMap};
+use zisk_common::RomHistogramData;
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_AIR_IDS;
@@ -175,7 +175,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: RomHistogramData) -> Result<()> {
         for (_, sm) in self.sm.values() {
             if let StateMachines::RomSM(rom_sm) = sm {
                 rom_sm.set_rh_data(rh_data)?;

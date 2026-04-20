@@ -7,12 +7,14 @@ use crate::{
     AsmResources, DeviceMetricsList, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList,
     StaticSMBundle,
 };
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Mutex, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{
+    io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, Plan, RomHistogramData,
+    StatsScope,
+};
 use zisk_core::ZiskRom;
 
 use anyhow::Result;
@@ -26,9 +28,9 @@ pub struct RomExecutionOutput {
     /// Device metrics for secondary state machines.
     pub secn_count: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
-    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
-    /// Handle to hints runner thread (for ASM emulator).
-    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
+    pub handle_mo: Option<JoinHandle<Result<Vec<Plan>>>>,
+    /// Handle to ROM histogram thread (for ASM emulator).
+    pub handle_rh: Option<JoinHandle<Result<RomHistogramData>>>,
     /// Execution result with step counts.
     pub steps: u64,
 }

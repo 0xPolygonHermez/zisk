@@ -5,10 +5,10 @@
 use std::sync::{atomic::AtomicU64, Arc};
 
 use crate::{rom_counter::RomCounter, RomSM};
-use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Mutex;
+use zisk_common::RomHistogramData;
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
@@ -38,10 +38,10 @@ pub struct RomInstance {
     counter_stats: Mutex<Option<CounterStats>>,
 
     /// Rom Histogram data from the assembly runner thread.
-    rh_data: Mutex<Option<AsmRunnerRH>>,
+    rh_data: Mutex<Option<RomHistogramData>>,
 
     /// Cached result from the assembly runner thread.
-    asm_result: Mutex<Option<AsmRunnerRH>>,
+    asm_result: Mutex<Option<RomHistogramData>>,
 }
 
 impl RomInstance {
@@ -58,7 +58,7 @@ impl RomInstance {
         ictx: InstanceCtx,
         bios_inst_count: Arc<Vec<AtomicU64>>,
         prog_inst_count: Arc<Vec<AtomicU64>>,
-        rh_data: Option<AsmRunnerRH>,
+        rh_data: Option<RomHistogramData>,
     ) -> Self {
         Self {
             zisk_rom,
@@ -129,7 +129,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
 
             return Ok(Some(RomSM::compute_witness_from_asm(
                 &self.zisk_rom,
-                &result_rh.asm_rowh_output,
+                result_rh,
                 trace_buffer,
             )?));
         }
