@@ -2,8 +2,8 @@
 #
 # Usage (from the workspace root):
 #
-#   Start the gateway only:
-#     docker compose -f distributed/docker-compose.yml up gateway
+#   Start the coordinator only:
+#     docker compose -f distributed/docker-compose.yml up coordinator
 #
 #   Start the full stack with N workers:
 #     docker compose -f distributed/docker-compose.yml up --scale worker=4
@@ -13,27 +13,27 @@
 
 services:
 
-  # ── Gateway ─────────────────────────────────────────────────────────────────
-  # Public gRPC API + embedded coordinator.
+  # ── Coordinator ──────────────────────────────────────────────────────────────
+  # Public gRPC API + embedded coordination engine.
   # Workers connect to the coordinator on port 50051 (internal to this container).
-  gateway:
+  coordinator:
     build:
       context: ..
-      dockerfile: distributed/Dockerfile.gateway
-    image: zisk-gateway:latest
-    container_name: zisk-gateway
+      dockerfile: distributed/Dockerfile.coordinator
+    image: zisk-coordinator:latest
+    container_name: zisk-coordinator
     restart: on-failure
     ports:
-      - "7000:7000"    # public gRPC API
-      - "9090:9090"    # Prometheus metrics
+      - "7000:7000" # public gRPC API
+      - "9090:9090" # Prometheus metrics
     volumes:
-      - ./config/gateway.toml:/etc/zisk/gateway.toml:ro
+      - ./config/coordinator.toml:/etc/zisk/coordinator.toml:ro
     environment:
       - RUST_LOG=info
     networks:
       - zisk
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:7000"]
+      test: [ "CMD", "grpc_health_probe", "-addr=:7000" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,7 +47,7 @@ services:
       context: ..
       dockerfile: distributed/Dockerfile.worker
       args:
-        GPU: false    # set to true for GPU-accelerated workers
+        GPU: false # set to true for GPU-accelerated workers
     image: zisk-worker:latest
     restart: on-failure
     volumes:
@@ -57,8 +57,8 @@ services:
     environment:
       - RUST_LOG=info
     depends_on:
-      gateway:
-        condition: service_started   # workers reconnect automatically, no need to wait for healthy
+      coordinator:
+        condition: service_started # workers reconnect automatically, no need to wait for healthy
     networks:
       - zisk
 
@@ -79,8 +79,8 @@ services:
     networks:
       - zisk
     depends_on:
-      gateway:
-        condition: service_healthy   # wait for gateway to pass health check before scraping
+      coordinator:
+        condition: service_healthy # wait for coordinator to pass health check before scraping
 
 networks:
   zisk:

@@ -7289,30 +7289,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "zisk-core"
+name = "zisk-coordinator-api"
 version = "0.17.0"
 dependencies = [
- "elf",
- "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
- "lib-c",
- "lib-float",
- "paste",
- "precompiles-helpers",
- "rayon",
- "riscv",
- "serde",
- "sha2",
- "tiny-keccak",
- "zisk-definitions",
- "ziskos-hints",
+ "anyhow",
+ "chrono",
+ "prost",
+ "prost-types",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "uuid",
+ "zisk-common",
 ]
 
 [[package]]
-name = "zisk-definitions"
+name = "zisk-coordinator-client"
 version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "tokio",
+ "tonic",
+ "uuid",
+ "zisk-coordinator-api",
+]
 
 [[package]]
-name = "zisk-gateway"
+name = "zisk-coordinator-server"
 version = "0.17.0"
 dependencies = [
  "anyhow",
@@ -7345,36 +7350,31 @@ dependencies = [
  "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-coordinator",
- "zisk-gateway-api",
+ "zisk-coordinator-api",
 ]
 
 [[package]]
-name = "zisk-gateway-api"
+name = "zisk-core"
 version = "0.17.0"
 dependencies = [
- "anyhow",
- "chrono",
- "prost",
- "prost-types",
- "tokio",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "uuid",
- "zisk-common",
+ "elf",
+ "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
+ "lib-c",
+ "lib-float",
+ "paste",
+ "precompiles-helpers",
+ "rayon",
+ "riscv",
+ "serde",
+ "sha2",
+ "tiny-keccak",
+ "zisk-definitions",
+ "ziskos-hints",
 ]
 
 [[package]]
-name = "zisk-gateway-client"
+name = "zisk-definitions"
 version = "0.17.0"
-dependencies = [
- "anyhow",
- "futures",
- "tokio",
- "tonic",
- "uuid",
- "zisk-gateway-api",
-]
 
 [[package]]
 name = "zisk-pil"
@@ -7436,9 +7436,9 @@ dependencies = [
  "zisk-build",
  "zisk-cluster-common",
  "zisk-common",
- "zisk-gateway",
- "zisk-gateway-api",
- "zisk-gateway-client",
+ "zisk-coordinator-api",
+ "zisk-coordinator-client",
+ "zisk-coordinator-server",
  "zisk-prover-backend",
 ]
 

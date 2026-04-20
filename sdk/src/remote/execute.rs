@@ -6,7 +6,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
 
 use std::time::Duration;
-use zisk_gateway_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
+use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
@@ -16,7 +16,7 @@ impl RemoteClient {
         &self,
         program: &GuestProgram,
         input: ProgramInput,
-        _executor: ExecutorKind, // remote: gateway uses its configured executor; hint ignored
+        _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {

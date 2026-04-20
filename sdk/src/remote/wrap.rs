@@ -3,7 +3,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::prove::ProveResult;
 use std::time::Duration;
 use zisk_common::{Proof, ProofKind};
-use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
+use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
 
 use anyhow::Result;
 
@@ -19,16 +19,16 @@ impl RemoteClient {
             .map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
 
         // Derive a deterministic UUID from the serialized proof bytes so that retrying
-        // the same wrap request produces the same ID (idempotent on the gateway side).
+        // the same wrap request produces the same ID (idempotent on the coordinator side).
         let proof_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, &data);
 
         let proof = DomainProof {
             proof_id,
-            hash_id: String::new(),       // gateway fills this on wrap
-            verification_key: Vec::new(), // gateway fills this on wrap
+            hash_id: String::new(),       // coordinator fills this on wrap
+            verification_key: Vec::new(), // coordinator fills this on wrap
             proof_kind: proof_kind.into(),
             data,
-            public_inputs: Vec::new(), // gateway fills this on wrap
+            public_inputs: Vec::new(), // coordinator fills this on wrap
             started_at: None,
             completed_at: None,
         };

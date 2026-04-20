@@ -27,11 +27,11 @@ impl ProverClient {
         EmbeddedClientBuilder::default()
     }
 
-    /// Returns a builder for the remote (gateway) backend.
+    /// Returns a builder for the remote (coordinator) backend.
     ///
     /// # Example
     /// ```ignore
-    /// let client = ProverClient::remote("http://gateway:50051").build()?;
+    /// let client = ProverClient::remote("http://coordinator:50051").build()?;
     /// ```
     #[must_use]
     pub fn remote(url: impl Into<String>) -> RemoteClientBuilder {

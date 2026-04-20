@@ -32,15 +32,15 @@ environment = "production"
 # ── Coordinator connection ────────────────────────────────────────────────────
 
 [coordinator]
-# gRPC URL of the gateway's worker-facing port.
-# In Docker Compose this is "http://gateway:50051".
-# For bare-metal, point to the gateway host's worker port.
+# gRPC URL of the coordinator's worker-facing port.
+# In Docker Compose this is "http://coordinator:50051".
+# For bare-metal, point to the coordinator host's worker port.
 url = "http://127.0.0.1:50051"
 
 # ── Connection behaviour ──────────────────────────────────────────────────────
 
 [connection]
-# Seconds between reconnection attempts when the gateway is unreachable.
+# Seconds between reconnection attempts when the coordinator is unreachable.
 reconnect_interval_seconds = 5
 
 # Seconds without a heartbeat before the worker considers the connection dead

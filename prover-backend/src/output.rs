@@ -86,7 +86,7 @@ impl ExecuteOutput {
         self.summary.time
     }
 
-    /// Construct a result from a remote gateway response.
+    /// Construct a result from a remote coordinator response.
     pub fn from_remote(
         steps: u64,
         execution_time: Duration,
@@ -116,7 +116,7 @@ impl ProveOutput {
         Self { summary: ExecutionSummary::new(proving_time, &execution), proof: Proof::default() }
     }
 
-    /// Construct a result from a remote gateway response (no ExecutorStatsHandle).
+    /// Construct a result from a remote coordinator response (no ExecutorStatsHandle).
     pub fn from_remote(
         proof: Proof,
         steps: u64,

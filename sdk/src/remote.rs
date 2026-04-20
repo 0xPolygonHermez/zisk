@@ -1,4 +1,4 @@
-//! Remote backend client — connects to a ZisK Gateway for distributed proving.
+//! Remote backend client — connects to a ZisK Coordinator for distributed proving.
 
 pub(crate) mod execute;
 pub(crate) mod prove;
@@ -9,8 +9,8 @@ pub(crate) mod wrap;
 use anyhow::Result;
 use std::time::Duration;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
-use zisk_gateway_api::dto::DomainInputKind;
-use zisk_gateway_client::GatewayClient;
+use zisk_coordinator_api::dto::DomainInputKind;
+use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
 use crate::{
@@ -59,14 +59,14 @@ impl RemoteClientBuilder {
     /// Build the [`RemoteClient`].
     pub fn build(self) -> Result<RemoteClient> {
         crate::client::ensure_single_instance();
-        let gw = GatewayClient::connect(self.url, self.connect_timeout, self.request_timeout)?;
+        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)?;
         Ok(RemoteClient { gw })
     }
 }
 
 #[derive(Clone)]
 pub struct RemoteClient {
-    pub(crate) gw: GatewayClient,
+    pub(crate) gw: CoordinatorClient,
 }
 
 impl Client for RemoteClient {
@@ -147,7 +147,7 @@ impl RemoteClient {
         SetupRequest::new(self, program)
     }
 
-    /// Upload/register the program ELF with the gateway.
+    /// Upload/register the program ELF with the coordinator.
     #[must_use]
     pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
         UploadRequest::new(self, program)

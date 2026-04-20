@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use zisk_gateway_api::dto::{
+use zisk_coordinator_api::dto::{
     DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
     TerminalStatus,
 };
-use zisk_gateway_client::{Job, WatchHandle};
+use zisk_coordinator_client::{Job, WatchHandle};
 
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
@@ -130,7 +130,7 @@ impl<T> JobHandle<T> {
     ///
     /// - Embedded: aborts the blocking task (the thread runs to completion but the
     ///   result is discarded; awaiting the handle will return an error).
-    /// - Remote: calls the gateway `CancelJob` RPC and waits until the job reaches
+    /// - Remote: calls the coordinator `CancelJob` RPC and waits until the job reaches
     ///   a terminal state. Returns `Ok(true)` if cancelled, `Ok(false)` if it had
     ///   already reached a terminal state before the request arrived.
     pub async fn cancel(&mut self) -> Result<bool> {

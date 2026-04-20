@@ -14,7 +14,7 @@ impl RemoteClient {
 
         if computed_hash_id != *expected_hash_id {
             anyhow::bail!(
-                "Gateway returned hash_id '{}', expected '{}'. \
+                "Coordinator returned hash_id '{}', expected '{}'. \
              Ensure the program was compiled for the correct target.",
                 computed_hash_id,
                 expected_hash_id

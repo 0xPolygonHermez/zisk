@@ -21,7 +21,7 @@ pub enum CoordinatorJobResult {
     Wrap { proof_bytes: Vec<u8> },
 }
 
-/// Execution statistics forwarded to the gateway on job completion.
+/// Execution statistics forwarded to the coordinator on job completion.
 #[derive(Debug, Clone, Default)]
 pub struct CoordinatorExecutionStats {
     pub steps: u64,

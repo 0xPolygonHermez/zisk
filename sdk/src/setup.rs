@@ -22,7 +22,7 @@ impl SetupResult {
 /// Obtain via `client.setup(&program)`.
 ///
 /// - Embedded client: executes ROM setup locally if not already done.
-/// - Remote client: registers the program on the gateway for proving.
+/// - Remote client: registers the program on the coordinator for proving.
 pub struct SetupRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,

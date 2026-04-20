@@ -1,0 +1,59 @@
+# Dockerfile.coordinator — ZisK Coordinator server
+#
+# CPU-only image: the coordinator embeds the coordination engine in-process but does not
+# run any proof computation itself.
+#
+# Build context must be the workspace root:
+#   docker build -f distributed/Dockerfile.coordinator -t zisk-coordinator .
+
+# ── grpc-health-probe ─────────────────────────────────────────────────────────
+# Static binary used by the container healthcheck and grpc-health-probe CLI.
+FROM debian:bookworm-slim AS probe
+ARG GRPC_HEALTH_PROBE_VERSION=v0.4.28
+# TARGETARCH is set by BuildKit to the target platform arch (amd64, arm64, …).
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && wget -qO /grpc_health_probe \
+    "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-${TARGETARCH}" \
+    && chmod +x /grpc_health_probe
+
+# ── Build stage ────────────────────────────────────────────────────────────────
+FROM rust:bookworm AS builder
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN cargo build --release -p zisk-coordinator-server
+
+# ── Runtime stage ──────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin zisk
+
+RUN mkdir -p /etc/zisk /var/lib/zisk \
+    && chown zisk:zisk /var/lib/zisk
+
+COPY --from=builder /workspace/target/release/zisk-coordinator /usr/local/bin/zisk-coordinator
+COPY --from=probe   /grpc_health_probe                      /usr/local/bin/grpc_health_probe
+
+# Public gRPC API | Prometheus metrics | Worker-facing coordinator (internal)
+EXPOSE 7000 9090 50051
+
+USER zisk
+
+ENTRYPOINT ["zisk-coordinator"]
+CMD ["--config", "/etc/zisk/coordinator.toml"]

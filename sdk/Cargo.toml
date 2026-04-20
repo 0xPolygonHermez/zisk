@@ -28,9 +28,9 @@ tonic = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 zisk-cluster-common = { workspace = true }
-zisk-gateway-api = { workspace = true }
-zisk-gateway-client = { workspace = true }
-zisk-gateway = { workspace = true }
+zisk-coordinator-api = { workspace = true }
+zisk-coordinator-client = { workspace = true }
+zisk-coordinator-server = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }
 
 # For utils.rs

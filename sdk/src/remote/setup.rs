@@ -4,7 +4,7 @@ use crate::{
     setup::SetupResult,
 };
 use std::time::Duration;
-use zisk_gateway_api::dto::{DomainJobKind, DomainSetupRequest};
+use zisk_coordinator_api::dto::{DomainJobKind, DomainSetupRequest};
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
@@ -13,7 +13,7 @@ impl RemoteClient {
     pub(crate) fn do_setup(
         &self,
         program: &GuestProgram,
-        _with_hints: bool, // remote: gateway controls hint support per program; flag ignored
+        _with_hints: bool, // remote: coordinator controls hint support per program; flag ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {

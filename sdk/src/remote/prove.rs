@@ -7,7 +7,7 @@ use crate::{
 };
 use std::time::Duration;
 use zisk_common::ProofKind;
-use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
+use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
@@ -17,7 +17,7 @@ impl RemoteClient {
         &self,
         program: &GuestProgram,
         input: ProgramInput,
-        _executor: ExecutorKind, // remote: gateway uses its configured executor; hint ignored
+        _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,

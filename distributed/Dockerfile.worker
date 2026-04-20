@@ -1,7 +1,7 @@
 # Dockerfile.worker — ZisK Worker service
 #
 # Supports optional GPU acceleration via ARG GPU=true.
-# Workers connect to the gateway's embedded coordinator (port 50051).
+# Workers connect to the coordinator's embedded coordination engine (port 50051).
 #
 # Build context must be the workspace root:
 #   docker build -f distributed/Dockerfile.worker -t zisk-worker .

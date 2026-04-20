@@ -10,8 +10,8 @@ compute_capacity.compute_units = 10
 environment = "production"
 
 [coordinator]
-# "zisk-gateway" resolves to the gateway container via Docker's internal DNS.
-url = "http://gateway:50051"
+# "zisk-coordinator" resolves to the coordinator container via Docker's internal DNS.
+url = "http://coordinator:50051"
 
 [connection]
 reconnect_interval_seconds = 5

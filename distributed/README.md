@@ -6,8 +6,8 @@ A distributed proof generation system for the ZisK zkVM that orchestrates proof 
 
 The system has two components:
 
-- **Gateway** `zisk-gateway`: The single entry point for clients. Exposes a public gRPC API, hosts the coordination engine, and listens for worker connections on a separate internal port.
-- **Worker** `zisk-worker`: Registers to the gateway's coordinator, reports its compute capacity, and executes assigned proof tasks.
+- **Coordinator** `zisk-coordinator`: The single entry point for clients. Exposes a public gRPC API, hosts the coordination engine, and listens for worker connections on a separate internal port.
+- **Worker** `zisk-worker`: Registers to the coordinator, reports its compute capacity, and executes assigned proof tasks.
 
 ```
              Client
@@ -15,7 +15,7 @@ The system has two components:
                │  gRPC (port 7000)
                ▼
 ┌──────────────────────────────┐
-│         zisk-gateway         │
+│       zisk-coordinator       │
 │                              │
 │  ┌────────────────────────┐  │
 │  │   Coordination Engine  │  │◄── zisk-worker (port 50051, N workers)
@@ -27,13 +27,13 @@ The system has two components:
 
 ## Proof Generation Process
 
-1. The **Gateway** starts opening both the public API port and the internal cluster port.
+1. The **Coordinator** starts opening both the public API port and the internal cluster port.
 2. **Worker** nodes connect to the cluster's internal port, registering their compute capacity.
 3. When a proof request arrives via the public API, the coordinator selects workers and assigns each a partition of the total compute capacity. Each worker uses its assigned partition to independently determine which part of the computation to perform — the coordinator does not split the work itself, only the assignment. A proof job proceeds through three phases:
    - **Contributions:** Each worker computes its partial challenges for its assigned partition.
    - **Prove:** Each worker uses the global challenge to generate its partial proof.
    - **Aggregation:** A designated worker aggregates all partial proofs into the final proof.
-4. The gateway returns the final proof to the client.
+4. The coordinator returns the final proof to the client.
 
 ## Key Concepts
 
@@ -47,12 +47,12 @@ The system has two components:
 
 ```bash
 # Build binaries (from project root)
-cargo build --release --bin zisk-gateway --bin zisk-worker
+cargo build --release --bin zisk-coordinator --bin zisk-worker
 
-# Start the gateway (listens for workers on :50051)
-cargo run --release --bin zisk-gateway
+# Start the coordinator (listens for workers on :50051)
+cargo run --release --bin zisk-coordinator
 
-# Start a worker (in another terminal) — connects to the gateway's coordinator port
+# Start a worker (in another terminal) — connects to the coordinator port
 cargo run --release --bin zisk-worker -- --config distributed/crates/worker/config/dev.toml
 ```
 
@@ -64,10 +64,10 @@ The easiest way to run the distributed system. All commands run from the **works
 # Build images
 docker compose -f distributed/docker-compose.yml build
 
-# Start the gateway only
-docker compose -f distributed/docker-compose.yml up gateway
+# Start the coordinator only
+docker compose -f distributed/docker-compose.yml up coordinator
 
-# Start the full stack: gateway + 4 workers + Prometheus
+# Start the full stack: coordinator + 4 workers + Prometheus
 docker compose -f distributed/docker-compose.yml up --scale worker=4
 
 # Build workers with GPU support
@@ -80,7 +80,7 @@ docker compose -f distributed/docker-compose.yml up --scale worker=4
 | Port | Service |
 |------|---------|
 | `7000` | Public gRPC API (clients connect here) |
-| `9090` | Prometheus metrics (gateway) |
+| `9090` | Prometheus metrics (coordinator) |
 | `9091` | Prometheus UI (mapped from the prometheus container) |
 | `50051` | Internal worker port (workers connect here, not exposed externally by default) |
 
@@ -93,29 +93,29 @@ volumes:
   - ${ZISK_CACHE_DIR:-~/.zisk/cache}:/app/.zisk/cache:ro
 ```
 
-## Gateway Configuration
+## Coordinator Configuration
 
-The gateway is configured via a TOML file. The search order (later entries override earlier):
+The coordinator is configured via a TOML file. The search order (later entries override earlier):
 
-1. `/etc/zisk/gateway.toml` — system-wide
-2. `$XDG_CONFIG_HOME/zisk/gateway.toml` — user-level
-3. `./gateway.toml` — current directory
-4. `ZISK_GATEWAY_*` environment variables
+1. `/etc/zisk/coordinator.toml` — system-wide
+2. `$XDG_CONFIG_HOME/zisk/coordinator.toml` — user-level
+3. `./coordinator.toml` — current directory
+4. `ZISK_COORDINATOR_*` environment variables
 5. CLI flags
 
 | TOML Key | CLI / Env | Default | Description |
 |---|---|---|---|
-| `service.name` | — | `ZisK Gateway` | Service name |
+| `service.name` | — | `ZisK Coordinator` | Service name |
 | `service.environment` | — | `development` | `development` \| `staging` \| `production` |
 | `server.host` | — | `0.0.0.0` | gRPC listen host |
-| `server.port` | `--port` / `ZISK_GATEWAY_PORT` | `7000` | gRPC listen port |
+| `server.port` | `--port` / `ZISK_COORDINATOR_PORT` | `7000` | gRPC listen port |
 | `server.shutdown_timeout_seconds` | — | `30` | Graceful shutdown timeout |
 | `metrics.enabled` | — | `true` | Enable Prometheus metrics endpoint |
 | `metrics.host` | — | `0.0.0.0` | Metrics listen host |
 | `metrics.port` | — | `9090` | Metrics listen port |
 | `logging.level` | `--log-level` / `RUST_LOG` | `info` | `trace` \| `debug` \| `info` \| `warn` \| `error` |
 | `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
-| `backend.mode` | `--backend` / `ZISK_GATEWAY_BACKEND` | `coordinator` | `coordinator` \| `mock` |
+| `backend.mode` | `--backend` / `ZISK_COORDINATOR_BACKEND` | `coordinator` | `coordinator` \| `mock` |
 | `coordinator.worker_port` | — | `50051` | Port for worker connections |
 | `coordinator.config_file` | — | — | Optional path to a coordinator TOML config |
 
@@ -167,15 +167,15 @@ Advanced coordinator parameters can be provided via a separate TOML file referen
 
 ## Worker
 
-The worker executes proof generation tasks assigned by the coordinator. It connects to the gateway's worker port, registers its compute capacity, and waits for task assignments. Workers reconnect automatically on disconnection.
+The worker executes proof generation tasks assigned by the coordinator. It connects to the coordinator's worker port, registers its compute capacity, and waits for task assignments. Workers reconnect automatically on disconnection.
 
 ```bash
-# Start a worker (connects to gateway at 127.0.0.1:50051 by default)
+# Start a worker (connects to coordinator at 127.0.0.1:50051 by default)
 cargo run --release --bin zisk-worker -- --config worker.toml
 
 # Equivalent with individual flags
 cargo run --release --bin zisk-worker -- \
-  --coordinator-url http://<gateway-host>:50051 \
+  --coordinator-url http://<coordinator-host>:50051 \
   --compute-capacity 10 \
   --proving-key ~/.zisk/provingKey
 
@@ -187,14 +187,14 @@ You can run multiple workers on the same machine by pointing each to a different
 
 ## Worker Configuration
 
-Workers are configured via a TOML file. The search order follows the same pattern as the gateway, using the `ZISK_WORKER_CONFIG` environment variable.
+Workers are configured via a TOML file. The search order follows the same pattern as the coordinator, using the `ZISK_WORKER_CONFIG` environment variable.
 
 | TOML Key | CLI / Env | Default | Description |
 |---|---|---|---|
 | `worker.worker_id` | `--worker-id` | Auto UUID | Unique worker identifier |
 | `worker.compute_capacity.compute_units` | `--compute-capacity` | `10` | Compute capacity in units |
 | `worker.environment` | — | `development` | `development` \| `production` |
-| `coordinator.url` | `--coordinator-url` | `http://127.0.0.1:50051` | Gateway's worker-facing coordinator URL |
+| `coordinator.url` | `--coordinator-url` | `http://127.0.0.1:50051` | gRPC URL of the coordinator's worker-facing port |
 | `connection.reconnect_interval_seconds` | — | `5` | Reconnection interval |
 | `connection.heartbeat_timeout_seconds` | — | `30` | Heartbeat timeout |
 | `logging.level` | `RUST_LOG` | `info` | Log level |
@@ -222,7 +222,7 @@ compute_capacity.compute_units = 10
 environment = "production"
 
 [coordinator]
-url = "http://<gateway-host>:50051"
+url = "http://<coordinator-host>:50051"
 
 [connection]
 reconnect_interval_seconds = 5
@@ -234,15 +234,15 @@ format = "json"
 file_path = "/var/log/zisk/worker.log"
 ```
 
-## Gateway API
+## Coordinator API
 
-The gateway exposes a gRPC service `ZiskGatewayApi` on port 7000. Follow the proto definitions in `distributed/crates/gateway-api/proto/zisk_gateway_api.proto` for the full API specification. The main RPC methods are summarized below.
+The coordinator exposes a gRPC service `ZiskCoordinatorApi` on port 7000. Follow the proto definitions in `distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto` for the full API specification. The main RPC methods are summarized below.
 
 ### Operations
 
 #### `RegisterGuestProgram`
 
-Uploads a ZisK ELF binary to the gateway. Returns a stable `hash_id` (blake3 of the ELF bytes). Idempotent — the same ELF always returns the same `hash_id`. Registering a program stores the ELF binary in the gateway's cache and makes it available for subsequent setup jobs. The `hash_id` is used to reference the program in later requests.
+Uploads a ZisK ELF binary to the coordinator. Returns a stable `hash_id` (blake3 of the ELF bytes). Idempotent — the same ELF always returns the same `hash_id`. Registering a program stores the ELF binary in the coordinator's cache and makes it available for subsequent setup jobs. The `hash_id` is used to reference the program in later requests.
 
 #### `JobRequest` — Setup
 
@@ -254,7 +254,7 @@ Runs the program with the given inputs and returns execution statistics and publ
 
 #### `JobRequest` — Prove
 
-Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the gateway supports three proof types: STARK, STARK Minimal, and PLONK.
+Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and PLONK.
 
 **Input kinds:**
 
@@ -292,30 +292,30 @@ Cancels a running or queued job.
 
 ## Health Checking
 
-The gateway implements the [gRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md):
+The coordinator implements the [gRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md):
 
 ## Running as a System Service
 
 For production deployments without Docker, use the install scripts to register the binaries as systemd services. The scripts create a dedicated system user, install the config, write the unit file, and start the service.
 
-### Gateway
+### Coordinator
 
 ```bash
 # Build from source and install (run from workspace root)
-sudo distributed/crates/gateway/scripts/install.sh
+sudo distributed/crates/coordinator-server/scripts/install.sh
 
 # Use a pre-built binary
-sudo distributed/crates/gateway/scripts/install.sh --binary target/release/zisk-gateway
+sudo distributed/crates/coordinator-server/scripts/install.sh --binary target/release/zisk-coordinator
 
 # Use an existing config file
-sudo distributed/crates/gateway/scripts/install.sh --config /path/to/gateway.toml
+sudo distributed/crates/coordinator-server/scripts/install.sh --config /path/to/coordinator.toml
 
 # Remove the service
-sudo distributed/crates/gateway/scripts/install.sh --uninstall
+sudo distributed/crates/coordinator-server/scripts/install.sh --uninstall
 ```
 
 ```bash
-sudo journalctl -u zisk-gateway -f
+sudo journalctl -u zisk-coordinator -f
 ```
 
 ### Worker
@@ -355,26 +355,26 @@ sudo systemctl enable --now zisk-worker@2
 
 ## Troubleshooting
 
-**Worker can't connect to gateway:**
-- Verify the gateway is running and the worker port is accessible (`50051` by default)
+**Worker can't connect to coordinator:**
+- Verify the coordinator is running and the worker port is accessible (`50051` by default)
 - In Docker, confirm both services are on the same network (`zisk`)
-- Ensure `coordinator.url` in `worker.toml` matches the gateway's hostname and worker port
+- Ensure `coordinator.url` in `worker.toml` matches the coordinator's hostname and worker port
 
-**Gateway fails to start:**
+**Coordinator fails to start:**
 - Check for port conflicts on `7000`, `9090`, or `50051`
-- Validate `gateway.toml` with a TOML linter
+- Validate `coordinator.toml` with a TOML linter
 - Use `--log-level debug` for detailed startup logging
 
 **Worker not receiving tasks:**
-- Check worker registration in gateway logs (`RUST_LOG=debug`)
+- Check worker registration in coordinator logs (`RUST_LOG=debug`)
 - Verify the worker's `compute_capacity` is sufficient for queued jobs
 - Ensure no two workers share the same `worker_id`
 
 **Debug logging:**
 
 ```bash
-# Gateway
-RUST_LOG=debug cargo run --release --bin zisk-gateway
+# Coordinator
+RUST_LOG=debug cargo run --release --bin zisk-coordinator
 
 # Worker
 RUST_LOG=debug cargo run --release --bin zisk-worker -- --config worker.toml

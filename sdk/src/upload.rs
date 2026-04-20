@@ -22,7 +22,7 @@ impl UploadResult {
 /// Obtain via `client.upload(&program)`.
 ///
 /// - Embedded client: no-op (program is available locally).
-/// - Remote client: registers the ELF with the gateway and verifies the `hash_id` matches.
+/// - Remote client: registers the ELF with the coordinator and verifies the `hash_id` matches.
 pub struct UploadRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
