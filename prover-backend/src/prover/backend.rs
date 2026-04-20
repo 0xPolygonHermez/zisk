@@ -1,7 +1,7 @@
 use crate::create_debug_info;
 use crate::BackendProverOpts;
 use crate::{
-    ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
+    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use anyhow::Result;
 use asm_runner::HintsShmem;
@@ -241,7 +241,7 @@ impl ProverBackend {
         &self,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    ) -> Result<VerifyConstraintsOutput> {
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
@@ -253,16 +253,16 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
 
-        let (result, stats) = self.executor.get_execution_result();
+        let (result, _stats) = self.executor.get_execution_result();
 
-        stats_mark!(stats, 0, "END", 0);
+        stats_mark!(_stats, 0, "END", 0);
 
         #[cfg(feature = "stats")]
-        stats.store_stats();
+        _stats.store_stats();
 
         let publics = self.proofman.get_publics();
 
-        Ok(ZiskVerifyConstraintsResult::new(result, elapsed.as_millis() as u64, stats, &publics))
+        Ok(VerifyConstraintsOutput::new(result, elapsed.as_millis() as u64, &publics))
     }
 
     pub(crate) fn prove(

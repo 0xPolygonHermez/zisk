@@ -51,28 +51,27 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &MemTrace<()>, file_name: &str) {
+    pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<()>::NUM_ROWS;
+        let num_rows = MemTrace::<R>::NUM_ROWS;
 
         for i in 0..num_rows {
-            let addr = trace[i].addr.as_canonical_u64() * 8;
-            let step = trace[i].step.as_canonical_u64();
+            let addr = trace[i].get_addr() as u64 * 8;
+            let step = trace[i].get_step();
             let main_step = MemHelpers::mem_step_to_main_step(step);
-            let op = if trace[i].wr.is_zero() { 'R' } else { 'W' };
-            let values =
-                [trace[i].value[0].as_canonical_u64(), trace[i].value[1].as_canonical_u64()];
+            let op = if trace[i].get_wr() { 'W' } else { 'R' };
+            let values = [trace[i].get_value(0) as u64, trace[i].get_value(1) as u64];
             let value = values[0] | (values[1] << 32);
             writeln!(
                 writer,
                 "{i:<8} {addr:#010X} {step:>13} {main_step:>12} {op} {values:?} 0x{value:016X}"
             )
             .unwrap();
-            let dual = !trace[i].sel_dual.is_zero();
+            let dual = trace[i].get_sel_dual();
             if dual {
-                let step = trace[i].step_dual.as_canonical_u64();
+                let step = trace[i].get_step_dual();
                 writeln!(writer, "{i:<8} {addr:#010X} {step:>13} {main_step:>12} R {values:?} 0x{value:016X} DUAL")
                     .unwrap();
             }

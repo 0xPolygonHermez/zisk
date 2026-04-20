@@ -75,6 +75,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         let mut seq_end = false;
         let mut next_value = 0;
         assert!(rows > 0);
+        #[allow(clippy::explicit_counter_loop)]
         for (irow, row) in trace.iter_mut().enumerate().take(rows) {
             row.set_main_step(input.step);
             row.set_is_memeq(input.is_mem_eq);

@@ -54,25 +54,19 @@ impl<F: PrimeField64> RomDataSM<F> {
         ROM_DATA_W_ADDR_END
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &RomDataTrace<()>, file_name: &str) {
+    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::<()>::NUM_ROWS;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].get_addr() * 8;
             let step = trace[i].get_step();
             let sel = trace[i].get_sel();
             // TODO: chunk_size * 4 = 20
-            writeln!(
-                writer,
-                "{:#010X} {} {:?} S:{sel} @{}",
-                addr,
-                step,
-                trace[i].value,
-                (step - 1) >> 20
-            )
-            .unwrap();
+            let values = [trace[i].get_value(0), trace[i].get_value(1)];
+            writeln!(writer, "{:#010X} {} {:?} S:{sel} @{}", addr, step, values, (step - 1) >> 20)
+                .unwrap();
         }
     }
 }

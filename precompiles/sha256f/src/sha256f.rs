@@ -294,8 +294,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
             let s1 = rotate_right(old_e, 6) ^ rotate_right(old_e, 11) ^ rotate_right(old_e, 25);
             let t1 = (old_h as u64) + (s1 as u64) + (ch(old_e, old_f, old_g) as u64) + (k as u64) + (w as u64);
             let t2 = (s0 as u64) + (maj(old_a, old_b, old_c) as u64);
-            let a = (t1 as u64) + (t2 as u64);
-            let e = (old_d as u64) + (t1 as u64);
+            let a = t1 + t2;
+            let e = (old_d as u64) + t1;
             (a, e)
         }
 

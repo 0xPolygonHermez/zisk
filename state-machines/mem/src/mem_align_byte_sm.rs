@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-#[cfg(feature = "debug_mem_align")]
-use std::sync::Mutex;
-
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use rayon::prelude::*;
@@ -307,9 +304,6 @@ pub struct MemAlignByteSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 
-    #[cfg(feature = "debug_mem_align")]
-    num_computed_rows: Mutex<usize>,
-
     /// The table ID for the Mem Align ROM State Machine
     table_dual_byte_id: usize,
 
@@ -327,8 +321,6 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 .expect("Failed to get dual byte table ID"),
             table_16b_id: std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16b table ID"),
             table_8b_id: std.get_range_id(0, 0xFF, None).expect("Failed to get 8b table ID"),
-            #[cfg(feature = "debug_mem_align")]
-            num_computed_rows: Mutex::new(0),
         })
     }
 

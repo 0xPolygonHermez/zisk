@@ -282,8 +282,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         let mut cost_per_type = StatsCostPerType::default();
         cost_per_type.add_cost(StatsType::Main, cost_main);
 
-        let mut secn_planning: Vec<_> =
-            secn_planning.into_iter().flat_map(|(_, plans)| plans).collect();
+        let mut secn_planning: Vec<_> = secn_planning.into_values().flatten().collect();
 
         self.planner
             .assign_secn_instances(&pctx, global_ids, &mut secn_planning)

@@ -33,7 +33,7 @@ ripemd = { workspace = true }
 zisk-definitions = { path = "../../definitions" }
 critical-section = { version = "1.2.0", optional = true }
 embedded-alloc = { version = "0.6.0", optional = true }
-talc = { version = "4.4.3", features = ["lock_api"], optional = true }
+talc = { version = "4.4.3", default-features = false, features = ["lock_api"], optional = true }
 dlmalloc = { version = "0.2", default-features = false, optional = true }
 
 sha2 = { workspace = true }

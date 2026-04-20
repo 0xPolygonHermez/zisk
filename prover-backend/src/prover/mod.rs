@@ -21,67 +21,11 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, StatsCostPerType,
-    ZiskExecutorSummary, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, ZiskExecutorTime, ZiskVK,
 };
 use zisk_core::ZiskRom;
 
-use crate::{ExecuteOutput, ProveOutput};
-
-pub struct ZiskVerifyConstraintsResult {
-    pub executor_summary: ZiskExecutorSummary,
-    pub duration: u64,
-    pub stats: ExecutorStatsHandle,
-    pub publics: PublicValues,
-}
-
-impl ZiskVerifyConstraintsResult {
-    pub fn new(
-        execution: ZiskExecutorSummary,
-        duration: u64,
-        stats: ExecutorStatsHandle,
-        publics: &[u8],
-    ) -> Self {
-        Self { executor_summary: execution, duration, stats, publics: PublicValues::new(publics) }
-    }
-
-    pub fn get_publics(&self) -> &PublicValues {
-        &self.publics
-    }
-
-    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-    ) -> Result<T> {
-        self.publics.read()
-    }
-
-    pub fn get_public_values_abi<T>(&self) -> Result<T>
-    where
-        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
-    {
-        self.publics.read_abi()
-    }
-
-    pub fn get_execution_steps(&self) -> u64 {
-        self.executor_summary.steps
-    }
-
-    pub fn get_execution_total_cost(&self) -> u64 {
-        self.executor_summary.cost_per_type.total_cost()
-    }
-
-    pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
-        &self.executor_summary.cost_per_type
-    }
-
-    pub fn get_executor_time(&self) -> &ZiskExecutorTime {
-        &self.executor_summary.executor_time
-    }
-
-    pub fn get_duration(&self) -> u64 {
-        self.duration
-    }
-}
+use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
 /// ASM-specific configuration options
 #[derive(Clone, Default)]
@@ -368,7 +312,7 @@ pub trait ProverEngine {
         program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult>;
+    ) -> Result<VerifyConstraintsOutput>;
 
     fn prove(
         &self,
@@ -561,7 +505,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    ) -> Result<VerifyConstraintsOutput> {
         self.prover.verify_constraints(program, stdin, debug_info)
     }
 

@@ -3,7 +3,7 @@ use crate::GuestProgram;
 use crate::{
     check_paths_exist,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
+    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_rom, get_rom_bin_path, BackendProverOpts};
 use executor::initialize_executor;
@@ -183,7 +183,7 @@ impl ProverEngine for EmuProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }

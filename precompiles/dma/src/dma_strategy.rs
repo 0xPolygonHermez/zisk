@@ -567,7 +567,7 @@ impl<F: PrimeField64> DmaStrategy<F> {
             if plan.is_empty() {
                 continue;
             }
-            let title = &format!("{}", get_dma_air_name::<F>(*air_id));
+            let title = &get_dma_air_name::<F>(*air_id).to_string();
             debug_info += &plan
                 .iter()
                 .enumerate()

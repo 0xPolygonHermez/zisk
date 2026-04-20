@@ -6,7 +6,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    AsmOptions, BackendProverOpts, ProverClientBuilder, ZiskVerifyConstraintsResult,
+    AsmOptions, BackendProverOpts, ProverClientBuilder, VerifyConstraintsOutput,
 };
 
 use crate::common::detect_current_project_elf;
@@ -148,15 +148,15 @@ impl ZiskVerifyConstraints {
             "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
         print_execution_summary(
-            &result.executor_summary.executor_time,
-            result.duration,
-            result.executor_summary.steps,
+            result.get_executor_time(),
+            result.get_duration(),
+            result.get_execution_steps(),
         );
 
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<VerifyConstraintsOutput> {
         let mut prover_options = BackendProverOpts::default();
 
         #[cfg(not(feature = "cpu-only"))]
@@ -183,7 +183,7 @@ impl ZiskVerifyConstraints {
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    ) -> Result<VerifyConstraintsOutput> {
         let mut prover_options = BackendProverOpts::default();
 
         #[cfg(not(feature = "cpu-only"))]

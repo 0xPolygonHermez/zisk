@@ -5,7 +5,7 @@ use crate::GuestProgram;
 use crate::{
     check_paths_exist, ensure_rom, get_rom_bin_path,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ExecuteOutput, ProveOutput, ZiskAggPhaseResult, ZiskPhaseResult, ZiskVerifyConstraintsResult,
+    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
@@ -300,7 +300,7 @@ impl ProverEngine for AsmProver {
         program: &GuestProgram,
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
+    ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }

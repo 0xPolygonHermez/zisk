@@ -419,7 +419,7 @@ impl Stats {
                         println!("**** STACK MISMATCH DETECTED ****\n");
                         println!(
                             "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
-                            regs[1], self.previous_pc
+                            self.regs[1], self.previous_pc
                         );
                         if let Some(caller_roi_index) = return_call.caller_roi_index {
                             let _roi = &self.rois[caller_roi_index];
@@ -803,7 +803,7 @@ impl Stats {
             .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
             .map(|(index, roi)| (index, if by_step { roi.get_steps() } else { roi.get_cost() }))
             .collect();
-        top_rois.sort_by(|a, b| b.1.cmp(&a.1));
+        top_rois.sort_by_key(|a| std::cmp::Reverse(a.1));
 
         // If there is an ROI whose name contains main_func_name, remove all entries from the
         // beginning up to and including it.
@@ -954,7 +954,7 @@ impl Stats {
                     }
                 }
             }
-            cost_frops_opcodes.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+            cost_frops_opcodes.sort_unstable_by_key(|a| std::cmp::Reverse(a.1));
             for cost_frops in cost_frops_opcodes.iter().take(10) {
                 report.sdk_cost_frops_line(&cost_frops.0, cost_frops.1, cost_frops.2);
             }
@@ -988,7 +988,7 @@ impl Stats {
                 // report.sdk_top_cost_line(label, cost);
                 let mut tags_steps: Vec<_> =
                     self.profile_tags.iter().filter(|t| t.report_steps).collect();
-                tags_steps.sort_by(|a, b| b.total_steps.cmp(&a.total_steps));
+                tags_steps.sort_by_key(|tag| std::cmp::Reverse(tag.total_steps));
                 let label_width = tags_steps.iter().map(|tag| tag.tag.len()).max().unwrap_or(0);
                 for tag in tags_steps {
                     report.sdk_tag_step_line(&tag.tag, tag.total_steps, label_width);
@@ -1000,7 +1000,7 @@ impl Stats {
                 // report.sdk_top_cost_line(label, cost);
                 let mut tags_cost: Vec<_> =
                     self.profile_tags.iter().filter(|t| t.report_cost).collect();
-                tags_cost.sort_by(|a, b| b.total_cost.cmp(&a.total_cost));
+                tags_cost.sort_by_key(|t| std::cmp::Reverse(t.total_cost));
                 let label_width = tags_cost.iter().map(|tag| tag.tag.len()).max().unwrap_or(0);
                 for tag in tags_cost {
                     report.sdk_tag_cost_line(&tag.tag, tag.total_cost, label_width);
@@ -1159,7 +1159,7 @@ impl Stats {
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
                     let mut callers: Vec<_> = roi.get_callers().collect();
-                    callers.sort_by(|a, b| b.1.calls.cmp(&a.1.calls));
+                    callers.sort_by_key(|a| std::cmp::Reverse(a.1.calls));
 
                     for (index, caller_info) in callers.iter().take(self.roi_callers) {
                         let caller_name = self.format_roi_name(&self.rois[**index].name);
@@ -1184,7 +1184,7 @@ impl Stats {
                 );
                 let mut tags_steps: Vec<_> =
                     self.profile_tags.iter().filter(|t| t.report_steps).collect();
-                tags_steps.sort_by(|a, b| b.total_steps.cmp(&a.total_steps));
+                tags_steps.sort_by_key(|tag| std::cmp::Reverse(tag.total_steps));
                 for tag in tags_steps {
                     report.add_profile_tag_steps(
                         &tag.tag,
@@ -1204,7 +1204,7 @@ impl Stats {
                 );
                 let mut tags_cost: Vec<_> =
                     self.profile_tags.iter().filter(|t| t.report_cost).collect();
-                tags_cost.sort_by(|a, b| b.total_cost.cmp(&a.total_cost));
+                tags_cost.sort_by_key(|t| std::cmp::Reverse(t.total_cost));
                 for tag in tags_cost {
                     report.add_profile_tag_cost(
                         &tag.tag,
