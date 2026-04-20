@@ -264,7 +264,7 @@ EOF
   done
 
   step "Installing ZisK Rust toolchain..."
-  ensure "${CARGO_ZISK}" install-toolchain
+  ensure "${CARGO_ZISK}" toolchain install
 
   # Install the proving/verify key setup
   IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"

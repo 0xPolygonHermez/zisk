@@ -54,12 +54,14 @@ impl ZiskConvertInput {
 
         if use_files {
             // File mode - both input and output files must be provided
-            let input_file = self.input_file.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("Input file (-i) is required when using file mode")
-            })?;
-            let output_file = self.output_file.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("Output file (-o) is required when using file mode")
-            })?;
+            let input_file = self
+                .input_file
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Input file (-i) is required when using file mode"))?;
+            let output_file = self
+                .output_file
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Output file (-o) is required when using file mode"))?;
 
             print_banner_field("Input File", input_file.display());
             print_banner_field("Output File", output_file.display());
@@ -68,14 +70,10 @@ impl ZiskConvertInput {
         } else if use_dirs {
             // Directory mode - both input and output dirs must be provided
             let input_dir = self.input_dir.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Input directory (--input-dir) is required when using directory mode"
-                )
+                anyhow::anyhow!("Input directory (--input-dir) is required when using directory mode")
             })?;
             let output_dir = self.output_dir.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Output directory (--output-dir) is required when using directory mode"
-                )
+                anyhow::anyhow!("Output directory (--output-dir) is required when using directory mode")
             })?;
 
             print_banner_field("Input Directory", input_dir.display());
@@ -115,12 +113,7 @@ impl ZiskConvertInput {
         let mut files_converted = 0;
 
         if self.recursive {
-            self.convert_directory_recursive(
-                input_dir,
-                output_dir,
-                input_dir,
-                &mut files_converted,
-            )?;
+            self.convert_directory_recursive(input_dir, output_dir, input_dir, &mut files_converted)?;
         } else {
             self.convert_directory_flat(input_dir, output_dir, &mut files_converted)?;
         }
@@ -141,9 +134,9 @@ impl ZiskConvertInput {
             let path = entry.path();
 
             if path.is_file() {
-                let file_name = path.file_name().ok_or_else(|| {
-                    anyhow::anyhow!("Failed to get filename for: {}", path.display())
-                })?;
+                let file_name = path
+                    .file_name()
+                    .ok_or_else(|| anyhow::anyhow!("Failed to get filename for: {}", path.display()))?;
                 let output_path = output_dir.join(file_name);
 
                 self.convert_file(&path, &output_path)?;

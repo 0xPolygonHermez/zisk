@@ -39,8 +39,7 @@ impl ZiskInstallToolchain {
         // Setup variables.
         let root_dir = home_dir().unwrap().join(".zisk");
         match fs::read_dir(&root_dir) {
-            Ok(entries) =>
-            {
+            Ok(entries) => {
                 #[allow(clippy::manual_flatten)]
                 for entry in entries {
                     if let Ok(entry) = entry {

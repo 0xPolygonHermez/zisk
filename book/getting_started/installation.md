@@ -153,7 +153,7 @@ To install the PLONK proving key (provingKeySnark), run:
 
 6. Install the ZisK Rust toolchain:
     ```bash
-    cargo-zisk sdk install-toolchain
+    cargo-zisk toolchain install
     ```
 
     **Note**: This command installs the ZisK Rust toolchain from prebuilt binaries. If you prefer to build the toolchain from source, follow these steps:
@@ -162,7 +162,7 @@ To install the PLONK proving key (provingKeySnark), run:
 
     2. Build and install the Rust ZisK toolchain:
     ```bash
-    cargo-zisk sdk build-toolchain
+    cargo-zisk toolchain build
     ```
 
 7. Verify the installation:
@@ -222,7 +222,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     ```
 
     It is stored under the `build/provingKeySnark` directory.
-    
+
 
 7. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
 
