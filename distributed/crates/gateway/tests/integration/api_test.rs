@@ -16,11 +16,11 @@ use zisk_gateway::{
         input_kind, job_event, job_kind, job_status, zisk_gateway_api_client::ZiskGatewayApiClient,
         zisk_gateway_api_server::ZiskGatewayApiServer, CancelJobRequest, ExecuteRequest,
         InputChunk, InputKind, JobKind, JobRequestMessage, ProofKind, ProveRequest,
-        PushJobInputRequest, RegisterGuestProgramRequest, SetupRequest, WaitJobResultRequest,
-        WatchJobRequest, WrapRequest,
+        PushJobInputRequest, SetupRequest, WaitJobResultRequest, WatchJobRequest, WrapRequest,
     },
-    service::GatewayService,
+    GatewayHandler, GrpcAdapter,
 };
+use zisk_gateway_api::dto::RegisterGuestProgramRequestDto;
 
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ async fn start_test_server() -> ZiskGatewayApiClient<Channel> {
     let addr = listener.local_addr().unwrap();
 
     let backend = Arc::new(MockBackend::default());
-    let service = GatewayService::new(Arc::clone(&backend));
+    let service = GrpcAdapter::new(GatewayHandler::new(Arc::clone(&backend)));
 
     tokio::spawn(async move {
         Server::builder()
@@ -60,12 +60,8 @@ fn inline_input(is_last: bool) -> Option<InputKind> {
 }
 
 async fn register_program(client: &mut ZiskGatewayApiClient<Channel>) -> String {
-    client
-        .register_guest_program(RegisterGuestProgramRequest { zisk_elf: dummy_elf() })
-        .await
-        .unwrap()
-        .into_inner()
-        .hash_id
+    let request = RegisterGuestProgramRequestDto { zisk_elf: dummy_elf() };
+    client.register_guest_program(request).await.unwrap().into_inner().hash_id
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -75,19 +71,11 @@ async fn register_idempotent() {
     let mut client = start_test_server().await;
     let elf = dummy_elf();
 
-    let h1 = client
-        .register_guest_program(RegisterGuestProgramRequest { zisk_elf: elf.clone() })
-        .await
-        .unwrap()
-        .into_inner()
-        .hash_id;
+    let request_h1 = RegisterGuestProgramRequestDto { zisk_elf: elf.clone() };
+    let h1 = client.register_guest_program(request_h1).await.unwrap().into_inner().hash_id;
 
-    let h2 = client
-        .register_guest_program(RegisterGuestProgramRequest { zisk_elf: elf })
-        .await
-        .unwrap()
-        .into_inner()
-        .hash_id;
+    let request_h2 = RegisterGuestProgramRequestDto { zisk_elf: elf };
+    let h2 = client.register_guest_program(request_h2).await.unwrap().into_inner().hash_id;
 
     assert_eq!(h1, h2, "same ELF must produce the same hash_id");
     assert!(!h1.is_empty());

@@ -4886,6 +4886,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5914,6 +5920,7 @@ dependencies = [
  "getrandom 0.4.2",
  "js-sys",
  "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 
@@ -7092,7 +7099,6 @@ dependencies = [
  "uuid",
  "zisk-cluster-api",
  "zisk-cluster-common",
- "zisk-common",
  "zisk-coordinator",
  "zisk-gateway-api",
 ]
@@ -7101,11 +7107,28 @@ dependencies = [
 name = "zisk-gateway-api"
 version = "0.17.0"
 dependencies = [
+ "anyhow",
+ "chrono",
  "prost",
  "prost-types",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "uuid",
+ "zisk-common",
+]
+
+[[package]]
+name = "zisk-gateway-client"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "tokio",
+ "tonic",
+ "uuid",
+ "zisk-gateway-api",
 ]
 
 [[package]]
@@ -7155,12 +7178,10 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
- "chrono",
  "colored",
  "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
  "futures",
  "proofman-common",
- "prost-types",
  "rom-setup",
  "serde",
  "tokio",
@@ -7172,6 +7193,7 @@ dependencies = [
  "zisk-common",
  "zisk-gateway",
  "zisk-gateway-api",
+ "zisk-gateway-client",
  "zisk-prover-backend",
 ]
 

@@ -6,18 +6,17 @@ pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod wrap;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::time::Duration;
-use tonic::transport::Channel;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
-use zisk_gateway::backend::{DomainInputChunk, DomainInputKind, DomainJobKind, DomainProof};
-use zisk_gateway_api::{proto::JobRequestMessage, ZiskGatewayApiClient};
+use zisk_gateway_api::dto::DomainInputKind;
+use zisk_gateway_client::GatewayClient;
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::{
     execute::ExecuteRequest,
     input::ProgramInput,
-    job_handle::{JobHandle, JobId, SubscriberList},
+    job_handle::{JobHandle, SubscriberList},
     prove::ProveRequest,
     setup::{SetupRequest, SetupResult},
     upload::{UploadRequest, UploadResult},
@@ -60,42 +59,14 @@ impl RemoteClientBuilder {
     /// Build the [`RemoteClient`].
     pub fn build(self) -> Result<RemoteClient> {
         crate::client::ensure_single_instance();
-        let channel = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                tonic::transport::Endpoint::from_shared(self.url)
-                    .context("Invalid gateway URL")?
-                    .connect_timeout(self.connect_timeout)
-                    .timeout(self.request_timeout)
-                    .connect()
-                    .await
-                    .context("Failed to connect to gateway")
-            })
-        })?;
-        Ok(RemoteClient { gw_client: ZiskGatewayApiClient::new(channel) })
+        let gw = GatewayClient::connect(self.url, self.connect_timeout, self.request_timeout)?;
+        Ok(RemoteClient { gw })
     }
 }
 
 #[derive(Clone)]
 pub struct RemoteClient {
-    pub(crate) gw_client: ZiskGatewayApiClient<Channel>,
-}
-
-impl RemoteClient {
-    pub(crate) fn submit_job(&self, kind: DomainJobKind) -> Result<JobId> {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let mut gw = self.gw_client.clone();
-                let resp = gw
-                    .job_request(JobRequestMessage { job_kind: Some(kind.into()) })
-                    .await
-                    .context("JobRequest RPC failed")?;
-
-                let job_id = resp.into_inner().job_id;
-
-                Ok(JobId::from(job_id))
-            })
-        })
-    }
+    pub(crate) gw: GatewayClient,
 }
 
 impl Client for RemoteClient {
@@ -193,35 +164,9 @@ impl RemoteClient {
     }
 }
 
-// ── Shared helpers used across remote sub-modules ─────────────────────────────
-
-pub(crate) fn deadline_from_now(d: Duration) -> chrono::DateTime<chrono::Utc> {
-    chrono::Utc::now() + chrono::Duration::from_std(d).unwrap()
-}
-
 pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<DomainInputKind> {
     match input {
-        ProgramInput::Stdin(s) => {
-            let data = s.into_inner().read_data();
-            Ok(DomainInputKind::Inline(DomainInputChunk { data, is_last: true }))
-        }
-        ProgramInput::Hints(_) => {
-            anyhow::bail!("Hints input is not supported for remote proving")
-        }
+        ProgramInput::Stdin(s) => DomainInputKind::try_inline(s.into_inner().read_data()),
+        ProgramInput::Hints(_) => anyhow::bail!("Hints input is not supported for remote proving"),
     }
-}
-
-pub(crate) fn proof_to_proto(proof: &Proof, proof_kind: ProofKind) -> Result<DomainProof> {
-    let data =
-        bincode::serialize(proof).map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
-    Ok(DomainProof {
-        proof_id: uuid::Uuid::new_v4(),
-        hash_id: String::new(),
-        verification_key: Vec::new(),
-        proof_kind: proof_kind.into(),
-        data,
-        public_inputs: Vec::new(),
-        started_at: None,
-        completed_at: None,
-    })
 }

@@ -10,10 +10,11 @@ use tracing::{info, warn};
 
 use crate::backend::BackendService;
 use crate::config::Config as GatewayConfig;
+use crate::grpc::GrpcAdapter;
+use crate::handler::GatewayHandler;
 use crate::health::HealthService;
 use crate::metrics;
 use crate::proto::{health_server::HealthServer, zisk_gateway_api_server::ZiskGatewayApiServer};
-use crate::service::GatewayService;
 use crate::shutdown::shutdown_signal;
 
 /// Maximum inbound message size. Large ELF files can exceed the 4 MB tonic default.
@@ -34,7 +35,7 @@ impl<B: BackendService> GatewayServer<B> {
         metrics::start(&self.config.metrics, self.cancel.clone()).await?;
 
         let addr = self.config.grpc_addr().parse()?;
-        let service = GatewayService::new(Arc::clone(&self.backend));
+        let service = GrpcAdapter::new(GatewayHandler::new(Arc::clone(&self.backend)));
         let shutdown_secs = self.config.server.shutdown_timeout_seconds;
 
         info!(

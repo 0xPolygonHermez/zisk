@@ -5,28 +5,21 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::StreamExt;
-use tokio::task::JoinHandle;
-use tonic::transport::Channel;
-use zisk_gateway_api::{
-    proto::{
-        job_event::Event as GatewayEvent, job_failure::Kind as FailureKind,
-        job_kind_response::Kind as KindResponse, job_status::Status as JobStatusVariant,
-        CancelJobRequest, JobEvent as GatewayJobEvent, JobFailure, WaitJobResultRequest,
-        WaitJobResultResponse, WatchJobRequest,
-    },
-    ZiskGatewayApiClient,
+use zisk_gateway_api::dto::{
+    DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
+    TerminalStatus,
 };
+use zisk_gateway_client::{Job, WatchHandle};
 
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
 use zisk_prover_backend::ProveOutput;
 
 const CANCELLED: &str = "Cancelled";
-/// Per-call hold duration sent to the gateway's WaitJobResult long-poll.
-/// The gateway returns early as soon as the job reaches a terminal state,
-/// so this only controls how often we re-poll when the job is still running.
-const WAIT_POLL_SECS: u32 = 30;
+
+const PROGRESS_CONTRIBUTIONS: u8 = 25;
+const PROGRESS_PROVE: u8 = 75;
+const PROGRESS_AGGREGATE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
@@ -52,38 +45,14 @@ pub(crate) fn fire_result_event<T>(subs: &SubscriberList, result: &Result<T>) {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct JobId(String);
-
-impl From<String> for JobId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&str> for JobId {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl From<JobId> for String {
-    fn from(id: JobId) -> Self {
-        id.0
-    }
-}
-
 /// Implemented by every type that can be produced from a remote job result.
-///
-/// The impl lives in `job_handle` (not in the individual result types) because the
-/// conversion requires gateway proto imports that should not leak into domain types.
-pub(crate) trait FromJobResult: Sized + Send + 'static {
-    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self>;
+pub(crate) trait FromWaitResult: Sized + Send + 'static {
+    fn from_terminal(status: TerminalStatus) -> Result<Self>;
 }
 
 pub(crate) enum JobHandleInner<T> {
-    Embedded(JoinHandle<Result<T>>),
-    Remote { gateway: ZiskGatewayApiClient<Channel>, job_id: JobId, watch_task: JoinHandle<()> },
+    Embedded(tokio::task::JoinHandle<Result<T>>),
+    Remote { remote_job: Job, _watch_handle: WatchHandle },
 }
 
 /// Handle to an in-flight job (embedded or remote).
@@ -99,7 +68,7 @@ pub struct JobHandle<T> {
 
 impl<T> JobHandle<T> {
     pub fn new_embedded(
-        handle: JoinHandle<Result<T>>,
+        handle: tokio::task::JoinHandle<Result<T>>,
         subscribers: SubscriberList,
         timeout: Option<Duration>,
     ) -> Self {
@@ -107,27 +76,15 @@ impl<T> JobHandle<T> {
     }
 
     pub fn new_remote(
-        gateway: ZiskGatewayApiClient<Channel>,
-        job_id: JobId,
+        remote_job: Job,
         subscribers: SubscriberList,
         timeout: Option<Duration>,
     ) -> Self {
-        let mut watch_gw = gateway.clone();
-        let watch_jid = job_id.clone();
         let subs_watch = Arc::clone(&subscribers);
-        let watch_task = tokio::spawn(async move {
-            if let Ok(resp) = watch_gw.watch_job(WatchJobRequest { job_id: watch_jid.into() }).await
-            {
-                let mut stream = resp.into_inner();
-                while let Some(Ok(event)) = stream.next().await {
-                    if map_and_fire_event(&subs_watch, event) {
-                        break;
-                    }
-                }
-            }
-        });
+        let watch_handle =
+            remote_job.spawn_watch(move |event| map_domain_event(&subs_watch, &event));
         Self {
-            inner: Some(JobHandleInner::Remote { gateway, job_id, watch_task }),
+            inner: Some(JobHandleInner::Remote { remote_job, _watch_handle: watch_handle }),
             subscribers,
             timeout,
         }
@@ -148,14 +105,6 @@ impl<T> JobHandle<T> {
     }
 }
 
-impl<T> Drop for JobHandle<T> {
-    fn drop(&mut self) {
-        if let Some(JobHandleInner::Remote { watch_task, .. }) = &self.inner {
-            watch_task.abort();
-        }
-    }
-}
-
 impl<T> JobHandle<T> {
     /// Cancel the in-flight job.
     ///
@@ -169,96 +118,52 @@ impl<T> JobHandle<T> {
             Some(JobHandleInner::Embedded(_handle)) => {
                 unimplemented!("cancelling embedded jobs is not supported yet")
             }
-            Some(JobHandleInner::Remote { gateway, job_id, .. }) => {
-                let mut gw = gateway.clone();
-                let resp = gw
-                    .cancel_job(CancelJobRequest { job_id: job_id.clone().into() })
-                    .await
-                    .map_err(|e| anyhow::anyhow!("CancelJob RPC failed: {e}"))?;
-                Ok(resp.into_inner().cancelled)
-            }
+            Some(JobHandleInner::Remote { remote_job, .. }) => remote_job.cancel_async().await,
             None => anyhow::bail!("cannot cancel: JobHandle already consumed"),
         }
     }
 }
 
 #[allow(private_bounds)]
-impl<T: FromJobResult> JobHandle<T> {
-    async fn await_embedded(handle: JoinHandle<Result<T>>, timeout: Option<Duration>) -> Result<T> {
-        if let Some(dur) = timeout {
-            tokio::time::timeout(dur, handle)
+impl<T: FromWaitResult> JobHandle<T> {
+    async fn await_embedded(
+        handle: tokio::task::JoinHandle<Result<T>>,
+        timeout: Option<Duration>,
+    ) -> Result<T> {
+        let join = |h: tokio::task::JoinHandle<Result<T>>| async {
+            h.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
+        };
+        match timeout {
+            Some(dur) => tokio::time::timeout(dur, join(handle))
                 .await
-                .map_err(|_| anyhow::anyhow!("job timed out after {dur:?}"))?
-                .map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
-        } else {
-            handle.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
+                .map_err(|_| anyhow::anyhow!("job timed out after {dur:?}"))?,
+            None => join(handle).await,
         }
     }
 
-    /// WaitJobResult is a long-poll: the gateway holds the request for up to WAIT_POLL_SECS
-    /// and returns early when the job finishes. If it returns a non-terminal status we loop
-    /// until the job completes or the deadline is exceeded.
     async fn await_remote(
-        mut gateway: ZiskGatewayApiClient<Channel>,
-        job_id: JobId,
-        watch_task: JoinHandle<()>,
+        remote_job: Job,
         timeout: Option<Duration>,
         subscribers: SubscriberList,
     ) -> Result<T> {
-        let deadline = timeout.map(|d| tokio::time::Instant::now() + d);
+        let terminal = remote_job.wait_async(timeout).await?;
 
-        let inner = loop {
-            if let Some(dl) = deadline {
-                if tokio::time::Instant::now() >= dl {
-                    watch_task.abort();
-                    anyhow::bail!("job timed out after {:?}", timeout.unwrap());
-                }
+        // Fire terminal event from the authoritative WaitJobResult response.
+        match &terminal {
+            TerminalStatus::Completed(_) => fire_event(&subscribers, JobEvent::Completed),
+            TerminalStatus::Failed(f) => {
+                fire_event(&subscribers, JobEvent::Failed(format_failure(f)));
             }
-
-            let resp = match gateway
-                .wait_job_result(WaitJobResultRequest {
-                    job_id: job_id.clone().into(),
-                    timeout_seconds: Some(WAIT_POLL_SECS),
-                })
-                .await
-            {
-                Ok(r) => r.into_inner(),
-                Err(e) => {
-                    watch_task.abort();
-                    return Err(anyhow::anyhow!("WaitJobResult failed: {e}"));
-                }
-            };
-
-            match resp.job_status.as_ref().and_then(|s| s.status.as_ref()) {
-                Some(JobStatusVariant::Completed(_))
-                | Some(JobStatusVariant::Failed(_))
-                | Some(JobStatusVariant::Cancelled(_)) => break resp,
-                _ => continue,
-            }
-        };
-
-        watch_task.abort();
-
-        if let Some(status) = &inner.job_status {
-            match &status.status {
-                Some(JobStatusVariant::Completed(_)) => {
-                    fire_event(&subscribers, JobEvent::Completed);
-                }
-                Some(JobStatusVariant::Failed(f)) => {
-                    fire_event(&subscribers, JobEvent::Failed(format_failure(f.failure.as_ref())));
-                }
-                Some(JobStatusVariant::Cancelled(_)) => {
-                    fire_event(&subscribers, JobEvent::Failed(CANCELLED.to_string()));
-                }
-                _ => {}
+            TerminalStatus::Cancelled => {
+                fire_event(&subscribers, JobEvent::Failed(CANCELLED.to_string()));
             }
         }
 
-        T::from_job_result(inner)
+        T::from_terminal(terminal)
     }
 }
 
-impl<T: Send + 'static + FromJobResult> IntoFuture for JobHandle<T> {
+impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
     type Output = Result<T>;
     type IntoFuture = Pin<Box<dyn Future<Output = Result<T>> + Send>>;
 
@@ -269,148 +174,136 @@ impl<T: Send + 'static + FromJobResult> IntoFuture for JobHandle<T> {
         Box::pin(async move {
             match inner {
                 JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
-                JobHandleInner::Remote { gateway, job_id, watch_task } => {
-                    Self::await_remote(gateway, job_id, watch_task, timeout, subscribers).await
+                JobHandleInner::Remote { remote_job, _watch_handle } => {
+                    // _watch_handle is kept alive until await_remote completes,
+                    // then dropped (aborting the watch task).
+                    Self::await_remote(remote_job, timeout, subscribers).await
                 }
             }
         })
     }
 }
 
-fn map_and_fire_event(subs: &SubscriberList, event: GatewayJobEvent) -> bool {
-    match event.event {
-        Some(GatewayEvent::Queued(_)) | Some(GatewayEvent::WaitingForInput(_)) | None => false,
-        Some(GatewayEvent::Started(_)) => {
+// ── Domain event → SDK event mapping ──────────────────────────────────────────
+
+/// Map a domain event to an SDK event and fire it to subscribers.
+/// Returns `true` for terminal events (to stop the watch stream).
+fn map_domain_event(subs: &SubscriberList, event: &DomainJobEvent) -> bool {
+    match event {
+        DomainJobEvent::Queued(_) | DomainJobEvent::WaitingForInput(_) => false,
+        DomainJobEvent::Started(_) => {
             fire_event(subs, JobEvent::Started);
             false
         }
-        Some(GatewayEvent::Progress(p)) => {
-            let pct = match p.phase() {
-                zisk_gateway_api::proto::JobPhase::Contributions => 25,
-                zisk_gateway_api::proto::JobPhase::Prove => 75,
-                zisk_gateway_api::proto::JobPhase::Aggregate => 90,
-                _ => 0,
+        DomainJobEvent::Progress(p) => {
+            let pct = match p.phase {
+                DomainJobPhase::Contributions => PROGRESS_CONTRIBUTIONS,
+                DomainJobPhase::Prove => PROGRESS_PROVE,
+                DomainJobPhase::Aggregate => PROGRESS_AGGREGATE,
             };
             fire_event(subs, JobEvent::Progress(pct));
             false
         }
-        // Terminal events are fired authoritatively from the WaitJobResult response below;
-        // returning true here stops the watch stream without double-firing the event.
-        Some(GatewayEvent::Completed(_))
-        | Some(GatewayEvent::Cancelled(_))
-        | Some(GatewayEvent::Failed(_)) => true,
-    }
-}
-
-fn format_failure(failure: Option<&JobFailure>) -> String {
-    let Some(f) = failure else {
-        return "Unknown failure".to_string();
-    };
-    match &f.kind {
-        Some(FailureKind::Timeout(t)) => {
-            format!("Timeout (phase: {:?}, limit: {:?})", t.phase, t.limit)
+        // Terminal events are fired authoritatively from the WaitJobResult response;
+        // returning true here stops the watch stream without double-firing.
+        DomainJobEvent::Completed(_) | DomainJobEvent::Cancelled(_) | DomainJobEvent::Failed(_) => {
+            true
         }
-        Some(FailureKind::Input(i)) => format!("Input error: {}", i.reason),
-        Some(FailureKind::Execution(e)) => format!("Execution error: {}", e.reason),
-        Some(FailureKind::Internal(i)) => format!("Internal error (trace_id: {})", i.trace_id),
-        Some(FailureKind::Cancelled(_)) => CANCELLED.to_string(),
-        None => "Unknown failure".to_string(),
     }
 }
 
-/// Assert that a `WaitJobResultResponse` is in a completed terminal state.
-pub(crate) fn check_completed(resp: &WaitJobResultResponse) -> Result<()> {
-    match resp.job_status.as_ref().and_then(|s| s.status.as_ref()) {
-        Some(JobStatusVariant::Completed(_)) => Ok(()),
-        Some(JobStatusVariant::Failed(f)) => anyhow::bail!(format_failure(f.failure.as_ref())),
-        Some(JobStatusVariant::Cancelled(_)) => anyhow::bail!("job was cancelled"),
-        other => anyhow::bail!("unexpected terminal status: {:?}", other),
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn format_failure(failure: &DomainJobFailure) -> String {
+    match failure {
+        DomainJobFailure::Timeout { phase, limit } => {
+            format!("Timeout (phase: {:?}, limit: {:?})", phase, limit)
+        }
+        DomainJobFailure::Input { reason } => format!("Input error: {}", reason),
+        DomainJobFailure::Execution { reason } => format!("Execution error: {}", reason),
+        DomainJobFailure::Internal { trace_id } => {
+            format!("Internal error (trace_id: {})", trace_id)
+        }
+        DomainJobFailure::Cancelled => CANCELLED.to_string(),
     }
 }
 
-// FromJobResult impls for each type that can be returned by a remote job.
-// Each impl extracts the relevant data from the WaitJobResultResponse and converts it into the appropriate Rust type.
-impl FromJobResult for SetupResult {
-    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
-        check_completed(&resp)?;
+fn check_terminal(status: &TerminalStatus) -> Result<()> {
+    match status {
+        TerminalStatus::Completed(_) => Ok(()),
+        TerminalStatus::Failed(f) => anyhow::bail!(format_failure(f)),
+        TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+    }
+}
+
+fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostPerType {
+    zisk_common::StatsCostPerType {
+        main_cost: stats.main_cost,
+        opcode_cost: stats.opcode_cost,
+        memory_cost: stats.memory_cost,
+        precompile_cost: stats.precompile_cost,
+        tables_cost: stats.tables_cost,
+        other_cost: stats.other_cost,
+    }
+}
+
+// ── FromWaitResult impls ──────────────────────────────────────────────────────
+
+impl FromWaitResult for SetupResult {
+    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+        check_terminal(&status)?;
         Ok(SetupResult)
     }
 }
 
-impl FromJobResult for ProveOutput {
-    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
-        check_completed(&resp)?;
-        let result = resp
-            .result
-            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-        match result.kind {
-            Some(KindResponse::Prove(prove_resp)) => {
-                let proof_msg = prove_resp
-                    .proof
-                    .ok_or_else(|| anyhow::anyhow!("missing proof in ProveResponse"))?;
-                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof_msg.data)
+impl FromWaitResult for ProveOutput {
+    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+        match status {
+            TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, stats }) => {
+                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
                     .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
-                let (steps, duration, cost) = proto_stats_to_rust(prove_resp.stats);
-                let result = zisk_prover_backend::ProveOutput::from_remote(
+                Ok(ProveOutput::from_remote(
                     proof_with_pv,
-                    steps,
-                    duration,
-                    cost,
-                );
-                Ok(result)
+                    stats.steps,
+                    Duration::from_nanos(stats.duration_nanos),
+                    domain_stats_to_cost(&stats),
+                ))
             }
-            Some(KindResponse::Wrap(wrap_resp)) => {
-                let proof_msg = wrap_resp
-                    .proof
-                    .ok_or_else(|| anyhow::anyhow!("missing proof in WrapResponse"))?;
-                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof_msg.data)
+            TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
+                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
                     .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
-                Ok(zisk_prover_backend::ProveOutput::from_remote(
+                Ok(ProveOutput::from_remote(
                     proof_with_pv,
                     0,
                     Duration::ZERO,
                     zisk_common::StatsCostPerType::default(),
                 ))
             }
-            other => anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other),
-        }
-    }
-}
-
-impl FromJobResult for zisk_prover_backend::ExecuteOutput {
-    fn from_job_result(resp: WaitJobResultResponse) -> Result<Self> {
-        check_completed(&resp)?;
-        let result = resp
-            .result
-            .ok_or_else(|| anyhow::anyhow!("missing result in WaitJobResultResponse"))?;
-        match result.kind {
-            Some(KindResponse::Execute(execute_resp)) => {
-                let (steps, duration, cost) = proto_stats_to_rust(execute_resp.stats);
-                let inner = zisk_prover_backend::ExecuteOutput::from_remote(
-                    steps,
-                    duration,
-                    cost,
-                    &execute_resp.public_outputs,
-                );
-                Ok(inner)
+            TerminalStatus::Completed(other) => {
+                anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other)
             }
-            other => anyhow::bail!("unexpected job kind response for execute: {:?}", other),
+            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
+            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
         }
     }
 }
 
-fn proto_stats_to_rust(
-    stats: Option<zisk_gateway_api::proto::ExecutionStats>,
-) -> (u64, Duration, zisk_common::StatsCostPerType) {
-    let stats = stats.unwrap_or_default();
-    let cost = stats.cost_per_type.unwrap_or_default();
-    let sct = zisk_common::StatsCostPerType {
-        main_cost: cost.main,
-        opcode_cost: cost.opcode,
-        memory_cost: cost.memory,
-        precompile_cost: cost.precompile,
-        tables_cost: cost.tables,
-        other_cost: cost.other,
-    };
-    (stats.steps, Duration::from_nanos(stats.duration_nanos), sct)
+impl FromWaitResult for zisk_prover_backend::ExecuteOutput {
+    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+        match status {
+            TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+                Ok(zisk_prover_backend::ExecuteOutput::from_remote(
+                    stats.steps,
+                    Duration::from_nanos(stats.duration_nanos),
+                    domain_stats_to_cost(&stats),
+                    &public_outputs,
+                ))
+            }
+            TerminalStatus::Completed(other) => {
+                anyhow::bail!("unexpected job kind response for execute: {:?}", other)
+            }
+            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
+            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+        }
+    }
 }

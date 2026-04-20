@@ -47,6 +47,7 @@ members = [
     "distributed/crates/coordinator",
     "distributed/crates/gateway",
     "distributed/crates/gateway-api",
+    "distributed/crates/gateway-client",
     "distributed/crates/cluster-api",
     "distributed/crates/cluster-common",
     "distributed/crates/worker",
@@ -116,6 +117,7 @@ zisk-cluster-api = { path = "distributed/crates/cluster-api" }
 zisk-worker = { path = "distributed/crates/worker" }
 zisk-gateway = { path = "distributed/crates/gateway" }
 zisk-gateway-api = { path = "distributed/crates/gateway-api" }
+zisk-gateway-client = { path = "distributed/crates/gateway-client" }
 
 # Proofman
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/remove-packed-gpu-features" }
@@ -174,7 +176,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = "0.7"
 futures-util = "0.3"
-uuid = { version = "1.0", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v5"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha2 = { version = "0.10.9", features = ["compress"] }
 paste = "1.0"
