@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use thiserror::Error;
 
 use crate::{AsmService, AsmServices};
@@ -43,6 +43,7 @@ pub struct AsmRunnerOptions {
     pub asm_out_file: bool,
     pub share_input_shmem: bool,
     pub open_input_shmem: bool,
+    pub stdio: bool,
 }
 
 impl Default for AsmRunnerOptions {
@@ -67,6 +68,7 @@ impl AsmRunnerOptions {
             asm_out_file: false,
             share_input_shmem: false,
             open_input_shmem: false,
+            stdio: true,
         }
     }
 
@@ -135,6 +137,11 @@ impl AsmRunnerOptions {
         self
     }
 
+    pub fn with_stdio(mut self, value: bool) -> Self {
+        self.stdio = value;
+        self
+    }
+
     /// Applies the configuration flags to a command-line `Command`.
     ///
     /// # Arguments
@@ -153,6 +160,10 @@ impl AsmRunnerOptions {
 
         // Execute in server mode
         command.arg("-s");
+
+        if self.stdio {
+            command.arg("--stdio");
+        }
 
         if self.unlock_mapped_memory {
             command.arg("-u");
@@ -194,12 +205,12 @@ impl AsmRunnerOptions {
 
         if self.verbose {
             command.arg("-v");
-            command.stdout(std::process::Stdio::inherit());
-        } else {
-            command.stdout(std::process::Stdio::null());
         }
 
-        command.stderr(std::process::Stdio::inherit());
+        if !self.stdio {
+            command.stdout(if self.verbose { Stdio::inherit() } else { Stdio::null() });
+        }
+        command.stderr(if self.verbose { Stdio::inherit() } else { Stdio::null() });
 
         match self.trace_level {
             AsmRunnerTraceLevel::None => {}

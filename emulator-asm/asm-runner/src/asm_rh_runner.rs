@@ -50,22 +50,19 @@ impl AsmRunnerRH {
     pub fn run(
         asm_shared_memory: &mut Option<RHShMemReader>,
         max_steps: u64,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         unlock_mapped_memory: bool,
         _stats: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_RH_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::RH, local_rank);
+        let port = asm_services.port_base();
+        let sem_chunk_done_name =
+            sem_chunk_done_name(port, AsmService::RH, asm_services.local_rank());
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
         asm_services.send_rom_histogram_request(max_steps)?;
 
         loop {
@@ -90,8 +87,11 @@ impl AsmRunnerRH {
         }
 
         if asm_shared_memory.is_none() {
-            *asm_shared_memory =
-                Some(RHShMemReader::new(local_rank, base_port, unlock_mapped_memory)?);
+            *asm_shared_memory = Some(RHShMemReader::new(
+                asm_services.local_rank(),
+                Some(asm_services.base_port()),
+                unlock_mapped_memory,
+            )?);
         }
 
         let asm_rowh_output =

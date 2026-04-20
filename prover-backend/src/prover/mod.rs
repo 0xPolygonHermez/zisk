@@ -28,7 +28,7 @@ use zisk_core::ZiskRom;
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
 /// ASM-specific configuration options
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AsmOptions {
     pub asm_path: Option<PathBuf>,
     pub base_port: Option<u16>,
@@ -36,6 +36,21 @@ pub struct AsmOptions {
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub is_distributed: bool,
+    pub stdio: bool,
+}
+
+impl Default for AsmOptions {
+    fn default() -> Self {
+        Self {
+            asm_path: None,
+            base_port: None,
+            no_auto_setup: false,
+            unlock_mapped_memory: false,
+            asm_out_file: false,
+            is_distributed: false,
+            stdio: true,
+        }
+    }
 }
 
 impl AsmOptions {
@@ -61,6 +76,11 @@ impl AsmOptions {
 
     pub fn asm_out_file(mut self) -> Self {
         self.asm_out_file = true;
+        self
+    }
+
+    pub fn stdio(mut self) -> Self {
+        self.stdio = true;
         self
     }
 

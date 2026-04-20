@@ -4,6 +4,8 @@ mod rom_histogram;
 mod services;
 mod shutdown;
 mod status;
+mod stdio;
+mod tcp;
 
 pub use memory_ops::*;
 pub use minimal_traces::*;

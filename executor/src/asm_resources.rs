@@ -226,6 +226,10 @@ impl AsmResources {
         &self.config
     }
 
+    pub fn asm_services(&self) -> &AsmServices {
+        &self.asm_services
+    }
+
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
         let inputs = stdin.read_data();
 

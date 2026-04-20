@@ -1,19 +1,13 @@
+use super::stdio::{self, StdioTransport};
+use super::tcp::TcpTransport;
 use super::{
     FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
-    MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
+    MinimalTraceResponse, PingRequest, PingResponse, RequestData, ResponseData, ShutdownRequest,
     ShutdownResponse, ToRequestPayload,
 };
 use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use std::{
-    fmt,
-    io::{Read, Write},
-    net::TcpStream,
-    path::Path,
-    process::Command,
-    time::{Duration, Instant},
-};
-use tracing::debug;
+use std::{fmt, path::Path, process::Command, time::Duration};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
@@ -45,22 +39,53 @@ impl fmt::Display for AsmService {
 
 const ASM_SERVICE_BASE_PORT: u16 = 23115;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+enum Transport {
+    Tcp(TcpTransport),
+    Stdio(StdioTransport),
+}
+
+#[derive(Clone)]
 pub struct AsmServices {
-    world_rank: i32,
-    local_rank: i32,
-    base_port: u16,
+    transport: Transport,
 }
 
 impl AsmServices {
-    const MO_SERVICE_OFFSET: u64 = 0; // Relative offset to base port. Should correspond to the order in SERVICES
-    const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
-    const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
+    const MO_SERVICE_OFFSET: u64 = 0;
+    const MT_SERVICE_OFFSET: u64 = 1;
+    const RH_SERVICE_OFFSET: u64 = 2;
 
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>) -> Self {
-        Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
+    pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>, stdio: bool) -> Self {
+        let port = base_port.unwrap_or(ASM_SERVICE_BASE_PORT);
+        let transport = if stdio {
+            Transport::Stdio(StdioTransport::new(world_rank, local_rank, port))
+        } else {
+            Transport::Tcp(TcpTransport::new(world_rank, local_rank, port))
+        };
+        AsmServices { transport }
+    }
+
+    pub fn base_port(&self) -> u16 {
+        match &self.transport {
+            Transport::Tcp(t) => t.base_port,
+            Transport::Stdio(s) => s.base_port,
+        }
+    }
+
+    pub fn local_rank(&self) -> i32 {
+        match &self.transport {
+            Transport::Tcp(t) => t.local_rank,
+            Transport::Stdio(s) => s.local_rank,
+        }
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        match &self.transport {
+            Transport::Tcp(t) => t.world_rank,
+            Transport::Stdio(s) => s.world_rank,
+        }
     }
 
     pub fn shmem_prefix(port: u16, local_rank: i32) -> String {
@@ -75,57 +100,32 @@ impl AsmServices {
         let path_str = ziskemuasm_path.to_string_lossy();
         let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
 
-        // Check if a service is already running
-        for service in &Self::SERVICES {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{port}");
-
-            if TcpStream::connect(&addr).is_ok() {
-                tracing::info!(
-                    "Service {} is already running on {}. Shutting it down.",
-                    service,
-                    addr
-                );
-
-                let _ = self.send_shutdown_and_wait(service);
-            }
-        }
-
         let shm_prefix = Self::shmem_prefix(
-            Self::port_for(&AsmService::MO, self.base_port, self.local_rank),
-            self.local_rank,
+            Self::port_for(&AsmService::MO, self.base_port(), self.local_rank()),
+            self.local_rank(),
         );
-
-        let mut pending_wait = Vec::new();
 
         options.share_input_shmem = true;
 
-        for (i, service) in Self::SERVICES.iter().enumerate() {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let wr = self.world_rank;
-
-            debug!(">>> [{}] Starting ASM service: {} on port {}", wr, service, port);
-
-            options.open_input_shmem = i != 0;
-
-            self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
-
-            if i == 0 {
-                // For the first service, wait until it is ready before starting the others,
-                // since it may initialize the shared memory used by the rest.
-                Self::wait_for_service_ready(self.world_rank, service, port)?;
-            } else {
-                // For the other services, we can start them in parallel and wait for them after
-                pending_wait.push((service, port));
+        // For TCP: shut down any already-running services before starting fresh ones.
+        if let Transport::Tcp(t) = &self.transport {
+            for service in t.check_running() {
+                let port = Self::port_for(&service, self.base_port(), self.local_rank());
+                tracing::info!(
+                    "Service {} is already running on 127.0.0.1:{}. Shutting it down.",
+                    service,
+                    port
+                );
+                let _ = self.send_shutdown_and_wait(&service);
             }
         }
 
-        // Wait for the remaining services to be ready
-        for (service, port) in pending_wait {
-            Self::wait_for_service_ready(self.world_rank, service, port)?;
+        match &self.transport {
+            Transport::Tcp(t) => t.start_services(trimmed_path, &mut options, &shm_prefix)?,
+            Transport::Stdio(s) => s.start_services(trimmed_path, &mut options, &shm_prefix)?,
         }
 
-        // Ping status for all services
+        // Final ping for all services.
         for service in &Self::SERVICES {
             self.send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
@@ -135,122 +135,55 @@ impl AsmServices {
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
-        // Check if a service is already running
-        for service in &Self::SERVICES {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{port}");
+        let running = match &self.transport {
+            Transport::Tcp(t) => t.check_running(),
+            Transport::Stdio(s) => s.check_running(),
+        };
 
-            if TcpStream::connect(&addr).is_ok() {
-                tracing::info!("Shutting down service {} running on {}.", service, addr);
-
-                let _ = self.send_shutdown_and_wait(service);
+        for service in running {
+            match &self.transport {
+                Transport::Tcp(_) => {
+                    let port = Self::port_for(&service, self.base_port(), self.local_rank());
+                    tracing::info!(
+                        "Shutting down service {} running on 127.0.0.1:{}.",
+                        service,
+                        port
+                    );
+                }
+                Transport::Stdio(_) => {
+                    tracing::info!("Shutting down stdio service {}.", service);
+                }
             }
+            let _ = self.send_shutdown_and_wait(&service);
         }
 
         Ok(())
     }
 
-    fn wait_for_service_ready(world_rank: i32, service: &AsmService, port: u16) -> Result<()> {
-        const TIMEOUT: Duration = Duration::from_secs(60);
-        const CONNECT_TIMEOUT: Duration = Duration::from_millis(100);
-        const LOG_INTERVAL: Duration = Duration::from_secs(5);
-
-        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-
-        let start = Instant::now();
-        let mut last_log = start;
-        while start.elapsed() < TIMEOUT {
-            match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
-                Ok(_) => {
-                    debug!(
-                        ">>> [{}] ASM service {} is ready on port {}",
-                        world_rank, service, port
-                    );
-                    return Ok(());
-                }
-                Err(_) => {
-                    if last_log.elapsed() >= LOG_INTERVAL {
-                        debug!(
-                            ">>> [{}] Waiting for ASM service {} on port {} ({:.0}s elapsed), retrying...",
-                            world_rank,
-                            service,
-                            port,
-                            start.elapsed().as_secs_f32()
-                        );
-                        last_log = Instant::now();
-                    }
-                }
-            }
-        }
-
-        tracing::error!(
-            ">>> [{}] Timeout waiting for ASM service {} to be ready on port {} after {:?}",
-            world_rank,
-            service,
-            port,
-            start.elapsed()
-        );
-        Err(anyhow::anyhow!("Timeout: service `{service}` not ready on {addr}"))
-    }
-
-    fn start_asm_service(
-        &self,
-        asm_service: &AsmService,
-        trimmed_path: &str,
-        options: &AsmRunnerOptions,
-        shm_prefix: &str,
-    ) {
-        // Prepare command
-        let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
-
-        let mut command = Command::new(command_path);
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            use std::os::unix::process::CommandExt;
-
-            unsafe {
-                command.pre_exec(|| {
-                    // Ignore failure silently
-                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
-                    Ok(())
-                });
-            }
-        }
-
-        options.apply_to_command(&mut command, asm_service, shm_prefix);
-
-        if let Err(e) = command.spawn() {
-            tracing::error!("Child process failed: {:?}", e);
+    const fn service_offset(asm_service: &AsmService) -> u16 {
+        match asm_service {
+            AsmService::MT => Self::MT_SERVICE_OFFSET as u16,
+            AsmService::RH => Self::RH_SERVICE_OFFSET as u16,
+            AsmService::MO => Self::MO_SERVICE_OFFSET as u16,
         }
     }
 
     pub const fn default_port(asm_service: &AsmService, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
-        let service_offset = match asm_service {
-            AsmService::MT => Self::MT_SERVICE_OFFSET,
-            AsmService::RH => Self::RH_SERVICE_OFFSET,
-            AsmService::MO => Self::MO_SERVICE_OFFSET,
-        };
-        ASM_SERVICE_BASE_PORT + service_offset as u16 + rank_offset
+        Self::port_for(asm_service, ASM_SERVICE_BASE_PORT, local_rank)
     }
 
     pub const fn port_for(asm_service: &AsmService, base_port: u16, local_rank: i32) -> u16 {
         let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
-        let service_offset = match asm_service {
-            AsmService::MT => Self::MT_SERVICE_OFFSET,
-            AsmService::RH => Self::RH_SERVICE_OFFSET,
-            AsmService::MO => Self::MO_SERVICE_OFFSET,
-        };
-
-        base_port + service_offset as u16 + rank_offset
+        base_port + Self::service_offset(asm_service) + rank_offset
     }
 
     pub fn port_base_for(base_port: Option<u16>, local_rank: i32) -> u16 {
         let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
         base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + rank_offset
+    }
+
+    pub fn port_base(&self) -> u16 {
+        Self::port_base_for(Some(self.base_port()), self.local_rank())
     }
 
     pub fn port_base_offset(base_port: Option<u16>, n_processes: i32, n_setups: u64) -> u16 {
@@ -291,91 +224,31 @@ impl AsmServices {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
-        let port = Self::port_for(service, self.base_port, self.local_rank);
-        let addr = format!("127.0.0.1:{port}");
-
-        let request = req.to_request_payload();
-
-        // Encode RequestData as bytes
-        let mut out_buffer = Vec::with_capacity(40);
-        for word in request {
-            out_buffer.extend_from_slice(&word.to_le_bytes());
+        match &self.transport {
+            Transport::Tcp(t) => t.send_request(service, req),
+            Transport::Stdio(s) => s.send_request(service, req),
         }
-
-        let mut stream =
-            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {addr}"))?;
-
-        // Set a read timeout to avoid indefinite blocking
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .context("Failed to set read timeout")?;
-
-        // Send request payload
-        if let Err(e) = stream.write_all(&out_buffer) {
-            return Err(anyhow::anyhow!(
-                "Failed to write request payload to service {} on {}: {}",
-                service,
-                addr,
-                e
-            ));
-        }
-
-        let total_timeout = Duration::from_secs(120);
-        let start = Instant::now();
-
-        // Read exactly 40 bytes
-        let mut in_buffer = [0u8; 40];
-        loop {
-            if start.elapsed() >= total_timeout {
-                return Err(anyhow::anyhow!("Total timeout exceeded"));
-            }
-
-            match stream.read_exact(&mut in_buffer) {
-                Ok(_) => break,
-                Err(e)
-                    if e.kind() == std::io::ErrorKind::TimedOut
-                        || e.kind() == std::io::ErrorKind::WouldBlock =>
-                {
-                    tracing::debug!("Read timeout after {:?}, retrying...", start.elapsed());
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-
-        // Decode bytes into ResponseData
-        let mut response = ResponseData::default();
-        for (i, chunk) in in_buffer.chunks_exact(8).enumerate() {
-            response[i] = u64::from_le_bytes(chunk.try_into()?);
-        }
-
-        Ok(Res::from_response_payload(response))
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let port = AsmServices::port_base_for(Some(self.base_port), self.local_rank);
+        let port = AsmServices::port_base_for(Some(self.base_port()), self.local_rank());
 
         let sem_name = format!(
             "/{}_{}_shutdown_done",
-            Self::shmem_prefix(port, self.local_rank),
+            Self::shmem_prefix(port, self.local_rank()),
             service.as_str()
         );
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
             .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;
 
-        // Try to clean up stale state
         let _ = sem.try_wait();
 
-        // Send shutdown request
         self.send_shutdown_request(service).with_context(|| {
             format!("Service '{service}' failed to respond to shutdown request.")
         })?;
 
-        // Wait for the shutdown signal (up to 30s)
         loop {
             match sem.timed_wait(Duration::from_secs(60)) {
                 Ok(_) => break,
@@ -387,28 +260,29 @@ impl AsmServices {
                 Err(e) => {
                     tracing::error!(
                         "[{}] Timeout or error waiting on semaphore {}: {}",
-                        self.world_rank,
+                        self.world_rank(),
                         sem_name,
                         e
                     );
-
                     return Err(crate::AsmRunError::SemaphoreError(sem_name.clone(), e).into());
                 }
             }
         }
 
-        // Manually drop and unlink the semaphore to clean up
-        // This is necessary to ensure the semaphore is properly cleaned up
         drop(sem);
 
-        // Manually unlink the semaphore
         let cstr = std::ffi::CString::new(sem_name.clone())?;
-
         unsafe {
             if libc::sem_unlink(cstr.as_ptr()) != 0 {
                 let errno = std::io::Error::last_os_error();
                 return Err(anyhow::anyhow!("Failed to unlink semaphore {}: {}", sem_name, errno));
             }
+        }
+
+        // In stdio mode, drop the handle to close the pipes and release the child process.
+        if let Transport::Stdio(s) = &self.transport {
+            let idx = stdio::service_index(service);
+            *s.state().handles[idx].lock().unwrap() = None;
         }
 
         Ok(())
@@ -418,4 +292,42 @@ impl AsmServices {
     pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
+}
+
+pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
+    let mut buf = [0u8; 40];
+    for (i, word) in request.iter().enumerate() {
+        buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+    }
+    buf
+}
+
+pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
+    let mut response = ResponseData::default();
+    for (i, chunk) in buf.chunks_exact(8).enumerate() {
+        response[i] = u64::from_le_bytes(chunk.try_into()?);
+    }
+    Ok(response)
+}
+
+pub(super) fn build_service_command(
+    asm_service: &AsmService,
+    trimmed_path: &str,
+    options: &AsmRunnerOptions,
+    shm_prefix: &str,
+) -> Command {
+    let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
+    let mut command = Command::new(command_path);
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            command.pre_exec(|| {
+                libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                Ok(())
+            });
+        }
+    }
+    options.apply_to_command(&mut command, asm_service, shm_prefix);
+    command
 }

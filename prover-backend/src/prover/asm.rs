@@ -83,6 +83,7 @@ impl AsmProver {
         no_auto_setup: bool,
         options: ProofmanOptions,
         is_distributed: bool,
+        stdio: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = AsmCoreProver::new(
@@ -97,6 +98,7 @@ impl AsmProver {
             no_auto_setup,
             options,
             is_distributed,
+            stdio,
             logging_config,
         )?;
 
@@ -175,7 +177,8 @@ impl ProverEngine for AsmProver {
         pctx.mpi_ctx.barrier();
 
         timer_start_info!(STARTING_ASM_MICROSERVICES);
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+        let asm_services =
+            AsmServices::new(world_rank, local_rank, base_port, self.core_prover.asm_info.stdio);
 
         let asm_runner_options = AsmRunnerOptions::new()
             .with_base_port(base_port)
@@ -184,7 +187,8 @@ impl ProverEngine for AsmProver {
             .with_verbose(verbose_mode == VerboseMode::Debug)
             .with_metrics(verbose_mode == VerboseMode::Debug)
             .with_unlock_mapped_memory(unlock_mapped_memory)
-            .with_asm_out_file(asm_out_file);
+            .with_asm_out_file(asm_out_file)
+            .with_stdio(self.core_prover.asm_info.stdio);
 
         asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
@@ -408,6 +412,7 @@ pub struct AsmInfo {
     pub asm_out_file: bool,
     pub verbose: VerboseMode,
     pub no_auto_setup: bool,
+    pub stdio: bool,
     pub n_setups: AtomicU64,
 }
 
@@ -431,6 +436,7 @@ impl AsmCoreProver {
         no_auto_setup: bool,
         options: ProofmanOptions,
         is_distributed: bool,
+        stdio: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
@@ -485,6 +491,7 @@ impl AsmCoreProver {
                 asm_out_file,
                 verbose: options.verbose_mode,
                 no_auto_setup,
+                stdio,
                 n_setups: AtomicU64::new(0),
             },
         })

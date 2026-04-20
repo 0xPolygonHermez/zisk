@@ -84,16 +84,14 @@ impl AsmRunnerMO {
         preloaded: &mut MOShMemReader,
         max_steps: u64,
         chunk_size: u64,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
     ) -> Result<Self> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MO, local_rank);
+        let port = asm_services.port_base();
+        let sem_chunk_done_name =
+            sem_chunk_done_name(port, AsmService::MO, asm_services.local_rank());
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -105,7 +103,6 @@ impl AsmRunnerMO {
         let handle = std::thread::spawn(move || {
             stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             #[allow(clippy::let_and_return)]
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 

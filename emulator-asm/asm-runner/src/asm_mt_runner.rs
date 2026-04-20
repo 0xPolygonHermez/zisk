@@ -60,16 +60,14 @@ impl AsmRunnerMT {
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MT, local_rank);
+        let port = asm_services.port_base();
+        let sem_chunk_done_name =
+            sem_chunk_done_name(port, AsmService::MT, asm_services.local_rank());
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -78,8 +76,6 @@ impl AsmRunnerMT {
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-
             stats_begin!(_thread_stats, _parent_id, _mt_scope, "ASM_MT", 0);
             let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);

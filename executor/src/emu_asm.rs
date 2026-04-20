@@ -202,27 +202,18 @@ impl EmulatorAsm {
         stats_end!(stats, &_write_scope);
 
         let chunk_size = self.chunk_size;
-        let (world_rank, local_rank) = (config.world_rank, config.local_rank);
 
         let _stats = stats.clone();
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
             let asm_shmem_mo = asm_resources.mo_shmem_reader.clone();
-            let base_port = config.base_port;
+            let asm_services = asm_resources.asm_services().clone();
             move || -> Result<AsmRunnerMO> {
                 let mut guard = asm_shmem_mo
                     .lock()
                     .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
-                AsmRunnerMO::run(
-                    &mut guard,
-                    MAX_NUM_STEPS,
-                    chunk_size,
-                    world_rank,
-                    local_rank,
-                    base_port,
-                    _stats,
-                )
+                AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, _stats)
             }
         });
 
@@ -233,7 +224,7 @@ impl EmulatorAsm {
 
         let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = asm_resources.rh_shmem_reader.clone();
-            let base_port = config.base_port;
+            let asm_services = asm_resources.asm_services().clone();
             let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || -> Result<AsmRunnerRH> {
                 let mut guard = asm_shmem_rh
@@ -243,9 +234,7 @@ impl EmulatorAsm {
                 AsmRunnerRH::run(
                     &mut guard,
                     MAX_NUM_STEPS,
-                    world_rank,
-                    local_rank,
-                    base_port,
+                    asm_services,
                     unlock_mapped_memory,
                     _stats,
                 )
@@ -340,9 +329,7 @@ impl EmulatorAsm {
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
-                asm_resources.config().world_rank,
-                asm_resources.config().local_rank,
-                asm_resources.config().base_port,
+                asm_resources.asm_services().clone(),
                 stats.clone(),
             )?;
             Ok(result)

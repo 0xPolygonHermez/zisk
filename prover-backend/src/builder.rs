@@ -236,6 +236,7 @@ impl ProverClientBuilder<AsmB> {
             self.prover_options.asm_options.no_auto_setup,
             options,
             self.prover_options.asm_options.is_distributed,
+            self.prover_options.asm_options.stdio,
             self.logging_config,
         )?;
 
