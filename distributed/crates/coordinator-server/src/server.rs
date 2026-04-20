@@ -19,8 +19,9 @@ use crate::proto::{
 };
 use crate::shutdown::shutdown_signal;
 
-/// Maximum inbound message size. Large ELF files can exceed the 4 MB tonic default.
-const MAX_DECODING_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
+/// Maximum inbound/outbound message size. Must be at least as large as
+/// `DomainInputKind::MAX_INLINE_BYTES` in coordinator-api.
+const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024; // 128 MB
 
 pub struct CoordinatorServer<B: BackendService> {
     config: CoordinatorServerConfig,
@@ -47,7 +48,8 @@ impl<B: BackendService> CoordinatorServer<B> {
         );
 
         let svc = ZiskCoordinatorApiServer::new(service)
-            .max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE);
+            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_MESSAGE_SIZE);
         let health_svc = HealthServer::new(HealthService::new(self.cancel.clone()));
 
         let cancel = self.cancel.clone();

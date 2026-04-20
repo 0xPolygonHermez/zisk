@@ -24,14 +24,7 @@ impl ZiskStdin {
     /// Returns an error if the file does not exist, is not accessible, or the path contains
     /// invalid UTF-8.
     pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let path = path.as_ref();
-        if !path.exists() {
-            anyhow::bail!("Stdin file not found: {}", path.display());
-        }
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("path contains invalid UTF-8: {:?}", path))?;
-        Ok(Self(ZiskStdinInner::from_uri(Some(path_str.to_owned()))?))
+        Ok(Self(ZiskStdinInner::from_file(path)?))
     }
 
     /// Streams stdin from a URI.

@@ -27,7 +27,11 @@ impl CoordinatorClient {
                 .await
                 .context("Failed to connect to coordinator")
         })?;
-        Ok(Self { inner: ZiskCoordinatorApiClient::new(channel) })
+        Ok(Self {
+            inner: ZiskCoordinatorApiClient::new(channel)
+                .max_decoding_message_size(128 * 1024 * 1024)
+                .max_encoding_message_size(128 * 1024 * 1024),
+        })
     }
 
     pub fn register_program(&self, elf: Vec<u8>) -> Result<String> {

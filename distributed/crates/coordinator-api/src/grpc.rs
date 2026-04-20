@@ -108,8 +108,9 @@ impl From<DomainJobPhase> for JobPhase {
 }
 
 impl DomainInputKind {
-    /// gRPC default max message size is 4 MB; 1 MB margin for framing overhead.
-    const MAX_INLINE_BYTES: usize = 3 * 1024 * 1024;
+    /// Maximum size for inline input payloads. Both the coordinator server and
+    /// SDK client are configured with the same limit via `max_decoding/encoding_message_size`.
+    const MAX_INLINE_BYTES: usize = 128 * 1024 * 1024;
 
     /// Wrap `data` as an inline input chunk, enforcing the gRPC message size limit.
     pub fn try_inline(data: Vec<u8>) -> anyhow::Result<Self> {
