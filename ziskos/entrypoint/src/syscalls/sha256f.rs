@@ -22,12 +22,8 @@ pub struct SyscallSha256Params<'a> {
 
 /// Executes the SHA-256 extend and compress function on the given state and input.
 ///
-/// The `Sha256` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Sha256`.
-///
-/// The syscall takes as a parameter the address of a state data (256 bits = 32 bytes)
-/// and the address of an input data (512 bits = 64 bytes), and the result of the
-/// sha256f operation (256 bits = 32 bytes) is stored at the same location as the state.
+/// The SHA-256 compression function operates on a state of four `u64` elements (representing the internal state of the hash function)
+/// and an input of eight `u64` elements (representing a 512-bit message block).
 ///
 /// ### Safety
 ///

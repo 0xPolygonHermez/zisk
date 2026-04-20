@@ -2,12 +2,12 @@ use crate::{
     syscalls::{
         syscall_secp256r1_add, syscall_secp256r1_dbl, SyscallPoint256, SyscallSecp256r1AddParams,
     },
-    zisklib::{eq, fcall_msb_pos_256, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256, ZERO_256},
+    zisklib::{eq, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256, ZERO_256},
 };
 
 use super::{
     constants::{E_A, E_B, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
-    field::{secp256r1_fp_add, secp256r1_fp_mul, secp256r1_fp_square},
+    field::{add_fp_secp256r1, mul_fp_secp256r1, square_fp_secp256r1},
 };
 
 const IDENTITY_POINT256: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y };
@@ -18,7 +18,7 @@ const G_POINT256: SyscallPoint256 = SyscallPoint256 { x: G_X, y: G_Y };
 /// It assumes that `p1` and `p2` are from the Secp256r1 curve, that `p1,p2 != 𝒪`
 /// Returns true if the result is the point at infinity.
 #[inline]
-fn secp256r1_add_non_infinity_points(
+fn add_non_infinity_points_secp256r1(
     p1: &mut SyscallPoint256,
     p2: &SyscallPoint256,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -46,30 +46,30 @@ fn secp256r1_add_non_infinity_points(
 
 /// Checks whether the given point `p` is on the Secp256r1 curve.
 /// It assumes that `p` is not the point at infinity.
-pub fn secp256r1_is_on_curve(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
+pub fn is_on_curve_secp256r1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
 
     // p in E iff y² == x³ + a·x + b
-    let lhs = secp256r1_fp_square(
+    let lhs = square_fp_secp256r1(
         &y,
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut rhs = secp256r1_fp_square(
+    let mut rhs = square_fp_secp256r1(
         &x,
         #[cfg(feature = "hints")]
         hints,
     );
-    rhs = secp256r1_fp_mul(
+    rhs = mul_fp_secp256r1(
         &rhs,
         &x,
         #[cfg(feature = "hints")]
         hints,
     );
-    rhs = secp256r1_fp_add(
+    rhs = add_fp_secp256r1(
         &rhs,
-        &secp256r1_fp_mul(
+        &mul_fp_secp256r1(
             &x,
             &E_A,
             #[cfg(feature = "hints")]
@@ -78,7 +78,7 @@ pub fn secp256r1_is_on_curve(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut
         #[cfg(feature = "hints")]
         hints,
     );
-    rhs = secp256r1_fp_add(
+    rhs = add_fp_secp256r1(
         &rhs,
         &E_B,
         #[cfg(feature = "hints")]
@@ -89,7 +89,7 @@ pub fn secp256r1_is_on_curve(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut
 
 /// Given two points `p` and `q` and scalars `r`, `s`, and `t`, computes the triple scalar multiplication `r·g + s·p + t·q`
 /// It assumes that `r,s,t ∈ [1, N-1]` and that `p,q != 𝒪`
-pub fn secp256r1_triple_scalar_mul_with_g(
+pub fn triple_scalar_mul_with_g_secp256r1(
     r: &[u64; 4],
     s: &[u64; 4],
     t: &[u64; 4],
@@ -102,7 +102,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
 
     // Precompute g + p, g + q, p + q, g + p + q
     let mut gp = G_POINT256;
-    let gp_is_infinity = secp256r1_add_non_infinity_points(
+    let gp_is_infinity = add_non_infinity_points_secp256r1(
         &mut gp,
         &p,
         #[cfg(feature = "hints")]
@@ -110,7 +110,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
     );
 
     let mut gq = G_POINT256;
-    let gq_is_infinity = secp256r1_add_non_infinity_points(
+    let gq_is_infinity = add_non_infinity_points_secp256r1(
         &mut gq,
         &q,
         #[cfg(feature = "hints")]
@@ -118,7 +118,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
     );
 
     let mut pq = SyscallPoint256 { x: p.x, y: p.y };
-    let pq_is_infinity = secp256r1_add_non_infinity_points(
+    let pq_is_infinity = add_non_infinity_points_secp256r1(
         &mut pq,
         &q,
         #[cfg(feature = "hints")]
@@ -134,7 +134,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
     } else {
         // Normal case: add Q to (G + P)
         let mut gpq_temp = SyscallPoint256 { x: gp.x, y: gp.y };
-        let is_inf = secp256r1_add_non_infinity_points(
+        let is_inf = add_non_infinity_points_secp256r1(
             &mut gpq_temp,
             &q,
             #[cfg(feature = "hints")]
@@ -305,7 +305,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             #[cfg(feature = "hints")]
                             hints,
                         );
-                        res_is_infinity = secp256r1_add_non_infinity_points(
+                        res_is_infinity = add_non_infinity_points_secp256r1(
                             &mut res,
                             &q,
                             #[cfg(feature = "hints")]
@@ -328,7 +328,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             #[cfg(feature = "hints")]
                             hints,
                         );
-                        res_is_infinity = secp256r1_add_non_infinity_points(
+                        res_is_infinity = add_non_infinity_points_secp256r1(
                             &mut res,
                             &p,
                             #[cfg(feature = "hints")]
@@ -354,7 +354,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             hints,
                         );
                         if !pq_is_infinity {
-                            res_is_infinity = secp256r1_add_non_infinity_points(
+                            res_is_infinity = add_non_infinity_points_secp256r1(
                                 &mut res,
                                 &pq,
                                 #[cfg(feature = "hints")]
@@ -379,7 +379,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             #[cfg(feature = "hints")]
                             hints,
                         );
-                        res_is_infinity = secp256r1_add_non_infinity_points(
+                        res_is_infinity = add_non_infinity_points_secp256r1(
                             &mut res,
                             &G_POINT256,
                             #[cfg(feature = "hints")]
@@ -405,7 +405,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             hints,
                         );
                         if !gq_is_infinity {
-                            res_is_infinity = secp256r1_add_non_infinity_points(
+                            res_is_infinity = add_non_infinity_points_secp256r1(
                                 &mut res,
                                 &gq,
                                 #[cfg(feature = "hints")]
@@ -433,7 +433,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             hints,
                         );
                         if !gp_is_infinity {
-                            res_is_infinity = secp256r1_add_non_infinity_points(
+                            res_is_infinity = add_non_infinity_points_secp256r1(
                                 &mut res,
                                 &gp,
                                 #[cfg(feature = "hints")]
@@ -461,7 +461,7 @@ pub fn secp256r1_triple_scalar_mul_with_g(
                             hints,
                         );
                         if !gpq_is_infinity {
-                            res_is_infinity = secp256r1_add_non_infinity_points(
+                            res_is_infinity = add_non_infinity_points_secp256r1(
                                 &mut res,
                                 &gpq,
                                 #[cfg(feature = "hints")]

@@ -147,6 +147,12 @@ impl BackendProverOpts {
             options.packed_info(get_packed_info());
         }
 
+        options.verbose_mode(self.verbose.into());
+
+        if !self.aggregation {
+            options.no_aggregation();
+        }
+
         options
     }
 

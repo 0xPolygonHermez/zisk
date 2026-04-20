@@ -59,7 +59,7 @@ jobs:
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
-      ZISK_TESTVECTORS_BRANCH: "main"
+      ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
       PROVE_FLAGS: "-y"

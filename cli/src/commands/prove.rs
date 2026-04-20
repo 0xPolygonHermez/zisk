@@ -49,7 +49,7 @@ pub struct ZiskProve {
     pub output: Option<PathBuf>,
 
     /// Disable proofs aggregation
-    #[arg(short = 'a', long)]
+    #[arg(short = 'a', long, default_value_t = false)]
     pub no_aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
