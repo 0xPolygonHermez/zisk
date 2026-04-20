@@ -23,8 +23,10 @@ use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
+use zisk_common::{
+    encode_plonk_zisk_vk, PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK,
+};
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
-use zisk_common::{PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
@@ -260,7 +262,7 @@ impl ProverBackend {
 
         let publics = self.proofman.get_publics();
 
-        Ok(ZiskVerifyConstraintsResult::new(result, elapsed, stats, &publics))
+        Ok(ZiskVerifyConstraintsResult::new(result, elapsed.as_millis() as u64, stats, &publics))
     }
 
     pub(crate) fn prove(
@@ -315,10 +317,7 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        let zisk_vk = ZiskVK {
-            vk: get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?,
-            plonk_vkey: None,
-        };
+        let vadcop_vk = get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?;
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
@@ -350,7 +349,7 @@ impl ProverBackend {
                             proof_bytes: snark_proof.proof_bytes,
                             publics,
                             program_vk,
-                            zisk_vk: ZiskVK { vk: zisk_vk.vk, plonk_vkey: Some(plonk_vkey) },
+                            zisk_vk: encode_plonk_zisk_vk(vadcop_vk, &plonk_vkey)?,
                         },
                     ))
                 } else {
@@ -371,7 +370,7 @@ impl ProverBackend {
                         proof_bytes: p.proof,
                         publics: PublicValues::new(&p.public_values),
                         program_vk: ProgramVK::new_from_publics(&p.public_values),
-                        zisk_vk,
+                        zisk_vk: vadcop_vk,
                     },
                 ))
             }
@@ -403,10 +402,7 @@ impl ProverBackend {
             proof_bytes: minimal_proof.proof.clone(),
             publics: PublicValues::new(&minimal_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
-            zisk_vk: ZiskVK {
-                vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)?,
-                plonk_vkey: None,
-            },
+            zisk_vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)?,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -451,10 +447,10 @@ impl ProverBackend {
             proof_bytes: snark_proof.proof_bytes.clone(),
             publics: PublicValues::new(&vadcop_final_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&vadcop_final_proof.public_values),
-            zisk_vk: ZiskVK {
-                vk: get_vadcop_final_proof_vkey(&self.proving_key_path, false)?,
-                plonk_vkey: Some(plonk_vkey.clone()),
-            },
+            zisk_vk: encode_plonk_zisk_vk(
+                get_vadcop_final_proof_vkey(&self.proving_key_path, false)?,
+                &plonk_vkey,
+            )?,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -511,8 +507,7 @@ impl ProverBackend {
     }
 
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
-        let vk = get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?;
-        Ok(ZiskVK { vk, plonk_vkey: None })
+        Ok(get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?)
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {

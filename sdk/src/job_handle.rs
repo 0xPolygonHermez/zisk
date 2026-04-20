@@ -13,7 +13,6 @@ use zisk_gateway_client::{Job, WatchHandle};
 
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
-use zisk_prover_backend::ProveOutput;
 
 const CANCELLED: &str = "Cancelled";
 
@@ -45,9 +44,30 @@ pub(crate) fn fire_result_event<T>(subs: &SubscriberList, result: &Result<T>) {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct JobId(pub(crate) String);
+
+impl From<String> for JobId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<JobId> for String {
+    fn from(id: JobId) -> Self {
+        id.0
+    }
+}
+
+impl std::fmt::Display for JobId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Implemented by every type that can be produced from a remote job result.
 pub(crate) trait FromWaitResult: Sized + Send + 'static {
-    fn from_terminal(status: TerminalStatus) -> Result<Self>;
+    fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self>;
 }
 
 pub(crate) enum JobHandleInner<T> {
@@ -146,6 +166,7 @@ impl<T: FromWaitResult> JobHandle<T> {
         timeout: Option<Duration>,
         subscribers: SubscriberList,
     ) -> Result<T> {
+        let job_id = JobId(remote_job.job_id().to_string());
         let terminal = remote_job.wait_async(timeout).await?;
 
         // Fire terminal event from the authoritative WaitJobResult response.
@@ -159,7 +180,7 @@ impl<T: FromWaitResult> JobHandle<T> {
             }
         }
 
-        T::from_terminal(terminal)
+        T::from_terminal(terminal, job_id)
     }
 }
 
@@ -250,34 +271,36 @@ fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostP
 // ── FromWaitResult impls ──────────────────────────────────────────────────────
 
 impl FromWaitResult for SetupResult {
-    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+    fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         check_terminal(&status)?;
-        Ok(SetupResult)
+        Ok(SetupResult { job_id: Some(job_id) })
     }
 }
 
-impl FromWaitResult for ProveOutput {
-    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+impl FromWaitResult for crate::prove::ProveResult {
+    fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, stats }) => {
                 let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
                     .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
-                Ok(ProveOutput::from_remote(
+                let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     stats.steps,
                     Duration::from_nanos(stats.duration_nanos),
                     domain_stats_to_cost(&stats),
-                ))
+                );
+                Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
                 let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
                     .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
-                Ok(ProveOutput::from_remote(
+                let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,
                     Duration::ZERO,
                     zisk_common::StatsCostPerType::default(),
-                ))
+                );
+                Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(other) => {
                 anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other)
@@ -288,16 +311,17 @@ impl FromWaitResult for ProveOutput {
     }
 }
 
-impl FromWaitResult for zisk_prover_backend::ExecuteOutput {
-    fn from_terminal(status: TerminalStatus) -> Result<Self> {
+impl FromWaitResult for crate::execute::ExecuteResult {
+    fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
-                Ok(zisk_prover_backend::ExecuteOutput::from_remote(
+                let output = zisk_prover_backend::ExecuteOutput::from_remote(
                     stats.steps,
                     Duration::from_nanos(stats.duration_nanos),
                     domain_stats_to_cost(&stats),
                     &public_outputs,
-                ))
+                );
+                Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(other) => {
                 anyhow::bail!("unexpected job kind response for execute: {:?}", other)

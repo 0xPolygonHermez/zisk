@@ -100,7 +100,8 @@ impl ZiskCleanCache {
                     .file_name()
                     .context("Error getting ELF file name")?
                     .to_string_lossy();
-                let hints_marker = cache_zisk_path.join(format!("{}.assembly_hints", elf_file_name));
+                let hints_marker =
+                    cache_zisk_path.join(format!("{}.assembly_hints", elf_file_name));
                 if hints_marker.exists() {
                     std::fs::remove_file(&hints_marker)?;
                     files_deleted += 1;

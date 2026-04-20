@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let client = ProverClient::embedded().gpu().plonk().build()?;
 
     println!("Setting up program and generating verification key...");
     client.setup(&PROGRAM).run()?.await?;

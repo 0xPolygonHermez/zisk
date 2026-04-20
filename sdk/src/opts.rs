@@ -8,7 +8,7 @@ use zisk_prover_backend::BackendProverOpts;
 /// GPU acceleration is configured separately via [`crate::ProverClientBuilder::gpu`].
 /// ASM-specific options are configured via [`crate::ProverClientBuilder::asm_options`].
 #[derive(Default, Clone)]
-pub struct ProverOpts {
+pub struct EmbeddedOpts {
     /// Reduce memory footprint during proving at the cost of speed.
     pub minimal_memory: bool,
 
@@ -31,7 +31,7 @@ pub struct ProverOpts {
     pub max_streams: Option<usize>,
 }
 
-impl ProverOpts {
+impl EmbeddedOpts {
     /// Reduce memory footprint during proving at the cost of speed.
     #[must_use]
     pub fn minimal_memory(mut self) -> Self {

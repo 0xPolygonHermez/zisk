@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, EmbeddedOpts, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
 
@@ -24,8 +24,8 @@ async fn main() -> Result<()> {
     // Create a `ProverClient` method.
     // let client = ProverClient::embedded().build()?;
 
-    let proof_opts = ProverOpts::default().minimal_memory();
-    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let client = ProverClient::embedded().with_embedded_opts(embedded_opts).gpu().build()?;
 
     // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 

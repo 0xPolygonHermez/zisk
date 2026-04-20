@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOpts, ExecutorKind, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -13,9 +13,9 @@ async fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let proof_opts = ProverOpts::default().minimal_memory();
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
     let client =
-        ProverClient::embedded().with_prover_options(proof_opts).gpu().assembly().build()?;
+        ProverClient::embedded().with_embedded_opts(embedded_opts).gpu().assembly().build()?;
 
     client.setup(&PROGRAM).run()?.await?;
 

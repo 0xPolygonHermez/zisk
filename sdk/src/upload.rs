@@ -3,7 +3,19 @@ use zisk_prover_backend::GuestProgram;
 
 use crate::Client;
 
-pub struct UploadResult;
+pub struct UploadResult {
+    hash_id: String,
+}
+
+impl UploadResult {
+    pub fn new(hash_id: String) -> Self {
+        Self { hash_id }
+    }
+
+    pub fn hash_id(&self) -> &str {
+        &self.hash_id
+    }
+}
 
 /// Builder for a program upload request.
 ///

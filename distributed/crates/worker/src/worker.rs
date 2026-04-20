@@ -422,8 +422,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u8>> {
-        let vk = self.prover.get_vadcop_vk(minimal)?;
-        Ok(vk.vk)
+        self.prover.get_vadcop_vk(minimal)
     }
 
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {

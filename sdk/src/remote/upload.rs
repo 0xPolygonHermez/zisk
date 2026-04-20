@@ -20,6 +20,6 @@ impl RemoteClient {
                 expected_hash_id
             );
         }
-        Ok(UploadResult)
+        Ok(UploadResult::new(computed_hash_id.to_string()))
     }
 }

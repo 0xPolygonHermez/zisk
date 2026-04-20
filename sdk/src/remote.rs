@@ -11,10 +11,10 @@ use std::time::Duration;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_gateway_api::dto::DomainInputKind;
 use zisk_gateway_client::GatewayClient;
-use zisk_prover_backend::{GuestProgram, ProveOutput};
+use zisk_prover_backend::GuestProgram;
 
 use crate::{
-    execute::ExecuteRequest,
+    execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
     job_handle::{JobHandle, SubscriberList},
     prove::ProveRequest,
@@ -92,7 +92,7 @@ impl Client for RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
@@ -103,7 +103,7 @@ impl Client for RemoteClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<zisk_prover_backend::ExecuteOutput>> {
+    ) -> Result<JobHandle<ExecuteResult>> {
         self.do_execute(program, input, executor, timeout, subs)
     }
 
@@ -115,7 +115,7 @@ impl Client for RemoteClient {
         _override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, timeout, subs)
     }
 }

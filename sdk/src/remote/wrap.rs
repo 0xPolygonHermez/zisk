@@ -1,9 +1,9 @@
 use super::RemoteClient;
 use crate::job_handle::{JobHandle, SubscriberList};
+use crate::prove::ProveResult;
 use std::time::Duration;
 use zisk_common::{Proof, ProofKind};
 use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
-use zisk_prover_backend::ProveOutput;
 
 use anyhow::Result;
 
@@ -14,7 +14,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<ProveResult>> {
         let data = bincode::serialize(proof)
             .map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
 

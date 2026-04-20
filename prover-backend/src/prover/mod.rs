@@ -18,7 +18,6 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
@@ -31,7 +30,7 @@ use crate::{ExecuteOutput, ProveOutput};
 
 pub struct ZiskVerifyConstraintsResult {
     pub executor_summary: ZiskExecutorSummary,
-    pub duration: Duration,
+    pub duration: u64,
     pub stats: ExecutorStatsHandle,
     pub publics: PublicValues,
 }
@@ -39,7 +38,7 @@ pub struct ZiskVerifyConstraintsResult {
 impl ZiskVerifyConstraintsResult {
     pub fn new(
         execution: ZiskExecutorSummary,
-        duration: Duration,
+        duration: u64,
         stats: ExecutorStatsHandle,
         publics: &[u8],
     ) -> Self {
@@ -79,7 +78,7 @@ impl ZiskVerifyConstraintsResult {
         &self.executor_summary.executor_time
     }
 
-    pub fn get_duration(&self) -> Duration {
+    pub fn get_duration(&self) -> u64 {
         self.duration
     }
 }

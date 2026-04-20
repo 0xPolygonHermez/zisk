@@ -246,7 +246,7 @@ impl ZiskProve {
                 }
             };
             result.save_proof(&output_file)?;
-            info!("Proof Time: {:.3} seconds", result.get_proving_time().as_secs_f64());
+            info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
 
             print_execution_summary(
                 &executor_time,

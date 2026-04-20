@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ProverOpts, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, EmbeddedOpts, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("guest");
 static PROGRAM2: GuestProgram = load_program!("guest-agg");
@@ -14,8 +14,8 @@ async fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let proof_opts = ProverOpts::default().minimal_memory();
-    let client = ProverClient::embedded().with_prover_options(proof_opts).gpu().build()?;
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let client = ProverClient::embedded().with_embedded_opts(embedded_opts).gpu().build()?;
 
     println!("Setting up first program...");
     client.setup(&PROGRAM1).run()?.await?;

@@ -42,7 +42,7 @@ impl EmbeddedClient {
         let result = match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
                 p.setup(&program).run()?;
-                Ok(SetupResult)
+                Ok(SetupResult { job_id: None })
             }
             EmbeddedProver::Asm(p) => {
                 let builder = p.setup(&program);
@@ -51,7 +51,7 @@ impl EmbeddedClient {
                 } else {
                     builder.run()?;
                 }
-                Ok(SetupResult)
+                Ok(SetupResult { job_id: None })
             }
         };
         Ok(result)

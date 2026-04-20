@@ -2,12 +2,13 @@ use super::{stdin_to_input_kind, RemoteClient};
 use crate::{
     input::ProgramInput,
     job_handle::{JobHandle, SubscriberList},
+    prove::ProveResult,
     ExecutorKind,
 };
 use std::time::Duration;
 use zisk_common::ProofKind;
 use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
-use zisk_prover_backend::{GuestProgram, ProveOutput};
+use zisk_prover_backend::GuestProgram;
 
 use anyhow::Result;
 
@@ -20,7 +21,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<ProveResult>> {
         let hash_id = program.program_id.hash_id.to_string();
         let input = stdin_to_input_kind(input)?;
         let proof_timeout = timeout.map(deadline_from_now);

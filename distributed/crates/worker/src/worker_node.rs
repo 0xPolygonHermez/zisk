@@ -411,10 +411,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let zisk_execution_time = ZiskExecuteTime {
-            total_duration: result_data.1.total_duration.as_millis() as f32,
-            execution_duration: result_data.1.execution_duration.as_millis() as f32,
-            count_and_plan_duration: result_data.1.count_and_plan_duration.as_millis() as f32,
-            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration.as_millis() as f32,
+            total_duration: result_data.1.total_duration as f32,
+            execution_duration: result_data.1.execution_duration as f32,
+            count_and_plan_duration: result_data.1.count_and_plan_duration as f32,
+            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration as f32,
             asm_execution_duration: result_data
                 .1
                 .asm_execution_duration
@@ -489,11 +489,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let zisk_execution_time = ZiskExecuteTime {
-            total_duration: zisk_exec_time.total_duration.as_millis() as f32,
-            execution_duration: zisk_exec_time.execution_duration.as_millis() as f32,
-            count_and_plan_duration: zisk_exec_time.count_and_plan_duration.as_millis() as f32,
-            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration.as_millis()
-                as f32,
+            total_duration: zisk_exec_time.total_duration as f32,
+            execution_duration: zisk_exec_time.execution_duration as f32,
+            count_and_plan_duration: zisk_exec_time.count_and_plan_duration as f32,
+            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration as f32,
             asm_execution_duration: zisk_exec_time
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),

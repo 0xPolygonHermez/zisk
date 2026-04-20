@@ -8,13 +8,13 @@ use zisk_common::{
 pub use zisk_common::Proof;
 
 pub(crate) struct ExecutionSummary {
-    pub steps: u64,
-    pub cost: u64,
+    time: u64,
+    steps: u64,
+    cost: u64,
 }
 
 pub struct ExecuteOutput {
-    execution_time: Duration,
-    execution_summary: ExecutionSummary,
+    summary: ExecutionSummary,
     publics: PublicValues,
 }
 
@@ -25,8 +25,8 @@ impl ExecuteOutput {
         publics: &[u8],
     ) -> Self {
         Self {
-            execution_time,
-            execution_summary: ExecutionSummary {
+            summary: ExecutionSummary {
+                time: execution_time.as_millis() as u64,
                 steps: executor_summary.steps,
                 cost: executor_summary.cost_per_type.total_cost(),
             },
@@ -52,15 +52,15 @@ impl ExecuteOutput {
     }
 
     pub fn get_execution_steps(&self) -> u64 {
-        self.execution_summary.steps
+        self.summary.steps
     }
 
     pub fn get_execution_cost(&self) -> u64 {
-        self.execution_summary.cost
+        self.summary.cost
     }
 
-    pub fn get_execution_time(&self) -> Duration {
-        self.execution_time
+    pub fn get_execution_time(&self) -> u64 {
+        self.summary.time
     }
 
     /// Construct a result from a remote gateway response.
@@ -71,38 +71,40 @@ impl ExecuteOutput {
         publics: &[u8],
     ) -> Self {
         Self {
-            execution_time,
-            execution_summary: ExecutionSummary { steps, cost: cost_per_type.total_cost() },
+            summary: ExecutionSummary {
+                time: execution_time.as_millis() as u64,
+                steps,
+                cost: cost_per_type.total_cost(),
+            },
             publics: PublicValues::new(publics),
         }
     }
 }
 
 pub struct ProveOutput {
-    execution_summary: ExecutionSummary,
-    proving_time: Duration,
+    summary: ExecutionSummary,
     proof: Proof,
 }
 
 impl ProveOutput {
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
         Self {
-            execution_summary: ExecutionSummary {
+            summary: ExecutionSummary {
+                time: proving_time.as_millis() as u64,
                 steps: execution.steps,
                 cost: execution.cost_per_type.total_cost(),
             },
-            proving_time,
             proof,
         }
     }
 
     pub fn new_null(execution: ZiskExecutorSummary, proving_time: Duration) -> Self {
         Self {
-            execution_summary: ExecutionSummary {
+            summary: ExecutionSummary {
+                time: proving_time.as_millis() as u64,
                 steps: execution.steps,
                 cost: execution.cost_per_type.total_cost(),
             },
-            proving_time,
             proof: Proof::default(),
         }
     }
@@ -115,22 +117,25 @@ impl ProveOutput {
         cost_per_type: StatsCostPerType,
     ) -> Self {
         Self {
-            execution_summary: ExecutionSummary { steps, cost: cost_per_type.total_cost() },
-            proving_time,
+            summary: ExecutionSummary {
+                time: proving_time.as_millis() as u64,
+                steps,
+                cost: cost_per_type.total_cost(),
+            },
             proof,
         }
     }
 
-    pub fn get_proving_time(&self) -> Duration {
-        self.proving_time
+    pub fn get_proving_time(&self) -> u64 {
+        self.summary.time
     }
 
     pub fn get_execution_steps(&self) -> u64 {
-        self.execution_summary.steps
+        self.summary.steps
     }
 
     pub fn get_execution_cost(&self) -> u64 {
-        self.execution_summary.cost
+        self.summary.cost
     }
 
     pub fn get_proof(&self) -> &Proof {

@@ -1,5 +1,4 @@
 use std::fmt;
-use std::time::Duration;
 use std::time::Instant;
 
 /// Type representing a chunk identifier.
@@ -143,13 +142,13 @@ impl fmt::Display for StatsCostPerType {
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorTime {
     /// Total executor duration of the entire execution process.
-    pub total_duration: Duration,
+    pub total_duration: u64,
     /// Duration of the execution phase.
-    pub execution_duration: Duration,
+    pub execution_duration: u64,
     /// Duration of the counting and planning phase for main state machines.
-    pub count_and_plan_duration: Duration,
+    pub count_and_plan_duration: u64,
     /// Duration of the counting and planning phase for memory operations from ASM runner.
-    pub count_and_plan_mo_duration: Duration,
+    pub count_and_plan_mo_duration: u64,
     /// Execution duration of the ASM runner.
     pub asm_execution_duration: Option<AsmExecutionInfo>,
 }

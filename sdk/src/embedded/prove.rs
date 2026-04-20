@@ -2,12 +2,13 @@ use super::EmbeddedClient;
 use crate::embedded::{EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
 use crate::input::ProgramInput;
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
+use crate::prove::ProveResult;
 use crate::{ExecutorKind, JobEvent, ZiskStdin};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::ProofKind;
-use zisk_prover_backend::{GuestProgram, ProveOutput};
+use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
     pub(crate) fn do_prove(
@@ -18,7 +19,7 @@ impl EmbeddedClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<ProveResult>> {
         let program = program.clone();
         let subs_cloned = Arc::clone(&subs);
         let prover = self.prover.clone();
@@ -42,7 +43,7 @@ impl EmbeddedClient {
         input: ProgramInput,
         executor: ExecutorKind,
         proof_kind: ProofKind,
-    ) -> Result<ProveOutput> {
+    ) -> Result<ProveResult> {
         macro_rules! apply_mode {
             ($builder:expr) => {
                 match proof_kind {
@@ -83,6 +84,6 @@ impl EmbeddedClient {
                 apply_mode!(p.prove(program, ZiskStdin::new().into_inner())).run()?
             }
         };
-        Ok(result)
+        Ok(ProveResult::from(result))
     }
 }

@@ -2023,14 +2023,10 @@ impl Coordinator {
     /// * `exec_time_dto` - The execution time DTO from the worker's response
     fn extract_execution_info(exec_time_dto: &ZiskExecutorTimeDto) -> ZiskExecutorTime {
         ZiskExecutorTime {
-            total_duration: Duration::from_secs_f32(exec_time_dto.total_duration / 1000.0),
-            execution_duration: Duration::from_secs_f32(exec_time_dto.execution_duration / 1000.0),
-            count_and_plan_duration: Duration::from_secs_f32(
-                exec_time_dto.count_and_plan_duration / 1000.0,
-            ),
-            count_and_plan_mo_duration: Duration::from_secs_f32(
-                exec_time_dto.count_and_plan_mo_duration / 1000.0,
-            ),
+            total_duration: exec_time_dto.total_duration as u64,
+            execution_duration: exec_time_dto.execution_duration as u64,
+            count_and_plan_duration: exec_time_dto.count_and_plan_duration as u64,
+            count_and_plan_mo_duration: exec_time_dto.count_and_plan_mo_duration as u64,
             asm_execution_duration: exec_time_dto
                 .asm_execution_duration
                 .as_ref()

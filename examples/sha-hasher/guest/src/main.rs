@@ -32,5 +32,5 @@ fn main() {
     println!("Bytes to commit: {:?}", bytes);
 
     // Write raw ABI-encoded bytes directly (no bincode serialization)
-    ziskos::io::write(&bytes);
+    ziskos::io::commit_slice(&bytes);
 }

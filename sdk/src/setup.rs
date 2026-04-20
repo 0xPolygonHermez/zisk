@@ -4,10 +4,18 @@ use std::time::Duration;
 use anyhow::Result;
 use zisk_prover_backend::GuestProgram;
 
-use crate::job_handle::JobHandle;
+use crate::job_handle::{JobHandle, JobId};
 use crate::Client;
 
-pub struct SetupResult;
+pub struct SetupResult {
+    pub job_id: Option<JobId>,
+}
+
+impl SetupResult {
+    pub fn job_id(&self) -> Option<&JobId> {
+        self.job_id.as_ref()
+    }
+}
 
 /// Builder for a program ROM setup request.
 ///

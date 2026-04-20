@@ -4,8 +4,7 @@ use anyhow::Result;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
-    pub(crate) fn do_upload(&self, _program: &GuestProgram) -> Result<UploadResult> {
-        // No upload step needed for embedded client — it has direct access to ELF files.
-        Ok(UploadResult)
+    pub(crate) fn do_upload(&self, program: &GuestProgram) -> Result<UploadResult> {
+        Ok(UploadResult::new(program.program_id.hash_id.to_string()))
     }
 }

@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -6,8 +7,36 @@ use zisk_common::ProofKind;
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::input::ProgramInput;
-use crate::job_handle::{JobHandle, Subscriber, SubscriberList};
+use crate::job_handle::{JobHandle, JobId, Subscriber, SubscriberList};
 use crate::{Client, ExecutorKind};
+
+pub struct ProveResult {
+    pub(crate) job_id: Option<JobId>,
+    output: ProveOutput,
+}
+
+impl ProveResult {
+    pub fn new(output: ProveOutput, job_id: Option<JobId>) -> Self {
+        Self { output, job_id }
+    }
+
+    pub fn job_id(&self) -> Option<&JobId> {
+        self.job_id.as_ref()
+    }
+}
+
+impl Deref for ProveResult {
+    type Target = ProveOutput;
+    fn deref(&self) -> &Self::Target {
+        &self.output
+    }
+}
+
+impl From<ProveOutput> for ProveResult {
+    fn from(output: ProveOutput) -> Self {
+        Self { output, job_id: None }
+    }
+}
 
 /// Events emitted during proof generation.
 ///
@@ -30,7 +59,7 @@ pub enum JobEvent {
 /// Builder for a prove request.
 ///
 /// Obtain via [`crate::ProverClient::prove`].
-/// Finalize with `.run()` which returns a [`JobHandle<ProveOutput>`].
+/// Finalize with `.run()` which returns a [`JobHandle<ProveResult>`].
 pub struct ProveRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
@@ -93,8 +122,8 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self.proof_kind
     }
 
-    /// Submit proof generation, returning a [`JobHandle<ProveOutput>`] immediately.
-    pub fn run(self) -> Result<JobHandle<ProveOutput>> {
+    /// Submit proof generation, returning a [`JobHandle<ProveResult>`] immediately.
+    pub fn run(self) -> Result<JobHandle<ProveResult>> {
         let mode = self.resolve_mode();
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let subs: SubscriberList = Arc::new(Mutex::new(self.subscribers));

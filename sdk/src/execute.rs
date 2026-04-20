@@ -1,11 +1,40 @@
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
-use crate::job_handle::JobHandle;
+use crate::job_handle::{JobHandle, JobId};
 use crate::{Client, ExecutorKind};
+
+pub struct ExecuteResult {
+    job_id: Option<JobId>,
+    output: ExecuteOutput,
+}
+
+impl ExecuteResult {
+    pub fn new(output: ExecuteOutput, job_id: Option<JobId>) -> Self {
+        Self { output, job_id }
+    }
+
+    pub fn job_id(&self) -> Option<&JobId> {
+        self.job_id.as_ref()
+    }
+}
+
+impl Deref for ExecuteResult {
+    type Target = ExecuteOutput;
+    fn deref(&self) -> &Self::Target {
+        &self.output
+    }
+}
+
+impl From<ExecuteOutput> for ExecuteResult {
+    fn from(output: ExecuteOutput) -> Self {
+        Self { output, job_id: None }
+    }
+}
 
 /// Builder for a dry-run execution request (no proof).
 ///
@@ -43,7 +72,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     }
 
     /// Submit the execution, returning a [`JobHandle<ExecuteOutput>`].
-    pub fn run(self) -> Result<JobHandle<ExecuteOutput>> {
+    pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let subs = Arc::new(Mutex::new(Vec::new()));
         self.client.run_execute(self.program, self.input, executor, self.timeout, subs)

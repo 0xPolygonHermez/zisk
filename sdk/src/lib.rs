@@ -17,11 +17,11 @@ mod wrap;
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
 pub use embedded::{EmbeddedClient, EmbeddedClientBuilder};
-pub use execute::ExecuteRequest;
+pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::ZiskHints;
 pub use input::ProgramInput;
 pub use job_handle::JobHandle;
-pub use prove::{JobEvent, ProveRequest};
+pub use prove::{JobEvent, ProveRequest, ProveResult};
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
@@ -34,7 +34,7 @@ pub use zisk_prover_backend::{
     load_program, Elf, EmuOptions, GuestProgram, ProfilingMode, ProgramId,
 };
 
-pub use opts::ProverOpts;
+pub use opts::EmbeddedOpts;
 
 // Re-export result and data types from backend (public outputs)
 pub use zisk_prover_backend::{ExecuteOutput, ProveOutput};
@@ -94,7 +94,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         proof_kind: ProofKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
-    ) -> Result<job_handle::JobHandle<ProveOutput>>;
+    ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 
     fn run_execute(
         &self,
@@ -103,7 +103,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         executor: ExecutorKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
-    ) -> Result<job_handle::JobHandle<zisk_prover_backend::ExecuteOutput>>;
+    ) -> Result<job_handle::JobHandle<ExecuteResult>>;
 
     fn run_wrap(
         &self,
@@ -113,5 +113,5 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
-    ) -> Result<job_handle::JobHandle<ProveOutput>>;
+    ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 }

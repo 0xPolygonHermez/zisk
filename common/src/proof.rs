@@ -119,10 +119,18 @@ impl PlonkVkey {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ZiskVK {
-    pub vk: Vec<u8>,
-    pub plonk_vkey: Option<PlonkVkey>,
+pub type ZiskVK = Vec<u8>;
+
+/// Encode a Plonk `zisk_vk` blob: `[vk_len: u32 LE][vadcop_vk_bytes][plonk_vkey_json]`.
+pub fn encode_plonk_zisk_vk(vadcop_vk: Vec<u8>, plonk_vkey: &PlonkVkey) -> Result<ZiskVK> {
+    let plonk_json =
+        serde_json::to_vec(plonk_vkey).context("Failed to serialize PlonkVkey to JSON")?;
+    let vk_len = vadcop_vk.len() as u32;
+    let mut bytes = Vec::with_capacity(4 + vadcop_vk.len() + plonk_json.len());
+    bytes.extend_from_slice(&vk_len.to_le_bytes());
+    bytes.extend_from_slice(&vadcop_vk);
+    bytes.extend_from_slice(&plonk_json);
+    Ok(bytes)
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -372,7 +380,18 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     _ => unreachable!(),
                 };
 
-                let pubs = publics.bytes_solidity(program_vk, &zisk_vk.vk);
+                // Parse blob: [vk_len: u32 LE][vadcop_vk_bytes][plonk_vkey_json]
+                if zisk_vk.len() < 4 {
+                    return Err(anyhow::anyhow!("zisk_vk too short for Plonk proof"));
+                }
+                let vk_len = u32::from_le_bytes(zisk_vk[0..4].try_into().unwrap()) as usize;
+                if zisk_vk.len() < 4 + vk_len {
+                    return Err(anyhow::anyhow!("zisk_vk truncated"));
+                }
+                let vadcop_vk = &zisk_vk[4..4 + vk_len];
+                let plonk_vkey_json = &zisk_vk[4 + vk_len..];
+
+                let pubs = publics.bytes_solidity(program_vk, vadcop_vk);
 
                 let hash = Sha256::digest(&pubs).to_vec();
 
@@ -383,14 +402,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     protocol_id,
                 };
 
-                let plonk_vkey = zisk_vk.plonk_vkey.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("Plonk vkey is required for SNARK proof verification")
-                })?;
-
                 let temp_dir = std::env::temp_dir();
                 let temp_file = temp_dir.join(format!("plonk_vkey_{}.json", std::process::id()));
 
-                plonk_vkey.save(&temp_file)?;
+                std::fs::write(&temp_file, plonk_vkey_json).with_context(|| {
+                    format!("Failed to write PlonkVkey to temporary file: {}", temp_file.display())
+                })?;
 
                 let result = verify_snark_proof(&snark_proof, &temp_file);
 
@@ -411,9 +428,9 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
 
                 let is_valid = if minimal {
-                    verify_vadcop_final_compressed(&vadcop_final_proof, &zisk_vk.vk)
+                    verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
                 } else {
-                    verify_vadcop_final(&vadcop_final_proof, &zisk_vk.vk)
+                    verify_vadcop_final(&vadcop_final_proof, zisk_vk)
                 };
 
                 if !is_valid {
@@ -481,7 +498,7 @@ impl Proof {
                 bytes.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
                 bytes.extend_from_slice(&pubs);
                 bytes.extend_from_slice(&self.proof_bytes);
-                bytes.extend_from_slice(&self.zisk_vk.vk);
+                bytes.extend_from_slice(&self.zisk_vk);
 
                 bytes
             }
@@ -526,7 +543,7 @@ impl Proof {
             proof_bytes: vadcop_proof.proof,
             publics: PublicValues::new(&vadcop_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&vadcop_proof.public_values),
-            zisk_vk: ZiskVK { vk: zisk_vk, plonk_vkey: None },
+            zisk_vk,
         })
     }
 

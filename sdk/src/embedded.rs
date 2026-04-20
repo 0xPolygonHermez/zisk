@@ -16,14 +16,14 @@ use zisk_common::ProofKind;
 use zisk_common::{ProgramVK, Proof, PublicValues};
 use zisk_prover_backend::{
     get_proving_key, get_proving_key_snark, Asm, AsmOptions, AsmProver, Emu, EmuProver,
-    GuestProgram, ProveOutput, ZiskProver,
+    GuestProgram, ZiskProver,
 };
 
 use crate::{
-    execute::ExecuteRequest,
+    execute::{ExecuteRequest, ExecuteResult},
     input::ProgramInput,
     job_handle::{JobHandle, SubscriberList},
-    opts::ProverOpts,
+    opts::EmbeddedOpts,
     prove::ProveRequest,
     setup::SetupRequest,
     upload::UploadRequest,
@@ -38,7 +38,7 @@ const ERR_ASSEMBLY_NOT_ENABLED: &str =
 pub struct EmbeddedClientBuilder {
     executor: ExecutorKind,
     proof_kind: ProofKind,
-    prover_options: ProverOpts,
+    embedded_opts: EmbeddedOpts,
     gpu: bool,
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
@@ -50,7 +50,7 @@ impl Default for EmbeddedClientBuilder {
         Self {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::VadcopFinalMinimal,
-            prover_options: ProverOpts::default(),
+            embedded_opts: EmbeddedOpts::default(),
             gpu: false,
             asm_options: None,
             proving_key: None,
@@ -83,8 +83,8 @@ impl EmbeddedClientBuilder {
 
     /// Set proof generation options (e.g. minimal memory mode).
     #[must_use]
-    pub fn with_prover_options(mut self, opts: ProverOpts) -> Self {
-        self.prover_options = opts;
+    pub fn with_embedded_opts(mut self, opts: EmbeddedOpts) -> Self {
+        self.embedded_opts = opts;
         self
     }
 
@@ -132,14 +132,14 @@ impl EmbeddedClientBuilder {
                  Call .assembly() on the builder before setting asm_options."
             );
         }
-        let mut prover_options = self.prover_options;
+        let mut embedded_opts = self.embedded_opts;
         if let Some(pk) = self.proving_key {
-            prover_options.proving_key = Some(pk);
+            embedded_opts.proving_key = Some(pk);
         }
         if let Some(pk) = self.proving_key_snark {
-            prover_options.proving_key_snark = Some(pk);
+            embedded_opts.proving_key_snark = Some(pk);
         }
-        let mut backend_opts = prover_options.into_backend_opts(self.gpu);
+        let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
         }
@@ -233,7 +233,7 @@ impl Client for EmbeddedClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_prove(program, input, executor, proof_kind, timeout, subs)
     }
 
@@ -244,7 +244,7 @@ impl Client for EmbeddedClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<zisk_prover_backend::ExecuteOutput>> {
+    ) -> Result<JobHandle<ExecuteResult>> {
         self.do_execute(program, input, executor, timeout, subs)
     }
 
@@ -256,7 +256,7 @@ impl Client for EmbeddedClient {
         override_program_vk: Option<ProgramVK>,
         timeout: Option<Duration>,
         subs: SubscriberList,
-    ) -> Result<JobHandle<ProveOutput>> {
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
 }

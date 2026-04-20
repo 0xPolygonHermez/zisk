@@ -371,10 +371,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         }
 
         let zisk_execution_time = ZiskExecutorTime {
-            execution_duration,
-            count_and_plan_duration,
-            count_and_plan_mo_duration,
-            total_duration: start_total.elapsed(),
+            execution_duration: execution_duration.as_millis() as u64,
+            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: count_and_plan_mo_duration.as_millis() as u64,
+            total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self
                 .rom_executor
                 .get_asm_execution_info()
