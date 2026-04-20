@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
-    ZiskBuild, ZiskBuildToolchain, ZiskCheckSetup, ZiskClean, ZiskConvertInput, ZiskExecute,
-    ZiskInstallToolchain, ZiskNew, ZiskProgramSetup, ZiskProve, ZiskRun, ZiskStats, ZiskUtils,
-    ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
+    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskNew, ZiskProgramSetup, ZiskProve,
+    ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils, ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -18,20 +17,21 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 )]
 pub enum Cargo {
     Build(ZiskBuild),
-    BuildToolchain(ZiskBuildToolchain),
-    ConvertInput(ZiskConvertInput),
+    #[command(hide = true)]
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
-    InstallToolchain(ZiskInstallToolchain),
     Execute(ZiskExecute),
     New(ZiskNew),
     WrapProof(ZiskWrap),
     Prove(ZiskProve),
     ProgramSetup(ZiskProgramSetup),
     Run(ZiskRun),
+    #[command(hide = true)]
     Stats(ZiskStats),
+    Toolchain(ZiskToolchain),
     Utils(ZiskUtils),
     Verify(ZiskVerify),
+    #[command(hide = true)]
     VerifyConstraints(ZiskVerifyConstraints),
 }
 
@@ -43,20 +43,11 @@ fn main() -> Result<()> {
         Cargo::Build(cmd) => {
             cmd.run().context("Error executing Build command")?;
         }
-        Cargo::BuildToolchain(cmd) => {
-            cmd.run().context("Error executing BuildToolchain command")?;
-        }
-        Cargo::ConvertInput(cmd) => {
-            cmd.run().context("Error executing ConvertInput command")?;
-        }
         Cargo::CheckSetup(cmd) => {
             cmd.run().context("Error executing CheckSetup command")?;
         }
         Cargo::Clean(cmd) => {
             cmd.run().context("Error executing Clean command")?;
-        }
-        Cargo::InstallToolchain(cmd) => {
-            cmd.run().context("Error executing InstallToolchain command")?;
         }
         Cargo::New(cmd) => {
             cmd.run().context("Error executing New command")?;
@@ -75,6 +66,9 @@ fn main() -> Result<()> {
         }
         Cargo::Stats(mut cmd) => {
             cmd.run().context("Error executing Stats command")?;
+        }
+        Cargo::Toolchain(mut cmd) => {
+            cmd.run().context("Error executing Toolchain command")?;
         }
         Cargo::Utils(mut cmd) => {
             cmd.run().context("Error executing Utils command")?;

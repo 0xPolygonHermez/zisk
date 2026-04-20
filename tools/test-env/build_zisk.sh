@@ -194,7 +194,7 @@ main() {
     fi
 
     step "Installing ZisK Rust toolchain..."
-    ensure cargo-zisk install-toolchain || return 1
+    ensure cargo-zisk toolchain install || return 1
 
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {
