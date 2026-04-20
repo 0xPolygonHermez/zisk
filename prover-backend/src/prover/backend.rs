@@ -152,6 +152,10 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
+        self.proofman
+            .execute_from_lib(None)
+            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
+
         let elapsed = start.elapsed();
 
         let (result, _) = self.executor.get_execution_result();
