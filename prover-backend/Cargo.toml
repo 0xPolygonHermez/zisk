@@ -24,7 +24,6 @@ precompiles-hints = { workspace = true }
 fields = { workspace = true }
 borsh = { workspace = true }
 ziskemu = { workspace = true }
-asm-runner = { workspace = true }
 
 # External dependencies
 anyhow = { workspace = true }
@@ -35,6 +34,9 @@ serde = { workspace = true }
 sha2 = { workspace = true }
 blake3 = "1.3.1"
 alloy-sol-types = { version = "1.5.7" }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+asm-runner = { workspace = true }
 
 [features]
 default = []

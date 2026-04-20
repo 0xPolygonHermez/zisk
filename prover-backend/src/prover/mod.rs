@@ -1,4 +1,9 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod asm;
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+mod asm_stub;
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+use asm_stub as asm;
 mod backend;
 mod emu;
 use crate::guest::{GuestProgram, ProgramId};

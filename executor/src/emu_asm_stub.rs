@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use crate::{DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{EmulatorResult, StaticSMBundle};
 use anyhow::Result;
 
 use fields::PrimeField64;

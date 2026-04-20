@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use colored::Colorize;
+#[cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(unused_imports))]
 use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use fields::Goldilocks;
 use proofman::get_vadcop_final_proof_vkey;
@@ -42,7 +43,11 @@ impl ProverBackend {
     ) -> Self {
         Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
     }
+}
 
+/// ASM-specific helpers. Only called from `asm.rs` on Linux x86_64.
+#[cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(dead_code))]
+impl ProverBackend {
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.executor.asm_emulator()
     }
@@ -112,7 +117,9 @@ impl ProverBackend {
         }
         Ok(())
     }
+}
 
+impl ProverBackend {
     pub(crate) fn cancel(&self) {
         self.proofman.cancel();
     }
