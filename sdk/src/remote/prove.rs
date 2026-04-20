@@ -1,4 +1,4 @@
-use super::{deadline_from_now, stdin_to_input_kind, RemoteClient};
+use super::{stdin_to_input_kind, RemoteClient};
 use crate::{
     input::ProgramInput,
     job_handle::{JobHandle, SubscriberList},
@@ -6,7 +6,7 @@ use crate::{
 };
 use std::time::Duration;
 use zisk_common::ProofKind;
-use zisk_gateway::backend::{DomainJobKind, DomainProveRequest};
+use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use anyhow::Result;
@@ -16,7 +16,7 @@ impl RemoteClient {
         &self,
         program: &GuestProgram,
         input: ProgramInput,
-        _executor: ExecutorKind,
+        _executor: ExecutorKind, // remote: gateway uses its configured executor; hint ignored
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -29,9 +29,8 @@ impl RemoteClient {
         let job_kind =
             DomainJobKind::Prove(DomainProveRequest { hash_id, input, proof_timeout, proof_dest });
 
-        let job_id = self.submit_job(job_kind)?;
-        let gateway = self.gw_client.clone();
+        let remote_job = self.gw.submit_job(job_kind)?;
 
-        Ok(JobHandle::new_remote(gateway, job_id, subs, timeout))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout))
     }
 }

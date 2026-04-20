@@ -11,7 +11,6 @@ name = "zisk-gateway"
 path = "src/cli/main.rs"
 
 [dependencies]
-zisk-common = { workspace = true }
 zisk-gateway-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }

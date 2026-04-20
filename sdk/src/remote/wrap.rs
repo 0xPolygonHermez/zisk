@@ -1,8 +1,8 @@
-use super::{deadline_from_now, proof_to_proto, RemoteClient};
+use super::RemoteClient;
 use crate::job_handle::{JobHandle, SubscriberList};
 use std::time::Duration;
 use zisk_common::{Proof, ProofKind};
-use zisk_gateway::backend::{DomainJobKind, DomainWrapRequest};
+use zisk_gateway_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
 use zisk_prover_backend::ProveOutput;
 
 use anyhow::Result;
@@ -15,15 +15,30 @@ impl RemoteClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveOutput>> {
-        let proof = proof_to_proto(proof, proof_kind)?;
-        let proof_dest = proof_kind.into();
+        let data = bincode::serialize(proof)
+            .map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
+
+        // Derive a deterministic UUID from the serialized proof bytes so that retrying
+        // the same wrap request produces the same ID (idempotent on the gateway side).
+        let proof_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, &data);
+
+        let proof = DomainProof {
+            proof_id,
+            hash_id: String::new(),       // gateway fills this on wrap
+            verification_key: Vec::new(), // gateway fills this on wrap
+            proof_kind: proof_kind.into(),
+            data,
+            public_inputs: Vec::new(), // gateway fills this on wrap
+            started_at: None,
+            completed_at: None,
+        };
+        let proof_dest = proof.proof_kind.clone();
         let wrap_timeout = timeout.map(deadline_from_now);
 
         let job_kind = DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout });
 
-        let job_id = self.submit_job(job_kind)?;
-        let gateway = self.gw_client.clone();
+        let remote_job = self.gw.submit_job(job_kind)?;
 
-        Ok(JobHandle::new_remote(gateway, job_id, subs, timeout))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout))
     }
 }
