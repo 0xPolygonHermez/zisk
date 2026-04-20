@@ -75,7 +75,15 @@ impl ZiskCleanCache {
                     let entry = entry?;
                     let path = entry.path();
                     if path.is_file() {
-                        let file_name = path.file_name().unwrap().to_string_lossy();
+                        let file_name = path
+                            .file_name()
+                            .with_context(|| {
+                                format!(
+                                    "Failed to get file name for cache entry {}",
+                                    path.display()
+                                )
+                            })?
+                            .to_string_lossy();
                         if file_name.contains(&elf_hash) {
                             std::fs::remove_file(&path)?;
                             files_deleted += 1;
