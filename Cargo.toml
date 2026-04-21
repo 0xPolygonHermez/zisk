@@ -55,7 +55,6 @@ members = [
     "ziskbuild",
     "definitions",
     "zkvm-interface",
-    "examples/sha-hasher/host",
 ]
 
 resolver = "2"
