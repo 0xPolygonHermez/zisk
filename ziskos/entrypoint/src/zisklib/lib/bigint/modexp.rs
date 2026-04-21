@@ -256,6 +256,7 @@ fn modexp_long(
 ///
 /// Returns the number of bytes written to `result_ptr` (always equals `modulus_len`, zero-padded)
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn modexp_bytes_c(
     base_ptr: *const u8,
@@ -350,6 +351,7 @@ pub unsafe extern "C" fn modexp_u64_c(
 }
 
 /// Convert big-endian bytes to little-endian u64 array
+#[allow(dead_code)]
 fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {
     if bytes.is_empty() {
         return vec![0];
@@ -376,6 +378,7 @@ fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {
 }
 
 /// Convert big-endian bytes to little-endian U256 array
+#[allow(dead_code)]
 fn bytes_be_to_u256_le(bytes: &[u8]) -> Vec<U256> {
     let u64_le = bytes_be_to_u64_le(bytes);
 
@@ -388,6 +391,7 @@ fn bytes_be_to_u256_le(bytes: &[u8]) -> Vec<U256> {
 }
 
 /// Convert little-endian U256 array to big-endian bytes
+#[allow(dead_code)]
 fn u256_le_to_bytes_be(limbs: &[U256], output: &mut [u8]) {
     let flat = U256::slice_to_flat(limbs);
     let out_len = output.len();

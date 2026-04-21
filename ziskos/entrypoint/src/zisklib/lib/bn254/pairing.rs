@@ -11,7 +11,9 @@ use super::{
 };
 
 /// Pairing check result codes
+#[allow(dead_code)]
 pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
+#[allow(dead_code)]
 pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
 const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
@@ -275,6 +277,7 @@ pub unsafe extern "C" fn pairing_batch_bn254_c(
 /// - 4 = G2 field element invalid
 /// - 5 = G2 point not on curve
 /// - 6 = G2 point not in subgroup
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bn254_pairing_check_c(
     pairs: *const u8,

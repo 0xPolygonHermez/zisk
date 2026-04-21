@@ -165,6 +165,7 @@ fn convert_bytes_to_u64(block: &[u8; 64]) -> [u64; 8] {
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn sha256_c(
     input: *const u8,

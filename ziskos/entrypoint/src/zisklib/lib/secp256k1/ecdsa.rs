@@ -292,6 +292,7 @@ pub(crate) unsafe fn secp256k1_ecdsa_verify_bytes_c(
 /// # Returns
 /// - `Ok([u64; 8])` - Recovered pubkey if recovery is successful
 /// - `Err(u8)` - Error code
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn secp256k1_ecdsa_recover_c(
     sig: *const u8,

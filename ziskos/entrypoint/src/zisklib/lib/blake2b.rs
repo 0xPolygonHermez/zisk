@@ -59,6 +59,7 @@ pub fn blake2b_compress(
 /// - `state` must point to a writable buffer of at least 8 `u64`s
 /// - `message` must point to at least 16 `u64`s
 /// - `offset` must point to at least 2 `u64`s
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn blake2b_compress_c(
     rounds: u32,
