@@ -1,6 +1,6 @@
 //! Operations on the twist E': y² = x³ + 3 / (9 + u) of the BN254 curve
 
-use crate::zisklib::lib::utils::eq;
+use crate::zisklib::{eq, is_one, is_zero};
 
 use super::{
     constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, G2_IDENTITY},
@@ -9,6 +9,61 @@ use super::{
         neg_fp2_bn254, scalar_mul_fp2_bn254, square_fp2_bn254, sub_fp2_bn254,
     },
 };
+
+/// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
+pub fn jacobian_to_affine_twist_bn254(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 16] {
+    let z: [u64; 8] = p[16..24].try_into().unwrap();
+
+    if is_zero(&z) {
+        return G2_IDENTITY;
+    } else if is_one(&z) {
+        return [
+            p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13],
+            p[14], p[15],
+        ];
+    }
+
+    let x: [u64; 8] = p[0..8].try_into().unwrap();
+    let y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    let zinv = inv_fp2_bn254(
+        &z,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let zinv_sq = square_fp2_bn254(
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let x_res = mul_fp2_bn254(
+        &x,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut y_res = mul_fp2_bn254(
+        &y,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y_res = mul_fp2_bn254(
+        &y_res,
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    [
+        x_res[0], x_res[1], x_res[2], x_res[3], x_res[4], x_res[5], x_res[6], x_res[7], y_res[0],
+        y_res[1], y_res[2], y_res[3], y_res[4], y_res[5], y_res[6], y_res[7],
+    ]
+}
 
 /// Check if a non-zero point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(
@@ -107,60 +162,6 @@ pub fn is_on_subgroup_twist_bn254(
         hints,
     );
     eq(&lhs, &rhs)
-}
-
-/// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
-pub fn to_affine_twist_bn254(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 16] {
-    let z: [u64; 8] = p[16..24].try_into().unwrap();
-
-    if z == [0u64; 8] {
-        return G2_IDENTITY;
-    } else if z == [1u64, 0, 0, 0, 0, 0, 0, 0] {
-        return [
-            p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13],
-            p[14], p[15],
-        ];
-    }
-
-    let x: [u64; 8] = p[0..8].try_into().unwrap();
-    let y: [u64; 8] = p[8..16].try_into().unwrap();
-
-    let zinv = inv_fp2_bn254(
-        &z,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let zinv_sq = square_fp2_bn254(
-        &zinv,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    let x_res = mul_fp2_bn254(
-        &x,
-        &zinv_sq,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let mut y_res = mul_fp2_bn254(
-        &y,
-        &zinv_sq,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y_res = mul_fp2_bn254(
-        &y_res,
-        &zinv,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    [
-        x_res[0], x_res[1], x_res[2], x_res[3], x_res[4], x_res[5], x_res[6], x_res[7], y_res[0],
-        y_res[1], y_res[2], y_res[3], y_res[4], y_res[5], y_res[6], y_res[7],
-    ]
 }
 
 /// Addition of two non-zero points
@@ -421,6 +422,67 @@ pub fn utf_endomorphism_twist_bn254(
         qx[0], qx[1], qx[2], qx[3], qx[4], qx[5], qx[6], qx[7], qy[0], qy[1], qy[2], qy[3], qy[4],
         qy[5], qy[6], qy[7],
     ]
+}
+
+// ==================== C FFI Functions ====================
+
+/// Jacobian to affine conversion for a BN254 G2 (twist) point.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 24]` array (Jacobian coordinates x ‖ y ‖ z, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 16]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_twist_bn254_c")]
+pub unsafe extern "C" fn jacobian_to_affine_twist_bn254_c(
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let p = &*(p_ptr as *const [u64; 24]);
+    let result = &mut *(result_ptr as *mut [u64; 16]);
+    *result = jacobian_to_affine_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}
+
+/// Curve membership check for a BN254 G2 (twist) point.
+/// Returns 1 if the point is on the twist curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 16]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_twist_bn254_c")]
+pub unsafe extern "C" fn is_on_curve_twist_bn254_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 16]);
+    is_on_curve_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Subgroup membership check for a BN254 G2 (twist) point.
+/// Returns 1 if the point is in the G2 subgroup, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 16]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_twist_bn254_c")]
+pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 16]);
+    is_on_subgroup_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
 }
 
 /// Convert 128-byte big-endian G2 point to [u64; 16] little-endian
