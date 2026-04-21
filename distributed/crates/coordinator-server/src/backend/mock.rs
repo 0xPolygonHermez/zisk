@@ -11,12 +11,8 @@
 //! t=20ms  Running         → JobEvent::Started
 //! t=40ms  (Prove only)    → JobEvent::Progress(Contributions)
 //! t=80ms  (Prove only)    → JobEvent::Progress(Prove)
-//! t=150ms Completed       → JobEvent::Completed
+//! t=2s    Completed       → JobEvent::Completed
 //! ```
-//!
-//! Jobs submitted with `InputKind::Inline { is_last: false }` pause at
-//! `WaitingForInput` and resume once the input channel receives a chunk with
-//! `is_last: true`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -25,17 +21,16 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::stream;
-use tokio::sync::{broadcast, mpsc, Mutex, Notify};
+use tokio::sync::{broadcast, Mutex, Notify};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputChunk, DomainInputKind, DomainJobEvent,
-    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
-    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, WaitResult,
+    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
+    DomainJobEventStarted, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
+    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
 
@@ -44,6 +39,8 @@ use crate::errors::{ApiError, ApiResult};
 struct JobRecord {
     status: DomainJobStatus,
     result: Option<DomainJobKindResponse>,
+    /// The input kind this job was submitted with (if applicable).
+    input_kind: Option<DomainInputKind>,
     /// Notified whenever `status` changes — used by `wait_job_result`.
     notify: Arc<Notify>,
 }
@@ -54,8 +51,8 @@ struct MockState {
     jobs: HashMap<Uuid, JobRecord>,
     /// Per-job broadcast channel for `watch_job` subscribers.
     event_txs: HashMap<Uuid, broadcast::Sender<DomainJobEvent>>,
-    /// Per-job input channels for `push_job_input`.
-    input_txs: HashMap<Uuid, mpsc::Sender<DomainInputChunk>>,
+    /// Chunks received via `push_job_input`, keyed by job_id. For test assertions.
+    received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
 }
 
 impl MockState {
@@ -64,7 +61,7 @@ impl MockState {
             programs: HashSet::new(),
             jobs: HashMap::new(),
             event_txs: HashMap::new(),
-            input_txs: HashMap::new(),
+            received_chunks: HashMap::new(),
         }
     }
 }
@@ -110,9 +107,8 @@ impl MockBackend {
                     let _ = tx.send(event);
                 }
                 if is_terminal {
-                    // Drop channels — job is done, no more events or input.
+                    // Drop channels — job is done, no more events.
                     s.event_txs.remove(&job_id);
-                    s.input_txs.remove(&job_id);
                     Self::schedule_ttl_eviction(Arc::clone(state), cancel, job_id);
                 }
                 notify
@@ -151,7 +147,6 @@ impl MockBackend {
                 let _ = tx.send(event);
             }
             s.event_txs.remove(&job_id);
-            s.input_txs.remove(&job_id);
             Self::schedule_ttl_eviction(Arc::clone(state), cancel, job_id);
             notify
         };
@@ -183,7 +178,6 @@ impl MockBackend {
         cancel: CancellationToken,
         job_id: Uuid,
         kind: DomainJobKind,
-        needs_input_gate: bool,
     ) {
         tokio::spawn(async move {
             // ── Queued ────────────────────────────────────────────────────
@@ -223,69 +217,6 @@ impl MockBackend {
                 DomainJobEvent::Started(DomainJobEventStarted { job_id, timestamp: Utc::now() }),
             )
             .await;
-
-            // ── Input gate (for streaming input jobs) ─────────────────────
-            if needs_input_gate {
-                // Transition to WaitingForInput
-                Self::transition(
-                    &state,
-                    &cancel,
-                    job_id,
-                    DomainJobStatus::WaitingForInput,
-                    None,
-                    DomainJobEvent::WaitingForInput(DomainJobEventWaitingForInput {
-                        job_id,
-                        timestamp: Utc::now(),
-                    }),
-                )
-                .await;
-
-                // Wait for all input chunks (input_tx is dropped when done)
-                let rx = {
-                    let mut s = state.lock().await;
-                    s.input_txs.remove(&job_id)
-                };
-                // The input_tx will be dropped by push_job_input when is_last=true.
-                // We just need to wait until the sender side closes.
-                // We do this by waiting on a notify that push_job_input fires.
-                // Actually: we re-use the job's notify — push_job_input transitions
-                // the status back to Running after the last chunk.
-                if rx.is_some() {
-                    // Wait until status is no longer WaitingForInput
-                    loop {
-                        let notify = {
-                            let s = state.lock().await;
-                            match s.jobs.get(&job_id) {
-                                Some(r) if r.status == DomainJobStatus::WaitingForInput => {
-                                    r.notify.clone()
-                                }
-                                _ => break,
-                            }
-                        };
-                        notify.notified().await;
-                        let s = state.lock().await;
-                        match s.jobs.get(&job_id) {
-                            Some(r) if r.status.is_terminal() => return,
-                            Some(r) if r.status != DomainJobStatus::WaitingForInput => break,
-                            _ => continue,
-                        }
-                    }
-                }
-
-                // Back to Running after input received
-                Self::transition(
-                    &state,
-                    &cancel,
-                    job_id,
-                    DomainJobStatus::Running(None),
-                    None,
-                    DomainJobEvent::Started(DomainJobEventStarted {
-                        job_id,
-                        timestamp: Utc::now(),
-                    }),
-                )
-                .await;
-            }
 
             // ── Phase progress (Prove jobs only) ──────────────────────────
             if let DomainJobKind::Prove(_) = &kind {
@@ -340,7 +271,8 @@ impl MockBackend {
                 .await;
             }
 
-            sleep(Duration::from_millis(60)).await;
+            // Long wait to give tests time to push input
+            sleep(Duration::from_secs(2)).await;
 
             // ── Check not cancelled ───────────────────────────────────────
             {
@@ -404,42 +336,27 @@ impl BackendService for MockBackend {
             }
         }
 
-        let needs_input_gate = kind.needs_input_gate();
+        let input_kind = kind.input_kind().cloned();
         let job_id = Uuid::new_v4();
 
         // Create broadcast channel (capacity 64 — enough for all lifecycle events)
         let (event_tx, _) = broadcast::channel::<DomainJobEvent>(64);
         let notify = Arc::new(Notify::new());
 
-        let record =
-            JobRecord { status: DomainJobStatus::Queued, result: None, notify: notify.clone() };
-
-        let (input_tx, input_rx) = if needs_input_gate {
-            let (tx, rx) = mpsc::channel::<DomainInputChunk>(32);
-            (Some(tx), Some(rx))
-        } else {
-            (None, None)
+        let record = JobRecord {
+            status: DomainJobStatus::Queued,
+            result: None,
+            input_kind,
+            notify: notify.clone(),
         };
 
         {
             let mut s = self.state.lock().await;
             s.jobs.insert(job_id, record);
             s.event_txs.insert(job_id, event_tx);
-            if let Some(tx) = input_tx {
-                s.input_txs.insert(job_id, tx);
-            }
         }
 
-        // The notify-based approach (see spawn_job_task) doesn't need the rx side.
-        drop(input_rx);
-
-        Self::spawn_job_task(
-            Arc::clone(&self.state),
-            self.cancel.clone(),
-            job_id,
-            kind,
-            needs_input_gate,
-        );
+        Self::spawn_job_task(Arc::clone(&self.state), self.cancel.clone(), job_id, kind);
 
         tracing::debug!(%job_id, "submitted job");
         Ok(job_id)
@@ -537,50 +454,39 @@ impl BackendService for MockBackend {
     }
 
     async fn push_job_input(&self, job_id: Uuid, mut chunks: InputChunkStream) -> ApiResult<()> {
-        // Verify the job exists and is in WaitingForInput
+        // Verify the job exists and is not terminal.
+        // Reject StreamUri jobs — they cannot receive pushed input.
         {
             let s = self.state.lock().await;
             let rec = s.jobs.get(&job_id).ok_or(ApiError::JobNotFound(job_id))?;
-            if rec.status != DomainJobStatus::WaitingForInput {
+            if rec.status.is_terminal() {
                 return Err(ApiError::InvalidJobState {
                     reason: format!(
-                        "job {} is not in WaitingForInput state (current: {:?})",
+                        "job {} is already terminal (current: {:?})",
                         job_id, rec.status
+                    ),
+                });
+            }
+            if matches!(rec.input_kind, Some(DomainInputKind::StreamUri(_))) {
+                return Err(ApiError::InvalidJobState {
+                    reason: format!(
+                        "job {} uses StreamUri input — cannot push input via gRPC",
+                        job_id,
                     ),
                 });
             }
         }
 
-        // Drain the chunk stream. When the last chunk (is_last=true) arrives,
-        // transition the job back to Running.
+        // Drain the chunk stream, storing data for test assertions.
         use futures::StreamExt;
         while let Some(chunk_result) = chunks.next().await {
             let chunk = chunk_result.map_err(|e| ApiError::InvalidJobState {
                 reason: format!("input stream error: {e}"),
             })?;
-            let is_last = chunk.is_last;
 
-            if is_last {
-                // Resume the job: transition from WaitingForInput → Running
-                let notify = {
-                    let mut s = self.state.lock().await;
-                    if let Some(rec) = s.jobs.get_mut(&job_id) {
-                        rec.status = DomainJobStatus::Running(None);
-                        let n = rec.notify.clone();
-                        let event = DomainJobEvent::Started(DomainJobEventStarted {
-                            job_id,
-                            timestamp: Utc::now(),
-                        });
-                        if let Some(tx) = s.event_txs.get(&job_id) {
-                            let _ = tx.send(event);
-                        }
-                        n
-                    } else {
-                        return Err(ApiError::JobNotFound(job_id));
-                    }
-                };
-                notify.notify_waiters();
-                break;
+            if !chunk.data.is_empty() {
+                let mut s = self.state.lock().await;
+                s.received_chunks.entry(job_id).or_default().push(chunk.data);
             }
         }
 
@@ -692,7 +598,7 @@ fn synthesize_past_events(
 
 trait JobKindExt {
     fn hash_id(&self) -> Option<&str>;
-    fn needs_input_gate(&self) -> bool;
+    fn input_kind(&self) -> Option<&DomainInputKind>;
 }
 
 impl JobKindExt for DomainJobKind {
@@ -705,17 +611,11 @@ impl JobKindExt for DomainJobKind {
         }
     }
 
-    fn needs_input_gate(&self) -> bool {
-        let inline_not_last = |input: &DomainInputKind| {
-            matches!(
-                input,
-                DomainInputKind::Inline(c) if !c.is_last
-            )
-        };
+    fn input_kind(&self) -> Option<&DomainInputKind> {
         match self {
-            DomainJobKind::Prove(r) => inline_not_last(&r.input),
-            DomainJobKind::Execute(r) => inline_not_last(&r.input),
-            _ => false,
+            DomainJobKind::Prove(r) => Some(&r.input),
+            DomainJobKind::Execute(r) => Some(&r.input),
+            _ => None,
         }
     }
 }
@@ -723,7 +623,8 @@ impl JobKindExt for DomainJobKind {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        DomainExecuteRequest, DomainProveRequest, DomainSetupRequest, DomainWrapRequest,
+        DomainExecuteRequest, DomainInputChunk, DomainProveRequest, DomainSetupRequest,
+        DomainWrapRequest,
     };
     use super::*;
     use std::time::Duration;
@@ -755,7 +656,7 @@ mod tests {
         let job_id = b
             .submit_job(DomainJobKind::Prove(DomainProveRequest {
                 hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
+                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
                 proof_timeout: None,
                 proof_dest: DomainProofKind::Stark,
             }))
@@ -778,7 +679,7 @@ mod tests {
         let job_id = b
             .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
                 hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![], is_last: true }),
+                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
                 execute_timeout: None,
             }))
             .await

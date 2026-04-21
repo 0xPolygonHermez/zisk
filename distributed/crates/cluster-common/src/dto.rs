@@ -82,6 +82,12 @@ pub enum CoordinatorMessageDto {
     JobCancelled(JobCancelledDto),
     StreamData(StreamDataDto),
     SetupProgram(SetupProgramDto),
+    InputStreamData(InputStreamDataDto),
+}
+
+pub struct InputStreamDataDto {
+    pub job_id: JobId,
+    pub payload: Vec<u8>,
 }
 
 pub struct SetupProgramDto {

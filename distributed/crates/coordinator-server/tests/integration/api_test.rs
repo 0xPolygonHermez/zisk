@@ -54,10 +54,8 @@ fn dummy_elf() -> Vec<u8> {
     vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03]
 }
 
-fn inline_input(is_last: bool) -> Option<InputKind> {
-    Some(InputKind {
-        kind: Some(input_kind::Kind::Inline(InputChunk { data: vec![1, 2, 3], is_last })),
-    })
+fn inline_input() -> Option<InputKind> {
+    Some(InputKind { kind: Some(input_kind::Kind::Inline(InputChunk { data: vec![1, 2, 3] })) })
 }
 
 async fn register_program(client: &mut ZiskCoordinatorApiClient<Channel>) -> String {
@@ -92,7 +90,7 @@ async fn prove_job_wait_result_completes() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -135,7 +133,7 @@ async fn prove_job_watch_stream_receives_all_events() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -213,7 +211,7 @@ async fn execute_job_completes() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Execute(ExecuteRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     execute_timeout: None,
                 })),
             }),
@@ -253,7 +251,7 @@ async fn wrap_job_completes() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -335,7 +333,7 @@ async fn cancel_running_job_returns_true() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -429,13 +427,13 @@ async fn wait_result_timeout_returns_current_status() {
     let mut client = start_test_server().await;
     let hash_id = register_program(&mut client).await;
 
-    // Submit a Prove job that takes ~150ms in the mock
+    // Submit a Prove job that takes ~2s in the mock
     let job_id = client
         .job_request(JobRequestMessage {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(true),
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -463,13 +461,13 @@ async fn push_input_multi_chunk_completes() {
     let mut client = start_test_server().await;
     let hash_id = register_program(&mut client).await;
 
-    // Submit with is_last=false to trigger WaitingForInput
+    // Submit a Prove job with inline input
     let job_id = client
         .job_request(JobRequestMessage {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
-                    input: inline_input(false), // is_last = false
+                    input: inline_input(),
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -480,36 +478,21 @@ async fn push_input_multi_chunk_completes() {
         .into_inner()
         .job_id;
 
-    // Wait until WaitingForInput
-    loop {
-        let r = client
-            .wait_job_result(WaitJobResultRequest {
-                job_id: job_id.clone(),
-                timeout_seconds: Some(2),
-            })
-            .await
-            .unwrap()
-            .into_inner();
-        if let Some(s) = &r.job_status {
-            if matches!(s.status, Some(job_status::Status::WaitingForInput(_))) {
-                break;
-            }
-            // If somehow it already completed (shouldn't happen with is_last=false)
-            if matches!(s.status, Some(job_status::Status::Completed(_))) {
-                return;
-            }
-        }
-    }
-
-    // Push the final chunk
-    let push_stream = tokio_stream::iter(vec![PushJobInputRequest {
-        job_id: job_id.clone(),
-        chunk: Some(InputChunk { data: vec![4, 5, 6], is_last: true }),
-    }]);
+    // Push additional input chunks (stream closure = EOF)
+    let push_stream = tokio_stream::iter(vec![
+        PushJobInputRequest {
+            job_id: job_id.clone(),
+            chunk: Some(InputChunk { data: vec![4, 5, 6] }),
+        },
+        PushJobInputRequest {
+            job_id: job_id.clone(),
+            chunk: Some(InputChunk { data: vec![7, 8, 9] }),
+        },
+    ]);
 
     client.push_job_input(push_stream).await.unwrap();
 
-    // Now the job should complete
+    // The job should eventually complete (~2s in mock)
     loop {
         let r = client
             .wait_job_result(WaitJobResultRequest {
@@ -525,4 +508,50 @@ async fn push_input_multi_chunk_completes() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn push_input_on_terminal_job_fails() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    // Submit a Setup job (completes quickly)
+    let job_id = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind { kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id })) }),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    // Wait for completion
+    loop {
+        let r = client
+            .wait_job_result(WaitJobResultRequest {
+                job_id: job_id.clone(),
+                timeout_seconds: Some(5),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        if let Some(s) = &r.job_status {
+            if matches!(s.status, Some(job_status::Status::Completed(_))) {
+                break;
+            }
+        }
+    }
+
+    // Pushing input to a completed job should fail
+    let push_stream = tokio_stream::iter(vec![PushJobInputRequest {
+        job_id: job_id.clone(),
+        chunk: Some(InputChunk { data: vec![1, 2, 3] }),
+    }]);
+
+    let err = client.push_job_input(push_stream).await.unwrap_err();
+    assert!(
+        err.code() == tonic::Code::FailedPrecondition || err.code() == tonic::Code::InvalidArgument,
+        "expected FailedPrecondition or InvalidArgument, got {:?}",
+        err.code()
+    );
 }

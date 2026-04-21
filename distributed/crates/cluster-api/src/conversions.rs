@@ -12,9 +12,10 @@ use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
     execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
     ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
-    HeartbeatAck, JobCancelled, ProofList, ProofStark, ProveParams, ReconnectionAction,
-    ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
-    WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
+    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
+    StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
+    WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -97,7 +98,16 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
                     hash_id: dto.hash_id,
                 })),
             },
+            CoordinatorMessageDto::InputStreamData(dto) => {
+                CoordinatorMessage { payload: Some(Payload::InputStreamData(dto.into())) }
+            }
         }
+    }
+}
+
+impl From<InputStreamDataDto> for InputStreamData {
+    fn from(dto: InputStreamDataDto) -> Self {
+        InputStreamData { job_id: dto.job_id.as_string(), payload: dto.payload }
     }
 }
 

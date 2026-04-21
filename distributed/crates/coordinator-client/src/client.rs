@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tonic::transport::Channel;
+use uuid::Uuid;
 use zisk_coordinator_api::dto::{DomainJobKind, RegisterGuestProgramRequestDto};
 use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
 
+use crate::input_sender::InputSender;
 use crate::job::Job;
 
 #[derive(Clone)]
@@ -55,6 +57,14 @@ impl CoordinatorClient {
 
     pub fn async_client(&self) -> ZiskCoordinatorApiClient<Channel> {
         self.inner.clone()
+    }
+
+    /// Open a persistent input stream to a running job.
+    ///
+    /// Returns an [`InputSender`] that can be used to send multiple chunks.
+    /// Drop the sender (or call [`InputSender::close`]) to signal EOF.
+    pub fn open_input_stream(&self, job_id: Uuid) -> InputSender {
+        InputSender::open(job_id, self.inner.clone())
     }
 }
 

@@ -384,6 +384,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.submit_input(bytes)
     }
 
+    fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.core_prover.backend.append_raw_input(bytes)
+    }
+
     fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.core_prover.backend.register_hints_stream(stream)
     }

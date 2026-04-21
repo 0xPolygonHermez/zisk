@@ -399,6 +399,10 @@ pub trait ProverEngine {
         Err(anyhow::anyhow!("submit_input not supported by this backend"))
     }
 
+    fn append_raw_input(&self, _bytes: &[u8]) -> Result<()> {
+        Err(anyhow::anyhow!("append_raw_input not supported by this backend"))
+    }
+
     fn register_hints_stream(&self, _stream: StreamSource) -> Result<()> {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
     }
@@ -617,6 +621,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn submit_input(&self, bytes: &[u8]) -> Result<()> {
         self.prover.submit_input(bytes)
+    }
+
+    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.prover.append_raw_input(bytes)
     }
 
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {

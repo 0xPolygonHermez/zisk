@@ -52,7 +52,6 @@ pub enum DomainJobPhase {
 #[derive(Debug, Clone)]
 pub struct DomainInputChunk {
     pub data: Vec<u8>,
-    pub is_last: bool,
 }
 
 #[derive(Debug, Clone)]

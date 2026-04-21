@@ -9,6 +9,7 @@ use zisk_coordinator_api::dto::{
 use zisk_coordinator_api::grpc::proto::{CancelJobRequest, WaitJobResultRequest, WatchJobRequest};
 
 use crate::client::CoordinatorClient;
+use crate::input_sender::InputSender;
 
 const WAIT_POLL_SECS: u32 = 5;
 
@@ -132,5 +133,10 @@ impl Job {
             .await
             .map_err(|e| anyhow::anyhow!("CancelJob RPC failed: {e}"))?;
         Ok(resp.into_inner().cancelled)
+    }
+
+    /// Open a persistent input stream to this job.
+    pub fn open_input_stream(&self) -> InputSender {
+        self.client.open_input_stream(self.job_id)
     }
 }

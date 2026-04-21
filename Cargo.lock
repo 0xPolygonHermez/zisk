@@ -7309,8 +7309,10 @@ name = "zisk-coordinator-client"
 version = "0.17.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "futures",
  "tokio",
+ "tokio-stream",
  "tonic",
  "uuid",
  "zisk-coordinator-api",
@@ -7423,6 +7425,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
+ "bytes",
  "colored",
  "fields 0.16.1 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features)",
  "futures",

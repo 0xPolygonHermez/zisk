@@ -122,19 +122,19 @@ impl DomainInputKind {
                 Self::MAX_INLINE_BYTES
             );
         }
-        Ok(DomainInputKind::Inline(DomainInputChunk { data, is_last: true }))
+        Ok(DomainInputKind::Inline(DomainInputChunk { data }))
     }
 }
 
 impl From<InputChunk> for DomainInputChunk {
     fn from(val: InputChunk) -> Self {
-        DomainInputChunk { data: val.data, is_last: val.is_last }
+        DomainInputChunk { data: val.data }
     }
 }
 
 impl From<DomainInputChunk> for InputChunk {
     fn from(chunk: DomainInputChunk) -> Self {
-        InputChunk { data: chunk.data, is_last: chunk.is_last }
+        InputChunk { data: chunk.data }
     }
 }
 

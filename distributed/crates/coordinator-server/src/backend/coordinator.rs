@@ -9,6 +9,7 @@ use async_stream::stream;
 use async_trait::async_trait;
 use chrono::Utc;
 use tokio::{sync::RwLock, time::timeout};
+use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
 use zisk_cluster_common::JobPhase;
@@ -26,7 +27,8 @@ use super::{
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
-    DataId, HintsModeDto, InputsModeDto, LaunchProofRequestDto, LaunchWrapRequestDto, ProofKind,
+    DataId, HintsModeDto, InputStreamDataDto, InputsModeDto, LaunchProofRequestDto,
+    LaunchWrapRequestDto, ProofKind,
 };
 
 pub struct CoordinatorBackend {
@@ -193,7 +195,6 @@ impl BackendService for CoordinatorBackend {
                 Ok(job_id)
             }
             DomainJobKind::Prove(r) => {
-                println!("** Submitting Prove job to coordinator with hash_id {}", r.hash_id);
                 let hash_id = r.hash_id.clone();
                 let proof_type = match r.proof_dest {
                     DomainProofKind::StarkMinimal => ProofKind::VadcopFinalMinimal,
@@ -215,7 +216,6 @@ impl BackendService for CoordinatorBackend {
                     })
                     .await
                     .map_err(coord_err_to_api)?;
-                println!("** Coordinator responded with job_id {}", response.job_id.as_string());
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
@@ -345,8 +345,41 @@ impl BackendService for CoordinatorBackend {
         Ok(Box::pin(output))
     }
 
-    async fn push_job_input(&self, _job_id: Uuid, _chunks: InputChunkStream) -> ApiResult<()> {
-        Err(internal("push_job_input is not yet supported by the embedded coordinator backend"))
+    async fn push_job_input(&self, job_id: Uuid, mut chunks: InputChunkStream) -> ApiResult<()> {
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
+
+        // Look up the job and grab the worker list.
+        let workers = {
+            let jobs = self.coordinator.jobs().read().await;
+            let job_arc = jobs
+                .get(&job_id_internal)
+                .ok_or_else(|| ApiError::Internal(format!("job {} not found", job_id)))?;
+            let job = job_arc.read().await;
+            job.workers.clone()
+        };
+
+        if workers.is_empty() {
+            return Err(internal(format!("job {} has no assigned workers", job_id)));
+        }
+
+        // Drain the input stream and forward each chunk to every worker.
+        while let Some(chunk_result) = chunks.next().await {
+            let chunk = chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+
+            for worker_id in &workers {
+                let msg = zisk_cluster_common::CoordinatorMessageDto::InputStreamData(
+                    InputStreamDataDto {
+                        job_id: job_id_internal.clone(),
+                        payload: chunk.data.clone(),
+                    },
+                );
+                self.coordinator.workers_pool().send_message(worker_id, msg).await.map_err(
+                    |e| internal(format!("failed to send input to worker {}: {}", worker_id, e)),
+                )?;
+            }
+        }
+
+        Ok(())
     }
 
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool> {

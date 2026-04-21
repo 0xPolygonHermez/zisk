@@ -34,8 +34,8 @@ service ZiskCoordinatorApi {
   rpc WatchJob(WatchJobRequest)
       returns (stream JobEvent);
 
-  // Stream additional input chunks to a job in WaitingForInput state.
-  // Set is_last=true on the final chunk to resume execution.
+  // Stream additional input chunks to a running job.
+  // Close the stream to signal end-of-input (EOF).
   rpc PushJobInput(stream PushJobInputRequest)
       returns (google.protobuf.Empty);
 
@@ -111,13 +111,12 @@ enum JobPhase {
 }
 
 message InputChunk {
-  bytes data    = 1;
-  bool  is_last = 2; // if true, input is complete
+  bytes data = 1;
 }
 
 message InputKind {
   oneof kind {
-    InputChunk inline     = 1; // first chunk; if is_last=false, continue with PushJobInput
+    InputChunk inline     = 1; // first chunk; use PushJobInput for additional chunks
     string     stream_uri = 2; // file:// unix:// quic://
   }
 }

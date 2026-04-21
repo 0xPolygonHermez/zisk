@@ -8,8 +8,10 @@ repository.workspace = true
 
 [dependencies]
 zisk-coordinator-api = { workspace = true }
+bytes = { workspace = true }
 tonic = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 futures = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }

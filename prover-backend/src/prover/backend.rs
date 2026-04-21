@@ -85,6 +85,14 @@ impl ProverBackend {
             .append_raw_input(reinterpreted_data)
     }
 
+    pub(crate) fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.asm_emulator()
+            .ok_or_else(|| {
+                anyhow::anyhow!("ASM resources not initialized, cannot append raw input")
+            })?
+            .append_raw_input(bytes)
+    }
+
     pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.asm_emulator()
             .ok_or_else(|| {

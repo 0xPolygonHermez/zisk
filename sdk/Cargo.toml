@@ -19,6 +19,7 @@ fields = { workspace = true }
 
 # Utilities
 anyhow = { workspace = true }
+bytes = { workspace = true }
 colored = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

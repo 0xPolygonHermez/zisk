@@ -927,6 +927,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     /// Routes an incoming `StreamData` message to the per-job ordering actor.
+    pub fn append_raw_input(&self, data: &[u8]) -> Result<()> {
+        self.prover.append_raw_input(data)
+    }
+
     ///
     /// - `Start`: initialises the `HintsProcessor` (if needed), resets it, and spawns the actor.
     /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.

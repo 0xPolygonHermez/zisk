@@ -28,6 +28,9 @@ async fn main() -> Result<()> {
 
     println!("Generating proof (this may take a while)...");
     let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?.await?;
+    // let mut handle = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?;
+    // handle.push_input(&n).await?;
+    // let result = handle.await?;
     println!("Proof generated successfully in {:?}", result.get_proving_time());
     println!("Execution steps: {}", result.get_execution_steps());
 

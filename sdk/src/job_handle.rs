@@ -5,11 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
+use bytes::Bytes;
+use serde::Serialize;
 use zisk_coordinator_api::dto::{
     DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
     TerminalStatus,
 };
-use zisk_coordinator_client::{Job, WatchHandle};
+use zisk_coordinator_client::{InputSender, Job, WatchHandle};
 
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
@@ -84,6 +86,7 @@ pub struct JobHandle<T> {
     pub(crate) inner: Option<JobHandleInner<T>>,
     pub(crate) subscribers: SubscriberList,
     pub(crate) timeout: Option<Duration>,
+    input_sender: Option<InputSender>,
 }
 
 impl<T> JobHandle<T> {
@@ -92,7 +95,12 @@ impl<T> JobHandle<T> {
         subscribers: SubscriberList,
         timeout: Option<Duration>,
     ) -> Self {
-        Self { inner: Some(JobHandleInner::Embedded(handle)), subscribers, timeout }
+        Self {
+            inner: Some(JobHandleInner::Embedded(handle)),
+            subscribers,
+            timeout,
+            input_sender: None,
+        }
     }
 
     pub fn new_remote(
@@ -107,6 +115,7 @@ impl<T> JobHandle<T> {
             inner: Some(JobHandleInner::Remote { remote_job, _watch_handle: watch_handle }),
             subscribers,
             timeout,
+            input_sender: None,
         }
     }
 
@@ -141,6 +150,56 @@ impl<T> JobHandle<T> {
             Some(JobHandleInner::Remote { remote_job, .. }) => remote_job.cancel_async().await,
             None => anyhow::bail!("cannot cancel: JobHandle already consumed"),
         }
+    }
+
+    /// Push input data to a running remote job.
+    ///
+    /// On the first call, a persistent gRPC input stream is opened. Subsequent
+    /// calls reuse the same stream. Large payloads (> 3 MB) are automatically
+    /// split into multiple gRPC messages without copying.
+    ///
+    /// Returns an error for embedded jobs (not supported) or if the handle has
+    /// already been consumed.
+    pub async fn push_input<S: Serialize>(&mut self, data: &S) -> Result<()> {
+        // Lazy-init the InputSender on first push
+        if self.input_sender.is_none() {
+            match &self.inner {
+                Some(JobHandleInner::Embedded(_)) => {
+                    anyhow::bail!("push_input is not supported for embedded jobs")
+                }
+                Some(JobHandleInner::Remote { remote_job, .. }) => {
+                    self.input_sender = Some(remote_job.open_input_stream());
+                }
+                None => anyhow::bail!("cannot push_input: JobHandle already consumed"),
+            }
+        }
+
+        // Frame the data in ZiskStdin wire format:
+        // [8 bytes: length as u64 LE] [N bytes: bincode payload] [padding to 8-byte align]
+        let payload = bincode::serialize(data)?;
+        let data_len = payload.len();
+        let total_len = 8 + data_len;
+        let padding = (8 - (total_len % 8)) % 8;
+
+        let mut buf = Vec::with_capacity(total_len + padding);
+        buf.extend_from_slice(&data_len.to_le_bytes());
+        buf.extend_from_slice(&payload);
+        if padding > 0 {
+            buf.extend_from_slice(&vec![0u8; padding]);
+        }
+
+        self.input_sender.as_ref().unwrap().send(Bytes::from(buf)).await
+    }
+
+    /// Close the input stream, signalling EOF to the coordinator.
+    ///
+    /// If no input was ever pushed, this is a no-op. After calling `close_input`,
+    /// further calls to [`push_input`](Self::push_input) will fail.
+    pub async fn close_input(&mut self) -> Result<()> {
+        if let Some(sender) = self.input_sender.take() {
+            sender.close().await?;
+        }
+        Ok(())
     }
 }
 

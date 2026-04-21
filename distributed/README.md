@@ -258,7 +258,7 @@ Runs the program and generates a proof. The `proof_dest` field controls the outp
 
 **Input kinds:**
 
-- `inline` — send the full input inline in the request. For large inputs, set `is_last=false` on the first chunk and stream the remainder with `PushJobInput`.
+- `inline` — send the first chunk of input inline in the request. For additional data, use `PushJobInput` to stream more chunks; close the stream to signal EOF.
 - `stream_uri` — point to a URI (`file://`, `unix://`, `quic://`) the internal coordinator can fetch directly.
 
 #### `JobRequest` — Wrap

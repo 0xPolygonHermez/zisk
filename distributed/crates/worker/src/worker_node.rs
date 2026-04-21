@@ -785,6 +785,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             coordinator_message::Payload::StreamData(stream_data) => {
                 self.handle_stream_data(stream_data).await?;
             }
+            coordinator_message::Payload::InputStreamData(input_data) => {
+                println!(
+                    "Received InputStreamData for job {}, input data: {:?}",
+                    input_data.job_id, input_data
+                );
+                self.handle_input_stream_data(input_data).await?;
+            }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
@@ -1208,6 +1215,29 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         self.worker.route_stream_data(stream_data_dto, is_first_partition).await
+    }
+
+    async fn handle_input_stream_data(
+        &mut self,
+        input_data: zisk_cluster_api::InputStreamData,
+    ) -> Result<()> {
+        let job = self
+            .worker
+            .current_job()
+            .ok_or_else(|| anyhow!("InputStreamData received without current job context"))?;
+
+        let current_job_id = job.lock().await.job_id.clone();
+        let incoming_job_id = JobId::from(input_data.job_id.clone());
+
+        if current_job_id != incoming_job_id {
+            return Err(anyhow!(
+                "Job ID mismatch in InputStreamData: expected {}, got {}",
+                current_job_id.as_string(),
+                incoming_job_id
+            ));
+        }
+
+        self.worker.append_raw_input(&input_data.payload)
     }
 
     async fn handle_wrap_task(

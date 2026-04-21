@@ -33,6 +33,7 @@ message CoordinatorMessage {
     JobCancelled job_cancelled = 5;
     StreamData stream_data = 6;
     SetupProgram setup_program = 7;
+    InputStreamData input_stream_data = 8;
   }
 }
 
@@ -179,6 +180,13 @@ message StreamData {
 message StreamPayload {
   uint32 sequence_number = 3;
   bytes payload = 4;
+}
+
+// Raw input data forwarded from coordinator to worker.
+// Ordering is guaranteed by the single per-worker gRPC stream (no sequence numbers needed).
+message InputStreamData {
+  string job_id = 1;
+  bytes payload = 2;
 }
 
 message ExecuteTaskResponse {

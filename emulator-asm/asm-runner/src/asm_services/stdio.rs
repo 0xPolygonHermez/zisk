@@ -90,7 +90,7 @@ impl StdioTransport {
             .iter()
             .filter(|s| {
                 let mut guard = self.state.handle_mut(s);
-                guard.as_mut().map_or(false, |h| matches!(h.child.try_wait(), Ok(None) | Err(_)))
+                guard.as_mut().is_some_and(|h| matches!(h.child.try_wait(), Ok(None) | Err(_)))
             })
             .copied()
             .collect()
