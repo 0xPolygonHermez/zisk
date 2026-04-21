@@ -823,6 +823,142 @@ pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
     result
 }
 
+// ==================== C FFI Functions ====================
+
+/// Decompresses a compressed BLS12-381 G1 point (48 bytes) to affine coordinates.
+/// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
+///
+/// # Safety
+/// - `input_ptr` must point to a valid `[u8; 48]` compressed point
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_decompress_bls12_381_c")]
+pub unsafe extern "C" fn decompress_bls12_381_c(
+    input_ptr: *const u8,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let input = &*(input_ptr as *const [u8; 48]);
+    match decompress_bls12_381(
+        input,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(p) => {
+            let result = &mut *(result_ptr as *mut [u64; 12]);
+            *result = p;
+            if eq(&p, &G1_IDENTITY) {
+                1
+            } else {
+                0
+            }
+        }
+        Err(_) => 2,
+    }
+}
+
+/// Curve membership check for a BLS12-381 G1 point.
+/// Returns 1 if the point is on the curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bls12_381_c")]
+pub unsafe extern "C" fn is_on_curve_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    is_on_curve_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Subgroup membership check for a BLS12-381 G1 point.
+/// Returns 1 if the point is in the G1 subgroup, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_bls12_381_c")]
+pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    is_on_subgroup_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Addition of two BLS12-381 G1 points with validation and identity handling.
+/// Returns 0 on success (result written to `result_ptr`), 1 if result is the point at infinity,
+/// or an error code if either point is invalid.
+///
+/// # Safety
+/// - `p1_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `p2_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_bls12_381_c")]
+pub unsafe extern "C" fn add_bls12_381_c(
+    p1_ptr: *const u64,
+    p2_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p1 = &*(p1_ptr as *const [u64; 12]);
+    let p2 = &*(p2_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 12]);
+    *result = add_bls12_381(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G1_IDENTITY) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Scalar multiplication of a non-zero BLS12-381 G1 point by a scalar.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bls12_381_c")]
+pub unsafe extern "C" fn scalar_mul_bls12_381_c(
+    p_ptr: *const u64,
+    k_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let k = &*(k_ptr as *const [u64; 4]);
+    let result = &mut *(result_ptr as *mut [u64; 12]);
+    *result = scalar_mul_bls12_381(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G1_IDENTITY) {
+        1
+    } else {
+        0
+    }
+}
+
 /// Convert [u64; 12] little-endian G1 point to 96-byte big-endian
 pub fn g1_u64_le_to_bytes_be_bls12_381(limbs: &[u64; 12], bytes: &mut [u8; 96]) {
     // x-coordinate (first 48 bytes)

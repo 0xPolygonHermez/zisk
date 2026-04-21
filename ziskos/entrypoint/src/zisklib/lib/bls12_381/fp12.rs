@@ -546,3 +546,30 @@ pub fn exp_fp12_bls12_381(
 
     result
 }
+
+// ==================== C FFI Functions ====================
+
+/// Multiplication in the degree 12 extension of the BLS12-381 curve.
+///
+/// # Safety
+/// - `a_ptr` must point to a valid `[u64; 72]` array
+/// - `b_ptr` must point to a valid `[u64; 72]` array
+/// - `result_ptr` must point to a writable `[u64; 72]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_mul_fp12_bls12_381_c")]
+pub unsafe extern "C" fn mul_fp12_bls12_381_c(
+    a_ptr: *const u64,
+    b_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = &*(a_ptr as *const [u64; 72]);
+    let b = &*(b_ptr as *const [u64; 72]);
+    let result = &mut *(result_ptr as *mut [u64; 72]);
+    *result = mul_fp12_bls12_381(
+        a,
+        b,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}
