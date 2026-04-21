@@ -1,3 +1,5 @@
+//! RIPEMD-160 hash function.
+
 /// Compute RIPEMD-160 hash
 #[inline]
 pub fn ripemd160(input: &[u8], #[cfg(feature = "hints")] _hints: &mut Vec<u64>) -> [u8; 32] {

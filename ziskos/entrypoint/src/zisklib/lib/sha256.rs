@@ -1,3 +1,5 @@
+//! SHA2-256 hash function (FIPS 180-4).
+
 use crate::syscalls::{syscall_sha256_f, SyscallSha256Params};
 
 use super::is_aligned_8;

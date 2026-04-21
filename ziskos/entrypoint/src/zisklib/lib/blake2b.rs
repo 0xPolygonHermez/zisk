@@ -1,3 +1,5 @@
+//! BLAKE2b hash function.
+
 use crate::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
 
 /// BLAKE2b initialization vectors
@@ -12,6 +14,10 @@ const IV: [u64; 8] = [
     0x5BE0CD19137E2179,
 ];
 
+/// BLAKE2b compression function F as defined in RFC 7693.
+///
+/// Updates the hash state `h` in place by mixing the message block `m`
+/// over `rounds` iterations using counter `t` and finalization flag `f`.
 pub fn blake2b_compress(
     rounds: u32,
     h: &mut [u64; 8],
@@ -33,10 +39,10 @@ pub fn blake2b_compress(
     }
 
     for r in 0..rounds {
-        blake2b_round(
-            &mut v,
-            m,
-            r,
+        let mut params =
+            SyscallBlake2bRoundParams { index: (r % 10) as u64, state: &mut v, input: m };
+        syscall_blake2b_round(
+            &mut params,
             #[cfg(feature = "hints")]
             hints,
         );
@@ -45,20 +51,6 @@ pub fn blake2b_compress(
     for i in 0..8 {
         h[i] ^= v[i] ^ v[i + 8];
     }
-}
-
-fn blake2b_round(
-    v: &mut [u64; 16],
-    m: &[u64; 16],
-    round: u32,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) {
-    let mut params = SyscallBlake2bRoundParams { index: (round % 10) as u64, state: v, input: m };
-    syscall_blake2b_round(
-        &mut params,
-        #[cfg(feature = "hints")]
-        hints,
-    );
 }
 
 /// C-compatible wrapper for full Blake2b compression function

@@ -1,3 +1,5 @@
+//! Operations in the base field Fp of the secp256k1 curve
+
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
     zisklib::fcall_secp256k1_fp_sqrt,
@@ -5,6 +7,7 @@ use crate::{
 
 use super::constants::{NQR, P};
 
+/// Addition in the base field of the secp256k1 curve
 pub fn add_fp_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
@@ -21,6 +24,7 @@ pub fn add_fp_secp256k1(
     *params.d
 }
 
+/// Multiplication in the base field of the secp256k1 curve
 pub fn mul_fp_secp256k1(
     x: &[u64; 4],
     y: &[u64; 4],
@@ -37,6 +41,7 @@ pub fn mul_fp_secp256k1(
     *params.d
 }
 
+/// Squaring in the base field of the secp256k1 curve
 pub fn square_fp_secp256k1(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -52,6 +57,11 @@ pub fn square_fp_secp256k1(
     *params.d
 }
 
+/// Square root in the base field of the secp256k1 curve.
+///
+/// Returns `(sqrt, is_qr)` where `is_qr` indicates whether `x` is a quadratic residue.
+/// When `is_qr` is true, `sqrt` satisfies `sqrt² ≡ x (mod P)` with the given parity.
+/// When `is_qr` is false, `sqrt` satisfies `sqrt² ≡ x·NQR (mod P)`.
 pub fn sqrt_fp_secp256k1(
     x: &[u64; 4],
     parity: u64,

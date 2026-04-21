@@ -1,3 +1,12 @@
+//! Arbitrary-precision integer arithmetic over multi-limb `[u64]` slices.
+//!
+//! - Addition: [`add_agtb`], [`add_short`].
+//! - Multiplication: [`mul_short`], [`mul_long`].
+//! - Squaring: [`square_short`], [`square_long`].
+//! - Division: [`div_short`], [`div_long`].
+//! - Remainder: [`rem_short`], [`rem_long`].
+//! - Modular exponentiation: [`modexp`].
+
 mod add_agtb;
 mod add_short;
 mod common;

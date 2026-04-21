@@ -13,7 +13,7 @@ use crate::{
 use super::{
     constants::{E_B, G1_IDENTITY, P},
     fp::{add_fp_bn254, inv_fp_bn254, mul_fp_bn254, neg_fp_bn254, square_fp_bn254},
-    fr::{reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
+    fr::reduce_fr_bn254,
 };
 
 /// G1 add result codes
@@ -487,4 +487,17 @@ fn g1_u64_le_to_bytes_be_bn254(limbs: &[u64; 8], bytes: &mut [u8; 64]) {
             bytes[32 + i * 8 + j] = ((limb >> (8 * (7 - j))) & 0xff) as u8;
         }
     }
+}
+
+/// Convert big-endian bytes to little-endian u64 limbs for a scalar (32 bytes -> [u64; 4])
+pub fn scalar_bytes_be_to_u64_le_bn254(bytes: &[u8; 32]) -> [u64; 4] {
+    let mut result = [0u64; 4];
+
+    for i in 0..4 {
+        for j in 0..8 {
+            result[3 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    result
 }

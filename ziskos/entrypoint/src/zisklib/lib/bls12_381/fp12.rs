@@ -16,7 +16,7 @@ use super::{
     },
 };
 
-/// Multiplication in Fp12
+/// Multiplication in the degree 12 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai,bi ∈ Fp6
 //  out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
@@ -99,7 +99,7 @@ pub fn mul_fp12_bls12_381(
     result
 }
 
-/// Multiplication of a = a1 + a2·w and b = 1 + (b22·v + b23·v²)·w in Fp12
+/// Sparse multiplication in the degree 12 extension of the BLS12-381 curve: a = a1 + a2·w, b = 1 + (b22·v + b23·v²)·w
 //
 //  in: (a1 + a2·w),(b1 + b2·w) ∈ Fp12, where ai ∈ Fp6, b1 = 1 and b2 = b22·v + b23·v², with b22,b23 ∈ Fp2
 //  out: (a1 + a2·w)·(b1 + b2·w) = (c1 + c2·w) ∈ Fp12, where:
@@ -162,7 +162,7 @@ pub fn sparse_mul_fp12_bls12_381(
     result
 }
 
-/// Squaring in Fp12
+/// Squaring in the degree 12 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
 //  out: (a1 + a2·w)² = (c1 + c2·w) ∈ Fp12, where:
@@ -241,7 +241,7 @@ pub fn square_fp12_bls12_381(
     result
 }
 
-/// Inversion in Fp12
+/// Inversion in the degree 12 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·w) ∈ Fp12, where ai ∈ Fp6
 //  out: (a1 + a2·w)⁻¹ = (c1 + c2·w) ∈ Fp12, where:
@@ -310,7 +310,7 @@ pub fn inv_fp12_bls12_381(
     result
 }
 
-/// Conjugation in Fp12
+/// Conjugation in the degree 12 extension of the BLS12-381 curve
 #[inline]
 pub fn conjugate_fp12_bls12_381(
     a: &[u64; 72],
@@ -326,7 +326,7 @@ pub fn conjugate_fp12_bls12_381(
     result
 }
 
-/// First Frobenius operator in Fp12
+/// First Frobenius endomorphism in the degree 12 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
 //  out: (a1 + a2·w)ᵖ = (c1 + c2·w) ∈ Fp12, where:
@@ -413,7 +413,7 @@ pub fn frobenius1_fp12_bls12_381(
     result
 }
 
-/// Second Frobenius operator in Fp12
+/// Second Frobenius endomorphism in the degree 12 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·w) = ((a11 + a12v + a13v²) + (a21 + a22v + a23v²)·w) ∈ Fp12, where ai ∈ Fp6 and aij ∈ Fp2
 //  out: (a1 + a2·w)ᵖ˙ᵖ = (c1 + c2·w) ∈ Fp12, where:
@@ -471,7 +471,7 @@ pub fn frobenius2_fp12_bls12_381(
     result
 }
 
-/// Exponentiation in Fp12
+/// Exponentiation in the degree 12 extension of the BLS12-381 curve
 //
 // in: e, (a1 + a2·w) ∈ Fp12, where e ∈ [0,p¹²-2] ai ∈ Fp6
 // out: (c1 + c2·w) = (a1 + a2·w)^e ∈ Fp12
