@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "921a1548756c4957d14c3e75a7d7f272379ef98f99d963ddcf020851376e17e5";
+pub const PILOUT_HASH: &str = "fd89163a27519dbe9dd55ba135fd3ce4587f28255c76d17b3663093619207bd8";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -90,11 +90,7 @@ pub const POSEIDON_2_AIR_IDS: &[usize] = &[30];
 
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[31];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[32];
-
-pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[33];
-
-pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[34];
+pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[32];
 
 
 //PUBLICS
@@ -490,13 +486,13 @@ trace_row!(Blake2brTraceRow<F> {
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 31>;
 
-trace_row!(SpecifiedRangesFixedRow<F> {
- OPID: [F; 29], VALS: [F; 29], __L1__: F,
+trace_row!(VirtualTableZisk0FixedRow<F> {
+ UID: [F; 30], column: [F; 122], __L1__: F,
 });
-pub type SpecifiedRangesFixed<F> = GenericTrace<SpecifiedRangesFixedRow<F>, 1048576, 0, 32>;
+pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
-trace_row!(SpecifiedRangesTraceRow<F> {
- mul:[F; 29],
+trace_row!(VirtualTableZisk0TraceRow<F> {
+ multiplicity:[F; 30],
 });
 
 pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 1048576, 0, 32>;
@@ -721,15 +717,7 @@ values!(Blake2brAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(SpecifiedRangesAirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(VirtualTable0AirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(VirtualTable1AirGroupValues<F> {
+values!(VirtualTableZisk0AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
