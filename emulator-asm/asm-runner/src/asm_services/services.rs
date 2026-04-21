@@ -444,7 +444,8 @@ fn cleanup_shmem_for_prefix(shm_prefix: &str, service: &AsmService) -> Result<()
     Ok(())
 }
 
-/// Scan `/dev/shm` for stale `ZISK_*` entries from dead processes and unlink them.
+/// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
+/// left by dead processes and unlink them.
 fn cleanup_stale_shmem() {
     let dev_shm = std::path::Path::new("/dev/shm");
     let entries = match std::fs::read_dir(dev_shm) {
@@ -458,28 +459,40 @@ fn cleanup_stale_shmem() {
             Err(_) => continue,
         };
 
-        if !name.starts_with("ZISK_") {
+        // shmem:  "ZISK_{pid}_{rank}_..."      → parts[1] is PID
+        // sem:    "sem.ZISK_{pid}_{hash}_{rank}_..." → parts[1] is PID (first token is "sem.ZISK")
+        let is_sem = name.starts_with("sem.ZISK_");
+        let is_shm = name.starts_with("ZISK_");
+        if !is_shm && !is_sem {
             continue;
         }
 
-        // Extract PID from `ZISK_{pid}_...`
         let parts: Vec<&str> = name.splitn(3, '_').collect();
         if parts.len() < 3 {
             continue;
         }
         let pid: u32 = match parts[1].parse() {
             Ok(p) => p,
-            Err(_) => continue, // Not a PID-based name (e.g., port-based from TCP mode)
+            Err(_) => continue, // port-based TCP name — skip
         };
 
         // Check if the process is still alive
         let alive = unsafe { libc::kill(pid as i32, 0) };
         if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
-            continue; // Process alive or belongs to another user — leave it
+            continue; // process alive or belongs to another user
         }
 
-        // Process is dead (ESRCH) — unlink stale entry
-        tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
-        let _ = shm_unlink_by_name(&name);
+        // Process is dead (ESRCH) — unlink the stale entry.
+        if is_sem {
+            // sem file "sem.FOO" → POSIX name "/FOO"
+            let sem_name = format!("/{}", &name["sem.".len()..]);
+            tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
+            if let Ok(cstr) = std::ffi::CString::new(sem_name) {
+                unsafe { libc::sem_unlink(cstr.as_ptr()) };
+            }
+        } else {
+            tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
+            let _ = shm_unlink_by_name(&name);
+        }
     }
 }
