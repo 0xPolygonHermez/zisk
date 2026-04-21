@@ -17,13 +17,17 @@ use super::{
 };
 
 /// G1 add result codes
+#[allow(dead_code)]
 pub(crate) const G1_ADD_SUCCESS: u8 = 0;
+#[allow(dead_code)]
 pub(crate) const G1_ADD_SUCCESS_INFINITY: u8 = 1;
 const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 mul result codes
+#[allow(dead_code)]
 pub(crate) const G1_MUL_SUCCESS: u8 = 0;
+#[allow(dead_code)]
 pub(crate) const G1_MUL_SUCCESS_INFINITY: u8 = 1;
 const G1_MUL_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_MUL_ERR_NOT_ON_CURVE: u8 = 3;
@@ -369,6 +373,7 @@ pub fn mul_complete_bn254(
 /// - 0 if the operation succeeded
 /// - 1 if p1 is invalid (not on curve or invalid field element)
 /// - 2 if p2 is invalid (not on curve or invalid field element)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bn254_g1_add_c(
     p1: *const u8,
@@ -414,6 +419,7 @@ pub(crate) unsafe fn bn254_g1_add_c(
 /// # Returns
 /// - 0 if the operation succeeded
 /// - 1 if point is invalid (not on curve or invalid field element)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bn254_g1_mul_c(
     point: *const u8,
@@ -471,6 +477,7 @@ pub fn g1_bytes_be_to_u64_le_bn254(bytes: &[u8; 64]) -> [u64; 8] {
 }
 
 /// Convert little-endian u64 limbs to big-endian bytes for a G1 point ([u64; 8] -> 64 bytes)
+#[allow(dead_code)]
 fn g1_u64_le_to_bytes_be_bn254(limbs: &[u64; 8], bytes: &mut [u8; 64]) {
     // Encode x coordinate (first 32 bytes, big-endian)
     for i in 0..4 {
