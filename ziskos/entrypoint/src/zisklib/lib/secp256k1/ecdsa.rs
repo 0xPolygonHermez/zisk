@@ -239,6 +239,7 @@ pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
 /// - `sig` must point to at least 64 bytes (r || s, big-endian)
 /// - `msg` must point to at least 32 bytes (message hash, big-endian)
 /// - `pk` must point to at least 64 bytes (x || y, big-endian)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn secp256k1_ecdsa_verify_bytes_c(
     sig: *const u8,
