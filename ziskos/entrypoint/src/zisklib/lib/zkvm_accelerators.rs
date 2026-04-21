@@ -396,7 +396,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
     verified: *mut bool,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
-    *verified = super::secp256k1_ecdsa_verify_c(
+    *verified = super::secp256k1_ecdsa_verify_bytes_c(
         sig as *const u8,
         msg as *const u8,
         pubkey as *const u8,
