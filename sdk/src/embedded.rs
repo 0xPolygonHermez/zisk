@@ -184,7 +184,6 @@ impl EmbeddedClientBuilder {
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
             true,                                  // shared_tables
-            asm_opts.base_port,                    // base_port
             asm_opts.unlock_mapped_memory,         // unlock_mapped_memory
             asm_opts.asm_out_file,                 // asm_out_file
             asm_opts.no_auto_setup,                // no_auto_setup

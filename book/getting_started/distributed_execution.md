@@ -380,7 +380,6 @@ The table below lists the available configuration options for the Worker:
 | - | `--elf` | - | String | - | Path to ELF file |
 | - | `--asm` | - | String | ~/.zisk/cache | Path to ASM file (mutually exclusive with `--emulator`) |
 | - | `--emulator` | - | Boolean | false | Use prebuilt emulator (mutually exclusive with `--asm`) |
-| - | `--asm-port` | - | Number | 23115 | Base port for Assembly microservices |
 | - | `--shared-tables` | - | Boolean | false | Whether to share tables when worker is running in a cluster |
 | - | `-v`, `-vv`, `-vvv`, ... | - | Number | 0 | Verbosity level (0=error, 1=warn, 2=info, 3=debug, 4=trace) |
 | - | `-d`, `--debug` | - | String | - | Enable debug mode with optional component filter |

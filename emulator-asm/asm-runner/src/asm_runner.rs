@@ -36,9 +36,7 @@ pub struct AsmRunnerOptions {
     pub verbose: bool,
     pub trace_level: AsmRunnerTraceLevel,
     pub keccak_trace: bool,
-    pub world_rank: i32,
     pub local_rank: i32,
-    pub base_port: Option<u16>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub share_input_shmem: bool,
@@ -61,9 +59,7 @@ impl AsmRunnerOptions {
             verbose: false,
             trace_level: AsmRunnerTraceLevel::None,
             keccak_trace: false,
-            world_rank: 0,
             local_rank: 0,
-            base_port: None,
             unlock_mapped_memory: false,
             asm_out_file: false,
             share_input_shmem: false,
@@ -102,18 +98,8 @@ impl AsmRunnerOptions {
         self
     }
 
-    pub fn with_world_rank(mut self, rank: i32) -> Self {
-        self.world_rank = rank;
-        self
-    }
-
     pub fn with_local_rank(mut self, rank: i32) -> Self {
         self.local_rank = rank;
-        self
-    }
-
-    pub fn with_base_port(mut self, port: Option<u16>) -> Self {
-        self.base_port = port;
         self
     }
 
@@ -217,12 +203,9 @@ impl AsmRunnerOptions {
         }
 
         if !self.stdio {
-            let port = if let Some(base_port) = self.base_port {
-                AsmServices::port_for(asm_service, base_port, self.local_rank)
-            } else {
-                AsmServices::default_port(asm_service, self.local_rank)
-            };
-            command.arg("-p").arg(port.to_string());
+            command
+                .arg("-p")
+                .arg(AsmServices::default_port(asm_service, self.local_rank).to_string());
         }
     }
 }

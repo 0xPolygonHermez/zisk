@@ -31,7 +31,6 @@ use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 #[derive(Clone)]
 pub struct AsmOptions {
     pub asm_path: Option<PathBuf>,
-    pub base_port: Option<u16>,
     pub no_auto_setup: bool,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
@@ -43,7 +42,6 @@ impl Default for AsmOptions {
     fn default() -> Self {
         Self {
             asm_path: None,
-            base_port: None,
             no_auto_setup: false,
             unlock_mapped_memory: false,
             asm_out_file: false,
@@ -56,11 +54,6 @@ impl Default for AsmOptions {
 impl AsmOptions {
     pub fn asm_path(mut self, path: PathBuf) -> Self {
         self.asm_path = Some(path);
-        self
-    }
-
-    pub fn base_port(mut self, port: u16) -> Self {
-        self.base_port = Some(port);
         self
     }
 

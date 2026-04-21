@@ -110,9 +110,6 @@ pub struct ProverConfig {
     /// Additional options for the ASM runner
     // pub asm_runner_options: AsmRunnerOptions,
 
-    /// Base port for ASM services
-    pub asm_port: Option<u16>,
-
     /// Flag to unlock mapped memory
     pub unlock_mapped_memory: bool,
 
@@ -171,7 +168,6 @@ impl ProverConfig {
             proving_key_snark,
             verbose: prover_service_config.verbose,
             debug_info,
-            asm_port: prover_service_config.asm_port,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
@@ -311,9 +307,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         // ASM-specific options for distributed worker
         let mut asm_options = AsmOptions::default();
-        if let Some(port) = prover_config.asm_port {
-            asm_options = asm_options.base_port(port);
-        }
         if prover_config.unlock_mapped_memory {
             asm_options = asm_options.unlock_mapped_memory();
         }

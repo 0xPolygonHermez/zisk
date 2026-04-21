@@ -50,15 +50,6 @@ struct Cli {
     #[clap(short = 's', long)]
     pub proving_key_snark: Option<PathBuf>,
 
-    /// Base port for Assembly microservices (default: 23115).
-    /// A single execution will use 3 consecutive ports, from this port to port + 2.
-    /// If you are running multiple instances of ZisK using mpi on the same machine,
-    /// it will use from this base port to base port + 2 * number_of_instances.
-    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
-    /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(long, conflicts_with = "emulator")]
-    pub asm_port: Option<u16>,
-
     /// Map unlocked flag
     /// This is used to unlock the memory map for the ROM file.
     /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
@@ -134,7 +125,6 @@ async fn main() -> Result<()> {
         hints: cli.hints,
         proving_key: cli.proving_key.clone(),
         proving_key_snark: cli.proving_key_snark.clone(),
-        asm_port: cli.asm_port,
         unlock_mapped_memory: cli.unlock_mapped_memory,
         asm_out_file: cli.asm_out_file,
         verbose: cli.verbose,
@@ -192,11 +182,7 @@ fn print_command_info(
             .unwrap_or_default()
     );
 
-    if !prover_config.emulator {
-        if let Some(asm_port) = prover_config.asm_port.as_ref() {
-            println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);
-        }
-    } else {
+    if prover_config.emulator {
         println!(
             "{: >12} {}",
             "Emulator".bright_green().bold(),

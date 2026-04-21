@@ -77,7 +77,6 @@ impl AsmProver {
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
         shared_tables: bool,
-        base_port: Option<u16>,
         unlock_mapped_memory: bool,
         asm_out_file: bool,
         no_auto_setup: bool,
@@ -92,7 +91,6 @@ impl AsmProver {
             proving_key,
             proving_key_snark,
             shared_tables,
-            base_port,
             unlock_mapped_memory,
             asm_out_file,
             no_auto_setup,
@@ -126,11 +124,6 @@ impl ProverEngine for AsmProver {
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
         let stdio = self.core_prover.asm_info.stdio;
-        let base_port = if stdio {
-            None
-        } else {
-            Some(AsmServices::port_base_for(self.core_prover.asm_info.base_port, local_rank))
-        };
         let hash_id = if stdio { Some(elf.program_id.hash_id.as_ref()) } else { None };
 
         let rv2zk = Riscv2zisk::new(elf.elf());
@@ -180,11 +173,9 @@ impl ProverEngine for AsmProver {
 
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port, stdio, hash_id);
+            let asm_services = AsmServices::new(world_rank, local_rank, None, stdio, hash_id);
 
             let asm_runner_options = AsmRunnerOptions::new()
-                .with_base_port(base_port)
-                .with_world_rank(world_rank)
                 .with_local_rank(local_rank)
                 .with_verbose(verbose_mode == VerboseMode::Debug)
                 .with_metrics(verbose_mode == VerboseMode::Debug)
@@ -429,7 +420,6 @@ impl ProverEngine for AsmProver {
 
 pub struct AsmInfo {
     pub is_distributed: bool,
-    pub base_port: Option<u16>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub verbose: VerboseMode,
@@ -452,7 +442,6 @@ impl AsmCoreProver {
         proving_key: PathBuf,
         proving_key_snark: PathBuf,
         shared_tables: bool,
-        base_port: Option<u16>,
         unlock_mapped_memory: bool,
         asm_out_file: bool,
         no_auto_setup: bool,
@@ -508,7 +497,6 @@ impl AsmCoreProver {
             rank_info,
             asm_info: AsmInfo {
                 is_distributed,
-                base_port,
                 unlock_mapped_memory,
                 asm_out_file,
                 verbose: options.verbose_mode,
