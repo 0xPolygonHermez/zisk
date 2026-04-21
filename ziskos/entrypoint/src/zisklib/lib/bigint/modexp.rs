@@ -292,6 +292,64 @@ pub(crate) unsafe fn modexp_bytes_c(
     modulus_len
 }
 
+// ==================== C FFI Functions ====================
+
+/// Modular exponentiation over little-endian u64 arrays.
+///
+/// # Safety
+/// - `base_ptr` points to `base_len * 4` u64s (little-endian U256 limbs)
+/// - `exp_ptr` points to `exp_len` u64s (little-endian)
+/// - `modulus_ptr` points to `modulus_len * 4` u64s (little-endian U256 limbs)
+/// - `result_ptr` points to a writable region of at least `modulus_len * 4` u64s
+///
+/// Returns the number of u64s written to `result_ptr` (always `modulus_len * 4`).
+#[allow(clippy::too_many_arguments)]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_modexp_u64_c")]
+pub unsafe extern "C" fn modexp_u64_c(
+    base_ptr: *const u64,
+    base_len: usize,
+    exp_ptr: *const u64,
+    exp_len: usize,
+    modulus_ptr: *const u64,
+    modulus_len: usize,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> usize {
+    let base_flat = core::slice::from_raw_parts(base_ptr, base_len);
+    let exp = core::slice::from_raw_parts(exp_ptr, exp_len);
+    let modulus_flat = core::slice::from_raw_parts(modulus_ptr, modulus_len);
+
+    // Round up to multiple of 4
+    let base_len = base_flat.len().next_multiple_of(4);
+    let modulus_len = modulus_flat.len().next_multiple_of(4);
+
+    let mut base_padded = vec![0u64; base_len];
+    let mut modulus_padded = vec![0u64; modulus_len];
+
+    base_padded[..base_flat.len()].copy_from_slice(base_flat);
+    modulus_padded[..modulus_flat.len()].copy_from_slice(modulus_flat);
+
+    let base = U256::flat_to_slice(&base_padded);
+    let modulus = U256::flat_to_slice(&modulus_padded);
+
+    let result_u256 = modexp(
+        base,
+        exp,
+        modulus,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let result_slice = U256::slice_to_flat(&result_u256);
+    let result_len = result_slice.len();
+
+    // Convert result back to u64 array
+    let result = std::slice::from_raw_parts_mut(result_ptr, modulus_len);
+    result[..result_len].copy_from_slice(result_slice);
+
+    result_len
+}
+
 /// Convert big-endian bytes to little-endian u64 array
 #[allow(dead_code)]
 fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {

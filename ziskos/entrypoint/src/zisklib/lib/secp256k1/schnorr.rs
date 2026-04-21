@@ -4,23 +4,13 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::zisklib::{eq, gt, sha256, ZERO_256};
+use crate::zisklib::{be_bytes_to_u64_4, eq, gt, sha256, ZERO_256};
 
 use super::{
     constants::{G, N, P},
     curve::{double_scalar_mul_with_g_secp256k1, lift_x_secp256k1, multi_scalar_mul_secp256k1},
     scalar::{add_fn_secp256k1, mul_fn_secp256k1, neg_fn_secp256k1, reduce_fn_secp256k1},
 };
-
-fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut r = [0u64; 4];
-    for i in 0..4 {
-        for j in 0..8 {
-            r[3 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
-        }
-    }
-    r
-}
 
 /// BIP-340 `Verify(pk, m, sig)`. Arbitrary-length message, 32-byte big-endian pk/r/s.
 pub fn schnorr_verify_secp256k1(
@@ -30,9 +20,9 @@ pub fn schnorr_verify_secp256k1(
     sig_s: &[u8; 32],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
-    let r = bytes_be_to_u64_le(sig_r);
-    let s = bytes_be_to_u64_le(sig_s);
-    let pk_x_le = bytes_be_to_u64_le(pk_x);
+    let r = be_bytes_to_u64_4(sig_r);
+    let s = be_bytes_to_u64_4(sig_s);
+    let pk_x_le = be_bytes_to_u64_4(pk_x);
 
     if !gt(&P, &pk_x_le) {
         return false;
@@ -72,7 +62,7 @@ pub fn schnorr_verify_secp256k1(
         hints,
     );
     let e = reduce_fn_secp256k1(
-        &bytes_be_to_u64_le(&e_hash),
+        &be_bytes_to_u64_4(&e_hash),
         #[cfg(feature = "hints")]
         hints,
     );
@@ -171,9 +161,9 @@ pub fn schnorr_batch_verify_secp256k1(
     let mut pk_vals = Vec::with_capacity(u);
 
     for i in 0..u {
-        let r = bytes_be_to_u64_le(sig_rs[i]);
-        let s = bytes_be_to_u64_le(sig_ss[i]);
-        let pk = bytes_be_to_u64_le(pk_xs[i]);
+        let r = be_bytes_to_u64_4(sig_rs[i]);
+        let s = be_bytes_to_u64_4(sig_ss[i]);
+        let pk = be_bytes_to_u64_4(pk_xs[i]);
 
         if !gt(&P, &pk) {
             return false;
@@ -236,7 +226,7 @@ pub fn schnorr_batch_verify_secp256k1(
             hints,
         );
         let e = reduce_fn_secp256k1(
-            &bytes_be_to_u64_le(&e_hash),
+            &be_bytes_to_u64_4(&e_hash),
             #[cfg(feature = "hints")]
             hints,
         );
@@ -283,7 +273,7 @@ pub fn schnorr_batch_verify_secp256k1(
             hints,
         );
         let a = reduce_fn_secp256k1(
-            &bytes_be_to_u64_le(&hash),
+            &be_bytes_to_u64_4(&hash),
             #[cfg(feature = "hints")]
             hints,
         );

@@ -1,3 +1,6 @@
+//! Comparison helpers, alignment checks, and byte-order conversion utilities
+//! for `[u64]` slices and raw byte buffers.
+
 /// Check if a pointer is 8-byte aligned.
 #[inline(always)]
 pub fn is_aligned_8(ptr: *const u8) -> bool {

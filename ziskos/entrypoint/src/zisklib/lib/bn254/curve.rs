@@ -7,13 +7,13 @@ use crate::{
         syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
         SyscallPoint256,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_zero, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_one, is_zero, lt},
 };
 
 use super::{
     constants::{E_B, G1_IDENTITY, P},
     fp::{add_fp_bn254, inv_fp_bn254, mul_fp_bn254, neg_fp_bn254, square_fp_bn254},
-    fr::{reduce_fr_bn254, scalar_bytes_be_to_u64_le_bn254},
+    fr::reduce_fr_bn254,
 };
 
 /// G1 add result codes
@@ -31,6 +31,55 @@ pub(crate) const G1_MUL_SUCCESS: u8 = 0;
 pub(crate) const G1_MUL_SUCCESS_INFINITY: u8 = 1;
 const G1_MUL_ERR_NOT_IN_FIELD: u8 = 2;
 const G1_MUL_ERR_NOT_ON_CURVE: u8 = 3;
+
+/// Converts a point `p` on the BN254 curve from Jacobian coordinates to affine coordinates
+pub fn jacobian_to_affine_bn254(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 8] {
+    let z: [u64; 4] = p[8..12].try_into().unwrap();
+
+    if is_zero(&z) {
+        return G1_IDENTITY;
+    } else if is_one(&z) {
+        return [p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]];
+    }
+
+    let x: [u64; 4] = p[0..4].try_into().unwrap();
+    let y: [u64; 4] = p[4..8].try_into().unwrap();
+
+    let zinv = inv_fp_bn254(
+        &z,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let zinv_sq = square_fp_bn254(
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let x_res = mul_fp_bn254(
+        &x,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut y_res = mul_fp_bn254(
+        &y,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y_res = mul_fp_bn254(
+        &y_res,
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
+}
 
 /// Check if a non-zero point `p` is on the BN254 curve
 pub fn is_on_curve_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
@@ -492,6 +541,138 @@ fn g1_u64_le_to_bytes_be_bn254(limbs: &[u64; 8], bytes: &mut [u8; 64]) {
         let limb = limbs[7 - i];
         for j in 0..8 {
             bytes[32 + i * 8 + j] = ((limb >> (8 * (7 - j))) & 0xff) as u8;
+        }
+    }
+}
+
+/// Convert big-endian bytes to little-endian u64 limbs for a scalar (32 bytes -> [u64; 4])
+pub fn scalar_bytes_be_to_u64_le_bn254(bytes: &[u8; 32]) -> [u64; 4] {
+    let mut result = [0u64; 4];
+
+    for i in 0..4 {
+        for j in 0..8 {
+            result[3 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    result
+}
+
+// ==================== C FFI Functions ====================
+
+/// Jacobian to affine conversion for a BN254 G1 point.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates x ‖ y ‖ z, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_bn254_c")]
+pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match jacobian_to_affine_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        affine => {
+            *result = affine;
+            0
+        }
+    }
+}
+
+/// Curve membership check for a BN254 G1 point.
+/// Returns 1 if the point is on the curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bn254_c")]
+pub unsafe extern "C" fn is_on_curve_bn254_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 8]);
+    is_on_curve_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Addition of two non-zero BN254 G1 points.
+///
+/// # Safety
+/// - `p1_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `p2_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_bn254_c")]
+pub unsafe extern "C" fn add_bn254_c(
+    p1_ptr: *const u64,
+    p2_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p1 = &*(p1_ptr as *const [u64; 8]);
+    let p2 = &*(p2_ptr as *const [u64; 8]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match add_bn254(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        sum => {
+            *result = sum;
+            0
+        }
+    }
+}
+
+/// Scalar multiplication of a non-zero BN254 G1 point by a scalar.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bn254_c")]
+pub unsafe extern "C" fn scalar_mul_bn254_c(
+    p_ptr: *const u64,
+    k_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 8]);
+    let k = &*(k_ptr as *const [u64; 4]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match scalar_mul_bn254(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        product => {
+            *result = product;
+            0
         }
     }
 }

@@ -3,8 +3,6 @@
 //! ## Arithmetic
 //! - [`bigint`] — Arbitrary-precision integer arithmetic.
 //! - [`uint256`] — Low-level 256-bit add, subtract, multiply, divide, and power.
-//! - [`constants`] — Common 256-bit constants (`ZERO_256`, `ONE_256`, etc.).
-//! - [`utils`] — Comparison helpers and alignment checks.
 //!
 //! ## Hashing
 //! - [`blake2b`], [`keccak256`], [`sha256`], [`ripemd160`]
