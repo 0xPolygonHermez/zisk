@@ -27,11 +27,11 @@ struct SeparateResourceNames {
 }
 
 impl SeparateResourceNames {
-    fn new(service: &AsmService, port: u16, local_rank: i32) -> Self {
+    fn new(service: &AsmService, shm_prefix: &str, sem_prefix: &str) -> Self {
         Self {
-            control_reader: shmem_control_reader_name(port, *service, local_rank),
-            sem_available_name: sem_available_name(port, *service, local_rank),
-            sem_read_name: sem_read_name(port, *service, local_rank),
+            control_reader: shmem_control_reader_name(shm_prefix, *service),
+            sem_available_name: sem_available_name(sem_prefix, *service),
+            sem_read_name: sem_read_name(sem_prefix, *service),
         }
     }
 }
@@ -82,37 +82,21 @@ impl HintsShmem {
     /// # Returns
     /// A new `HintsShmem` instance with uninitialized writers.
     pub fn new(
-        base_port: Option<u16>,
-        local_rank: i32,
+        shm_prefix: &str,
+        sem_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
         active_services: &[AsmService],
     ) -> Result<Self> {
-        // Use the first service's port for shared resources naming
-        let first_service = &AsmServices::SERVICES[0];
-        let shared_port = if let Some(base_port) = base_port {
-            AsmServices::port_for(first_service, base_port, local_rank)
-        } else {
-            AsmServices::default_port(first_service, local_rank)
-        };
-
         // Create unified resources (single data buffer and control writer)
-        let unified = Self::create_unified_resources(
-            shared_port,
-            local_rank,
-            unlock_mapped_memory,
-            control_writer,
-        )?;
+        let unified =
+            Self::create_unified_resources(shm_prefix, unlock_mapped_memory, control_writer)?;
         unified.control_writer.reset();
 
         // Create separate resources
         let separate_names: Vec<SeparateResourceNames> = AsmServices::SERVICES
             .iter()
-            .map(|service| {
-                let port = AsmServices::port_base_for(base_port, local_rank);
-
-                SeparateResourceNames::new(service, port, local_rank)
-            })
+            .map(|service| SeparateResourceNames::new(service, shm_prefix, sem_prefix))
             .collect();
 
         let separate = Self::create_separate_resources(separate_names)?;
@@ -142,13 +126,12 @@ impl HintsShmem {
 
     /// Create the unified resources (single data buffer and control writer).
     fn create_unified_resources(
-        port: u16,
-        local_rank: i32,
+        shm_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<UnifiedResources> {
         debug!("Initializing unified resources for precompile hints");
-        let data_name = shmem_precompile_name(port, local_rank);
+        let data_name = shmem_precompile_name(shm_prefix);
 
         Ok(UnifiedResources {
             control_writer,

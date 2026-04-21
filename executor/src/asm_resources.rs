@@ -10,9 +10,6 @@ use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 /// Configuration for assembly resources.
 #[derive(Clone)]
 pub struct AsmResourcesConfig {
-    /// Optional baseline port to communicate with assembly microservices.
-    pub base_port: Option<u16>,
-
     /// Global world rank for distributed execution.
     pub world_rank: i32,
 
@@ -26,7 +23,6 @@ pub struct AsmResourcesConfig {
 impl std::fmt::Debug for AsmResourcesConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AsmResources")
-            .field("base_port", &self.base_port)
             .field("local_rank", &self.local_rank)
             .field("unlock_mapped_memory", &self.unlock_mapped_memory)
             .finish_non_exhaustive()
@@ -74,7 +70,6 @@ impl AsmResources {
     pub fn new(
         world_rank: i32,
         local_rank: i32,
-        base_port: Option<u16>,
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
         use_hints: bool,
@@ -82,20 +77,22 @@ impl AsmResources {
         init_rom: bool,
         asm_services: AsmServices,
     ) -> Result<Self> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let asm_shmem_mt = MTShMemReader::new(local_rank, base_port, unlock_mapped_memory)?;
+        let shm_prefix = asm_services.shm_prefix();
+        let sem_prefix = asm_services.sem_prefix();
 
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let asm_shmem_mo = MOShMemReader::new(local_rank, base_port, unlock_mapped_memory)?;
+        let asm_shmem_mt = MTShMemReader::new(shm_prefix, unlock_mapped_memory)?;
 
-        let control_writer =
-            Arc::new(ControlShmem::new(base_port, local_rank, unlock_mapped_memory)?);
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let asm_shmem_mo = MOShMemReader::new(shm_prefix, unlock_mapped_memory)?;
 
-        let config = AsmResourcesConfig { base_port, world_rank, local_rank, unlock_mapped_memory };
+        let control_writer = Arc::new(ControlShmem::new(shm_prefix, unlock_mapped_memory)?);
+
+        let config = AsmResourcesConfig { world_rank, local_rank, unlock_mapped_memory };
 
         let inputs_shmem_writer = Arc::new(InputsShmemWriter::new(
-            base_port,
-            local_rank,
+            shm_prefix,
+            sem_prefix,
             unlock_mapped_memory,
             control_writer.clone(),
         )?);
@@ -108,8 +105,8 @@ impl AsmResources {
                 if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
 
             let hints_shmem = Arc::new(HintsShmem::new(
-                base_port,
-                local_rank,
+                shm_prefix,
+                sem_prefix,
                 unlock_mapped_memory,
                 control_writer,
                 active_services,

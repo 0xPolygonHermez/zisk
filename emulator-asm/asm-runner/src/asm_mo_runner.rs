@@ -28,14 +28,8 @@ pub struct MOShMemReader {
 }
 
 impl MOShMemReader {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MO, local_rank, None);
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
         let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
             &output_name,
@@ -89,9 +83,7 @@ impl AsmRunnerMO {
     ) -> Result<Self> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
-        let port = asm_services.port_base();
-        let sem_chunk_done_name =
-            sem_chunk_done_name(port, AsmService::MO, asm_services.local_rank());
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

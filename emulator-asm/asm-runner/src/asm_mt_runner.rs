@@ -23,14 +23,8 @@ pub struct MTShMemReader {
 }
 
 impl MTShMemReader {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MT, local_rank, None);
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
         let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
             &output_name,
@@ -65,9 +59,7 @@ impl AsmRunnerMT {
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
-        let port = asm_services.port_base();
-        let sem_chunk_done_name =
-            sem_chunk_done_name(port, AsmService::MT, asm_services.local_rank());
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MT);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;

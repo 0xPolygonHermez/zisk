@@ -151,18 +151,16 @@ impl AsmRunnerOptions {
         command: &mut Command,
         asm_service: &AsmService,
         shm_prefix: &str,
+        sem_prefix: &str,
     ) {
-        let port = if let Some(base_port) = self.base_port {
-            AsmServices::port_for(asm_service, base_port, self.local_rank)
-        } else {
-            AsmServices::default_port(asm_service, self.local_rank)
-        };
-
         // Execute in server mode
         command.arg("-s");
 
+        command.arg(format!("--gen={}", asm_service.gen_index()));
+
         if self.stdio {
             command.arg("--stdio");
+            command.arg("--open_all_shm");
         }
 
         if self.unlock_mapped_memory {
@@ -174,18 +172,7 @@ impl AsmRunnerOptions {
         }
 
         command.arg("--shm_prefix").arg(shm_prefix);
-
-        match asm_service {
-            AsmService::MT => {
-                command.arg("--generate_minimal_trace");
-            }
-            AsmService::RH => {
-                command.arg("--generate_rom_histogram");
-            }
-            AsmService::MO => {
-                command.arg("--generate_mem_op");
-            }
-        }
+        command.arg("--sem_prefix").arg(sem_prefix);
 
         if !self.log_output {
             command.arg("-o");
@@ -195,12 +182,15 @@ impl AsmRunnerOptions {
             command.arg("-m");
         }
 
-        if self.share_input_shmem {
-            command.arg("--share_input_shm");
-        }
-
-        if self.open_input_shmem {
-            command.arg("--open_input_shm");
+        // --share_input_shm / --open_input_shm are TCP-mode flags for shared input shmem.
+        // In stdio mode --open_all_shm already covers input shmem; passing both conflicts.
+        if !self.stdio {
+            if self.share_input_shmem {
+                command.arg("--share_input_shm");
+            }
+            if self.open_input_shmem {
+                command.arg("--open_input_shm");
+            }
         }
 
         if self.verbose {
@@ -226,6 +216,13 @@ impl AsmRunnerOptions {
             command.arg("-k");
         }
 
-        command.arg("-p").arg(port.to_string());
+        if !self.stdio {
+            let port = if let Some(base_port) = self.base_port {
+                AsmServices::port_for(asm_service, base_port, self.local_rank)
+            } else {
+                AsmServices::default_port(asm_service, self.local_rank)
+            };
+            command.arg("-p").arg(port.to_string());
+        }
     }
 }

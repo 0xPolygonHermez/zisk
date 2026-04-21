@@ -7,7 +7,9 @@ use super::{
 };
 use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use std::{fmt, path::Path, process::Command, time::Duration};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::time::Duration;
+use std::{fmt, path::Path, process::Command};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
@@ -22,6 +24,15 @@ impl AsmService {
             AsmService::MO => "MO",
             AsmService::MT => "MT",
             AsmService::RH => "RH",
+        }
+    }
+
+    /// Returns the `--gen=N` index expected by the ASM C binary.
+    pub fn gen_index(&self) -> u8 {
+        match self {
+            AsmService::MT => 1,
+            AsmService::RH => 2,
+            AsmService::MO => 7,
         }
     }
 }
@@ -48,6 +59,8 @@ enum Transport {
 #[derive(Clone)]
 pub struct AsmServices {
     transport: Transport,
+    shm_prefix: String,
+    sem_prefix: String,
 }
 
 impl AsmServices {
@@ -57,20 +70,55 @@ impl AsmServices {
 
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>, stdio: bool) -> Self {
+    pub fn new(
+        world_rank: i32,
+        local_rank: i32,
+        base_port: Option<u16>,
+        stdio: bool,
+        hash_id: Option<&str>,
+    ) -> Self {
         let port = base_port.unwrap_or(ASM_SERVICE_BASE_PORT);
-        let transport = if stdio {
-            Transport::Stdio(StdioTransport::new(world_rank, local_rank, port))
+        let (transport, shm_prefix, sem_prefix) = if stdio {
+            let pid = std::process::id();
+            let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+            let hash8 = hash_id.map(|h| &h[..h.len().min(8)]).unwrap_or("00000000");
+            let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
+            let transport = Transport::Stdio(StdioTransport::new(world_rank, local_rank));
+            (transport, shm_prefix, sem_prefix)
         } else {
-            Transport::Tcp(TcpTransport::new(world_rank, local_rank, port))
+            let shm_prefix =
+                format!("ZISK_{}_{}", Self::port_base_for(base_port, local_rank), local_rank);
+            let transport = Transport::Tcp(TcpTransport::new(world_rank, local_rank, port));
+            let sem_prefix = shm_prefix.clone();
+            (transport, shm_prefix, sem_prefix)
         };
-        AsmServices { transport }
+        AsmServices { transport, shm_prefix, sem_prefix }
+    }
+
+    /// Returns the shared memory prefix (e.g. `ZISK_{pid}_{rank}` for stdio, `ZISK_{port}_{rank}` for TCP).
+    pub fn shm_prefix(&self) -> &str {
+        &self.shm_prefix
+    }
+
+    /// Returns the semaphore prefix (includes hash_id for stdio mode).
+    pub fn sem_prefix(&self) -> &str {
+        &self.sem_prefix
+    }
+
+    /// Update the semaphore prefix for a new program (stdio mode).
+    /// Called when a subsequent setup reuses shmem but needs new semaphores.
+    pub fn set_sem_prefix(&mut self, hash_id: &str) {
+        if let Transport::Stdio(_) = &self.transport {
+            let pid = std::process::id();
+            let hash8 = &hash_id[..hash_id.len().min(8)];
+            self.sem_prefix = format!("ZISK_{pid}_{hash8}_{}", self.local_rank());
+        }
     }
 
     pub fn base_port(&self) -> u16 {
         match &self.transport {
             Transport::Tcp(t) => t.base_port,
-            Transport::Stdio(s) => s.base_port,
+            Transport::Stdio(_) => 0,
         }
     }
 
@@ -88,10 +136,6 @@ impl AsmServices {
         }
     }
 
-    pub fn shmem_prefix(port: u16, local_rank: i32) -> String {
-        format!("ZISK_{port}_{local_rank}")
-    }
-
     pub fn start_asm_services(
         &self,
         ziskemuasm_path: &Path,
@@ -100,29 +144,56 @@ impl AsmServices {
         let path_str = ziskemuasm_path.to_string_lossy();
         let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
 
-        let shm_prefix = Self::shmem_prefix(
-            Self::port_for(&AsmService::MO, self.base_port(), self.local_rank()),
-            self.local_rank(),
-        );
-
-        options.share_input_shmem = true;
-
-        // For TCP: shut down any already-running services before starting fresh ones.
-        if let Transport::Tcp(t) = &self.transport {
-            for service in t.check_running() {
-                let port = Self::port_for(&service, self.base_port(), self.local_rank());
-                tracing::info!(
-                    "Service {} is already running on 127.0.0.1:{}. Shutting it down.",
-                    service,
-                    port
-                );
-                let _ = self.send_shutdown_and_wait(&service);
-            }
-        }
-
         match &self.transport {
-            Transport::Tcp(t) => t.start_services(trimmed_path, &mut options, &shm_prefix)?,
-            Transport::Stdio(s) => s.start_services(trimmed_path, &mut options, &shm_prefix)?,
+            Transport::Tcp(t) => {
+                options.share_input_shmem = true;
+                // For TCP: shut down any already-running services before starting fresh ones.
+                for service in t.check_running() {
+                    let port = Self::port_for(&service, self.base_port(), self.local_rank());
+                    tracing::info!(
+                        "Service {} is already running on 127.0.0.1:{}. Shutting it down.",
+                        service,
+                        port
+                    );
+                    let _ = self.send_shutdown_and_wait(&service);
+                }
+                t.start_services(trimmed_path, &mut options, &self.shm_prefix)?;
+            }
+            Transport::Stdio(s) => {
+                // Phase 0: Clean up stale shared memory from dead processes.
+                cleanup_stale_shmem();
+
+                // Phase 1: Create shared memory for each service.
+                for (i, service) in Self::SERVICES.iter().enumerate() {
+                    tracing::debug!(
+                        ">>> [{}] Creating shmem for service (stdio): {}",
+                        self.world_rank(),
+                        service
+                    );
+                    let status = build_create_shmem_command(
+                        service,
+                        trimmed_path,
+                        &options,
+                        &self.shm_prefix,
+                    )
+                    .status()
+                    .with_context(|| {
+                        format!("Failed to spawn shmem creation for service {service}")
+                    })?;
+                    if !status.success() {
+                        // Clean up shmem from previously-created services.
+                        for prev in &Self::SERVICES[..i] {
+                            let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
+                        }
+                        return Err(anyhow::anyhow!(
+                            "Shmem creation for service {service} failed with {status}"
+                        ));
+                    }
+                }
+
+                // Phase 2: Start services with --open_all_shm.
+                s.start_services(trimmed_path, &mut options, &self.shm_prefix, &self.sem_prefix)?;
+            }
         }
 
         // Final ping for all services.
@@ -182,15 +253,6 @@ impl AsmServices {
         base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + rank_offset
     }
 
-    pub fn port_base(&self) -> u16 {
-        Self::port_base_for(Some(self.base_port()), self.local_rank())
-    }
-
-    pub fn port_base_offset(base_port: Option<u16>, n_processes: i32, n_setups: u64) -> u16 {
-        let setups_offset = n_setups as u16 * (n_processes as u16 * Self::SERVICES.len() as u16);
-        base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + setups_offset
-    }
-
     pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
         self.send_request(service, &PingRequest {})
     }
@@ -232,13 +294,7 @@ impl AsmServices {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let port = AsmServices::port_base_for(Some(self.base_port()), self.local_rank());
-
-        let sem_name = format!(
-            "/{}_{}_shutdown_done",
-            Self::shmem_prefix(port, self.local_rank()),
-            service.as_str()
-        );
+        let sem_name = format!("/{}_{}_shutdown_done", self.sem_prefix, service.as_str());
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
             .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;
@@ -310,14 +366,24 @@ pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
     Ok(response)
 }
 
+fn command_path_for(trimmed_path: &str, asm_service: &AsmService) -> String {
+    format!("{}-{}.bin", trimmed_path, asm_service)
+}
+
+fn shm_unlink_by_name(name: &str) -> Result<()> {
+    let cstr = std::ffi::CString::new(name)?;
+    unsafe { libc::shm_unlink(cstr.as_ptr()) };
+    Ok(())
+}
+
 pub(super) fn build_service_command(
     asm_service: &AsmService,
     trimmed_path: &str,
     options: &AsmRunnerOptions,
     shm_prefix: &str,
+    sem_prefix: &str,
 ) -> Command {
-    let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
-    let mut command = Command::new(command_path);
+    let mut command = Command::new(command_path_for(trimmed_path, asm_service));
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         use std::os::unix::process::CommandExt;
@@ -328,6 +394,92 @@ pub(super) fn build_service_command(
             });
         }
     }
-    options.apply_to_command(&mut command, asm_service, shm_prefix);
+    options.apply_to_command(&mut command, asm_service, shm_prefix, sem_prefix);
     command
+}
+
+/// Build a command that creates shared memory segments and exits.
+fn build_create_shmem_command(
+    asm_service: &AsmService,
+    trimmed_path: &str,
+    options: &AsmRunnerOptions,
+    shm_prefix: &str,
+) -> Command {
+    let mut command = Command::new(command_path_for(trimmed_path, asm_service));
+
+    command
+        .arg("-s")
+        .arg(format!("--gen={}", asm_service.gen_index()))
+        .arg("--just_create_all_shm")
+        .arg("--shm_prefix")
+        .arg(shm_prefix);
+
+    if options.verbose {
+        command.arg("-v");
+    }
+
+    command.stderr(if options.verbose {
+        std::process::Stdio::inherit()
+    } else {
+        std::process::Stdio::null()
+    });
+
+    command
+}
+
+/// Clean up a specific service's shared memory entries for a given prefix.
+fn cleanup_shmem_for_prefix(shm_prefix: &str, service: &AsmService) -> Result<()> {
+    let pattern = format!("{}_{}_", shm_prefix, service.as_str());
+    let exact = format!("{}_{}", shm_prefix, service.as_str());
+    let dev_shm = std::path::Path::new("/dev/shm");
+    if let Ok(entries) = std::fs::read_dir(dev_shm) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&pattern) || name == exact {
+                    shm_unlink_by_name(name)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Scan `/dev/shm` for stale `ZISK_*` entries from dead processes and unlink them.
+fn cleanup_stale_shmem() {
+    let dev_shm = std::path::Path::new("/dev/shm");
+    let entries = match std::fs::read_dir(dev_shm) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let name = match entry.file_name().into_string() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        if !name.starts_with("ZISK_") {
+            continue;
+        }
+
+        // Extract PID from `ZISK_{pid}_...`
+        let parts: Vec<&str> = name.splitn(3, '_').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let pid: u32 = match parts[1].parse() {
+            Ok(p) => p,
+            Err(_) => continue, // Not a PID-based name (e.g., port-based from TCP mode)
+        };
+
+        // Check if the process is still alive
+        let alive = unsafe { libc::kill(pid as i32, 0) };
+        if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
+            continue; // Process alive or belongs to another user — leave it
+        }
+
+        // Process is dead (ESRCH) — unlink stale entry
+        tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
+        let _ = shm_unlink_by_name(&name);
+    }
 }

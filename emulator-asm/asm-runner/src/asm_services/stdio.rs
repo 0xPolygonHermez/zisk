@@ -37,7 +37,6 @@ pub(super) struct StdioTransport {
     state: Arc<StdioState>,
     pub(super) world_rank: i32,
     pub(super) local_rank: i32,
-    pub(super) base_port: u16,
 }
 
 impl Clone for StdioTransport {
@@ -46,14 +45,13 @@ impl Clone for StdioTransport {
             state: Arc::clone(&self.state),
             world_rank: self.world_rank,
             local_rank: self.local_rank,
-            base_port: self.base_port,
         }
     }
 }
 
 impl StdioTransport {
-    pub(super) fn new(world_rank: i32, local_rank: i32, base_port: u16) -> Self {
-        Self { state: Arc::new(StdioState::new()), world_rank, local_rank, base_port }
+    pub(super) fn new(world_rank: i32, local_rank: i32) -> Self {
+        Self { state: Arc::new(StdioState::new()), world_rank, local_rank }
     }
 
     pub(super) fn state(&self) -> &Arc<StdioState> {
@@ -65,12 +63,13 @@ impl StdioTransport {
         trimmed_path: &str,
         options: &mut AsmRunnerOptions,
         shm_prefix: &str,
+        sem_prefix: &str,
     ) -> Result<()> {
         for (i, service) in AsmServices::SERVICES.iter().enumerate() {
             debug!(">>> [{}] Starting ASM service (stdio): {}", self.world_rank, service);
 
             options.open_input_shmem = i != 0;
-            let handle = start_service(service, trimmed_path, options, shm_prefix)?;
+            let handle = start_service(service, trimmed_path, options, shm_prefix, sem_prefix)?;
             *self.state.handles[i].lock().unwrap() = Some(handle);
 
             if i == 0 {
@@ -139,8 +138,10 @@ fn start_service(
     trimmed_path: &str,
     options: &AsmRunnerOptions,
     shm_prefix: &str,
+    sem_prefix: &str,
 ) -> Result<StdioHandle> {
-    let mut command = build_service_command(asm_service, trimmed_path, options, shm_prefix);
+    let mut command =
+        build_service_command(asm_service, trimmed_path, options, shm_prefix, sem_prefix);
     command.stdin(Stdio::piped()).stdout(Stdio::piped());
 
     let mut child =

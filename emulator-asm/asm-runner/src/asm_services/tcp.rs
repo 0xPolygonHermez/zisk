@@ -37,7 +37,8 @@ impl TcpTransport {
             debug!(">>> [{}] Starting ASM service: {} on port {}", self.world_rank, service, port);
 
             options.open_input_shmem = i != 0;
-            start_service(service, trimmed_path, options, shm_prefix);
+            // TCP mode: sem_prefix == shm_prefix
+            start_service(service, trimmed_path, options, shm_prefix, shm_prefix);
 
             if i == 0 {
                 wait_for_service_ready(self.world_rank, service, port)?;
@@ -152,8 +153,10 @@ fn start_service(
     trimmed_path: &str,
     options: &AsmRunnerOptions,
     shm_prefix: &str,
+    sem_prefix: &str,
 ) {
-    let mut command = build_service_command(asm_service, trimmed_path, options, shm_prefix);
+    let mut command =
+        build_service_command(asm_service, trimmed_path, options, shm_prefix, sem_prefix);
     if let Err(e) = command.spawn() {
         tracing::error!("Child process failed: {:?}", e);
     }

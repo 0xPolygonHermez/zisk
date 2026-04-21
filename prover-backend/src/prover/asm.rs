@@ -125,11 +125,13 @@ impl ProverEngine for AsmProver {
         let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
-        let base_port = Some(AsmServices::port_base_offset(
-            self.core_prover.asm_info.base_port,
-            n_processes,
-            self.core_prover.asm_info.n_setups.load(Ordering::SeqCst),
-        ));
+        let stdio = self.core_prover.asm_info.stdio;
+        let base_port = if stdio {
+            None
+        } else {
+            Some(AsmServices::port_base_for(self.core_prover.asm_info.base_port, local_rank))
+        };
+        let hash_id = if stdio { Some(elf.program_id.hash_id.as_ref()) } else { None };
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
@@ -176,16 +178,9 @@ impl ProverEngine for AsmProver {
 
         pctx.mpi_ctx.barrier();
 
-        // Run the ASM setup work, capturing the result so we can synchronize
-        // all MPI ranks before returning (even on error).
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
-            let asm_services = AsmServices::new(
-                world_rank,
-                local_rank,
-                base_port,
-                self.core_prover.asm_info.stdio,
-            );
+            let asm_services = AsmServices::new(world_rank, local_rank, base_port, stdio, hash_id);
 
             let asm_runner_options = AsmRunnerOptions::new()
                 .with_base_port(base_port)
@@ -195,7 +190,7 @@ impl ProverEngine for AsmProver {
                 .with_metrics(verbose_mode == VerboseMode::Debug)
                 .with_unlock_mapped_memory(unlock_mapped_memory)
                 .with_asm_out_file(asm_out_file)
-                .with_stdio(self.core_prover.asm_info.stdio);
+                .with_stdio(stdio);
 
             asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
@@ -213,7 +208,6 @@ impl ProverEngine for AsmProver {
             self.core_prover.backend.set_asm_resources(AsmResources::new(
                 world_rank,
                 local_rank,
-                base_port,
                 unlock_mapped_memory,
                 verbose_mode,
                 with_hints,

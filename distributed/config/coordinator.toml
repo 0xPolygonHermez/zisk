@@ -11,13 +11,13 @@ environment = "production"
 
 [server]
 host = "0.0.0.0"
-port = 7000
+port = 7001
 shutdown_timeout_seconds = 30
 
 [metrics]
 enabled = true
 host = "0.0.0.0"
-port = 9090
+port = 9091
 
 [logging]
 level = "info"
@@ -29,5 +29,5 @@ mode = "coordinator"
 [coordinator]
 # Port on which the embedded coordinator listens for worker connections.
 # Workers must connect to this port on the coordinator host/container.
-worker_port = 50051
+worker_port = 50052
 # config_file = "/etc/zisk/coordinator.toml"  # optional: tune coordinator internals

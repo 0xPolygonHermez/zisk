@@ -10,8 +10,8 @@ pub struct InputsShmemWriter;
 
 impl InputsShmemWriter {
     pub fn new(
-        _base_port: Option<u16>,
-        _local_rank: i32,
+        _shm_prefix: &str,
+        _sem_prefix: &str,
         _unlock_mapped_memory: bool,
         _control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {

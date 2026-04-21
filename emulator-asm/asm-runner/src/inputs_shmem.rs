@@ -14,7 +14,7 @@ use crate::{
 use anyhow::Result;
 
 pub struct InputsShmemWriter {
-    writer: Mutex<SharedMemoryWriter>,
+    writers: Vec<Mutex<SharedMemoryWriter>>,
     control_writer: Arc<ControlShmem>,
     sem_avails: Mutex<Vec<NamedSemaphore>>,
 }
@@ -24,55 +24,57 @@ unsafe impl Sync for InputsShmemWriter {}
 
 impl InputsShmemWriter {
     pub fn new(
-        base_port: Option<u16>,
-        local_rank: i32,
+        shm_prefix: &str,
+        sem_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
+        let writers = AsmServices::SERVICES
+            .iter()
+            .map(|service| {
+                let name = shmem_input_name(shm_prefix, *service);
+                let mut writer =
+                    SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)?;
+                writer.reset();
+                writer.append_input(&0u64.to_le_bytes())?;
+                Ok(Mutex::new(writer))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        let mut writer = SharedMemoryWriter::new(
-            &shmem_input_name(port, local_rank),
-            MAX_INPUT_SIZE as usize,
-            unlock_mapped_memory,
-        )?;
-
-        writer.reset();
-        writer.append_input(&0u64.to_le_bytes())?;
-
-        // Create one semaphore per ASM service
         let sem_avails: Vec<NamedSemaphore> = AsmServices::SERVICES
             .iter()
             .map(|service| {
-                let name = sem_input_avail_name(port, *service, local_rank);
+                let name = sem_input_avail_name(sem_prefix, *service);
                 NamedSemaphore::create(&name, 0)
                     .map_err(|e| anyhow::anyhow!("Failed to create semaphore '{}': {}", name, e))
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(Self { writer: Mutex::new(writer), control_writer, sem_avails: Mutex::new(sem_avails) })
+        Ok(Self { writers, control_writer, sem_avails: Mutex::new(sem_avails) })
     }
 
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {
         if inputs.is_empty() {
             return Ok(());
         }
-        self.writer.lock().unwrap().write_at(8, inputs)?;
-        self.control_writer.set_inputs_size(inputs.len() as u64);
-        self.notify_all_services()?;
 
+        for writer in &self.writers {
+            writer.lock().unwrap().write_at(8, inputs)?;
+        }
+        self.control_writer.inc_inputs_size(inputs.len());
+        self.notify_all_services()?;
         Ok(())
     }
 
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
-        self.writer.lock().unwrap().append_input(inputs)?;
+        for writer in &self.writers {
+            writer.lock().unwrap().append_input(inputs)?;
+        }
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
-
         Ok(())
     }
 
-    /// Notify all ASM services that new input data is available
     fn notify_all_services(&self) -> Result<()> {
         for sem in self.sem_avails.lock().unwrap().iter_mut() {
             sem.post()?;
@@ -81,14 +83,13 @@ impl InputsShmemWriter {
     }
 
     pub fn reset(&self) {
-        let mut writer = self.writer.lock().unwrap();
-        writer.reset();
-        writer
-            .append_input(&0u64.to_le_bytes())
-            .expect("Failed to write initial header after reset");
-
+        for writer in &self.writers {
+            let mut w = writer.lock().unwrap();
+            w.reset();
+            w.append_input(&0u64.to_le_bytes())
+                .expect("Failed to write initial header after reset");
+        }
         self.control_writer.reset();
-        // Drain all the semaphore signals from all services
         for sem in self.sem_avails.lock().unwrap().iter_mut() {
             while sem.try_wait().is_ok() {}
         }

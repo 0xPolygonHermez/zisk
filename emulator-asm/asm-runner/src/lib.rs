@@ -76,93 +76,63 @@ pub(crate) const TRACE_MAX_SIZE: usize = 0x1000000000; // 64GB
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
-fn build_name(
-    prefix: &str,
-    port: u16,
-    asm_service: AsmService,
-    local_rank: i32,
-    suffix: &str,
-) -> String {
-    format!(
-        "{}{}_{}_{}",
-        prefix,
-        AsmServices::shmem_prefix(port, local_rank),
-        asm_service.as_str(),
-        suffix
-    )
+fn build_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
+    format!("{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
-fn build_name2(prefix: &str, port: u16, local_rank: i32, suffix: &str) -> String {
-    format!("{}{}_{}", prefix, AsmServices::shmem_prefix(port, local_rank), suffix)
+fn build_shmem_name2(prefix: &str, suffix: &str) -> String {
+    format!("{}_{}", prefix, suffix)
 }
 
-fn build_shmem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
-    build_name("", port, asm_service, local_rank, suffix)
+fn build_sem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
+    format!("/{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
-fn build_shmem_name2(port: u16, local_rank: i32, suffix: &str) -> String {
-    build_name2("", port, local_rank, suffix)
+pub fn shmem_input_name(shm_prefix: &str, service: AsmService) -> String {
+    build_shmem_name(shm_prefix, service, "input")
 }
 
-fn build_sem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
-    build_name("/", port, asm_service, local_rank, suffix)
-}
-
-pub fn shmem_input_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "input")
-}
-
-pub fn shmem_input_avail_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "input_avail")
+pub fn shmem_input_avail_name(prefix: &str) -> String {
+    build_shmem_name2(prefix, "input_avail")
 }
 
 /// Semaphore name for input availability (per service)
-pub fn sem_input_avail_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "input_avail")
+pub fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> String {
+    build_sem_name(prefix, asm_service, "input_avail")
 }
 
 /// Shared memory name for precompile hints data
-pub fn shmem_precompile_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "precompile")
+pub fn shmem_precompile_name(prefix: &str) -> String {
+    build_shmem_name2(prefix, "precompile")
 }
 
 /// Shared memory name for precompile hints data
-pub fn sem_available_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "prec_avail")
+pub fn sem_available_name(prefix: &str, asm_service: AsmService) -> String {
+    build_sem_name(prefix, asm_service, "prec_avail")
 }
 
 /// Shared memory name for precompile hints data
-pub fn sem_read_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "prec_read")
+pub fn sem_read_name(prefix: &str, asm_service: AsmService) -> String {
+    build_sem_name(prefix, asm_service, "prec_read")
 }
 
 /// Shared memory name for precompile hints data control
-pub fn shmem_control_writer_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "control_input")
+pub fn shmem_control_writer_name(shm_prefix: &str, service: AsmService) -> String {
+    build_shmem_name(shm_prefix, service, "control_input")
 }
 
-pub fn shmem_control_reader_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_shmem_name(port, asm_service, local_rank, "control_output")
+pub fn shmem_control_reader_name(prefix: &str, asm_service: AsmService) -> String {
+    build_shmem_name(prefix, asm_service, "control_output")
 }
 
-pub fn shmem_output_name(
-    port: u16,
-    asm_service: AsmService,
-    local_rank: i32,
-    suffix: Option<isize>,
-) -> String {
-    if let Some(suffix) = suffix {
-        format!(
-            "{}_{}_output_{}",
-            AsmServices::shmem_prefix(port, local_rank),
-            asm_service.as_str(),
-            suffix
-        )
+pub fn shmem_output_name(prefix: &str, asm_service: AsmService, suffix: Option<isize>) -> String {
+    if let Some(n) = suffix {
+        build_shmem_name(prefix, asm_service, &format!("output_{n}"))
     } else {
-        build_shmem_name(port, asm_service, local_rank, "output")
+        build_shmem_name(prefix, asm_service, "output")
     }
 }
 
-pub fn sem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "chunk_done")
+pub fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
+    build_sem_name(prefix, asm_service, "chunk_done")
 }
