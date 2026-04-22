@@ -4,6 +4,19 @@
 #include "mem_count_and_plan.hpp"
 #include "mem_stats.hpp"
 
+static void mkdir_recursive(const char *path) {
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    for (char *p = tmp + 1; *p; ++p) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(tmp, 0755);
+            *p = '/';
+        }
+    }
+    mkdir(tmp, 0755);
+}
+
 MemCountAndPlan::MemCountAndPlan() {
     context = std::make_shared<MemContext>();
     sem_init(&sem_mem_align_created, 0, 0);
@@ -78,6 +91,9 @@ void MemCountAndPlan::prepare() {
 
 void MemCountAndPlan::add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size) {
     context->add_chunk(chunk_data, chunk_size);
+    #ifdef SAVE_MEM_BUS_DATA_ASM
+    save_chunk_data(context->size() - 1, chunk_data, chunk_size);
+    #endif
 }
 
 void MemCountAndPlan::execute(void) {
@@ -86,6 +102,17 @@ void MemCountAndPlan::execute(void) {
 
 void MemCountAndPlan::detach_execute_mem_align_counter() {
     mem_align_counter->execute();
+    #ifdef SAVE_MEM_ALIGN_COUNTERS
+    const char *env_file = getenv("MEM_ALIGN_COUNTERS_FILE");
+    std::string csv_path = env_file ? env_file : "tmp/mem_align_counters.csv";
+    // Create parent directory if it doesn't exist
+    size_t last_sep = csv_path.rfind('/');
+    if (last_sep != std::string::npos) {
+        std::string dir = csv_path.substr(0, last_sep);
+        mkdir_recursive(dir.c_str());
+    }
+    mem_align_counter->save_csv(csv_path);
+    #endif
 }   
 void MemCountAndPlan::count_phase() {
 
@@ -242,12 +269,21 @@ void execute_mem_count_and_plan(MemCountAndPlan *mcp)
     mcp->execute();
 }
 
-void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size)
+void save_chunk_data(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size)
 {
-    char filename[200];
-    snprintf(filename, sizeof(filename), "tmp/bus_data_asm/mem_count_data_%d.bin", chunk_id);
+    const char *env_dir = getenv("ASM_MOPS_DIR");
+    const char *base_dir = env_dir ? env_dir : "tmp/asm_mops";
+
+    mkdir_recursive(base_dir);
+
+    char filename[512];
+    snprintf(filename, sizeof(filename), "%s/mem_count_data_%d.bin", base_dir, chunk_id);
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    
+    if (fd < 0) {
+        perror("Error opening file");
+        return;
+    }
+
     ssize_t bytes_written = write(fd, chunk_data, sizeof(MemCountersBusData) * chunk_size);
     if (bytes_written < 0) {
         perror("Error writing to file");
@@ -255,7 +291,7 @@ void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chun
         fprintf(stderr, "Partial write: expected %zu bytes, but wrote %zd bytes\n",
                 sizeof(MemCountersBusData) * chunk_size, bytes_written);
     }
-    
+
     close(fd);
 }
 

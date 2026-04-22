@@ -174,3 +174,20 @@ void MemAlignCounter::debug (void) {
     }
 }
 
+void MemAlignCounter::save_csv (const std::string &filename) {
+    const char *header = "chunk_id,full_5,full_3,full_2,read_byte,write_byte";
+
+    FILE *f = fopen(filename.c_str(), "w");
+    if (!f) {
+        printf("ERROR: could not open %s for writing\n", filename.c_str());
+        return;
+    }
+    fprintf(f, "%s\n", header);
+    for (const auto &c : counters) {
+        fprintf(f, "%u,%u,%u,%u,%u,%u\n", c.chunk_id, c.full_5, c.full_3, c.full_2, c.read_byte, c.write_byte);
+    }
+    fprintf(f, "total,%u,%u,%u,%u,%u\n", total_counters.full_5, total_counters.full_3, total_counters.full_2, total_counters.read_byte, total_counters.write_byte);
+    fclose(f);
+    printf("\nWritten to %s\n", filename.c_str());
+}
+

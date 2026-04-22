@@ -14,10 +14,20 @@ fn main() {
     // Ensure build path exists
     std::fs::create_dir_all(&build_dir).unwrap();
 
+    // Build extra C++ defines based on enabled Cargo features
+    let mut extra_defines = String::new();
+    if cfg!(feature = "save_mem_align_counters") {
+        extra_defines.push_str(" -DSAVE_MEM_ALIGN_COUNTERS");
+    }
+    if cfg!(feature = "save_mem_bus_data_asm") {
+        extra_defines.push_str(" -DSAVE_MEM_BUS_DATA_ASM");
+    }
+
     // Call make with an output path override
     let status = Command::new("make")
         .arg("all")
         .env("OUT_DIR", &build_dir)
+        .env("EXTRA_CXXFLAGS", &extra_defines)
         .current_dir("cpp")
         .status()
         .expect("Failed to run make");

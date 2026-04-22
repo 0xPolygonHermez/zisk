@@ -22,3 +22,5 @@ tracing = { workspace = true }
 default = []
 save_mem_bus_data = []
 save_mem_plans = []
+save_mem_align_counters = []
+save_mem_bus_data_asm = []
