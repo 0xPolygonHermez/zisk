@@ -23,7 +23,6 @@ DEFAULT_WORKER_USER="zisk"
 DEFAULT_DATA_DIR="/var/lib/${WORKER_BIN_NAME}"
 DEFAULT_COORDINATOR_URL="http://localhost:8080"
 DEFAULT_NO_MPI="false"
-DEFAULT_COMPUTE_CAPACITY="10"
 DEFAULT_HINTS_ENABLED="false"
 # macOS-only log settings
 DEFAULT_LOG_DIR="/var/log/${WORKER_BIN_NAME}"
@@ -45,7 +44,6 @@ MPI_PPR_NUMA="${ZISK_WORKER_MPI_PPR_NUMA:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
 PROVINGKEY_DIR="${ZISK_PROVINGKEY_DIR:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
-COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-$DEFAULT_COMPUTE_CAPACITY}"
 HINTS_ENABLED="${ZISK_HINTS_ENABLED:-$DEFAULT_HINTS_ENABLED}"
 EXTRA_ARGS="${ZISK_WORKER_EXTRA_ARGS:-}"
 # macOS-only log settings (ignored on Linux)
@@ -92,7 +90,6 @@ OPTIONS:
   --mpi-threads N             Threads per MPI process        (env: ZISK_WORKER_MPI_THREADS, auto-detected unless --no-mpi)
   --provingkey-dir DIR        Proving key directory          (env: ZISK_PROVINGKEY_DIR, optional)
   --worker-id ID              Worker identifier              (env: ZISK_WORKER_ID, required)
-  --compute-capacity N        Compute capacity               (env: ZISK_WORKER_COMPUTE_CAPACITY, default: $DEFAULT_COMPUTE_CAPACITY)
   --hints                     Enable hints flag              (env: ZISK_HINTS_ENABLED)
   --extra-args ARGS           Extra arguments for the binary (env: ZISK_WORKER_EXTRA_ARGS, optional)
 EOF
@@ -149,7 +146,6 @@ while [[ $# -gt 0 ]]; do
     --mpi-threads)       MPI_THREADS="$2";       shift 2 ;;
     --provingkey-dir)    PROVINGKEY_DIR="$2";    shift 2 ;;
     --worker-id)         WORKER_ID="$2";         shift 2 ;;
-    --compute-capacity)  COMPUTE_CAPACITY="$2";  shift 2 ;;
     --hints)             HINTS_ENABLED="true";   shift   ;;
     --extra-args)        EXTRA_ARGS="$2";        shift 2 ;;
     --log-dir)           LOG_DIR="$2";           shift 2 ;;
@@ -215,8 +211,7 @@ build_program_args_plist() {
          --coordinator-url "${COORDINATOR_URL}")
   [[ -n "$PROVINGKEY_DIR" ]] && args+=(-k "${PROVINGKEY_DIR}")
   args+=(--inputs-folder "${INPUTS_FOLDER}"
-         --worker-id "${WORKER_ID}"
-         --compute-capacity "${COMPUTE_CAPACITY}")
+      --worker-id "${WORKER_ID}")
   [[ "$HINTS_ENABLED" == "true" ]] && args+=(--hints)
 
   # Simple word-split for extra args (avoid complex quoting in plist)
@@ -246,8 +241,7 @@ build_exec_start() {
     -k ${PROVINGKEY_DIR}"
   common_args+=" \\
     --inputs-folder ${INPUTS_FOLDER} \\
-    --worker-id \"${WORKER_ID}\" \\
-    --compute-capacity ${COMPUTE_CAPACITY}${hints_arg}"
+    --worker-id \"${WORKER_ID}\"${hints_arg}"
 
   if [[ -n "$EXTRA_ARGS" ]]; then
     common_args+=" \\
