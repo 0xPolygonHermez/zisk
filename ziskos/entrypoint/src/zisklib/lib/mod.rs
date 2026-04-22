@@ -24,6 +24,7 @@ mod sw_impl;
 mod uint256;
 mod utils;
 pub mod zkvm_accelerators;
+pub mod zkvm_init;
 
 // For public consumption
 pub use bigint::*;
