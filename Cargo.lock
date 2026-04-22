@@ -5030,26 +5030,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-hasher-common"
-version = "0.1.0"
-dependencies = [
- "alloy-sol-types",
-]
-
-[[package]]
-name = "sha-hasher-host"
-version = "0.1.0"
-dependencies = [
- "alloy-sol-types",
- "anyhow",
- "serde",
- "sha-hasher-common",
- "sha2",
- "tokio",
- "zisk-sdk",
-]
-
-[[package]]
 name = "sha1_smol"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

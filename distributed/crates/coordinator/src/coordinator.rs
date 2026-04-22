@@ -12,7 +12,7 @@
 //! - Distributes computation across selected workers based on capacity requirements
 //! - Each worker generates cryptographic challenges for their assigned work partition
 //!
-//! ### Phase 2: Prove (Partial Proofs Generation)  
+//! ### Phase 2: Prove (Partial Proofs Generation)
 //! - Uses challenges from Phase 1 to generate individual proofs
 //! - Each worker works on their designated portion of the overall proof
 //!
@@ -259,6 +259,7 @@ impl Coordinator {
         let hash_id = hasher.finalize().to_hex().to_string();
 
         let path = elf_cache_path(&hash_id);
+        info!("elf_cache_path: {}", path.display());
         if !path.exists() {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)
@@ -2682,7 +2683,7 @@ impl Coordinator {
     }
 
     /// Collects the proofs stored from a worker for aggregation.
-    ///     
+    ///
     /// # Parameters
     ///
     /// * `job` - Reference to the job containing proof results
@@ -2715,7 +2716,7 @@ impl Coordinator {
     }
 
     /// Sends an aggregation task to the designated aggregator worker.
-    ///    
+    ///
     /// # Parameters
     ///
     /// * `job_id` - Identifier of the job being processed
@@ -2773,7 +2774,7 @@ impl Coordinator {
     }
 
     /// Handles aggregation completion, finalizes the job if all steps are done.
-    ///    
+    ///
     /// # Parameters
     ///
     /// * `execute_task_response` - Response containing final proof or failure details
