@@ -25,22 +25,26 @@
 #define INPUT_SIZE (INPUT_SIZE_MB * 1024 * 1024)
 #define TABLE_OFFSET_SIZE ((RAM_SIZE + ROM_SIZE + INPUT_SIZE) >> 3)
 
+#include <vector>
 class MemCounterSingle {
-    bool *dual_available;
-    uint32_t *counter;
+    bool *free_read_available;
     uint32_t full_5;
     uint32_t full_3;
     uint32_t full_2;
     uint32_t read_byte;
     uint32_t write_byte;
+    std::vector<uint32_t> out;
+
 
 public:
     MemCounterSingle(void);
     ~MemCounterSingle();
     void execute(const MemCountersBusData *chunk_data, uint32_t chunk_size);
-    void count_aligned(uint32_t addr, bool is_write);
-    void count_aligned_write(uint32_t addr) { count_aligned(addr, true); }
-    void count_aligned_read(uint32_t addr) { count_aligned(addr, false); }
+    void add_aligned(uint32_t addr, bool is_write);
+    void add_aligned_read_write(uint32_t addr);
+    void add_aligned_write(uint32_t addr) { add_aligned(addr, true); }
+    void add_aligned_read(uint32_t addr) { add_aligned(addr, false); }
+    void clear(void);
     
     inline static uint32_t addr_to_offset(uint32_t addr);
 };

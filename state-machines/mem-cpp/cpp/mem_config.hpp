@@ -67,7 +67,7 @@
 //                bits
 // bytes(4)        0-3   (values 1,2,4,8)
 // write_flag (1)    4
-// clear_flag (1)    8
+// clear_flag (1)    5
 
 // ALIGNED WRITE BLOCKS FLAGS
 //                bits
