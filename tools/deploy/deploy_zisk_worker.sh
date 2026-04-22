@@ -23,9 +23,8 @@ DEFAULT_WORKER_USER="zisk"
 DEFAULT_DATA_DIR="/var/lib/${WORKER_BIN_NAME}"
 DEFAULT_COORDINATOR_URL="http://localhost:8080"
 DEFAULT_NO_MPI="false"
-DEFAULT_COMPUTE_CAPACITY="1"
+DEFAULT_COMPUTE_CAPACITY="10"
 DEFAULT_HINTS_ENABLED="false"
-DEFAULT_ELF_NAME="zec-reth.elf"
 # macOS-only log settings
 DEFAULT_LOG_DIR="/var/log/${WORKER_BIN_NAME}"
 DEFAULT_LOG_MAX_SIZE_MB="100"
@@ -48,7 +47,7 @@ PROVINGKEY_DIR="${ZISK_PROVINGKEY_DIR:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
 COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-$DEFAULT_COMPUTE_CAPACITY}"
 HINTS_ENABLED="${ZISK_HINTS_ENABLED:-$DEFAULT_HINTS_ENABLED}"
-ELF_NAME="${ZISK_ELF_NAME:-$DEFAULT_ELF_NAME}"
+EXTRA_ARGS="${ZISK_WORKER_EXTRA_ARGS:-}"
 # macOS-only log settings (ignored on Linux)
 LOG_DIR="${ZISK_WORKER_LOG_DIR:-$DEFAULT_LOG_DIR}"
 LOG_MAX_SIZE_MB="${ZISK_WORKER_LOG_MAX_SIZE_MB:-$DEFAULT_LOG_MAX_SIZE_MB}"
@@ -81,27 +80,27 @@ Usage: $SCRIPT_NAME install [OPTIONS]
 Install the ${WORKER_BIN_NAME} service.
 
 OPTIONS:
-  --worker-group GROUP        System group name          (env: ZISK_WORKER_GROUP, default: $DEFAULT_WORKER_GROUP)
-  --worker-user USER          System user name           (env: ZISK_WORKER_USER, default: $DEFAULT_WORKER_USER)
-  --data-dir DIR              Data directory             (env: ZISK_WORKER_DATA_DIR, default: $DEFAULT_DATA_DIR)
-  --inputs-folder DIR         Inputs folder              (env: ZISK_WORKER_INPUTS_FOLDER, default: DATA_DIR/inputs)
-  --worker-bin PATH           Path to zisk-worker binary (env: ZISK_WORKER_BIN, required)
-  --coordinator-url URL       Coordinator URL            (env: ZISK_WORKER_COORDINATOR_URL, default: $DEFAULT_COORDINATOR_URL)
-  --no-mpi                    Disable MPI mode           (env: ZISK_WORKER_NO_MPI)
-  --mpi-processes N           Number of MPI processes    (env: ZISK_WORKER_MPI_PROCESSES, auto-detected unless --no-mpi)
-  --mpi-numa-ppr N            Processes per NUMA node    (env: ZISK_WORKER_MPI_PPR_NUMA, auto-detected unless --no-mpi)
-  --mpi-threads N             Threads per MPI process    (env: ZISK_WORKER_MPI_THREADS, auto-detected unless --no-mpi)
-  --provingkey-dir DIR        Proving key directory      (env: ZISK_PROVINGKEY_DIR, optional)
-  --worker-id ID              Worker identifier          (env: ZISK_WORKER_ID, required)
-  --compute-capacity N        Compute capacity           (env: ZISK_WORKER_COMPUTE_CAPACITY, default: $DEFAULT_COMPUTE_CAPACITY)
-  --hints                     Enable hints flag          (env: ZISK_HINTS_ENABLED)
-  --elf-name NAME             ELF file name              (env: ZISK_ELF_NAME, default: $DEFAULT_ELF_NAME)
+  --worker-group GROUP        System group name              (env: ZISK_WORKER_GROUP, default: $DEFAULT_WORKER_GROUP)
+  --worker-user USER          System user name               (env: ZISK_WORKER_USER, default: $DEFAULT_WORKER_USER)
+  --data-dir DIR              Data directory                 (env: ZISK_WORKER_DATA_DIR, default: $DEFAULT_DATA_DIR)
+  --inputs-folder DIR         Inputs folder                  (env: ZISK_WORKER_INPUTS_FOLDER, default: DATA_DIR/inputs)
+  --worker-bin PATH           Path to zisk-worker binary     (env: ZISK_WORKER_BIN, required)
+  --coordinator-url URL       Coordinator URL                (env: ZISK_WORKER_COORDINATOR_URL, default: $DEFAULT_COORDINATOR_URL)
+  --no-mpi                    Disable MPI mode               (env: ZISK_WORKER_NO_MPI)
+  --mpi-processes N           Number of MPI processes        (env: ZISK_WORKER_MPI_PROCESSES, auto-detected unless --no-mpi)
+  --mpi-numa-ppr N            Processes per NUMA node        (env: ZISK_WORKER_MPI_PPR_NUMA, auto-detected unless --no-mpi)
+  --mpi-threads N             Threads per MPI process        (env: ZISK_WORKER_MPI_THREADS, auto-detected unless --no-mpi)
+  --provingkey-dir DIR        Proving key directory          (env: ZISK_PROVINGKEY_DIR, optional)
+  --worker-id ID              Worker identifier              (env: ZISK_WORKER_ID, required)
+  --compute-capacity N        Compute capacity               (env: ZISK_WORKER_COMPUTE_CAPACITY, default: $DEFAULT_COMPUTE_CAPACITY)
+  --hints                     Enable hints flag              (env: ZISK_HINTS_ENABLED)
+  --extra-args ARGS           Extra arguments for the binary (env: ZISK_WORKER_EXTRA_ARGS, optional)
 EOF
 if [[ "$OS" == "Darwin" ]]; then
   cat <<EOF
-  --log-dir DIR               Log directory              (env: ZISK_WORKER_LOG_DIR,  default: $DEFAULT_LOG_DIR)
-  --log-max-size MB           Max log file size in MB    (env: ZISK_WORKER_LOG_MAX_SIZE_MB, default: $DEFAULT_LOG_MAX_SIZE_MB)
-  --log-rotations N           Number of rotations kept   (env: ZISK_WORKER_LOG_ROTATIONS, default: $DEFAULT_LOG_ROTATIONS)
+  --log-dir DIR               Log directory                  (env: ZISK_WORKER_LOG_DIR,  default: $DEFAULT_LOG_DIR)
+  --log-max-size MB           Max log file size in MB        (env: ZISK_WORKER_LOG_MAX_SIZE_MB, default: $DEFAULT_LOG_MAX_SIZE_MB)
+  --log-rotations N           Number of rotations kept       (env: ZISK_WORKER_LOG_ROTATIONS, default: $DEFAULT_LOG_ROTATIONS)
 EOF
 fi
 cat <<EOF
@@ -152,7 +151,7 @@ while [[ $# -gt 0 ]]; do
     --worker-id)         WORKER_ID="$2";         shift 2 ;;
     --compute-capacity)  COMPUTE_CAPACITY="$2";  shift 2 ;;
     --hints)             HINTS_ENABLED="true";   shift   ;;
-    --elf-name)          ELF_NAME="$2";          shift 2 ;;
+    --extra-args)        EXTRA_ARGS="$2";        shift 2 ;;
     --log-dir)           LOG_DIR="$2";           shift 2 ;;
     --log-max-size)      LOG_MAX_SIZE_MB="$2";   shift 2 ;;
     --log-rotations)     LOG_ROTATIONS="$2";     shift 2 ;;
@@ -212,13 +211,19 @@ build_program_args_plist() {
            -x "RAYON_NUM_THREADS=${MPI_THREADS}"
            "${DATA_DIR}/${WORKER_BIN_NAME}")
   fi
-  args+=(-e "${DATA_DIR}/${ELF_NAME}"
+  args+=(-e "${DATA_DIR}/zec-reth.elf"
          --coordinator-url "${COORDINATOR_URL}")
   [[ -n "$PROVINGKEY_DIR" ]] && args+=(-k "${PROVINGKEY_DIR}")
   args+=(--inputs-folder "${INPUTS_FOLDER}"
          --worker-id "${WORKER_ID}"
          --compute-capacity "${COMPUTE_CAPACITY}")
   [[ "$HINTS_ENABLED" == "true" ]] && args+=(--hints)
+
+  # Simple word-split for extra args (avoid complex quoting in plist)
+  if [[ -n "$EXTRA_ARGS" ]]; then
+    read -ra extra_arr <<< "$EXTRA_ARGS"
+    args+=("${extra_arr[@]}")
+  fi
 
   printf "    <array>\n"
   for arg in "${args[@]}"; do
@@ -235,7 +240,7 @@ build_exec_start() {
   [[ "$HINTS_ENABLED" == "true" ]] && hints_arg=" --hints"
 
   local common_args="\
-    -e ${DATA_DIR}/${ELF_NAME} \\
+    -e ${DATA_DIR}/zec-reth.elf \\
     --coordinator-url \"${COORDINATOR_URL}\""
   [[ -n "$PROVINGKEY_DIR" ]] && common_args+=" \\
     -k ${PROVINGKEY_DIR}"
@@ -243,6 +248,11 @@ build_exec_start() {
     --inputs-folder ${INPUTS_FOLDER} \\
     --worker-id \"${WORKER_ID}\" \\
     --compute-capacity ${COMPUTE_CAPACITY}${hints_arg}"
+
+  if [[ -n "$EXTRA_ARGS" ]]; then
+    common_args+=" \\
+    ${EXTRA_ARGS}"
+  fi
 
   if [[ "$NO_MPI" == "true" ]]; then
     printf "ExecStart=%s \\\n" "${DATA_DIR}/${WORKER_BIN_NAME}"

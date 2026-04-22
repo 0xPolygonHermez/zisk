@@ -22,8 +22,7 @@ DEFAULT_COORDINATOR_GROUP="zisk"
 DEFAULT_COORDINATOR_USER="zisk"
 DEFAULT_DATA_DIR="/var/lib/${COORDINATOR_BIN_NAME}"
 DEFAULT_LOG_DIR="/var/log/${COORDINATOR_BIN_NAME}"
-DEFAULT_PORT="8080"
-DEFAULT_WEBHOOK_URL="http://127.0.0.1:8051"
+DEFAULT_PORT="7000"
 # macOS-only log settings
 DEFAULT_LOG_MAX_SIZE_MB="100"
 DEFAULT_LOG_ROTATIONS="5"
@@ -37,7 +36,6 @@ DATA_DIR="${ZISK_COORDINATOR_DATA_DIR:-$DEFAULT_DATA_DIR}"
 LOG_DIR="${ZISK_COORDINATOR_LOG_DIR:-$DEFAULT_LOG_DIR}"
 COORDINATOR_BIN="${ZISK_COORDINATOR_BIN:-}"
 PORT="${ZISK_COORDINATOR_PORT:-$DEFAULT_PORT}"
-WEBHOOK_URL="${ZISK_COORDINATOR_WEBHOOK_URL:-$DEFAULT_WEBHOOK_URL}"
 EXTRA_ARGS="${ZISK_COORDINATOR_EXTRA_ARGS:-}"
 # macOS-only log settings (ignored on Linux)
 LOG_MAX_SIZE_MB="${ZISK_COORDINATOR_LOG_MAX_SIZE_MB:-$DEFAULT_LOG_MAX_SIZE_MB}"
@@ -70,14 +68,13 @@ Usage: $SCRIPT_NAME install [OPTIONS]
 Install the ${COORDINATOR_BIN_NAME} service.
 
 OPTIONS:
-  --coordinator-group GROUP   System group name              (env: ZISK_COORDINATOR_GROUP, default: $DEFAULT_COORDINATOR_GROUP)
-  --coordinator-user USER     System user name               (env: ZISK_COORDINATOR_USER, default: $DEFAULT_COORDINATOR_USER)
-  --data-dir DIR              Data directory                 (env: ZISK_COORDINATOR_DATA_DIR, default: $DEFAULT_DATA_DIR)
-  --log-dir DIR               Log directory                  (env: ZISK_COORDINATOR_LOG_DIR, default: $DEFAULT_LOG_DIR)
+  --coordinator-group GROUP   System group name               (env: ZISK_COORDINATOR_GROUP, default: $DEFAULT_COORDINATOR_GROUP)
+  --coordinator-user USER     System user name                (env: ZISK_COORDINATOR_USER, default: $DEFAULT_COORDINATOR_USER)
+  --data-dir DIR              Data directory                  (env: ZISK_COORDINATOR_DATA_DIR, default: $DEFAULT_DATA_DIR)
+  --log-dir DIR               Log directory                   (env: ZISK_COORDINATOR_LOG_DIR, default: $DEFAULT_LOG_DIR)
   --coordinator-bin PATH      Path to zisk-coordinator binary (env: ZISK_COORDINATOR_BIN, required)
-  --port N                    Listening port                 (env: ZISK_COORDINATOR_PORT, default: $DEFAULT_PORT)
-  --webhook-url URL           Webhook URL                    (env: ZISK_COORDINATOR_WEBHOOK_URL, default: $DEFAULT_WEBHOOK_URL)
-  --extra-args ARGS           Extra arguments for the binary (env: ZISK_COORDINATOR_EXTRA_ARGS, optional)
+  --port N                    Listening port                  (env: ZISK_COORDINATOR_PORT, default: $DEFAULT_PORT)
+  --extra-args ARGS           Extra arguments for the binary  (env: ZISK_COORDINATOR_EXTRA_ARGS, optional)
 EOF
 if [[ "$OS" == "Darwin" ]]; then
   cat <<EOF
@@ -96,8 +93,7 @@ EXAMPLES:
   # Install with custom port and webhook URL
   sudo ./$SCRIPT_NAME install \\
     --coordinator-bin /opt/zisk/bin/zisk-coordinator \\
-    --port 9090 \\
-    --webhook-url http://127.0.0.1:9051
+    --port 9090
 
 EOF
   exit 0
@@ -120,7 +116,6 @@ while [[ $# -gt 0 ]]; do
     --log-dir)           LOG_DIR="$2";           shift 2 ;;
     --coordinator-bin)   COORDINATOR_BIN="$2";   shift 2 ;;
     --port)              PORT="$2";              shift 2 ;;
-    --webhook-url)       WEBHOOK_URL="$2";       shift 2 ;;
     --extra-args)        EXTRA_ARGS="$2";        shift 2 ;;
     --log-max-size)      LOG_MAX_SIZE_MB="$2";   shift 2 ;;
     --log-rotations)     LOG_ROTATIONS="$2";     shift 2 ;;
@@ -142,10 +137,7 @@ validate_args() {
 # =============================================================================
 build_program_args_plist() {
   local args=("${DATA_DIR}/${COORDINATOR_BIN_NAME}"
-              -p "$PORT"
-              --webhook-url "$WEBHOOK_URL"
-              --no-save-proofs
-              --compressed-proofs)
+              -p "$PORT")
 
   # Simple word-split for extra args (avoid complex quoting in plist)
   if [[ -n "$EXTRA_ARGS" ]]; then
@@ -166,7 +158,6 @@ build_program_args_plist() {
 build_exec_start() {
   printf "ExecStart=%s \\\n" "${DATA_DIR}/${COORDINATOR_BIN_NAME}"
   printf "    -p %s \\\n" "$PORT"
-  printf "    --webhook-url %s \\\n" "$WEBHOOK_URL"
   printf "    --no-save-proofs \\\n"
   printf "    --compressed-proofs"
   if [[ -n "$EXTRA_ARGS" ]]; then
