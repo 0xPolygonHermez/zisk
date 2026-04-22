@@ -99,7 +99,7 @@ impl From<ApiError> for Status {
                 error_code = err.code(),
                 error_name = err.name(),
                 detail,
-                "internal coordinator error"
+                "internal coordinator error {}", detail
             );
             return Status::new(code, "An internal error occurred");
         }
