@@ -15,6 +15,33 @@ info() { echo "[INFO]  $*"; }
 die()  { echo "[ERROR] $*" >&2; exit 1; }
 
 # =============================================================================
+# utils_load_env_file [ARGS...]
+# Loads environment variables from .env file.
+# First pass: checks if --env flag was provided to override default .env location.
+# If --env not provided, checks if ./.env exists and loads it.
+# Usage: utils_load_env_file "$@"  (pass all script arguments)
+# =============================================================================
+utils_load_env_file() {
+  local env_file="./.env"
+  local prev_arg=""
+
+  # First pass: check if --env flag was provided
+  for arg in "$@"; do
+    if [[ "$prev_arg" == "--env" ]]; then
+      env_file="$arg"
+      break
+    fi
+    prev_arg="$arg"
+  done
+
+  # Load .env file if it exists
+  if [[ -f "$env_file" ]]; then
+    info "Loading environment variables from $env_file"
+    source "$env_file"
+  fi
+}
+
+# =============================================================================
 # utils_create_group GROUP
 # Creates a system group if it does not already exist.
 # =============================================================================

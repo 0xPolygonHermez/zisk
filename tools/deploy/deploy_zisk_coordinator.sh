@@ -16,6 +16,11 @@ COORDINATOR_BIN_NAME="zisk-coordinator"
 source "$(dirname "$0")/deploy_utils.sh"
 
 # =============================================================================
+# Load environment variables from .env file (if exists)
+# =============================================================================
+utils_load_env_file "$@"
+
+# =============================================================================
 # Defaults
 # =============================================================================
 DEFAULT_COORDINATOR_GROUP="zisk"
@@ -68,6 +73,7 @@ Usage: $SCRIPT_NAME install [OPTIONS]
 Install the ${COORDINATOR_BIN_NAME} service.
 
 OPTIONS:
+  --env FILE                  Path to .env file              (default: ./.env if exists)
   --coordinator-group GROUP   System group name               (env: ZISK_COORDINATOR_GROUP, default: $DEFAULT_COORDINATOR_GROUP)
   --coordinator-user USER     System user name                (env: ZISK_COORDINATOR_USER, default: $DEFAULT_COORDINATOR_USER)
   --data-dir DIR              Data directory                  (env: ZISK_COORDINATOR_DATA_DIR, default: $DEFAULT_DATA_DIR)
@@ -110,6 +116,7 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --env)               ENV_FILE="$2";         shift 2 ;;
     --coordinator-group) COORDINATOR_GROUP="$2"; shift 2 ;;
     --coordinator-user)  COORDINATOR_USER="$2";  shift 2 ;;
     --data-dir)          DATA_DIR="$2";          shift 2 ;;

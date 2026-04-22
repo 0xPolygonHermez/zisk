@@ -16,6 +16,11 @@ WORKER_BIN_NAME="zisk-worker"
 source "$(dirname "$0")/deploy_utils.sh"
 
 # =============================================================================
+# Load environment variables from .env file (if exists)
+# =============================================================================
+utils_load_env_file "$@"
+
+# =============================================================================
 # Defaults
 # =============================================================================
 DEFAULT_WORKER_GROUP="zisk"
@@ -78,6 +83,7 @@ Usage: $SCRIPT_NAME install [OPTIONS]
 Install the ${WORKER_BIN_NAME} service.
 
 OPTIONS:
+  --env FILE                  Path to .env file              (default: ./.env if exists)
   --worker-group GROUP        System group name              (env: ZISK_WORKER_GROUP, default: $DEFAULT_WORKER_GROUP)
   --worker-user USER          System user name               (env: ZISK_WORKER_USER, default: $DEFAULT_WORKER_USER)
   --data-dir DIR              Data directory                 (env: ZISK_WORKER_DATA_DIR, default: $DEFAULT_DATA_DIR)
@@ -134,6 +140,7 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --env)               ENV_FILE="$2";         shift 2 ;;
     --worker-group)      WORKER_GROUP="$2";      shift 2 ;;
     --worker-user)       WORKER_USER="$2";       shift 2 ;;
     --data-dir)          DATA_DIR="$2";          shift 2 ;;
