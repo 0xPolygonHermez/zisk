@@ -379,10 +379,8 @@ impl Coordinator {
             .await?;
 
         info!(
-            "[Job] Started {} successfully Inputs: {:?} Hints: {:?} Capacity: {} Workers: {}",
+            "[Job] Started {} successfully Capacity: {} Workers: {}",
             job.job_id,
-            job.inputs_mode,
-            job.hints_mode,
             job.compute_capacity,
             job.workers.len(),
         );

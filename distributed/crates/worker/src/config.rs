@@ -136,8 +136,6 @@ pub struct ProverServiceConfigDto {
     pub asm_out_file: bool,
     pub verbose: u8,
     pub debug: Option<Option<String>>,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
     pub max_streams: Option<usize>,
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
