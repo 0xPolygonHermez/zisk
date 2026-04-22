@@ -83,6 +83,6 @@ impl ZiskRun {
             Some(path) => ZiskStdin::from_file(path)?,
             None => ZiskStdin::new(),
         };
-        program.run(stdin, self.profiling)
+        program.run_emulation(stdin, self.profiling)
     }
 }

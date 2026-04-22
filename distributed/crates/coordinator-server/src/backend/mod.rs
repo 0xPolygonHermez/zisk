@@ -39,7 +39,7 @@ pub trait BackendService: Send + Sync + 'static {
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String>;
 
     /// Submit a new job. Returns the job UUID.
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<Uuid>;
+    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult>;
 
     /// Long-poll: block until the job reaches a terminal state or `timeout`
     /// elapses, then return the current state.

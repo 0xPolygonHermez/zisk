@@ -355,6 +355,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &mut self,
         hash_id: &str,
         elf_bytes: &[u8],
+        with_hints: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
         // Check if new guest program is different from the current one to avoid unnecessary setup
@@ -372,13 +373,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
             elf_bytes: elf_bytes.to_vec(),
-            with_hints: self.prover_config.hints,
+            with_hints: self.prover_config.hints || with_hints,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        let vk = self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
+        let vk = self.prover
+            .prover
+            .setup_internal(&new_guest_program, self.prover_config.hints || with_hints)?;
         self.guest_program = Some(new_guest_program);
         self.program_vk = Some(vk.clone());
         Ok(vk)
@@ -798,15 +801,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
+        let is_first_partition = partition_info.allocation.contains(&0);
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
+                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
+            HintsSourceDto::HintsData(hints_data) => {
+                prover.set_active_services(is_first_partition)?;
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
+            }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+                // For HintsStream, set_active_services is called in route_stream_data
+                // when the Start message arrives.
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set
@@ -859,15 +869,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
+        let is_first_partition = partition_info.allocation.contains(&0);
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
+                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
+            HintsSourceDto::HintsData(hints_data) => {
+                prover.set_active_services(is_first_partition)?;
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
+            }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+                // For HintsStream, set_active_services is called in route_stream_data
+                // when the Start message arrives.
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set

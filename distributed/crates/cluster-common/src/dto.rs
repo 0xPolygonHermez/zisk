@@ -17,6 +17,9 @@ pub enum InputsModeDto {
     InputsPath(String),
     /// Inputs are provided directly as data.
     InputsData(String),
+    /// Inputs will be streamed from the given URI (QUIC, Unix socket).
+    /// The coordinator reads from this URI and relays data to workers.
+    InputsStream(String),
 }
 
 pub use zisk_common::ProofKind;
@@ -27,6 +30,8 @@ pub enum HintsModeDto {
     HintsNone,
     /// Hints are provided as a complete payload referenced by a URI.
     HintsPath(String),
+    /// Hints are provided directly as data (hex-encoded).
+    HintsData(String),
     /// Hints will be streamed from the given URI endpoint.
     HintsStream(String),
 }
@@ -94,6 +99,7 @@ pub struct SetupProgramDto {
     pub job_id: String,
     pub elf_bytes: Vec<u8>,
     pub hash_id: String,
+    pub with_hints: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -179,6 +185,7 @@ pub enum InputSourceDto {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum HintsSourceDto {
     HintsPath(String),
+    HintsData(Vec<u8>),
     HintsStream(String),
     HintsNull,
 }

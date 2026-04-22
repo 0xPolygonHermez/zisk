@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     println!("Input prepared: {} iterations", n);
 
     println!("Running ZisK Emulator...");
-    PROGRAM.run(stdin, Some(ProfilingMode::Complete))?;
+    zisk_sdk::run(&PROGRAM, stdin, Some(ProfilingMode::Complete))?;
     println!("ZisK Emulator completed successfully!");
 
     Ok(())

@@ -13,6 +13,9 @@ use crate::backend::{
     BackendService, DomainJobKind, InputChunkStream, JobEventStream,
     RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto, WaitResult,
 };
+
+use zisk_coordinator_api::dto::SubmitJobResult;
+
 use crate::errors::ApiResult;
 
 pub struct CoordinatorHandler<B: BackendService> {
@@ -32,7 +35,7 @@ impl<B: BackendService> CoordinatorHandler<B> {
         Ok(RegisterGuestProgramResponseDto { hash_id })
     }
 
-    pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<Uuid> {
+    pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<SubmitJobResult> {
         self.backend.submit_job(job).await
     }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints};
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -12,17 +12,22 @@ async fn main() -> Result<()> {
     let hints = ZiskHints::file(hints_path)?;
 
     // Create a `ProverClient` method.
-    let client = ProverClient::embedded().assembly().build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");
+    client.upload(&program).run()?;
     client.setup(&program).with_hints().run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program...");
-    let result = client.execute(&program, hints).executor(ExecutorKind::Assembly).run()?.await?;
+    let result = client.execute(&program, ZiskStdin::new())
+        .hints(hints)
+        .executor(ExecutorKind::Assembly)
+        .run()?
+        .await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {:.2?} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

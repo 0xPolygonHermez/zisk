@@ -47,6 +47,9 @@ pub struct AsmResources {
     /// Pipeline for handling precompile hints.
     hints_stream: Option<Arc<Mutex<ZiskStream<HintsProcessor<HintsShmem>>>>>,
 
+    /// Pipeline for receiving inputs over a stream transport (QUIC, Unix socket).
+    inputs_stream: Arc<Mutex<ZiskStream<InputsShmemWriter>>>,
+
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub mt_shmem_reader: Arc<Mutex<MTShMemReader>>,
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -97,6 +100,9 @@ impl AsmResources {
             control_writer.clone(),
         )?);
 
+        let inputs_stream =
+            Arc::new(Mutex::new(ZiskStream::from_arc(Arc::clone(&inputs_shmem_writer))));
+
         let hints_stream = if use_hints {
             let active_services =
                 if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
@@ -127,6 +133,7 @@ impl AsmResources {
         Ok(Self {
             config,
             hints_stream,
+            inputs_stream,
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             mt_shmem_reader: Arc::new(Mutex::new(asm_shmem_mt)),
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -203,7 +210,7 @@ impl AsmResources {
             hints_stream
                 .lock()
                 .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-                .set_hints_stream_src(stream)?;
+                .set_stream_src(stream)?;
 
             Ok(())
         } else {
@@ -219,6 +226,8 @@ impl AsmResources {
         if let Some(hints_stream) = &self.hints_stream {
             hints_stream.lock().unwrap().reset();
         }
+        // Full reset: clear shmem data and size.  Every job re-streams its
+        // input via the relay, so there is nothing to preserve.
         self.inputs_shmem_writer.reset();
     }
 
@@ -228,6 +237,25 @@ impl AsmResources {
 
     pub fn asm_services(&self) -> &AsmServices {
         &self.asm_services
+    }
+
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+        self.inputs_stream
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .set_stream_src(stream)?;
+        Ok(())
+    }
+
+    pub fn start_inputs_stream(&self) -> Result<()> {
+        self.inputs_stream
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .start_stream()
+    }
+
+    pub fn is_inputs_stream_initialized(&self) -> bool {
+        self.inputs_stream.lock().map(|s| s.is_initialized()).unwrap_or(false)
     }
 
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {

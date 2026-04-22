@@ -27,20 +27,6 @@ impl ZiskStdin {
         Ok(Self(ZiskStdinInner::from_file(path)?))
     }
 
-    /// Streams stdin from a URI.
-    ///
-    /// Supported schemes:
-    /// - `quic://` — QUIC transport
-    /// - `unix://` — Unix domain socket (Unix systems only)
-    ///
-    /// # Errors
-    /// Returns an error if the URI scheme is not supported.
-    pub fn from_stream(uri: impl Into<String>) -> anyhow::Result<Self> {
-        let uri = uri.into();
-        crate::validate_stream_uri(&uri)?;
-        Ok(Self(ZiskStdinInner::from_uri(Some(uri))?))
-    }
-
     /// Reads and deserializes the next value from the stdin buffer.
     pub fn read<T: DeserializeOwned>(&self) -> anyhow::Result<T> {
         self.0.read()
@@ -65,10 +51,23 @@ impl ZiskStdin {
         self.0.save(path.as_ref())
     }
 
+    /// Reset internal read position so the next read starts from the beginning.
+    pub fn reset(&self) {
+        self.0.reset();
+    }
+
+    /// Rewind the read cursor to the beginning.
+    pub fn rewind(&self) {
+        self.0.rewind();
+    }
+
+    /// Clear the entire input buffer.
+    pub fn clear(&self) {
+        self.0.clear();
+    }
+
     /// Consumes this wrapper and returns the underlying common `ZiskStdin`.
-    ///
-    /// Useful when passing stdin to lower-level APIs such as `GuestProgram::run`.
-    pub fn into_inner(self) -> ZiskStdinInner {
+    pub(crate) fn into_inner(self) -> ZiskStdinInner {
         self.0
     }
 }
@@ -76,11 +75,5 @@ impl ZiskStdin {
 impl Default for ZiskStdin {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl From<ZiskStdin> for ZiskStdinInner {
-    fn from(s: ZiskStdin) -> Self {
-        s.0
     }
 }

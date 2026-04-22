@@ -468,11 +468,19 @@ impl StreamWrite for UnixSocketStreamWriter {
     fn close(&mut self) -> Result<()> {
         self.flush()?;
 
-        // Clear the socket
+        // Clear the connected socket
         self.socket = None;
 
+        // Close the listener fd first — this unblocks the accept thread
+        // (accept() returns EBADF), allowing it to exit.
         if let Some(fd) = self.listener_fd.take() {
             unsafe { libc::close(fd) };
+        }
+
+        // Now join the accept thread and clear the channel
+        self.socket_receiver = None;
+        if let Some(handle) = self.accept_thread.take() {
+            let _ = handle.join();
         }
 
         // Clean up socket file
@@ -486,6 +494,22 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.socket.is_some()
+    }
+
+    /// Block until a client has connected to the listening socket.
+    ///
+    /// Unix socket `open()` is non-blocking (spawns accept thread), so the first
+    /// `write()` can fail with `NoClientConnected` before the peer connects.
+    /// This method polls with a 5 ms sleep, timing out after 60 seconds.
+    fn wait_for_connection(&mut self) -> Result<()> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while !self.is_client_connected() {
+            if std::time::Instant::now() >= deadline {
+                anyhow::bail!("Timed out waiting for a client to connect to Unix socket");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        Ok(())
     }
 }
 

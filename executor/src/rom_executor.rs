@@ -80,6 +80,14 @@ impl RomExecutor {
         self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
     }
 
+    /// Resets the ASM pipeline for the next job.
+    pub fn reset(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.reset()?;
+        }
+        Ok(())
+    }
+
     pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         if self.is_asm_execution.load(Ordering::SeqCst) {
             self.emulator_asm.get_asm_execution_info()

@@ -8,6 +8,7 @@ pub(crate) mod wrap;
 
 use anyhow::Result;
 use std::time::Duration;
+use zisk_common::io::StreamRead;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
@@ -15,7 +16,8 @@ use zisk_prover_backend::GuestProgram;
 
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
-    input::ProgramInput,
+    hints::HintsSource,
+    input_source::InputSource,
     job_handle::{JobHandle, SubscriberList},
     prove::ProveRequest,
     setup::{SetupRequest, SetupResult},
@@ -87,24 +89,26 @@ impl Client for RemoteClient {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, input, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, input, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, executor, timeout, subs)
     }
 
     fn run_wrap(
@@ -126,9 +130,9 @@ impl RemoteClient {
     pub fn prove<'a>(
         &'a self,
         program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
+        stdin: impl Into<InputSource>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, input)
+        ProveRequest::new(self, program, stdin)
     }
 
     /// Submit an execute request (dry-run, no proof).
@@ -136,9 +140,9 @@ impl RemoteClient {
     pub fn execute<'a>(
         &'a self,
         program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
+        stdin: impl Into<InputSource>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, input)
+        ExecuteRequest::new(self, program, stdin)
     }
 
     /// Submit a ROM setup request.
@@ -164,9 +168,63 @@ impl RemoteClient {
     }
 }
 
-pub(crate) fn stdin_to_input_kind(input: ProgramInput) -> Result<DomainInputKind> {
-    match input {
-        ProgramInput::Stdin(s) => DomainInputKind::try_inline(s.into_inner().read_data()),
-        ProgramInput::Hints(_) => anyhow::bail!("Hints input is not supported for remote proving"),
+/// Converts an [`InputSource`] into a `DomainInputKind` for submission.
+///
+/// For stream-backed input, also returns the [`ZiskStream`](crate::ZiskStream)
+/// so the caller can spawn an activate thread or inject a gRPC sender.
+pub(crate) fn stdin_to_input_kind(
+    stdin: InputSource,
+) -> Result<(DomainInputKind, Option<crate::input_stream::ZiskStream>)> {
+    match stdin {
+        InputSource::Stream(stream) => {
+            // All stream types (unix, quic, grpc) send StreamUri so workers
+            // start in streaming mode (InputNull).  For grpc://, the coordinator
+            // skips the relay — data arrives via PushJobInput instead.
+            Ok((DomainInputKind::StreamUri(stream.uri().to_string()), Some(stream)))
+        }
+        InputSource::Stdin(s) => {
+            Ok((DomainInputKind::try_inline(s.into_inner().read_data())?, None))
+        }
+    }
+}
+
+/// Converts an optional [`HintsSource`] into a `DomainInputKind` for submission.
+///
+/// For stream-backed hints, also returns the [`ZiskStream`](crate::ZiskStream)
+/// so the caller can call `start()` or inject a gRPC sender.
+///
+/// - `HintsSource::Hints` with stream URI → `StreamUri`
+/// - `HintsSource::Hints` with file/memory data → `Inline`
+/// - `HintsSource::Stream` → `StreamUri(stream.uri())`
+pub(crate) fn hints_to_input_kind(
+    hints: Option<HintsSource>,
+) -> Result<(Option<DomainInputKind>, Option<crate::input_stream::ZiskStream>)> {
+    let hints = match hints {
+        Some(h) => h,
+        None => return Ok((None, None)),
+    };
+    match hints {
+        HintsSource::Stream(stream) => {
+            if stream.is_grpc() {
+                anyhow::bail!(
+                    "gRPC streams are not supported for hints — use unix:// or quic:// transport"
+                );
+            }
+            Ok((Some(DomainInputKind::StreamUri(stream.uri().to_string())), Some(*stream)))
+        }
+        HintsSource::Hints(h) => {
+            if let Some(uri) = h.stream_uri() {
+                return Ok((Some(DomainInputKind::StreamUri(uri.to_owned())), None));
+            }
+            // File/memory: read all data and send inline
+            let mut source = h.into_inner();
+            source.open()?;
+            let mut data = Vec::new();
+            while let Some(chunk) = source.next()? {
+                data.extend(chunk);
+            }
+            source.close()?;
+            Ok((Some(DomainInputKind::try_inline(data)?), None))
+        }
     }
 }

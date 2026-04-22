@@ -150,6 +150,19 @@ impl TryFrom<InputKind> for DomainInputKind {
     }
 }
 
+impl From<DomainInputKind> for InputKind {
+    fn from(domain: DomainInputKind) -> Self {
+        match domain {
+            DomainInputKind::Inline(chunk) => {
+                InputKind { kind: Some(input_kind::Kind::Inline(chunk.into())) }
+            }
+            DomainInputKind::StreamUri(uri) => {
+                InputKind { kind: Some(input_kind::Kind::StreamUri(uri)) }
+            }
+        }
+    }
+}
+
 impl From<DomainProof> for Proof {
     fn from(proof: DomainProof) -> Self {
         Proof {
@@ -190,9 +203,10 @@ impl TryFrom<JobKind> for DomainJobKind {
         let inner = kind.kind.ok_or_else(|| "job_kind.kind must be set".to_string())?;
 
         match inner {
-            job_kind::Kind::Setup(r) => {
-                Ok(DomainJobKind::Setup(DomainSetupRequest { hash_id: r.hash_id }))
-            }
+            job_kind::Kind::Setup(r) => Ok(DomainJobKind::Setup(DomainSetupRequest {
+                hash_id: r.hash_id,
+                with_hints: r.with_hints,
+            })),
             job_kind::Kind::Prove(r) => {
                 let input = r
                     .input
@@ -202,9 +216,11 @@ impl TryFrom<JobKind> for DomainJobKind {
                 let proof_timeout = r.proof_timeout.and_then(ts_to_datetime);
                 let proof_dest =
                     DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
+                let hints = r.hints.map(|h| h.try_into()).transpose().map_err(|e: String| e)?;
                 Ok(DomainJobKind::Prove(DomainProveRequest {
                     hash_id: r.hash_id,
                     input,
+                    hints,
                     proof_timeout,
                     proof_dest,
                 }))
@@ -226,9 +242,11 @@ impl TryFrom<JobKind> for DomainJobKind {
                     .try_into()
                     .map_err(|e: String| e)?;
                 let execute_timeout = r.execute_timeout.and_then(ts_to_datetime);
+                let hints = r.hints.map(|h| h.try_into()).transpose().map_err(|e: String| e)?;
                 Ok(DomainJobKind::Execute(DomainExecuteRequest {
                     hash_id: r.hash_id,
                     input,
+                    hints,
                     execute_timeout,
                 }))
             }
@@ -240,43 +258,27 @@ impl From<DomainJobKind> for JobKind {
     fn from(domain: DomainJobKind) -> Self {
         use job_kind::Kind;
         let kind = match domain {
-            DomainJobKind::Setup(r) => Kind::Setup(SetupRequest { hash_id: r.hash_id }),
-            DomainJobKind::Prove(r) => {
-                let input = match r.input {
-                    DomainInputKind::Inline(chunk) => {
-                        InputKind { kind: Some(input_kind::Kind::Inline(chunk.into())) }
-                    }
-                    DomainInputKind::StreamUri(uri) => {
-                        InputKind { kind: Some(input_kind::Kind::StreamUri(uri)) }
-                    }
-                };
-                Kind::Prove(ProveRequest {
-                    hash_id: r.hash_id,
-                    input: Some(input),
-                    proof_timeout: r.proof_timeout.map(datetime_to_ts),
-                    proof_dest: ProofKind::from(r.proof_dest).into(),
-                })
+            DomainJobKind::Setup(r) => {
+                Kind::Setup(SetupRequest { hash_id: r.hash_id, with_hints: r.with_hints })
             }
+            DomainJobKind::Prove(r) => Kind::Prove(ProveRequest {
+                hash_id: r.hash_id,
+                input: Some(InputKind::from(r.input)),
+                proof_timeout: r.proof_timeout.map(datetime_to_ts),
+                proof_dest: ProofKind::from(r.proof_dest).into(),
+                hints: r.hints.map(InputKind::from),
+            }),
             DomainJobKind::Wrap(r) => Kind::Wrap(WrapRequest {
                 proof: Some(r.proof.into()),
                 proof_dest: ProofKind::from(r.proof_dest).into(),
                 wrap_timeout: r.wrap_timeout.map(datetime_to_ts),
             }),
-            DomainJobKind::Execute(r) => {
-                let input = match r.input {
-                    DomainInputKind::Inline(chunk) => {
-                        InputKind { kind: Some(input_kind::Kind::Inline(chunk.into())) }
-                    }
-                    DomainInputKind::StreamUri(uri) => {
-                        InputKind { kind: Some(input_kind::Kind::StreamUri(uri)) }
-                    }
-                };
-                Kind::Execute(ExecuteRequest {
-                    hash_id: r.hash_id,
-                    input: Some(input),
-                    execute_timeout: r.execute_timeout.map(datetime_to_ts),
-                })
-            }
+            DomainJobKind::Execute(r) => Kind::Execute(ExecuteRequest {
+                hash_id: r.hash_id,
+                input: Some(InputKind::from(r.input)),
+                execute_timeout: r.execute_timeout.map(datetime_to_ts),
+                hints: r.hints.map(InputKind::from),
+            }),
         };
         JobKind { kind: Some(kind) }
     }

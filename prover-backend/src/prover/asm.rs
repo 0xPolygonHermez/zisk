@@ -412,6 +412,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.register_hints_stream(stream)
     }
 
+    fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+        self.core_prover.backend.register_inputs_stream(stream)
+    }
+
     fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
         self.core_prover.backend.get_hints_processor()
     }

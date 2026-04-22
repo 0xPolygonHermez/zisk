@@ -114,6 +114,15 @@ impl EmulatorAsm {
             .set_hints_stream_src(stream)
     }
 
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+        self.asm_resources
+            .lock()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .set_inputs_stream_src(stream)
+    }
+
     /// Submits hint data directly to the shmem sink, bypassing the `ZiskStream` pipeline.
     ///
     /// Used in the gRPC streaming path where hint ordering is handled externally by the
@@ -187,6 +196,10 @@ impl EmulatorAsm {
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
             asm_resources.start_stream()?;
+        }
+
+        if asm_resources.is_inputs_stream_initialized() {
+            asm_resources.start_inputs_stream()?;
         }
 
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);

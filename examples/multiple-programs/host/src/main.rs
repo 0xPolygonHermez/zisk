@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {:.2?} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let result2 = client.execute(&program2, stdin2.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {:.2?} ms",
         result2.get_execution_steps(),
         result2.get_execution_time()
     );

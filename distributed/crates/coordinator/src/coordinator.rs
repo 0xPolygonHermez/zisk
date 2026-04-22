@@ -55,14 +55,14 @@ use zisk_cluster_common::{
     AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
     ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
-    LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind,
-    ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
-    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
-    WrapParamsDto, ZiskExecutorTimeDto,
+    ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto,
+    InputStreamDataDto, InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResult,
+    JobResultData, JobState, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto,
+    PhaseTimings, ProofKind, ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto,
+    SetupProgramAckDto, StreamMessageKind, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
+    WorkerRegisterRequestDto, WorkerState, WrapParamsDto, ZiskExecutorTimeDto,
 };
-use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::io::{StreamRead, StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
 use zisk_common::Proof;
 use zisk_common::ZiskExecutorTime;
@@ -295,13 +295,12 @@ impl Coordinator {
 
     /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
     /// Returns a `JobId` that can be used to track completion via `subscribe_job_events`.
-    pub async fn setup_program(&self, hash_id: &str) -> CoordinatorResult<JobId> {
+    pub async fn setup_program(&self, hash_id: &str, with_hints: bool) -> CoordinatorResult<JobId> {
         use zisk_cluster_common::{elf_cache_path, SetupProgramDto};
 
         let path = elf_cache_path(hash_id);
-        let elf_bytes = fs::read(&path).map_err(|e| {
-            CoordinatorError::Internal(format!("ELF not found for hash_id {hash_id}: {e}"))
-        })?;
+        let elf_bytes =
+            fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
         let job_id = JobId::new();
         let workers = self.workers_pool.connected_worker_ids().await;
@@ -326,6 +325,7 @@ impl Coordinator {
                 job_id: job_id.as_string(),
                 elf_bytes: elf_bytes.clone(),
                 hash_id: hash_id.to_string(),
+                with_hints,
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
@@ -417,6 +417,15 @@ impl Coordinator {
 
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
+
+        // For execution-only jobs, record the Execution phase start time now
+        // so the completion handler can compute the correct wall-clock duration.
+        if job.execution_only {
+            job.phase_timings.insert(
+                JobPhase::Execution,
+                PhaseTimings { start_time: Utc::now(), end_time: None },
+            );
+        }
 
         let job_id = job.job_id.clone();
         let active_workers = self.select_workers_for_execution(&job)?;
@@ -858,11 +867,26 @@ impl Coordinator {
                 })?;
                 InputSourceDto::InputData(inputs)
             }
+            InputsModeDto::InputsStream(_) => {
+                // Coordinator will relay streamed inputs to workers via InputStreamData.
+                // Workers receive InputNull and start execution; data arrives incrementally
+                // through append_raw_input (same mechanism as PushJobInput).
+                InputSourceDto::InputNull
+            }
             InputsModeDto::InputsNone => InputSourceDto::InputNull,
         };
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
+            HintsModeDto::HintsData(ref hints_hex) => {
+                let hints = hex::decode(hints_hex).map_err(|e| {
+                    CoordinatorError::Internal(format!(
+                        "Failed to decode inline hints data for job {}: {}",
+                        job.job_id, e
+                    ))
+                })?;
+                HintsSourceDto::HintsData(hints)
+            }
             HintsModeDto::HintsStream(hints_uri) => {
                 // Hints will be streamed separately
                 HintsSourceDto::HintsStream(hints_uri.clone())
@@ -944,7 +968,12 @@ impl Coordinator {
         }
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
-            self.initialize_stream(job, cloned_active_workers)?;
+            self.initialize_stream(job, cloned_active_workers.clone())?;
+        }
+
+        if matches!(job.inputs_mode, InputsModeDto::InputsStream(ref uri) if !uri.starts_with("grpc://"))
+        {
+            self.initialize_input_relay(job, cloned_active_workers).await?;
         }
 
         Ok(())
@@ -1008,7 +1037,7 @@ impl Coordinator {
                 job.job_id, e
             ))
         })?;
-        stream.set_hints_stream_src(stream_reader).map_err(|e| {
+        stream.set_stream_src(stream_reader).map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to set hints stream for job {}: {}",
                 job.job_id, e
@@ -1021,6 +1050,131 @@ impl Coordinator {
             ))
         })?;
         Ok(())
+    }
+
+    /// Spawn a background thread that reads input chunks from a stream URI and
+    /// relays them to all workers as `InputStreamData` messages.
+    ///
+    /// Workers start with `InputNull` and receive data incrementally via
+    /// `append_raw_input` (same mechanism as `PushJobInput`).
+    ///
+    /// On stream errors, the job is marked as failed so workers are not left
+    /// waiting for data indefinitely.
+    async fn initialize_input_relay(
+        &self,
+        job: &Job,
+        active_workers: Vec<WorkerId>,
+    ) -> Result<(), CoordinatorError> {
+        let inputs_uri = match &job.inputs_mode {
+            InputsModeDto::InputsStream(uri) => uri.clone(),
+            _ => unreachable!(),
+        };
+
+        let job_id = job.job_id.clone();
+        let workers_pool = Arc::clone(&self.workers_pool);
+
+        // Grab the job Arc so the relay thread can mark it failed on error.
+        let job_arc = self
+            .jobs
+            .read()
+            .await
+            .get(&job_id)
+            .cloned()
+            .expect("job must be in jobs map before relay is spawned");
+
+        // Spawn a background thread: opens the stream reader, reads chunks,
+        // and relays each chunk to all workers via InputStreamData.
+        std::thread::spawn(move || {
+            // Create a dedicated multi-threaded tokio runtime so the QUIC
+            // reader's `block_on_dedicated` / `block_in_place` works correctly.
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("Failed to create input relay runtime");
+
+            rt.block_on(async move {
+                let result =
+                    Self::run_input_relay(&inputs_uri, &job_id, &active_workers, &workers_pool)
+                        .await;
+
+                if let Err(e) = result {
+                    error!("Input relay failed for job {}: {}", job_id, e);
+                    // Mark the job as failed so workers are not left waiting.
+                    let mut job = job_arc.write().await;
+                    if !job.state().is_resolved() {
+                        job.change_state(JobState::Failed);
+                    }
+                }
+            });
+        });
+
+        Ok(())
+    }
+
+    /// Core loop for the input relay: connects to the stream, reads chunks,
+    /// and broadcasts each to all workers.
+    async fn run_input_relay(
+        inputs_uri: &str,
+        job_id: &JobId,
+        workers: &[WorkerId],
+        workers_pool: &WorkersPool,
+    ) -> anyhow::Result<()> {
+        let mut stream = StreamSource::from_uri(inputs_uri)?;
+
+        // The SDK creates its listener after receiving the submit_job response, so
+        // the socket may not exist yet when this relay thread starts. Retry with
+        // backoff for up to 60 s before giving up.
+        if !stream.is_active() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            loop {
+                match stream.open() {
+                    Ok(_) => break,
+                    Err(e) => {
+                        if std::time::Instant::now() >= deadline {
+                            return Err(e.context(format!(
+                                "timed out waiting for input stream socket to become available: {}",
+                                inputs_uri
+                            )));
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                }
+            }
+        }
+
+        info!("Input relay started for job {} from {}", job_id, inputs_uri);
+
+        loop {
+            match stream.next() {
+                Ok(Some(chunk)) => {
+                    let sends = workers.iter().map(|worker_id| {
+                        let job_id = job_id.clone();
+                        let worker_id = worker_id.clone();
+                        let payload = chunk.clone();
+
+                        async move {
+                            let msg = CoordinatorMessageDto::InputStreamData(InputStreamDataDto {
+                                job_id,
+                                payload,
+                            });
+                            if let Err(e) = workers_pool.send_message(&worker_id, msg).await {
+                                error!("Failed to relay input to worker {}: {}", worker_id, e);
+                            }
+                        }
+                    });
+
+                    futures::future::join_all(sends).await;
+                }
+                Ok(None) => {
+                    info!("Input relay finished for job {} (stream ended)", job_id);
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
     }
 
     /// Marks a job as failed and performs and cleans up all associated resources

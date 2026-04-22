@@ -1,20 +1,24 @@
 use super::EmbeddedClient;
 use crate::embedded::{EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
-use crate::input::ProgramInput;
+use crate::hints::HintsSource;
+use crate::input_source::InputSource;
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
 use crate::prove::ProveResult;
-use crate::{ExecutorKind, JobEvent, ZiskStdin};
+use crate::{ExecutorKind, JobEvent};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
+use zisk_common::io::StreamSource;
 use zisk_common::ProofKind;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_prove(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
@@ -27,7 +31,7 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_prove_inner(prover, &program, input, executor, proof_kind);
+            let result = Self::do_prove_inner(prover, &program, stdin, hints, executor, proof_kind);
 
             fire_result_event(&subs_cloned, &result);
 
@@ -40,7 +44,8 @@ impl EmbeddedClient {
     fn do_prove_inner(
         prover: Arc<EmbeddedProver>,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
     ) -> Result<ProveResult> {
@@ -55,33 +60,68 @@ impl EmbeddedClient {
                 }
             };
         }
-        let result = match (prover.as_ref(), executor, input) {
-            (EmbeddedProver::Emu(p), ExecutorKind::Emulator, ProgramInput::Stdin(stdin)) => {
-                apply_mode!(p.prove(program, stdin.into_inner())).run()?
+        let result = match (prover.as_ref(), executor) {
+            (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
+                if hints.is_some() {
+                    anyhow::bail!("Hints require Assembly executor");
+                }
+                if matches!(stdin, InputSource::Stream(_)) {
+                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
+                }
+                let InputSource::Stdin(s) = stdin else { unreachable!() };
+                apply_mode!(p.prove(program, s.into_inner())).run()?
             }
-            (EmbeddedProver::Emu(_), ExecutorKind::Emulator, ProgramInput::Hints(_)) => {
-                anyhow::bail!("Hints require Assembly executor")
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly, _) => {
+            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
-            (EmbeddedProver::Asm(_), ExecutorKind::Emulator, _) => {
+            (EmbeddedProver::Asm(_), ExecutorKind::Emulator) => {
                 unimplemented!("Assembly prover does not yet support emulation mode")
             }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Stdin(stdin)) => {
-                if p.was_setup_with_hints()? {
-                    anyhow::bail!("Program was set up with hints — pass ZiskHints, not ZiskStdin");
+            (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
+                if let Some(hints) = hints {
+                    if !p.was_setup_with_hints()? {
+                        anyhow::bail!(
+                            "Program was set up without hints — call setup().with_hints() first"
+                        );
+                    }
+                    match hints {
+                        HintsSource::Hints(h) => {
+                            p.register_hints_stream(h.into_inner())?;
+                        }
+                        HintsSource::Stream(stream) => {
+                            if stream.is_grpc() {
+                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
+                            }
+                            stream.start()?;
+                            let uri = stream.uri().to_string();
+                            let source = StreamSource::from_uri(&uri)?;
+                            p.register_hints_stream(source)?;
+                        }
+                    }
+                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new())).run()?
+                } else {
+                    if p.was_setup_with_hints()? {
+                        anyhow::bail!(
+                            "Program was set up with hints — call .hints() on the request"
+                        );
+                    }
+                    match stdin {
+                        InputSource::Stream(stream) => {
+                            if stream.is_grpc() {
+                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
+                            }
+                            stream.start()?;
+                            let uri = stream.uri().to_string();
+                            let source = StreamSource::from_uri(&uri)?;
+                            p.register_inputs_stream(source)?;
+                            apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()))
+                                .run()?
+                        }
+                        InputSource::Stdin(s) => {
+                            apply_mode!(p.prove(program, s.into_inner())).run()?
+                        }
+                    }
                 }
-                apply_mode!(p.prove(program, stdin.into_inner())).run()?
-            }
-            (EmbeddedProver::Asm(p), ExecutorKind::Assembly, ProgramInput::Hints(hints)) => {
-                if !p.was_setup_with_hints()? {
-                    anyhow::bail!(
-                        "Program was set up without hints — pass ZiskStdin, not ZiskHints"
-                    );
-                }
-                p.register_hints_stream(hints.into_inner())?;
-                apply_mode!(p.prove(program, ZiskStdin::new().into_inner())).run()?
             }
         };
         Ok(ProveResult::from(result))

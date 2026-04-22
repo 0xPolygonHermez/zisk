@@ -407,6 +407,10 @@ pub trait ProverEngine {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
     }
 
+    fn register_inputs_stream(&self, _stream: StreamSource) -> Result<()> {
+        Err(anyhow::anyhow!("register_inputs_stream not supported by this backend"))
+    }
+
     fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
         Ok(None)
     }
@@ -629,6 +633,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.prover.register_hints_stream(stream)
+    }
+
+    pub fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+        self.prover.register_inputs_stream(stream)
     }
 
     pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {

@@ -47,12 +47,12 @@ impl CoordinatorClient {
     }
 
     pub fn submit_job(&self, kind: DomainJobKind) -> Result<Job> {
-        let job_id = block_on(async {
+        let resp = block_on(async {
             let mut gw = self.inner.clone();
             let resp = gw.job_request(kind).await.context("JobRequest RPC failed")?;
-            Ok::<_, anyhow::Error>(resp.into_inner().job_id)
+            Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
-        Job::new(job_id, self.clone())
+        Job::new(resp.job_id, self.clone())
     }
 
     pub fn async_client(&self) -> ZiskCoordinatorApiClient<Channel> {

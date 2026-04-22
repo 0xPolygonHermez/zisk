@@ -30,7 +30,7 @@ use super::{
     BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
-    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, WaitResult,
+    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
 
@@ -325,7 +325,7 @@ impl BackendService for MockBackend {
         Ok(hash_id)
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<Uuid> {
+    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
             let s = self.state.lock().await;
@@ -359,7 +359,7 @@ impl BackendService for MockBackend {
         Self::spawn_job_task(Arc::clone(&self.state), self.cancel.clone(), job_id, kind);
 
         tracing::debug!(%job_id, "submitted job");
-        Ok(job_id)
+        Ok(SubmitJobResult { job_id })
     }
 
     async fn wait_job_result(&self, job_id: Uuid, timeout: Duration) -> ApiResult<WaitResult> {
@@ -642,8 +642,11 @@ mod tests {
     async fn setup_job_completes() {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
-        let job_id =
-            b.submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id })).await.unwrap();
+        let job_id = b
+            .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id, with_hints: false }))
+            .await
+            .unwrap()
+            .job_id;
 
         let result = b.wait_job_result(job_id, Duration::from_secs(5)).await.unwrap();
         assert_eq!(result.job_status, DomainJobStatus::Completed);
@@ -657,11 +660,13 @@ mod tests {
             .submit_job(DomainJobKind::Prove(DomainProveRequest {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                hints: None,
                 proof_timeout: None,
                 proof_dest: DomainProofKind::Stark,
             }))
             .await
-            .unwrap();
+            .unwrap()
+            .job_id;
 
         // Cancel before it completes
         let cancelled = b.cancel_job(job_id).await.unwrap();
@@ -680,10 +685,12 @@ mod tests {
             .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
                 hash_id,
                 input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                hints: None,
                 execute_timeout: None,
             }))
             .await
-            .unwrap();
+            .unwrap()
+            .job_id;
 
         // Wait for completion
         b.wait_job_result(job_id, Duration::from_secs(5)).await.unwrap();
@@ -696,7 +703,10 @@ mod tests {
     async fn program_not_found_error() {
         let b = MockBackend::default();
         let err = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id: "nonexistent".into() }))
+            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
+                hash_id: "nonexistent".into(),
+                with_hints: false,
+            }))
             .await
             .unwrap_err();
         assert!(matches!(err, ApiError::ProgramNotFound(_)));
@@ -731,7 +741,8 @@ mod tests {
                 wrap_timeout: None,
             }))
             .await
-            .unwrap();
+            .unwrap()
+            .job_id;
 
         let result = b.wait_job_result(job_id, Duration::from_secs(5)).await.unwrap();
         assert_eq!(result.job_status, DomainJobStatus::Completed);

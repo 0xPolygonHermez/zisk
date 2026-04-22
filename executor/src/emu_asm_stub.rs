@@ -79,6 +79,10 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
+    pub fn set_inputs_stream_src(&self, _stream: StreamSource) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
     pub fn submit_hint_direct(&self, _data: &[u64]) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }

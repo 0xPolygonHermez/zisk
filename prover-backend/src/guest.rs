@@ -123,8 +123,7 @@ impl GuestProgram {
     /// Run the ZisK emulator with the given stdin.
     ///
     /// Pass `Some(ProfilingMode)` to enable profiling output, or `None` for a plain run.
-    pub fn run(&self, stdin: impl Into<ZiskStdin>, profiling: Option<ProfilingMode>) -> Result<()> {
-        let stdin = stdin.into();
+    pub fn run_emulation(&self, stdin: ZiskStdin, profiling: Option<ProfilingMode>) -> Result<()> {
         let riscv2zisk = Riscv2zisk::new(self.elf());
 
         let zisk_rom = riscv2zisk

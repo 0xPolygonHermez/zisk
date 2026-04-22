@@ -120,7 +120,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .handler
             .submit_job(kind)
             .await
-            .map(|job_id| Response::new(JobResponse { job_id: job_id.to_string() }))
+            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
 
         Self::log_call("JobRequest", start, result.as_ref().map(|_| ()));

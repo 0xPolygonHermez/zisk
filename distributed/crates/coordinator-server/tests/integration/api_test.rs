@@ -91,6 +91,7 @@ async fn prove_job_wait_result_completes() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -134,6 +135,7 @@ async fn prove_job_watch_stream_receives_all_events() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -175,7 +177,9 @@ async fn setup_job_completes() {
 
     let job_id = client
         .job_request(JobRequestMessage {
-            job_kind: Some(JobKind { kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id })) }),
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id, with_hints: false })),
+            }),
         })
         .await
         .unwrap()
@@ -212,6 +216,7 @@ async fn execute_job_completes() {
                 kind: Some(job_kind::Kind::Execute(ExecuteRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     execute_timeout: None,
                 })),
             }),
@@ -252,6 +257,7 @@ async fn wrap_job_completes() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -334,6 +340,7 @@ async fn cancel_running_job_returns_true() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -362,7 +369,9 @@ async fn cancel_completed_job_returns_false() {
 
     let job_id = client
         .job_request(JobRequestMessage {
-            job_kind: Some(JobKind { kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id })) }),
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id, with_hints: false })),
+            }),
         })
         .await
         .unwrap()
@@ -413,6 +422,7 @@ async fn program_not_found_returns_error() {
             job_kind: Some(JobKind {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id: "nonexistent_hash".into(),
+                    with_hints: false,
                 })),
             }),
         })
@@ -434,6 +444,7 @@ async fn wait_result_timeout_returns_current_status() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -468,6 +479,7 @@ async fn push_input_multi_chunk_completes() {
                 kind: Some(job_kind::Kind::Prove(ProveRequest {
                     hash_id,
                     input: inline_input(),
+                    hints: None,
                     proof_timeout: None,
                     proof_dest: ProofKind::Stark as i32,
                 })),
@@ -518,7 +530,9 @@ async fn push_input_on_terminal_job_fails() {
     // Submit a Setup job (completes quickly)
     let job_id = client
         .job_request(JobRequestMessage {
-            job_kind: Some(JobKind { kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id })) }),
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id, with_hints: false })),
+            }),
         })
         .await
         .unwrap()

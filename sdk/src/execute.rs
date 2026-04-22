@@ -5,6 +5,8 @@ use std::time::Duration;
 use anyhow::Result;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
+use crate::hints::HintsSource;
+use crate::input_source::InputSource;
 use crate::job_handle::{JobHandle, JobId};
 use crate::{Client, ExecutorKind};
 
@@ -42,7 +44,8 @@ impl From<ExecuteOutput> for ExecuteResult {
 pub struct ExecuteRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
-    input: crate::input::ProgramInput,
+    stdin: InputSource,
+    hints: Option<HintsSource>,
     executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
 }
@@ -52,9 +55,20 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     pub(crate) fn new(
         client: &'a C,
         program: &'a GuestProgram,
-        input: impl Into<crate::input::ProgramInput>,
+        stdin: impl Into<InputSource>,
     ) -> Self {
-        Self { client, program, input: input.into(), executor: None, timeout: None }
+        Self { client, program, stdin: stdin.into(), hints: None, executor: None, timeout: None }
+    }
+
+    /// Attach a hints stream to this execute request.
+    ///
+    /// Requires the program to have been set up with
+    /// [`SetupRequest::with_hints`](crate::SetupRequest::with_hints) and
+    /// the [`ExecutorKind::Assembly`] executor.
+    #[must_use]
+    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
+        self.hints = Some(hints.into());
+        self
     }
 
     /// Override the executor for this execute call.
@@ -75,6 +89,6 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
         let subs = Arc::new(Mutex::new(Vec::new()));
-        self.client.run_execute(self.program, self.input, executor, self.timeout, subs)
+        self.client.run_execute(self.program, self.stdin, self.hints, executor, self.timeout, subs)
     }
 }

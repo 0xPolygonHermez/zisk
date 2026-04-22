@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
-use zisk_common::{io::StreamSink, reinterpret_vec};
+use zisk_common::{
+    io::{StreamProcessor, StreamSink},
+    reinterpret_vec,
+};
 use zisk_core::MAX_INPUT_SIZE;
 
 use crate::{
@@ -51,8 +54,11 @@ impl InputsShmemWriter {
     }
 
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {
+        if inputs.is_empty() {
+            return Ok(());
+        }
         self.writer.lock().unwrap().write_at(8, inputs)?;
-        self.control_writer.inc_inputs_size(inputs.len());
+        self.control_writer.set_inputs_size(inputs.len() as u64);
         self.notify_all_services()?;
 
         Ok(())
@@ -96,5 +102,16 @@ impl StreamSink for InputsShmemWriter {
 
     fn reset(&self) {
         self.reset();
+    }
+}
+
+impl StreamProcessor for InputsShmemWriter {
+    fn process_hints(&self, data: &[u64], _first_batch: bool) -> anyhow::Result<bool> {
+        self.submit(data)?;
+        Ok(false)
+    }
+
+    fn reset(&self) {
+        InputsShmemWriter::reset(self);
     }
 }

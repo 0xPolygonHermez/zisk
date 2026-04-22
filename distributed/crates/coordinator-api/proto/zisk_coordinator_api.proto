@@ -209,6 +209,7 @@ message JobKind {
 
 message SetupRequest {
   string hash_id = 1;
+  bool   with_hints = 2;
 }
 
 message SetupResponse {
@@ -220,6 +221,7 @@ message ProveRequest {
   InputKind                 input         = 2;
   optional google.protobuf.Timestamp proof_timeout = 3;
   ProofKind                 proof_dest    = 4;
+  optional InputKind        hints         = 5;
 }
 
 message ProveResponse {
@@ -245,6 +247,7 @@ message ExecuteRequest {
   string                    hash_id         = 1;
   InputKind                 input           = 2;
   optional google.protobuf.Timestamp execute_timeout = 3;
+  optional InputKind        hints           = 4;
 }
 
 message ExecuteResponse {
