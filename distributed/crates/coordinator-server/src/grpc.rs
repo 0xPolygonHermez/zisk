@@ -67,9 +67,9 @@ impl<B: BackendService> GrpcAdapter<B> {
             Err(status) => {
                 let code = status.code() as i32;
                 if status.code() == tonic::Code::Internal {
-                    error!(method, elapsed_ms, %code, "gRPC call failed (internal)");
+                    error!(method, elapsed_ms, %code, "gRPC call failed (internal), error: {}", status.message());
                 } else {
-                    info!(method, elapsed_ms, %code, "gRPC call failed");
+                    info!(method, elapsed_ms, %code, "gRPC call failed, error: {}", status.message());
                 }
             }
         }
