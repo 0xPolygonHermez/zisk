@@ -7,7 +7,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <vector>
 #include <thread>
 #include <iostream>
 #include <string.h>
@@ -25,7 +24,6 @@
 #define INPUT_SIZE (INPUT_SIZE_MB * 1024 * 1024)
 #define TABLE_OFFSET_SIZE ((RAM_SIZE + ROM_SIZE + INPUT_SIZE) >> 3)
 
-#include <vector>
 class MemCounterSingle {
     bool *free_read_available;
     uint32_t full_5;
@@ -40,16 +38,15 @@ public:
     MemCounterSingle(void);
     ~MemCounterSingle();
     void execute(const MemCountersBusData *chunk_data, uint32_t chunk_size);
-    void add_aligned(uint32_t addr, bool is_write);
     void add_aligned_read_write(uint32_t addr);
-    void add_aligned_write(uint32_t addr) { add_aligned(addr, true); }
-    void add_aligned_read(uint32_t addr) { add_aligned(addr, false); }
+    void add_aligned_write(uint32_t addr);
+    void add_aligned_read(uint32_t addr);
     void clear(void);
     
     inline static uint32_t addr_to_offset(uint32_t addr);
 };
 
-uint32_t MemCounterSingle::addr_to_offset(uint32_t addr) {
+inline uint32_t MemCounterSingle::addr_to_offset(uint32_t addr) {
     if (addr >= RAM_ADDR && addr < (RAM_ADDR + RAM_SIZE)) {
         return (addr - RAM_ADDR) >> 3;
     }

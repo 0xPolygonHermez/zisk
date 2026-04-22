@@ -5,7 +5,7 @@
 #include <string.h>
 #include <ostream>
 
-#define ALIGN_MASK 0xFFFF'FFFF'FFFF'FFF8ULL 
+#define ALIGN_MASK 0xFFFF'FFF8
 
 MemCounterSingle::MemCounterSingle(void){
     free_read_available = (bool *)malloc(TABLE_OFFSET_SIZE * sizeof(bool));
@@ -27,9 +27,7 @@ void MemCounterSingle::clear(void) {
 void MemCounterSingle::execute(const MemCountersBusData *chunk_data, uint32_t chunk_size) {
     clear();
     for (const MemCountersBusData *chunk_eod = chunk_data + chunk_size; chunk_eod != chunk_data; chunk_data++) {
-        const uint8_t bytes = chunk_data->flags & 0x0F;
         const uint32_t addr = chunk_data->addr;
-        const bool write_flag = (chunk_data->flags & MOPS_WRITE_FLAG) != 0;
         const uint32_t aligned_addr = addr & ALIGN_MASK;
         const uint8_t mode = chunk_data->flags & 0x3F;
         switch (mode) {
@@ -146,7 +144,7 @@ void MemCounterSingle::execute(const MemCountersBusData *chunk_data, uint32_t ch
             }            
             default: {
                 std::ostringstream msg;
-                msg << "ERROR invalid bytes size " << bytes << " addr 0x" << std::hex << addr;
+                msg << "ERROR invalid mode " << mode << " addr 0x" << std::hex << addr;
                 throw std::runtime_error(msg.str());
             }
         }
