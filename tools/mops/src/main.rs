@@ -41,47 +41,66 @@ struct MemCountersBusData {
     flags: u32,
 }
 
-/// Tracks dual_available state across chunks, matching MemCounterSingle logic.
+/// Tracks free_read_available state across chunks, matching MemCounterSingle logic.
 struct MopsExpander {
-    dual_available: HashMap<u32, bool>,
+    free_read_available: HashMap<u32, bool>,
 }
 
 impl MopsExpander {
     fn new() -> Self {
-        Self { dual_available: HashMap::new() }
+        Self { free_read_available: HashMap::new() }
     }
 
-    /// Mirrors MemCounterSingle::count_aligned.
-    /// Returns true if the counter is incremented (i.e., the address should be pushed).
-    fn count_aligned(&mut self, addr: u32, is_write: bool) -> bool {
+    /// Mirrors MemCounterSingle::add_aligned_read.
+    /// For RAM: if free_read_available is true, consumes it (no push).
+    ///          If false, sets true and pushes addr once.
+    /// For non-RAM: always pushes addr.
+    fn add_aligned_read(&mut self, addr: u32, output: &mut Vec<u32>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
-            if is_write {
-                self.dual_available.insert(addr, true);
+            if self.free_read_available.get(&addr).copied().unwrap_or(false) {
+                self.free_read_available.insert(addr, false);
             } else {
-                if self.dual_available.get(&addr).copied().unwrap_or(false) {
-                    self.dual_available.insert(addr, false);
-                    return false;
-                }
-                self.dual_available.insert(addr, true);
+                self.free_read_available.insert(addr, true);
+                output.push(addr);
             }
-        }
-        true
-    }
-
-    fn count_aligned_read(&mut self, addr: u32, output: &mut Vec<u32>) {
-        if self.count_aligned(addr, false) {
+        } else {
             output.push(addr);
         }
     }
 
-    fn count_aligned_write(&mut self, addr: u32, output: &mut Vec<u32>) {
-        if self.count_aligned(addr, true) {
-            output.push(addr);
+    /// Mirrors MemCounterSingle::add_aligned_write.
+    /// For RAM: sets free_read_available to true.
+    /// Always pushes addr.
+    fn add_aligned_write(&mut self, addr: u32, output: &mut Vec<u32>) {
+        let is_ram = addr >= RAM_ADDR;
+        if is_ram {
+            self.free_read_available.insert(addr, true);
+        }
+        output.push(addr);
+    }
+
+    /// Mirrors MemCounterSingle::add_aligned_read_write.
+    /// For RAM: if free_read_available is false, pushes addr (read), then pushes addr (write),
+    ///          sets free_read_available to true.
+    ///          If free_read_available is true, pushes addr (write only),
+    ///          free_read_available stays true.
+    /// For non-RAM: pushes addr twice (read + write).
+    fn add_aligned_read_write(&mut self, addr: u32, output: &mut Vec<u32>) {
+        let is_ram = addr >= RAM_ADDR;
+        if is_ram {
+            if !self.free_read_available.get(&addr).copied().unwrap_or(false) {
+                output.push(addr); // read
+            }
+            output.push(addr); // write
+            self.free_read_available.insert(addr, true);
+        } else {
+            output.push(addr); // read
+            output.push(addr); // write
         }
     }
 
-    /// Expand one chunk of mops trace entries, maintaining dual_available state.
+    /// Expand one chunk of mops trace entries, maintaining free_read_available state.
     fn expand_chunk(&mut self, data: &[MemCountersBusData]) -> Vec<u32> {
         let mut output: Vec<u32> = Vec::with_capacity(data.len() * 2);
 
@@ -94,83 +113,85 @@ impl MopsExpander {
             match mode {
                 // 1 byte read
                 MOPS_READ_1 => {
-                    self.count_aligned_read(aligned_addr, &mut output);
+                    self.add_aligned_read(aligned_addr, &mut output);
                 }
                 // 1 byte conditional write
                 MOPS_CWRITE_1 => {
-                    self.count_aligned_write(aligned_addr, &mut output);
+                    self.add_aligned_read_write(aligned_addr, &mut output);
                 }
                 // 1 byte write
                 MOPS_WRITE_1 => {
-                    self.count_aligned_write(aligned_addr, &mut output);
+                    self.add_aligned_read_write(aligned_addr, &mut output);
                 }
 
                 // 2 byte read
                 MOPS_READ_2 => {
-                    self.count_aligned_read(aligned_addr, &mut output);
+                    self.add_aligned_read(aligned_addr, &mut output);
                     if (addr & 0x07) > 6 {
-                        self.count_aligned_read(aligned_addr + 8, &mut output);
+                        self.add_aligned_read(aligned_addr + 8, &mut output);
                     }
                 }
-                // 2 byte write (note: second aligned uses read, matching C++)
+                // 2 byte write
                 MOPS_WRITE_2 => {
-                    self.count_aligned_write(aligned_addr, &mut output);
+                    self.add_aligned_read_write(aligned_addr, &mut output);
                     if (addr & 0x07) > 6 {
-                        self.count_aligned_read(aligned_addr + 8, &mut output);
+                        self.add_aligned_read_write(aligned_addr + 8, &mut output);
                     }
                 }
 
                 // 4 byte read
                 MOPS_READ_4 => {
-                    self.count_aligned_read(aligned_addr, &mut output);
+                    self.add_aligned_read(aligned_addr, &mut output);
                     if (addr & 0x07) > 4 {
-                        self.count_aligned_read(aligned_addr + 8, &mut output);
+                        self.add_aligned_read(aligned_addr + 8, &mut output);
                     }
                 }
                 // 4 byte write
                 MOPS_WRITE_4 => {
-                    self.count_aligned_write(aligned_addr, &mut output);
+                    self.add_aligned_read_write(aligned_addr, &mut output);
                     if (addr & 0x07) > 4 {
-                        self.count_aligned_write(aligned_addr + 8, &mut output);
+                        self.add_aligned_read_write(aligned_addr + 8, &mut output);
                     }
                 }
 
                 // 8 byte read
                 MOPS_READ_8 => {
-                    self.count_aligned_read(aligned_addr, &mut output);
+                    self.add_aligned_read(aligned_addr, &mut output);
                     if (addr & 0x07) > 0 {
-                        self.count_aligned_read(aligned_addr + 8, &mut output);
+                        self.add_aligned_read(aligned_addr + 8, &mut output);
                     }
                 }
                 // 8 byte write
                 MOPS_WRITE_8 => {
-                    self.count_aligned_write(aligned_addr, &mut output);
-                    if (addr & 0x07) > 0 {
-                        self.count_aligned_write(aligned_addr + 8, &mut output);
+                    if addr == aligned_addr {
+                        self.add_aligned_write(aligned_addr, &mut output);
+                    } else {
+                        self.add_aligned_read_write(aligned_addr, &mut output);
+                        self.add_aligned_read_write(aligned_addr + 8, &mut output);
                     }
                 }
 
-                // Aligned read (with upper bits variants)
-                m if (m & 0x0F) == MOPS_ALIGNED_READ => {
-                    self.count_aligned_read(addr, &mut output);
+                // Aligned read
+                MOPS_ALIGNED_READ => {
+                    self.add_aligned_read(addr, &mut output);
                 }
-                // Aligned write (with upper bits variants)
-                m if (m & 0x0F) == MOPS_ALIGNED_WRITE => {
-                    self.count_aligned_write(addr, &mut output);
+                // Aligned write
+                MOPS_ALIGNED_WRITE => {
+                    self.add_aligned_write(addr, &mut output);
                 }
 
                 // Block read / Aligned block read
                 m if (m & 0x0F) == MOPS_BLOCK_READ || (m & 0x0F) == MOPS_ALIGNED_BLOCK_READ => {
                     let count = flags >> MOPS_BLOCK_COUNT_SBITS;
                     for i in 0..count {
-                        self.count_aligned_read(addr + i * 8, &mut output);
+                        self.add_aligned_read(addr + i * 8, &mut output);
                     }
                 }
                 // Block write / Aligned block write
                 m if (m & 0x0F) == MOPS_BLOCK_WRITE || (m & 0x0F) == MOPS_ALIGNED_BLOCK_WRITE => {
                     let count = flags >> MOPS_BLOCK_COUNT_SBITS;
                     for i in 0..count {
-                        self.count_aligned_write(addr + i * 8, &mut output);
+                        self.add_aligned_write(addr + i * 8, &mut output);
                     }
                 }
 
@@ -188,7 +209,7 @@ impl MopsExpander {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct ChunkStats {
+struct ChunkMemAlignCounters {
     chunk_id: u32,
     full_5: u32,
     full_3: u32,
@@ -199,8 +220,8 @@ struct ChunkStats {
 
 /// Compute per-chunk stats (full_5, full_3, full_2, read_byte, write_byte) matching
 /// the MemCounterSingle logic.
-fn stats_chunk(chunk_id: u32, data: &[MemCountersBusData]) -> ChunkStats {
-    let mut s = ChunkStats { chunk_id, ..Default::default() };
+fn stats_chunk(chunk_id: u32, data: &[MemCountersBusData]) -> ChunkMemAlignCounters {
+    let mut s = ChunkMemAlignCounters { chunk_id, ..Default::default() };
 
     for entry in data {
         let addr = entry.addr;
@@ -366,7 +387,7 @@ fn cmd_mem_align_count(args: &MemAlignCountArgs) -> Result<()> {
     }
 
     let mut chunk_id: u32 = 0;
-    let mut all_stats: Vec<ChunkStats> = Vec::new();
+    let mut counters: Vec<ChunkMemAlignCounters> = Vec::new();
 
     loop {
         let input_file = args.input.join(format!("{}{}.bin", args.prefix, chunk_id));
@@ -376,7 +397,7 @@ fn cmd_mem_align_count(args: &MemAlignCountArgs) -> Result<()> {
 
         let entries = read_chunk_file(&input_file)?;
         let s = stats_chunk(chunk_id, &entries);
-        all_stats.push(s);
+        counters.push(s);
         chunk_id += 1;
     }
 
@@ -392,7 +413,7 @@ fn cmd_mem_align_count(args: &MemAlignCountArgs) -> Result<()> {
     csv_content.push_str(header);
     csv_content.push('\n');
 
-    for s in &all_stats {
+    for s in &counters {
         let line = format!(
             "{},{},{},{},{},{}",
             s.chunk_id, s.full_5, s.full_3, s.full_2, s.read_byte, s.write_byte
@@ -403,11 +424,11 @@ fn cmd_mem_align_count(args: &MemAlignCountArgs) -> Result<()> {
     }
 
     // Totals row
-    let tot_5: u32 = all_stats.iter().map(|s| s.full_5).sum();
-    let tot_3: u32 = all_stats.iter().map(|s| s.full_3).sum();
-    let tot_2: u32 = all_stats.iter().map(|s| s.full_2).sum();
-    let tot_rb: u32 = all_stats.iter().map(|s| s.read_byte).sum();
-    let tot_wb: u32 = all_stats.iter().map(|s| s.write_byte).sum();
+    let tot_5: u32 = counters.iter().map(|s| s.full_5).sum();
+    let tot_3: u32 = counters.iter().map(|s| s.full_3).sum();
+    let tot_2: u32 = counters.iter().map(|s| s.full_2).sum();
+    let tot_rb: u32 = counters.iter().map(|s| s.read_byte).sum();
+    let tot_wb: u32 = counters.iter().map(|s| s.write_byte).sum();
     let totals_line = format!("total,{},{},{},{},{}", tot_5, tot_3, tot_2, tot_rb, tot_wb);
     println!("{}", totals_line);
     csv_content.push_str(&totals_line);
