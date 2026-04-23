@@ -51,6 +51,14 @@ impl<B: BackendService> CoordinatorHandler<B> {
         self.backend.push_job_input(job_id, chunks).await
     }
 
+    pub async fn push_job_hints_input(
+        &self,
+        job_id: Uuid,
+        chunks: InputChunkStream,
+    ) -> ApiResult<()> {
+        self.backend.push_job_hints_input(job_id, chunks).await
+    }
+
     pub async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool> {
         self.backend.cancel_job(job_id).await
     }

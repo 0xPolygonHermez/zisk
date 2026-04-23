@@ -191,10 +191,9 @@ pub(crate) fn stdin_to_input_kind(
 /// Converts an optional [`HintsSource`] into a `DomainInputKind` for submission.
 ///
 /// For stream-backed hints, also returns the [`ZiskStream`](crate::ZiskStream)
-/// so the caller can call `start()` or inject a gRPC sender.
+/// so the caller can inject a gRPC sender after job submission.
 ///
-/// - `HintsSource::Hints` with stream URI → `StreamUri`
-/// - `HintsSource::Hints` with file/memory data → `Inline`
+/// - `HintsSource::Hints` → reads data and sends inline
 /// - `HintsSource::Stream` → `StreamUri(stream.uri())`
 pub(crate) fn hints_to_input_kind(
     hints: Option<HintsSource>,
@@ -205,18 +204,9 @@ pub(crate) fn hints_to_input_kind(
     };
     match hints {
         HintsSource::Stream(stream) => {
-            if stream.is_grpc() {
-                anyhow::bail!(
-                    "gRPC streams are not supported for hints — use unix:// or quic:// transport"
-                );
-            }
             Ok((Some(DomainInputKind::StreamUri(stream.uri().to_string())), Some(*stream)))
         }
         HintsSource::Hints(h) => {
-            if let Some(uri) = h.stream_uri() {
-                return Ok((Some(DomainInputKind::StreamUri(uri.to_owned())), None));
-            }
-            // File/memory: read all data and send inline
             let mut source = h.into_inner();
             source.open()?;
             let mut data = Vec::new();

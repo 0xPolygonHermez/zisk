@@ -47,7 +47,12 @@ impl RemoteClient {
                 stream.set_input_sender(remote_job.open_input_stream());
             }
         }
+        if let Some(ref stream) = maybe_hints_stream {
+            if stream.is_grpc() {
+                stream.set_input_sender(remote_job.open_hints_stream());
+            }
+        }
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, maybe_stream))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout, maybe_stream, maybe_hints_stream))
     }
 }

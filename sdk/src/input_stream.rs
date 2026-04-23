@@ -99,7 +99,11 @@ impl ZiskStream {
         Ok(Self::from_writer(Box::new(writer), uri))
     }
 
-    /// QUIC transport (e.g. `"quic://127.0.0.1:7001"`).
+    /// QUIC transport.
+    ///
+    /// Pass `"quic://127.0.0.1:0"` to let the OS pick a free port; the
+    /// resolved address is then used as the URI so the coordinator receives
+    /// the correct port.
     pub fn quic(uri: &str) -> Result<Self> {
         let addr_str = uri
             .strip_prefix("quic://")
@@ -108,7 +112,8 @@ impl ZiskStream {
             .parse()
             .map_err(|e| anyhow::anyhow!("invalid QUIC address '{}': {}", addr_str, e))?;
         let writer = QuicStreamWriter::new(addr)?;
-        Ok(Self::from_writer(Box::new(writer), uri.to_string()))
+        let actual_uri = format!("quic://{}", writer.local_addr()?);
+        Ok(Self::from_writer(Box::new(writer), actual_uri))
     }
 
     /// gRPC push transport (data pushed to coordinator via `PushJobInput`).
@@ -150,6 +155,15 @@ impl ZiskStream {
         self.inner.pending_frames.lock().unwrap().push(frame);
     }
 
+    /// Buffer raw bytes without any framing header.
+    ///
+    /// Use this when the receiver expects plain binary data (e.g. hints relay),
+    /// as opposed to [`write_slice`](Self::write_slice) which prepends a
+    /// length-prefixed frame understood by the stdin reader.
+    pub fn write_raw(&self, data: &[u8]) {
+        self.inner.pending_frames.lock().unwrap().push(data.to_vec());
+    }
+
     /// Send all buffered frames now.  Blocks until the stream is live.
     pub fn flush(&self) -> Result<()> {
         // Wait for ready, holding the live_state lock so we can pass it
@@ -183,16 +197,19 @@ impl ZiskStream {
             drop(guard);
             let mut transport = self.inner.transport.lock().unwrap();
             let TransportKind::Direct(writer) = &mut *transport else { unreachable!() };
+            let max = writer.max_message_size();
             for (i, frame) in frames.iter().enumerate() {
-                if let Err(e) = writer.write(frame) {
-                    // Re-queue unsent frames for the next start() cycle.
-                    drop(transport);
-                    self.inner
-                        .pending_frames
-                        .lock()
-                        .unwrap()
-                        .splice(0..0, frames[i..].iter().cloned());
-                    return Err(e);
+                for chunk in frame.chunks(max) {
+                    if let Err(e) = writer.write(chunk) {
+                        // Re-queue unsent frames for the next start() cycle.
+                        drop(transport);
+                        self.inner
+                            .pending_frames
+                            .lock()
+                            .unwrap()
+                            .splice(0..0, frames[i..].iter().cloned());
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -266,9 +283,12 @@ impl ZiskStream {
 
                 writer.wait_for_connection()?;
 
+                let max = writer.max_message_size();
                 let mut frames = stream.inner.pending_frames.lock().unwrap();
                 for frame in frames.drain(..) {
-                    writer.write(&frame)?;
+                    for chunk in frame.chunks(max) {
+                        writer.write(chunk)?;
+                    }
                 }
                 Ok(())
             })();

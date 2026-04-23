@@ -511,6 +511,11 @@ impl StreamWrite for UnixSocketStreamWriter {
         }
         Ok(())
     }
+
+    /// SOCK_SEQPACKET receiver buffer is 128 KB; stay well under it.
+    fn max_message_size(&self) -> usize {
+        64 * 1024
+    }
 }
 
 impl Drop for UnixSocketStreamWriter {

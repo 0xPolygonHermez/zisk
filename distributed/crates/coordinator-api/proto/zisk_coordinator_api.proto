@@ -39,6 +39,11 @@ service ZiskCoordinatorApi {
   rpc PushJobInput(stream PushJobInputRequest)
       returns (google.protobuf.Empty);
 
+  // Stream additional hints chunks to a running job.
+  // Close the stream to signal end-of-hints (EOF).
+  rpc PushJobHintsInput(stream PushJobHintsInputRequest)
+      returns (google.protobuf.Empty);
+
   // Cancel a running or queued job. Blocks until the job reaches a terminal
   // state (Cancelled or another terminal if it completed first).
   // Idempotent: returns cancelled=false if the job is already in a terminal state.
@@ -360,6 +365,15 @@ message JobEventFailed {
 // ============================================================================
 
 message PushJobInputRequest {
+  string     job_id = 1;
+  InputChunk chunk  = 2;
+}
+
+// ============================================================================
+// PushJobHintsInput
+// ============================================================================
+
+message PushJobHintsInputRequest {
   string     job_id = 1;
   InputChunk chunk  = 2;
 }

@@ -402,6 +402,32 @@ impl BackendService for CoordinatorBackend {
         Ok(())
     }
 
+    async fn push_job_hints_input(
+        &self,
+        job_id: Uuid,
+        mut chunks: InputChunkStream,
+    ) -> ApiResult<()> {
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
+
+        // Feed each chunk into the coordinator's per-job relay channel.
+        // The channel feeds into PrecompileHintsRelay which parses the hint
+        // format and dispatches StreamData messages to workers.
+        while let Some(chunk_result) = futures::StreamExt::next(&mut chunks).await {
+            let chunk: zisk_coordinator_api::dto::DomainInputChunk =
+                chunk_result.map_err(|e| internal(format!("hints stream error: {e}")))?;
+            if !chunk.data.is_empty() {
+                self.coordinator
+                    .push_hints_grpc_data(&job_id_internal, chunk.data)
+                    .await
+                    .map_err(|e| internal(format!("hints relay error: {e}")))?;
+            }
+        }
+        // Signal EOF so the relay thread exits cleanly.
+        self.coordinator.finish_hints_grpc_stream(&job_id_internal).await;
+
+        Ok(())
+    }
+
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
         let cancelled = self

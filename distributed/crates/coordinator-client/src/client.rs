@@ -59,12 +59,20 @@ impl CoordinatorClient {
         self.inner.clone()
     }
 
-    /// Open a persistent input stream to a running job.
+    /// Open a persistent stdin stream to a running job.
     ///
     /// Returns an [`InputSender`] that can be used to send multiple chunks.
     /// Drop the sender (or call [`InputSender::close`]) to signal EOF.
     pub fn open_input_stream(&self, job_id: Uuid) -> InputSender {
         InputSender::open(job_id, self.inner.clone())
+    }
+
+    /// Open a persistent hints stream to a running job.
+    ///
+    /// Returns an [`InputSender`] that can be used to send multiple chunks.
+    /// Drop the sender (or call [`InputSender::close`]) to signal EOF.
+    pub fn open_hints_stream(&self, job_id: Uuid) -> InputSender {
+        InputSender::open_hints(job_id, self.inner.clone())
     }
 }
 

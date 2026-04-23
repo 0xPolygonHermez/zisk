@@ -53,6 +53,8 @@ struct MockState {
     event_txs: HashMap<Uuid, broadcast::Sender<DomainJobEvent>>,
     /// Chunks received via `push_job_input`, keyed by job_id. For test assertions.
     received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
+    /// Chunks received via `push_job_hints_input`, keyed by job_id. For test assertions.
+    received_hints_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
 }
 
 impl MockState {
@@ -62,6 +64,7 @@ impl MockState {
             jobs: HashMap::new(),
             event_txs: HashMap::new(),
             received_chunks: HashMap::new(),
+            received_hints_chunks: HashMap::new(),
         }
     }
 }
@@ -80,6 +83,11 @@ pub struct MockBackend {
 impl MockBackend {
     pub fn new(cancel: CancellationToken) -> Self {
         Self { state: Arc::new(Mutex::new(MockState::new())), cancel }
+    }
+
+    /// Return all hints chunks received for `job_id` via `push_job_hints_input`.
+    pub async fn received_hints_chunks(&self, job_id: Uuid) -> Vec<Vec<u8>> {
+        self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
@@ -487,6 +495,39 @@ impl BackendService for MockBackend {
             if !chunk.data.is_empty() {
                 let mut s = self.state.lock().await;
                 s.received_chunks.entry(job_id).or_default().push(chunk.data);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn push_job_hints_input(
+        &self,
+        job_id: Uuid,
+        mut chunks: InputChunkStream,
+    ) -> ApiResult<()> {
+        {
+            let s = self.state.lock().await;
+            let rec = s.jobs.get(&job_id).ok_or(ApiError::JobNotFound(job_id))?;
+            if rec.status.is_terminal() {
+                return Err(ApiError::InvalidJobState {
+                    reason: format!(
+                        "job {} is already terminal (current: {:?})",
+                        job_id, rec.status
+                    ),
+                });
+            }
+        }
+
+        use futures::StreamExt;
+        while let Some(chunk_result) = chunks.next().await {
+            let chunk = chunk_result.map_err(|e| ApiError::InvalidJobState {
+                reason: format!("hints stream error: {e}"),
+            })?;
+
+            if !chunk.data.is_empty() {
+                let mut s = self.state.lock().await;
+                s.received_hints_chunks.entry(job_id).or_default().push(chunk.data);
             }
         }
 

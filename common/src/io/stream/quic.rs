@@ -217,6 +217,14 @@ impl QuicStreamWriter {
         Ok(QuicStreamWriter { connection: None, runtime: Some(runtime), endpoint })
     }
 
+    /// Returns the actual local address the endpoint is bound to.
+    ///
+    /// Useful when the endpoint was created with port `0` — the OS assigns a
+    /// free port and this method returns the resolved address.
+    pub fn local_addr(&self) -> Result<SocketAddr> {
+        self.endpoint.local_addr().map_err(|e| anyhow::anyhow!("failed to get local addr: {e}"))
+    }
+
     /// Configure server with self-signed certificate
     fn configure_server() -> Result<ServerConfig> {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
@@ -324,6 +332,11 @@ impl StreamWrite for QuicStreamWriter {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.connection.is_some()
+    }
+
+    /// Each write opens one unidirectional QUIC stream; the reader caps it at 10 MB.
+    fn max_message_size(&self) -> usize {
+        4 * 1024 * 1024
     }
 }
 

@@ -28,4 +28,13 @@ pub trait StreamWrite: Send + 'static {
     fn wait_for_connection(&mut self) -> Result<()> {
         Ok(())
     }
+
+    /// Maximum bytes that can be sent in a single `write()` call.
+    ///
+    /// `flush()` uses this to split large frames automatically so callers
+    /// never need to know about transport-level size constraints.
+    /// Defaults to `usize::MAX` (no limit).
+    fn max_message_size(&self) -> usize {
+        usize::MAX
+    }
 }

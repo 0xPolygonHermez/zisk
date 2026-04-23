@@ -18,7 +18,8 @@ use zisk_coordinator_server::{
         zisk_coordinator_api_client::ZiskCoordinatorApiClient,
         zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
         InputChunk, InputKind, JobKind, JobRequestMessage, ProofKind, ProveRequest,
-        PushJobInputRequest, SetupRequest, WaitJobResultRequest, WatchJobRequest, WrapRequest,
+        PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
+        WatchJobRequest, WrapRequest,
     },
     CoordinatorHandler, GrpcAdapter,
 };
@@ -29,10 +30,18 @@ use std::sync::Arc;
 
 /// Start a coordinator server on a random local port and return a connected client.
 async fn start_test_server() -> ZiskCoordinatorApiClient<Channel> {
+    let (client, _) = start_test_server_with_backend().await;
+    client
+}
+
+/// Start a coordinator server and return both the client and the `MockBackend`
+/// so tests can inspect internal state (e.g. received hints chunks).
+async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>, Arc<MockBackend>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
     let backend = Arc::new(MockBackend::default());
+    let backend_clone = Arc::clone(&backend);
     let service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&backend)));
 
     tokio::spawn(async move {
@@ -47,7 +56,8 @@ async fn start_test_server() -> ZiskCoordinatorApiClient<Channel> {
     tokio::time::sleep(Duration::from_millis(10)).await;
 
     let endpoint = format!("http://{addr}");
-    ZiskCoordinatorApiClient::connect(endpoint).await.unwrap()
+    let client = ZiskCoordinatorApiClient::connect(endpoint).await.unwrap();
+    (client, backend_clone)
 }
 
 fn dummy_elf() -> Vec<u8> {
@@ -563,6 +573,96 @@ async fn push_input_on_terminal_job_fails() {
     }]);
 
     let err = client.push_job_input(push_stream).await.unwrap_err();
+    assert!(
+        err.code() == tonic::Code::FailedPrecondition || err.code() == tonic::Code::InvalidArgument,
+        "expected FailedPrecondition or InvalidArgument, got {:?}",
+        err.code()
+    );
+}
+
+#[tokio::test]
+async fn push_hints_input_chunks_are_stored() {
+    let (mut client, backend) = start_test_server_with_backend().await;
+    let hash_id = register_program(&mut client).await;
+
+    let job_id_str = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Prove(ProveRequest {
+                    hash_id,
+                    input: inline_input(),
+                    hints: None,
+                    proof_timeout: None,
+                    proof_dest: ProofKind::Stark as i32,
+                })),
+            }),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    let job_id: uuid::Uuid = job_id_str.parse().unwrap();
+
+    let chunk_a = vec![0xAA, 0xBB, 0xCC];
+    let chunk_b = vec![0x11, 0x22];
+
+    let hints_stream = tokio_stream::iter(vec![
+        PushJobHintsInputRequest {
+            job_id: job_id_str.clone(),
+            chunk: Some(InputChunk { data: chunk_a.clone() }),
+        },
+        PushJobHintsInputRequest {
+            job_id: job_id_str.clone(),
+            chunk: Some(InputChunk { data: chunk_b.clone() }),
+        },
+    ]);
+
+    client.push_job_hints_input(hints_stream).await.unwrap();
+
+    let received = backend.received_hints_chunks(job_id).await;
+    assert_eq!(received, vec![chunk_a, chunk_b], "hints chunks must be stored in order");
+}
+
+#[tokio::test]
+async fn push_hints_input_on_terminal_job_fails() {
+    let mut client = start_test_server().await;
+    let hash_id = register_program(&mut client).await;
+
+    let job_id = client
+        .job_request(JobRequestMessage {
+            job_kind: Some(JobKind {
+                kind: Some(job_kind::Kind::Setup(SetupRequest { hash_id, with_hints: false })),
+            }),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    // Wait for completion
+    loop {
+        let r = client
+            .wait_job_result(WaitJobResultRequest {
+                job_id: job_id.clone(),
+                timeout_seconds: Some(5),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        if let Some(s) = &r.job_status {
+            if matches!(s.status, Some(job_status::Status::Completed(_))) {
+                break;
+            }
+        }
+    }
+
+    let hints_stream = tokio_stream::iter(vec![PushJobHintsInputRequest {
+        job_id: job_id.clone(),
+        chunk: Some(InputChunk { data: vec![1, 2, 3] }),
+    }]);
+
+    let err = client.push_job_hints_input(hints_stream).await.unwrap_err();
     assert!(
         err.code() == tonic::Code::FailedPrecondition || err.code() == tonic::Code::InvalidArgument,
         "expected FailedPrecondition or InvalidArgument, got {:?}",

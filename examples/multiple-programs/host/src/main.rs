@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use zisk_sdk::{load_program, GuestProgram, ProverClient, EmbeddedOpts, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
 
@@ -18,8 +18,8 @@ async fn main() -> Result<()> {
 
     // Stdin can be created using null(), memory(), from(), file(), or stream() methods.
     // let _stdin = ZiskStdin::stream("unix:///tmp/stdin.sock")?;
-    // Hints can be created using memory(), from(), file(), or stream() methods.
-    // let _hints = ZiskHints::stream("unix:///tmp/hints.sock")?;
+    // Hints can be created using memory(), from(), or file() methods.
+    // let _hints = ZiskHints::file("/path/to/hints.bin")?;
 
     // Create a `ProverClient` method.
     // let client = ProverClient::embedded().build()?;

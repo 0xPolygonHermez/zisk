@@ -88,7 +88,10 @@ pub struct JobHandle<T> {
     pub(crate) timeout: Option<Duration>,
     pre_process: Option<PreProcessHook>,
     /// Stream to finish automatically when the handle is awaited.
+    /// Stdin stream to finish automatically when the handle is awaited.
     stream: Option<ZiskStream>,
+    /// Hints stream to finish automatically when the handle is awaited.
+    hints_stream: Option<ZiskStream>,
 }
 
 impl<T> JobHandle<T> {
@@ -103,6 +106,7 @@ impl<T> JobHandle<T> {
             timeout,
             pre_process: None,
             stream: None,
+            hints_stream: None,
         }
     }
 
@@ -111,6 +115,7 @@ impl<T> JobHandle<T> {
         subscribers: SubscriberList,
         timeout: Option<Duration>,
         stream: Option<ZiskStream>,
+        hints_stream: Option<ZiskStream>,
     ) -> Self {
         let subs_watch = Arc::clone(&subscribers);
         let watch_handle =
@@ -121,6 +126,7 @@ impl<T> JobHandle<T> {
             timeout,
             pre_process: None,
             stream,
+            hints_stream,
         }
     }
 
@@ -220,6 +226,7 @@ impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
         let subscribers = Arc::clone(&self.subscribers);
         let pre_process = self.pre_process.take();
         let stream = self.stream.take();
+        let hints_stream = self.hints_stream.take();
         Box::pin(async move {
             let result = match inner {
                 JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
@@ -229,9 +236,12 @@ impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
                     Self::await_remote(remote_job, timeout, subscribers, pre_process).await
                 }
             };
-            // Automatically close the stream so any flush() before the next
+            // Automatically close streams so any flush() before the next
             // run() blocks safely instead of sending to the completed job.
             if let Some(s) = stream {
+                let _ = s.finish_async().await;
+            }
+            if let Some(s) = hints_stream {
                 let _ = s.finish_async().await;
             }
             result

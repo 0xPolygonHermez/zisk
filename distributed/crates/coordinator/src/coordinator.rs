@@ -155,6 +155,10 @@ pub struct Coordinator {
     setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
     // (hash_id, with_hints) of the currently active setup, if any
     active_setup: RwLock<Option<(String, bool)>>,
+
+    /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
+    /// Dropping or sending `None` signals EOF to the relay thread.
+    grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -184,6 +188,7 @@ impl Coordinator {
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
             active_setup: RwLock::new(None),
+            grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -240,6 +245,8 @@ impl Coordinator {
 
         if terminal {
             self.job_events.write().await.remove(job_id);
+            // Dropping the sender signals EOF to any running gRPC hints relay.
+            self.grpc_hints_senders.write().await.remove(job_id);
         }
     }
 
@@ -1030,7 +1037,7 @@ impl Coordinator {
         let workers_clone = Arc::new(cloned_active_workers.clone());
         let workers_pool = Arc::clone(&self.workers_pool);
 
-        // Async dispatcher - no blocking, pure async flow for maximum performance
+        // Async dispatcher — no blocking, pure async flow for maximum performance.
         let dispatcher =
             move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
                 use futures::future::join_all;
@@ -1069,12 +1076,28 @@ impl Coordinator {
             };
         let hints_relay = PrecompileHintsRelay::new(dispatcher);
         let mut stream = ZiskStream::new(hints_relay);
-        let stream_reader = StreamSource::from_uri(hints_uri).map_err(|e| {
-            CoordinatorError::Internal(format!(
-                "Failed to create hints stream reader for job {}: {}",
-                job.job_id, e
-            ))
-        })?;
+
+        // For gRPC push, use a channel-backed reader and store the sender so
+        // that `push_hints_grpc_data` can feed chunks into the relay.
+        let stream_reader = if hints_uri.starts_with("grpc://") {
+            let (reader, tx) = StreamSource::channel();
+            // Store the sender — dropping it later signals EOF to the relay.
+            let rt = tokio::runtime::Handle::current();
+            let grpc_hints_senders = Arc::clone(&self.grpc_hints_senders);
+            let job_id = job.job_id.clone();
+            rt.block_on(async move {
+                grpc_hints_senders.write().await.insert(job_id, tx);
+            });
+            reader
+        } else {
+            StreamSource::from_uri(hints_uri).map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to create hints stream reader for job {}: {}",
+                    job.job_id, e
+                ))
+            })?
+        };
+
         stream.set_stream_src(stream_reader).map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to set hints stream for job {}: {}",
@@ -1088,6 +1111,37 @@ impl Coordinator {
             ))
         })?;
         Ok(())
+    }
+
+    /// Push a raw hints chunk from the gRPC `PushJobHintsInput` path into the
+    /// per-job relay.  Returns an error if the job has no active gRPC hints
+    /// relay (i.e. it was not submitted with a `"grpc://"` hints URI).
+    pub async fn push_hints_grpc_data(
+        &self,
+        job_id: &JobId,
+        data: Vec<u8>,
+    ) -> CoordinatorResult<()> {
+        let map = self.grpc_hints_senders.read().await;
+        let tx = map.get(job_id).ok_or_else(|| {
+            CoordinatorError::Internal(format!(
+                "no gRPC hints relay for job {} (job not found or not using grpc hints)",
+                job_id
+            ))
+        })?;
+        tx.send(Some(data)).map_err(|_| {
+            CoordinatorError::Internal(format!(
+                "gRPC hints relay channel closed for job {}",
+                job_id
+            ))
+        })
+    }
+
+    /// Signal EOF on the gRPC hints relay for a job.  Called when the client
+    /// closes the `PushJobHintsInput` stream.
+    pub async fn finish_hints_grpc_stream(&self, job_id: &JobId) {
+        if let Some(tx) = self.grpc_hints_senders.write().await.remove(job_id) {
+            let _ = tx.send(None);
+        }
     }
 
     /// Spawn a background thread that reads input chunks from a stream URI and

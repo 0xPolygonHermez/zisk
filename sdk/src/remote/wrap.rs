@@ -39,6 +39,6 @@ impl RemoteClient {
 
         let remote_job = self.gw.submit_job(job_kind)?;
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout, None))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 }

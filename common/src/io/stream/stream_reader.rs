@@ -1,4 +1,6 @@
-use crate::io::{MemoryStreamReader, QuicStreamReader, UnixSocketStreamReader};
+use crate::io::{
+    ChannelStreamReader, MemoryStreamReader, QuicStreamReader, UnixSocketStreamReader,
+};
 
 use super::FileStreamReader;
 
@@ -25,6 +27,7 @@ pub enum StreamSource {
     UnixSocket(UnixSocketStreamReader),
     Quic(QuicStreamReader),
     Memory(MemoryStreamReader),
+    Channel(ChannelStreamReader),
 }
 
 impl StreamSource {
@@ -51,6 +54,14 @@ impl StreamSource {
     /// Create a QUIC-based stdin
     pub fn from_quic(addr: std::net::SocketAddr) -> Result<Self> {
         Ok(StreamSource::Quic(QuicStreamReader::new(addr)?))
+    }
+
+    /// Create a channel-backed stream.  Returns the reader and the sender
+    /// through which chunks are pushed (send `None` or drop the sender to
+    /// signal EOF).
+    pub fn channel() -> (Self, std::sync::mpsc::Sender<Option<Vec<u8>>>) {
+        let (reader, tx) = ChannelStreamReader::new_pair();
+        (StreamSource::Channel(reader), tx)
     }
 
     /// Create a StreamSource from a URI string
@@ -87,43 +98,43 @@ impl StreamSource {
 }
 
 impl StreamRead for StreamSource {
-    /// Open/initialize the stream for reading
     fn open(&mut self) -> Result<()> {
         match self {
-            StreamSource::File(file_stream) => file_stream.open(),
-            StreamSource::UnixSocket(unix_stream) => unix_stream.open(),
-            StreamSource::Quic(quic_stream) => quic_stream.open(),
-            StreamSource::Memory(memory_stream) => memory_stream.open(),
+            StreamSource::File(s) => s.open(),
+            StreamSource::UnixSocket(s) => s.open(),
+            StreamSource::Quic(s) => s.open(),
+            StreamSource::Memory(s) => s.open(),
+            StreamSource::Channel(s) => s.open(),
         }
     }
 
-    /// Read the next item from the stream
     fn next(&mut self) -> Result<Option<Vec<u8>>> {
         match self {
-            StreamSource::File(file_stream) => file_stream.next(),
-            StreamSource::UnixSocket(unix_stream) => unix_stream.next(),
-            StreamSource::Quic(quic_stream) => quic_stream.next(),
-            StreamSource::Memory(memory_stream) => memory_stream.next(),
+            StreamSource::File(s) => s.next(),
+            StreamSource::UnixSocket(s) => s.next(),
+            StreamSource::Quic(s) => s.next(),
+            StreamSource::Memory(s) => s.next(),
+            StreamSource::Channel(s) => s.next(),
         }
     }
 
-    /// Close the stream
     fn close(&mut self) -> Result<()> {
         match self {
-            StreamSource::File(file_stream) => file_stream.close(),
-            StreamSource::UnixSocket(unix_stream) => unix_stream.close(),
-            StreamSource::Quic(quic_stream) => quic_stream.close(),
-            StreamSource::Memory(memory_stream) => memory_stream.close(),
+            StreamSource::File(s) => s.close(),
+            StreamSource::UnixSocket(s) => s.close(),
+            StreamSource::Quic(s) => s.close(),
+            StreamSource::Memory(s) => s.close(),
+            StreamSource::Channel(s) => s.close(),
         }
     }
 
-    /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         match self {
-            StreamSource::File(file_stream) => file_stream.is_active(),
-            StreamSource::UnixSocket(unix_stream) => unix_stream.is_active(),
-            StreamSource::Quic(quic_stream) => quic_stream.is_active(),
-            StreamSource::Memory(memory_stream) => memory_stream.is_active(),
+            StreamSource::File(s) => s.is_active(),
+            StreamSource::UnixSocket(s) => s.is_active(),
+            StreamSource::Quic(s) => s.is_active(),
+            StreamSource::Memory(s) => s.is_active(),
+            StreamSource::Channel(s) => s.is_active(),
         }
     }
 }

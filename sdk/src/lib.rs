@@ -62,20 +62,6 @@ pub fn run(
 
 use crate::{setup::SetupResult, upload::UploadResult};
 
-pub(crate) fn validate_stream_uri(uri: &str) -> Result<()> {
-    let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
-    if !is_valid {
-        #[cfg(unix)]
-        anyhow::bail!("stream() requires 'quic://' or 'unix://' scheme. Got: '{}'", uri);
-        #[cfg(not(unix))]
-        anyhow::bail!(
-            "stream() requires 'quic://' scheme. Got: '{}' (unix:// not supported on this platform)",
-            uri
-        );
-    }
-    Ok(())
-}
-
 /// Executor backend for running programs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutorKind {

@@ -1,3 +1,4 @@
+mod channel;
 mod file;
 mod memory;
 mod quic;
@@ -8,6 +9,7 @@ mod zisk_stream;
 #[cfg(unix)]
 mod unix_socket;
 
+pub use channel::ChannelStreamReader;
 pub use file::{FileStreamReader, FileStreamWriter};
 pub use memory::MemoryStreamReader;
 pub use quic::{QuicStreamReader, QuicStreamWriter};

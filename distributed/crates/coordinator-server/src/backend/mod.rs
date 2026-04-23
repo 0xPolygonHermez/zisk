@@ -49,8 +49,11 @@ pub trait BackendService: Send + Sync + 'static {
     /// terminal event. Safe to call on an already-finished job.
     async fn watch_job(&self, job_id: Uuid) -> ApiResult<JobEventStream>;
 
-    /// Feed input chunks to a job in `WaitingForInput` state.
+    /// Feed stdin chunks to a job in `WaitingForInput` state.
     async fn push_job_input(&self, job_id: Uuid, chunks: InputChunkStream) -> ApiResult<()>;
+
+    /// Feed hints chunks to a running job (gRPC push path).
+    async fn push_job_hints_input(&self, job_id: Uuid, chunks: InputChunkStream) -> ApiResult<()>;
 
     /// Cancel a job. Blocks until the job reaches a terminal state, then
     /// returns `true` if the job was cancelled, or `false` if it was already
