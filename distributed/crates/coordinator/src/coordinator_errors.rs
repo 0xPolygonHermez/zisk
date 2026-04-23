@@ -53,9 +53,10 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::WorkersSettingUp => {
                 Status::new(Code::Unavailable, "Workers are setting up; retry shortly")
             }
-            CoordinatorError::WorkersNotSetup => {
-                Status::new(Code::FailedPrecondition, "Workers connected but setup not done; call setup() first")
-            }
+            CoordinatorError::WorkersNotSetup => Status::new(
+                Code::FailedPrecondition,
+                "Workers connected but setup not done; call setup() first",
+            ),
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {
                 Status::new(Code::Internal, "An internal error occurred")

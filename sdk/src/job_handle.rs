@@ -124,7 +124,10 @@ impl<T> JobHandle<T> {
         }
     }
 
-    pub(crate) fn set_pre_process(&mut self, f: impl FnOnce(&TerminalStatus) -> Result<()> + Send + 'static) {
+    pub(crate) fn set_pre_process(
+        &mut self,
+        f: impl FnOnce(&TerminalStatus) -> Result<()> + Send + 'static,
+    ) {
         self.pre_process = Some(Box::new(f));
     }
 

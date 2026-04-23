@@ -192,12 +192,19 @@ impl WorkersPool {
         msg_sender: Box<dyn MessageSender + Send + Sync>,
         initial_state: WorkerState,
     ) -> CoordinatorResult<()> {
-        let connection =
-            WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender, initial_state.clone());
+        let connection = WorkerInfo::new(
+            worker_id.clone(),
+            compute_capacity.into(),
+            msg_sender,
+            initial_state.clone(),
+        );
         let mut workers = self.workers.write().await;
 
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
-            if !matches!(worker.state, WorkerState::Disconnected | WorkerState::Idle | WorkerState::Ready) {
+            if !matches!(
+                worker.state,
+                WorkerState::Disconnected | WorkerState::Idle | WorkerState::Ready
+            ) {
                 let msg =
                     format!("Worker {} is already connected (state: {})", worker_id, worker.state);
                 warn!("{}", msg);

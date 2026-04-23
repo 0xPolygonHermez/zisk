@@ -167,9 +167,9 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::WorkersSettingUp => {
             ApiError::ClusterUnavailable { reason: "workers are setting up; retry shortly" }
         }
-        CoordinatorError::WorkersNotSetup => {
-            ApiError::ClusterUnavailable { reason: "workers connected but setup not done; call setup() first" }
-        }
+        CoordinatorError::WorkersNotSetup => ApiError::ClusterUnavailable {
+            reason: "workers connected but setup not done; call setup() first",
+        },
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
         CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {

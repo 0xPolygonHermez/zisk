@@ -379,7 +379,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        let vk = self.prover
+        let vk = self
+            .prover
             .prover
             .setup_internal(&new_guest_program, self.prover_config.hints || with_hints)?;
         self.guest_program = Some(new_guest_program);
