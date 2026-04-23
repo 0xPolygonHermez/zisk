@@ -44,11 +44,19 @@ struct MemCountersBusData {
 /// Tracks free_read_available state across chunks, matching MemCounterSingle logic.
 struct MopsExpander {
     free_read_available: HashMap<u32, bool>,
+    dual_count: usize,
+    ram_read_count: usize,
+    ram_write_count: usize,
 }
 
 impl MopsExpander {
     fn new() -> Self {
-        Self { free_read_available: HashMap::new() }
+        Self {
+            free_read_available: HashMap::new(),
+            dual_count: 0,
+            ram_read_count: 0,
+            ram_write_count: 0,
+        }
     }
 
     /// Mirrors MemCounterSingle::add_aligned_read.
@@ -58,7 +66,9 @@ impl MopsExpander {
     fn add_aligned_read(&mut self, addr: u32, output: &mut Vec<u32>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
+            self.ram_read_count += 1;
             if self.free_read_available.get(&addr).copied().unwrap_or(false) {
+                self.dual_count += 1;
                 self.free_read_available.insert(addr, false);
             } else {
                 self.free_read_available.insert(addr, true);
@@ -75,6 +85,7 @@ impl MopsExpander {
     fn add_aligned_write(&mut self, addr: u32, output: &mut Vec<u32>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
+            self.ram_write_count += 1;
             self.free_read_available.insert(addr, true);
         }
         output.push(addr);
@@ -89,8 +100,12 @@ impl MopsExpander {
     fn add_aligned_read_write(&mut self, addr: u32, output: &mut Vec<u32>) {
         let is_ram = addr >= RAM_ADDR;
         if is_ram {
+            self.ram_read_count += 1;
+            self.ram_write_count += 1;
             if !self.free_read_available.get(&addr).copied().unwrap_or(false) {
                 output.push(addr); // read
+            } else {
+                self.dual_count += 1;
             }
             output.push(addr); // write
             self.free_read_available.insert(addr, true);
@@ -102,6 +117,7 @@ impl MopsExpander {
 
     /// Expand one chunk of mops trace entries, maintaining free_read_available state.
     fn expand_chunk(&mut self, data: &[MemCountersBusData]) -> Vec<u32> {
+        self.free_read_available.clear();
         let mut output: Vec<u32> = Vec::with_capacity(data.len() * 2);
 
         for entry in data {
@@ -474,7 +490,6 @@ fn cmd_expand(args: &ExpandArgs) -> Result<()> {
             expanded.len(),
             output_file.display()
         );
-
         total_input_entries += entries.len();
         total_output_entries += expanded.len();
         chunk_id += 1;
@@ -487,6 +502,16 @@ fn cmd_expand(args: &ExpandArgs) -> Result<()> {
     println!(
         "\nTotal: {} chunks, {} mops -> {} aligned addresses",
         chunk_id, total_input_entries, total_output_entries
+    );
+    println!(
+        "[RAM] Total:{} Read:{} Write:{} Dual:{} Duals {:.2}% reads, {:.2}% total",
+        expander.ram_read_count + expander.ram_write_count,
+        expander.ram_read_count,
+        expander.ram_write_count,
+        expander.dual_count,
+        (expander.dual_count as f64 / expander.ram_read_count as f64) * 100.0,
+        (expander.dual_count as f64 / (expander.ram_read_count + expander.ram_write_count) as f64)
+            * 100.0
     );
 
     Ok(())
