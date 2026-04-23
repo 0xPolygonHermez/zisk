@@ -1289,9 +1289,10 @@ impl Coordinator {
 
         // If this worker was held in SettingUp (registered while an active setup existed),
         // transition it to Idle now so it becomes eligible for job assignment.
-        if self.workers_pool.worker_state(&ack.worker_id).await == Some(WorkerState::SettingUp) {
+        let worker_id = WorkerId::from(ack.worker_id.clone());
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
             let _ =
-                self.workers_pool.mark_worker_with_state(&ack.worker_id, WorkerState::Ready).await;
+                self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
             info!("[Setup] Worker {} finished setup, now Idle", ack.worker_id);
         }
 
