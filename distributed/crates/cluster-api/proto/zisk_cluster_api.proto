@@ -101,6 +101,7 @@ message WorkerRegisterResponse {
   string message = 3;
   google.protobuf.Timestamp registered_at = 4;
   optional ReconnectionDirective directive = 5;
+  optional SetupProgram setup_program = 6;
 }
 
 message ExecuteTaskRequest {

@@ -140,6 +140,18 @@ impl From<WorkerRegisterResponseDto> for WorkerRegisterResponse {
                 nanos: dto.registered_at.timestamp_subsec_nanos() as i32,
             }),
             directive: None,
+            setup_program: None,
+        }
+    }
+}
+
+impl From<SetupProgramDto> for SetupProgram {
+    fn from(dto: SetupProgramDto) -> Self {
+        SetupProgram {
+            job_id: dto.job_id,
+            elf_bytes: dto.elf_bytes,
+            hash_id: dto.hash_id,
+            with_hints: dto.with_hints,
         }
     }
 }

@@ -163,7 +163,12 @@ impl std::fmt::Display for WorkerId {
 pub enum WorkerState {
     Disconnected,
     Connecting,
+    /// Connected but no setup done yet. Not eligible for job assignment.
     Idle,
+    /// Running setup (guest program load). Not eligible for job assignment.
+    SettingUp,
+    /// Setup complete. Eligible for job assignment.
+    Ready,
     Computing((JobId, JobPhase)),
     Error,
 }
@@ -174,6 +179,8 @@ impl Display for WorkerState {
             WorkerState::Disconnected => "Disconnected",
             WorkerState::Connecting => "Connecting",
             WorkerState::Idle => "Idle",
+            WorkerState::SettingUp => "SettingUp",
+            WorkerState::Ready => "Ready",
             WorkerState::Computing(phase) => return write!(f, "Computing({})", phase.1),
             WorkerState::Error => "Error",
         };

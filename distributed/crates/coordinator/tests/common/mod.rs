@@ -46,7 +46,7 @@ pub async fn register_mock_workers(
         let (sender, messages) = MockMessageSender::new();
         coordinator
             .workers_pool()
-            .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
             .await
             .unwrap();
         workers.push((worker_id, messages));

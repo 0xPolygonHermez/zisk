@@ -19,6 +19,12 @@ pub enum CoordinatorError {
     #[error("Insufficient compute capacity available")]
     InsufficientCapacity,
 
+    #[error("Workers are connected but still running setup; retry shortly")]
+    WorkersSettingUp,
+
+    #[error("Workers are connected but setup has not been done; call setup() first")]
+    WorkersNotSetup,
+
     // Internal errors - logged but not exposed to clients
     #[error("Internal service error: {0}")]
     Internal(String),
@@ -43,6 +49,12 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::InvalidArgument(msg) => Status::new(Code::InvalidArgument, msg),
             CoordinatorError::InsufficientCapacity => {
                 Status::new(Code::ResourceExhausted, "Insufficient compute capacity")
+            }
+            CoordinatorError::WorkersSettingUp => {
+                Status::new(Code::Unavailable, "Workers are setting up; retry shortly")
+            }
+            CoordinatorError::WorkersNotSetup => {
+                Status::new(Code::FailedPrecondition, "Workers connected but setup not done; call setup() first")
             }
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {

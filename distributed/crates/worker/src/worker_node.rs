@@ -247,14 +247,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             error!("Computation task failed unexpectedly: {}", join_error);
                             self.report_computation_error(&message_sender, &join_error.to_string()).await;
                             self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Idle);
+                            self.worker.set_state(WorkerState::Ready);
                         }
                         Ok(()) => {
                             // Task completed without sending a ComputationResult — shouldn't
                             // happen in normal operation, but handle it defensively.
                             warn!("Computation task exited without sending a result");
                             self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Idle);
+                            self.worker.set_state(WorkerState::Ready);
                         }
                     }
                 }
@@ -693,7 +693,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if reset_current_job {
             info!("Aggregation task completed for {}", job_id);
             self.worker.set_current_job(None);
-            self.worker.set_state(WorkerState::Idle);
+            self.worker.set_state(WorkerState::Ready);
         }
 
         Ok(())
@@ -752,7 +752,41 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
 
-                    self.worker.set_state(WorkerState::Idle);
+                    // If the coordinator attached setup info, run setup now — before entering
+                    // the main event loop so no compute task can be processed without a guest program.
+                    if let Some(setup) = response.setup_program {
+                        let worker_id = self.worker_config.worker.worker_id.as_string();
+                        let job_id = setup.job_id.clone();
+                        let hash_id = setup.hash_id.clone();
+
+                        let (success, error_message) = match self.handle_setup_program(setup) {
+                            Ok(()) => (true, String::new()),
+                            Err(e) => {
+                                error!(
+                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                    job_id, hash_id, e
+                                );
+                                (false, e.to_string())
+                            }
+                        };
+
+                        let ack = WorkerMessage {
+                            payload: Some(worker_message::Payload::SetupProgramAck(
+                                SetupProgramAck {
+                                    job_id,
+                                    worker_id,
+                                    hash_id,
+                                    success,
+                                    error_message,
+                                },
+                            )),
+                        };
+                        if let Err(e) = message_sender.send(ack) {
+                            warn!("Failed to send SetupProgramAck after reconnection: {}", e);
+                        }
+                    }
+
+                    self.worker.set_state(WorkerState::Ready);
                 } else {
                     self.worker.set_state(WorkerState::Error);
                     error!("Registration rejected: {}", response.message);
@@ -796,7 +830,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                     if job.lock().await.job_id == cancelled_job_id {
                         self.worker.clear_current_job().await;
-                        self.worker.set_state(WorkerState::Idle);
+                        self.worker.set_state(WorkerState::Ready);
                     }
                 }
 

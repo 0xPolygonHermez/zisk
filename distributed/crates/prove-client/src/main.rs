@@ -111,8 +111,10 @@ fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<String
 /// Run setup for the given hash_id and wait until it completes.
 fn run_setup(client: &CoordinatorClient, hash_id: &str, with_hints: bool) -> Result<()> {
     info!("Running setup for hash_id = {hash_id}, with_hints = {with_hints} …");
-    let job = client
-        .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id: hash_id.to_string(), with_hints }))?;
+    let job = client.submit_job(DomainJobKind::Setup(DomainSetupRequest {
+        hash_id: hash_id.to_string(),
+        with_hints,
+    }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
     match job.wait(None)? {
         TerminalStatus::Completed(_) => {

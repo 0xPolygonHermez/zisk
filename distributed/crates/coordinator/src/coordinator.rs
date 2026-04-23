@@ -52,14 +52,15 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
-    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto,
-    InputStreamDataDto, InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResult,
-    JobResultData, JobState, LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto,
-    PhaseTimings, ProofKind, ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto,
-    SetupProgramAckDto, StreamMessageKind, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
+    elf_cache_path, AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity,
+    ContributionParamsDto, ContributionsResult, CoordinatorMessageDto, DataId,
+    ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+    ExecuteTaskResponseResultDataDto, ExecutionResult, HeartbeatAckDto, HintsModeDto,
+    HintsSourceDto, InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobExecutionMode,
+    JobId, JobPhase, JobResult, JobResultData, JobState, LaunchProofRequestDto,
+    LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind, ProofStarkDto,
+    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
+    StreamMessageKind, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
     WorkerRegisterRequestDto, WorkerState, WrapParamsDto, ZiskExecutorTimeDto,
 };
 use zisk_common::io::{StreamRead, StreamSource, ZiskStream};
@@ -152,6 +153,8 @@ pub struct Coordinator {
     /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
     setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
+    // (hash_id, with_hints) of the currently active setup, if any
+    active_setup: RwLock<Option<(String, bool)>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -180,6 +183,7 @@ impl Coordinator {
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
+            active_setup: RwLock::new(None),
         }
     }
 
@@ -262,7 +266,7 @@ impl Coordinator {
         };
 
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
-        self.ensure_workers_idle(&worker_ids).await;
+        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
 
@@ -333,6 +337,13 @@ impl Coordinator {
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
                     s.pending.remove(worker_id);
                 });
+            } else {
+                // Mark the worker as SettingUp so it is excluded from job assignment
+                // until its SetupProgramAck arrives.
+                let _ = self
+                    .workers_pool
+                    .mark_worker_with_state(worker_id, WorkerState::SettingUp)
+                    .await;
             }
         }
 
@@ -353,7 +364,28 @@ impl Coordinator {
             .await;
         }
 
+        self.active_setup.write().await.replace((hash_id.to_string(), with_hints));
+
         Ok(job_id)
+    }
+
+    /// Returns the active setup as a `SetupProgramDto` (reading the ELF from the on-disk cache),
+    /// or `None` if no setup is active or the cached ELF cannot be read.
+    async fn read_active_setup_dto(&self) -> Option<SetupProgramDto> {
+        let (hash_id, with_hints) = self.active_setup.read().await.clone()?;
+        let path = elf_cache_path(&hash_id);
+        match fs::read(&path) {
+            Ok(elf_bytes) => Some(SetupProgramDto {
+                job_id: JobId::new().as_string(),
+                elf_bytes,
+                hash_id,
+                with_hints,
+            }),
+            Err(e) => {
+                warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e);
+                None
+            }
+        }
     }
 
     /// Initiates a new distributed proof job.
@@ -476,6 +508,12 @@ impl Coordinator {
         let resolved = requested_units.min(available);
 
         if resolved < minimum_units {
+            if self.workers_pool.setting_up_workers().await > 0 {
+                return Err(CoordinatorError::WorkersSettingUp);
+            }
+            if self.workers_pool.idle_workers().await > 0 {
+                return Err(CoordinatorError::WorkersNotSetup);
+            }
             return Err(CoordinatorError::InsufficientCapacity);
         }
 
@@ -495,7 +533,7 @@ impl Coordinator {
             let ids = self.workers_pool.connected_worker_ids().await;
             let mut found: Option<WorkerId> = None;
             for id in ids {
-                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Idle)) {
+                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Ready)) {
                     found = Some(id);
                     break;
                 }
@@ -566,7 +604,7 @@ impl Coordinator {
         let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
 
-        self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+        self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
 
         if !execute_task_response.success {
             job.change_state(JobState::Failed);
@@ -1204,7 +1242,7 @@ impl Coordinator {
 
         // These operations only need the worker IDs, not the job lock.
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
-        self.ensure_workers_idle(&worker_ids).await;
+        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
 
@@ -1247,6 +1285,13 @@ impl Coordinator {
                 ack.hash_id,
                 ack.error_message.as_deref().unwrap_or("unknown error")
             );
+        }
+
+        // If this worker was held in SettingUp (registered while an active setup existed),
+        // transition it to Idle now so it becomes eligible for job assignment.
+        if self.workers_pool.worker_state(&ack.worker_id).await == Some(WorkerState::SettingUp) {
+            let _ = self.workers_pool.mark_worker_with_state(&ack.worker_id, WorkerState::Ready).await;
+            info!("[Setup] Worker {} finished setup, now Idle", ack.worker_id);
         }
 
         // Remove this worker from the pending set and accumulate its VK.
@@ -1300,8 +1345,8 @@ impl Coordinator {
     }
 
     /// Marks all Computing workers in the list as Idle.
-    async fn ensure_workers_idle(&self, worker_ids: &[WorkerId]) {
-        self.workers_pool.mark_computing_workers_idle(worker_ids).await;
+    async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
+        self.workers_pool.mark_computing_workers_ready(worker_ids).await;
     }
 
     /// Handles new worker registration. Returns `(accepted, message)`.
@@ -1309,7 +1354,7 @@ impl Coordinator {
         &self,
         req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String) {
+    ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
         let max_connections = self.config.coordinator.max_total_workers as usize;
@@ -1317,16 +1362,23 @@ impl Coordinator {
             return (
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
+                None,
             );
         }
 
+        // Check for active setup before registering so the initial state is set atomically —
+        // no window where the worker is Idle without having a guest program.
+        let setup = self.read_active_setup_dto().await;
+        let initial_state =
+            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
+
         match self
             .workers_pool
-            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
             .await
         {
-            Ok(()) => (true, "Registration successful".to_string()),
-            Err(e) => (false, format!("Registration failed: {e}")),
+            Ok(()) => (true, "Registration successful".to_string(), setup),
+            Err(e) => (false, format!("Registration failed: {e}"), None),
         }
     }
 
@@ -1347,7 +1399,7 @@ impl Coordinator {
         &self,
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String, Option<ReconnectionDirectiveDto>) {
+    ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
         // Check max connections — but allow if the worker already exists (reconnection)
@@ -1359,16 +1411,25 @@ impl Coordinator {
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
                 None,
+                None,
             );
         }
+
+        // Check for active setup before registering so the initial state is set atomically —
+        // no window where the worker is Idle without having a guest program.
+        let setup = self.read_active_setup_dto().await;
+        let initial_state =
+            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let worker_id = req.worker_id.clone();
         let last_known_job_id = req.last_known_job_id.clone();
 
-        if let Err(e) =
-            self.workers_pool.register_worker(req.worker_id, req.compute_capacity, msg_sender).await
+        if let Err(e) = self
+            .workers_pool
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
+            .await
         {
-            return (false, format!("Reconnection failed: {e}"), None);
+            return (false, format!("Reconnection failed: {e}"), None, None);
         }
 
         // Reconcile stale job state
@@ -1386,7 +1447,7 @@ impl Coordinator {
             }
         }
 
-        (true, "Reconnection successful".to_string(), directive)
+        (true, "Reconnection successful".to_string(), directive, setup)
     }
 
     /// Computes the reconciliation directive for a reconnecting worker based on
@@ -1688,7 +1749,7 @@ impl Coordinator {
                 drop(job);
                 drop(job_entry);
                 self.workers_pool
-                    .mark_worker_with_state(&message.worker_id, WorkerState::Idle)
+                    .mark_worker_with_state(&message.worker_id, WorkerState::Ready)
                     .await?;
                 return Ok(());
             }
@@ -1781,7 +1842,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }
 
@@ -1835,7 +1896,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }
 
@@ -1982,7 +2043,7 @@ impl Coordinator {
 
         // Mark all workers as idle
         for worker_id in &job.workers {
-            self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
         }
 
         let exec_stats = exec_stats_from_job(&job);
@@ -2602,7 +2663,7 @@ impl Coordinator {
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
@@ -2699,7 +2760,7 @@ impl Coordinator {
         let assigned_workers = job.workers.clone();
 
         // Reset worker statuses back to Idle
-        self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
+        self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Ready).await?;
 
         let end_time = Utc::now();
         let duration = end_time.signed_duration_since(
@@ -2755,7 +2816,7 @@ impl Coordinator {
                 // Aggregator already exists - mark the candidate as idle since it's not the aggregator
                 // This immediately frees up the worker's resources for other jobs
                 self.workers_pool
-                    .mark_worker_with_state(candidate_worker_id, WorkerState::Idle)
+                    .mark_worker_with_state(candidate_worker_id, WorkerState::Ready)
                     .await?;
                 Ok(existing_aggregator_id.clone())
             }
@@ -2979,7 +3040,7 @@ impl Coordinator {
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
@@ -3019,7 +3080,7 @@ impl Coordinator {
         let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
 
         // Mark the aggregation worker as Idle
-        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
+        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
         let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
@@ -3370,7 +3431,7 @@ mod tests {
             let (sender, messages) = MockMessageSender::new();
             coordinator
                 .workers_pool
-                .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+                .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
                 .await
                 .unwrap();
             workers.push((worker_id, messages));
@@ -3431,16 +3492,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ensure_workers_idle_all_workers() {
+    async fn test_ensure_workers_ready_all_workers() {
         let (coordinator, workers, job_id) =
             setup_coordinator_with_job(3, JobPhase::Contributions, |_| {}).await;
 
-        // Only worker 0 has "results" — but ensure_workers_idle should mark ALL 3 as Idle
+        // Only worker 0 has "results" — but ensure_workers_ready should mark ALL 3 as Ready
         coordinator.fail_job(&job_id, "test").await.unwrap();
 
         for (wid, _) in &workers {
             let state = coordinator.workers_pool.worker_state(wid).await;
-            assert_eq!(state, Some(WorkerState::Idle), "Worker {} should be Idle", wid);
+            assert_eq!(state, Some(WorkerState::Ready), "Worker {} should be Ready", wid);
         }
     }
 
@@ -3565,7 +3626,7 @@ mod tests {
         let (sender, _msgs) = MockMessageSender::new();
         coordinator
             .workers_pool
-            .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
             .await
             .unwrap();
 
@@ -3579,7 +3640,7 @@ mod tests {
         let (sender2, _msgs2) = MockMessageSender::new();
         coordinator
             .workers_pool
-            .register_worker(worker_id.clone(), 1u32, Box::new(sender2))
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender2), WorkerState::Idle)
             .await
             .unwrap();
 

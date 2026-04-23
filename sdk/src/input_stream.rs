@@ -699,11 +699,7 @@ mod tests {
 
         /// Find a free port by binding to :0.
         fn free_port() -> u16 {
-            std::net::UdpSocket::bind("127.0.0.1:0")
-                .unwrap()
-                .local_addr()
-                .unwrap()
-                .port()
+            std::net::UdpSocket::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
         }
 
         #[test]
@@ -939,12 +935,16 @@ mod tests {
                     Ok(_item.len())
                 }
             }
-            fn flush(&mut self) -> Result<()> { Ok(()) }
+            fn flush(&mut self) -> Result<()> {
+                Ok(())
+            }
             fn close(&mut self) -> Result<()> {
                 self.active = false;
                 Ok(())
             }
-            fn is_active(&self) -> bool { self.active }
+            fn is_active(&self) -> bool {
+                self.active
+            }
         }
 
         #[test]

@@ -32,6 +32,6 @@ pub async fn register_test_worker(
 ) -> (WorkerId, Arc<Mutex<Vec<CoordinatorMessageDto>>>) {
     let worker_id = WorkerId::from(id.to_string());
     let (sender, messages) = MockMessageSender::new();
-    pool.register_worker(worker_id.clone(), 1u32, Box::new(sender)).await.unwrap();
+    pool.register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle).await.unwrap();
     (worker_id, messages)
 }
