@@ -176,48 +176,68 @@ impl ProverEngine for AsmProver {
 
         pctx.mpi_ctx.barrier();
 
-        timer_start_info!(STARTING_ASM_MICROSERVICES);
-        let asm_services =
-            AsmServices::new(world_rank, local_rank, base_port, self.core_prover.asm_info.stdio);
+        // Run the ASM setup work, capturing the result so we can synchronize
+        // all MPI ranks before returning (even on error).
+        let setup_result: Result<()> = (|| {
+            timer_start_info!(STARTING_ASM_MICROSERVICES);
+            let asm_services = AsmServices::new(
+                world_rank,
+                local_rank,
+                base_port,
+                self.core_prover.asm_info.stdio,
+            );
 
-        let asm_runner_options = AsmRunnerOptions::new()
-            .with_base_port(base_port)
-            .with_world_rank(world_rank)
-            .with_local_rank(local_rank)
-            .with_verbose(verbose_mode == VerboseMode::Debug)
-            .with_metrics(verbose_mode == VerboseMode::Debug)
-            .with_unlock_mapped_memory(unlock_mapped_memory)
-            .with_asm_out_file(asm_out_file)
-            .with_stdio(self.core_prover.asm_info.stdio);
+            let asm_runner_options = AsmRunnerOptions::new()
+                .with_base_port(base_port)
+                .with_world_rank(world_rank)
+                .with_local_rank(local_rank)
+                .with_verbose(verbose_mode == VerboseMode::Debug)
+                .with_metrics(verbose_mode == VerboseMode::Debug)
+                .with_unlock_mapped_memory(unlock_mapped_memory)
+                .with_asm_out_file(asm_out_file)
+                .with_stdio(self.core_prover.asm_info.stdio);
 
-        asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
-        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+            asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
+            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+            let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
-        let init_rom = !is_distributed && world_rank == 0;
+            let init_rom = !is_distributed && world_rank == 0;
 
-        self.core_prover.backend.set_asm_resources(AsmResources::new(
-            world_rank,
-            local_rank,
-            base_port,
-            unlock_mapped_memory,
-            verbose_mode,
-            with_hints,
-            mpi_broadcast_fn,
-            init_rom,
-            asm_services,
-        )?)?;
+            self.core_prover.backend.set_asm_resources(AsmResources::new(
+                world_rank,
+                local_rank,
+                base_port,
+                unlock_mapped_memory,
+                verbose_mode,
+                with_hints,
+                mpi_broadcast_fn,
+                init_rom,
+                asm_services,
+            )?)?;
 
-        self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
+            self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
-        self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+            self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+            Ok(())
+        })();
+
+        // Synchronize all MPI ranks and check if all succeeded.
+        let all_ok = pctx.mpi_ctx.all_finished_ok(setup_result.is_ok());
+
+        // If this rank failed, return its own error.
+        setup_result?;
+
+        if !all_ok {
+            return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
+        }
+
         Ok(())
     }
     fn world_rank(&self) -> i32 {
