@@ -139,8 +139,6 @@ async fn main() -> Result<()> {
         asm_out_file: cli.asm_out_file,
         verbose: cli.verbose,
         debug: cli.debug.clone(),
-        verify_constraints: cli.verify_constraints,
-        aggregation: true, // we always aggregate
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,

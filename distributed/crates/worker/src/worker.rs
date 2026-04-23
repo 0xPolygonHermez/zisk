@@ -119,12 +119,6 @@ pub struct ProverConfig {
     /// Flag to redirect ASM emulator output to file
     pub asm_out_file: bool,
 
-    /// Flag to verify constraints
-    pub verify_constraints: bool,
-
-    /// Flag to enable aggregation
-    pub aggregation: bool,
-
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
@@ -180,8 +174,6 @@ impl ProverConfig {
             asm_port: prover_service_config.asm_port,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
-            verify_constraints: prover_service_config.verify_constraints,
-            aggregation: prover_service_config.aggregation,
             minimal_memory: prover_service_config.minimal_memory,
             hints: prover_service_config.hints,
             gpu: prover_service_config.gpu,
@@ -232,7 +224,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .aggregation(prover_config.aggregation);
+            .aggregation(true);
 
         if prover_config.plonk {
             if prover_config.proving_key_snark.is_none() {
@@ -286,7 +278,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .aggregation(prover_config.aggregation);
+            .aggregation(true);
 
         if prover_config.plonk {
             if prover_config.proving_key_snark.is_none() {
@@ -507,7 +499,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = ProvePhaseInputs::Contributions();
 
-            let options = self.get_proof_options(false);
+            let options = self.get_prove_options(false);
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
@@ -546,7 +538,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = ProvePhaseInputs::Contributions();
 
-            let options = self.get_proof_options(false);
+            let options = self.get_execution_options();
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
@@ -590,7 +582,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-            let options = self.get_proof_options(false);
+            let options = self.get_prove_options(false);
 
             let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
 
@@ -617,7 +609,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
         let program_id = self
             .guest_program
             .as_ref()
@@ -986,7 +978,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
 
         tokio::task::spawn_blocking(move || {
             let job_id = job.blocking_lock().job_id.clone();
@@ -1059,7 +1051,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options =
-            self.get_proof_options(agg_params.proof_type == ProofKind::VadcopFinalMinimal);
+            self.get_prove_options(agg_params.proof_type == ProofKind::VadcopFinalMinimal);
 
         let agg_proofs_register: Vec<AggProofsRegister> = agg_params
             .agg_proofs
@@ -1158,14 +1150,29 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    fn get_proof_options(&self, minimal: bool) -> ProofOptions {
+    /// Proof options for the prove/contribution/aggregation phases.
+    /// Aggregation must always be enabled so proofman returns partial proof data.
+    fn get_prove_options(&self, minimal: bool) -> ProofOptions {
         ProofOptions {
-            verify_constraints: self.prover_config.verify_constraints,
-            aggregation: self.prover_config.aggregation,
+            verify_constraints: false,
+            aggregation: true,
             verify_proofs: false,
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
+        }
+    }
+
+    /// Proof options for execution-only phase.
+    /// No aggregation needed; verify_constraints follows worker config.
+    fn get_execution_options(&self) -> ProofOptions {
+        ProofOptions {
+            verify_constraints: true,
+            aggregation: false,
+            verify_proofs: false,
+            rma: true,
+            minimal_memory: self.prover_config.minimal_memory,
+            compressed: false,
         }
     }
 
@@ -1186,7 +1193,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast tag: {}", e))?;
 
         let prover = self.prover.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
 
         if tag == WorkerMpiTag::ContributionsHintsStream {
             prover.submit_hint(&bytes)?;
