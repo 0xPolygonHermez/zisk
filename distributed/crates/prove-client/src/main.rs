@@ -43,6 +43,10 @@ enum Commands {
         /// Path to the ZisK ELF binary (registers it automatically if needed)
         #[arg(short, long)]
         elf: PathBuf,
+
+        /// Enable hints support for this program
+        #[arg(long, default_value_t = false)]
+        with_hints: bool,
     },
 
     /// Generate a proof for a registered and set-up program (run `setup` first)
@@ -54,6 +58,10 @@ enum Commands {
         /// Input data file for the guest program
         #[arg(short, long)]
         input: Option<PathBuf>,
+
+        /// Hints data file for the guest program
+        #[arg(long)]
+        hints: Option<PathBuf>,
 
         /// Proof type to generate
         #[arg(long, default_value = "stark", value_parser = parse_proof_kind)]
@@ -101,10 +109,10 @@ fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<String
 }
 
 /// Run setup for the given hash_id and wait until it completes.
-fn run_setup(client: &CoordinatorClient, hash_id: &str) -> Result<()> {
-    info!("Running setup for hash_id = {hash_id} …");
+fn run_setup(client: &CoordinatorClient, hash_id: &str, with_hints: bool) -> Result<()> {
+    info!("Running setup for hash_id = {hash_id}, with_hints = {with_hints} …");
     let job = client
-        .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id: hash_id.to_string() }))?;
+        .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id: hash_id.to_string(), with_hints }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
     match job.wait(None)? {
         TerminalStatus::Completed(_) => {
@@ -139,12 +147,12 @@ async fn main() -> Result<()> {
             println!("{hash_id}");
         }
 
-        Commands::Setup { elf } => {
+        Commands::Setup { elf, with_hints } => {
             let hash_id = register_elf(&client, elf)?;
-            run_setup(&client, &hash_id)?;
+            run_setup(&client, &hash_id, *with_hints)?;
         }
 
-        Commands::Prove { hash_id, input, proof, output, proof_timeout } => {
+        Commands::Prove { hash_id, input, hints, proof, output, proof_timeout } => {
             // Build input
             let input_kind = match input {
                 Some(path) => {
@@ -157,6 +165,16 @@ async fn main() -> Result<()> {
                     info!("No input provided — using empty input.");
                     DomainInputKind::Inline(DomainInputChunk { data: vec![] })
                 }
+            };
+
+            let hints_kind = match hints {
+                Some(path) => {
+                    let data = std::fs::read(path)
+                        .with_context(|| format!("Cannot read hints: {}", path.display()))?;
+                    info!("Using inline hints from {} ({} bytes)", path.display(), data.len());
+                    Some(DomainInputKind::Inline(DomainInputChunk { data }))
+                }
+                None => None,
             };
 
             let proof_timeout_opt = if *proof_timeout == 0 {
@@ -172,6 +190,7 @@ async fn main() -> Result<()> {
             let job = client.submit_job(DomainJobKind::Prove(DomainProveRequest {
                 hash_id: hash_id.clone(),
                 input: input_kind,
+                hints: hints_kind,
                 proof_dest: proof.clone(),
                 proof_timeout: proof_timeout_opt,
             }))?;
