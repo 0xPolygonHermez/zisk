@@ -16,16 +16,17 @@ use anyhow::Result;
 pub struct InputsShmemWriter {
     writers: Vec<Mutex<SharedMemoryWriter>>,
     control_writer: Arc<ControlShmem>,
-    sem_avails: Mutex<Vec<NamedSemaphore>>,
+    sem_avails: Mutex<Option<Vec<NamedSemaphore>>>,
 }
 
 unsafe impl Send for InputsShmemWriter {}
 unsafe impl Sync for InputsShmemWriter {}
 
 impl InputsShmemWriter {
+    /// Create writers mapping the per-service input shmem segments.
+    /// Semaphores are not opened here — call `bind_semaphores` before first use.
     pub fn new(
         shm_prefix: &str,
-        sem_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {
@@ -34,14 +35,21 @@ impl InputsShmemWriter {
             .map(|service| {
                 let name = shmem_input_name(shm_prefix, *service);
                 let mut writer =
-                    SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)?;
+                    SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)
+                        .map_err(anyhow::Error::from)?;
                 writer.reset();
                 writer.append_input(&0u64.to_le_bytes())?;
                 Ok(Mutex::new(writer))
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let sem_avails: Vec<NamedSemaphore> = AsmServices::SERVICES
+        Ok(Self { writers, control_writer, sem_avails: Mutex::new(None) })
+    }
+
+    /// Open the per-service input-availability semaphores for a given program.
+    /// Replaces any previously bound semaphores.
+    pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
+        let sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let name = sem_input_avail_name(sem_prefix, *service);
@@ -49,8 +57,13 @@ impl InputsShmemWriter {
                     .map_err(|e| anyhow::anyhow!("Failed to create semaphore '{}': {}", name, e))
             })
             .collect::<Result<Vec<_>>>()?;
+        *self.sem_avails.lock().unwrap() = Some(sems);
+        Ok(())
+    }
 
-        Ok(Self { writers, control_writer, sem_avails: Mutex::new(sem_avails) })
+    /// Drop the semaphore handles (does not unlink — the binary owns the names).
+    pub fn unbind_semaphores(&self) {
+        *self.sem_avails.lock().unwrap() = None;
     }
 
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {
@@ -76,8 +89,10 @@ impl InputsShmemWriter {
     }
 
     fn notify_all_services(&self) -> Result<()> {
-        for sem in self.sem_avails.lock().unwrap().iter_mut() {
-            sem.post()?;
+        if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
+            for sem in sems.iter_mut() {
+                sem.post()?;
+            }
         }
         Ok(())
     }
@@ -89,9 +104,12 @@ impl InputsShmemWriter {
             w.append_input(&0u64.to_le_bytes())
                 .expect("Failed to write initial header after reset");
         }
+
         self.control_writer.reset();
-        for sem in self.sem_avails.lock().unwrap().iter_mut() {
-            while sem.try_wait().is_ok() {}
+        if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
+            for sem in sems.iter_mut() {
+                while sem.try_wait().is_ok() {}
+            }
         }
     }
 }

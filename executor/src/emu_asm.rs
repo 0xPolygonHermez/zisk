@@ -28,7 +28,7 @@ pub struct EmulatorAsm {
     chunk_size: u64,
 
     /// Assembly resources including shared memory and hints stream.
-    asm_resources: Mutex<Option<AsmResources>>,
+    asm_resources: Mutex<Option<Arc<AsmResources>>>,
 
     asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
@@ -51,7 +51,7 @@ impl EmulatorAsm {
             .clone())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         *self
             .asm_resources
             .lock()
@@ -220,7 +220,7 @@ impl EmulatorAsm {
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
-            let asm_shmem_mo = asm_resources.mo_shmem_reader.clone();
+            let asm_shmem_mo = asm_resources.mo_shmem_reader().clone();
             let asm_services = asm_resources.asm_services().clone();
             move || -> Result<AsmRunnerMO> {
                 let mut guard = asm_shmem_mo
@@ -236,7 +236,7 @@ impl EmulatorAsm {
         let _stats = stats.clone();
 
         let handle_rh = (has_rom_sm).then(|| {
-            let asm_shmem_rh = asm_resources.rh_shmem_reader.clone();
+            let asm_shmem_rh = asm_resources.rh_shmem_reader().clone();
             let asm_services = asm_resources.asm_services().clone();
             let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || -> Result<AsmRunnerRH> {
@@ -334,7 +334,7 @@ impl EmulatorAsm {
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?;
             let mt_shmem = &mut asm_resources
-                .mt_shmem_reader
+                .mt_shmem_reader()
                 .lock()
                 .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
             let result = AsmRunnerMT::run_and_count(

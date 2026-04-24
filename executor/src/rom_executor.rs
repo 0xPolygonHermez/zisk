@@ -11,6 +11,7 @@ use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::{sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
@@ -70,7 +71,7 @@ impl RomExecutor {
         Ok(())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.is_asm_execution.store(true, Ordering::SeqCst);
         self.emulator_asm.set_asm_resources(asm_resources)
     }

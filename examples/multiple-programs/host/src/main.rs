@@ -3,11 +3,12 @@ use anyhow::Result;
 use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
+static PROGRAM2: GuestProgram = load_program!("multiple-program-guest-2");
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Alternative: load at runtime from a URI (file path or http(s)://)
-    let program2 = GuestProgram::from_uri("../multiple-program-guest-2/target/guest.elf")?;
+    // let program2 = GuestProgram::from_uri("../multiple-program-guest-2/target/guest.elf")?;
 
     println!("Starting ZisK Prover Client...\n");
 
@@ -24,16 +25,19 @@ async fn main() -> Result<()> {
     // Create a `ProverClient` method.
     // let client = ProverClient::embedded().build()?;
 
-    let embedded_opts = EmbeddedOpts::default().minimal_memory();
-    let client = ProverClient::embedded().with_embedded_opts(embedded_opts).gpu().build()?;
+    // let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    // let client = ProverClient::embedded().with_embedded_opts(embedded_opts).build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7001").build()?;
 
     // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 
     println!("Setting up first program...");
+    client.upload(&PROGRAM1).run()?;
     client.setup(&PROGRAM1).run()?.await?;
 
     println!("Setting up second program...");
-    client.setup(&program2).run()?.await?;
+    client.upload(&PROGRAM2).run()?;
+    client.setup(&PROGRAM2).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
@@ -49,8 +53,8 @@ async fn main() -> Result<()> {
     let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey = PROGRAM1.vk()?;
-    vadcop_result.with_program_vk(&vkey).verify()?;
+    // let vkey = PROGRAM1.vk()?;
+    vadcop_result.verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
     let n = 2000u32;
@@ -59,7 +63,7 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing second program...");
-    let result2 = client.execute(&program2, stdin2.clone()).run()?.await?;
+    let result2 = client.execute(&PROGRAM2, stdin2.clone()).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {:.2?} ms",
@@ -68,11 +72,11 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for second program...");
-    let vadcop_result2 = client.prove(&program2, stdin2).run()?.await?;
+    let vadcop_result2 = client.prove(&PROGRAM2, stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey2 = program2.vk()?;
-    vadcop_result2.with_program_vk(&vkey2).verify()?;
+    // let vkey2 = PROGRAM2.vk()?;
+    vadcop_result2.verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 
     println!("All proofs generated and verified successfully!");

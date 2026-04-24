@@ -11,12 +11,23 @@ pub struct InputsShmemWriter;
 impl InputsShmemWriter {
     pub fn new(
         _shm_prefix: &str,
-        _sem_prefix: &str,
         _unlock_mapped_memory: bool,
         _control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {
         unreachable!(
             "InputsShmemWriter::new() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn bind_semaphores(&self, _sem_prefix: &str) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::bind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn unbind_semaphores(&self) {
+        unreachable!(
+            "InputsShmemWriter::unbind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 

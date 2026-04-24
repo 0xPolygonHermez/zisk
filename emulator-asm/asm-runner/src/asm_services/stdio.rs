@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    process::{Child, ChildStdin, ChildStdout, Stdio},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout, Stdio},
     sync::{Arc, Mutex},
 };
 
@@ -15,6 +15,7 @@ use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToReques
 pub(super) struct StdioHandle {
     stdin: ChildStdin,
     stdout: ChildStdout,
+    stderr: ChildStderr,
     child: Child,
 }
 
@@ -112,9 +113,37 @@ impl StdioTransport {
 
         let mut in_buffer = [0u8; 40];
         if let Err(e) = handle.stdout.read_exact(&mut in_buffer) {
-            if let Ok(Some(status)) = handle.child.try_wait() {
+            // Give the process a moment to fully exit if it hasn't yet
+            let status = match handle.child.try_wait() {
+                Ok(Some(status)) => Some(status),
+                Ok(None) => {
+                    // Process may still be exiting; wait briefly
+                    match handle.child.wait() {
+                        Ok(status) => Some(status),
+                        Err(_) => None,
+                    }
+                }
+                Err(_) => None,
+            };
+
+            if let Some(status) = status {
+                let stderr_output = {
+                    let mut buf = Vec::new();
+                    handle.stderr.read_to_end(&mut buf).ok();
+                    String::from_utf8(buf).unwrap_or_default()
+                };
+                let stderr_snippet = if stderr_output.is_empty() {
+                    String::from("(no stderr captured)")
+                } else {
+                    // Take last 2000 chars to avoid huge messages
+                    let start = stderr_output.len().saturating_sub(2000);
+                    stderr_output[start..].to_string()
+                };
+                tracing::error!(
+                    "Service {service} process crashed with {status}.\nstderr:\n{stderr_snippet}"
+                );
                 return Err(anyhow::anyhow!(
-                    "Service {service} process exited with {status} before responding (check stderr output above)"
+                    "Service {service} process exited with {status} before responding.\nstderr:\n{stderr_snippet}"
                 ));
             }
             return Err(e)
@@ -142,13 +171,14 @@ fn start_service(
 ) -> Result<StdioHandle> {
     let mut command =
         build_service_command(asm_service, trimmed_path, options, shm_prefix, sem_prefix);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped());
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child =
         command.spawn().with_context(|| format!("Failed to spawn stdio service {asm_service}"))?;
 
-    let stdin = child.stdin.take().expect("stdin was piped");
-    let stdout = child.stdout.take().expect("stdout was piped");
+    let stdin = child.stdin.take().context("Failed to open stdin for stdio service")?;
+    let stdout = child.stdout.take().context("Failed to open stdout for stdio service")?;
+    let stderr = child.stderr.take().context("Failed to open stderr for stdio service")?;
 
-    Ok(StdioHandle { stdin, stdout, child })
+    Ok(StdioHandle { stdin, stdout, stderr, child })
 }

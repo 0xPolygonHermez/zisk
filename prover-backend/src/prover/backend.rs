@@ -51,7 +51,7 @@ impl ProverBackend {
         self.executor.asm_emulator()
     }
 
-    pub(crate) fn set_asm_resources(&self, resources: AsmResources) -> Result<()> {
+    pub(crate) fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
         self.executor.set_asm_resources(resources)
     }
 

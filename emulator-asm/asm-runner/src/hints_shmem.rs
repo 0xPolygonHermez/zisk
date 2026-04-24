@@ -19,34 +19,33 @@ use std::{
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
-/// Names for separate resources (per-service)
-struct SeparateResourceNames {
-    control_reader: String,
-    sem_available_name: String,
-    sem_read_name: String,
+/// Per-service shmem resources
+struct SeparateShm {
+    /// Consumer's read-position control shmem.
+    control_reader: SharedMemoryReader,
 }
 
-impl SeparateResourceNames {
-    fn new(service: &AsmService, shm_prefix: &str, sem_prefix: &str) -> Self {
-        Self {
-            control_reader: shmem_control_reader_name(shm_prefix, *service),
-            sem_available_name: sem_available_name(sem_prefix, *service),
-            sem_read_name: sem_read_name(sem_prefix, *service),
-        }
+impl SeparateShm {
+    pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
+        let name = shmem_control_reader_name(shm_prefix, service);
+        Ok(Self {
+            control_reader: SharedMemoryReader::new(
+                &name,
+                HintsShmem::CONTROL_PRECOMPILE_SIZE as usize,
+            )?,
+        })
     }
 }
 
-/// Separate resources, one per asm service
-struct SeparateResources {
-    /// Control shared memory reader (consumer's read position)
-    control_reader: SharedMemoryReader,
+/// Per-service semaphore resources.
+struct SeparateSem {
     /// Semaphore to signal data availability to this consumer
     sem_available: NamedSemaphore,
     /// Semaphore to wait for this consumer's data consumption
     sem_read: NamedSemaphore,
 }
 
-/// Unified resources shared across all asm services
+/// Unified resources shared across all asm services.
 struct UnifiedResources {
     /// Control shared memory writer (single write_pos)
     control_writer: Arc<ControlShmem>,
@@ -56,12 +55,14 @@ struct UnifiedResources {
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
-    /// Number of active ASM services to notify on submit
+    /// Number of active ASM services to notify on submit.
     active_count: AtomicUsize,
     /// Unified resources (single data buffer and control writer)
     unified: RefCell<UnifiedResources>,
-    /// Separate resources (control_reader and semaphores for each service)
-    separate: RefCell<Vec<SeparateResources>>,
+    /// Per-service shmem.
+    separate_shm: RefCell<Vec<SeparateShm>>,
+    /// Per-program semaphores.
+    separate_sem: RefCell<Option<Vec<SeparateSem>>>,
 }
 
 unsafe impl Send for HintsShmem {}
@@ -70,48 +71,61 @@ unsafe impl Sync for HintsShmem {}
 impl HintsShmem {
     const CONTROL_PRECOMPILE_SIZE: u64 = 0x1000; // 4KB
     const MAX_PRECOMPILE_SIZE: u64 = 0x400000; // 4MB
-    const BUFFER_CAPACITY_U64: u64 = Self::MAX_PRECOMPILE_SIZE >> 3; // Capacity in u64 elements
+    const BUFFER_CAPACITY_U64: u64 = Self::MAX_PRECOMPILE_SIZE >> 3;
 
-    /// Create a new HintsShmem with the given shared memory names and unlock option.
-    ///
-    /// # Arguments
-    /// * `base_port` - Optional base port for generating shared memory names.
-    /// * `local_rank` - Local rank for generating shared memory names.
-    /// * `unlock_mapped_memory` - Whether to unlock mapped memory after writing.
-    ///
-    /// # Returns
-    /// A new `HintsShmem` instance with uninitialized writers.
+    /// Map shmem segments. Semaphores are NOT opened here; call `bind_semaphores` before use.
     pub fn new(
         shm_prefix: &str,
-        sem_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
         active_services: &[AsmService],
     ) -> Result<Self> {
         // Create unified resources (single data buffer and control writer)
-        let unified =
-            Self::create_unified_resources(shm_prefix, unlock_mapped_memory, control_writer)?;
+        let unified = Self::create_unified(shm_prefix, unlock_mapped_memory, control_writer)?;
         unified.control_writer.reset();
 
         // Create separate resources
-        let separate_names: Vec<SeparateResourceNames> = AsmServices::SERVICES
+        let separate_shm = AsmServices::SERVICES
             .iter()
-            .map(|service| SeparateResourceNames::new(service, shm_prefix, sem_prefix))
-            .collect();
-
-        let separate = Self::create_separate_resources(separate_names)?;
+            .map(|service| SeparateShm::new(shm_prefix, *service))
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
             unified: RefCell::new(unified),
-            separate: RefCell::new(separate),
+            separate_shm: RefCell::new(separate_shm),
+            separate_sem: RefCell::new(None),
             active_count: AtomicUsize::new(active_services.len()),
         })
     }
 
+    /// Open per-service semaphores for the given program's `sem_prefix`.
+    /// Replaces any previously bound semaphores.
+    pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
+        let sems = AsmServices::SERVICES
+            .iter()
+            .map(|service| {
+                let avail_name = sem_available_name(sem_prefix, *service);
+                let read_name = sem_read_name(sem_prefix, *service);
+                Ok(SeparateSem {
+                    sem_available: NamedSemaphore::create(&avail_name, 0).map_err(|e| {
+                        anyhow::anyhow!("Failed to create semaphore '{}': {}", avail_name, e)
+                    })?,
+                    sem_read: NamedSemaphore::create(&read_name, 0).map_err(|e| {
+                        anyhow::anyhow!("Failed to create semaphore '{}': {}", read_name, e)
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        *self.separate_sem.borrow_mut() = Some(sems);
+        Ok(())
+    }
+
+    /// Drop the semaphore handles (does not unlink — the binary owns the names).
+    pub fn unbind_semaphores(&self) {
+        *self.separate_sem.borrow_mut() = None;
+    }
+
     /// Update the number of active ASM services notified on each submit.
-    ///
-    /// This is a deployment-time configuration — call once per job partition,
-    /// not on every stream reset. `services.len()` must not exceed `AsmServices::SERVICES.len()`.
     pub fn set_active_services(&self, services: &[AsmService]) -> Result<()> {
         if services.len() > AsmServices::SERVICES.len() {
             return Err(anyhow::anyhow!(
@@ -124,15 +138,13 @@ impl HintsShmem {
         Ok(())
     }
 
-    /// Create the unified resources (single data buffer and control writer).
-    fn create_unified_resources(
+    fn create_unified(
         shm_prefix: &str,
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<UnifiedResources> {
         debug!("Initializing unified resources for precompile hints");
         let data_name = shmem_precompile_name(shm_prefix);
-
         Ok(UnifiedResources {
             control_writer,
             data_writer: SharedMemoryWriter::new(
@@ -141,40 +153,6 @@ impl HintsShmem {
                 unlock_mapped_memory,
             )?,
         })
-    }
-
-    /// Create separate resources (control_reader and semaphores for each service).
-    fn create_separate_resources(
-        separate_names: Vec<SeparateResourceNames>,
-    ) -> Result<Vec<SeparateResources>> {
-        debug!("Initializing separate resources for precompile hints");
-        separate_names
-            .iter()
-            .map(|names: &SeparateResourceNames| -> Result<SeparateResources> {
-                Ok(SeparateResources {
-                    control_reader: SharedMemoryReader::new(
-                        &names.control_reader,
-                        Self::CONTROL_PRECOMPILE_SIZE as usize,
-                    )?,
-                    sem_available: NamedSemaphore::create(&names.sem_available_name, 0).map_err(
-                        |e| {
-                            anyhow::anyhow!(
-                                "Failed to create semaphore '{}': {}",
-                                names.sem_available_name,
-                                e
-                            )
-                        },
-                    )?,
-                    sem_read: NamedSemaphore::create(&names.sem_read_name, 0).map_err(|e| {
-                        anyhow::anyhow!(
-                            "Failed to create semaphore '{}': {}",
-                            names.sem_read_name,
-                            e
-                        )
-                    })?,
-                })
-            })
-            .collect()
     }
 }
 
@@ -194,7 +172,6 @@ impl StreamSink for HintsShmem {
     fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
         let data_size = processed.len() as u64;
 
-        // Early return for empty data
         if data_size == 0 {
             return Ok(());
         }
@@ -209,10 +186,15 @@ impl StreamSink for HintsShmem {
         }
 
         let mut unified = self.unified.borrow_mut();
-        let mut separate = self.separate.borrow_mut();
+        let separate_shm = self.separate_shm.borrow();
+        let mut separate_sem_guard = self.separate_sem.borrow_mut();
+        debug_assert!(separate_sem_guard.is_some(), "submit called before bind_semaphores");
 
         let active = self.active_count.load(Ordering::SeqCst);
-        let separate = &mut separate[0..active];
+
+        let Some(separate_sem) = separate_sem_guard.as_mut() else {
+            return Ok(());
+        };
 
         // Read current write position once
         let write_pos = unified.control_writer.prec_hints_size();
@@ -224,7 +206,7 @@ impl StreamSink for HintsShmem {
             fence(Ordering::Acquire);
 
             // Find the slowest consumer (minimum read position) and its index
-            let (slowest_idx, min_read_pos) = separate
+            let (slowest_idx, min_read_pos) = separate_shm[0..active]
                 .iter()
                 .enumerate()
                 .map(|(i, res)| (i, res.control_reader.read_u64_at(0)))
@@ -254,7 +236,7 @@ impl StreamSink for HintsShmem {
 
             // Not enough space - wait for the SLOWEST consumer to signal progress
             // Retry on interrupt (EINTR)
-            if separate[slowest_idx].sem_read.wait().is_err() {
+            if separate_sem[slowest_idx].sem_read.wait().is_err() {
                 continue;
             }
         }
@@ -270,7 +252,7 @@ impl StreamSink for HintsShmem {
         fence(Ordering::Release);
 
         // Notify ALL consumers that new data is available
-        for res in separate.iter_mut() {
+        for res in &mut separate_sem[0..active] {
             res.sem_available.post()?;
         }
 
@@ -284,11 +266,14 @@ impl StreamSink for HintsShmem {
         unified.data_writer.reset();
 
         // Drain stale semaphore signals from previous execution
-        let mut separate = self.separate.borrow_mut();
-        for res in separate.iter_mut() {
-            while res.sem_available.try_wait().is_ok() {}
-            while res.sem_read.try_wait().is_ok() {}
+        if let Some(separate_sem) = self.separate_sem.borrow_mut().as_mut() {
+            for res in separate_sem.iter_mut() {
+                while res.sem_available.try_wait().is_ok() {}
+                while res.sem_read.try_wait().is_ok() {}
+            }
+        }
 
+        for res in self.separate_shm.borrow().iter() {
             assert!(
                 res.control_reader.read_u64_at(0) == 0,
                 "Control reader position should be reset to 0"

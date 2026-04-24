@@ -3,19 +3,29 @@ use anyhow::Result;
 use std::sync::Arc;
 use zisk_common::io::StreamSink;
 
-/// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem;
 
 impl HintsShmem {
     pub fn new(
         _shm_prefix: &str,
-        _sem_prefix: &str,
         _unlock_mapped_memory: bool,
         _control_writer: Arc<ControlShmem>,
         _active_services: &[AsmService],
     ) -> Result<Self> {
         unreachable!(
             "HintsShmem::new() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn bind_semaphores(&self, _sem_prefix: &str) -> Result<()> {
+        unreachable!(
+            "HintsShmem::bind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    pub fn unbind_semaphores(&self) {
+        unreachable!(
+            "HintsShmem::unbind_semaphores() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 

@@ -9,7 +9,7 @@ use crate::{
 };
 use asm_runner::HintsShmem;
 use asm_runner::{AsmRunnerOptions, AsmServices};
-use executor::{initialize_executor, AsmResources};
+use executor::{initialize_executor, AsmResources, AsmSharedResources};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -67,9 +67,22 @@ impl<'a> AsmSetupBuilder<'a> {
 pub struct AsmProver {
     pub(crate) core_prover: AsmCoreProver,
     program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
+    /// Keeps one `AsmResources` per program alive so services are not stopped between setups.
+    asm_resources_pool: Arc<RwLock<HashMap<ProgramId, Arc<AsmResources>>>>,
 }
 
 impl AsmProver {
+    /// Activate the ASM resources for a specific program, making them available for execution.
+    /// Called by the coordinator before each proof to select the right services.
+    pub fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
+        self.core_prover.backend.set_asm_resources(resources)
+    }
+
+    /// Returns the ASM resources pool (one entry per set-up program).
+    pub fn asm_resources_pool(&self) -> Arc<RwLock<HashMap<ProgramId, Arc<AsmResources>>>> {
+        self.asm_resources_pool.clone()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -101,7 +114,8 @@ impl AsmProver {
         )?;
 
         let program_cache = Arc::new(RwLock::new(HashMap::new()));
-        Ok(Self { core_prover, program_cache })
+        let asm_resources_pool = Arc::new(RwLock::new(HashMap::new()));
+        Ok(Self { core_prover, program_cache, asm_resources_pool })
     }
 }
 
@@ -183,29 +197,45 @@ impl ProverEngine for AsmProver {
                 .with_asm_out_file(asm_out_file)
                 .with_stdio(stdio);
 
-            asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
-            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-
-            let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-                let pctx = pctx.clone();
-                Arc::new(move |data: &mut Vec<u8>| {
-                    pctx.mpi_ctx.broadcast(data);
-                    Ok(())
-                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-            });
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
+            let pctx = pctx.clone();
+            Arc::new(move |data: &mut Vec<u8>| {
+                pctx.mpi_ctx.broadcast(data);
+                Ok(())
+            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+        });
 
             let init_rom = !is_distributed && world_rank == 0;
 
-            self.core_prover.backend.set_asm_resources(AsmResources::new(
-                world_rank,
-                local_rank,
-                unlock_mapped_memory,
-                verbose_mode,
-                with_hints,
-                mpi_broadcast_fn,
-                init_rom,
-                asm_services,
-            )?)?;
+        // Check if this program already has live services in the pool.
+        if let Some(existing) =
+            self.asm_resources_pool.read().unwrap().get(&elf.program_id).cloned()
+        {
+            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+            self.core_prover.backend.set_asm_resources(existing)?;
+            self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+            return Ok(());
+        }
+
+        // Each program has its own shm_prefix (includes program hash), so each needs
+        // its own shmem creation + AsmSharedResources. Previous programs' resources
+        // stay alive in the pool via Arc.
+        asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
+        let shared = Arc::new(AsmSharedResources::new(
+            world_rank,
+            local_rank,
+            unlock_mapped_memory,
+            verbose_mode,
+            with_hints,
+            mpi_broadcast_fn,
+            init_rom,
+            asm_services.shm_prefix(),
+        )?);
+        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+
+        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+        self.asm_resources_pool.write().unwrap().insert(elf.program_id.clone(), resources.clone());
+        self.core_prover.backend.set_asm_resources(resources)?;
 
             self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 
@@ -238,6 +268,13 @@ impl ProverEngine for AsmProver {
     }
 
     fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+        // Activate this program's services before execution/proving.
+        // Required when multiple programs have been set up: setup() activates each program's
+        // services in turn, so the last setup wins. register_program restores the right services.
+        if let Some(resources) = self.asm_resources_pool.read().unwrap().get(program_id).cloned() {
+            self.core_prover.backend.set_asm_resources(resources)?;
+        }
+
         let rom = self
             .program_cache
             .read()

@@ -136,18 +136,48 @@ impl AsmServices {
         }
     }
 
-    pub fn start_asm_services(
+    /// Phase 0+1: clean up stale shmem from dead processes, then (stdio only) create segments
+    /// via `--just_create_all_shm`. Call once at worker startup.
+    pub fn create_shmem(&self, ziskemuasm_path: &Path, options: &AsmRunnerOptions) -> Result<()> {
+        cleanup_stale_shmem();
+        if let Transport::Stdio(_) = &self.transport {
+            let trimmed_path = trim_binary_path(ziskemuasm_path);
+            for (i, service) in Self::SERVICES.iter().enumerate() {
+                tracing::debug!(
+                    ">>> [{}] Creating shmem for service (stdio): {}",
+                    self.world_rank(),
+                    service
+                );
+                let status =
+                    build_create_shmem_command(service, &trimmed_path, options, &self.shm_prefix)
+                        .status()
+                        .with_context(|| {
+                            format!("Failed to spawn shmem creation for service {service}")
+                        })?;
+                if !status.success() {
+                    for prev in &Self::SERVICES[..i] {
+                        let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
+                    }
+                    return Err(anyhow::anyhow!(
+                        "Shmem creation for service {service} failed with {status}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Phase 2: start services via `--open_all_shm` with the current `sem_prefix`.
+    /// Does NOT stop other programs' running services. Call once per program setup.
+    pub fn start_services(
         &self,
         ziskemuasm_path: &Path,
         mut options: AsmRunnerOptions,
     ) -> Result<()> {
-        let path_str = ziskemuasm_path.to_string_lossy();
-        let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
-
+        let trimmed_path = trim_binary_path(ziskemuasm_path);
         match &self.transport {
             Transport::Tcp(t) => {
                 options.share_input_shmem = true;
-                // For TCP: shut down any already-running services before starting fresh ones.
                 for service in t.check_running() {
                     let port = Self::port_for(&service, self.base_port(), self.local_rank());
                     tracing::info!(
@@ -157,52 +187,27 @@ impl AsmServices {
                     );
                     let _ = self.send_shutdown_and_wait(&service);
                 }
-                t.start_services(trimmed_path, &mut options, &self.shm_prefix)?;
+                t.start_services(&trimmed_path, &mut options, &self.shm_prefix)?;
             }
             Transport::Stdio(s) => {
-                // Phase 0: Clean up stale shared memory from dead processes.
-                cleanup_stale_shmem();
-
-                // Phase 1: Create shared memory for each service.
-                for (i, service) in Self::SERVICES.iter().enumerate() {
-                    tracing::debug!(
-                        ">>> [{}] Creating shmem for service (stdio): {}",
-                        self.world_rank(),
-                        service
-                    );
-                    let status = build_create_shmem_command(
-                        service,
-                        trimmed_path,
-                        &options,
-                        &self.shm_prefix,
-                    )
-                    .status()
-                    .with_context(|| {
-                        format!("Failed to spawn shmem creation for service {service}")
-                    })?;
-                    if !status.success() {
-                        // Clean up shmem from previously-created services.
-                        for prev in &Self::SERVICES[..i] {
-                            let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
-                        }
-                        return Err(anyhow::anyhow!(
-                            "Shmem creation for service {service} failed with {status}"
-                        ));
-                    }
-                }
-
-                // Phase 2: Start services with --open_all_shm.
-                s.start_services(trimmed_path, &mut options, &self.shm_prefix, &self.sem_prefix)?;
+                s.start_services(&trimmed_path, &mut options, &self.shm_prefix, &self.sem_prefix)?;
             }
         }
-
-        // Final ping for all services.
         for service in &Self::SERVICES {
             self.send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
-
         Ok(())
+    }
+
+    /// Phase 0+1+2: convenience wrapper used by the CLI (single-program) and the first worker setup.
+    pub fn start_asm_services(
+        &self,
+        ziskemuasm_path: &Path,
+        options: AsmRunnerOptions,
+    ) -> Result<()> {
+        self.create_shmem(ziskemuasm_path, &options)?;
+        self.start_services(ziskemuasm_path, options)
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
@@ -366,6 +371,11 @@ pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
     Ok(response)
 }
 
+fn trim_binary_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    s[..s.len().saturating_sub(7)].to_owned()
+}
+
 fn command_path_for(trimmed_path: &str, asm_service: &AsmService) -> String {
     format!("{}-{}.bin", trimmed_path, asm_service)
 }
@@ -383,7 +393,9 @@ pub(super) fn build_service_command(
     shm_prefix: &str,
     sem_prefix: &str,
 ) -> Command {
-    let mut command = Command::new(command_path_for(trimmed_path, asm_service));
+    let binary_path = command_path_for(trimmed_path, asm_service);
+    tracing::debug!("Spawning ASM service {asm_service} binary: {binary_path}");
+    let mut command = Command::new(binary_path);
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         use std::os::unix::process::CommandExt;
@@ -459,8 +471,9 @@ fn cleanup_stale_shmem() {
             Err(_) => continue,
         };
 
-        // shmem:  "ZISK_{pid}_{rank}_..."      → parts[1] is PID
-        // sem:    "sem.ZISK_{pid}_{hash}_{rank}_..." → parts[1] is PID (first token is "sem.ZISK")
+        // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
+        // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
+        // TCP shmem:   "ZISK_{port}_{rank}_..."        → parts[1] is port number
         let is_sem = name.starts_with("sem.ZISK_");
         let is_shm = name.starts_with("ZISK_");
         if !is_shm && !is_sem {
@@ -471,15 +484,16 @@ fn cleanup_stale_shmem() {
         if parts.len() < 3 {
             continue;
         }
-        let pid: u32 = match parts[1].parse() {
-            Ok(p) => p,
-            Err(_) => continue, // port-based TCP name — skip
-        };
+        let Ok(pid) = parts[1].parse::<u32>() else { continue };
 
-        // Check if the process is still alive
+        // Check if the process is still alive.
+        // For TCP entries parts[1] is a port number, not a PID. kill() will return ESRCH
+        // if no process with that PID exists, which correctly identifies stale TCP shmem.
+        // The rare edge case (a live process coincidentally holds PID == port) is benign:
+        // the entry is preserved and cleaned up on the next startup.
         let alive = unsafe { libc::kill(pid as i32, 0) };
         if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
-            continue; // process alive or belongs to another user
+            continue; // process alive or owned by another user
         }
 
         // Process is dead (ESRCH) — unlink the stale entry.
