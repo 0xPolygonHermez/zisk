@@ -63,7 +63,26 @@ macro_rules! entrypoint {
         mod zkvm_generated_main {
             #[no_mangle]
             fn main() {
-                super::ZISK_ENTRY()
+                #[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+                {
+                    let path = std::env::var("ZISK_HINTS_OUTPUT")
+                        .unwrap_or_else(|_| "hints.bin".to_string());
+                    if let Some(socket) = std::env::var("ZISK_HINTS_SOCKET").ok() {
+                        $crate::hints::init_hints_socket(
+                            $crate::hints::HintsSocketConfig::new(std::path::PathBuf::from(socket))
+                        ).expect("hints init failed");
+                    } else {
+                        $crate::hints::init_hints_file(std::path::PathBuf::from(&path))
+                            .expect("hints init failed");
+                    }
+                }
+
+                super::ZISK_ENTRY();
+
+                #[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+                {
+                    $crate::hints::close_hints().expect("hints close failed");
+                }
             }
         }
     };
@@ -93,6 +112,15 @@ static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 /// Reset the input position to the beginning.
 pub fn read_reset() {
     unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
+}
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+static NATIVE_INPUT: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+pub fn set_native_input(data: Vec<u8>) {
+    *NATIVE_INPUT.lock().unwrap() = Some(data);
+    read_reset();
 }
 
 /// Read a slice directly from INPUT_ADDR without copying (zero-copy).
@@ -145,33 +173,18 @@ pub(crate) fn read_input() -> Vec<u8> {
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub(crate) fn read_input() -> Vec<u8> {
-    use std::{
-        fs::File,
-        io::{Read, Seek, SeekFrom},
-    };
-
     let input_pos = unsafe { INPUT_POS };
 
-    let mut file =
-        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
-
-    // Seek to the current position
-    file.seek(SeekFrom::Start(input_pos as u64)).expect("Failed to seek in input file");
-
-    // Read the 8-byte length prefix
-    let mut len_bytes = [0u8; 8];
-    file.read_exact(&mut len_bytes).expect("Failed to read length prefix from input file");
-    let len = u64::from_le_bytes(len_bytes) as usize;
-
-    // Read the actual data
-    let mut data = vec![0u8; len];
-    file.read_exact(&mut data).expect("Failed to read data from input file");
-
-    // Advance INPUT_POS: 8 bytes for length + 8-byte aligned data
-    let aligned_len = (len + 7) & !0x7;
-    unsafe {
-        INPUT_POS = input_pos + 8 + aligned_len;
-    }
+    let data = if let Some(buf) = NATIVE_INPUT.lock().unwrap().as_ref() {
+        let len_bytes: [u8; 8] = buf[input_pos..input_pos + 8].try_into().unwrap();
+        let len = u64::from_le_bytes(len_bytes) as usize;
+        let data = buf[input_pos + 8..input_pos + 8 + len].to_vec();
+        let aligned_len = (len + 7) & !0x7;
+        unsafe { INPUT_POS = input_pos + 8 + aligned_len };
+        data
+    } else {
+        panic!("No input set — call set_native_input() before reading input");
+    };
 
     #[cfg(zisk_hints)]
     unsafe {
