@@ -759,20 +759,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();
 
-                        let (success, error_message) = match self.handle_setup_program(setup) {
-                            Ok(()) => (true, String::new()),
+                        let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                            Ok(vk) => (true, String::new(), vk.vk),
                             Err(e) => {
                                 error!(
                                     "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
                                     job_id, hash_id, e
                                 );
-                                (false, e.to_string())
+                                (false, e.to_string(), Vec::new())
                             }
                         };
 
                         let ack = WorkerMessage {
                             payload: Some(worker_message::Payload::SetupProgramAck(
                                 SetupProgramAck {
+                                    vk,
                                     job_id,
                                     worker_id,
                                     hash_id,
@@ -916,7 +917,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
-        let_vk = self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, setup.with_hints, guest_program)?;
+        let vk = self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, setup.with_hints, guest_program)?;
 
         info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
         Ok(vk)

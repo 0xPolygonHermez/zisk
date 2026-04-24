@@ -86,7 +86,6 @@ pub struct JobHandle<T> {
     pub(crate) inner: Option<JobHandleInner<T>>,
     pub(crate) subscribers: SubscriberList,
     pub(crate) timeout: Option<Duration>,
-    input_sender: Option<InputSender>,
     pre_process: Option<PreProcessHook>,
     /// Stream to finish automatically when the handle is awaited.
     stream: Option<ZiskStream>,
@@ -102,7 +101,6 @@ impl<T> JobHandle<T> {
             inner: Some(JobHandleInner::Embedded(handle)),
             subscribers,
             timeout,
-            input_sender: None,
             pre_process: None,
             stream: None,
         }
@@ -121,7 +119,6 @@ impl<T> JobHandle<T> {
             inner: Some(JobHandleInner::Remote { remote_job, _watch_handle: watch_handle }),
             subscribers,
             timeout,
-            input_sender: None,
             pre_process: None,
             stream,
         }
