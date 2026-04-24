@@ -81,6 +81,6 @@ impl ControlShmem {
     }
 
     pub fn inputs_size(&self) -> u64 {
-        self.writer.read_u64_at(ControlShmemOffsets::InputsSize as usize)
+        self.writers[0].read_u64_at(ControlShmemOffsets::InputsSize as usize)
     }
 }

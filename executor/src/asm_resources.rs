@@ -255,7 +255,7 @@ impl AsmResources {
     }
 
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.inputs_stream
+        self.shared.inputs_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
             .set_stream_src(stream)?;
@@ -263,14 +263,14 @@ impl AsmResources {
     }
 
     pub fn start_inputs_stream(&self) -> Result<()> {
-        self.inputs_stream
+        self.shared.inputs_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
             .start_stream()
     }
 
     pub fn is_inputs_stream_initialized(&self) -> bool {
-        self.inputs_stream.lock().map(|s| s.is_initialized()).unwrap_or(false)
+        self.shared.inputs_stream.lock().map(|s| s.is_initialized()).unwrap_or(false)
     }
 
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
