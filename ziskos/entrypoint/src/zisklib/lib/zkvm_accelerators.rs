@@ -174,7 +174,8 @@ pub unsafe extern "C" fn zkvm_modexp(
                 std::slice::from_raw_parts(exp, exp_len),
                 std::slice::from_raw_parts(modulus, mod_len),
             );
-            std::ptr::copy_nonoverlapping(result.as_ptr(), output, result.len());
+            let offset = mod_len - result.len();
+            std::ptr::copy_nonoverlapping(result.as_ptr(), output.add(offset), result.len());
             ZKVM_EOK
         }
     }
