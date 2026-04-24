@@ -1340,8 +1340,7 @@ impl Coordinator {
         // transition it to Idle now so it becomes eligible for job assignment.
         let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            let _ =
-                self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
             info!("[Setup] Worker {} finished setup, now Idle", ack.worker_id);
         }
 
