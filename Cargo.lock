@@ -4596,6 +4596,7 @@ dependencies = [
  "proofman-common",
  "sm-rom",
  "tracing",
+ "zisk-common",
  "zisk-core",
  "zisk-pil",
 ]

@@ -190,6 +190,7 @@ impl CoordinatorGrpc {
                             } else {
                                 Some(ack.error_message)
                             },
+                            vk: ack.vk,
                         })
                         .await
                 }

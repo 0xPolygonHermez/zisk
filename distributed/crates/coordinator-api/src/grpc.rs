@@ -303,7 +303,7 @@ impl From<DomainJobKindResponse> for JobKindResponse {
     fn from(value: DomainJobKindResponse) -> Self {
         use job_kind_response::Kind;
         let kind = match value {
-            DomainJobKindResponse::Setup => Kind::Setup(SetupResponse {}),
+            DomainJobKindResponse::Setup { vk } => Kind::Setup(SetupResponse { vk }),
             DomainJobKindResponse::Prove { proof, stats } => {
                 Kind::Prove(ProveResponse { proof: Some(proof.into()), stats: Some(stats.into()) })
             }
@@ -517,7 +517,7 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
     fn try_from(resp: JobKindResponse) -> std::result::Result<Self, Self::Error> {
         use job_kind_response::Kind;
         match resp.kind.ok_or_else(|| "job_kind_response.kind must be set".to_string())? {
-            Kind::Setup(_) => Ok(DomainJobKindResponse::Setup),
+            Kind::Setup(r) => Ok(DomainJobKindResponse::Setup { vk: r.vk }),
             Kind::Prove(r) => {
                 let proof =
                     r.proof.ok_or_else(|| "prove.proof must be set".to_string())?.try_into()?;

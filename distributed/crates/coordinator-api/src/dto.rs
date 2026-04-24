@@ -129,7 +129,7 @@ pub struct DomainExecutionStats {
 
 #[derive(Debug, Clone)]
 pub enum DomainJobKindResponse {
-    Setup,
+    Setup { vk: Vec<u8> },
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },

@@ -68,6 +68,28 @@ use zisk_common::Proof;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::ZISK_PUBLICS;
 
+struct SetupPendingState {
+    pending: HashSet<WorkerId>,
+    vks: Vec<(WorkerId, Vec<u8>)>,
+}
+
+/// Validates that all workers produced the same VK and returns it.
+/// Returns an error string if there are no VKs (all workers failed) or if VKs disagree.
+fn validate_setup_vks(job_id: &str, vks: Vec<(WorkerId, Vec<u8>)>) -> Result<Vec<u8>, String> {
+    let mut iter = vks.into_iter();
+    let (_, first_vk) = iter
+        .next()
+        .ok_or_else(|| format!("job {job_id}: all workers failed setup, no VK received"))?;
+    for (worker_id, vk) in iter {
+        if vk != first_vk {
+            return Err(format!(
+                "job {job_id}: worker {worker_id} returned a different VK than the first worker"
+            ));
+        }
+    }
+    Ok(first_vk)
+}
+
 /// Trait for sending messages to workers through various communication channels.
 ///
 /// This trait abstracts the message delivery mechanism, allowing different implementations
@@ -127,9 +149,9 @@ pub struct Coordinator {
     /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
     job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
 
-    /// Tracks in-flight setup jobs: maps job_id to the set of worker IDs that have not yet ACK'd.
+    /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
-    setup_pending: RwLock<HashMap<JobId, HashSet<WorkerId>>>,
+    setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -294,7 +316,10 @@ impl Coordinator {
 
         // Track which workers must ACK before the setup is considered complete.
         let pending: HashSet<WorkerId> = workers.iter().cloned().collect();
-        self.setup_pending.write().await.insert(job_id.clone(), pending);
+        self.setup_pending
+            .write()
+            .await
+            .insert(job_id.clone(), SetupPendingState { pending, vks: Vec::new() });
 
         for worker_id in &workers {
             let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
@@ -306,14 +331,19 @@ impl Coordinator {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
                 // Remove unreachable worker from pending set — don't block on it.
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
-                    s.remove(worker_id);
+                    s.pending.remove(worker_id);
                 });
             }
         }
 
         // Edge case: all sends failed — complete immediately with failure.
-        let should_complete =
-            self.setup_pending.read().await.get(&job_id).map(|s| s.is_empty()).unwrap_or(true);
+        let should_complete = self
+            .setup_pending
+            .read()
+            .await
+            .get(&job_id)
+            .map(|s| s.pending.is_empty())
+            .unwrap_or(true);
         if should_complete {
             self.setup_pending.write().await.remove(&job_id);
             self.fire_job_event(
@@ -1065,16 +1095,20 @@ impl Coordinator {
             );
         }
 
-        // Remove this worker from the pending set (regardless of success/failure).
-        let all_done = {
+        // Remove this worker from the pending set and accumulate its VK.
+        let outcome = {
             let mut pending = self.setup_pending.write().await;
-            if let Some(workers) = pending.get_mut(&job_id) {
-                workers.remove(&ack.worker_id);
-                if workers.is_empty() {
+            if let Some(state) = pending.get_mut(&job_id) {
+                state.pending.remove(&ack.worker_id);
+                if ack.success {
+                    state.vks.push((ack.worker_id.clone(), ack.vk));
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
                     pending.remove(&job_id);
-                    true
+                    Some(vks)
                 } else {
-                    false
+                    None
                 }
             } else {
                 // Job already completed or unknown — nothing to do.
@@ -1082,12 +1116,15 @@ impl Coordinator {
             }
         };
 
-        if all_done {
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup),
-            )
-            .await;
+        if let Some(vks) = outcome {
+            let event = match validate_setup_vks(&ack.job_id, vks) {
+                Ok(vk) => CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk }),
+                Err(e) => {
+                    error!("[Setup] VK mismatch for job_id {}: {}", ack.job_id, e);
+                    CoordinatorJobEvent::Failed(e)
+                }
+            };
+            self.fire_job_event(&job_id, event).await;
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 

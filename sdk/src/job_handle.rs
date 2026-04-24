@@ -24,6 +24,7 @@ const PROGRESS_AGGREGATE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
+pub(crate) type PreProcessHook = Box<dyn FnOnce(&TerminalStatus) -> Result<()> + Send>;
 
 pub(crate) fn fire_event(subscribers: &SubscriberList, event: JobEvent) {
     let matching: Vec<Arc<dyn Fn(JobEvent) + Send + Sync>> = match subscribers.lock() {
@@ -87,6 +88,7 @@ pub struct JobHandle<T> {
     pub(crate) subscribers: SubscriberList,
     pub(crate) timeout: Option<Duration>,
     input_sender: Option<InputSender>,
+    pre_process: Option<PreProcessHook>,
 }
 
 impl<T> JobHandle<T> {
@@ -100,6 +102,7 @@ impl<T> JobHandle<T> {
             subscribers,
             timeout,
             input_sender: None,
+            pre_process: None,
         }
     }
 
@@ -116,7 +119,12 @@ impl<T> JobHandle<T> {
             subscribers,
             timeout,
             input_sender: None,
+            pre_process: None,
         }
+    }
+
+    pub(crate) fn set_pre_process(&mut self, f: impl FnOnce(&TerminalStatus) -> Result<()> + Send + 'static) {
+        self.pre_process = Some(Box::new(f));
     }
 
     /// Register a post-submission event callback.
@@ -224,6 +232,7 @@ impl<T: FromWaitResult> JobHandle<T> {
         remote_job: Job,
         timeout: Option<Duration>,
         subscribers: SubscriberList,
+        pre_process: Option<PreProcessHook>,
     ) -> Result<T> {
         let job_id = JobId(remote_job.job_id().to_string());
         let terminal = remote_job.wait_async(timeout).await?;
@@ -239,6 +248,10 @@ impl<T: FromWaitResult> JobHandle<T> {
             }
         }
 
+        if let Some(hook) = pre_process {
+            hook(&terminal)?;
+        }
+
         T::from_terminal(terminal, job_id)
     }
 }
@@ -251,13 +264,14 @@ impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
         let inner = self.inner.take().expect("JobHandle already consumed");
         let timeout = self.timeout;
         let subscribers = Arc::clone(&self.subscribers);
+        let pre_process = self.pre_process.take();
         Box::pin(async move {
             match inner {
                 JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
                 JobHandleInner::Remote { remote_job, _watch_handle } => {
                     // _watch_handle is kept alive until await_remote completes,
                     // then dropped (aborting the watch task).
-                    Self::await_remote(remote_job, timeout, subscribers).await
+                    Self::await_remote(remote_job, timeout, subscribers, pre_process).await
                 }
             }
         })
@@ -308,14 +322,6 @@ fn format_failure(failure: &DomainJobFailure) -> String {
     }
 }
 
-fn check_terminal(status: &TerminalStatus) -> Result<()> {
-    match status {
-        TerminalStatus::Completed(_) => Ok(()),
-        TerminalStatus::Failed(f) => anyhow::bail!(format_failure(f)),
-        TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
-    }
-}
-
 fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostPerType {
     zisk_common::StatsCostPerType {
         main_cost: stats.main_cost,
@@ -331,8 +337,16 @@ fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostP
 
 impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
-        check_terminal(&status)?;
-        Ok(SetupResult { job_id: Some(job_id) })
+        match status {
+            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. }) => {
+                Ok(SetupResult { job_id: Some(job_id) })
+            }
+            TerminalStatus::Completed(other) => {
+                anyhow::bail!("unexpected response kind for setup: {:?}", other)
+            }
+            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
+            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use zisk_cluster_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{Proof, ProofKind, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ProofKind, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
@@ -213,6 +213,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
 
     stream_actor: Option<StreamOrderingActor>,
     guest_program: Option<Arc<GuestProgram>>,
+    program_vk: Option<ProgramVK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -264,6 +265,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             current_job: None,
             current_computation: None,
             guest_program: None,
+            program_vk: None,
             prover,
             prover_config,
             stream_actor: None,
@@ -335,6 +337,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             stream_actor: None,
             guest_program: None,
+            program_vk: None,
         })
     }
 
@@ -353,12 +356,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hash_id: &str,
         elf_bytes: &[u8],
         new_guest_program: Arc<GuestProgram>,
-    ) -> Result<()> {
+    ) -> Result<ProgramVK> {
         // Check if new guest program is different from the current one to avoid unnecessary setup
         if let Some(current_program) = &self.guest_program {
             if current_program.program_id == new_guest_program.program_id {
                 info!("Received same guest program for setup. Skipping setup");
-                return Ok(());
+                return self
+                    .program_vk
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("VK not available for current program"));
             }
         }
 
@@ -372,9 +378,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
+        let vk = self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
         self.guest_program = Some(new_guest_program);
-        Ok(())
+        self.program_vk = Some(vk.clone());
+        Ok(vk)
     }
 
     pub fn get_executed_steps(&self) -> u64 {

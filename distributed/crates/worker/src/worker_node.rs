@@ -16,7 +16,7 @@ use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
     StreamDataDto, WorkerState,
 };
-use zisk_common::{Proof, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ZiskExecutorTime};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -824,14 +824,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 let job_id = setup.job_id.clone();
                 let hash_id = setup.hash_id.clone();
 
-                let (success, error_message) = match self.handle_setup_program(setup) {
-                    Ok(()) => (true, String::new()),
+                let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                    Ok(vk) => (true, String::new(), vk.vk),
                     Err(e) => {
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
                         );
-                        (false, e.to_string())
+                        (false, e.to_string(), Vec::new())
                     }
                 };
 
@@ -842,6 +842,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         hash_id,
                         success,
                         error_message,
+                        vk,
                     })),
                 };
                 if let Err(e) = message_sender.send(ack) {
@@ -865,7 +866,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ///
     /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
     /// setup (generates ROM binary files on disk).
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<()> {
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
         use std::sync::Arc;
         use zisk_prover_backend::GuestProgram;
 
@@ -885,10 +886,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
-        self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, guest_program)?;
+        let vk = self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, guest_program)?;
 
         info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
-        Ok(())
+        Ok(vk)
     }
 
     pub async fn partial_contribution(

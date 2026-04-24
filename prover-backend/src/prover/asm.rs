@@ -59,7 +59,7 @@ impl<'a> AsmSetupBuilder<'a> {
         self
     }
 
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> Result<ProgramVK> {
         self.prover.setup_internal(self.elf, self.with_hints)
     }
 }
@@ -114,9 +114,9 @@ impl ProverEngine for AsmProver {
         AsmSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
-        ensure_rom(&pctx, elf)?;
+        let program_vk = ensure_rom(&pctx, elf)?;
 
         let world_rank = self.core_prover.rank_info.world_rank;
         let local_rank = self.core_prover.rank_info.local_rank;
@@ -238,7 +238,7 @@ impl ProverEngine for AsmProver {
             return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
         }
 
-        Ok(())
+        Ok(program_vk)
     }
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank

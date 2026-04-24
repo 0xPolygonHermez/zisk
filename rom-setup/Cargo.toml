@@ -9,6 +9,7 @@ categories = { workspace = true }
 
 [dependencies]
 sm-rom = { workspace = true }
+zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 

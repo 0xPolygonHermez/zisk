@@ -117,8 +117,7 @@ impl GuestProgram {
     }
 
     pub fn vk(&self) -> Result<ProgramVK> {
-        let vk = rom_merkle_setup_verkey(self.elf(), &None)?;
-        Ok(ProgramVK { vk })
+        rom_merkle_setup_verkey(self.elf(), &None)
     }
 
     /// Run the ZisK emulator with the given stdin.

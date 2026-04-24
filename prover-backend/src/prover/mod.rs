@@ -284,7 +284,7 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<()>;
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK>;
 
     /// Create a setup builder for the given ELF program.
     ///

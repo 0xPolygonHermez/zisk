@@ -74,7 +74,7 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
 
 fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> DomainJobKindResponse {
     match result {
-        CoordinatorJobResult::Setup => DomainJobKindResponse::Setup,
+        CoordinatorJobResult::Setup { vk } => DomainJobKindResponse::Setup { vk },
         CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
             proof: make_proof(hash_id.to_string(), proof_bytes),
             stats: coord_stats_to_domain(stats),

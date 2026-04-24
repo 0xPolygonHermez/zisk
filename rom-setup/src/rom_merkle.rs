@@ -3,6 +3,7 @@ use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::path::PathBuf;
+use zisk_common::ProgramVK;
 
 use crate::{
     gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
@@ -35,7 +36,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
     output_dir: &Option<PathBuf>,
-) -> Result<PathBuf, anyhow::Error> {
+) -> Result<ProgramVK, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
@@ -45,7 +46,9 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
     if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
-        return Ok(elf_bin_path);
+        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
+            .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
+        return Ok(ProgramVK { vk });
     }
 
     let root = gen_elf_hash::<F>(
@@ -58,17 +61,17 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 
     tracing::info!("Root hash: {:?}", root);
 
-    let verkey: Vec<u8> = root.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
+    let vk: Vec<u8> = root.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
 
-    std::fs::write(&elf_verkey_bin_path, &verkey)?;
+    std::fs::write(&elf_verkey_bin_path, &vk)?;
 
-    Ok(elf_bin_path)
+    Ok(ProgramVK { vk })
 }
 
 pub fn rom_merkle_setup_verkey(
     elf: &[u8],
     output_dir: &Option<PathBuf>,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> Result<ProgramVK, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
     let elf_hash = get_elf_data_hash(elf);
@@ -76,10 +79,10 @@ pub fn rom_merkle_setup_verkey(
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
     if elf_verkey_bin_path.exists() {
-        let verkey = get_elf_vk(elf_verkey_bin_path.as_path())?
+        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
 
-        Ok(verkey)
+        Ok(ProgramVK { vk })
     } else {
         Err(anyhow::anyhow!("ROM merkle setup has not been performed yet"))
     }

@@ -288,6 +288,7 @@ pub struct SetupProgramAckDto {
     pub hash_id: String,
     pub success: bool,
     pub error_message: Option<String>,
+    pub vk: Vec<u8>,
 }
 
 pub struct WorkerErrorDto {

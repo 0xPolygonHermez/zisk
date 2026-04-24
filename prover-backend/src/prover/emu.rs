@@ -41,7 +41,7 @@ impl<'a> EmuSetupBuilder<'a> {
     }
 
     /// Execute the setup and return the program proving and verification keys.
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> Result<ProgramVK> {
         self.prover.setup_internal(self.elf, false)
     }
 }
@@ -85,10 +85,10 @@ impl ProverEngine for EmuProver {
         EmuSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<()> {
+    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
-        ensure_rom(&pctx, elf)?;
+        let program_vk = ensure_rom(&pctx, elf)?;
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
@@ -96,7 +96,7 @@ impl ProverEngine for EmuProver {
         let zisk_rom = Arc::new(zisk_rom);
 
         self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
-        Ok(())
+        Ok(program_vk)
     }
 
     fn world_rank(&self) -> i32 {

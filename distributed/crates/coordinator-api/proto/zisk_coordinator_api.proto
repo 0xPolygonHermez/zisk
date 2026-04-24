@@ -212,7 +212,7 @@ message SetupRequest {
 }
 
 message SetupResponse {
-  // empty — completion signals the program is ready for proving
+  bytes vk = 1;
 }
 
 message ProveRequest {
