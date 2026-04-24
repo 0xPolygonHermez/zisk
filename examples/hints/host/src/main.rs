@@ -14,11 +14,11 @@ async fn main() -> Result<()> {
     // Create a QUIC stream for hints.  Port 0 lets the OS pick a free port;
     // ZiskStream resolves it to the actual bound address so the coordinator
     // receives the correct port every run.
-    let hints_stream = ZiskStream::quic("quic://127.0.0.1:0")?;
+    let hints_stream = ZiskStream::grpc();
     let s = hints_stream.clone();
     let hints_data = std::fs::read(hints_path)?;
     thread::spawn(move || {
-        s.write_raw(&hints_data);
+        s.write_bytes(&hints_data);
         s.flush().unwrap();
         s.finish().unwrap();
     });

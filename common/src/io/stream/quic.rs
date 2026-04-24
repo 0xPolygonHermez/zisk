@@ -320,9 +320,13 @@ impl StreamWrite for QuicStreamWriter {
         if let Some(connection) = self.connection.take() {
             connection.close(0u32.into(), b"closing");
         }
-        let endpoint = self.endpoint.clone();
+        // Close the endpoint and wait for it to go idle, then shut down the
+        // runtime — all while still inside the runtime context so the IO
+        // reactor is still live for the async close handshake.
         if let Some(rt) = self.runtime.as_ref() {
+            let endpoint = self.endpoint.clone();
             block_on_dedicated(rt, async move {
+                endpoint.close(0u32.into(), b"closing");
                 endpoint.wait_idle().await;
             });
         }
@@ -342,11 +346,10 @@ impl StreamWrite for QuicStreamWriter {
 
 impl Drop for QuicStreamWriter {
     fn drop(&mut self) {
-        if let Some(conn) = self.connection.take() {
-            conn.close(0u32.into(), b"closing");
-        }
-        // Move the runtime to a background thread for shutdown so we don't
-        // panic when dropped from within an async context.
+        // close() handles connection + endpoint shutdown under the runtime context.
+        let _ = self.close();
+        // Move the (now-idle) runtime to a background thread so we don't panic
+        // when dropped from within an async context.
         if let Some(rt) = self.runtime.take() {
             std::thread::spawn(move || drop(rt));
         }

@@ -197,6 +197,13 @@ impl<P: StreamProcessor> ZiskStream<P> {
 
 impl<P: StreamProcessor> Drop for ZiskStream<P> {
     fn drop(&mut self) {
-        self.stop_thread();
+        // Drop tx — the background thread will see the channel closed and
+        // exit after its current process_stream() call returns naturally.
+        // We must NOT join here: for gRPC hints the thread blocks on
+        // ChannelStreamReader::recv(), which only unblocks when the client
+        // calls PushJobHintsInput.  That RPC can't start until submit_job
+        // returns, but submit_job can't return if we're blocking in join().
+        self.tx.take();
+        self.thread_handle.take(); // detach
     }
 }

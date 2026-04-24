@@ -160,7 +160,7 @@ impl ZiskStream {
     /// Use this when the receiver expects plain binary data (e.g. hints relay),
     /// as opposed to [`write_slice`](Self::write_slice) which prepends a
     /// length-prefixed frame understood by the stdin reader.
-    pub fn write_raw(&self, data: &[u8]) {
+    pub fn write_bytes(&self, data: &[u8]) {
         self.inner.pending_frames.lock().unwrap().push(data.to_vec());
     }
 

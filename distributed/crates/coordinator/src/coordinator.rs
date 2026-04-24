@@ -158,6 +158,7 @@ pub struct Coordinator {
 
     /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
     /// Dropping or sending `None` signals EOF to the relay thread.
+    #[allow(clippy::type_complexity)]
     grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
 }
 
@@ -1013,7 +1014,7 @@ impl Coordinator {
         }
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
-            self.initialize_stream(job, cloned_active_workers.clone())?;
+            self.initialize_stream(job, cloned_active_workers.clone()).await?;
         }
 
         if matches!(job.inputs_mode, InputsModeDto::InputsStream(ref uri) if !uri.starts_with("grpc://"))
@@ -1024,7 +1025,7 @@ impl Coordinator {
         Ok(())
     }
 
-    fn initialize_stream(
+    async fn initialize_stream(
         &self,
         job: &Job,
         cloned_active_workers: Vec<WorkerId>,
@@ -1081,13 +1082,7 @@ impl Coordinator {
         // that `push_hints_grpc_data` can feed chunks into the relay.
         let stream_reader = if hints_uri.starts_with("grpc://") {
             let (reader, tx) = StreamSource::channel();
-            // Store the sender — dropping it later signals EOF to the relay.
-            let rt = tokio::runtime::Handle::current();
-            let grpc_hints_senders = Arc::clone(&self.grpc_hints_senders);
-            let job_id = job.job_id.clone();
-            rt.block_on(async move {
-                grpc_hints_senders.write().await.insert(job_id, tx);
-            });
+            self.grpc_hints_senders.write().await.insert(job.job_id.clone(), tx);
             reader
         } else {
             StreamSource::from_uri(hints_uri).map_err(|e| {
@@ -1343,7 +1338,7 @@ impl Coordinator {
 
         // If this worker was held in SettingUp (registered while an active setup existed),
         // transition it to Idle now so it becomes eligible for job assignment.
-        let worker_id = WorkerId::from(ack.worker_id.clone());
+        let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
             let _ =
                 self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
