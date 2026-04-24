@@ -31,7 +31,7 @@ fn from_syscall_complex(complex: &SyscallComplex384) -> [u64; 12] {
     result
 }
 
-/// Sign function in Fp2
+/// Sign function in the degree 2 extension of the BLS12-381 curve
 pub fn sgn0_fp2_bls12_381(x: &[u64; 12]) -> u64 {
     let sign_0 = x[0] & 1;
     let zero_0 = is_zero(&x[0..6]) as u64;
@@ -39,7 +39,7 @@ pub fn sgn0_fp2_bls12_381(x: &[u64; 12]) -> u64 {
     sign_0 | (zero_0 & sign_1)
 }
 
-/// Addition in Fp2
+/// Addition in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn add_fp2_bls12_381(
     a: &[u64; 12],
@@ -57,7 +57,7 @@ pub fn add_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Doubling in Fp2
+/// Doubling in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn dbl_fp2_bls12_381(
     a: &[u64; 12],
@@ -74,7 +74,7 @@ pub fn dbl_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Negation in Fp2
+/// Negation in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn neg_fp2_bls12_381(
     a: &[u64; 12],
@@ -91,7 +91,7 @@ pub fn neg_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Subtraction in Fp2
+/// Subtraction in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn sub_fp2_bls12_381(
     a: &[u64; 12],
@@ -109,7 +109,7 @@ pub fn sub_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Multiplication in Fp2
+/// Multiplication in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn mul_fp2_bls12_381(
     a: &[u64; 12],
@@ -127,7 +127,7 @@ pub fn mul_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Scalar multiplication in Fp2
+/// Scalar multiplication in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn scalar_mul_fp2_bls12_381(
     a: &[u64; 12],
@@ -147,7 +147,7 @@ pub fn scalar_mul_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Squaring in Fp2
+/// Squaring in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn square_fp2_bls12_381(
     a: &[u64; 12],
@@ -164,7 +164,7 @@ pub fn square_fp2_bls12_381(
     from_syscall_complex(&f1)
 }
 
-/// Square root in Fp2
+/// Square root in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn sqrt_fp2_bls12_381(
     x: &[u64; 12],
@@ -204,7 +204,7 @@ pub fn sqrt_fp2_bls12_381(
     }
 }
 
-/// Inversion in Fp2: returns a⁻¹
+/// Inversion in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn inv_fp2_bls12_381(
     a: &[u64; 12],
@@ -237,7 +237,7 @@ pub fn inv_fp2_bls12_381(
     inv
 }
 
-/// Conjugation in Fp2
+/// Conjugation in the degree 2 extension of the BLS12-381 curve
 #[inline]
 pub fn conjugate_fp2_bls12_381(
     a: &[u64; 12],

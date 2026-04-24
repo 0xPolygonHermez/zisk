@@ -3,6 +3,7 @@ use core::{
     fmt::{self, Debug, Display},
 };
 
+/// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 pub struct U256([u64; 4]); // little-endian: 4 × 64 = 256 bits
@@ -167,8 +168,8 @@ impl PartialEq for U256 {
     }
 }
 
+/// Scratch space for short-divisor division verification (`rem_short`).
 pub struct ShortScratch {
-    // For rem_short verification
     pub quo: [u64; 8],    // quotient
     pub rem: [u64; 4],    // remainder
     pub q_b: [U256; 2],   // q * b
@@ -188,6 +189,7 @@ impl Default for ShortScratch {
     }
 }
 
+/// Scratch space for the remainder step of long-divisor division verification.
 pub struct RemLongScratch {
     pub quo: Vec<u64>,    // quotient
     pub rem: Vec<u64>,    // remainder
@@ -209,11 +211,10 @@ impl RemLongScratch {
     }
 }
 
+/// Combined scratch space for long-divisor division and multiplication verification.
 pub struct LongScratch {
-    // For rem_long verification
-    pub rem: RemLongScratch,
-    // For mul_long / square_long
-    pub mul: Vec<U256>, // result of mul or square
+    pub rem: RemLongScratch, // for rem_long verification
+    pub mul: Vec<U256>,      // result of mul_long or square_long
 }
 
 impl LongScratch {

@@ -7,20 +7,68 @@ use crate::{
         syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
     },
     zisklib::{
-        eq, fcall_msb_pos_256, fcall_msb_pos_256_2, fcall_msb_pos_256_3, is_one, ONE_256, TWO_256,
-        ZERO_256,
+        be_bytes_to_u64_4, eq, fcall_msb_pos_256, fcall_msb_pos_256_2, fcall_msb_pos_256_3, is_one,
+        ONE_256, TWO_256, ZERO_256,
     },
 };
 
 use super::{
     constants::{E_B, G, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
-    field::{add_fp_secp256k1, mul_fp_secp256k1, sqrt_fp_secp256k1, square_fp_secp256k1},
+    field::{
+        add_fp_secp256k1, inv_fp_secp256k1, mul_fp_secp256k1, sqrt_fp_secp256k1,
+        square_fp_secp256k1,
+    },
     scalar::sub_fn_secp256k1,
 };
 
 const IDENTITY_POINT256: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y };
 
 const G_POINT256: SyscallPoint256 = SyscallPoint256 { x: G_X, y: G_Y };
+
+/// Converts a non-infinity point `p` on the Secp256k1 curve from jacobian coordinates to affine coordinates
+pub fn jacobian_to_affine_secp256k1(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 8] {
+    let z: [u64; 4] = [p[8], p[9], p[10], p[11]];
+
+    // Point at infinity cannot be converted to affine
+    debug_assert!(z != ZERO_256, "Cannot convert point at infinity to affine");
+
+    let zinv = inv_fp_secp256k1(
+        &z,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let zinv_sq = square_fp_secp256k1(
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let x: [u64; 4] = [p[0], p[1], p[2], p[3]];
+    let y: [u64; 4] = [p[4], p[5], p[6], p[7]];
+
+    let x_res = mul_fp_secp256k1(
+        &x,
+        &zinv_sq,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let y_res = mul_fp_secp256k1(
+        &mul_fp_secp256k1(
+            &y,
+            &zinv_sq,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        &zinv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
+}
 
 /// Given a x-coordinate and a parity bit, returns the corresponding point (x, y) on the curve if it exists
 pub fn lift_x_secp256k1(
@@ -1076,5 +1124,98 @@ pub fn multi_scalar_mul_secp256k1(
             result.y[2],
             result.y[3],
         ])
+    }
+}
+
+// ==================== C FFI Functions ====================
+
+/// Lift an x-coordinate (32 big-endian bytes) to a secp256k1 point.
+/// Writes the resulting point as `[u64; 8]` little-endian limbs (x ‖ y) to `result_ptr`.
+/// Returns 1 on success, 0 if no point with that x-coordinate exists on the curve.
+///
+/// # Safety
+/// - `x_ptr` must point to at least 32 bytes
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_lift_x_secp256k1_c")]
+pub unsafe extern "C" fn lift_x_secp256k1_c(
+    x_ptr: *const u8,
+    y_is_odd: u8,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let x_bytes: &[u8; 32] = &*(x_ptr as *const [u8; 32]);
+    let x = be_bytes_to_u64_4(x_bytes);
+
+    match lift_x_secp256k1(
+        &x,
+        y_is_odd != 0,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Err(_) => 0,
+        Ok(point) => {
+            let result = &mut *(result_ptr as *mut [u64; 8]);
+            *result = point;
+            1
+        }
+    }
+}
+
+/// Converts a non-infinity secp256k1 point from Jacobian `[u64; 12]` to affine `[u64; 8]`.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates, non-infinity)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_secp256k1_c")]
+pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    *result = jacobian_to_affine_secp256k1(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}
+
+/// Computes `k1·G + k2·p` on the secp256k1 curve. Writes the result to `result_ptr`.
+/// Returns 1 if the result is a finite point, 0 if it is the point at infinity.
+///
+/// # Safety
+/// - `k1_ptr` must point to a valid `[u64; 4]` array
+/// - `k2_ptr` must point to a valid `[u64; 4]` array
+/// - `p_ptr` must point to a valid `[u64; 8]` array (non-infinity affine point)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_double_scalar_mul_with_g_secp256k1_c")]
+pub unsafe extern "C" fn double_scalar_mul_with_g_secp256k1_c(
+    k1_ptr: *const u64,
+    k2_ptr: *const u64,
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let k1 = &*(k1_ptr as *const [u64; 4]);
+    let k2 = &*(k2_ptr as *const [u64; 4]);
+    let p = &*(p_ptr as *const [u64; 8]);
+
+    match double_scalar_mul_with_g_secp256k1(
+        k1,
+        k2,
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        None => 0,
+        Some(point) => {
+            let result = &mut *(result_ptr as *mut [u64; 8]);
+            *result = point;
+            1
+        }
     }
 }

@@ -1,7 +1,10 @@
+//! Operations in the base field Fp of the secp256r1 curve
+
 use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
 
 use super::constants::P;
 
+/// Addition in the base field of the secp256r1 curve
 pub fn add_fp_secp256r1(
     x: &[u64; 4],
     y: &[u64; 4],
@@ -18,6 +21,7 @@ pub fn add_fp_secp256r1(
     *params.d
 }
 
+/// Multiplication in the base field of the secp256r1 curve
 pub fn mul_fp_secp256r1(
     x: &[u64; 4],
     y: &[u64; 4],
@@ -34,6 +38,7 @@ pub fn mul_fp_secp256r1(
     *params.d
 }
 
+/// Squaring in the base field of the secp256r1 curve
 pub fn square_fp_secp256r1(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

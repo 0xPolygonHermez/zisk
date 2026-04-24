@@ -1,3 +1,5 @@
+//! Keccak-256 hash function.
+
 use crate::syscalls::syscall_keccak_f;
 
 #[cfg(zisk_hints_debug)]
