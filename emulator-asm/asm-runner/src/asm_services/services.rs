@@ -140,18 +140,6 @@ pub struct AsmServices {
 impl AsmServices {
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(world_rank: i32, local_rank: i32, hash_id: String) -> Self {
-        let pid = std::process::id();
-        let hash8 = &hash_id[..hash_id.len().min(8)];
-
-        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
-        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
-
-        let service = StdioService::new(world_rank, local_rank);
-
-        AsmServices { service, shm_prefix, sem_prefix }
-    }
-
     /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
     pub fn shm_prefix(&self) -> &str {
         &self.shm_prefix
@@ -171,11 +159,19 @@ impl AsmServices {
     }
 
     /// Wrapper used by the CLI and the first worker setup.
-    pub fn start_asm_services(
-        &self,
+    pub fn new(
+        world_rank: i32,
+        local_rank: i32,
+        hash_id: String,
         ziskemuasm_path: &Path,
         options: AsmRunnerOptions,
-    ) -> Result<()> {
+    ) -> Result<AsmServices> {
+        let pid = std::process::id();
+        let hash8 = &hash_id[..hash_id.len().min(8)];
+
+        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
+
         // Phase 0: clean up stale shmem from dead processes.
         Self::cleanup_stale_shmem();
 
@@ -194,10 +190,27 @@ impl AsmServices {
             };
 
         // Phase 1: create shmem segments for this process.
-        self.create_shmem(stripped_path, &options)?;
+        Self::create_shmem(world_rank, &shm_prefix, stripped_path, &options)?;
 
         // Phase 2: start services and wait for them to be ready.
-        self.start_services(stripped_path, options)
+        // self.start_services(world_rank, local_rank, hash_id, stripped_path, options);
+
+        let stdio_service = StdioService::start_services(
+            world_rank,
+            local_rank,
+            stripped_path,
+            &mut options.clone(),
+            &shm_prefix,
+            &sem_prefix,
+        )?;
+
+        for service in &Self::SERVICES {
+            stdio_service
+                .send_status_request(service)
+                .with_context(|| format!("Service {service} failed to respond to ping"))?;
+        }
+
+        Ok(AsmServices { service: stdio_service, shm_prefix, sem_prefix })
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -252,20 +265,21 @@ impl AsmServices {
     }
 
     /// Create segments via `--just_create_all_shm`. Call once at worker startup.
-    fn create_shmem(&self, trimmed_path: &str, options: &AsmRunnerOptions) -> Result<()> {
+    fn create_shmem(
+        world_rank: i32,
+        shm_prefix: &str,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+    ) -> Result<()> {
         for (i, service) in Self::SERVICES.iter().enumerate() {
-            tracing::debug!(
-                ">>> [{}] Creating shmem for service (stdio): {}",
-                self.world_rank(),
-                service
-            );
+            tracing::debug!(">>> [{}] Creating shmem for service (stdio): {}", world_rank, service);
             let status = service
-                .build_create_shmem_command(trimmed_path, options, &self.shm_prefix)
+                .build_create_shmem_command(trimmed_path, options, shm_prefix)
                 .status()
                 .with_context(|| format!("Failed to spawn shmem creation for service {service}"))?;
             if !status.success() {
                 for prev in &Self::SERVICES[..i] {
-                    let _ = prev.cleanup_shmem_for_prefix(&self.shm_prefix);
+                    let _ = prev.cleanup_shmem_for_prefix(shm_prefix);
                 }
                 return Err(anyhow::anyhow!(
                     "Shmem creation for service {service} failed with {status}"
@@ -276,24 +290,24 @@ impl AsmServices {
         Ok(())
     }
 
-    /// Start services via `--open_all_shm` with the current `sem_prefix`.
-    /// Does NOT stop other programs' running services. Call once per program setup.
-    fn start_services(&self, trimmed_path: &str, mut options: AsmRunnerOptions) -> Result<()> {
-        self.service.start_services(
-            trimmed_path,
-            &mut options,
-            &self.shm_prefix,
-            &self.sem_prefix,
-        )?;
+    // /// Start services via `--open_all_shm` with the current `sem_prefix`.
+    // /// Does NOT stop other programs' running services. Call once per program setup.
+    // fn start_services(&self, trimmed_path: &str, mut options: AsmRunnerOptions) -> Result<()> {
+    //     self.service.start_services(
+    //         trimmed_path,
+    //         &mut options,
+    //         &self.shm_prefix,
+    //         &self.sem_prefix,
+    //     )?;
 
-        for service in &Self::SERVICES {
-            self.service
-                .send_status_request(service)
-                .with_context(|| format!("Service {service} failed to respond to ping"))?;
-        }
+    //     for service in &Self::SERVICES {
+    //         self.service
+    //             .send_status_request(service)
+    //             .with_context(|| format!("Service {service} failed to respond to ping"))?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     pub fn stop_asm_services(&self) -> Result<()> {
         let running = self.service.running_services();
@@ -369,9 +383,8 @@ impl AsmServices {
             }
         }
 
-        // Drop the handle to close the pipes and release the child process.
-        let idx = service.as_index();
-        *self.service.state[idx].lock().unwrap() = None;
+        // Close pipes and reap the child process.
+        self.service.close(service);
 
         Ok(())
     }

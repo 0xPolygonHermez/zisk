@@ -135,7 +135,6 @@ impl ProverEngine for AsmProver {
         let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
-        let hash_id = elf.program_id.hash_id.as_ref();
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
@@ -184,7 +183,6 @@ impl ProverEngine for AsmProver {
 
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
-            let asm_services = AsmServices::new(world_rank, local_rank, hash_id.to_string());
 
             let asm_runner_options = AsmRunnerOptions::new()
                 .with_local_rank(local_rank)
@@ -216,7 +214,13 @@ impl ProverEngine for AsmProver {
             // Each program has its own shm_prefix (includes program hash), so each needs
             // its own shmem creation + AsmSharedResources. Previous programs' resources
             // stay alive in the pool via Arc.
-            asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
+            let asm_services = AsmServices::new(
+                world_rank,
+                local_rank,
+                elf.program_id.hash_id.as_ref().to_string(),
+                &asm_mt_path,
+                asm_runner_options,
+            )?;
             let shared = Arc::new(AsmSharedResources::new(
                 world_rank,
                 local_rank,
