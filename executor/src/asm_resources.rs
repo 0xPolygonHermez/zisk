@@ -24,6 +24,25 @@ impl std::fmt::Debug for AsmResourcesConfig {
     }
 }
 
+/// Output-side shmem readers for the three ASM services, mapped once at worker startup.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub struct AsmShmemReaders {
+    pub mt: Arc<Mutex<MTShMemReader>>,
+    pub mo: Arc<Mutex<MOShMemReader>>,
+    pub rh: Arc<Mutex<Option<RHShMemReader>>>,
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+impl AsmShmemReaders {
+    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        Ok(Self {
+            mt: Arc::new(Mutex::new(MTShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
+            mo: Arc::new(Mutex::new(MOShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
+            rh: Arc::new(Mutex::new(None)),
+        })
+    }
+}
+
 /// Shmem segments mapped once at worker startup. Shared across all programs via `Arc`.
 pub struct AsmSharedResources {
     config: AsmResourcesConfig,
@@ -38,11 +57,7 @@ pub struct AsmSharedResources {
     inputs_stream: Arc<Mutex<ZiskStream<InputsShmemWriter>>>,
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub mt_shmem_reader: Arc<Mutex<MTShMemReader>>,
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub mo_shmem_reader: Arc<Mutex<MOShMemReader>>,
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub rh_shmem_reader: Arc<Mutex<Option<RHShMemReader>>>,
+    pub readers: AsmShmemReaders,
 
     use_hints: bool,
 }
@@ -71,10 +86,7 @@ impl AsmSharedResources {
         shm_prefix: &str,
     ) -> Result<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let asm_shmem_mt = MTShMemReader::new(shm_prefix, unlock_mapped_memory)?;
-
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let asm_shmem_mo = MOShMemReader::new(shm_prefix, unlock_mapped_memory)?;
+        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory)?;
 
         let control_writer = Arc::new(ControlShmem::new(shm_prefix, unlock_mapped_memory)?);
 
@@ -120,11 +132,7 @@ impl AsmSharedResources {
             hints_stream,
             inputs_stream,
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            mt_shmem_reader: Arc::new(Mutex::new(asm_shmem_mt)),
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            mo_shmem_reader: Arc::new(Mutex::new(asm_shmem_mo)),
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            rh_shmem_reader: Arc::new(Mutex::new(None)),
+            readers,
             inputs_shmem_writer,
             use_hints,
         })
@@ -283,20 +291,9 @@ impl AsmResources {
         self.shared.inputs_shmem_writer.append_input(bytes)
     }
 
-    // Delegated shmem reader accessors (used by EmulatorAsm)
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub fn mt_shmem_reader(&self) -> &Arc<Mutex<MTShMemReader>> {
-        &self.shared.mt_shmem_reader
-    }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub fn mo_shmem_reader(&self) -> &Arc<Mutex<MOShMemReader>> {
-        &self.shared.mo_shmem_reader
-    }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub fn rh_shmem_reader(&self) -> &Arc<Mutex<Option<RHShMemReader>>> {
-        &self.shared.rh_shmem_reader
+    pub fn readers(&self) -> &AsmShmemReaders {
+        &self.shared.readers
     }
 }
 

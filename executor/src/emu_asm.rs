@@ -220,7 +220,7 @@ impl EmulatorAsm {
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
-            let asm_shmem_mo = asm_resources.mo_shmem_reader().clone();
+            let asm_shmem_mo = asm_resources.readers().mo.clone();
             let asm_services = asm_resources.asm_services().clone();
             move || -> Result<AsmRunnerMO> {
                 let mut guard = asm_shmem_mo
@@ -236,7 +236,7 @@ impl EmulatorAsm {
         let _stats = stats.clone();
 
         let handle_rh = (has_rom_sm).then(|| {
-            let asm_shmem_rh = asm_resources.rh_shmem_reader().clone();
+            let asm_shmem_rh = asm_resources.readers().rh.clone();
             let asm_services = asm_resources.asm_services().clone();
             let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || -> Result<AsmRunnerRH> {
@@ -334,7 +334,8 @@ impl EmulatorAsm {
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?;
             let mt_shmem = &mut asm_resources
-                .mt_shmem_reader()
+                .readers()
+                .mt
                 .lock()
                 .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
             let result = AsmRunnerMT::run_and_count(
