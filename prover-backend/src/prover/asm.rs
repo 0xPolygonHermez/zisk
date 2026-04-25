@@ -95,7 +95,6 @@ impl AsmProver {
         no_auto_setup: bool,
         options: ProofmanOptions,
         is_distributed: bool,
-        stdio: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         let core_prover = AsmCoreProver::new(
@@ -109,7 +108,6 @@ impl AsmProver {
             no_auto_setup,
             options,
             is_distributed,
-            stdio,
             logging_config,
         )?;
 
@@ -137,8 +135,7 @@ impl ProverEngine for AsmProver {
         let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
-        let stdio = self.core_prover.asm_info.stdio;
-        let hash_id = if stdio { Some(elf.program_id.hash_id.as_ref()) } else { None };
+        let hash_id = elf.program_id.hash_id.as_ref();
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
@@ -187,15 +184,14 @@ impl ProverEngine for AsmProver {
 
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
-            let asm_services = AsmServices::new(world_rank, local_rank, hash_id);
+            let asm_services = AsmServices::new(world_rank, local_rank, hash_id.to_string());
 
             let asm_runner_options = AsmRunnerOptions::new()
                 .with_local_rank(local_rank)
                 .with_verbose(verbose_mode == VerboseMode::Debug)
                 .with_metrics(verbose_mode == VerboseMode::Debug)
                 .with_unlock_mapped_memory(unlock_mapped_memory)
-                .with_asm_out_file(asm_out_file)
-                .with_stdio(stdio);
+                .with_asm_out_file(asm_out_file);
 
             let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
                 let pctx = pctx.clone();
@@ -464,7 +460,6 @@ pub struct AsmInfo {
     pub asm_out_file: bool,
     pub verbose: VerboseMode,
     pub no_auto_setup: bool,
-    pub stdio: bool,
     pub n_setups: AtomicU64,
 }
 
@@ -487,7 +482,6 @@ impl AsmCoreProver {
         no_auto_setup: bool,
         options: ProofmanOptions,
         is_distributed: bool,
-        stdio: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
@@ -541,7 +535,6 @@ impl AsmCoreProver {
                 asm_out_file,
                 verbose: options.verbose_mode,
                 no_auto_setup,
-                stdio,
                 n_setups: AtomicU64::new(0),
             },
         })

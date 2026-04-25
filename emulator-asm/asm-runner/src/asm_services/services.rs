@@ -1,4 +1,4 @@
-use super::stdio::{self, StdioTransport};
+use super::stdio::StdioService;
 use super::{
     FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
     MinimalTraceResponse, PingRequest, PingResponse, RequestData, ResponseData, ShutdownRequest,
@@ -56,30 +56,26 @@ impl fmt::Display for AsmService {
     }
 }
 
-const ASM_SERVICE_BASE_PORT: u16 = 23115;
-
 #[derive(Clone)]
 pub struct AsmServices {
-    transport: StdioTransport,
+    service: StdioService,
     shm_prefix: String,
     sem_prefix: String,
 }
 
 impl AsmServices {
-    const MO_SERVICE_OFFSET: u64 = 0;
-    const MT_SERVICE_OFFSET: u64 = 1;
-    const RH_SERVICE_OFFSET: u64 = 2;
-
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(world_rank: i32, local_rank: i32, hash_id: Option<&str>) -> Self {
+    pub fn new(world_rank: i32, local_rank: i32, hash_id: String) -> Self {
         let pid = std::process::id();
-        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
-        let hash8 = hash_id.map(|h| &h[..h.len().min(8)]).unwrap_or("00000000");
-        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
-        let transport = StdioTransport::new(world_rank, local_rank);
+        let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        AsmServices { transport, shm_prefix, sem_prefix }
+        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
+
+        let service = StdioService::new(world_rank, local_rank);
+
+        AsmServices { service, shm_prefix, sem_prefix }
     }
 
     /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
@@ -87,25 +83,17 @@ impl AsmServices {
         &self.shm_prefix
     }
 
-    /// Returns the semaphore prefix (includes hash_id for stdio mode).
+    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}`.
     pub fn sem_prefix(&self) -> &str {
         &self.sem_prefix
     }
 
-    /// Update the semaphore prefix for a new program (stdio mode).
-    /// Called when a subsequent setup reuses shmem but needs new semaphores.
-    pub fn set_sem_prefix(&mut self, hash_id: &str) {
-        let pid = std::process::id();
-        let hash8 = &hash_id[..hash_id.len().min(8)];
-        self.sem_prefix = format!("ZISK_{pid}_{hash8}_{}", self.local_rank());
-    }
-
     pub fn local_rank(&self) -> i32 {
-        self.transport.local_rank
+        self.service.local_rank
     }
 
     pub fn world_rank(&self) -> i32 {
-        self.transport.world_rank
+        self.service.world_rank
     }
 
     /// Phase 0+1: clean up stale shmem from dead processes, then create segments
@@ -148,7 +136,7 @@ impl AsmServices {
     ) -> Result<()> {
         let trimmed_path = trim_binary_path(ziskemuasm_path);
 
-        self.transport.start_services(
+        self.service.start_services(
             &trimmed_path,
             &mut options,
             &self.shm_prefix,
@@ -174,7 +162,7 @@ impl AsmServices {
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
-        let running = self.transport.check_running();
+        let running = self.service.running_services();
 
         for service in running {
             tracing::info!("Shutting down stdio service {}.", service);
@@ -182,28 +170,6 @@ impl AsmServices {
         }
 
         Ok(())
-    }
-
-    const fn service_offset(asm_service: &AsmService) -> u16 {
-        match asm_service {
-            AsmService::MT => Self::MT_SERVICE_OFFSET as u16,
-            AsmService::RH => Self::RH_SERVICE_OFFSET as u16,
-            AsmService::MO => Self::MO_SERVICE_OFFSET as u16,
-        }
-    }
-
-    pub const fn default_port(asm_service: &AsmService, local_rank: i32) -> u16 {
-        Self::port_for(asm_service, ASM_SERVICE_BASE_PORT, local_rank)
-    }
-
-    pub const fn port_for(asm_service: &AsmService, base_port: u16, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-        base_port + Self::service_offset(asm_service) + rank_offset
-    }
-
-    pub fn port_base_for(base_port: Option<u16>, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-        base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + rank_offset
     }
 
     pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
@@ -239,7 +205,7 @@ impl AsmServices {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
-        self.transport.send_request(service, req)
+        self.service.send_request(service, req)
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -287,7 +253,7 @@ impl AsmServices {
 
         // Drop the handle to close the pipes and release the child process.
         let idx = service.as_index();
-        *self.transport.state().handles[idx].lock().unwrap() = None;
+        *self.service.state[idx].lock().unwrap() = None;
 
         Ok(())
     }

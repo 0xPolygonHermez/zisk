@@ -1,7 +1,7 @@
 use std::process::{Command, Stdio};
 use thiserror::Error;
 
-use crate::{AsmService, AsmServices};
+use crate::AsmService;
 
 #[derive(Debug, Error)]
 pub enum AsmRunError {
@@ -41,7 +41,6 @@ pub struct AsmRunnerOptions {
     pub asm_out_file: bool,
     pub share_input_shmem: bool,
     pub open_input_shmem: bool,
-    pub stdio: bool,
 }
 
 impl Default for AsmRunnerOptions {
@@ -64,7 +63,6 @@ impl AsmRunnerOptions {
             asm_out_file: false,
             share_input_shmem: false,
             open_input_shmem: false,
-            stdio: true,
         }
     }
 
@@ -123,11 +121,6 @@ impl AsmRunnerOptions {
         self
     }
 
-    pub fn with_stdio(mut self, value: bool) -> Self {
-        self.stdio = value;
-        self
-    }
-
     /// Applies the configuration flags to a command-line `Command`.
     ///
     /// # Arguments
@@ -144,10 +137,8 @@ impl AsmRunnerOptions {
 
         command.arg(format!("--gen={}", asm_service.gen_index()));
 
-        if self.stdio {
-            command.arg("--stdio");
-            command.arg("--open_all_shm");
-        }
+        command.arg("--stdio");
+        command.arg("--open_all_shm");
 
         if self.unlock_mapped_memory {
             command.arg("-u");
@@ -168,24 +159,10 @@ impl AsmRunnerOptions {
             command.arg("-m");
         }
 
-        // --share_input_shm / --open_input_shm are TCP-mode flags for shared input shmem.
-        // In stdio mode --open_all_shm already covers input shmem; passing both conflicts.
-        if !self.stdio {
-            if self.share_input_shmem {
-                command.arg("--share_input_shm");
-            }
-            if self.open_input_shmem {
-                command.arg("--open_input_shm");
-            }
-        }
-
         if self.verbose {
             command.arg("-v");
         }
 
-        if !self.stdio {
-            command.stdout(if self.verbose { Stdio::inherit() } else { Stdio::null() });
-        }
         command.stderr(if self.verbose { Stdio::inherit() } else { Stdio::null() });
 
         match self.trace_level {
@@ -200,12 +177,6 @@ impl AsmRunnerOptions {
 
         if self.keccak_trace {
             command.arg("-k");
-        }
-
-        if !self.stdio {
-            command
-                .arg("-p")
-                .arg(AsmServices::default_port(asm_service, self.local_rank).to_string());
         }
     }
 }

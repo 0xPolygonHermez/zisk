@@ -189,7 +189,6 @@ impl EmbeddedClientBuilder {
             asm_opts.no_auto_setup,                // no_auto_setup
             backend_opts.build_proofman_options(), // options
             false,                                 // is_distributed
-            asm_opts.stdio,                        // stdio
             None,                                  // logging_config
         )?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))
