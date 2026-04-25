@@ -1,5 +1,4 @@
 use super::stdio::{self, StdioTransport};
-use super::tcp::TcpTransport;
 use super::{
     FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
     MinimalTraceResponse, PingRequest, PingResponse, RequestData, ResponseData, ShutdownRequest,
@@ -35,6 +34,15 @@ impl AsmService {
             AsmService::MO => 7,
         }
     }
+
+    /// Array index for per-service slots (MO=0, MT=1, RH=2).
+    pub const fn as_index(&self) -> usize {
+        match self {
+            AsmService::MO => 0,
+            AsmService::MT => 1,
+            AsmService::RH => 2,
+        }
+    }
 }
 
 impl fmt::Display for AsmService {
@@ -51,14 +59,8 @@ impl fmt::Display for AsmService {
 const ASM_SERVICE_BASE_PORT: u16 = 23115;
 
 #[derive(Clone)]
-enum Transport {
-    Tcp(TcpTransport),
-    Stdio(StdioTransport),
-}
-
-#[derive(Clone)]
 pub struct AsmServices {
-    transport: Transport,
+    transport: StdioTransport,
     shm_prefix: String,
     sem_prefix: String,
 }
@@ -70,32 +72,17 @@ impl AsmServices {
 
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
-        stdio: bool,
-        hash_id: Option<&str>,
-    ) -> Self {
-        let port = base_port.unwrap_or(ASM_SERVICE_BASE_PORT);
-        let (transport, shm_prefix, sem_prefix) = if stdio {
-            let pid = std::process::id();
-            let shm_prefix = format!("ZISK_{pid}_{local_rank}");
-            let hash8 = hash_id.map(|h| &h[..h.len().min(8)]).unwrap_or("00000000");
-            let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
-            let transport = Transport::Stdio(StdioTransport::new(world_rank, local_rank));
-            (transport, shm_prefix, sem_prefix)
-        } else {
-            let shm_prefix =
-                format!("ZISK_{}_{}", Self::port_base_for(base_port, local_rank), local_rank);
-            let transport = Transport::Tcp(TcpTransport::new(world_rank, local_rank, port));
-            let sem_prefix = shm_prefix.clone();
-            (transport, shm_prefix, sem_prefix)
-        };
+    pub fn new(world_rank: i32, local_rank: i32, hash_id: Option<&str>) -> Self {
+        let pid = std::process::id();
+        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let hash8 = hash_id.map(|h| &h[..h.len().min(8)]).unwrap_or("00000000");
+        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
+        let transport = StdioTransport::new(world_rank, local_rank);
+
         AsmServices { transport, shm_prefix, sem_prefix }
     }
 
-    /// Returns the shared memory prefix (e.g. `ZISK_{pid}_{rank}` for stdio, `ZISK_{port}_{rank}` for TCP).
+    /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
     pub fn shm_prefix(&self) -> &str {
         &self.shm_prefix
     }
@@ -108,62 +95,47 @@ impl AsmServices {
     /// Update the semaphore prefix for a new program (stdio mode).
     /// Called when a subsequent setup reuses shmem but needs new semaphores.
     pub fn set_sem_prefix(&mut self, hash_id: &str) {
-        if let Transport::Stdio(_) = &self.transport {
-            let pid = std::process::id();
-            let hash8 = &hash_id[..hash_id.len().min(8)];
-            self.sem_prefix = format!("ZISK_{pid}_{hash8}_{}", self.local_rank());
-        }
-    }
-
-    pub fn base_port(&self) -> u16 {
-        match &self.transport {
-            Transport::Tcp(t) => t.base_port,
-            Transport::Stdio(_) => 0,
-        }
+        let pid = std::process::id();
+        let hash8 = &hash_id[..hash_id.len().min(8)];
+        self.sem_prefix = format!("ZISK_{pid}_{hash8}_{}", self.local_rank());
     }
 
     pub fn local_rank(&self) -> i32 {
-        match &self.transport {
-            Transport::Tcp(t) => t.local_rank,
-            Transport::Stdio(s) => s.local_rank,
-        }
+        self.transport.local_rank
     }
 
     pub fn world_rank(&self) -> i32 {
-        match &self.transport {
-            Transport::Tcp(t) => t.world_rank,
-            Transport::Stdio(s) => s.world_rank,
-        }
+        self.transport.world_rank
     }
 
-    /// Phase 0+1: clean up stale shmem from dead processes, then (stdio only) create segments
+    /// Phase 0+1: clean up stale shmem from dead processes, then create segments
     /// via `--just_create_all_shm`. Call once at worker startup.
     pub fn create_shmem(&self, ziskemuasm_path: &Path, options: &AsmRunnerOptions) -> Result<()> {
         cleanup_stale_shmem();
-        if let Transport::Stdio(_) = &self.transport {
-            let trimmed_path = trim_binary_path(ziskemuasm_path);
-            for (i, service) in Self::SERVICES.iter().enumerate() {
-                tracing::debug!(
-                    ">>> [{}] Creating shmem for service (stdio): {}",
-                    self.world_rank(),
-                    service
-                );
-                let status =
-                    build_create_shmem_command(service, &trimmed_path, options, &self.shm_prefix)
-                        .status()
-                        .with_context(|| {
-                            format!("Failed to spawn shmem creation for service {service}")
-                        })?;
-                if !status.success() {
-                    for prev in &Self::SERVICES[..i] {
-                        let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
-                    }
-                    return Err(anyhow::anyhow!(
-                        "Shmem creation for service {service} failed with {status}"
-                    ));
+
+        let trimmed_path = trim_binary_path(ziskemuasm_path);
+        for (i, service) in Self::SERVICES.iter().enumerate() {
+            tracing::debug!(
+                ">>> [{}] Creating shmem for service (stdio): {}",
+                self.world_rank(),
+                service
+            );
+            let status =
+                build_create_shmem_command(service, &trimmed_path, options, &self.shm_prefix)
+                    .status()
+                    .with_context(|| {
+                        format!("Failed to spawn shmem creation for service {service}")
+                    })?;
+            if !status.success() {
+                for prev in &Self::SERVICES[..i] {
+                    let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
                 }
+                return Err(anyhow::anyhow!(
+                    "Shmem creation for service {service} failed with {status}"
+                ));
             }
         }
+
         Ok(())
     }
 
@@ -175,28 +147,19 @@ impl AsmServices {
         mut options: AsmRunnerOptions,
     ) -> Result<()> {
         let trimmed_path = trim_binary_path(ziskemuasm_path);
-        match &self.transport {
-            Transport::Tcp(t) => {
-                options.share_input_shmem = true;
-                for service in t.check_running() {
-                    let port = Self::port_for(&service, self.base_port(), self.local_rank());
-                    tracing::info!(
-                        "Service {} is already running on 127.0.0.1:{}. Shutting it down.",
-                        service,
-                        port
-                    );
-                    let _ = self.send_shutdown_and_wait(&service);
-                }
-                t.start_services(&trimmed_path, &mut options, &self.shm_prefix)?;
-            }
-            Transport::Stdio(s) => {
-                s.start_services(&trimmed_path, &mut options, &self.shm_prefix, &self.sem_prefix)?;
-            }
-        }
+
+        self.transport.start_services(
+            &trimmed_path,
+            &mut options,
+            &self.shm_prefix,
+            &self.sem_prefix,
+        )?;
+
         for service in &Self::SERVICES {
             self.send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
+
         Ok(())
     }
 
@@ -211,26 +174,11 @@ impl AsmServices {
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
-        let running = match &self.transport {
-            Transport::Tcp(t) => t.check_running(),
-            Transport::Stdio(s) => s.check_running(),
-        };
+        let running = self.transport.check_running();
 
         for service in running {
-            match &self.transport {
-                Transport::Tcp(_) => {
-                    let port = Self::port_for(&service, self.base_port(), self.local_rank());
-                    tracing::info!(
-                        "Shutting down service {} running on 127.0.0.1:{}.",
-                        service,
-                        port
-                    );
-                }
-                Transport::Stdio(_) => {
-                    tracing::info!("Shutting down stdio service {}.", service);
-                }
-            }
-            let _ = self.send_shutdown_and_wait(&service);
+            tracing::info!("Shutting down stdio service {}.", service);
+            self.send_shutdown_and_wait(&service)?;
         }
 
         Ok(())
@@ -291,10 +239,7 @@ impl AsmServices {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
-        match &self.transport {
-            Transport::Tcp(t) => t.send_request(service, req),
-            Transport::Stdio(s) => s.send_request(service, req),
-        }
+        self.transport.send_request(service, req)
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -340,11 +285,9 @@ impl AsmServices {
             }
         }
 
-        // In stdio mode, drop the handle to close the pipes and release the child process.
-        if let Transport::Stdio(s) = &self.transport {
-            let idx = stdio::service_index(service);
-            *s.state().handles[idx].lock().unwrap() = None;
-        }
+        // Drop the handle to close the pipes and release the child process.
+        let idx = service.as_index();
+        *self.transport.state().handles[idx].lock().unwrap() = None;
 
         Ok(())
     }
@@ -473,7 +416,6 @@ fn cleanup_stale_shmem() {
 
         // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
         // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
-        // TCP shmem:   "ZISK_{port}_{rank}_..."        → parts[1] is port number
         let is_sem = name.starts_with("sem.ZISK_");
         let is_shm = name.starts_with("ZISK_");
         if !is_shm && !is_sem {
@@ -487,10 +429,6 @@ fn cleanup_stale_shmem() {
         let Ok(pid) = parts[1].parse::<u32>() else { continue };
 
         // Check if the process is still alive.
-        // For TCP entries parts[1] is a port number, not a PID. kill() will return ESRCH
-        // if no process with that PID exists, which correctly identifies stale TCP shmem.
-        // The rare edge case (a live process coincidentally holds PID == port) is benign:
-        // the entry is preserved and cleaned up on the next startup.
         let alive = unsafe { libc::kill(pid as i32, 0) };
         if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
             continue; // process alive or owned by another user

@@ -295,7 +295,6 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
         self.mapped_files.len()
     }
 
-
     /// Releases incremental shared memory files for a new execution.
     ///
     /// This closes file descriptors for incremental files (`_1`, `_2`, ...) while

@@ -187,7 +187,7 @@ impl ProverEngine for AsmProver {
 
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
-            let asm_services = AsmServices::new(world_rank, local_rank, None, stdio, hash_id);
+            let asm_services = AsmServices::new(world_rank, local_rank, hash_id);
 
             let asm_runner_options = AsmRunnerOptions::new()
                 .with_local_rank(local_rank)
@@ -197,45 +197,48 @@ impl ProverEngine for AsmProver {
                 .with_asm_out_file(asm_out_file)
                 .with_stdio(stdio);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+            let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
             let init_rom = !is_distributed && world_rank == 0;
 
-        // Check if this program already has live services in the pool.
-        if let Some(existing) =
-            self.asm_resources_pool.read().unwrap().get(&elf.program_id).cloned()
-        {
+            // Check if this program already has live services in the pool.
+            if let Some(existing) =
+                self.asm_resources_pool.read().unwrap().get(&elf.program_id).cloned()
+            {
+                timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+                self.core_prover.backend.set_asm_resources(existing)?;
+                self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+                return Ok(());
+            }
+
+            // Each program has its own shm_prefix (includes program hash), so each needs
+            // its own shmem creation + AsmSharedResources. Previous programs' resources
+            // stay alive in the pool via Arc.
+            asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
+            let shared = Arc::new(AsmSharedResources::new(
+                world_rank,
+                local_rank,
+                unlock_mapped_memory,
+                verbose_mode,
+                with_hints,
+                mpi_broadcast_fn,
+                init_rom,
+                asm_services.shm_prefix(),
+            )?);
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-            self.core_prover.backend.set_asm_resources(existing)?;
-            self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
-            return Ok(());
-        }
 
-        // Each program has its own shm_prefix (includes program hash), so each needs
-        // its own shmem creation + AsmSharedResources. Previous programs' resources
-        // stay alive in the pool via Arc.
-        asm_services.start_asm_services(&asm_mt_path, asm_runner_options)?;
-        let shared = Arc::new(AsmSharedResources::new(
-            world_rank,
-            local_rank,
-            unlock_mapped_memory,
-            verbose_mode,
-            with_hints,
-            mpi_broadcast_fn,
-            init_rom,
-            asm_services.shm_prefix(),
-        )?);
-        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-
-        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
-        self.asm_resources_pool.write().unwrap().insert(elf.program_id.clone(), resources.clone());
-        self.core_prover.backend.set_asm_resources(resources)?;
+            let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+            self.asm_resources_pool
+                .write()
+                .unwrap()
+                .insert(elf.program_id.clone(), resources.clone());
+            self.core_prover.backend.set_asm_resources(resources)?;
 
             self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
 

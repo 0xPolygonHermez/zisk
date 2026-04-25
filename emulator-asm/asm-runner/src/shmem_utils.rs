@@ -223,7 +223,6 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         Ok(true)
     }
 
-
     pub fn unmap(&mut self) -> Result<()> {
         unsafe {
             if munmap(self.mapped_ptr, self.mapped_size) != 0 {

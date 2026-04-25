@@ -30,7 +30,7 @@ impl StdioState {
     }
 
     fn handle_mut(&self, service: &AsmService) -> std::sync::MutexGuard<'_, Option<StdioHandle>> {
-        self.handles[service_index(service)].lock().unwrap()
+        self.handles[service.as_index()].lock().unwrap()
     }
 }
 
@@ -116,13 +116,7 @@ impl StdioTransport {
             // Give the process a moment to fully exit if it hasn't yet
             let status = match handle.child.try_wait() {
                 Ok(Some(status)) => Some(status),
-                Ok(None) => {
-                    // Process may still be exiting; wait briefly
-                    match handle.child.wait() {
-                        Ok(status) => Some(status),
-                        Err(_) => None,
-                    }
-                }
+                Ok(None) => handle.child.wait().ok(), // Process may still be exiting; wait briefly
                 Err(_) => None,
             };
 
@@ -151,14 +145,6 @@ impl StdioTransport {
         }
 
         Ok(Res::from_response_payload(decode_response(&in_buffer)?))
-    }
-}
-
-pub(super) const fn service_index(service: &AsmService) -> usize {
-    match service {
-        AsmService::MO => 0,
-        AsmService::MT => 1,
-        AsmService::RH => 2,
     }
 }
 

@@ -255,7 +255,8 @@ impl AsmResources {
     }
 
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.shared.inputs_stream
+        self.shared
+            .inputs_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
             .set_stream_src(stream)?;
@@ -263,7 +264,8 @@ impl AsmResources {
     }
 
     pub fn start_inputs_stream(&self) -> Result<()> {
-        self.shared.inputs_stream
+        self.shared
+            .inputs_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
             .start_stream()
