@@ -13,7 +13,7 @@ use crate::{
     ShutdownResponse,
 };
 
-use super::services::{build_service_command, decode_response, encode_request, AsmServices};
+use super::services::AsmServices;
 use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToRequestPayload};
 
 pub(super) struct StdioHandle {
@@ -70,7 +70,7 @@ impl StdioService {
         sem_prefix: &str,
     ) -> Result<StdioHandle> {
         let mut command =
-            build_service_command(asm_service, trimmed_path, options, shm_prefix, sem_prefix);
+            asm_service.build_service_command(trimmed_path, options, shm_prefix, sem_prefix);
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
         let mut child = command
@@ -135,7 +135,7 @@ impl StdioService {
         let handle =
             guard.as_mut().expect("stdio handle not initialized; call start_services first");
 
-        let out_buffer = encode_request(req.to_request_payload());
+        let out_buffer = AsmServices::encode_request(req.to_request_payload());
         handle
             .stdin
             .write_all(&out_buffer)
@@ -174,6 +174,6 @@ impl StdioService {
                 .with_context(|| format!("Failed to read response from stdio service {service}"));
         }
 
-        Ok(Res::from_response_payload(decode_response(&in_buffer)?))
+        Ok(Res::from_response_payload(AsmServices::decode_response(&in_buffer)?))
     }
 }

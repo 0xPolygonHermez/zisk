@@ -42,6 +42,81 @@ impl AsmService {
             AsmService::RH => 2,
         }
     }
+
+    /// Returns the command path for a given service based on the trimmed base path.
+    pub fn command_path_for(&self, trimmed_path: &str) -> String {
+        format!("{}-{}.bin", trimmed_path, self)
+    }
+
+    pub(super) fn build_service_command(
+        &self,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+        sem_prefix: &str,
+    ) -> Command {
+        let binary_path = self.command_path_for(trimmed_path);
+        tracing::debug!("Spawning ASM service {self} binary: {binary_path}");
+        let mut command = Command::new(binary_path);
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            use std::os::unix::process::CommandExt;
+            unsafe {
+                command.pre_exec(|| {
+                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    Ok(())
+                });
+            }
+        }
+        options.apply_to_command(&mut command, self, shm_prefix, sem_prefix);
+        command
+    }
+
+    /// Build a command that creates shared memory segments and exits.
+    fn build_create_shmem_command(
+        &self,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+    ) -> Command {
+        let mut command = Command::new(self.command_path_for(trimmed_path));
+
+        command
+            .arg("-s")
+            .arg(format!("--gen={}", self.gen_index()))
+            .arg("--just_create_all_shm")
+            .arg("--shm_prefix")
+            .arg(shm_prefix);
+
+        if options.verbose {
+            command.arg("-v");
+        }
+
+        command.stderr(if options.verbose {
+            std::process::Stdio::inherit()
+        } else {
+            std::process::Stdio::null()
+        });
+
+        command
+    }
+
+    /// Clean up a specific service's shared memory entries for a given prefix.
+    fn cleanup_shmem_for_prefix(&self, shm_prefix: &str) -> Result<()> {
+        let pattern = format!("{}_{}_", shm_prefix, self);
+        let exact = format!("{}_{}", shm_prefix, self);
+        let dev_shm = std::path::Path::new("/dev/shm");
+        if let Ok(entries) = std::fs::read_dir(dev_shm) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&pattern) || name == exact {
+                        shm_unlink_by_name(name)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for AsmService {
@@ -119,10 +194,10 @@ impl AsmServices {
             };
 
         // Phase 1: create shmem segments for this process.
-        self.create_shmem(&stripped_path, &options)?;
+        self.create_shmem(stripped_path, &options)?;
 
         // Phase 2: start services and wait for them to be ready.
-        self.start_services(&stripped_path, options)
+        self.start_services(stripped_path, options)
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -184,15 +259,13 @@ impl AsmServices {
                 self.world_rank(),
                 service
             );
-            let status =
-                build_create_shmem_command(service, trimmed_path, options, &self.shm_prefix)
-                    .status()
-                    .with_context(|| {
-                        format!("Failed to spawn shmem creation for service {service}")
-                    })?;
+            let status = service
+                .build_create_shmem_command(trimmed_path, options, &self.shm_prefix)
+                .status()
+                .with_context(|| format!("Failed to spawn shmem creation for service {service}"))?;
             if !status.success() {
                 for prev in &Self::SERVICES[..i] {
-                    let _ = cleanup_shmem_for_prefix(&self.shm_prefix, prev);
+                    let _ = prev.cleanup_shmem_for_prefix(&self.shm_prefix);
                 }
                 return Err(anyhow::anyhow!(
                     "Shmem creation for service {service} failed with {status}"
@@ -307,100 +380,26 @@ impl AsmServices {
     pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
-}
 
-pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
-    let mut buf = [0u8; 40];
-    for (i, word) in request.iter().enumerate() {
-        buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+    pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
+        let mut buf = [0u8; 40];
+        for (i, word) in request.iter().enumerate() {
+            buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+        }
+        buf
     }
-    buf
-}
 
-pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
-    let mut response = ResponseData::default();
-    for (i, chunk) in buf.chunks_exact(8).enumerate() {
-        response[i] = u64::from_le_bytes(chunk.try_into()?);
+    pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
+        let mut response = ResponseData::default();
+        for (i, chunk) in buf.chunks_exact(8).enumerate() {
+            response[i] = u64::from_le_bytes(chunk.try_into()?);
+        }
+        Ok(response)
     }
-    Ok(response)
-}
-
-fn command_path_for(trimmed_path: &str, asm_service: &AsmService) -> String {
-    format!("{}-{}.bin", trimmed_path, asm_service)
 }
 
 fn shm_unlink_by_name(name: &str) -> Result<()> {
     let cstr = std::ffi::CString::new(name)?;
     unsafe { libc::shm_unlink(cstr.as_ptr()) };
-    Ok(())
-}
-
-pub(super) fn build_service_command(
-    asm_service: &AsmService,
-    trimmed_path: &str,
-    options: &AsmRunnerOptions,
-    shm_prefix: &str,
-    sem_prefix: &str,
-) -> Command {
-    let binary_path = command_path_for(trimmed_path, asm_service);
-    tracing::debug!("Spawning ASM service {asm_service} binary: {binary_path}");
-    let mut command = Command::new(binary_path);
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            command.pre_exec(|| {
-                libc::setpriority(libc::PRIO_PROCESS, 0, -5);
-                Ok(())
-            });
-        }
-    }
-    options.apply_to_command(&mut command, asm_service, shm_prefix, sem_prefix);
-    command
-}
-
-/// Build a command that creates shared memory segments and exits.
-fn build_create_shmem_command(
-    asm_service: &AsmService,
-    trimmed_path: &str,
-    options: &AsmRunnerOptions,
-    shm_prefix: &str,
-) -> Command {
-    let mut command = Command::new(command_path_for(trimmed_path, asm_service));
-
-    command
-        .arg("-s")
-        .arg(format!("--gen={}", asm_service.gen_index()))
-        .arg("--just_create_all_shm")
-        .arg("--shm_prefix")
-        .arg(shm_prefix);
-
-    if options.verbose {
-        command.arg("-v");
-    }
-
-    command.stderr(if options.verbose {
-        std::process::Stdio::inherit()
-    } else {
-        std::process::Stdio::null()
-    });
-
-    command
-}
-
-/// Clean up a specific service's shared memory entries for a given prefix.
-fn cleanup_shmem_for_prefix(shm_prefix: &str, service: &AsmService) -> Result<()> {
-    let pattern = format!("{}_{}_", shm_prefix, service.as_str());
-    let exact = format!("{}_{}", shm_prefix, service.as_str());
-    let dev_shm = std::path::Path::new("/dev/shm");
-    if let Ok(entries) = std::fs::read_dir(dev_shm) {
-        for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&pattern) || name == exact {
-                    shm_unlink_by_name(name)?;
-                }
-            }
-        }
-    }
     Ok(())
 }
