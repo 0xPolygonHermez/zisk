@@ -290,25 +290,6 @@ impl AsmServices {
         Ok(())
     }
 
-    // /// Start services via `--open_all_shm` with the current `sem_prefix`.
-    // /// Does NOT stop other programs' running services. Call once per program setup.
-    // fn start_services(&self, trimmed_path: &str, mut options: AsmRunnerOptions) -> Result<()> {
-    //     self.service.start_services(
-    //         trimmed_path,
-    //         &mut options,
-    //         &self.shm_prefix,
-    //         &self.sem_prefix,
-    //     )?;
-
-    //     for service in &Self::SERVICES {
-    //         self.service
-    //             .send_status_request(service)
-    //             .with_context(|| format!("Service {service} failed to respond to ping"))?;
-    //     }
-
-    //     Ok(())
-    // }
-
     pub fn stop_asm_services(&self) -> Result<()> {
         let running = self.service.running_services();
 
