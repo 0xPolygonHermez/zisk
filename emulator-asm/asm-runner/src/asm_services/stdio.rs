@@ -7,7 +7,11 @@ use std::{
 use anyhow::{Context, Result};
 use tracing::debug;
 
-use crate::AsmRunnerOptions;
+use crate::{
+    AsmRunnerOptions, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
+    MinimalTraceResponse, RomHistogramRequest, RomHistogramResponse, ShutdownRequest,
+    ShutdownResponse,
+};
 
 use super::services::{build_service_command, decode_response, encode_request, AsmServices};
 use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToRequestPayload};
@@ -89,6 +93,37 @@ impl StdioService {
             })
             .copied()
             .collect()
+    }
+
+    pub(super) fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
+        self.send_request(service, &PingRequest {})
+    }
+
+    pub(super) fn send_shutdown_request(&self, service: &AsmService) -> Result<ShutdownResponse> {
+        self.send_request(service, &ShutdownRequest {})
+    }
+
+    pub(crate) fn send_minimal_trace_request(
+        &self,
+        max_steps: u64,
+        chunk_len: u64,
+    ) -> Result<MinimalTraceResponse> {
+        self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+    }
+
+    pub(crate) fn send_rom_histogram_request(
+        &self,
+        max_steps: u64,
+    ) -> Result<RomHistogramResponse> {
+        self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
+    }
+
+    pub(crate) fn send_memory_ops_request(
+        &self,
+        max_steps: u64,
+        chunk_len: u64,
+    ) -> Result<MemoryOperationsResponse> {
+        self.send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
     }
 
     pub(super) fn send_request<Req, Res>(&self, service: &AsmService, req: &Req) -> Result<Res>

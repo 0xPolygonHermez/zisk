@@ -1,11 +1,10 @@
 use super::stdio::StdioService;
-use super::{
-    FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
-    MinimalTraceResponse, PingRequest, PingResponse, RequestData, ResponseData, ShutdownRequest,
-    ShutdownResponse, ToRequestPayload,
+use super::{RequestData, ResponseData};
+use crate::{
+    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
 };
-use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
+
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -96,12 +95,89 @@ impl AsmServices {
         self.service.world_rank
     }
 
-    /// Phase 0+1: clean up stale shmem from dead processes, then create segments
-    /// via `--just_create_all_shm`. Call once at worker startup.
-    pub fn create_shmem(&self, ziskemuasm_path: &Path, options: &AsmRunnerOptions) -> Result<()> {
-        cleanup_stale_shmem();
+    /// Wrapper used by the CLI and the first worker setup.
+    pub fn start_asm_services(
+        &self,
+        ziskemuasm_path: &Path,
+        options: AsmRunnerOptions,
+    ) -> Result<()> {
+        // Phase 0: clean up stale shmem from dead processes.
+        Self::cleanup_stale_shmem();
 
-        let trimmed_path = trim_binary_path(ziskemuasm_path);
+        // Strip it to get the base path.
+        // `ziskemuasm_path` expected format: "<base>-??.bin".
+        // where "??" is a 2-character service identifier.
+        // Total suffix length = 7 ("-??.bin").
+        // We validate: is at least 7 chars long, ends with ".bin" and has "-"" before the service
+        let path = ziskemuasm_path.to_string_lossy();
+        let stripped_path =
+            if path.len() >= 7 && path.ends_with(".bin") && path.as_bytes()[path.len() - 7] == b'-'
+            {
+                &path[..path.len() - 7]
+            } else {
+                return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
+            };
+
+        // Phase 1: create shmem segments for this process.
+        self.create_shmem(&stripped_path, &options)?;
+
+        // Phase 2: start services and wait for them to be ready.
+        self.start_services(&stripped_path, options)
+    }
+
+    /// Clean up all shared memory and semaphores for currently running services.
+    /// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
+    /// left by dead processes and unlink them.
+    fn cleanup_stale_shmem() {
+        let dev_shm = std::path::Path::new("/dev/shm");
+        let entries = match std::fs::read_dir(dev_shm) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let name = match entry.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+
+            // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
+            // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
+            let is_sem = name.starts_with("sem.ZISK_");
+            let is_shm = name.starts_with("ZISK_");
+            if !is_shm && !is_sem {
+                continue;
+            }
+
+            let parts: Vec<&str> = name.splitn(3, '_').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let Ok(pid) = parts[1].parse::<u32>() else { continue };
+
+            // Check if the process is still alive.
+            let alive = unsafe { libc::kill(pid as i32, 0) };
+            if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
+                continue; // process alive or owned by another user
+            }
+
+            // Process is dead (ESRCH) — unlink the stale entry.
+            if is_sem {
+                // sem file "sem.FOO" → POSIX name "/FOO"
+                let sem_name = format!("/{}", &name["sem.".len()..]);
+                tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
+                if let Ok(cstr) = std::ffi::CString::new(sem_name) {
+                    unsafe { libc::sem_unlink(cstr.as_ptr()) };
+                }
+            } else {
+                tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
+                let _ = shm_unlink_by_name(&name);
+            }
+        }
+    }
+
+    /// Create segments via `--just_create_all_shm`. Call once at worker startup.
+    fn create_shmem(&self, trimmed_path: &str, options: &AsmRunnerOptions) -> Result<()> {
         for (i, service) in Self::SERVICES.iter().enumerate() {
             tracing::debug!(
                 ">>> [{}] Creating shmem for service (stdio): {}",
@@ -109,7 +185,7 @@ impl AsmServices {
                 service
             );
             let status =
-                build_create_shmem_command(service, &trimmed_path, options, &self.shm_prefix)
+                build_create_shmem_command(service, trimmed_path, options, &self.shm_prefix)
                     .status()
                     .with_context(|| {
                         format!("Failed to spawn shmem creation for service {service}")
@@ -127,38 +203,23 @@ impl AsmServices {
         Ok(())
     }
 
-    /// Phase 2: start services via `--open_all_shm` with the current `sem_prefix`.
+    /// Start services via `--open_all_shm` with the current `sem_prefix`.
     /// Does NOT stop other programs' running services. Call once per program setup.
-    pub fn start_services(
-        &self,
-        ziskemuasm_path: &Path,
-        mut options: AsmRunnerOptions,
-    ) -> Result<()> {
-        let trimmed_path = trim_binary_path(ziskemuasm_path);
-
+    fn start_services(&self, trimmed_path: &str, mut options: AsmRunnerOptions) -> Result<()> {
         self.service.start_services(
-            &trimmed_path,
+            trimmed_path,
             &mut options,
             &self.shm_prefix,
             &self.sem_prefix,
         )?;
 
         for service in &Self::SERVICES {
-            self.send_status_request(service)
+            self.service
+                .send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
         Ok(())
-    }
-
-    /// Phase 0+1+2: convenience wrapper used by the CLI (single-program) and the first worker setup.
-    pub fn start_asm_services(
-        &self,
-        ziskemuasm_path: &Path,
-        options: AsmRunnerOptions,
-    ) -> Result<()> {
-        self.create_shmem(ziskemuasm_path, &options)?;
-        self.start_services(ziskemuasm_path, options)
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
@@ -172,24 +233,16 @@ impl AsmServices {
         Ok(())
     }
 
-    pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
-        self.send_request(service, &PingRequest {})
-    }
-
-    pub fn send_shutdown_request(&self, service: &AsmService) -> Result<ShutdownResponse> {
-        self.send_request(service, &ShutdownRequest {})
-    }
-
     pub fn send_minimal_trace_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MinimalTraceResponse> {
-        self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+        self.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
     pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
-        self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
+        self.service.send_rom_histogram_request(max_steps)
     }
 
     pub fn send_memory_ops_request(
@@ -197,15 +250,7 @@ impl AsmServices {
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MemoryOperationsResponse> {
-        self.send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
-    }
-
-    fn send_request<Req, Res>(&self, service: &AsmService, req: &Req) -> Result<Res>
-    where
-        Req: ToRequestPayload,
-        Res: FromResponsePayload,
-    {
-        self.service.send_request(service, req)
+        self.service.send_memory_ops_request(max_steps, chunk_len)
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -217,7 +262,7 @@ impl AsmServices {
 
         let _ = sem.try_wait();
 
-        self.send_shutdown_request(service).with_context(|| {
+        self.service.send_shutdown_request(service).with_context(|| {
             format!("Service '{service}' failed to respond to shutdown request.")
         })?;
 
@@ -278,11 +323,6 @@ pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
         response[i] = u64::from_le_bytes(chunk.try_into()?);
     }
     Ok(response)
-}
-
-fn trim_binary_path(path: &Path) -> String {
-    let s = path.to_string_lossy();
-    s[..s.len().saturating_sub(7)].to_owned()
 }
 
 fn command_path_for(trimmed_path: &str, asm_service: &AsmService) -> String {
@@ -363,54 +403,4 @@ fn cleanup_shmem_for_prefix(shm_prefix: &str, service: &AsmService) -> Result<()
         }
     }
     Ok(())
-}
-
-/// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
-/// left by dead processes and unlink them.
-fn cleanup_stale_shmem() {
-    let dev_shm = std::path::Path::new("/dev/shm");
-    let entries = match std::fs::read_dir(dev_shm) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let name = match entry.file_name().into_string() {
-            Ok(n) => n,
-            Err(_) => continue,
-        };
-
-        // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
-        // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
-        let is_sem = name.starts_with("sem.ZISK_");
-        let is_shm = name.starts_with("ZISK_");
-        if !is_shm && !is_sem {
-            continue;
-        }
-
-        let parts: Vec<&str> = name.splitn(3, '_').collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        let Ok(pid) = parts[1].parse::<u32>() else { continue };
-
-        // Check if the process is still alive.
-        let alive = unsafe { libc::kill(pid as i32, 0) };
-        if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
-            continue; // process alive or owned by another user
-        }
-
-        // Process is dead (ESRCH) — unlink the stale entry.
-        if is_sem {
-            // sem file "sem.FOO" → POSIX name "/FOO"
-            let sem_name = format!("/{}", &name["sem.".len()..]);
-            tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
-            if let Ok(cstr) = std::ffi::CString::new(sem_name) {
-                unsafe { libc::sem_unlink(cstr.as_ptr()) };
-            }
-        } else {
-            tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
-            let _ = shm_unlink_by_name(&name);
-        }
-    }
 }
