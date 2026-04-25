@@ -8,19 +8,20 @@
 #include <random>
 #include <span>
 #include <vector>
-#include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_scan.cuh>
 
 // =====================================================================
 // Constants
 // =====================================================================
 
-constexpr uint32_t N_ADDR_ROM   = 1u << 24;   // 16M
-constexpr uint32_t N_ADDR_INPUT = 1u << 24;   // 16M
-constexpr uint32_t N_ADDR_RAM   = 1u << 26;   // 64M
-constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;  // 96M
+constexpr uint32_t N_ADDR_ROM   = 1u << 27;   // 128M
+constexpr uint32_t N_ADDR_INPUT = 1u << 30;   // 1G
+constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
+constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;  // 1.625G total addresses
 
-constexpr uint32_t INSTANCE_SIZE = 1u << 22;  // 4M entries per instance
+// Per-region instance size (rows per instance). Indexed by REGION_ROM/INPUT/RAM.
+constexpr uint32_t INSTANCE_SIZE[3]  = {1u << 22, 1u << 21, 1u << 22};
+constexpr uint32_t INSTANCE_SIZE_MAX = 1u << 22;  // upper bound for sizing buffers
 
 constexpr uint32_t MAX_INST_ROM   = 32;
 constexpr uint32_t MAX_INST_INPUT = 32;
@@ -29,7 +30,9 @@ constexpr uint32_t MAX_INSTANCES  = MAX_INST_ROM + MAX_INST_INPUT + MAX_INST_RAM
 constexpr uint32_t MAX_INST[3]    = {MAX_INST_ROM, MAX_INST_INPUT, MAX_INST_RAM};
 constexpr uint32_t MASK_WORDS     = (MAX_INSTANCES + 31) / 32;
 
-constexpr uint32_t MAX_OPS    = (uint32_t)MAX_INSTANCES * INSTANCE_SIZE;
+constexpr uint32_t MAX_OPS = (uint32_t)MAX_INST_ROM   * INSTANCE_SIZE[0]
+                           + (uint32_t)MAX_INST_INPUT * INSTANCE_SIZE[1]
+                           + (uint32_t)MAX_INST_RAM   * INSTANCE_SIZE[2];
 constexpr uint32_t N_WORKERS  = 16;
 constexpr uint32_t MAX_ACTIVE = (MAX_INSTANCES + N_WORKERS - 1) / N_WORKERS;
 constexpr uint32_t MAX_CHUNKS = 4096;
@@ -47,22 +50,29 @@ constexpr uint32_t REGION_N_ADDR[3]     = {N_ADDR_ROM, N_ADDR_INPUT, N_ADDR_RAM}
 // Helper Functions
 // =====================================================================
 
-// Maps raw hardware address to compact address space
+// Maps raw hardware address to compact address space.
+// Region layout (compact):
+//   [0 ..              N_ADDR_ROM)                 = ROM   (raw 0x80000000 .. )
+//   [N_ADDR_ROM ..     N_ADDR_ROM+N_ADDR_INPUT)    = INPUT (raw 0x40000000 .. )
+//   [N_ADDR_ROM+INPUT, N_ADDR)                     = RAM   (raw 0xA0000000 .. )
+//
+// Order matters: ROM addresses (0x80000000-0xA0000000) also satisfy the
+// `>= 0x40000000` predicate, so RAM must be tested first, then ROM, then INPUT.
 inline uint32_t compact_addr(uint32_t raw) {
     if (raw >= 0xA0000000u)
         return ((raw - 0xA0000000u) >> 3) + N_ADDR_ROM + N_ADDR_INPUT;
-    if (raw >= 0x90000000u)
-        return ((raw - 0x90000000u) >> 3) + N_ADDR_ROM;
-    return (raw - 0x80000000u) >> 3;
+    if (raw >= 0x80000000u)
+        return (raw - 0x80000000u) >> 3;
+    return ((raw - 0x40000000u) >> 3) + N_ADDR_ROM;  // INPUT
 }
 
 // Maps compact address back to raw hardware address
 inline uint32_t expand_addr(uint32_t compact) {
     if (compact >= N_ADDR_ROM + N_ADDR_INPUT)
         return ((compact - N_ADDR_ROM - N_ADDR_INPUT) << 3) + 0xA0000000u;
-    if (compact >= N_ADDR_ROM)
-        return ((compact - N_ADDR_ROM) << 3) + 0x90000000u;
-    return (compact << 3) + 0x80000000u;
+    if (compact < N_ADDR_ROM)
+        return (compact << 3) + 0x80000000u;                 // ROM
+    return ((compact - N_ADDR_ROM) << 3) + 0x40000000u;      // INPUT
 }
 
 // =====================================================================
@@ -83,12 +93,15 @@ __global__ void shift_and_histogram_kernel(uint32_t* ops, uint32_t* hist, uint32
     for (; i < num_ops; i += stride) {
         uint32_t addr = ops[i];
         uint32_t compact;
+        // Region order matters: ROM (0x80000000..) and INPUT (0x40000000..)
+        // overlap in the >= 0x40000000 predicate, so test RAM, then ROM,
+        // then fall through to INPUT.
         if (addr >= 0xA0000000u)
             compact = ((addr - 0xA0000000u) >> 3) + N_ADDR_ROM + N_ADDR_INPUT;
-        else if (addr >= 0x90000000u)
-            compact = ((addr - 0x90000000u) >> 3) + N_ADDR_ROM;
-        else
+        else if (addr >= 0x80000000u)
             compact = (addr - 0x80000000u) >> 3;
+        else
+            compact = ((addr - 0x40000000u) >> 3) + N_ADDR_ROM;
         ops[i] = compact;
         atomicAdd(&hist[compact], 1);
     }
@@ -115,6 +128,7 @@ __global__ void instance_boundaries_kernel(
     const uint32_t* prefix,
     uint32_t prefix_base_addr, uint32_t num_addr_region,
     uint32_t num_ops_region,
+    uint32_t instance_size,
     const uint32_t* active_ids,
     uint32_t* active_first, uint32_t* active_last,
     uint32_t* offset_starts,
@@ -125,8 +139,8 @@ __global__ void instance_boundaries_kernel(
 
     uint32_t local_inst  = active_ids[idx];
     uint32_t region_start = prefix[prefix_base_addr];
-    uint32_t base_pos    = region_start + local_inst * INSTANCE_SIZE;
-    uint32_t inst_size   = min(INSTANCE_SIZE, num_ops_region - local_inst * INSTANCE_SIZE);
+    uint32_t base_pos    = region_start + local_inst * instance_size;
+    uint32_t inst_size   = min(instance_size, num_ops_region - local_inst * instance_size);
     uint32_t inst_start  = (local_inst == 0) ? base_pos : base_pos - 1;
     uint32_t inst_end    = base_pos + inst_size;
 
@@ -263,6 +277,7 @@ __global__ void build_metas_kernel(
     const uint32_t* d_fml,
     const uint32_t* prefix,
     uint32_t prefix_base_addr, uint32_t num_ops_region,
+    uint32_t instance_size,
     const uint32_t* active_ids,
     const uint32_t* active_first, const uint32_t* active_last,
     uint32_t* result_nops,
@@ -330,8 +345,8 @@ __global__ void build_metas_kernel(
 
         uint32_t local_inst   = active_ids[ai];
         uint32_t region_start = prefix[prefix_base_addr];
-        uint32_t base_pos     = region_start + local_inst * INSTANCE_SIZE;
-        uint32_t inst_size    = min(INSTANCE_SIZE, num_ops_region - local_inst * INSTANCE_SIZE);
+        uint32_t base_pos     = region_start + local_inst * instance_size;
+        uint32_t inst_size    = min(instance_size, num_ops_region - local_inst * instance_size);
         uint32_t halo_base    = (local_inst == 0) ? base_pos : base_pos - 1;
         s_first_addr_total_skip = halo_base - prefix[fa];
 
@@ -481,6 +496,7 @@ __global__ void build_metas_kernel(
 __global__ void compute_addr_offsets_kernel(
     const uint32_t* prefix,
     uint32_t prefix_base_addr, uint32_t num_ops_region,
+    uint32_t instance_size,
     const uint32_t* active_ids,
     const uint32_t* active_first, const uint32_t* active_last,
     uint32_t* addr_offsets, const uint32_t* offset_starts,
@@ -495,7 +511,7 @@ __global__ void compute_addr_offsets_kernel(
 
     uint32_t local_inst   = active_ids[ai];
     uint32_t region_start = prefix[prefix_base_addr];
-    uint32_t base_pos     = region_start + local_inst * INSTANCE_SIZE;
+    uint32_t base_pos     = region_start + local_inst * instance_size;
     uint32_t halo_base    = (local_inst == 0) ? base_pos : base_pos - 1;
 
     uint32_t* out = addr_offsets + offset_starts[ai];
@@ -518,13 +534,86 @@ struct InstanceMeta {
     uint8_t  type;               // REGION_ROM / REGION_INPUT / REGION_RAM
     uint32_t first_addr;         // first raw hardware address covered
     uint32_t last_addr;          // last raw hardware address covered
-    std::span<const uint32_t> nops_per_chunk;  // view into pinned h_result_nops
+    std::span<const uint32_t> count_per_chunk;  // view into pinned h_result_nops
     std::span<uint32_t>       addr_offsets;    // view into pinned h_offsets_buf
     uint32_t first_addr_chunk;   // chunk where first-address data begins
-    uint32_t first_addr_skip;    // entries to skip in first_addr_chunk
+    uint32_t first_addr_skip;    // rows to skip in first_addr_chunk
     uint32_t last_addr_chunk;    // chunk where last-address data ends
-    uint32_t last_addr_include;  // entries to include in last_addr_chunk
+    uint32_t last_addr_include;  // rows to include in last_addr_chunk
 };
+
+// =====================================================================
+// InstanceMeta streaming save
+//
+// Binary file format (little-endian):
+//   uint32_t num_metas
+//   for each meta:
+//     uint32_t inst_id
+//     uint8_t  type
+//     uint8_t  pad[3]            (alignment)
+//     uint32_t first_addr
+//     uint32_t last_addr
+//     uint32_t first_addr_chunk
+//     uint32_t first_addr_skip
+//     uint32_t last_addr_chunk
+//     uint32_t last_addr_include
+//     uint32_t count_per_chunk_size
+//     uint32_t addr_offsets_size
+//     uint32_t count_per_chunk[count_per_chunk_size]
+//     uint32_t addr_offsets[addr_offsets_size]
+//
+// Used as: save_metas_begin → save_metas_append (per meta, possibly across
+// multiple gpu_metadata passes) → save_metas_end (writes final count). This
+// avoids accumulating all metas in host memory between passes — each meta
+// streams to disk as soon as its data is in pinned host buffers.
+//
+// See instance_meta_loader.hpp for the matching reader.
+// =====================================================================
+
+static FILE* save_metas_begin(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) { std::cerr << "ERROR: open " << path << " for write" << std::endl; std::exit(1); }
+    uint32_t placeholder = 0;
+    if (std::fwrite(&placeholder, sizeof(uint32_t), 1, f) != 1) {
+        std::cerr << "ERROR: short write " << path << std::endl; std::exit(1);
+    }
+    return f;
+}
+
+static void save_metas_append(FILE* f, const InstanceMeta& m) {
+    auto wr = [&](const void* p, size_t bytes) {
+        if (std::fwrite(p, 1, bytes, f) != bytes) {
+            std::cerr << "ERROR: short write" << std::endl; std::exit(1);
+        }
+    };
+    uint8_t type = m.type;
+    uint8_t pad[3] = {0, 0, 0};
+    uint32_t cps = (uint32_t)m.count_per_chunk.size();
+    uint32_t aos = (uint32_t)m.addr_offsets.size();
+    wr(&m.inst_id,            sizeof(uint32_t));
+    wr(&type, 1);
+    wr(pad, 3);
+    wr(&m.first_addr,         sizeof(uint32_t));
+    wr(&m.last_addr,          sizeof(uint32_t));
+    wr(&m.first_addr_chunk,   sizeof(uint32_t));
+    wr(&m.first_addr_skip,    sizeof(uint32_t));
+    wr(&m.last_addr_chunk,    sizeof(uint32_t));
+    wr(&m.last_addr_include,  sizeof(uint32_t));
+    wr(&cps, sizeof(uint32_t));
+    wr(&aos, sizeof(uint32_t));
+    wr(m.count_per_chunk.data(), cps * sizeof(uint32_t));
+    wr(m.addr_offsets.data(),    aos * sizeof(uint32_t));
+}
+
+static void save_metas_end(FILE* f, uint32_t total) {
+    if (std::fseek(f, 0, SEEK_SET) != 0) {
+        std::cerr << "ERROR: seek failed" << std::endl; std::exit(1);
+    }
+    if (std::fwrite(&total, sizeof(uint32_t), 1, f) != 1) {
+        std::cerr << "ERROR: short write of header count" << std::endl; std::exit(1);
+    }
+    std::fclose(f);
+}
 
 // =====================================================================
 // PairSortGPU
@@ -533,13 +622,10 @@ struct InstanceMeta {
 class PairSortGPU {
     // --- GPU memory ---
     uint32_t* d_ops;
-    uint32_t* d_ops_aux;                 // H2D staging + sort input buffer
     uint32_t* d_hist;
     uint32_t* d_prefix;
     void*     d_temp;
     size_t    d_temp_bytes;
-    void*     d_sort_temp[N_STREAMS];    // per-stream CUB radix-sort temp storage
-    size_t    d_sort_temp_bytes;
     uint32_t* d_active_ids;
     uint32_t* d_active_first;
     uint32_t* d_active_last;
@@ -606,6 +692,20 @@ public:
     void reference_sort();
     void verify();
 
+    // Read-only accessors to populated metas (for save/roundtrip).
+    const InstanceMeta* metas_ptr()         const { return metas.data(); }
+    uint32_t            num_active_instances() const { return num_active; }
+
+    // Override the active-mask: select all instances belonging to worker `w`
+    // (using the same `gid % N_WORKERS == w` rule as create_active_mask). Call
+    // BEFORE gpu_metadata() to override the random worker chosen by generate().
+    void set_active_worker(uint32_t w) {
+        std::memset(active_mask, 0, sizeof(active_mask));
+        for (uint32_t i = 0; i < MAX_INSTANCES; i++)
+            if (i % N_WORKERS == w)
+                active_mask[i / 32] |= (1u << (i % 32));
+    }
+
 private:
     void create_active_mask();
     void pick_active_instances();
@@ -622,7 +722,6 @@ PairSortGPU::PairSortGPU()
 {
     // GPU allocations
     cudaMalloc(&d_ops,           (size_t)MAX_OPS * sizeof(uint32_t));
-    cudaMalloc(&d_ops_aux,       (size_t)MAX_OPS * sizeof(uint32_t));
     cudaMalloc(&d_hist,          (size_t)N_ADDR * sizeof(uint32_t));
     cudaMalloc(&d_prefix,        (size_t)(N_ADDR + 1) * sizeof(uint32_t));
 
@@ -631,14 +730,6 @@ PairSortGPU::PairSortGPU()
     cub::DeviceScan::ExclusiveSum(d_temp, d_temp_bytes, d_hist, d_prefix, N_ADDR);
     cudaMalloc(&d_temp, d_temp_bytes);
 
-    // Per-stream radix-sort temp storage. Sized lazily in gpu_metadata once we
-    // know the largest actual chunk — CUB's temp-bytes query depends on
-    // num_items and querying for MAX_OPS produces wildly oversized temp that
-    // misleads the dispatch for small per-chunk sorts.
-    d_sort_temp_bytes = 0;
-    for (int s = 0; s < N_STREAMS; s++)
-        d_sort_temp[s] = nullptr;
-
 
     cudaMalloc(&d_active_ids,    MAX_ACTIVE * sizeof(uint32_t));
     cudaMalloc(&d_active_first,  MAX_ACTIVE * sizeof(uint32_t));
@@ -646,7 +737,7 @@ PairSortGPU::PairSortGPU()
     cudaMalloc(&d_fml,           (size_t)MAX_ACTIVE * MAX_CHUNKS * 3 * sizeof(uint32_t));
     cudaMalloc(&d_result_nops,   (size_t)MAX_ACTIVE * MAX_CHUNKS * sizeof(uint32_t));
     cudaMalloc(&d_meta_scalars,  (size_t)MAX_ACTIVE * 4 * sizeof(uint32_t));
-    cudaMalloc(&d_addr_offsets,  (size_t)MAX_ACTIVE * (INSTANCE_SIZE + 1) * sizeof(uint32_t));
+    cudaMalloc(&d_addr_offsets,  (size_t)MAX_ACTIVE * (INSTANCE_SIZE_MAX + 1) * sizeof(uint32_t));
     cudaMalloc(&d_offset_starts, MAX_ACTIVE * sizeof(uint32_t));
     cudaMalloc(&d_chunk_offsets, (MAX_CHUNKS + 1) * sizeof(uint32_t));
 
@@ -665,9 +756,9 @@ PairSortGPU::PairSortGPU()
 
     // Host — per-region output/reference arrays
     h_vals = new uint32_t[MAX_OPS];
-    size_t rom_sz   = (size_t)MAX_INST_ROM   * INSTANCE_SIZE;
-    size_t input_sz = (size_t)MAX_INST_INPUT * INSTANCE_SIZE;
-    size_t ram_sz   = (size_t)MAX_INST_RAM   * INSTANCE_SIZE;
+    size_t rom_sz   = (size_t)MAX_INST_ROM   * INSTANCE_SIZE[REGION_ROM];
+    size_t input_sz = (size_t)MAX_INST_INPUT * INSTANCE_SIZE[REGION_INPUT];
+    size_t ram_sz   = (size_t)MAX_INST_RAM   * INSTANCE_SIZE[REGION_RAM];
 
     out_ops_rom   = new uint32_t[rom_sz]();    out_vals_rom   = new uint32_t[rom_sz]();
     out_ops_input = new uint32_t[input_sz]();  out_vals_input = new uint32_t[input_sz]();
@@ -678,14 +769,13 @@ PairSortGPU::PairSortGPU()
     ref_ops_ram   = new uint32_t[ram_sz];      ref_vals_ram   = new uint32_t[ram_sz];
 
     // Print memory usage
-    size_t gpu_bytes = ((size_t)MAX_OPS * 2 + N_ADDR + N_ADDR + 1) * sizeof(uint32_t)
+    size_t gpu_bytes = ((size_t)MAX_OPS + N_ADDR + N_ADDR + 1) * sizeof(uint32_t)
                      + d_temp_bytes
-                     + (size_t)N_STREAMS * d_sort_temp_bytes
                      + (size_t)MAX_ACTIVE * 3 * sizeof(uint32_t)
                      + (size_t)MAX_ACTIVE * MAX_CHUNKS * 3 * sizeof(uint32_t)
                      + (size_t)MAX_ACTIVE * MAX_CHUNKS * sizeof(uint32_t)
                      + (size_t)MAX_ACTIVE * 4 * sizeof(uint32_t)
-                     + (size_t)MAX_ACTIVE * (INSTANCE_SIZE + 1) * sizeof(uint32_t)
+                     + (size_t)MAX_ACTIVE * (INSTANCE_SIZE_MAX + 1) * sizeof(uint32_t)
                      + (size_t)MAX_ACTIVE * sizeof(uint32_t)
                      + (size_t)(MAX_CHUNKS + 1) * sizeof(uint32_t);
     size_t pinned_bytes = (size_t)MAX_OPS * sizeof(uint32_t)
@@ -700,12 +790,9 @@ PairSortGPU::PairSortGPU()
 
 PairSortGPU::~PairSortGPU() {
     cudaFree(d_ops);
-    cudaFree(d_ops_aux);
     cudaFree(d_hist);
     cudaFree(d_prefix);
     cudaFree(d_temp);
-    for (int s = 0; s < N_STREAMS; s++)
-        cudaFree(d_sort_temp[s]);
     cudaFree(d_active_ids);
     cudaFree(d_active_first);
     cudaFree(d_active_last);
@@ -801,7 +888,7 @@ void PairSortGPU::generate(uint32_t block_number) {
     char path[512];
 
     for (uint32_t file_idx = 0; ; file_idx++) {
-        snprintf(path, sizeof(path), "chunk_data/%u/mem_addr_%04u.bin", block_number, file_idx);
+        snprintf(path, sizeof(path), "data/%u_aligned/mem_aligned_%u.bin", block_number, file_idx);
         FILE* f = fopen(path, "rb");
         if (!f) break;
 
@@ -856,42 +943,16 @@ void PairSortGPU::gpu_metadata() {
 
     // H2D + shift + histogram (pipelined by chunks)
     cudaMemset(d_hist, 0, (size_t)N_ADDR * sizeof(uint32_t));
-
-    // Size per-stream CUB temp to the largest actual chunk in this run.
-    uint32_t max_chunk_size = 0;
-    for (uint32_t c = 0; c < num_chunks; c++) {
-        uint32_t sz = chunk_offsets[c + 1] - chunk_offsets[c];
-        if (sz > max_chunk_size) max_chunk_size = sz;
-    }
-    size_t needed = 0;
-    cub::DeviceRadixSort::SortKeys(
-        nullptr, needed,
-        (uint32_t*)nullptr, (uint32_t*)nullptr, max_chunk_size);
-    if (needed > d_sort_temp_bytes) {
-        for (int s = 0; s < N_STREAMS; s++) {
-            if (d_sort_temp[s]) cudaFree(d_sort_temp[s]);
-            cudaMalloc(&d_sort_temp[s], needed);
-        }
-        d_sort_temp_bytes = needed;
-    }
-
     t = omp_get_wtime();
     int sh_block, sh_grid;
     cudaOccupancyMaxPotentialBlockSize(&sh_grid, &sh_block, shift_and_histogram_kernel, 0, 0);
 
-    // Measurement variation: sort each chunk's raw addresses into d_ops_aux to
-    // measure overhead, but discard the sorted output — shift_and_histogram still
-    // reads the original unsorted d_ops, so downstream correctness is unchanged.
     for (uint32_t c = 0; c < num_chunks - 1; c++) {
         int s = c % N_STREAMS;
         uint32_t off  = chunk_offsets[c];
         uint32_t size = chunk_offsets[c + 1] - off;
         cudaMemcpyAsync(d_ops + off, h_ops + off,
                         (size_t)size * sizeof(uint32_t), cudaMemcpyHostToDevice, streams[s]);
-        cub::DeviceRadixSort::SortKeys(
-            d_sort_temp[s], d_sort_temp_bytes,
-            d_ops + off, d_ops_aux + off, size,
-            0, sizeof(uint32_t) * 8, streams[s]);
         shift_and_histogram_kernel<<<sh_grid, sh_block, 0, streams[s]>>>(
             d_ops + off, d_hist, size);
     }
@@ -905,28 +966,12 @@ void PairSortGPU::gpu_metadata() {
         uint32_t size = chunk_offsets[c + 1] - off;
         cudaMemcpyAsync(d_ops + off, h_ops + off,
                         (size_t)size * sizeof(uint32_t), cudaMemcpyHostToDevice, streams[s]);
-        cub::DeviceRadixSort::SortKeys(
-            d_sort_temp[s], d_sort_temp_bytes,
-            d_ops + off, d_ops_aux + off, size,
-            0, sizeof(uint32_t) * 8, streams[s]);
         shift_and_histogram_kernel<<<sh_grid, sh_block, 0, streams[s]>>>(
             d_ops + off, d_hist, size);
     }
     cudaDeviceSynchronize();
-
-    // Force the sort output to be consumed so nothing (CUB/nvcc/driver) can
-    // elide the sort as dead work: read the first and last sorted keys across
-    // the whole range and fold them into a printed sentinel.
-    // Force the sort output to be observed so nothing can elide the work:
-    // read both ends of the sorted-per-chunk buffer.
-    uint32_t sort_first = 0, sort_last = 0;
-    cudaMemcpy(&sort_first, d_ops_aux,                sizeof(uint32_t), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&sort_last,  d_ops_aux + num_ops - 1,  sizeof(uint32_t), cudaMemcpyDeviceToHost);
-
     std::cout << std::fixed << std::setprecision(2)
-              << "  H2D + sort + histogram: " << (omp_get_wtime() - t) * 1e3 << " ms"
-              << " (sort sentinel: 0x" << std::hex << sort_first
-              << " / 0x" << sort_last << std::dec << ")" << std::endl;
+              << "  H2D + histogram:  " << (omp_get_wtime() - t) * 1e3 << " ms" << std::endl;
 
     // Prefix sum
     t = omp_get_wtime();
@@ -949,7 +994,7 @@ void PairSortGPU::gpu_metadata() {
 
     num_instances = 0;
     for (uint8_t r = 0; r < 3; r++) {
-        num_inst[r] = region_n_ops[r] ? (region_n_ops[r] + INSTANCE_SIZE - 1) / INSTANCE_SIZE : 0;
+        num_inst[r] = region_n_ops[r] ? (region_n_ops[r] + INSTANCE_SIZE[r] - 1) / INSTANCE_SIZE[r] : 0;
         if (num_inst[r] > MAX_INST[r]) {
             std::cerr << "ERROR: too many instances in region " << REGION_NAME[r]
                       << " (" << num_inst[r] << " > " << MAX_INST[r] << ")" << std::endl;
@@ -979,7 +1024,7 @@ void PairSortGPU::gpu_metadata() {
         uint32_t off = active_offset[r];
         instance_boundaries_kernel<<<1, na>>>(
             d_prefix, REGION_ADDR_START[r], REGION_N_ADDR[r],
-            region_n_ops[r],
+            region_n_ops[r], INSTANCE_SIZE[r],
             d_active_ids + off, d_active_first + off, d_active_last + off,
             d_offset_starts + off, na);
     }
@@ -1016,13 +1061,13 @@ void PairSortGPU::gpu_metadata() {
 
         build_metas_kernel<<<na, 256, 0, meta_stream>>>(
             d_fml + (size_t)off * num_chunks * 3, d_prefix,
-            REGION_ADDR_START[r], region_n_ops[r],
+            REGION_ADDR_START[r], region_n_ops[r], INSTANCE_SIZE[r],
             d_active_ids + off, d_active_first + off, d_active_last + off,
             d_result_nops + (size_t)off * num_chunks,
             d_meta_scalars + off * 4, na, num_chunks);
 
         compute_addr_offsets_kernel<<<na, 1024, 0, d2h_stream>>>(
-            d_prefix, REGION_ADDR_START[r], region_n_ops[r],
+            d_prefix, REGION_ADDR_START[r], region_n_ops[r], INSTANCE_SIZE[r],
             d_active_ids + off, d_active_first + off, d_active_last + off,
             d_addr_offsets, d_offset_starts + off, na);
     }
@@ -1051,7 +1096,7 @@ void PairSortGPU::gpu_metadata() {
             metas[ai].last_addr_chunk   = scalars[2];
             metas[ai].last_addr_include = scalars[3];
             uint32_t num_addrs = h_active_last[ai] - h_active_first[ai] + 1;
-            metas[ai].nops_per_chunk = {h_result_nops + (size_t)ai * num_chunks, num_chunks};
+            metas[ai].count_per_chunk = {h_result_nops + (size_t)ai * num_chunks, num_chunks};
             metas[ai].addr_offsets   = {h_offsets_buf + h_offset_starts[ai], num_addrs};
         }
     }
@@ -1077,12 +1122,13 @@ void PairSortGPU::cpu_fill() {
         else if (m.type == REGION_INPUT) { o_ops = out_ops_input; o_vals = out_vals_input; }
         else                             { o_ops = out_ops_ram;   o_vals = out_vals_ram;   }
 
-        uint32_t inst_size     = std::min(INSTANCE_SIZE, region_n_ops[m.type] - m.inst_id * INSTANCE_SIZE);
-        uint32_t out_base      = m.inst_id * INSTANCE_SIZE;
+        uint32_t isz           = INSTANCE_SIZE[m.type];
+        uint32_t inst_size     = std::min(isz, region_n_ops[m.type] - m.inst_id * isz);
+        uint32_t out_base      = m.inst_id * isz;
         uint32_t total_written = 0;
 
         for (uint32_t chunk = 0; chunk < num_chunks; chunk++) {
-            uint32_t expected = m.nops_per_chunk[chunk];
+            uint32_t expected = m.count_per_chunk[chunk];
             if (expected == 0) continue;
 
             uint32_t chunk_start = chunk_offsets[chunk];
@@ -1141,12 +1187,12 @@ void PairSortGPU::reference_sort() {
         return a.compact < b.compact || (a.compact == b.compact && a.pos < b.pos);
     });
 
-    memset(ref_ops_rom,    0, (size_t)MAX_INST_ROM   * INSTANCE_SIZE * sizeof(uint32_t));
-    memset(ref_vals_rom,   0, (size_t)MAX_INST_ROM   * INSTANCE_SIZE * sizeof(uint32_t));
-    memset(ref_ops_input,  0, (size_t)MAX_INST_INPUT * INSTANCE_SIZE * sizeof(uint32_t));
-    memset(ref_vals_input, 0, (size_t)MAX_INST_INPUT * INSTANCE_SIZE * sizeof(uint32_t));
-    memset(ref_ops_ram,    0, (size_t)MAX_INST_RAM   * INSTANCE_SIZE * sizeof(uint32_t));
-    memset(ref_vals_ram,   0, (size_t)MAX_INST_RAM   * INSTANCE_SIZE * sizeof(uint32_t));
+    memset(ref_ops_rom,    0, (size_t)MAX_INST_ROM   * INSTANCE_SIZE[REGION_ROM]   * sizeof(uint32_t));
+    memset(ref_vals_rom,   0, (size_t)MAX_INST_ROM   * INSTANCE_SIZE[REGION_ROM]   * sizeof(uint32_t));
+    memset(ref_ops_input,  0, (size_t)MAX_INST_INPUT * INSTANCE_SIZE[REGION_INPUT] * sizeof(uint32_t));
+    memset(ref_vals_input, 0, (size_t)MAX_INST_INPUT * INSTANCE_SIZE[REGION_INPUT] * sizeof(uint32_t));
+    memset(ref_ops_ram,    0, (size_t)MAX_INST_RAM   * INSTANCE_SIZE[REGION_RAM]   * sizeof(uint32_t));
+    memset(ref_vals_ram,   0, (size_t)MAX_INST_RAM   * INSTANCE_SIZE[REGION_RAM]   * sizeof(uint32_t));
 
     for (uint32_t p = 0; p < num_ops; p++) {
         uint32_t ca = triples[p].compact;
@@ -1194,8 +1240,9 @@ void PairSortGPU::verify() {
             r_ops = ref_ops_ram;   r_vals = ref_vals_ram;
         }
 
-        uint32_t inst_size = std::min(INSTANCE_SIZE, region_n_ops[m.type] - m.inst_id * INSTANCE_SIZE);
-        uint32_t start     = m.inst_id * INSTANCE_SIZE;
+        uint32_t isz       = INSTANCE_SIZE[m.type];
+        uint32_t inst_size = std::min(isz, region_n_ops[m.type] - m.inst_id * isz);
+        uint32_t start     = m.inst_id * isz;
 
         for (uint32_t j = 0; j < inst_size; j++) {
             uint32_t ind = start + j;
@@ -1221,24 +1268,56 @@ void PairSortGPU::verify() {
 
 int main(int argc, char** argv) {
     bool do_verify = false;
+    bool do_save_metas = false;
+    std::string metas_path;
     uint32_t block_number = 0;
     bool have_block = false;
 
     for (int i = 1; i < argc; i++) {
-        if (std::string(argv[i]) == "-v")
+        std::string a = argv[i];
+        if (a == "-v") {
             do_verify = true;
-        else {
+        } else if (a == "--save-metas" && i + 1 < argc) {
+            do_save_metas = true;
+            metas_path = argv[++i];
+        } else {
             block_number = std::strtoul(argv[i], nullptr, 10);
             have_block = true;
         }
     }
     if (!have_block) {
-        std::cerr << "Usage: " << argv[0] << " <block_number> [-v]" << std::endl;
+        std::cerr << "Usage: " << argv[0]
+                  << " <block_number> [-v] [--save-metas <path>]" << std::endl;
         return 1;
     }
 
     PairSortGPU app;
     app.generate(block_number);
+
+    if (do_save_metas) {
+        // MAX_ACTIVE = MAX_INSTANCES / N_WORKERS only fits ~1/N of the
+        // instances per gpu_metadata pass. Loop over all N_WORKERS, streaming
+        // each pass's metas straight to the file before the next pass
+        // overwrites the pinned host buffers. The total count is patched into
+        // the header at the end.
+        FILE* f = save_metas_begin(metas_path);
+        uint32_t total = 0;
+        for (uint32_t w = 0; w < N_WORKERS; w++) {
+            app.set_active_worker(w);
+            app.gpu_metadata();
+            const InstanceMeta* mp = app.metas_ptr();
+            const uint32_t      n  = app.num_active_instances();
+            for (uint32_t i = 0; i < n; i++) save_metas_append(f, mp[i]);
+            total += n;
+        }
+        save_metas_end(f, total);
+        std::cout << "Saved " << total << " InstanceMetas → " << metas_path
+                  << " (across " << N_WORKERS << " worker passes)" << std::endl;
+        // Skip cpu_fill in save mode — app.metas only reflects the last
+        // worker's slice, not the full union.
+        return 0;
+    }
+
     app.gpu_metadata();
     app.cpu_fill();
 
