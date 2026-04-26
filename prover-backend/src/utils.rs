@@ -79,7 +79,10 @@ pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
     proving_key_snark.cloned().unwrap_or_else(get_default_proving_key_snark)
 }
 
-pub fn ensure_rom<F: PrimeField64>(pctx: &ProofCtx<F>, elf: &GuestProgram) -> Result<ProgramVK> {
+pub fn ensure_program_vk<F: PrimeField64>(
+    pctx: &ProofCtx<F>,
+    elf: &GuestProgram,
+) -> Result<ProgramVK> {
     rom_merkle_setup(pctx, elf.elf(), &None)
 }
 

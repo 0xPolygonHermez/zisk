@@ -1,34 +1,32 @@
-use crate::get_asm_paths;
-use crate::guest::ProgramId;
-use crate::BackendProverOpts;
-use crate::GuestProgram;
 use crate::{
-    check_paths_exist, ensure_rom, get_rom_bin_path,
+    check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
+    guest::ProgramId,
     prover::{ProverBackend, ProverEngine, ZiskBackend},
-    ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
+    BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
+    ZiskAggPhaseResult, ZiskPhaseResult,
 };
-use asm_runner::HintsShmem;
-use asm_runner::{AsmRunnerOptions, AsmServices};
+use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use executor::{initialize_executor, AsmResources, AsmSharedResources};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{
-    initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
+    initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    {Arc, RwLock},
+};
 use zisk_cluster_common::LoggingConfig;
-use zisk_common::io::StreamSource;
-use zisk_common::io::ZiskStdin;
-use zisk_common::ExecutorStatsHandle;
-use zisk_common::ZiskExecutorTime;
-use zisk_common::{ProgramVK, ProofKind, PublicValues, ZiskVK};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime, ZiskVK,
+};
 use zisk_core::{Riscv2zisk, ZiskRom};
 
 use anyhow::Result;
@@ -106,6 +104,95 @@ impl AsmProver {
         )?;
         Ok(Self { core_prover, program_cache: RwLock::new(HashMap::new()) })
     }
+
+    fn get_asm_cache_paths(
+        elf: &GuestProgram,
+        with_hints: bool,
+    ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
+        let default_cache_path = std::env::var("HOME")
+            .map(PathBuf::from)
+            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
+            .join(DEFAULT_CACHE_PATH);
+        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
+        let asm_mt_path = default_cache_path.join(asm_mt_filename);
+        let asm_rh_path = default_cache_path.join(asm_rh_filename);
+
+        Ok((asm_mt_path, asm_rh_path))
+    }
+
+    fn start_asm_service(
+        &self,
+        elf: &GuestProgram,
+        zisk_rom: Arc<ZiskRom>,
+        program_vk: &ProgramVK,
+        asm_mt_path: PathBuf,
+        with_hints: bool,
+        pctx: &Arc<ProofCtx<fields::Goldilocks>>,
+    ) -> std::result::Result<(), anyhow::Error> {
+        let world_rank = self.core_prover.rank_info.world_rank;
+        let local_rank = self.core_prover.rank_info.local_rank;
+        let n_processes = self.core_prover.rank_info.n_processes;
+        let is_distributed = self.core_prover.asm_info.is_distributed;
+        let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
+        let asm_out_file = self.core_prover.asm_info.asm_out_file;
+        let verbose_mode = self.core_prover.asm_info.verbose;
+
+        timer_start_info!(STARTING_ASM_MICROSERVICES);
+
+        let asm_runner_options = AsmRunnerOptions::new()
+            .with_local_rank(local_rank)
+            .with_verbose(verbose_mode == VerboseMode::Debug)
+            .with_metrics(verbose_mode == VerboseMode::Debug)
+            .with_unlock_mapped_memory(unlock_mapped_memory)
+            .with_asm_out_file(asm_out_file);
+
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
+            let pctx = pctx.clone();
+            Arc::new(move |data: &mut Vec<u8>| {
+                pctx.mpi_ctx.broadcast(data);
+                Ok(())
+            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+        });
+
+        let init_rom = !is_distributed && world_rank == 0;
+
+        if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
+            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+            self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
+            return Ok(());
+        }
+
+        // Each program has its own shm_prefix (includes program hash), so each needs
+        // its own shmem creation + AsmSharedResources. Previous programs' resources
+        // stay alive in the pool via Arc.
+        let asm_services = AsmServices::new(
+            world_rank,
+            local_rank,
+            elf.program_id.hash_id.as_ref().to_string(),
+            &asm_mt_path,
+            asm_runner_options,
+        )?;
+        let shared = Arc::new(AsmSharedResources::new(
+            world_rank,
+            local_rank,
+            unlock_mapped_memory,
+            verbose_mode,
+            with_hints,
+            mpi_broadcast_fn,
+            init_rom,
+            asm_services.shm_prefix(),
+        )?);
+        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+
+        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+        self.core_prover.backend.set_asm_resources(resources.clone())?;
+        self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
+        self.program_cache.write().unwrap().insert(
+            elf.program_id.clone(),
+            ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
+        );
+        Ok(())
+    }
 }
 
 impl ProverEngine for AsmProver {
@@ -121,36 +208,23 @@ impl ProverEngine for AsmProver {
             return Ok(entry.program_vk.clone());
         }
 
-        let world_rank = self.core_prover.rank_info.world_rank;
-        let local_rank = self.core_prover.rank_info.local_rank;
-        let n_processes = self.core_prover.rank_info.n_processes;
-        let is_distributed = self.core_prover.asm_info.is_distributed;
-        let unlock_mapped_memory = self.core_prover.asm_info.unlock_mapped_memory;
-        let asm_out_file = self.core_prover.asm_info.asm_out_file;
-        let verbose_mode = self.core_prover.asm_info.verbose;
-
         let pctx = self.core_prover.backend.get_pctx()?;
 
-        let program_vk = ensure_rom(&pctx, elf)?;
+        // Computes the verification key (VK) for an ELF: loads it from cache if present.
+        let program_vk = ensure_program_vk(&pctx, elf)?;
 
-        // Phase 1 — ROM preparation
+        // Generate Zisk ROM from ELF
         let rv2zk = Riscv2zisk::new(elf.elf());
-
-        let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
+        let zisk_rom = rv2zk.run().map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let zisk_rom = Arc::new(zisk_rom);
 
-        // Phase 2 — Assembly file generation
-        let default_cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
-            .join(DEFAULT_CACHE_PATH);
+        // Assembly file generation
+        let (asm_mt_path, asm_rh_path) = Self::get_asm_cache_paths(elf, with_hints)?;
 
-        let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
+        let asm_mt_path_exists = check_paths_exist(&asm_mt_path).is_ok();
+        let asm_rh_path_exists = check_paths_exist(&asm_rh_path).is_ok();
 
-        let asm_mt_path = default_cache_path.join(asm_mt_filename);
-        let asm_rh_path = default_cache_path.join(asm_rh_filename);
-
-        if check_paths_exist(&asm_mt_path).is_err() || check_paths_exist(&asm_rh_path).is_err() {
+        if !asm_mt_path_exists || !asm_rh_path_exists {
             if self.core_prover.asm_info.no_auto_setup {
                 return Err(anyhow::anyhow!(
                         "Assembly files not found for ELF {}. Force ROM setup is enabled, but assembly files are still missing. Please ensure that the assembly generation process has been completed successfully.",
@@ -178,73 +252,20 @@ impl ProverEngine for AsmProver {
             pctx.mpi_ctx.barrier();
         }
 
+        // Sync all ranks.
         pctx.mpi_ctx.barrier();
 
-        // Phase 3 — Service startup + pool registration
-        let setup_result: Result<()> = (|| {
-            timer_start_info!(STARTING_ASM_MICROSERVICES);
+        // ASM Services startup + pool registration
+        let setup_result =
+            self.start_asm_service(elf, zisk_rom, &program_vk, asm_mt_path, with_hints, &pctx);
 
-            let asm_runner_options = AsmRunnerOptions::new()
-                .with_local_rank(local_rank)
-                .with_verbose(verbose_mode == VerboseMode::Debug)
-                .with_metrics(verbose_mode == VerboseMode::Debug)
-                .with_unlock_mapped_memory(unlock_mapped_memory)
-                .with_asm_out_file(asm_out_file);
-
-            let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-                let pctx = pctx.clone();
-                Arc::new(move |data: &mut Vec<u8>| {
-                    pctx.mpi_ctx.broadcast(data);
-                    Ok(())
-                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-            });
-
-            let init_rom = !is_distributed && world_rank == 0;
-
-            if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
-                timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-                self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
-                return Ok(());
-            }
-
-            // Each program has its own shm_prefix (includes program hash), so each needs
-            // its own shmem creation + AsmSharedResources. Previous programs' resources
-            // stay alive in the pool via Arc.
-            let asm_services = AsmServices::new(
-                world_rank,
-                local_rank,
-                elf.program_id.hash_id.as_ref().to_string(),
-                &asm_mt_path,
-                asm_runner_options,
-            )?;
-            let shared = Arc::new(AsmSharedResources::new(
-                world_rank,
-                local_rank,
-                unlock_mapped_memory,
-                verbose_mode,
-                with_hints,
-                mpi_broadcast_fn,
-                init_rom,
-                asm_services.shm_prefix(),
-            )?);
-            timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-
-            let resources = Arc::new(AsmResources::new(shared, asm_services)?);
-            self.core_prover.backend.set_asm_resources(resources.clone())?;
-            self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
-            self.program_cache.write().unwrap().insert(
-                elf.program_id.clone(),
-                ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
-            );
-            Ok(())
-        })();
-
-        // Phase 5 - Synchronize all MPI ranks and check if all succeeded.
+        // Synchronize all MPI ranks and check if all succeeded.
         let all_ok = pctx.mpi_ctx.all_finished_ok(setup_result.is_ok());
 
         // If this rank failed, return its own error.
         setup_result?;
 
+        // If another rank failed, return a generic error.
         if !all_ok {
             return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
         }

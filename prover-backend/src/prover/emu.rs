@@ -5,7 +5,7 @@ use crate::{
     prover::{ProverBackend, ProverEngine, ZiskBackend},
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
-use crate::{ensure_rom, get_rom_bin_path, BackendProverOpts};
+use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
 use executor::initialize_executor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -88,7 +88,7 @@ impl ProverEngine for EmuProver {
     fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
-        let program_vk = ensure_rom(&pctx, elf)?;
+        let program_vk = ensure_program_vk(&pctx, elf)?;
 
         let rv2zk = Riscv2zisk::new(elf.elf());
 
