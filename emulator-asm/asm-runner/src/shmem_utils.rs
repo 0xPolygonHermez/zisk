@@ -1,9 +1,8 @@
-use libc::{
-    c_uint, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
-    S_IWUSR,
-};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use libc::shm_unlink;
+use libc::{
+    c_uint, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR, S_IWUSR,
+};
 use proofman_common::format_bytes;
 use std::{
     ffi::CString,
