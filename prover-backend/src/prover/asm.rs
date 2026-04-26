@@ -64,25 +64,19 @@ impl<'a> AsmSetupBuilder<'a> {
     }
 }
 
+struct ProgramEntry {
+    zisk_rom: Arc<ZiskRom>,
+    program_vk: ProgramVK,
+    /// Keeps ASM resources (C processes + shmem) alive for the full worker lifetime.
+    resources: Arc<AsmResources>,
+}
+
 pub struct AsmProver {
-    pub(crate) core_prover: AsmCoreProver,
-    program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
-    /// Keeps one `AsmResources` per program alive so services are not stopped between setups.
-    asm_resources_pool: Arc<RwLock<HashMap<ProgramId, Arc<AsmResources>>>>,
+    core_prover: AsmCoreProver,
+    program_cache: RwLock<HashMap<ProgramId, ProgramEntry>>,
 }
 
 impl AsmProver {
-    /// Activate the ASM resources for a specific program, making them available for execution.
-    /// Called by the coordinator before each proof to select the right services.
-    pub fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
-        self.core_prover.backend.set_asm_resources(resources)
-    }
-
-    /// Returns the ASM resources pool (one entry per set-up program).
-    pub fn asm_resources_pool(&self) -> Arc<RwLock<HashMap<ProgramId, Arc<AsmResources>>>> {
-        self.asm_resources_pool.clone()
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -110,10 +104,7 @@ impl AsmProver {
             is_distributed,
             logging_config,
         )?;
-
-        let program_cache = Arc::new(RwLock::new(HashMap::new()));
-        let asm_resources_pool = Arc::new(RwLock::new(HashMap::new()));
-        Ok(Self { core_prover, program_cache, asm_resources_pool })
+        Ok(Self { core_prover, program_cache: RwLock::new(HashMap::new()) })
     }
 }
 
@@ -125,8 +116,10 @@ impl ProverEngine for AsmProver {
     }
 
     fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK> {
-        let pctx = self.core_prover.backend.get_pctx()?;
-        let program_vk = ensure_rom(&pctx, elf)?;
+        // Early return if program is already cached.
+        if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
+            return Ok(entry.program_vk.clone());
+        }
 
         let world_rank = self.core_prover.rank_info.world_rank;
         let local_rank = self.core_prover.rank_info.local_rank;
@@ -136,11 +129,17 @@ impl ProverEngine for AsmProver {
         let asm_out_file = self.core_prover.asm_info.asm_out_file;
         let verbose_mode = self.core_prover.asm_info.verbose;
 
+        let pctx = self.core_prover.backend.get_pctx()?;
+
+        let program_vk = ensure_rom(&pctx, elf)?;
+
+        // Phase 1 — ROM preparation
         let rv2zk = Riscv2zisk::new(elf.elf());
 
         let zisk_rom = rv2zk.run().unwrap_or_else(|e| panic!("Application error: {e}"));
         let zisk_rom = Arc::new(zisk_rom);
 
+        // Phase 2 — Assembly file generation
         let default_cache_path = std::env::var("HOME")
             .map(PathBuf::from)
             .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
@@ -181,6 +180,7 @@ impl ProverEngine for AsmProver {
 
         pctx.mpi_ctx.barrier();
 
+        // Phase 3 — Service startup + pool registration
         let setup_result: Result<()> = (|| {
             timer_start_info!(STARTING_ASM_MICROSERVICES);
 
@@ -201,13 +201,9 @@ impl ProverEngine for AsmProver {
 
             let init_rom = !is_distributed && world_rank == 0;
 
-            // Check if this program already has live services in the pool.
-            if let Some(existing) =
-                self.asm_resources_pool.read().unwrap().get(&elf.program_id).cloned()
-            {
+            if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
                 timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-                self.core_prover.backend.set_asm_resources(existing)?;
-                self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+                self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
                 return Ok(());
             }
 
@@ -234,19 +230,16 @@ impl ProverEngine for AsmProver {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
             let resources = Arc::new(AsmResources::new(shared, asm_services)?);
-            self.asm_resources_pool
-                .write()
-                .unwrap()
-                .insert(elf.program_id.clone(), resources.clone());
-            self.core_prover.backend.set_asm_resources(resources)?;
-
+            self.core_prover.backend.set_asm_resources(resources.clone())?;
             self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
-
-            self.program_cache.write().unwrap().insert(elf.program_id.clone(), zisk_rom);
+            self.program_cache.write().unwrap().insert(
+                elf.program_id.clone(),
+                ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
+            );
             Ok(())
         })();
 
-        // Synchronize all MPI ranks and check if all succeeded.
+        // Phase 5 - Synchronize all MPI ranks and check if all succeeded.
         let all_ok = pctx.mpi_ctx.all_finished_ok(setup_result.is_ok());
 
         // If this rank failed, return its own error.
@@ -258,6 +251,7 @@ impl ProverEngine for AsmProver {
 
         Ok(program_vk)
     }
+
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank
     }
@@ -271,21 +265,16 @@ impl ProverEngine for AsmProver {
     }
 
     fn register_program(&self, program_id: &ProgramId) -> Result<()> {
-        // Activate this program's services before execution/proving.
         // Required when multiple programs have been set up: setup() activates each program's
         // services in turn, so the last setup wins. register_program restores the right services.
-        if let Some(resources) = self.asm_resources_pool.read().unwrap().get(program_id).cloned() {
-            self.core_prover.backend.set_asm_resources(resources)?;
-        }
-
-        let rom = self
-            .program_cache
-            .read()
-            .ok()
-            .and_then(|cache| cache.get(program_id).cloned())
-            .ok_or_else(|| {
+        let guard = self.program_cache.read().unwrap();
+        let entry = guard.get(program_id).ok_or_else(|| {
             anyhow::anyhow!("Program '{}' not found in cache. Call setup() first.", program_id.name)
         })?;
+        self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
+        let rom = entry.zisk_rom.clone();
+        drop(guard);
+
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path)
