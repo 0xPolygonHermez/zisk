@@ -7,9 +7,9 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_cluster_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
+use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProgramVK, Proof, ProofKind, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
@@ -198,8 +198,6 @@ pub struct JobContext {
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
-    _worker_id: WorkerId,
-    _compute_capacity: ComputeCapacity,
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
@@ -213,11 +211,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
-    pub fn new_emu(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Emu>> {
+    pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
@@ -255,8 +249,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         );
 
         Ok(Worker::<Emu> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
@@ -268,11 +260,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
-    pub fn new_asm(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Asm>> {
+    pub fn new_asm(prover_config: ProverConfig) -> Result<Worker<Asm>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
@@ -321,8 +309,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         );
 
         Ok(Worker::<Asm> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,

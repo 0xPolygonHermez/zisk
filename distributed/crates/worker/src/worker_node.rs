@@ -40,11 +40,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Emu>> {
-        let worker = Worker::<Emu>::new_emu(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Emu>::new_emu(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
@@ -57,11 +53,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Asm>> {
-        let worker = Worker::<Asm>::new_asm(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Asm>::new_asm(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
