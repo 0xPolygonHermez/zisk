@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zisk_common::io::StreamSink;
+use zisk_common::io::{StreamProcessor, StreamSink};
 
 use crate::ControlShmem;
 
@@ -44,6 +44,20 @@ impl InputsShmemWriter {
     }
 
     pub fn reset(&self) {
+        unreachable!(
+            "InputsShmemWriter::reset() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+}
+
+impl StreamProcessor for InputsShmemWriter {
+    fn process_hints(&self, _data: &[u64], _first_batch: bool) -> anyhow::Result<bool> {
+        unreachable!(
+            "InputsShmemWriter::process_hints() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
+    fn reset(&self) {
         unreachable!(
             "InputsShmemWriter::reset() is not supported on this platform. Only Linux x86_64 is supported."
         );

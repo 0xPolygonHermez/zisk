@@ -143,6 +143,7 @@ impl StdioService {
         Ok(StdioHandle { stdin, stdout, stderr, child })
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub(super) fn close(&self, service: &AsmService) {
         let mut guard = self.state[service.as_index()].lock().unwrap();
         let _ = guard.child.kill();
@@ -164,6 +165,7 @@ impl StdioService {
         self.send_request(service, &PingRequest {})
     }
 
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub(super) fn send_shutdown_request(&self, service: &AsmService) -> Result<ShutdownResponse> {
         self.send_request(service, &ShutdownRequest {})
     }
