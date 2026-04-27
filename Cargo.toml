@@ -186,6 +186,7 @@ paste = "1.0"
 
 # gRPC dependencies
 tonic = "0.14"
+tonic-health = "0.14"
 tonic-prost = "0.14"
 tonic-build = "0.14"
 tonic-prost-build = "0.14"

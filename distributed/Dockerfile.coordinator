@@ -27,11 +27,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
     libssl-dev \
+    cmake \
+    curl \
+    git \
+    xz-utils \
+    jq \
+    libomp-dev \
+    libgmp-dev \
+    nlohmann-json3-dev \
     protobuf-compiler \
+    libprotobuf-dev \
+    uuid-dev \
+    libgrpc++-dev \
+    libsecp256k1-dev \
+    libsodium-dev \
+    libpqxx-dev \
+    nasm \
+    libopenmpi-dev \
+    openmpi-bin \
+    openmpi-common \
+    libclang-dev \
+    clang \
+    gcc-riscv64-unknown-elf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 
+ENV CARGO_BUILD_JOBS=64
 RUN cargo build --release -p zisk-coordinator-server
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
@@ -51,7 +73,7 @@ COPY --from=builder /workspace/target/release/zisk-coordinator /usr/local/bin/zi
 COPY --from=probe   /grpc_health_probe                      /usr/local/bin/grpc_health_probe
 
 # Public gRPC API | Prometheus metrics | Worker-facing coordinator (internal)
-EXPOSE 7000 9090 50051
+EXPOSE 7001 9091 50052
 
 USER zisk
 

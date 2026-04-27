@@ -12,11 +12,8 @@ use crate::backend::BackendService;
 use crate::config::Config as CoordinatorServerConfig;
 use crate::grpc::GrpcAdapter;
 use crate::handler::CoordinatorHandler;
-use crate::health::HealthService;
 use crate::metrics;
-use crate::proto::{
-    health_server::HealthServer, zisk_coordinator_api_server::ZiskCoordinatorApiServer,
-};
+use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApiServer;
 use crate::shutdown::shutdown_signal;
 
 /// Maximum inbound/outbound message size. Must be at least as large as
@@ -50,7 +47,10 @@ impl<B: BackendService> CoordinatorServer<B> {
         let svc = ZiskCoordinatorApiServer::new(service)
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
-        let health_svc = HealthServer::new(HealthService::new(self.cancel.clone()));
+
+        // Standard grpc.health.v1.Health service — used by grpc_health_probe / k8s.
+        let (health_reporter, health_svc) = tonic_health::server::health_reporter();
+        health_reporter.set_service_status("", tonic_health::ServingStatus::Serving).await;
 
         let cancel = self.cancel.clone();
         let drain_cancel = cancel.clone();

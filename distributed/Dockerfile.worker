@@ -38,6 +38,7 @@ RUN chmod +x ./tools/test-env/*.sh && \
 
 COPY . .
 
+ENV CARGO_BUILD_JOBS=64
 RUN cargo build --release -p zisk-worker
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────

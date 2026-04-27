@@ -18,7 +18,6 @@ pub mod config;
 pub mod errors;
 pub mod grpc;
 pub mod handler;
-pub mod health;
 pub mod metrics;
 pub mod server;
 pub mod shutdown;

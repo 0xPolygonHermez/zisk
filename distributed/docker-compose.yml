@@ -15,7 +15,7 @@ services:
 
   # ── Coordinator ──────────────────────────────────────────────────────────────
   # Public gRPC API + embedded coordination engine.
-  # Workers connect to the coordinator on port 50051 (internal to this container).
+  # Workers connect to the coordinator on port 50052 (internal to this container).
   coordinator:
     build:
       context: ..
@@ -24,8 +24,8 @@ services:
     container_name: zisk-coordinator
     restart: on-failure
     ports:
-      - "7000:7000" # public gRPC API
-      - "9090:9090" # Prometheus metrics
+      - "7001:7001" # public gRPC API
+      - "9091:9091" # Prometheus metrics
     volumes:
       - ./config/coordinator.toml:/etc/zisk/coordinator.toml:ro
     environment:
@@ -33,7 +33,7 @@ services:
     networks:
       - zisk
     healthcheck:
-      test: [ "CMD", "grpc_health_probe", "-addr=:7000" ]
+      test: [ "CMD", "grpc_health_probe", "-addr=:7001" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -52,8 +52,8 @@ services:
     restart: on-failure
     volumes:
       - ./config/worker.toml:/etc/zisk/worker.toml:ro
-      # Mount the ZisK cache (proving keys, ELF cache) from the host:
-      # - ${ZISK_CACHE_DIR:-~/.zisk/cache}:/app/.zisk/cache:ro
+      # Mount the ZisK home directory (provingKey, cache, etc.) from the host:
+      - ${ZISK_HOME:-~/.zisk}:/app/.zisk:ro
     environment:
       - RUST_LOG=info
     depends_on:
@@ -68,7 +68,9 @@ services:
     container_name: zisk-prometheus
     restart: on-failure
     ports:
-      - "9091:9090"
+      - "9090:9090"
+    extra_hosts:
+      - "coordinator:host-gateway"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
