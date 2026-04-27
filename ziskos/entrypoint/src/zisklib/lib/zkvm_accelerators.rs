@@ -916,11 +916,16 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
         {
             #[cfg(zisk_hints)]
             unsafe {
-                crate::hints::hint_bls12_381_fp_to_g1(std::ptr::addr_of!((*field_element).data).cast::<u8>());
+                crate::hints::hint_bls12_381_fp_to_g1(
+                    std::ptr::addr_of!((*field_element).data).cast::<u8>(),
+                );
             }
 
             #[cfg(zisk_hints_debug)]
-            crate::hint_log(format!("hint_bls12_381_fp_to_g1 (fp: {:x?})", &std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data))));
+            crate::hint_log(format!(
+                "hint_bls12_381_fp_to_g1 (fp: {:x?})",
+                &std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data))
+            ));
 
             #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
             {
@@ -934,7 +939,9 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
 
         #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
         {
-            match bls12_sw::map_fp_to_g1(&std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data))) {
+            match bls12_sw::map_fp_to_g1(&std::ptr::read_unaligned(std::ptr::addr_of!(
+                (*field_element).data
+            ))) {
                 Some(res) => {
                     (*result).data = res;
                     ZKVM_EOK
@@ -972,7 +979,9 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
         {
             #[cfg(zisk_hints)]
             unsafe {
-                crate::hints::hint_bls12_381_fp2_to_g2(std::ptr::addr_of!((*field_element).data).cast::<u8>());
+                crate::hints::hint_bls12_381_fp2_to_g2(
+                    std::ptr::addr_of!((*field_element).data).cast::<u8>(),
+                );
             }
 
             #[cfg(zisk_hints_debug)]
@@ -993,7 +1002,9 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
 
         #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
         {
-            match bls12_sw::map_fp2_to_g2(&std::ptr::read_unaligned(std::ptr::addr_of!((*field_element).data))) {
+            match bls12_sw::map_fp2_to_g2(&std::ptr::read_unaligned(std::ptr::addr_of!(
+                (*field_element).data
+            ))) {
                 Some(res) => {
                     (*result).data = res;
                     ZKVM_EOK
