@@ -83,8 +83,10 @@ impl AsmRunnerRH {
                 Some(RHShMemReader::new(asm_services.shm_prefix(), unlock_mapped_memory)?);
         }
 
-        let asm_rowh_output =
-            AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
+        let reader = asm_shared_memory.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("ASM_RH_RUNNER: asm_shared_memory is None after initialization")
+        })?;
+        let asm_rowh_output = AsmRHData::from_shared_memory(&reader.output_shmem);
 
         stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerRH::new(asm_rowh_output))

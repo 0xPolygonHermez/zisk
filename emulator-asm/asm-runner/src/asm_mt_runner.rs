@@ -98,7 +98,6 @@ impl AsmRunnerMT {
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
         const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32; // 384 bytes
 
-        let __stats = _stats.clone();
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
             preloaded
@@ -183,9 +182,22 @@ impl AsmRunnerMT {
 
         let response = handle.map_err(AsmRunError::ServiceError)?;
 
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM MT service returned non-zero result: {}",
+                response.result
+            ));
+        }
+        if response.trace_len == 0 {
+            return Err(anyhow::anyhow!("ASM MT service returned empty trace"));
+        }
+        if response.trace_len > response.allocated_len {
+            return Err(anyhow::anyhow!(
+                "ASM MT service trace_len ({}) exceeds allocated_len ({})",
+                response.trace_len,
+                response.allocated_len
+            ));
+        }
 
         stats_end!(_stats, &_runner_scope);
         Ok((emu_traces, asm_execution_info))

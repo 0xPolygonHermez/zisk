@@ -103,10 +103,17 @@ impl AsmRunnerMO {
             result
         });
 
-        let mem_planner = preloaded
-            .mem_planner
-            .take()
-            .unwrap_or_else(|| preloaded.handle_mo.take().unwrap().join().unwrap());
+        let mem_planner = match preloaded.mem_planner.take() {
+            Some(p) => p,
+            None => preloaded
+                .handle_mo
+                .take()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("MOShMemReader: both mem_planner and handle_mo are None")
+                })?
+                .join()
+                .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
+        };
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
@@ -199,9 +206,22 @@ impl AsmRunnerMO {
             .map_err(|_| AsmRunError::JoinPanic)?
             .map_err(AsmRunError::ServiceError)?;
 
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM MO service returned non-zero result: {}",
+                response.result
+            ));
+        }
+        if response.trace_len == 0 {
+            return Err(anyhow::anyhow!("ASM MO service returned empty trace"));
+        }
+        if response.trace_len > response.allocated_len {
+            return Err(anyhow::anyhow!(
+                "ASM MO service trace_len ({}) exceeds allocated_len ({})",
+                response.trace_len,
+                response.allocated_len
+            ));
+        }
 
         mem_planner.set_completed();
         // Wait for mem_align_plans, this mem_align_plans are calculated in rust from
