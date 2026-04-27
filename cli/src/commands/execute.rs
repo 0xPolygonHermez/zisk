@@ -116,7 +116,7 @@ impl ZiskExecute {
         let (result, executor_time) =
             if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
 
-        info!("{}", "--- EXECUTE SUMMARY ------------------------".bright_green().bold());
+        info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
         print_execution_summary(
             &executor_time,
             result.get_execution_time(),
