@@ -150,6 +150,16 @@ impl<T> JobHandle<T> {
         }
         self
     }
+
+    pub fn job_id(&self) -> Option<JobId> {
+        match &self.inner {
+            Some(JobHandleInner::Embedded(_)) => None,
+            Some(JobHandleInner::Remote { remote_job, .. }) => {
+                Some(JobId(remote_job.job_id().to_string()))
+            }
+            None => None,
+        }
+    }
 }
 
 impl<T> JobHandle<T> {
