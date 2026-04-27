@@ -11,6 +11,7 @@ use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::{sync::Mutex, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
@@ -70,7 +71,7 @@ impl RomExecutor {
         Ok(())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.is_asm_execution.store(true, Ordering::SeqCst);
         self.emulator_asm.set_asm_resources(asm_resources)
     }
@@ -78,6 +79,14 @@ impl RomExecutor {
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
+    }
+
+    /// Resets the ASM pipeline for the next job.
+    pub fn reset(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.reset()?;
+        }
+        Ok(())
     }
 
     pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {

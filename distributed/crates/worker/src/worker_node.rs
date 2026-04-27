@@ -16,7 +16,7 @@ use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
     StreamDataDto, WorkerState,
 };
-use zisk_common::{Proof, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ZiskExecutorTime};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -40,11 +40,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Emu>> {
-        let worker = Worker::<Emu>::new_emu(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Emu>::new_emu(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
@@ -57,11 +53,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Asm>> {
-        let worker = Worker::<Asm>::new_asm(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Asm>::new_asm(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
@@ -247,14 +239,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             error!("Computation task failed unexpectedly: {}", join_error);
                             self.report_computation_error(&message_sender, &join_error.to_string()).await;
                             self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Idle);
+                            self.worker.set_state(WorkerState::Ready);
                         }
                         Ok(()) => {
                             // Task completed without sending a ComputationResult — shouldn't
                             // happen in normal operation, but handle it defensively.
                             warn!("Computation task exited without sending a result");
                             self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Idle);
+                            self.worker.set_state(WorkerState::Ready);
                         }
                     }
                 }
@@ -693,7 +685,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if reset_current_job {
             info!("Aggregation task completed for {}", job_id);
             self.worker.set_current_job(None);
-            self.worker.set_state(WorkerState::Idle);
+            self.worker.set_state(WorkerState::Ready);
         }
 
         Ok(())
@@ -752,7 +744,42 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
 
-                    self.worker.set_state(WorkerState::Idle);
+                    // If the coordinator attached setup info, run setup now — before entering
+                    // the main event loop so no compute task can be processed without a guest program.
+                    if let Some(setup) = response.setup_program {
+                        let worker_id = self.worker_config.worker.worker_id.as_string();
+                        let job_id = setup.job_id.clone();
+                        let hash_id = setup.hash_id.clone();
+
+                        let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                            Ok(vk) => (true, String::new(), vk.vk),
+                            Err(e) => {
+                                error!(
+                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                    job_id, hash_id, e
+                                );
+                                (false, e.to_string(), Vec::new())
+                            }
+                        };
+
+                        let ack = WorkerMessage {
+                            payload: Some(worker_message::Payload::SetupProgramAck(
+                                SetupProgramAck {
+                                    vk,
+                                    job_id,
+                                    worker_id,
+                                    hash_id,
+                                    success,
+                                    error_message,
+                                },
+                            )),
+                        };
+                        if let Err(e) = message_sender.send(ack) {
+                            warn!("Failed to send SetupProgramAck after reconnection: {}", e);
+                        }
+                    }
+
+                    self.worker.set_state(WorkerState::Ready);
                 } else {
                     self.worker.set_state(WorkerState::Error);
                     error!("Registration rejected: {}", response.message);
@@ -786,10 +813,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 self.handle_stream_data(stream_data).await?;
             }
             coordinator_message::Payload::InputStreamData(input_data) => {
-                println!(
-                    "Received InputStreamData for job {}, input data: {:?}",
-                    input_data.job_id, input_data
-                );
                 self.handle_input_stream_data(input_data).await?;
             }
             coordinator_message::Payload::JobCancelled(cancelled) => {
@@ -800,7 +823,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                     if job.lock().await.job_id == cancelled_job_id {
                         self.worker.clear_current_job().await;
-                        self.worker.set_state(WorkerState::Idle);
+                        self.worker.set_state(WorkerState::Ready);
                     }
                 }
 
@@ -824,14 +847,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 let job_id = setup.job_id.clone();
                 let hash_id = setup.hash_id.clone();
 
-                let (success, error_message) = match self.handle_setup_program(setup) {
-                    Ok(()) => (true, String::new()),
+                let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                    Ok(vk) => (true, String::new(), vk.vk),
                     Err(e) => {
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
                         );
-                        (false, e.to_string())
+                        (false, e.to_string(), Vec::new())
                     }
                 };
 
@@ -842,6 +865,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         hash_id,
                         success,
                         error_message,
+                        vk,
                     })),
                 };
                 if let Err(e) = message_sender.send(ack) {
@@ -865,7 +889,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ///
     /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
     /// setup (generates ROM binary files on disk).
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<()> {
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
         use std::sync::Arc;
         use zisk_prover_backend::GuestProgram;
 
@@ -885,10 +909,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
-        self.worker.run_setup(&setup.hash_id, &setup.elf_bytes, guest_program)?;
+        let vk = self.worker.run_setup(
+            &setup.hash_id,
+            &setup.elf_bytes,
+            setup.with_hints,
+            guest_program,
+        )?;
 
         info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
-        Ok(())
+        Ok(vk)
     }
 
     pub async fn partial_contribution(
@@ -908,27 +937,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref inputs_uris)) => {
-                // Validate and get the full path
-                let inputs_uri = Self::validate_subdir(
-                    &self.worker_config.worker.inputs_folder,
-                    &PathBuf::from(&inputs_uris),
-                )
-                .await?;
+        let input_source = Self::resolve_input_source(
+            &self.worker_config.worker.inputs_folder,
+            params.input_source,
+        )
+        .await?;
 
-                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
-            }
-            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => InputSourceDto::InputNull,
-        };
-
-        let hints_source = if let Some(hints_path) = &params.hints_path {
+        let hints_source = if let Some(hints_data) = params.hints_data {
+            HintsSourceDto::HintsData(hints_data)
+        } else if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
-                // Hints will be streamed - use placeholder, will be updated when stream completes
                 HintsSourceDto::HintsStream(hints_path.clone())
             } else {
-                // Validate and get the full path
                 let hints_uri = Self::validate_subdir(
                     &self.worker_config.worker.inputs_folder,
                     &PathBuf::from(hints_path),
@@ -979,27 +999,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref inputs_uris)) => {
-                // Validate and get the full path
-                let inputs_uri = Self::validate_subdir(
-                    &self.worker_config.worker.inputs_folder,
-                    &PathBuf::from(&inputs_uris),
-                )
-                .await?;
+        let input_source = Self::resolve_input_source(
+            &self.worker_config.worker.inputs_folder,
+            params.input_source,
+        )
+        .await?;
 
-                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
-            }
-            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => InputSourceDto::InputNull,
-        };
-
-        let hints_source = if let Some(hints_path) = &params.hints_path {
+        let hints_source = if let Some(hints_data) = params.hints_data {
+            HintsSourceDto::HintsData(hints_data)
+        } else if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
-                // Hints will be streamed - use placeholder, will be updated when stream completes
                 HintsSourceDto::HintsStream(hints_path.clone())
             } else {
-                // Validate and get the full path
                 let hints_uri = Self::validate_subdir(
                     &self.worker_config.worker.inputs_folder,
                     &PathBuf::from(hints_path),
@@ -1049,6 +1060,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// # Arguments
     /// * `base_dir` - The base directory that must contain the subpath
     /// * `subpath` - The relative path within base_dir (can include subdirectories)
+    ///
+    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
+    ///
+    /// File paths are validated under `inputs_folder` with a 60 s timeout.
+    async fn resolve_input_source(
+        inputs_folder: &Path,
+        source: Option<InputSource>,
+    ) -> Result<InputSourceDto> {
+        match source {
+            Some(InputSource::InputPath(ref path)) => {
+                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
+                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
+            }
+            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
+            None => Ok(InputSourceDto::InputNull),
+        }
+    }
+
     ///
     /// # Returns
     /// * `Ok(PathBuf)` - The validated, canonicalized full path

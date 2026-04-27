@@ -208,8 +208,8 @@ async fn test_worker_disconnect_aborts_and_cancels() {
 
     // Worker 0 is Disconnected, workers 1+2 should be Idle
     assert_worker_state(&s.coordinator, w0_id, WorkerState::Disconnected).await;
-    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::Idle).await;
-    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::Idle).await;
+    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::Ready).await;
+    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::Ready).await;
 
     // Workers 1+2 should have received cancellation messages
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
@@ -289,7 +289,7 @@ async fn test_microcut_reconnection_preserves_connection() {
     let (sender, _msgs) = MockMessageSender::new();
     coordinator
         .workers_pool()
-        .register_worker(w0_id.clone(), 1u32, Box::new(sender))
+        .register_worker(w0_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
         .await
         .unwrap();
     assert_eq!(coordinator.workers_pool().connection_generation(w0_id).await, Some(1));
@@ -297,7 +297,7 @@ async fn test_microcut_reconnection_preserves_connection() {
     // Stale guard fires with gen 0 — should be a no-op
     coordinator.workers_pool().disconnect_worker_if_generation(w0_id, 0).await.unwrap();
 
-    // Worker should still be Idle (not Disconnected)
+    // Worker should still be Idle (not Disconnected) — registered directly without setup
     assert_worker_state(&coordinator, w0_id, WorkerState::Idle).await;
 }
 
@@ -352,9 +352,9 @@ async fn test_worker_error_aborts_and_cancels() {
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
     assert!(get_cancellation_count(&s.workers[2].1) >= 1);
 
-    // All workers should be Idle after cleanup
+    // All workers should be Ready after cleanup
     for (wid, _) in &s.workers {
-        assert_worker_state(&s.coordinator, wid, WorkerState::Idle).await;
+        assert_worker_state(&s.coordinator, wid, WorkerState::Ready).await;
     }
 }
 
@@ -372,7 +372,8 @@ async fn test_reconnect_idle_no_directive() {
         worker_id: WorkerId::from("w1".to_string()),
         compute_capacity: ComputeCapacity::from(1u32),
     };
-    let (accepted, _msg) = coordinator.handle_stream_registration(req, Box::new(sender)).await;
+    let (accepted, _msg, _setup) =
+        coordinator.handle_stream_registration(req, Box::new(sender)).await;
 
     assert!(accepted);
     // Registration (not reconnection) never produces a directive
@@ -394,7 +395,7 @@ async fn test_reconnect_unknown_job_gets_cancel() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(JobId::from("nonexistent-job".to_string())),
     };
-    let (accepted, _msg, directive) =
+    let (accepted, _msg, directive, _setup) =
         coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -421,7 +422,7 @@ async fn test_reconnect_terminal_job_gets_cancel() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
-    let (accepted, _msg, directive) =
+    let (accepted, _msg, directive, _setup) =
         s.coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -454,7 +455,7 @@ async fn test_reconnect_active_job_resumes() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: Some(s.job_id.clone()),
     };
-    let (accepted, _msg, directive) =
+    let (accepted, _msg, directive, _setup) =
         s.coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);
@@ -478,7 +479,7 @@ async fn test_reconnect_no_stale_job_no_directive() {
         compute_capacity: ComputeCapacity::from(1u32),
         last_known_job_id: None,
     };
-    let (accepted, _msg, directive) =
+    let (accepted, _msg, directive, _setup) =
         coordinator.handle_stream_reconnection(req, Box::new(sender)).await;
 
     assert!(accepted);

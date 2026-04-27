@@ -36,8 +36,7 @@ fn main() -> Result<()> {
 
     let stdin = ZiskStdin::new();
     let stdin = ZiskStdin::stream("unix://tmp/stdin.sock")?;
-    let hints = ZiskHints::stream("unix://tmp/hints.sock")?;
-    let hints = ZiskHints::stream("/home/user/hints.bin")?;
+    let hints = ZiskHints::file("/home/user/hints.bin")?;
 
     #[derive(Default)]
     struct EmbeddedOptions {

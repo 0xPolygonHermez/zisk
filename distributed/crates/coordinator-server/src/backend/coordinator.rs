@@ -23,7 +23,7 @@ use super::{
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
     DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, WaitResult,
+    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -74,7 +74,7 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
 
 fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> DomainJobKindResponse {
     match result {
-        CoordinatorJobResult::Setup => DomainJobKindResponse::Setup,
+        CoordinatorJobResult::Setup { vk } => DomainJobKindResponse::Setup { vk },
         CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
             proof: make_proof(hash_id.to_string(), proof_bytes),
             stats: coord_stats_to_domain(stats),
@@ -146,7 +146,15 @@ fn coord_event_to_domain(
 fn domain_input_to_dto(input: &DomainInputKind) -> InputsModeDto {
     match input {
         DomainInputKind::Inline(chunk) => InputsModeDto::InputsData(hex::encode(&chunk.data)),
-        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsPath(uri.clone()),
+        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsStream(uri.clone()),
+    }
+}
+
+fn domain_hints_to_dto(hints: &Option<DomainInputKind>) -> HintsModeDto {
+    match hints {
+        Some(DomainInputKind::Inline(chunk)) => HintsModeDto::HintsData(hex::encode(&chunk.data)),
+        Some(DomainInputKind::StreamUri(uri)) => HintsModeDto::HintsStream(uri.clone()),
+        None => HintsModeDto::HintsNone,
     }
 }
 
@@ -156,7 +164,14 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::InsufficientCapacity => {
             ApiError::ClusterUnavailable { reason: "no workers connected" }
         }
+        CoordinatorError::WorkersSettingUp => {
+            ApiError::ClusterUnavailable { reason: "workers are setting up; retry shortly" }
+        }
+        CoordinatorError::WorkersNotSetup => ApiError::ClusterUnavailable {
+            reason: "workers connected but setup not done; call setup() first",
+        },
         CoordinatorError::NotFoundOrInaccessible => ApiError::Internal("resource not found".into()),
+        CoordinatorError::ProgramNotFound(hash_id) => ApiError::ProgramNotFound(hash_id),
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
@@ -185,14 +200,17 @@ impl BackendService for CoordinatorBackend {
             .map_err(|e| internal(format!("register_guest_program: {e}")))
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<Uuid> {
+    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {
-                let job_id_internal =
-                    self.coordinator.setup_program(&r.hash_id).await.map_err(coord_err_to_api)?;
+                let job_id_internal = self
+                    .coordinator
+                    .setup_program(&r.hash_id, r.with_hints)
+                    .await
+                    .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&job_id_internal.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
-                Ok(job_id)
+                Ok(SubmitJobResult { job_id })
             }
             DomainJobKind::Prove(r) => {
                 let hash_id = r.hash_id.clone();
@@ -201,6 +219,7 @@ impl BackendService for CoordinatorBackend {
                     DomainProofKind::Plonk => ProofKind::Plonk,
                     _ => ProofKind::VadcopFinal,
                 };
+                let hints_mode = domain_hints_to_dto(&r.hints);
                 let response = self
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
@@ -208,7 +227,7 @@ impl BackendService for CoordinatorBackend {
                         compute_capacity: None,
                         minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),
-                        hints_mode: HintsModeDto::HintsNone,
+                        hints_mode,
                         simulated_node: None,
                         metadata: Default::default(),
                         execution_only: false,
@@ -219,10 +238,11 @@ impl BackendService for CoordinatorBackend {
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
-                Ok(job_id)
+                Ok(SubmitJobResult { job_id })
             }
             DomainJobKind::Execute(r) => {
                 let hash_id = r.hash_id.clone();
+                let hints_mode = domain_hints_to_dto(&r.hints);
                 let response = self
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
@@ -230,7 +250,7 @@ impl BackendService for CoordinatorBackend {
                         compute_capacity: None,
                         minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),
-                        hints_mode: HintsModeDto::HintsNone,
+                        hints_mode,
                         simulated_node: None,
                         metadata: Default::default(),
                         execution_only: true,
@@ -241,13 +261,13 @@ impl BackendService for CoordinatorBackend {
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 self.job_hash.write().await.insert(job_id.to_string(), hash_id);
-                Ok(job_id)
+                Ok(SubmitJobResult { job_id })
             }
             DomainJobKind::Wrap(r) => {
                 let proof_dest = match r.proof_dest {
                     DomainProofKind::StarkMinimal => 1,
                     DomainProofKind::Plonk => 2,
-                    DomainProofKind::Stark => 1, // treat Stark as minimal (same as VadcopFinalMinimal)
+                    DomainProofKind::Stark => 1,
                 };
                 let response = self
                     .coordinator
@@ -256,7 +276,7 @@ impl BackendService for CoordinatorBackend {
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
-                Ok(job_id)
+                Ok(SubmitJobResult { job_id })
             }
         }
     }
@@ -378,6 +398,32 @@ impl BackendService for CoordinatorBackend {
                 )?;
             }
         }
+
+        Ok(())
+    }
+
+    async fn push_job_hints_input(
+        &self,
+        job_id: Uuid,
+        mut chunks: InputChunkStream,
+    ) -> ApiResult<()> {
+        let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
+
+        // Feed each chunk into the coordinator's per-job relay channel.
+        // The channel feeds into PrecompileHintsRelay which parses the hint
+        // format and dispatches StreamData messages to workers.
+        while let Some(chunk_result) = futures::StreamExt::next(&mut chunks).await {
+            let chunk: zisk_coordinator_api::dto::DomainInputChunk =
+                chunk_result.map_err(|e| internal(format!("hints stream error: {e}")))?;
+            if !chunk.data.is_empty() {
+                self.coordinator
+                    .push_hints_grpc_data(&job_id_internal, chunk.data)
+                    .await
+                    .map_err(|e| internal(format!("hints relay error: {e}")))?;
+            }
+        }
+        // Signal EOF so the relay thread exits cleanly.
+        self.coordinator.finish_hints_grpc_stream(&job_id_internal).await;
 
         Ok(())
     }

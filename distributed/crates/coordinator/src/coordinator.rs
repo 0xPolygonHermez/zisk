@@ -52,21 +52,44 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity, ContributionParamsDto,
-    ContributionsResult, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
-    ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    ExecutionResult, HeartbeatAckDto, HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobResult, JobResultData, JobState,
-    LaunchProofRequestDto, LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind,
-    ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, StreamMessageKind,
-    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
-    WrapParamsDto, ZiskExecutorTimeDto,
+    elf_cache_path, AggParamsDto, AggProofData, ChallengesDto, ComputeCapacity,
+    ContributionParamsDto, ContributionsResult, CoordinatorMessageDto, DataId,
+    ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+    ExecuteTaskResponseResultDataDto, ExecutionResult, HeartbeatAckDto, HintsModeDto,
+    HintsSourceDto, InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobExecutionMode,
+    JobId, JobPhase, JobResult, JobResultData, JobState, LaunchProofRequestDto,
+    LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind, ProofStarkDto,
+    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
+    StreamMessageKind, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
+    WorkerRegisterRequestDto, WorkerState, WrapParamsDto, ZiskExecutorTimeDto,
 };
-use zisk_common::io::{StreamSource, ZiskStream};
+use zisk_common::io::{StreamRead, StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
 use zisk_common::Proof;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::ZISK_PUBLICS;
+
+struct SetupPendingState {
+    pending: HashSet<WorkerId>,
+    vks: Vec<(WorkerId, Vec<u8>)>,
+}
+
+/// Validates that all workers produced the same VK and returns it.
+/// Returns an error string if there are no VKs (all workers failed) or if VKs disagree.
+fn validate_setup_vks(job_id: &str, vks: Vec<(WorkerId, Vec<u8>)>) -> Result<Vec<u8>, String> {
+    let mut iter = vks.into_iter();
+    let (_, first_vk) = iter
+        .next()
+        .ok_or_else(|| format!("job {job_id}: all workers failed setup, no VK received"))?;
+    for (worker_id, vk) in iter {
+        if vk != first_vk {
+            return Err(format!(
+                "job {job_id}: worker {worker_id} returned a different VK than the first worker"
+            ));
+        }
+    }
+    Ok(first_vk)
+}
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -127,9 +150,16 @@ pub struct Coordinator {
     /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
     job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
 
-    /// Tracks in-flight setup jobs: maps job_id to the set of worker IDs that have not yet ACK'd.
+    /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
-    setup_pending: RwLock<HashMap<JobId, HashSet<WorkerId>>>,
+    setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
+    // (hash_id, with_hints) of the currently active setup, if any
+    active_setup: RwLock<Option<(String, bool)>>,
+
+    /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
+    /// Dropping or sending `None` signals EOF to the relay thread.
+    #[allow(clippy::type_complexity)]
+    grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -158,6 +188,8 @@ impl Coordinator {
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
+            active_setup: RwLock::new(None),
+            grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -214,6 +246,8 @@ impl Coordinator {
 
         if terminal {
             self.job_events.write().await.remove(job_id);
+            // Dropping the sender signals EOF to any running gRPC hints relay.
+            self.grpc_hints_senders.write().await.remove(job_id);
         }
     }
 
@@ -240,7 +274,7 @@ impl Coordinator {
         };
 
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
-        self.ensure_workers_idle(&worker_ids).await;
+        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
 
@@ -274,13 +308,12 @@ impl Coordinator {
 
     /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
     /// Returns a `JobId` that can be used to track completion via `subscribe_job_events`.
-    pub async fn setup_program(&self, hash_id: &str) -> CoordinatorResult<JobId> {
+    pub async fn setup_program(&self, hash_id: &str, with_hints: bool) -> CoordinatorResult<JobId> {
         use zisk_cluster_common::{elf_cache_path, SetupProgramDto};
 
         let path = elf_cache_path(hash_id);
-        let elf_bytes = fs::read(&path).map_err(|e| {
-            CoordinatorError::Internal(format!("ELF not found for hash_id {hash_id}: {e}"))
-        })?;
+        let elf_bytes =
+            fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
         let job_id = JobId::new();
         let workers = self.workers_pool.connected_worker_ids().await;
@@ -295,26 +328,42 @@ impl Coordinator {
 
         // Track which workers must ACK before the setup is considered complete.
         let pending: HashSet<WorkerId> = workers.iter().cloned().collect();
-        self.setup_pending.write().await.insert(job_id.clone(), pending);
+        self.setup_pending
+            .write()
+            .await
+            .insert(job_id.clone(), SetupPendingState { pending, vks: Vec::new() });
 
         for worker_id in &workers {
             let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
                 job_id: job_id.as_string(),
                 elf_bytes: elf_bytes.clone(),
                 hash_id: hash_id.to_string(),
+                with_hints,
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
                 // Remove unreachable worker from pending set — don't block on it.
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
-                    s.remove(worker_id);
+                    s.pending.remove(worker_id);
                 });
+            } else {
+                // Mark the worker as SettingUp so it is excluded from job assignment
+                // until its SetupProgramAck arrives.
+                let _ = self
+                    .workers_pool
+                    .mark_worker_with_state(worker_id, WorkerState::SettingUp)
+                    .await;
             }
         }
 
         // Edge case: all sends failed — complete immediately with failure.
-        let should_complete =
-            self.setup_pending.read().await.get(&job_id).map(|s| s.is_empty()).unwrap_or(true);
+        let should_complete = self
+            .setup_pending
+            .read()
+            .await
+            .get(&job_id)
+            .map(|s| s.pending.is_empty())
+            .unwrap_or(true);
         if should_complete {
             self.setup_pending.write().await.remove(&job_id);
             self.fire_job_event(
@@ -324,7 +373,28 @@ impl Coordinator {
             .await;
         }
 
+        self.active_setup.write().await.replace((hash_id.to_string(), with_hints));
+
         Ok(job_id)
+    }
+
+    /// Returns the active setup as a `SetupProgramDto` (reading the ELF from the on-disk cache),
+    /// or `None` if no setup is active or the cached ELF cannot be read.
+    async fn read_active_setup_dto(&self) -> Option<SetupProgramDto> {
+        let (hash_id, with_hints) = self.active_setup.read().await.clone()?;
+        let path = elf_cache_path(&hash_id);
+        match fs::read(&path) {
+            Ok(elf_bytes) => Some(SetupProgramDto {
+                job_id: JobId::new().as_string(),
+                elf_bytes,
+                hash_id,
+                with_hints,
+            }),
+            Err(e) => {
+                warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e);
+                None
+            }
+        }
     }
 
     /// Initiates a new distributed proof job.
@@ -389,6 +459,15 @@ impl Coordinator {
         // Initialize job state
         job.change_state(JobState::Running(JobPhase::Contributions));
 
+        // For execution-only jobs, record the Execution phase start time now
+        // so the completion handler can compute the correct wall-clock duration.
+        if job.execution_only {
+            job.phase_timings.insert(
+                JobPhase::Execution,
+                PhaseTimings { start_time: Utc::now(), end_time: None },
+            );
+        }
+
         let job_id = job.job_id.clone();
         let active_workers = self.select_workers_for_execution(&job)?;
 
@@ -438,6 +517,12 @@ impl Coordinator {
         let resolved = requested_units.min(available);
 
         if resolved < minimum_units {
+            if self.workers_pool.setting_up_workers().await > 0 {
+                return Err(CoordinatorError::WorkersSettingUp);
+            }
+            if self.workers_pool.idle_workers().await > 0 {
+                return Err(CoordinatorError::WorkersNotSetup);
+            }
             return Err(CoordinatorError::InsufficientCapacity);
         }
 
@@ -457,7 +542,7 @@ impl Coordinator {
             let ids = self.workers_pool.connected_worker_ids().await;
             let mut found: Option<WorkerId> = None;
             for id in ids {
-                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Idle)) {
+                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Ready)) {
                     found = Some(id);
                     break;
                 }
@@ -528,7 +613,7 @@ impl Coordinator {
         let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         let mut job = job_entry.write().await;
 
-        self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+        self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
 
         if !execute_task_response.success {
             job.change_state(JobState::Failed);
@@ -829,11 +914,26 @@ impl Coordinator {
                 })?;
                 InputSourceDto::InputData(inputs)
             }
+            InputsModeDto::InputsStream(_) => {
+                // Coordinator will relay streamed inputs to workers via InputStreamData.
+                // Workers receive InputNull and start execution; data arrives incrementally
+                // through append_raw_input (same mechanism as PushJobInput).
+                InputSourceDto::InputNull
+            }
             InputsModeDto::InputsNone => InputSourceDto::InputNull,
         };
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
+            HintsModeDto::HintsData(ref hints_hex) => {
+                let hints = hex::decode(hints_hex).map_err(|e| {
+                    CoordinatorError::Internal(format!(
+                        "Failed to decode inline hints data for job {}: {}",
+                        job.job_id, e
+                    ))
+                })?;
+                HintsSourceDto::HintsData(hints)
+            }
             HintsModeDto::HintsStream(hints_uri) => {
                 // Hints will be streamed separately
                 HintsSourceDto::HintsStream(hints_uri.clone())
@@ -915,13 +1015,18 @@ impl Coordinator {
         }
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
-            self.initialize_stream(job, cloned_active_workers)?;
+            self.initialize_stream(job, cloned_active_workers.clone()).await?;
+        }
+
+        if matches!(job.inputs_mode, InputsModeDto::InputsStream(ref uri) if !uri.starts_with("grpc://"))
+        {
+            self.initialize_input_relay(job, cloned_active_workers).await?;
         }
 
         Ok(())
     }
 
-    fn initialize_stream(
+    async fn initialize_stream(
         &self,
         job: &Job,
         cloned_active_workers: Vec<WorkerId>,
@@ -934,7 +1039,7 @@ impl Coordinator {
         let workers_clone = Arc::new(cloned_active_workers.clone());
         let workers_pool = Arc::clone(&self.workers_pool);
 
-        // Async dispatcher - no blocking, pure async flow for maximum performance
+        // Async dispatcher — no blocking, pure async flow for maximum performance.
         let dispatcher =
             move |sequence_number: u32, stream_type: StreamMessageKind, payload: Vec<u8>| {
                 use futures::future::join_all;
@@ -973,13 +1078,23 @@ impl Coordinator {
             };
         let hints_relay = PrecompileHintsRelay::new(dispatcher);
         let mut stream = ZiskStream::new(hints_relay);
-        let stream_reader = StreamSource::from_uri(hints_uri).map_err(|e| {
-            CoordinatorError::Internal(format!(
-                "Failed to create hints stream reader for job {}: {}",
-                job.job_id, e
-            ))
-        })?;
-        stream.set_hints_stream_src(stream_reader).map_err(|e| {
+
+        // For gRPC push, use a channel-backed reader and store the sender so
+        // that `push_hints_grpc_data` can feed chunks into the relay.
+        let stream_reader = if hints_uri.starts_with("grpc://") {
+            let (reader, tx) = StreamSource::channel();
+            self.grpc_hints_senders.write().await.insert(job.job_id.clone(), tx);
+            reader
+        } else {
+            StreamSource::from_uri(hints_uri).map_err(|e| {
+                CoordinatorError::Internal(format!(
+                    "Failed to create hints stream reader for job {}: {}",
+                    job.job_id, e
+                ))
+            })?
+        };
+
+        stream.set_stream_src(stream_reader).map_err(|e| {
             CoordinatorError::Internal(format!(
                 "Failed to set hints stream for job {}: {}",
                 job.job_id, e
@@ -992,6 +1107,162 @@ impl Coordinator {
             ))
         })?;
         Ok(())
+    }
+
+    /// Push a raw hints chunk from the gRPC `PushJobHintsInput` path into the
+    /// per-job relay.  Returns an error if the job has no active gRPC hints
+    /// relay (i.e. it was not submitted with a `"grpc://"` hints URI).
+    pub async fn push_hints_grpc_data(
+        &self,
+        job_id: &JobId,
+        data: Vec<u8>,
+    ) -> CoordinatorResult<()> {
+        let map = self.grpc_hints_senders.read().await;
+        let tx = map.get(job_id).ok_or_else(|| {
+            CoordinatorError::Internal(format!(
+                "no gRPC hints relay for job {} (job not found or not using grpc hints)",
+                job_id
+            ))
+        })?;
+        tx.send(Some(data)).map_err(|_| {
+            CoordinatorError::Internal(format!(
+                "gRPC hints relay channel closed for job {}",
+                job_id
+            ))
+        })
+    }
+
+    /// Signal EOF on the gRPC hints relay for a job.  Called when the client
+    /// closes the `PushJobHintsInput` stream.
+    pub async fn finish_hints_grpc_stream(&self, job_id: &JobId) {
+        if let Some(tx) = self.grpc_hints_senders.write().await.remove(job_id) {
+            let _ = tx.send(None);
+        }
+    }
+
+    /// Spawn a background thread that reads input chunks from a stream URI and
+    /// relays them to all workers as `InputStreamData` messages.
+    ///
+    /// Workers start with `InputNull` and receive data incrementally via
+    /// `append_raw_input` (same mechanism as `PushJobInput`).
+    ///
+    /// On stream errors, the job is marked as failed so workers are not left
+    /// waiting for data indefinitely.
+    async fn initialize_input_relay(
+        &self,
+        job: &Job,
+        active_workers: Vec<WorkerId>,
+    ) -> Result<(), CoordinatorError> {
+        let inputs_uri = match &job.inputs_mode {
+            InputsModeDto::InputsStream(uri) => uri.clone(),
+            _ => unreachable!(),
+        };
+
+        let job_id = job.job_id.clone();
+        let workers_pool = Arc::clone(&self.workers_pool);
+
+        // Grab the job Arc so the relay thread can mark it failed on error.
+        let job_arc = self
+            .jobs
+            .read()
+            .await
+            .get(&job_id)
+            .cloned()
+            .expect("job must be in jobs map before relay is spawned");
+
+        // Spawn a background thread: opens the stream reader, reads chunks,
+        // and relays each chunk to all workers via InputStreamData.
+        std::thread::spawn(move || {
+            // Create a dedicated multi-threaded tokio runtime so the QUIC
+            // reader's `block_on_dedicated` / `block_in_place` works correctly.
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("Failed to create input relay runtime");
+
+            rt.block_on(async move {
+                let result =
+                    Self::run_input_relay(&inputs_uri, &job_id, &active_workers, &workers_pool)
+                        .await;
+
+                if let Err(e) = result {
+                    error!("Input relay failed for job {}: {}", job_id, e);
+                    // Mark the job as failed so workers are not left waiting.
+                    let mut job = job_arc.write().await;
+                    if !job.state().is_resolved() {
+                        job.change_state(JobState::Failed);
+                    }
+                }
+            });
+        });
+
+        Ok(())
+    }
+
+    /// Core loop for the input relay: connects to the stream, reads chunks,
+    /// and broadcasts each to all workers.
+    async fn run_input_relay(
+        inputs_uri: &str,
+        job_id: &JobId,
+        workers: &[WorkerId],
+        workers_pool: &WorkersPool,
+    ) -> anyhow::Result<()> {
+        let mut stream = StreamSource::from_uri(inputs_uri)?;
+
+        // The SDK creates its listener after receiving the submit_job response, so
+        // the socket may not exist yet when this relay thread starts. Retry with
+        // backoff for up to 60 s before giving up.
+        if !stream.is_active() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            loop {
+                match stream.open() {
+                    Ok(_) => break,
+                    Err(e) => {
+                        if std::time::Instant::now() >= deadline {
+                            return Err(e.context(format!(
+                                "timed out waiting for input stream socket to become available: {}",
+                                inputs_uri
+                            )));
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                }
+            }
+        }
+
+        info!("Input relay started for job {} from {}", job_id, inputs_uri);
+
+        loop {
+            match stream.next() {
+                Ok(Some(chunk)) => {
+                    let sends = workers.iter().map(|worker_id| {
+                        let job_id = job_id.clone();
+                        let worker_id = worker_id.clone();
+                        let payload = chunk.clone();
+
+                        async move {
+                            let msg = CoordinatorMessageDto::InputStreamData(InputStreamDataDto {
+                                job_id,
+                                payload,
+                            });
+                            if let Err(e) = workers_pool.send_message(&worker_id, msg).await {
+                                error!("Failed to relay input to worker {}: {}", worker_id, e);
+                            }
+                        }
+                    });
+
+                    futures::future::join_all(sends).await;
+                }
+                Ok(None) => {
+                    info!("Input relay finished for job {} (stream ended)", job_id);
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
     }
 
     /// Marks a job as failed and performs and cleans up all associated resources
@@ -1021,7 +1292,7 @@ impl Coordinator {
 
         // These operations only need the worker IDs, not the job lock.
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
-        self.ensure_workers_idle(&worker_ids).await;
+        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
 
@@ -1066,16 +1337,28 @@ impl Coordinator {
             );
         }
 
-        // Remove this worker from the pending set (regardless of success/failure).
-        let all_done = {
+        // If this worker was held in SettingUp (registered while an active setup existed),
+        // transition it to Idle now so it becomes eligible for job assignment.
+        let worker_id = ack.worker_id.clone();
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            info!("[Setup] Worker {} finished setup, now Idle", ack.worker_id);
+        }
+
+        // Remove this worker from the pending set and accumulate its VK.
+        let outcome = {
             let mut pending = self.setup_pending.write().await;
-            if let Some(workers) = pending.get_mut(&job_id) {
-                workers.remove(&ack.worker_id);
-                if workers.is_empty() {
+            if let Some(state) = pending.get_mut(&job_id) {
+                state.pending.remove(&ack.worker_id);
+                if ack.success {
+                    state.vks.push((ack.worker_id.clone(), ack.vk));
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
                     pending.remove(&job_id);
-                    true
+                    Some(vks)
                 } else {
-                    false
+                    None
                 }
             } else {
                 // Job already completed or unknown — nothing to do.
@@ -1083,12 +1366,15 @@ impl Coordinator {
             }
         };
 
-        if all_done {
-            self.fire_job_event(
-                &job_id,
-                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup),
-            )
-            .await;
+        if let Some(vks) = outcome {
+            let event = match validate_setup_vks(&ack.job_id, vks) {
+                Ok(vk) => CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk }),
+                Err(e) => {
+                    error!("[Setup] VK mismatch for job_id {}: {}", ack.job_id, e);
+                    CoordinatorJobEvent::Failed(e)
+                }
+            };
+            self.fire_job_event(&job_id, event).await;
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 
@@ -1110,8 +1396,8 @@ impl Coordinator {
     }
 
     /// Marks all Computing workers in the list as Idle.
-    async fn ensure_workers_idle(&self, worker_ids: &[WorkerId]) {
-        self.workers_pool.mark_computing_workers_idle(worker_ids).await;
+    async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
+        self.workers_pool.mark_computing_workers_ready(worker_ids).await;
     }
 
     /// Handles new worker registration. Returns `(accepted, message)`.
@@ -1119,7 +1405,7 @@ impl Coordinator {
         &self,
         req: WorkerRegisterRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String) {
+    ) -> (bool, String, Option<SetupProgramDto>) {
         self.registrations.fetch_add(1, Ordering::Relaxed);
 
         let max_connections = self.config.coordinator.max_total_workers as usize;
@@ -1127,16 +1413,23 @@ impl Coordinator {
             return (
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
+                None,
             );
         }
 
+        // Check for active setup before registering so the initial state is set atomically —
+        // no window where the worker is Idle without having a guest program.
+        let setup = self.read_active_setup_dto().await;
+        let initial_state =
+            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
+
         match self
             .workers_pool
-            .register_worker(req.worker_id, req.compute_capacity, msg_sender)
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
             .await
         {
-            Ok(()) => (true, "Registration successful".to_string()),
-            Err(e) => (false, format!("Registration failed: {e}")),
+            Ok(()) => (true, "Registration successful".to_string(), setup),
+            Err(e) => (false, format!("Registration failed: {e}"), None),
         }
     }
 
@@ -1157,7 +1450,7 @@ impl Coordinator {
         &self,
         req: WorkerReconnectRequestDto,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
-    ) -> (bool, String, Option<ReconnectionDirectiveDto>) {
+    ) -> (bool, String, Option<ReconnectionDirectiveDto>, Option<SetupProgramDto>) {
         self.reconnections.fetch_add(1, Ordering::Relaxed);
 
         // Check max connections — but allow if the worker already exists (reconnection)
@@ -1169,16 +1462,25 @@ impl Coordinator {
                 false,
                 format!("Maximum concurrent connections reached: ({})", max_connections),
                 None,
+                None,
             );
         }
+
+        // Check for active setup before registering so the initial state is set atomically —
+        // no window where the worker is Idle without having a guest program.
+        let setup = self.read_active_setup_dto().await;
+        let initial_state =
+            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let worker_id = req.worker_id.clone();
         let last_known_job_id = req.last_known_job_id.clone();
 
-        if let Err(e) =
-            self.workers_pool.register_worker(req.worker_id, req.compute_capacity, msg_sender).await
+        if let Err(e) = self
+            .workers_pool
+            .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
+            .await
         {
-            return (false, format!("Reconnection failed: {e}"), None);
+            return (false, format!("Reconnection failed: {e}"), None, None);
         }
 
         // Reconcile stale job state
@@ -1196,7 +1498,7 @@ impl Coordinator {
             }
         }
 
-        (true, "Reconnection successful".to_string(), directive)
+        (true, "Reconnection successful".to_string(), directive, setup)
     }
 
     /// Computes the reconciliation directive for a reconnecting worker based on
@@ -1498,7 +1800,7 @@ impl Coordinator {
                 drop(job);
                 drop(job_entry);
                 self.workers_pool
-                    .mark_worker_with_state(&message.worker_id, WorkerState::Idle)
+                    .mark_worker_with_state(&message.worker_id, WorkerState::Ready)
                     .await?;
                 return Ok(());
             }
@@ -1591,7 +1893,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }
 
@@ -1645,7 +1947,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }
 
@@ -1792,7 +2094,7 @@ impl Coordinator {
 
         // Mark all workers as idle
         for worker_id in &job.workers {
-            self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Idle).await?;
+            self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
         }
 
         let exec_stats = exec_stats_from_job(&job);
@@ -2412,7 +2714,7 @@ impl Coordinator {
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
@@ -2509,7 +2811,7 @@ impl Coordinator {
         let assigned_workers = job.workers.clone();
 
         // Reset worker statuses back to Idle
-        self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Idle).await?;
+        self.workers_pool.mark_workers_with_state(&assigned_workers, WorkerState::Ready).await?;
 
         let end_time = Utc::now();
         let duration = end_time.signed_duration_since(
@@ -2565,7 +2867,7 @@ impl Coordinator {
                 // Aggregator already exists - mark the candidate as idle since it's not the aggregator
                 // This immediately frees up the worker's resources for other jobs
                 self.workers_pool
-                    .mark_worker_with_state(candidate_worker_id, WorkerState::Idle)
+                    .mark_worker_with_state(candidate_worker_id, WorkerState::Ready)
                     .await?;
                 Ok(existing_aggregator_id.clone())
             }
@@ -2789,7 +3091,7 @@ impl Coordinator {
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
             self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Idle)
+                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
@@ -2829,7 +3131,7 @@ impl Coordinator {
         let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
 
         // Mark the aggregation worker as Idle
-        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Idle).await?;
+        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
         let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
@@ -3180,7 +3482,7 @@ mod tests {
             let (sender, messages) = MockMessageSender::new();
             coordinator
                 .workers_pool
-                .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+                .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
                 .await
                 .unwrap();
             workers.push((worker_id, messages));
@@ -3241,16 +3543,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ensure_workers_idle_all_workers() {
+    async fn test_ensure_workers_ready_all_workers() {
         let (coordinator, workers, job_id) =
             setup_coordinator_with_job(3, JobPhase::Contributions, |_| {}).await;
 
-        // Only worker 0 has "results" — but ensure_workers_idle should mark ALL 3 as Idle
+        // Only worker 0 has "results" — but ensure_workers_ready should mark ALL 3 as Ready
         coordinator.fail_job(&job_id, "test").await.unwrap();
 
         for (wid, _) in &workers {
             let state = coordinator.workers_pool.worker_state(wid).await;
-            assert_eq!(state, Some(WorkerState::Idle), "Worker {} should be Idle", wid);
+            assert_eq!(state, Some(WorkerState::Ready), "Worker {} should be Ready", wid);
         }
     }
 
@@ -3375,7 +3677,7 @@ mod tests {
         let (sender, _msgs) = MockMessageSender::new();
         coordinator
             .workers_pool
-            .register_worker(worker_id.clone(), 1u32, Box::new(sender))
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
             .await
             .unwrap();
 
@@ -3389,7 +3691,7 @@ mod tests {
         let (sender2, _msgs2) = MockMessageSender::new();
         coordinator
             .workers_pool
-            .register_worker(worker_id.clone(), 1u32, Box::new(sender2))
+            .register_worker(worker_id.clone(), 1u32, Box::new(sender2), WorkerState::Idle)
             .await
             .unwrap();
 

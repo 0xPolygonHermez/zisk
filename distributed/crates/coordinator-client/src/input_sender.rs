@@ -4,7 +4,9 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use zisk_coordinator_api::grpc::proto::{InputChunk, PushJobInputRequest};
+use zisk_coordinator_api::grpc::proto::{
+    InputChunk, PushJobHintsInputRequest, PushJobInputRequest,
+};
 use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
 
 /// Maximum gRPC message payload per chunk (~3 MB, well under the 4 MB default).
@@ -25,7 +27,7 @@ pub struct InputSender {
 }
 
 impl InputSender {
-    /// Open a new input stream to the coordinator for `job_id`.
+    /// Open a new stdin stream to the coordinator for `job_id`.
     pub(crate) fn open(
         job_id: Uuid,
         mut client: ZiskCoordinatorApiClient<tonic::transport::Channel>,
@@ -45,6 +47,33 @@ impl InputSender {
                 .push_job_input(stream)
                 .await
                 .map_err(|e| anyhow::anyhow!("PushJobInput RPC failed: {e}"))?;
+
+            Ok(())
+        });
+
+        Self { job_id, tx: Some(tx), task: Some(task) }
+    }
+
+    /// Open a new hints stream to the coordinator for `job_id`.
+    pub(crate) fn open_hints(
+        job_id: Uuid,
+        mut client: ZiskCoordinatorApiClient<tonic::transport::Channel>,
+    ) -> Self {
+        let (tx, rx) = mpsc::channel::<Bytes>(16);
+
+        let task = tokio::spawn(async move {
+            let job_id_str = job_id.to_string();
+            let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(move |data| {
+                PushJobHintsInputRequest {
+                    job_id: job_id_str.clone(),
+                    chunk: Some(InputChunk { data: data.to_vec() }),
+                }
+            });
+
+            client
+                .push_job_hints_input(stream)
+                .await
+                .map_err(|e| anyhow::anyhow!("PushJobHintsInput RPC failed: {e}"))?;
 
             Ok(())
         });

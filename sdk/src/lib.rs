@@ -3,7 +3,8 @@ mod client;
 mod embedded;
 mod execute;
 mod hints;
-mod input;
+mod input_source;
+mod input_stream;
 mod job_handle;
 mod opts;
 mod prove;
@@ -18,8 +19,9 @@ pub use cancel::CancellationToken;
 pub use client::ProverClient;
 pub use embedded::{EmbeddedClient, EmbeddedClientBuilder};
 pub use execute::{ExecuteRequest, ExecuteResult};
-pub use hints::ZiskHints;
-pub use input::ProgramInput;
+pub use hints::{HintsSource, ZiskHints};
+pub use input_source::InputSource;
+pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
 pub use prove::{JobEvent, ProveRequest, ProveResult};
 pub use remote::{RemoteClient, RemoteClientBuilder};
@@ -49,21 +51,16 @@ pub use zisk_build::*;
 
 use anyhow::Result;
 
-use crate::{setup::SetupResult, upload::UploadResult};
-
-pub(crate) fn validate_stream_uri(uri: &str) -> Result<()> {
-    let is_valid = uri.starts_with("quic://") || (cfg!(unix) && uri.starts_with("unix://"));
-    if !is_valid {
-        #[cfg(unix)]
-        anyhow::bail!("stream() requires 'quic://' or 'unix://' scheme. Got: '{}'", uri);
-        #[cfg(not(unix))]
-        anyhow::bail!(
-            "stream() requires 'quic://' scheme. Got: '{}' (unix:// not supported on this platform)",
-            uri
-        );
-    }
-    Ok(())
+/// Run the ZisK emulator with the given program and stdin.
+pub fn run(
+    program: &GuestProgram,
+    stdin: ZiskStdin,
+    profiling: Option<ProfilingMode>,
+) -> Result<()> {
+    program.run_emulation(stdin.into_inner(), profiling)
 }
+
+use crate::{setup::SetupResult, upload::UploadResult};
 
 /// Executor backend for running programs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -75,6 +72,7 @@ pub enum ExecutorKind {
     Assembly,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) trait Client: Clone + Send + Sync + 'static {
     fn run_upload(&self, program: &GuestProgram) -> Result<UploadResult>;
 
@@ -89,17 +87,19 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
-    ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
+    ) -> Result<job_handle::JobHandle<ProveResult>>;
 
     fn run_execute(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,

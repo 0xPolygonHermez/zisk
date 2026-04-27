@@ -5,14 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use bytes::Bytes;
-use serde::Serialize;
 use zisk_coordinator_api::dto::{
     DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
     TerminalStatus,
 };
-use zisk_coordinator_client::{InputSender, Job, WatchHandle};
+use zisk_coordinator_client::{Job, WatchHandle};
 
+use crate::input_stream::ZiskStream;
 use crate::prove::JobEvent;
 use crate::setup::SetupResult;
 
@@ -24,6 +23,7 @@ const PROGRESS_AGGREGATE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
+pub(crate) type PreProcessHook = Box<dyn FnOnce(&TerminalStatus) -> Result<()> + Send>;
 
 pub(crate) fn fire_event(subscribers: &SubscriberList, event: JobEvent) {
     let matching: Vec<Arc<dyn Fn(JobEvent) + Send + Sync>> = match subscribers.lock() {
@@ -86,7 +86,12 @@ pub struct JobHandle<T> {
     pub(crate) inner: Option<JobHandleInner<T>>,
     pub(crate) subscribers: SubscriberList,
     pub(crate) timeout: Option<Duration>,
-    input_sender: Option<InputSender>,
+    pre_process: Option<PreProcessHook>,
+    /// Stream to finish automatically when the handle is awaited.
+    /// Stdin stream to finish automatically when the handle is awaited.
+    stream: Option<ZiskStream>,
+    /// Hints stream to finish automatically when the handle is awaited.
+    hints_stream: Option<ZiskStream>,
 }
 
 impl<T> JobHandle<T> {
@@ -99,7 +104,9 @@ impl<T> JobHandle<T> {
             inner: Some(JobHandleInner::Embedded(handle)),
             subscribers,
             timeout,
-            input_sender: None,
+            pre_process: None,
+            stream: None,
+            hints_stream: None,
         }
     }
 
@@ -107,6 +114,8 @@ impl<T> JobHandle<T> {
         remote_job: Job,
         subscribers: SubscriberList,
         timeout: Option<Duration>,
+        stream: Option<ZiskStream>,
+        hints_stream: Option<ZiskStream>,
     ) -> Self {
         let subs_watch = Arc::clone(&subscribers);
         let watch_handle =
@@ -115,8 +124,17 @@ impl<T> JobHandle<T> {
             inner: Some(JobHandleInner::Remote { remote_job, _watch_handle: watch_handle }),
             subscribers,
             timeout,
-            input_sender: None,
+            pre_process: None,
+            stream,
+            hints_stream,
         }
+    }
+
+    pub(crate) fn set_pre_process(
+        &mut self,
+        f: impl FnOnce(&TerminalStatus) -> Result<()> + Send + 'static,
+    ) {
+        self.pre_process = Some(Box::new(f));
     }
 
     /// Register a post-submission event callback.
@@ -151,56 +169,6 @@ impl<T> JobHandle<T> {
             None => anyhow::bail!("cannot cancel: JobHandle already consumed"),
         }
     }
-
-    /// Push input data to a running remote job.
-    ///
-    /// On the first call, a persistent gRPC input stream is opened. Subsequent
-    /// calls reuse the same stream. Large payloads (> 3 MB) are automatically
-    /// split into multiple gRPC messages without copying.
-    ///
-    /// Returns an error for embedded jobs (not supported) or if the handle has
-    /// already been consumed.
-    pub async fn push_input<S: Serialize>(&mut self, data: &S) -> Result<()> {
-        // Lazy-init the InputSender on first push
-        if self.input_sender.is_none() {
-            match &self.inner {
-                Some(JobHandleInner::Embedded(_)) => {
-                    anyhow::bail!("push_input is not supported for embedded jobs")
-                }
-                Some(JobHandleInner::Remote { remote_job, .. }) => {
-                    self.input_sender = Some(remote_job.open_input_stream());
-                }
-                None => anyhow::bail!("cannot push_input: JobHandle already consumed"),
-            }
-        }
-
-        // Frame the data in ZiskStdin wire format:
-        // [8 bytes: length as u64 LE] [N bytes: bincode payload] [padding to 8-byte align]
-        let payload = bincode::serialize(data)?;
-        let data_len = payload.len();
-        let total_len = 8 + data_len;
-        let padding = (8 - (total_len % 8)) % 8;
-
-        let mut buf = Vec::with_capacity(total_len + padding);
-        buf.extend_from_slice(&data_len.to_le_bytes());
-        buf.extend_from_slice(&payload);
-        if padding > 0 {
-            buf.extend_from_slice(&vec![0u8; padding]);
-        }
-
-        self.input_sender.as_ref().unwrap().send(Bytes::from(buf)).await
-    }
-
-    /// Close the input stream, signalling EOF to the coordinator.
-    ///
-    /// If no input was ever pushed, this is a no-op. After calling `close_input`,
-    /// further calls to [`push_input`](Self::push_input) will fail.
-    pub async fn close_input(&mut self) -> Result<()> {
-        if let Some(sender) = self.input_sender.take() {
-            sender.close().await?;
-        }
-        Ok(())
-    }
 }
 
 #[allow(private_bounds)]
@@ -224,6 +192,7 @@ impl<T: FromWaitResult> JobHandle<T> {
         remote_job: Job,
         timeout: Option<Duration>,
         subscribers: SubscriberList,
+        pre_process: Option<PreProcessHook>,
     ) -> Result<T> {
         let job_id = JobId(remote_job.job_id().to_string());
         let terminal = remote_job.wait_async(timeout).await?;
@@ -239,6 +208,10 @@ impl<T: FromWaitResult> JobHandle<T> {
             }
         }
 
+        if let Some(hook) = pre_process {
+            hook(&terminal)?;
+        }
+
         T::from_terminal(terminal, job_id)
     }
 }
@@ -251,15 +224,27 @@ impl<T: Send + 'static + FromWaitResult> IntoFuture for JobHandle<T> {
         let inner = self.inner.take().expect("JobHandle already consumed");
         let timeout = self.timeout;
         let subscribers = Arc::clone(&self.subscribers);
+        let pre_process = self.pre_process.take();
+        let stream = self.stream.take();
+        let hints_stream = self.hints_stream.take();
         Box::pin(async move {
-            match inner {
+            let result = match inner {
                 JobHandleInner::Embedded(handle) => Self::await_embedded(handle, timeout).await,
                 JobHandleInner::Remote { remote_job, _watch_handle } => {
                     // _watch_handle is kept alive until await_remote completes,
                     // then dropped (aborting the watch task).
-                    Self::await_remote(remote_job, timeout, subscribers).await
+                    Self::await_remote(remote_job, timeout, subscribers, pre_process).await
                 }
+            };
+            // Automatically close streams so any flush() before the next
+            // run() blocks safely instead of sending to the completed job.
+            if let Some(s) = stream {
+                let _ = s.finish_async().await;
             }
+            if let Some(s) = hints_stream {
+                let _ = s.finish_async().await;
+            }
+            result
         })
     }
 }
@@ -308,14 +293,6 @@ fn format_failure(failure: &DomainJobFailure) -> String {
     }
 }
 
-fn check_terminal(status: &TerminalStatus) -> Result<()> {
-    match status {
-        TerminalStatus::Completed(_) => Ok(()),
-        TerminalStatus::Failed(f) => anyhow::bail!(format_failure(f)),
-        TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
-    }
-}
-
 fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostPerType {
     zisk_common::StatsCostPerType {
         main_cost: stats.main_cost,
@@ -331,8 +308,16 @@ fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostP
 
 impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
-        check_terminal(&status)?;
-        Ok(SetupResult { job_id: Some(job_id) })
+        match status {
+            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. }) => {
+                Ok(SetupResult { job_id: Some(job_id) })
+            }
+            TerminalStatus::Completed(other) => {
+                anyhow::bail!("unexpected response kind for setup: {:?}", other)
+            }
+            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
+            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+        }
     }
 }
 

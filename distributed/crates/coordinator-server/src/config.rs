@@ -3,8 +3,7 @@
 //! Load order (later entries override earlier):
 //! 1. Built-in defaults
 //! 2. TOML file (path from `--config` or `ZISK_COORDINATOR_CONFIG`)
-//! 3. `ZISK_COORDINATOR_*` environment variables
-//! 4. CLI flags passed explicitly to [`Config::load`]
+//! 3. CLI flags / env vars: --api-port, --cluster-port, --metrics-port, --log-level
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -59,15 +58,16 @@ pub struct CoordinatorConfig {
     /// Path to a coordinator TOML config file. `None` uses coordinator defaults.
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
-    pub worker_port: u16,
+    pub port: u16,
 }
 
 impl Config {
     pub fn load(
         config_file: Option<String>,
-        port: Option<u16>,
+        api_port: Option<u16>,
+        cluster_port: Option<u16>,
+        metrics_port: Option<u16>,
         log_level: Option<String>,
-        backend: Option<String>,
     ) -> Result<Self> {
         let mut builder = config::Config::builder()
             // service
@@ -88,10 +88,9 @@ impl Config {
             // backend
             .set_default("backend.mode", "coordinator")?
             // coordinator
-            .set_default("coordinator.worker_port", 50051u16)?;
+            .set_default("coordinator.port", 50051u16)?;
 
         // Well-known config file locations, searched in order (least to most specific).
-        // All are optional — the first one found wins for any given key.
         for path in default_config_paths() {
             builder = builder
                 .add_source(config::File::with_name(&path.to_string_lossy()).required(false));
@@ -102,21 +101,20 @@ impl Config {
             builder = builder.add_source(config::File::with_name(&path));
         }
 
-        // Environment variable overrides: ZISK_COORDINATOR__SERVER__PORT etc.
-        builder = builder.add_source(
-            config::Environment::with_prefix("ZISK_COORDINATOR").separator("__").try_parsing(true),
-        );
-
-        // CLI overrides — always highest priority
+        // CLI / env-var overrides — always highest priority.
+        // Each field has an explicit env var defined on the clap arg in main.rs.
         builder = builder.set_override("service.version", env!("CARGO_PKG_VERSION"))?;
-        if let Some(p) = port {
+        if let Some(p) = api_port {
             builder = builder.set_override("server.port", p)?;
+        }
+        if let Some(p) = cluster_port {
+            builder = builder.set_override("coordinator.port", p)?;
+        }
+        if let Some(p) = metrics_port {
+            builder = builder.set_override("metrics.port", p)?;
         }
         if let Some(level) = log_level {
             builder = builder.set_override("logging.level", level)?;
-        }
-        if let Some(mode) = backend {
-            builder = builder.set_override("backend.mode", mode)?;
         }
 
         Ok(builder.build()?.try_deserialize()?)
@@ -159,22 +157,36 @@ mod tests {
 
     #[test]
     fn defaults_load_without_file() {
-        let cfg = Config::load(None, None, None, None).unwrap();
+        let cfg = Config::load(None, None, None, None, None).unwrap();
+        assert_eq!(cfg.server.host, "0.0.0.0");
         assert_eq!(cfg.server.port, 7000);
+        assert_eq!(cfg.coordinator.port, 50051);
         assert_eq!(cfg.metrics.port, 9090);
         assert_eq!(cfg.backend.mode, BackendMode::Coordinator);
         assert_eq!(cfg.service.version, env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn cli_port_override() {
-        let cfg = Config::load(None, Some(8080), None, None).unwrap();
+    fn cli_api_port_override() {
+        let cfg = Config::load(None, Some(8080), None, None, None).unwrap();
         assert_eq!(cfg.server.port, 8080);
     }
 
     #[test]
+    fn cli_cluster_port_override() {
+        let cfg = Config::load(None, None, Some(50100), None, None).unwrap();
+        assert_eq!(cfg.coordinator.port, 50100);
+    }
+
+    #[test]
+    fn cli_metrics_port_override() {
+        let cfg = Config::load(None, None, None, Some(9999), None).unwrap();
+        assert_eq!(cfg.metrics.port, 9999);
+    }
+
+    #[test]
     fn grpc_addr_format() {
-        let cfg = Config::load(None, Some(9000), None, None).unwrap();
+        let cfg = Config::load(None, Some(9000), None, None, None).unwrap();
         assert_eq!(cfg.grpc_addr(), "0.0.0.0:9000");
     }
 }

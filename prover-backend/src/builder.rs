@@ -230,13 +230,11 @@ impl ProverClientBuilder<AsmB> {
             proving_key,
             proving_key_snark,
             true,
-            self.prover_options.asm_options.base_port,
             self.prover_options.asm_options.unlock_mapped_memory,
             self.prover_options.asm_options.asm_out_file,
             self.prover_options.asm_options.no_auto_setup,
             options,
             self.prover_options.asm_options.is_distributed,
-            self.prover_options.asm_options.stdio,
             self.logging_config,
         )?;
 

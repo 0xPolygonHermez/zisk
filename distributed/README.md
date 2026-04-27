@@ -108,15 +108,14 @@ The coordinator is configured via a TOML file. The search order (later entries o
 | `service.name` | — | `ZisK Coordinator` | Service name |
 | `service.environment` | — | `development` | `development` \| `staging` \| `production` |
 | `server.host` | — | `0.0.0.0` | gRPC listen host |
-| `server.port` | `--port` / `ZISK_COORDINATOR_PORT` | `7000` | gRPC listen port |
+| `server.port` | `--api-port` / `ZISK_COORDINATOR_API_PORT` | `7000` | Client-facing gRPC API port |
 | `server.shutdown_timeout_seconds` | — | `30` | Graceful shutdown timeout |
 | `metrics.enabled` | — | `true` | Enable Prometheus metrics endpoint |
 | `metrics.host` | — | `0.0.0.0` | Metrics listen host |
-| `metrics.port` | — | `9090` | Metrics listen port |
+| `metrics.port` | `--metrics-port` / `ZISK_COORDINATOR_METRICS_PORT` | `9090` | Metrics listen port |
 | `logging.level` | `--log-level` / `RUST_LOG` | `info` | `trace` \| `debug` \| `info` \| `warn` \| `error` |
 | `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
-| `backend.mode` | `--backend` / `ZISK_COORDINATOR_BACKEND` | `coordinator` | `coordinator` \| `mock` |
-| `coordinator.worker_port` | — | `50051` | Port for worker connections |
+| `coordinator.port` | `--cluster-port` / `ZISK_COORDINATOR_CLUSTER_PORT` | `50051` | Worker-facing cluster port |
 | `coordinator.config_file` | — | — | Optional path to a coordinator TOML config |
 
 #### Example: development config
@@ -133,7 +132,7 @@ format = "pretty"
 mode = "coordinator"
 
 [coordinator]
-worker_port = 50051
+cluster_port = 50051
 ```
 
 #### Example: production config
@@ -157,8 +156,8 @@ format = "json"
 mode = "coordinator"
 
 [coordinator]
-worker_port = 50051
-# config_file = "/etc/zisk/coordinator.toml"  # tune coordinator internals
+cluster_port = 50051
+# config_file = "/etc/zisk/coordinator-core.toml"  # optional: tune coordinator internals
 ```
 
 ### Coordinator tuning (optional)

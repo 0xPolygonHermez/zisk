@@ -28,39 +28,18 @@ use zisk_core::ZiskRom;
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
 /// ASM-specific configuration options
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AsmOptions {
     pub asm_path: Option<PathBuf>,
-    pub base_port: Option<u16>,
     pub no_auto_setup: bool,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub is_distributed: bool,
-    pub stdio: bool,
-}
-
-impl Default for AsmOptions {
-    fn default() -> Self {
-        Self {
-            asm_path: None,
-            base_port: None,
-            no_auto_setup: false,
-            unlock_mapped_memory: false,
-            asm_out_file: false,
-            is_distributed: false,
-            stdio: true,
-        }
-    }
 }
 
 impl AsmOptions {
     pub fn asm_path(mut self, path: PathBuf) -> Self {
         self.asm_path = Some(path);
-        self
-    }
-
-    pub fn base_port(mut self, port: u16) -> Self {
-        self.base_port = Some(port);
         self
     }
 
@@ -76,11 +55,6 @@ impl AsmOptions {
 
     pub fn asm_out_file(mut self) -> Self {
         self.asm_out_file = true;
-        self
-    }
-
-    pub fn stdio(mut self) -> Self {
-        self.stdio = true;
         self
     }
 
@@ -284,7 +258,7 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<()>;
+    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK>;
 
     /// Create a setup builder for the given ELF program.
     ///
@@ -405,6 +379,10 @@ pub trait ProverEngine {
 
     fn register_hints_stream(&self, _stream: StreamSource) -> Result<()> {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
+    }
+
+    fn register_inputs_stream(&self, _stream: StreamSource) -> Result<()> {
+        Err(anyhow::anyhow!("register_inputs_stream not supported by this backend"))
     }
 
     fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
@@ -629,6 +607,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.prover.register_hints_stream(stream)
+    }
+
+    pub fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+        self.prover.register_inputs_stream(stream)
     }
 
     pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {

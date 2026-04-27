@@ -1,7 +1,10 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
+use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path};
+use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
 use zisk_prover_backend::GuestProgram;
 
 use crate::job_handle::{JobHandle, JobId};
@@ -28,12 +31,13 @@ pub struct SetupRequest<'a, C> {
     program: &'a GuestProgram,
     with_hints: bool,
     timeout: Option<Duration>,
+    output_dir: Option<PathBuf>,
 }
 
 #[allow(private_bounds)]
 impl<'a, C: Client> SetupRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
-        Self { client, program, with_hints: false, timeout: None }
+        Self { client, program, with_hints: false, timeout: None, output_dir: None }
     }
 
     /// Enable hints during ROM setup. Requires Assembly executor on the client builder.
@@ -50,9 +54,30 @@ impl<'a, C: Client> SetupRequest<'a, C> {
         self
     }
 
-    /// Submit the setup, returning a [`JobHandle<()>`].
+    /// Set the directory where the verkey file will be stored after setup completes.
+    #[must_use]
+    pub fn output_dir(mut self, dir: PathBuf) -> Self {
+        self.output_dir = Some(dir);
+        self
+    }
+
+    /// Submit the setup, returning a [`JobHandle<SetupResult>`].
     pub fn run(self) -> Result<JobHandle<SetupResult>> {
         let subs = Arc::new(Mutex::new(Vec::new()));
-        self.client.run_setup(self.program, self.with_hints, self.timeout, subs)
+        let mut handle =
+            self.client.run_setup(self.program, self.with_hints, self.timeout, subs)?;
+
+        let hash_id = self.program.program_id.hash_id.to_string();
+        let output_dir = self.output_dir.clone();
+        handle.set_pre_process(move |status: &TerminalStatus| {
+            if let TerminalStatus::Completed(DomainJobKindResponse::Setup { vk }) = status {
+                let output_path = get_output_path(&output_dir)?;
+                let path = get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path)?;
+                std::fs::write(&path, vk)?;
+            }
+            Ok(())
+        });
+
+        Ok(handle)
     }
 }

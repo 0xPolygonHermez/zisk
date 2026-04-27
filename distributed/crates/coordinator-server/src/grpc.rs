@@ -120,7 +120,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .handler
             .submit_job(kind)
             .await
-            .map(|job_id| Response::new(JobResponse { job_id: job_id.to_string() }))
+            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
 
         Self::log_call("JobRequest", start, result.as_ref().map(|_| ()));
@@ -219,6 +219,48 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .map_err(Status::from);
 
         Self::log_call("PushJobInput", start, result.as_ref().map(|_| ()));
+        result
+    }
+
+    #[instrument(skip(self, request))]
+    async fn push_job_hints_input(
+        &self,
+        request: Request<Streaming<PushJobHintsInputRequest>>,
+    ) -> Result<Response<()>, Status> {
+        let start = Instant::now();
+        let mut stream = request.into_inner();
+
+        let first = stream
+            .next()
+            .await
+            .ok_or_else(|| Status::invalid_argument("PushJobHintsInput stream must not be empty"))?
+            .map_err(|e| Status::internal(format!("stream read error: {e}")))?;
+
+        let job_id = parse_uuid(&first.job_id)?;
+        let first_chunk =
+            first.chunk.ok_or_else(|| Status::invalid_argument("chunk must be set"))?.into();
+
+        let chunk_stream =
+            futures::stream::once(async move { Ok(first_chunk) }).chain(stream.map(|result| {
+                result.map_err(|e| ApiError::Internal(format!("stream read error: {e}"))).and_then(
+                    |msg| {
+                        msg.chunk
+                            .ok_or_else(|| ApiError::InvalidJobState {
+                                reason: "PushJobHintsInput message missing chunk field".into(),
+                            })
+                            .map(Into::into)
+                    },
+                )
+            }));
+
+        let result = self
+            .handler
+            .push_job_hints_input(job_id, Box::pin(chunk_stream))
+            .await
+            .map(Response::new)
+            .map_err(Status::from);
+
+        Self::log_call("PushJobHintsInput", start, result.as_ref().map(|_| ()));
         result
     }
 

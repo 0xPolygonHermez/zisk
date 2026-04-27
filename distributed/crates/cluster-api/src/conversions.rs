@@ -96,6 +96,7 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
                     job_id: dto.job_id,
                     elf_bytes: dto.elf_bytes,
                     hash_id: dto.hash_id,
+                    with_hints: dto.with_hints,
                 })),
             },
             CoordinatorMessageDto::InputStreamData(dto) => {
@@ -139,6 +140,18 @@ impl From<WorkerRegisterResponseDto> for WorkerRegisterResponse {
                 nanos: dto.registered_at.timestamp_subsec_nanos() as i32,
             }),
             directive: None,
+            setup_program: None,
+        }
+    }
+}
+
+impl From<SetupProgramDto> for SetupProgram {
+    fn from(dto: SetupProgramDto) -> Self {
+        SetupProgram {
+            job_id: dto.job_id,
+            elf_bytes: dto.elf_bytes,
+            hash_id: dto.hash_id,
+            with_hints: dto.with_hints,
         }
     }
 }
@@ -207,10 +220,11 @@ impl From<ContributionParamsDto> for ContributionParams {
             InputSourceDto::InputNull => None,
         };
 
-        let (hints_path, hints_stream) = match dto.hints_source {
-            HintsSourceDto::HintsPath(hints_path) => (Some(hints_path), false),
-            HintsSourceDto::HintsStream(hints_path) => (Some(hints_path), true),
-            HintsSourceDto::HintsNull => (None, false),
+        let (hints_path, hints_stream, hints_data) = match dto.hints_source {
+            HintsSourceDto::HintsPath(hints_path) => (Some(hints_path), false, None),
+            HintsSourceDto::HintsData(data) => (None, false, Some(data)),
+            HintsSourceDto::HintsStream(hints_path) => (Some(hints_path), true, None),
+            HintsSourceDto::HintsNull => (None, false, None),
         };
 
         ContributionParams {
@@ -218,6 +232,7 @@ impl From<ContributionParamsDto> for ContributionParams {
             input_source,
             hints_path,
             hints_stream,
+            hints_data,
             rank_id: dto.rank_id,
             total_workers: dto.total_workers,
             worker_allocation: dto.worker_allocation,

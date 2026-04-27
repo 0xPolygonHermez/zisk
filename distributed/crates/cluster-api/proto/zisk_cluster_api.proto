@@ -54,6 +54,7 @@ message SetupProgram {
   string job_id = 1;
   bytes elf_bytes = 2;
   string hash_id = 3;
+  bool with_hints = 4;
 }
 
 message SetupProgramAck {
@@ -62,6 +63,7 @@ message SetupProgramAck {
   string hash_id = 3;
   bool success = 4;
   string error_message = 5;
+  bytes vk = 6;
 }
 
 message JobCancelledAck {
@@ -99,6 +101,7 @@ message WorkerRegisterResponse {
   string message = 3;
   google.protobuf.Timestamp registered_at = 4;
   optional ReconnectionDirective directive = 5;
+  optional SetupProgram setup_program = 6;
 }
 
 message ExecuteTaskRequest {
@@ -137,6 +140,7 @@ message ContributionParams {
   }
   optional string hints_path = 4;
   bool hints_stream = 5; // Indicates whether hints will be streamed
+  optional bytes hints_data = 10; // Inline hints data
   uint32 rank_id = 6;
   uint32 total_workers = 7;
   repeated uint32 worker_allocation = 8;

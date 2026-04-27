@@ -28,14 +28,8 @@ pub struct MOShMemReader {
 }
 
 impl MOShMemReader {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MO, local_rank, None);
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
         let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
             &output_name,
@@ -89,9 +83,7 @@ impl AsmRunnerMO {
     ) -> Result<Self> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
-        let port = asm_services.port_base();
-        let sem_chunk_done_name =
-            sem_chunk_done_name(port, AsmService::MO, asm_services.local_rank());
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -111,10 +103,17 @@ impl AsmRunnerMO {
             result
         });
 
-        let mem_planner = preloaded
-            .mem_planner
-            .take()
-            .unwrap_or_else(|| preloaded.handle_mo.take().unwrap().join().unwrap());
+        let mem_planner = match preloaded.mem_planner.take() {
+            Some(p) => p,
+            None => preloaded
+                .handle_mo
+                .take()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("MOShMemReader: both mem_planner and handle_mo are None")
+                })?
+                .join()
+                .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
+        };
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
@@ -207,9 +206,22 @@ impl AsmRunnerMO {
             .map_err(|_| AsmRunError::JoinPanic)?
             .map_err(AsmRunError::ServiceError)?;
 
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM MO service returned non-zero result: {}",
+                response.result
+            ));
+        }
+        if response.trace_len == 0 {
+            return Err(anyhow::anyhow!("ASM MO service returned empty trace"));
+        }
+        if response.trace_len > response.allocated_len {
+            return Err(anyhow::anyhow!(
+                "ASM MO service trace_len ({}) exceeds allocated_len ({})",
+                response.trace_len,
+                response.allocated_len
+            ));
+        }
 
         mem_planner.set_completed();
         // Wait for mem_align_plans, this mem_align_plans are calculated in rust from

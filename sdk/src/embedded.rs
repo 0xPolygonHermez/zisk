@@ -21,7 +21,8 @@ use zisk_prover_backend::{
 
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
-    input::ProgramInput,
+    hints::HintsSource,
+    input_source::InputSource,
     job_handle::{JobHandle, SubscriberList},
     opts::EmbeddedOpts,
     prove::ProveRequest,
@@ -183,13 +184,11 @@ impl EmbeddedClientBuilder {
             pk,                                    // proving_key
             pk_snark,                              // proving_key_snark
             true,                                  // shared_tables
-            asm_opts.base_port,                    // base_port
             asm_opts.unlock_mapped_memory,         // unlock_mapped_memory
             asm_opts.asm_out_file,                 // asm_out_file
             asm_opts.no_auto_setup,                // no_auto_setup
             backend_opts.build_proofman_options(), // options
             false,                                 // is_distributed
-            asm_opts.stdio,                        // stdio
             None,                                  // logging_config
         )?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))
@@ -229,24 +228,26 @@ impl Client for EmbeddedClient {
     fn run_prove(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_prove(program, input, executor, proof_kind, timeout, subs)
+        self.do_prove(program, stdin, hints, executor, proof_kind, timeout, subs)
     }
 
     fn run_execute(
         &self,
         program: &GuestProgram,
-        input: ProgramInput,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<ExecuteResult>> {
-        self.do_execute(program, input, executor, timeout, subs)
+        self.do_execute(program, stdin, hints, executor, timeout, subs)
     }
 
     fn run_wrap(
@@ -268,9 +269,9 @@ impl EmbeddedClient {
     pub fn prove<'a>(
         &'a self,
         program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
+        stdin: impl Into<InputSource>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, input)
+        ProveRequest::new(self, program, stdin)
     }
 
     /// Submit an execute request (dry-run, no proof).
@@ -278,9 +279,9 @@ impl EmbeddedClient {
     pub fn execute<'a>(
         &'a self,
         program: &'a GuestProgram,
-        input: impl Into<ProgramInput>,
+        stdin: impl Into<InputSource>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, input)
+        ExecuteRequest::new(self, program, stdin)
     }
 
     /// Submit a ROM setup request.

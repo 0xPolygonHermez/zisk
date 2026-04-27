@@ -47,24 +47,32 @@ impl CoordinatorClient {
     }
 
     pub fn submit_job(&self, kind: DomainJobKind) -> Result<Job> {
-        let job_id = block_on(async {
+        let resp = block_on(async {
             let mut gw = self.inner.clone();
             let resp = gw.job_request(kind).await.context("JobRequest RPC failed")?;
-            Ok::<_, anyhow::Error>(resp.into_inner().job_id)
+            Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
-        Job::new(job_id, self.clone())
+        Job::new(resp.job_id, self.clone())
     }
 
     pub fn async_client(&self) -> ZiskCoordinatorApiClient<Channel> {
         self.inner.clone()
     }
 
-    /// Open a persistent input stream to a running job.
+    /// Open a persistent stdin stream to a running job.
     ///
     /// Returns an [`InputSender`] that can be used to send multiple chunks.
     /// Drop the sender (or call [`InputSender::close`]) to signal EOF.
     pub fn open_input_stream(&self, job_id: Uuid) -> InputSender {
         InputSender::open(job_id, self.inner.clone())
+    }
+
+    /// Open a persistent hints stream to a running job.
+    ///
+    /// Returns an [`InputSender`] that can be used to send multiple chunks.
+    /// Drop the sender (or call [`InputSender::close`]) to signal EOF.
+    pub fn open_hints_stream(&self, job_id: Uuid) -> InputSender {
+        InputSender::open_hints(job_id, self.inner.clone())
     }
 }
 

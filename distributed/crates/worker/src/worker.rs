@@ -7,11 +7,11 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
 use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_cluster_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
 use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
+use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{Proof, ProofKind, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ProofKind, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
@@ -110,9 +110,6 @@ pub struct ProverConfig {
     /// Additional options for the ASM runner
     // pub asm_runner_options: AsmRunnerOptions,
 
-    /// Base port for ASM services
-    pub asm_port: Option<u16>,
-
     /// Flag to unlock mapped memory
     pub unlock_mapped_memory: bool,
 
@@ -171,7 +168,6 @@ impl ProverConfig {
             proving_key_snark,
             verbose: prover_service_config.verbose,
             debug_info,
-            asm_port: prover_service_config.asm_port,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
@@ -202,8 +198,6 @@ pub struct JobContext {
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
-    _worker_id: WorkerId,
-    _compute_capacity: ComputeCapacity,
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
@@ -213,14 +207,11 @@ pub struct Worker<T: ZiskBackend + 'static> {
 
     stream_actor: Option<StreamOrderingActor>,
     guest_program: Option<Arc<GuestProgram>>,
+    program_vk: Option<ProgramVK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
-    pub fn new_emu(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Emu>> {
+    pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
@@ -258,23 +249,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         );
 
         Ok(Worker::<Emu> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
             guest_program: None,
+            program_vk: None,
             prover,
             prover_config,
             stream_actor: None,
         })
     }
 
-    pub fn new_asm(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Asm>> {
+    pub fn new_asm(prover_config: ProverConfig) -> Result<Worker<Asm>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
@@ -309,9 +295,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         // ASM-specific options for distributed worker
         let mut asm_options = AsmOptions::default();
-        if let Some(port) = prover_config.asm_port {
-            asm_options = asm_options.base_port(port);
-        }
         if prover_config.unlock_mapped_memory {
             asm_options = asm_options.unlock_mapped_memory();
         }
@@ -326,8 +309,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         );
 
         Ok(Worker::<Asm> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
@@ -335,6 +316,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover_config,
             stream_actor: None,
             guest_program: None,
+            program_vk: None,
         })
     }
 
@@ -352,13 +334,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &mut self,
         hash_id: &str,
         elf_bytes: &[u8],
+        with_hints: bool,
         new_guest_program: Arc<GuestProgram>,
-    ) -> Result<()> {
+    ) -> Result<ProgramVK> {
         // Check if new guest program is different from the current one to avoid unnecessary setup
         if let Some(current_program) = &self.guest_program {
             if current_program.program_id == new_guest_program.program_id {
                 info!("Received same guest program for setup. Skipping setup");
-                return Ok(());
+                return self
+                    .program_vk
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("VK not available for current program"));
             }
         }
 
@@ -366,15 +352,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
             elf_bytes: elf_bytes.to_vec(),
-            with_hints: self.prover_config.hints,
+            with_hints: self.prover_config.hints || with_hints,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        self.prover.prover.setup_internal(&new_guest_program, self.prover_config.hints)?;
+        let vk = self
+            .prover
+            .prover
+            .setup_internal(&new_guest_program, self.prover_config.hints || with_hints)?;
         self.guest_program = Some(new_guest_program);
-        Ok(())
+        self.program_vk = Some(vk.clone());
+        Ok(vk)
     }
 
     pub fn get_executed_steps(&self) -> u64 {
@@ -791,15 +781,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
+        let is_first_partition = partition_info.allocation.contains(&0);
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
+                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
+            HintsSourceDto::HintsData(hints_data) => {
+                prover.set_active_services(is_first_partition)?;
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
+            }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+                // For HintsStream, set_active_services is called in route_stream_data
+                // when the Start message arrives.
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set
@@ -852,15 +849,22 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
+        let is_first_partition = partition_info.allocation.contains(&0);
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
+                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
+            HintsSourceDto::HintsData(hints_data) => {
+                prover.set_active_services(is_first_partition)?;
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
+            }
             HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+                // For HintsStream, set_active_services is called in route_stream_data
+                // when the Start message arrives.
             }
             HintsSourceDto::HintsNull => {
                 // No hints to set

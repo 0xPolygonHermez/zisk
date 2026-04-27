@@ -11,26 +11,6 @@ use tokio::runtime::{Handle, Runtime};
 
 use super::{StreamRead, StreamWrite};
 
-/// Helper to run async code, either using current runtime or creating one
-fn run_async<F, T>(f: F) -> Result<T>
-where
-    F: std::future::Future<Output = Result<T>> + Send + 'static,
-    T: Send + 'static,
-{
-    // Try to use current runtime handle if we're already in a tokio context
-    match Handle::try_current() {
-        Ok(handle) => {
-            // We're in a tokio runtime, use block_in_place to allow blocking
-            tokio::task::block_in_place(move || handle.block_on(f))
-        }
-        Err(_) => {
-            // Not in a runtime, create a temporary one
-            let rt = Runtime::new().context("Failed to create tokio runtime")?;
-            rt.block_on(f)
-        }
-    }
-}
-
 /// Ensure crypto provider is initialized (idempotent)
 fn ensure_crypto_provider() {
     use std::sync::Once;
@@ -38,6 +18,19 @@ fn ensure_crypto_provider() {
     INIT.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+/// Helper: run a future on the given dedicated runtime, correctly handling the
+/// case where we may already be inside another tokio runtime (e.g. `#[tokio::main]`
+/// or `spawn_blocking`).
+fn block_on_dedicated<F: std::future::Future>(rt: &Runtime, f: F) -> F::Output {
+    match Handle::try_current() {
+        // Already in a runtime context — use block_in_place to exit it first,
+        // then call our dedicated runtime's block_on.
+        Ok(_) => tokio::task::block_in_place(|| rt.block_on(f)),
+        // Not in any runtime — safe to call block_on directly.
+        Err(_) => rt.block_on(f),
+    }
 }
 
 /// A QUIC implementation of StreamRead that receives data over QUIC streams.
@@ -48,37 +41,48 @@ pub struct QuicStreamReader {
     /// Client endpoint
     endpoint: Option<Endpoint>,
 
+    /// Dedicated Tokio runtime that owns the client endpoint's IO driver.
+    /// Created lazily in `open()` so `new()` can be called from any context.
+    runtime: Option<Runtime>,
+
     /// Server address to connect to
     server_addr: SocketAddr,
 }
 
 impl QuicStreamReader {
     /// Create a new QuicStreamReader that connects to the specified server address.
-    ///
-    /// This creates a client endpoint that connects to the server to read data.
     pub fn new(server_addr: SocketAddr) -> Result<Self> {
-        // Ensure crypto provider is initialized
         ensure_crypto_provider();
+        Ok(QuicStreamReader { connection: None, endpoint: None, runtime: None, server_addr })
+    }
 
-        // We don't need to store a runtime anymore since we'll use run_async helper
-        Ok(QuicStreamReader { connection: None, endpoint: None, server_addr })
+    /// Returns the dedicated runtime, creating it on first use.
+    fn ensure_runtime(&mut self) -> Result<&Runtime> {
+        if self.runtime.is_none() {
+            // Builder::build() only spawns threads — it does not call block_on,
+            // so it's safe to call even from within another tokio runtime.
+            self.runtime = Some(
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .context("Failed to create tokio runtime for QUIC reader")?,
+            );
+        }
+        Ok(self.runtime.as_ref().unwrap())
     }
 }
 
 impl StreamRead for QuicStreamReader {
-    /// Open/initialize the stream for reading
-    ///
-    /// Establishes a QUIC connection to the server.
     fn open(&mut self) -> Result<()> {
         if self.is_active() {
             return Ok(());
         }
 
         let server_addr = self.server_addr;
-        let (endpoint, connection) = run_async(async move {
+        let rt = self.ensure_runtime()?;
+        let (endpoint, connection) = block_on_dedicated(rt, async move {
             let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap())?;
 
-            // Configure to accept self-signed certificates (for development)
             let rustls_config = rustls::ClientConfig::builder()
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
@@ -89,7 +93,6 @@ impl StreamRead for QuicStreamReader {
                     .map_err(|e| anyhow::anyhow!("Failed to create QUIC client config: {}", e))?,
             ));
 
-            // Configure transport for better performance
             let mut transport_config = quinn::TransportConfig::default();
             transport_config.max_concurrent_uni_streams(1024u32.into());
             client_config.transport_config(Arc::new(transport_config));
@@ -111,9 +114,6 @@ impl StreamRead for QuicStreamReader {
     }
 
     /// Reads the next message from a QUIC unidirectional stream.
-    ///
-    /// Each call to next() accepts a new unidirectional stream and reads
-    /// all data from it, providing natural message boundaries.
     fn next(&mut self) -> Result<Option<Vec<u8>>> {
         self.open()?;
 
@@ -123,8 +123,8 @@ impl StreamRead for QuicStreamReader {
             .ok_or_else(|| anyhow::anyhow!("QuicStreamReader: Connection not established"))?
             .clone();
 
-        run_async(async move {
-            // Accept next unidirectional stream
+        let rt = self.ensure_runtime()?;
+        block_on_dedicated(rt, async move {
             let mut recv = match connection.accept_uni().await {
                 Ok(stream) => stream,
                 Err(quinn::ConnectionError::ApplicationClosed(_)) => {
@@ -139,7 +139,6 @@ impl StreamRead for QuicStreamReader {
                 Err(e) => return Err(anyhow::anyhow!("Failed to accept stream: {}", e)),
             };
 
-            // Read all data from the stream (10MB max)
             let data =
                 recv.read_to_end(10 * 1024 * 1024).await.context("Failed to read from stream")?;
 
@@ -153,10 +152,11 @@ impl StreamRead for QuicStreamReader {
             connection.close(0u32.into(), b"closing");
         }
         if let Some(endpoint) = self.endpoint.take() {
-            let _ = run_async(async move {
-                endpoint.wait_idle().await;
-                Ok::<_, anyhow::Error>(())
-            });
+            if let Some(rt) = self.runtime.as_ref() {
+                block_on_dedicated(rt, async move {
+                    endpoint.wait_idle().await;
+                });
+            }
         }
         Ok(())
     }
@@ -167,37 +167,62 @@ impl StreamRead for QuicStreamReader {
     }
 }
 
+impl Drop for QuicStreamReader {
+    fn drop(&mut self) {
+        if let Some(conn) = self.connection.take() {
+            conn.close(0u32.into(), b"closing");
+        }
+        self.endpoint.take();
+        if let Some(rt) = self.runtime.take() {
+            std::thread::spawn(move || drop(rt));
+        }
+    }
+}
+
 /// A QUIC implementation of StreamWrite that sends data over QUIC streams.
 pub struct QuicStreamWriter {
     /// The QUIC connection
     connection: Option<Connection>,
 
-    /// Tokio runtime for async operations
-    runtime: Arc<Runtime>,
+    /// Dedicated Tokio runtime that owns the endpoint's IO driver.
+    /// Wrapped in `Option` so `Drop` can take it and shut it down on a
+    /// background thread (avoiding panics when dropped from async context).
+    runtime: Option<Runtime>,
 
-    /// Server endpoint
-    endpoint: Option<Endpoint>,
-
-    /// Server address to bind to
-    bind_addr: SocketAddr,
+    /// Server endpoint — bound at construction time so clients can connect immediately.
+    endpoint: Endpoint,
 }
 
 impl QuicStreamWriter {
-    /// Create a new QuicStreamWriter that listens on the specified address.
+    /// Create a new QuicStreamWriter that binds the given address immediately.
     ///
-    /// This creates a server endpoint that waits for incoming reader connections.
+    /// A dedicated Tokio runtime is created to drive the endpoint's IO. The port is
+    /// ready for incoming connections before the matching `QuicStreamReader` tries to
+    /// connect. The actual `accept()` (blocking wait for the client) is deferred to
+    /// `open()`.
     pub fn new(bind_addr: SocketAddr) -> Result<Self> {
-        // Ensure crypto provider is initialized
         ensure_crypto_provider();
+        let server_config = Self::configure_server()?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("Failed to create tokio runtime for QUIC writer")?;
+        // Enter the dedicated runtime's context so the endpoint registers its UDP
+        // socket with this runtime's IO reactor (keeps IO alive as long as the
+        // runtime lives).  `enter()` is non-blocking — safe to call from async.
+        let _guard = runtime.enter();
+        let endpoint = Endpoint::server(server_config, bind_addr)
+            .context("Failed to bind QUIC server endpoint")?;
+        drop(_guard);
+        Ok(QuicStreamWriter { connection: None, runtime: Some(runtime), endpoint })
+    }
 
-        let runtime = Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .context("Failed to create tokio runtime")?,
-        );
-
-        Ok(QuicStreamWriter { connection: None, runtime, endpoint: None, bind_addr })
+    /// Returns the actual local address the endpoint is bound to.
+    ///
+    /// Useful when the endpoint was created with port `0` — the OS assigns a
+    /// free port and this method returns the resolved address.
+    pub fn local_addr(&self) -> Result<SocketAddr> {
+        self.endpoint.local_addr().map_err(|e| anyhow::anyhow!("failed to get local addr: {e}"))
     }
 
     /// Configure server with self-signed certificate
@@ -221,38 +246,34 @@ impl QuicStreamWriter {
 }
 
 impl StreamWrite for QuicStreamWriter {
-    /// Open/initialize the stream for writing
+    /// Prepare the endpoint for connections.
     ///
-    /// Starts listening for incoming reader connections.
+    /// The endpoint is already bound (`new()` did that), so this is a no-op.
+    /// The actual blocking `accept()` is in `wait_for_connection()`.
     fn open(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Block until a client has connected (up to 60 seconds).
+    fn wait_for_connection(&mut self) -> Result<()> {
         if self.is_active() {
             return Ok(());
         }
 
-        // Clean up old resources if they exist
-        if let Some(endpoint) = self.endpoint.take() {
-            self.runtime.block_on(async {
-                endpoint.wait_idle().await;
-            });
-        }
+        let endpoint = self.endpoint.clone();
 
-        let server_config = Self::configure_server()?;
-
-        let (endpoint, connection) = self.runtime.block_on(async {
-            let endpoint = Endpoint::server(server_config, self.bind_addr)
-                .context("Failed to create server endpoint")?;
-
-            // Wait for incoming connection
-            let incoming = endpoint.accept().await.context("Failed to accept connection")?;
-
-            let connection = incoming.await.context("Failed to establish connection")?;
-
-            Ok::<_, anyhow::Error>((endpoint, connection))
+        let rt = self.runtime.as_ref().expect("runtime dropped");
+        let connection = block_on_dedicated(rt, async move {
+            let accept_fut = async {
+                let incoming = endpoint.accept().await.context("Failed to accept connection")?;
+                incoming.await.context("Failed to establish connection")
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(60), accept_fut).await.map_err(
+                |_| anyhow::anyhow!("Timed out waiting for QUIC client connection (60s)"),
+            )?
         })?;
 
-        self.endpoint = Some(endpoint);
         self.connection = Some(connection);
-
         Ok(())
     }
 
@@ -266,12 +287,14 @@ impl StreamWrite for QuicStreamWriter {
         let connection = self
             .connection
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("QuicStreamWriter: Connection not established"))?;
+            .ok_or_else(|| anyhow::anyhow!("QuicStreamWriter: Connection not established"))?
+            .clone();
 
         let len = item.len();
         let data = item.to_vec();
 
-        self.runtime.block_on(async {
+        let rt = self.runtime.as_ref().expect("runtime dropped");
+        block_on_dedicated(rt, async move {
             // Open a new unidirectional stream for this message
             let mut send = connection.open_uni().await.context("Failed to open stream")?;
 
@@ -297,8 +320,13 @@ impl StreamWrite for QuicStreamWriter {
         if let Some(connection) = self.connection.take() {
             connection.close(0u32.into(), b"closing");
         }
-        if let Some(endpoint) = self.endpoint.take() {
-            self.runtime.block_on(async {
+        // Close the endpoint and wait for it to go idle, then shut down the
+        // runtime — all while still inside the runtime context so the IO
+        // reactor is still live for the async close handshake.
+        if let Some(rt) = self.runtime.as_ref() {
+            let endpoint = self.endpoint.clone();
+            block_on_dedicated(rt, async move {
+                endpoint.close(0u32.into(), b"closing");
                 endpoint.wait_idle().await;
             });
         }
@@ -308,6 +336,23 @@ impl StreamWrite for QuicStreamWriter {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.connection.is_some()
+    }
+
+    /// Each write opens one unidirectional QUIC stream; the reader caps it at 10 MB.
+    fn max_message_size(&self) -> usize {
+        4 * 1024 * 1024
+    }
+}
+
+impl Drop for QuicStreamWriter {
+    fn drop(&mut self) {
+        // close() handles connection + endpoint shutdown under the runtime context.
+        let _ = self.close();
+        // Move the (now-idle) runtime to a background thread so we don't panic
+        // when dropped from within an async context.
+        if let Some(rt) = self.runtime.take() {
+            std::thread::spawn(move || drop(rt));
+        }
     }
 }
 
@@ -631,5 +676,84 @@ mod tests {
 
         reader.close().unwrap();
         writer_thread.join().unwrap();
+    }
+
+    /// Mimics the sha-hasher pattern: writer created from async context,
+    /// reader connecting from spawn_blocking.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_writer_from_async_reader_from_blocking() {
+        init_crypto();
+        let server_addr: SocketAddr = "127.0.0.1:15008".parse().unwrap();
+
+        // Writer created in the async context (like ZiskStdin::from_stream in #[tokio::main])
+        let writer = QuicStreamWriter::new(server_addr).unwrap();
+
+        let writer = std::sync::Arc::new(std::sync::Mutex::new(writer));
+        let writer2 = writer.clone();
+
+        // Writer writes from spawn_blocking first (like flush()).
+        // write() calls open() internally, which blocks on accept().
+        let write_handle = tokio::task::spawn_blocking(move || {
+            let mut w = writer2.lock().unwrap();
+            eprintln!("[test] writer.write starting...");
+            w.write(b"from async writer").unwrap();
+            eprintln!("[test] writer.write done");
+            thread::sleep(Duration::from_millis(500));
+            w.close().unwrap();
+        });
+
+        // Give writer time to start listening for accept
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Reader connects from a plain thread
+        let reader_thread = thread::spawn(move || {
+            eprintln!("[test] reader.open starting...");
+            let mut reader = QuicStreamReader::new(server_addr).unwrap();
+            reader.open().unwrap();
+            eprintln!("[test] reader connected");
+
+            let msg = reader.next().unwrap().unwrap();
+            assert_eq!(msg, b"from async writer");
+            reader.close().unwrap();
+        });
+
+        write_handle.await.unwrap();
+        reader_thread.join().unwrap();
+    }
+
+    /// Exact real-world flow: writer created from async, reader.open()
+    /// deferred to a plain background thread (as in ZiskStream), writer
+    /// sends from spawn_blocking.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_same_blocking_thread_reader_then_writer() {
+        init_crypto();
+        let server_addr: SocketAddr = "127.0.0.1:15009".parse().unwrap();
+
+        // Writer created in async context (like ZiskStdin::from_stream in #[tokio::main])
+        let mut writer = QuicStreamWriter::new(server_addr).unwrap();
+
+        let (tx, _rx) = mpsc::channel();
+
+        // Reader opens on a plain thread (like ZiskStream's background thread)
+        let reader_handle = thread::spawn(move || {
+            let mut reader = QuicStreamReader::new(server_addr).unwrap();
+            reader.open().unwrap();
+            tx.send(()).unwrap(); // signal connected
+            let msg = reader.next().unwrap().unwrap();
+            assert_eq!(msg, b"from writer");
+            reader.close().unwrap();
+        });
+
+        // Writer sends from spawn_blocking (like flush())
+        tokio::task::spawn_blocking(move || {
+            writer.write(b"from writer").unwrap();
+            // Wait for reader to receive before closing
+            thread::sleep(Duration::from_millis(200));
+            writer.close().unwrap();
+        })
+        .await
+        .unwrap();
+
+        reader_handle.join().unwrap();
     }
 }

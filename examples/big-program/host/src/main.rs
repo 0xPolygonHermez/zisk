@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
 
     println!(
-        "ZisK has executed program with {} cycles in {:?}",
+        "ZisK has executed program with {} cycles in {:?} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

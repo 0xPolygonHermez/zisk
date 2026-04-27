@@ -25,6 +25,13 @@ pub struct RegisterGuestProgramResponseDto {
     pub hash_id: String,
 }
 
+/// Result of [`submit_job`] — the coordinator-assigned job ID plus any
+/// stream URIs allocated by the coordinator for auto-negotiated transports.
+#[derive(Debug, Clone)]
+pub struct SubmitJobResult {
+    pub job_id: Uuid,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainProofKind {
     Stark,
@@ -91,12 +98,14 @@ pub struct DomainComputeConstraints {
 #[derive(Debug, Clone)]
 pub struct DomainSetupRequest {
     pub hash_id: String,
+    pub with_hints: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct DomainProveRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
+    pub hints: Option<DomainInputKind>,
     pub proof_timeout: Option<DateTime<Utc>>,
     pub proof_dest: DomainProofKind,
 }
@@ -112,6 +121,7 @@ pub struct DomainWrapRequest {
 pub struct DomainExecuteRequest {
     pub hash_id: String,
     pub input: DomainInputKind,
+    pub hints: Option<DomainInputKind>,
     pub execute_timeout: Option<DateTime<Utc>>,
 }
 
@@ -129,7 +139,7 @@ pub struct DomainExecutionStats {
 
 #[derive(Debug, Clone)]
 pub enum DomainJobKindResponse {
-    Setup,
+    Setup { vk: Vec<u8> },
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },

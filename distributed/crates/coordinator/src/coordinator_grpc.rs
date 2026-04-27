@@ -190,6 +190,7 @@ impl CoordinatorGrpc {
                             } else {
                                 Some(ack.error_message)
                             },
+                            vk: ack.vk,
                         })
                         .await
                 }
@@ -210,6 +211,7 @@ impl CoordinatorGrpc {
         accepted: bool,
         message: String,
         directive: Option<ReconnectionDirective>,
+        setup_program: Option<SetupProgram>,
     ) -> Result<CoordinatorMessage, Status> {
         Ok(CoordinatorMessage {
             payload: Some(coordinator_message::Payload::RegisterResponse(WorkerRegisterResponse {
@@ -222,6 +224,7 @@ impl CoordinatorGrpc {
                     None
                 },
                 directive,
+                setup_program,
             })),
         })
     }
@@ -250,10 +253,10 @@ impl ZiskDistributedApi for CoordinatorGrpc {
             let worker_id = match in_stream.next().await {
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Register(req)) })) => {
                     let req_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message) =
+                    let (accepted, message, setup) =
                         coordinator.handle_stream_registration(req.into(), grpc_msg_tx).await;
 
-                        yield Self::registration_response(&req_worker_id, accepted, message, None);
+                        yield Self::registration_response(&req_worker_id, accepted, message, None, setup.map(Into::into));
 
                     if !accepted { return; }
 
@@ -261,7 +264,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                 }
                 Some(Ok(WorkerMessage { payload: Some(worker_message::Payload::Reconnect(req)) })) => {
                     let req_worker_id = WorkerId::from(req.worker_id.clone());
-                    let (accepted, message, directive) =
+                    let (accepted, message, directive, setup) =
                         coordinator.handle_stream_reconnection(req.into(), grpc_msg_tx).await;
 
                     yield Self::registration_response(
@@ -269,6 +272,7 @@ impl ZiskDistributedApi for CoordinatorGrpc {
                         accepted,
                         message,
                         directive.map(Into::into),
+                        setup.map(Into::into),
                     );
 
                     if !accepted { return; }

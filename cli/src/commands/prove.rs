@@ -64,15 +64,6 @@ pub struct ZiskProve {
     #[arg(short = 'y', long)]
     pub verify_proofs: bool,
 
-    /// Base port for Assembly microservices (default: 23115).
-    /// A single execution will use 3 consecutive ports, from this port to port + 2.
-    /// If you are running multiple instances of ZisK using mpi on the same machine,
-    /// it will use from this base port to base port + 2 * number_of_instances.
-    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
-    /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[arg(short = 'p', long, conflicts_with = "emulator")]
-    pub port: Option<u16>,
-
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
@@ -191,9 +182,6 @@ impl ZiskProve {
         let mut asm_options = AsmOptions::default();
         if let Some(ref path) = self.asm {
             asm_options = asm_options.asm_path(path.clone());
-        }
-        if let Some(port) = self.port {
-            asm_options = asm_options.base_port(port);
         }
         if self.no_auto_setup {
             asm_options = asm_options.no_auto_setup();

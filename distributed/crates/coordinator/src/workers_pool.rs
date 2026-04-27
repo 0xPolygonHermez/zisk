@@ -34,11 +34,12 @@ impl WorkerInfo {
         worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
+        initial_state: WorkerState,
     ) -> Self {
         let now = Utc::now();
         Self {
             worker_id,
-            state: WorkerState::Idle,
+            state: initial_state,
             compute_capacity,
             connected_at: now,
             last_heartbeat: now,
@@ -102,9 +103,14 @@ impl WorkersPool {
         self.workers.read().await.keys().cloned().collect()
     }
 
-    /// Returns the number of workers currently available for new jobs.
+    /// Returns the number of workers connected but without setup (Idle state).
     pub async fn idle_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()
+    }
+
+    /// Returns the number of workers currently running setup (not yet eligible for jobs).
+    pub async fn setting_up_workers(&self) -> usize {
+        self.workers.read().await.values().filter(|p| p.state == WorkerState::SettingUp).count()
     }
 
     /// Returns the number of workers currently executing tasks.
@@ -143,7 +149,7 @@ impl WorkersPool {
             .read()
             .await
             .values()
-            .filter(|p| p.state == WorkerState::Idle)
+            .filter(|p| p.state == WorkerState::Ready)
             .map(|p| p.compute_capacity.compute_units)
             .sum();
 
@@ -161,7 +167,7 @@ impl WorkersPool {
                 total += 1;
                 cc += w.compute_capacity.compute_units;
             }
-            if w.state == WorkerState::Idle {
+            if w.state == WorkerState::Ready {
                 acc += w.compute_capacity.compute_units;
             }
         }
@@ -184,18 +190,27 @@ impl WorkersPool {
         worker_id: WorkerId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
+        initial_state: WorkerState,
     ) -> CoordinatorResult<()> {
-        let connection = WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender);
+        let connection = WorkerInfo::new(
+            worker_id.clone(),
+            compute_capacity.into(),
+            msg_sender,
+            initial_state.clone(),
+        );
         let mut workers = self.workers.write().await;
 
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
-            if worker.state != WorkerState::Disconnected && worker.state != WorkerState::Idle {
+            if !matches!(
+                worker.state,
+                WorkerState::Disconnected | WorkerState::Idle | WorkerState::Ready
+            ) {
                 let msg =
                     format!("Worker {} is already connected (state: {})", worker_id, worker.state);
                 warn!("{}", msg);
                 return Err(CoordinatorError::InvalidRequest(msg));
             } else {
-                worker.state = WorkerState::Idle;
+                worker.state = initial_state;
                 worker.compute_capacity = connection.compute_capacity;
                 worker.msg_sender = connection.msg_sender;
                 worker.connection_generation += 1;
@@ -428,13 +443,13 @@ impl WorkersPool {
 
     /// Marks any `Computing` workers in the given list as `Idle` under a single lock.
     /// Workers that are not `Computing` or not found are silently skipped.
-    pub async fn mark_computing_workers_idle(&self, worker_ids: &[WorkerId]) {
+    pub async fn mark_computing_workers_ready(&self, worker_ids: &[WorkerId]) {
         let mut workers = self.workers.write().await;
         let mut transitioned = Vec::new();
         for wid in worker_ids {
             if let Some(worker) = workers.get_mut(wid) {
                 if matches!(worker.state, WorkerState::Computing(_)) {
-                    worker.state = WorkerState::Idle;
+                    worker.state = WorkerState::Ready;
                     transitioned.push(wid.clone());
                 }
             }
@@ -443,7 +458,7 @@ impl WorkersPool {
         if !transitioned.is_empty() {
             let (total, cc, acc) = self.pool_stats().await;
             for wid in &transitioned {
-                info!("Worker {} marked idle (total: {} CC: {} ACC: {})", wid, total, cc, acc);
+                info!("Worker {} ready (total: {} CC: {} ACC: {})", wid, total, cc, acc);
             }
         }
     }
@@ -465,9 +480,9 @@ impl WorkersPool {
             return Err(CoordinatorError::NotFoundOrInaccessible);
         }
 
-        if state == WorkerState::Idle {
+        if matches!(state, WorkerState::Ready | WorkerState::Idle) {
             let (total, cc, acc) = self.pool_stats().await;
-            info!("Worker {} available (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+            info!("Worker {} {} (total: {} CC: {} ACC: {})", worker_id, state, total, cc, acc);
         }
         Ok(())
     }
@@ -580,7 +595,7 @@ impl WorkersPool {
         let available_workers: Vec<(&WorkerId, &WorkerInfo)> = if execution_mode.is_simulating() {
             // Copy the only available idle worker 'times' times
             if let Some((worker_id, worker_info)) =
-                workers.iter().find(|(_, p)| matches!(p.state, WorkerState::Idle))
+                workers.iter().find(|(_, p)| matches!(p.state, WorkerState::Ready))
             {
                 let times = (required_compute_capacity.compute_units as f32
                     / worker_info.compute_capacity.compute_units as f32)
@@ -592,7 +607,7 @@ impl WorkersPool {
             }
         } else {
             // Standard mode: use all idle workers
-            workers.iter().filter(|(_, p)| matches!(p.state, WorkerState::Idle)).collect()
+            workers.iter().filter(|(_, p)| matches!(p.state, WorkerState::Ready)).collect()
         };
 
         let available_capacity: u32 =
@@ -609,7 +624,7 @@ impl WorkersPool {
 
         // Step 1: Select workers that can cover the required compute capacity
         for (worker_id, worker_info) in available_workers {
-            if matches!(worker_info.state, WorkerState::Idle) {
+            if matches!(worker_info.state, WorkerState::Ready) {
                 selected_workers.push(worker_id.clone());
                 worker_capacities.push(worker_info.compute_capacity.compute_units);
                 total_capacity += worker_info.compute_capacity.compute_units;
@@ -748,7 +763,7 @@ mod tests {
         // Disconnect then re-register (simulates reconnection → gen becomes 1)
         pool.disconnect_worker(&w1).await.unwrap();
         let (sender, _) = MockMessageSender::new();
-        pool.register_worker(w1.clone(), 1u32, Box::new(sender)).await.unwrap();
+        pool.register_worker(w1.clone(), 1u32, Box::new(sender), WorkerState::Idle).await.unwrap();
         assert_eq!(pool.connection_generation(&w1).await, Some(1));
 
         // Stale guard with gen 0 should be a no-op

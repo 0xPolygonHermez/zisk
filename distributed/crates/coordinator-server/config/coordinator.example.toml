@@ -6,8 +6,8 @@
 # Override order (later entries win):
 #   1. Defaults built into the binary
 #   2. This file
-#   3. ZISK_COORDINATOR__* environment variables (double underscore as separator)
-#   4. CLI flags (--port, --log-level, --backend)
+#   3. Environment variables (see env column in README)
+#   4. CLI flags (--api-port, --cluster-port, --metrics-port, --log-level)
 
 # ── Service identity ──────────────────────────────────────────────────────────────
 
@@ -18,13 +18,13 @@ name = "ZisK Coordinator"
 # environment: development | staging | production
 environment = "development"
 
-# ── gRPC server ───────────────────────────────────────────────────────────────
+# ── Client-facing API gRPC server ──────────────────────────────────
 
 [server]
 # Address to listen on. Use 0.0.0.0 to accept connections on all interfaces.
 host = "0.0.0.0"
 
-# gRPC port. Override with --port or ZISK_COORDINATOR_PORT.
+# CClient-facing gRPC API port.
 port = 7000
 
 # Seconds to drain in-flight requests after a shutdown signal before forcing exit.
@@ -61,22 +61,12 @@ format = "pretty"
 # Optional: write logs to a rotating daily file in addition to stdout.
 # file_path = "zisk-coordinator.log"
 
-# ── Backend ───────────────────────────────────────────────────────────────────
-
-[backend]
-# Backend implementation to use:
-#   mock        — in-memory, no coordinator required (development / testing)
-#   coordinator — forward to a real zisk-coordinator (phase 2, not yet implemented)
-mode = "mock"
-
-# ── Coordinator (used only when backend.mode = "coordinator") ─────────────────
+# ── Coordinator ───────────────────────────────────────────────────────────────
 
 [coordinator]
-# gRPC URL of the zisk-coordinator.
-url = "http://127.0.0.1:50051"
+# Cluster-facing gRPC port.
+port = 50051
 
-# Seconds to wait for the initial TCP connection to the coordinator.
-connect_timeout_seconds = 5
-
-# Per-RPC deadline sent to the coordinator.
-request_timeout_seconds = 30
+# Optional: path to a coordinator core config file.
+# If omitted, the embedded coordinator uses its own built-in defaults.
+# config_file = "/etc/zisk/coordinator-core.toml"

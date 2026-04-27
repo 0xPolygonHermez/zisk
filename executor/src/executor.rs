@@ -111,7 +111,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     /// Sets ASM resources for execution (only applicable for ASM emulator).
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.rom_executor.set_asm_resources(asm_resources)
     }
 
@@ -323,10 +323,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .configure_checkpoints(&pctx, &self.state, &secn_global_ids)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
-        // Reset hints stream
-        if let Some(asm) = self.rom_executor.asm_emulator() {
-            asm.reset().map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
-        }
+        // Reset hints stream and input shmem
+        self.rom_executor
+            .reset()
+            .map_err(|e| proofman_common::ProofmanError::InvalidSetup(e.to_string()))?;
 
         stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);

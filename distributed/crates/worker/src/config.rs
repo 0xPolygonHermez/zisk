@@ -131,7 +131,6 @@ pub struct ProverServiceConfigDto {
     pub emulator: bool,
     pub proving_key: Option<PathBuf>,
     pub proving_key_snark: Option<PathBuf>,
-    pub asm_port: Option<u16>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub verbose: u8,

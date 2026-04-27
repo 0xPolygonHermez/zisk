@@ -10,11 +10,20 @@ pub enum CoordinatorError {
     #[error("Invalid or inaccessible resource")]
     NotFoundOrInaccessible,
 
+    #[error("Program not found: {0}. Did you call upload() before setup()?")]
+    ProgramNotFound(String),
+
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
     #[error("Insufficient compute capacity available")]
     InsufficientCapacity,
+
+    #[error("Workers are connected but still running setup; retry shortly")]
+    WorkersSettingUp,
+
+    #[error("Workers are connected but setup has not been done; call setup() first")]
+    WorkersNotSetup,
 
     // Internal errors - logged but not exposed to clients
     #[error("Internal service error: {0}")]
@@ -33,10 +42,21 @@ impl From<CoordinatorError> for Status {
             CoordinatorError::NotFoundOrInaccessible => {
                 Status::new(Code::NotFound, "Resource not found or inaccessible")
             }
+            CoordinatorError::ProgramNotFound(ref hash_id) => Status::new(
+                Code::NotFound,
+                format!("Program not found: {hash_id}. Did you call upload() before setup()?"),
+            ),
             CoordinatorError::InvalidArgument(msg) => Status::new(Code::InvalidArgument, msg),
             CoordinatorError::InsufficientCapacity => {
                 Status::new(Code::ResourceExhausted, "Insufficient compute capacity")
             }
+            CoordinatorError::WorkersSettingUp => {
+                Status::new(Code::Unavailable, "Workers are setting up; retry shortly")
+            }
+            CoordinatorError::WorkersNotSetup => Status::new(
+                Code::FailedPrecondition,
+                "Workers connected but setup not done; call setup() first",
+            ),
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {
                 Status::new(Code::Internal, "An internal error occurred")

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, EmbeddedOpts, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("guest");
 static PROGRAM2: GuestProgram = load_program!("guest-agg");
@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {:.2?} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

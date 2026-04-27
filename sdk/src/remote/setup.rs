@@ -13,15 +13,15 @@ impl RemoteClient {
     pub(crate) fn do_setup(
         &self,
         program: &GuestProgram,
-        _with_hints: bool, // remote: coordinator controls hint support per program; flag ignored
+        with_hints: bool,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
         let hash_id = program.program_id.hash_id.to_string();
-        let job_kind = DomainJobKind::Setup(DomainSetupRequest { hash_id });
+        let job_kind = DomainJobKind::Setup(DomainSetupRequest { hash_id, with_hints });
 
         let remote_job = self.gw.submit_job(job_kind)?;
 
-        Ok(JobHandle::new_remote(remote_job, subs, timeout))
+        Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 }

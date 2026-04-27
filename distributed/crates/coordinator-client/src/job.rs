@@ -135,8 +135,13 @@ impl Job {
         Ok(resp.into_inner().cancelled)
     }
 
-    /// Open a persistent input stream to this job.
+    /// Open a persistent stdin stream to this job.
     pub fn open_input_stream(&self) -> InputSender {
         self.client.open_input_stream(self.job_id)
+    }
+
+    /// Open a persistent hints stream to this job.
+    pub fn open_hints_stream(&self) -> InputSender {
+        self.client.open_hints_stream(self.job_id)
     }
 }

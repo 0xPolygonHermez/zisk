@@ -51,7 +51,7 @@ impl ProverBackend {
         self.executor.asm_emulator()
     }
 
-    pub(crate) fn set_asm_resources(&self, resources: AsmResources) -> Result<()> {
+    pub(crate) fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
         self.executor.set_asm_resources(resources)
     }
 
@@ -100,6 +100,15 @@ impl ProverBackend {
             })?
             .set_hints_stream_src(stream)
             .map_err(|e| anyhow::anyhow!("Failed to set hints stream source: {}", e))
+    }
+
+    pub(crate) fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
+        self.asm_emulator()
+            .ok_or_else(|| {
+                anyhow::anyhow!("ASM resources not initialized, cannot register inputs stream")
+            })?
+            .set_inputs_stream_src(stream)
+            .map_err(|e| anyhow::anyhow!("Failed to set inputs stream source: {}", e))
     }
 
     pub(crate) fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
