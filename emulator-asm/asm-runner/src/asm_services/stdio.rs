@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tracing::debug;
 
 use crate::{
@@ -89,29 +90,16 @@ impl StdioService {
         world_rank: i32,
         local_rank: i32,
         trimmed_path: &str,
-        options: &mut AsmRunnerOptions,
+        options: &AsmRunnerOptions,
         shm_prefix: &str,
         sem_prefix: &str,
     ) -> Result<Self> {
         let handles: [Mutex<StdioHandle>; 3] = AsmServices::SERVICES
-            .iter()
-            .enumerate()
-            .map(|(i, service)| {
+            .par_iter()
+            .map(|service| {
                 debug!(">>> [{}] Starting ASM service (stdio): {}", world_rank, service);
-
-                options.open_input_shmem = i != 0;
-                let mut handle =
+                let handle =
                     Self::start_service(service, trimmed_path, options, shm_prefix, sem_prefix)?;
-
-                // If this is the first service (MO), ping it to ensure it's ready before starting the others.
-                if i == 0 {
-                    handle
-                        .send_request::<PingRequest, PingResponse>(service, &PingRequest {})
-                        .with_context(|| {
-                            format!("Service {service} did not respond to stdio readiness ping")
-                        })?;
-                }
-
                 Ok(Mutex::new(handle))
             })
             .collect::<Result<Vec<_>>>()?

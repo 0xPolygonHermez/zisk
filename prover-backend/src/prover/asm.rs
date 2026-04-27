@@ -89,6 +89,7 @@ impl AsmProver {
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
     ) -> Result<Self> {
+        AsmServices::cleanup_stale_shmem();
         let core_prover = AsmCoreProver::new(
             snark_wrapper,
             preload_snark,
@@ -172,6 +173,7 @@ impl AsmProver {
             &asm_mt_path,
             asm_runner_options,
         )?;
+
         let shared = Arc::new(AsmSharedResources::new(
             world_rank,
             local_rank,
@@ -191,6 +193,7 @@ impl AsmProver {
             elf.program_id.clone(),
             ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
         );
+
         Ok(())
     }
 }

@@ -172,9 +172,6 @@ impl AsmServices {
         let shm_prefix = format!("ZISK_{pid}_{local_rank}");
         let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
 
-        // Phase 0: clean up stale shmem from dead processes.
-        Self::cleanup_stale_shmem();
-
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
         // where "??" is a 2-character service identifier.
@@ -188,18 +185,15 @@ impl AsmServices {
             } else {
                 return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
             };
-
         // Phase 1: create shmem segments for this process.
         Self::create_shmem(world_rank, &shm_prefix, stripped_path, &options)?;
 
         // Phase 2: start services and wait for them to be ready.
-        // self.start_services(world_rank, local_rank, hash_id, stripped_path, options);
-
         let stdio_service = StdioService::start_services(
             world_rank,
             local_rank,
             stripped_path,
-            &mut options.clone(),
+            &options,
             &shm_prefix,
             &sem_prefix,
         )?;
@@ -216,7 +210,8 @@ impl AsmServices {
     /// Clean up all shared memory and semaphores for currently running services.
     /// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
     /// left by dead processes and unlink them.
-    fn cleanup_stale_shmem() {
+    pub fn cleanup_stale_shmem() {
+        tracing::info!("Cleaning up stale shared memory and semaphores");
         let dev_shm = std::path::Path::new("/dev/shm");
         let entries = match std::fs::read_dir(dev_shm) {
             Ok(entries) => entries,
@@ -271,20 +266,40 @@ impl AsmServices {
         trimmed_path: &str,
         options: &AsmRunnerOptions,
     ) -> Result<()> {
-        for (i, service) in Self::SERVICES.iter().enumerate() {
-            tracing::debug!(">>> [{}] Creating shmem for service (stdio): {}", world_rank, service);
-            let status = service
-                .build_create_shmem_command(trimmed_path, options, shm_prefix)
-                .status()
-                .with_context(|| format!("Failed to spawn shmem creation for service {service}"))?;
+        let children: Vec<(AsmService, std::process::Child)> = Self::SERVICES
+            .iter()
+            .map(|service| {
+                tracing::debug!(
+                    ">>> [{}] Creating shmem for service (stdio): {}",
+                    world_rank,
+                    service
+                );
+                let child = service
+                    .build_create_shmem_command(trimmed_path, options, shm_prefix)
+                    .spawn()
+                    .with_context(|| {
+                        format!("Failed to spawn shmem creation for service {service}")
+                    })?;
+                Ok((*service, child))
+            })
+            .collect::<Result<_>>()?;
+
+        let mut any_failed = false;
+        for (service, mut child) in children {
+            let status = child
+                .wait()
+                .with_context(|| format!("Failed to wait on shmem creation for {service}"))?;
             if !status.success() {
-                for prev in &Self::SERVICES[..i] {
-                    let _ = prev.cleanup_shmem_for_prefix(shm_prefix);
-                }
-                return Err(anyhow::anyhow!(
-                    "Shmem creation for service {service} failed with {status}"
-                ));
+                tracing::error!("Shmem creation for {service} failed with {status}");
+                any_failed = true;
             }
+        }
+
+        if any_failed {
+            for service in &Self::SERVICES {
+                let _ = service.cleanup_shmem_for_prefix(shm_prefix);
+            }
+            return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
 
         Ok(())
