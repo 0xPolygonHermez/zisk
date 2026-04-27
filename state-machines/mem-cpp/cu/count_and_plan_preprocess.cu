@@ -175,9 +175,8 @@ struct StreamBufs {
     uint32_t*      d_final_offsets;
     uint32_t*      d_out;
     uint64_t*      d_ram_keys;
-    uint32_t*      d_ram_vals;
     uint64_t*      d_ram_keys_sorted;
-    uint32_t*      d_ram_vals_sorted;
+    uint32_t*      d_ram_vals_sorted;  // produced post-sort by extract_sorted_packed_kernel
     uint32_t*      d_ram_count;
     BlockOpSpill*  d_spill;
     uint32_t*      d_spill_count;
@@ -211,7 +210,6 @@ static void alloc_stream_bufs(StreamBufs& s) {
     CUDA_CHECK(cudaMalloc(&s.d_final_offsets,     sizeof(uint32_t) * (POTENTIAL_CAP_PER_CHUNK + 1)));
     CUDA_CHECK(cudaMalloc(&s.d_out,               sizeof(uint32_t) * POTENTIAL_CAP_PER_CHUNK));
     CUDA_CHECK(cudaMalloc(&s.d_ram_keys,          sizeof(uint64_t) * POTENTIAL_CAP_PER_CHUNK));
-    CUDA_CHECK(cudaMalloc(&s.d_ram_vals,          sizeof(uint32_t) * POTENTIAL_CAP_PER_CHUNK));
     CUDA_CHECK(cudaMalloc(&s.d_ram_keys_sorted,   sizeof(uint64_t) * POTENTIAL_CAP_PER_CHUNK));
     CUDA_CHECK(cudaMalloc(&s.d_ram_vals_sorted,   sizeof(uint32_t) * POTENTIAL_CAP_PER_CHUNK));
     CUDA_CHECK(cudaMalloc(&s.d_ram_count,         sizeof(uint32_t)));
@@ -236,9 +234,8 @@ static void alloc_stream_bufs(StreamBufs& s) {
         (uint32_t*)nullptr, (uint32_t*)nullptr, POTENTIAL_CAP_PER_CHUNK + 1);
     CUDA_CHECK(cudaMalloc(&s.d_scan_temp_runs, s.scan_temp_runs_bytes));
 
-    cub::DeviceRadixSort::SortPairs(nullptr, s.sort_temp_bytes,
-        (uint64_t*)nullptr, (uint64_t*)nullptr,
-        (uint32_t*)nullptr, (uint32_t*)nullptr, POTENTIAL_CAP_PER_CHUNK);
+    cub::DeviceRadixSort::SortKeys(nullptr, s.sort_temp_bytes,
+        (uint64_t*)nullptr, (uint64_t*)nullptr, POTENTIAL_CAP_PER_CHUNK);
     CUDA_CHECK(cudaMalloc(&s.d_sort_temp, s.sort_temp_bytes));
 
     cub::DeviceRunLengthEncode::Encode(nullptr, s.rle_temp_bytes,
@@ -255,7 +252,7 @@ static void alloc_stream_bufs(StreamBufs& s) {
 static void free_stream_bufs(StreamBufs& s) {
     cudaFree(s.d_memops); cudaFree(s.d_counts); cudaFree(s.d_potential_offsets);
     cudaFree(s.d_potentials); cudaFree(s.d_emit_bits); cudaFree(s.d_final_offsets);
-    cudaFree(s.d_out); cudaFree(s.d_ram_keys); cudaFree(s.d_ram_vals);
+    cudaFree(s.d_out); cudaFree(s.d_ram_keys);
     cudaFree(s.d_ram_keys_sorted); cudaFree(s.d_ram_vals_sorted);
     cudaFree(s.d_ram_count); cudaFree(s.d_spill); cudaFree(s.d_spill_count);
     cudaFree(s.d_spill_status);
@@ -306,7 +303,6 @@ static void run_chunk(StreamBufs& sb,
     const int g_memops = (n_memops + BLOCK - 1) / BLOCK;
     const int g_pot    = (n_potentials + BLOCK - 1) / BLOCK;
     const int g_ram    = n_ram == 0 ? 0 : (int)((n_ram + BLOCK - 1) / BLOCK);
-    const int g_spill  = (MAX_BLOCKOP_SPILL_PER_CHUNK + BLOCK - 1) / BLOCK;
 
     CUDA_CHECK(cudaMemcpyAsync(sb.d_memops, h_memops_chunk,
                                sizeof(MemOp) * n_memops, cudaMemcpyHostToDevice, st));
@@ -333,33 +329,37 @@ static void run_chunk(StreamBufs& sb,
             sb.d_counts, sb.d_potential_offsets, n_memops + 1, st);
     }
 
-    // fill_spill_bases with fixed grid; kernel early-exits past *d_spill_count
-    fill_spill_bases_kernel<<<g_spill, BLOCK, 0, st>>>(
-        sb.d_spill, sb.d_spill_count, sb.d_potential_offsets);
-
     decode_emit_kernel<<<g_memops, BLOCK, 0, st>>>(
         sb.d_memops, n_memops, sb.d_potential_offsets, sb.d_spill_status, sb.d_potentials);
 
-    // blockop_emit with fixed grid; CTAs early-exit past *d_spill_count
+    // blockop_emit with fixed grid; CTAs early-exit past *d_spill_count.
+    // Slot bases are looked up directly from d_potential_offsets per spill —
+    // no separate fill_spill_bases pass needed.
     blockop_emit_kernel<<<MAX_BLOCKOP_SPILL_PER_CHUNK, 256, 0, st>>>(
-        sb.d_spill, sb.d_spill_count, sb.d_potentials);
+        sb.d_spill, sb.d_spill_count, sb.d_potential_offsets, sb.d_potentials);
 
     gather_ram_events_kernel<<<g_pot, BLOCK, 0, st>>>(
         sb.d_potentials, n_potentials,
-        sb.d_ram_keys, sb.d_ram_vals, sb.d_ram_count, sb.d_emit_bits);
+        sb.d_ram_keys, sb.d_ram_count, sb.d_emit_bits);
 
     // Sort exactly n_ram RAM events (pre-computed on CPU during load).
     // Tight key layout: 21 bits orig_pos + 26 bits compact_addr = 47 bits total.
     if (n_ram > 0) {
         size_t bytes_sort = sb.sort_temp_bytes;
-        cub::DeviceRadixSort::SortPairs(sb.d_sort_temp, bytes_sort,
+        cub::DeviceRadixSort::SortKeys(sb.d_sort_temp, bytes_sort,
             sb.d_ram_keys, sb.d_ram_keys_sorted,
-            sb.d_ram_vals, sb.d_ram_vals_sorted,
             n_ram, 0, RAM_KEY_END_BIT, st);
 
         // Extract the compact_addr part of each sorted key for RLE input.
         extract_sorted_addr_kernel<<<g_ram, BLOCK, 0, st>>>(
             sb.d_ram_keys_sorted, n_ram, sb.d_sorted_addr);
+
+        // Extract the per-event (kind_w, orig_pos) packed value into a
+        // 32-bit array. state_machine_by_run_kernel reads this (4 bytes per
+        // event) instead of the 8-byte sorted keys — keeps state_machine's
+        // bandwidth identical to when we used SortPairs.
+        extract_sorted_packed_kernel<<<g_ram, BLOCK, 0, st>>>(
+            sb.d_ram_keys_sorted, n_ram, sb.d_ram_vals_sorted);
 
         // RLE: group consecutive equal addresses, get run lengths + count.
         {
@@ -415,15 +415,22 @@ static void run_chunk(StreamBufs& sb,
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <block_number> [--verify|--verify-files] [--no-d2h]\n", argv[0]);
+        fprintf(stderr,
+                "Usage: %s <block_number> [--verify|--verify-files] [--no-d2h]"
+                " [--save-counters <dir>]\n",
+                argv[0]);
         return 1;
     }
     const std::string block = argv[1];
     bool do_verify = false, do_verify_files = false, no_d2h = false;
+    std::string counters_dir;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--verify") == 0) do_verify = true;
         else if (strcmp(argv[i], "--verify-files") == 0) do_verify_files = true;
         else if (strcmp(argv[i], "--no-d2h") == 0) no_d2h = true;
+        else if (strcmp(argv[i], "--save-counters") == 0 && i + 1 < argc) {
+            counters_dir = argv[++i];
+        }
         else { fprintf(stderr, "unknown arg: %s\n", argv[i]); return 1; }
     }
     if (no_d2h && (do_verify || do_verify_files)) {
@@ -474,7 +481,7 @@ int main(int argc, char** argv) {
     //   n_potentials = total potential emissions (upper bound for out buffer,
     //                  sort and scan sizes)
     //   n_ram        = number of those that hit the RAM range and therefore
-    //                  need to go through the sort + state_machine_scan path
+    //                  need to go through the sort + state_machine path
     // Both use the same decode table as the GPU decode kernels.
     std::vector<size_t>   out_offsets(n_chunks + 1, 0);
     std::vector<uint32_t> n_ram_per_chunk(n_chunks, 0);
@@ -604,6 +611,40 @@ int main(int argc, char** argv) {
 
     // Publish per-chunk actual emit counts to h_out_n.
     for (uint32_t c = 0; c < n_chunks; c++) h_out_n[c] = h_n_emits_all[c];
+
+    // Per-chunk counters: D2H and write one file per chunk only when the
+    // caller asked for them via --save-counters. Each file is exactly 20 bytes
+    // (5 little-endian uint32s: full_5, full_3, full_2, read_byte, write_byte).
+    if (!counters_dir.empty()) {
+        std::vector<ChunkCounters> h_chunk_counters(n_chunks);
+        CUDA_CHECK(cudaMemcpy(h_chunk_counters.data(), d_chunk_counters,
+                              sizeof(ChunkCounters) * n_chunks,
+                              cudaMemcpyDeviceToHost));
+
+        // Best-effort mkdir -p; fall through if it already exists.
+        mkdir(counters_dir.c_str(), 0755);
+        for (uint32_t c = 0; c < n_chunks; c++) {
+            char p[1024];
+            snprintf(p, sizeof(p), "%s/mem_counters_%u.bin",
+                     counters_dir.c_str(), chunks[c].file_idx);
+            FILE* f = fopen(p, "wb");
+            if (!f) {
+                fprintf(stderr, "ERROR: cannot open %s for write\n", p);
+                return 1;
+            }
+            const ChunkCounters& cc = h_chunk_counters[c];
+            uint32_t buf[5] = { cc.full_5, cc.full_3, cc.full_2,
+                                cc.read_byte, cc.write_byte };
+            if (fwrite(buf, sizeof(buf), 1, f) != 1) {
+                fprintf(stderr, "ERROR: short write %s\n", p);
+                fclose(f);
+                return 1;
+            }
+            fclose(f);
+        }
+        std::cout << "Wrote " << n_chunks << " counter files → "
+                  << counters_dir << "/mem_counters_*.bin\n";
+    }
 
     if (do_verify) {
         std::vector<bool>     free_r(ZISK_RAM_SIZE_BYTES / 8, false);

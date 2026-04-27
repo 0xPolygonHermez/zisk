@@ -57,23 +57,49 @@ struct __align__(8) MemOp {
     uint32_t flags;
 };
 
-// One potential emission. We carry the raw aligned address (which has bits
-// 0-2 = 0) and a small flags word. is_ram lets us skip non-RAM in the sort/
-// scan; kind drives the state-machine.
-struct __align__(8) PotentialEmit {
-    uint32_t aligned_addr;  // 8-byte aligned raw address (or 0 if unused slot)
-    uint32_t flags;         // bit 0 = is_ram, bit 1 = kind (0=R, 1=W), bit 2 = used
+// One potential emission, packed into a single uint32_t.
+//
+// Layout:
+//   bit  0     POT_FLAG_IS_RAM   1 if address falls inside the RAM region
+//   bit  1     POT_FLAG_KIND_W   1 if this is a Write event (else Read)
+//   bit  2     reserved          (was POT_FLAG_USED; removed)
+//   bits 3..31 aligned_addr      the 8-byte-aligned address itself
+//
+// Aligned addresses naturally have bits 0..2 == 0, so the flag bits live in
+// the address word at no cost. This halves d_potentials memory and the
+// gather_ram_events_kernel read traffic vs. the previous (addr, flags) pair.
+//
+// Use the emit_* accessors below to extract fields — never mask by hand at
+// the call site.
+//
+// Every slot in d_potentials[0..n_potentials) is written by Phase B
+// (decode_emit or blockop_emit), so there's no need for a "is this slot
+// populated?" marker: gather_ram_events_kernel only reads that range.
+struct __align__(4) PotentialEmit {
+    uint32_t aligned_addr_packed;
 };
 
 #define POT_FLAG_IS_RAM   0x1u
 #define POT_FLAG_KIND_W   0x2u
-#define POT_FLAG_USED     0x4u
+#define POT_FLAG_MASK     0x7u   // covers all three reserved bits
+
+// Accessors for PotentialEmit's packed layout. Always use these; never mask
+// the raw word at a call site.
+__host__ __device__ __forceinline__
+uint32_t emit_aligned_addr(PotentialEmit p) { return p.aligned_addr_packed & ~POT_FLAG_MASK; }
+
+__host__ __device__ __forceinline__
+bool emit_is_ram(PotentialEmit p) { return (p.aligned_addr_packed & POT_FLAG_IS_RAM) != 0; }
+
+__host__ __device__ __forceinline__
+bool emit_kind_w(PotentialEmit p) { return (p.aligned_addr_packed & POT_FLAG_KIND_W) != 0; }
 
 struct BlockOpSpill {
-    uint32_t memop_idx;
+    uint32_t memop_idx;       // index into the chunk's MemOp array; used by
+                              // blockop_emit_kernel to look up the slot base
+                              // via d_potential_offsets[memop_idx] on the fly
     uint32_t aligned_base;
     uint32_t count;
-    uint32_t potential_base;  // filled in after prefix sum
     uint32_t kind_w;          // 1 if write, 0 if read
 };
 
@@ -120,53 +146,86 @@ uint32_t ram_compact(uint32_t aligned_addr) {
 } while (0)
 
 // =====================================================================
-// Decode: per-memop potential count
+// Decode: fused per-memop validity check, potential-emission count, and
+// per-memop counter deltas. 
 //
-// Mirrors the switch in zisk/mem_counter_single.cpp::execute. Always returns
-// the full number of potential emissions — block ops return their `count`
-// regardless of size. The BLOCKOP_SPILL_THRESH_VAL threshold is used later,
-// only to decide which kernel fills the reserved slots in d_potentials:
-// small blocks are inlined in decode_emit_kernel, large ones in
-// blockop_emit_kernel.
+// Behaviour:
+//   - Known mode → writes *count_out (potential emissions) and counters_out
+//                  (at most one field set to 1, rest zero), returns true.
+//   - Unknown mode → atomicOr's *d_invalid_mode_flag (sticky; host inspects
+//                    after the chunk loop and aborts), writes *count_out = 0,
+//                    leaves counters_out zero, returns false. The caller
+//                    should skip the per-memop block-op spill logic.
 //
-// Input:  op       — single memop record (addr + flags)
-// Returns:         — potential emission count for this memop:
-//                    1 for READ_*, ALIGNED_READ, ALIGNED_WRITE, READ_8 aligned;
-//                    2 for WRITE_1/CWRITE_1, WRITE_2/4 not straddling, READ_2/4
-//                      straddling, READ_8 straddling, WRITE_8 perfectly aligned;
-//                    4 for WRITE_2/4 straddling, WRITE_8 misaligned;
-//                    `flags >> 4` for BLOCK_READ / BLOCK_WRITE (and ALIGNED_*);
-//                    0 for unknown modes.
+// Counter rules (matches mem_counter_single.cpp's accumulators):
+//   READ_1            → read_byte
+//   CWRITE_1          → write_byte
+//   WRITE_1           → full_3
+//   READ_2/4/8 strad. → full_3   (else full_2 for READ_2/4, none for READ_8 aligned)
+//   WRITE_2/4 strad.  → full_5   (else full_3)
+//   WRITE_8 misalign. → full_5   (aligned WRITE_8 leaves all counters zero)
+//   ALIGNED_*, BLOCK_* → no counter contribution
 // =====================================================================
 
 __device__ __forceinline__
-uint32_t decode_potential_count(MemOp op) {
+bool decode(MemOp op,
+            uint32_t* count_out,
+            ChunkCounters& counters_out,
+            uint32_t* d_invalid_mode_flag) {
     const uint32_t addr        = op.addr;
     const uint32_t aligned     = addr & ZISK_ALIGN_MASK;
     const uint8_t  mode        = op.flags & 0x3F;
     const uint32_t off_in_word = addr & 0x07;
 
+    counters_out = ChunkCounters{0,0,0,0,0};
+
     switch (mode) {
-        case MOPS_READ_1:    return 1;
-        case MOPS_CWRITE_1:  return 2;
-        case MOPS_WRITE_1:   return 2;
+        case MOPS_READ_1:
+            *count_out = 1;
+            counters_out.read_byte = 1;
+            return true;
+        case MOPS_CWRITE_1:
+            *count_out = 2;
+            counters_out.write_byte = 1;
+            return true;
+        case MOPS_WRITE_1:
+            *count_out = 2;
+            counters_out.full_3 = 1;
+            return true;
 
-        case MOPS_READ_2:    return (off_in_word > 6) ? 2 : 1;
-        case MOPS_WRITE_2:   return (off_in_word > 6) ? 4 : 2;
+        case MOPS_READ_2:
+            if (off_in_word > 6) { *count_out = 2; counters_out.full_3 = 1; }
+            else                 { *count_out = 1; counters_out.full_2 = 1; }
+            return true;
+        case MOPS_WRITE_2:
+            if (off_in_word > 6) { *count_out = 4; counters_out.full_5 = 1; }
+            else                 { *count_out = 2; counters_out.full_3 = 1; }
+            return true;
 
-        case MOPS_READ_4:    return (off_in_word > 4) ? 2 : 1;
-        case MOPS_WRITE_4:   return (off_in_word > 4) ? 4 : 2;
+        case MOPS_READ_4:
+            if (off_in_word > 4) { *count_out = 2; counters_out.full_3 = 1; }
+            else                 { *count_out = 1; counters_out.full_2 = 1; }
+            return true;
+        case MOPS_WRITE_4:
+            if (off_in_word > 4) { *count_out = 4; counters_out.full_5 = 1; }
+            else                 { *count_out = 2; counters_out.full_3 = 1; }
+            return true;
 
-        case MOPS_READ_8:    return (off_in_word > 0) ? 2 : 1;
-        case MOPS_WRITE_8:   return (addr == aligned) ? 1 : 4;
+        case MOPS_READ_8:
+            if (off_in_word > 0) { *count_out = 2; counters_out.full_3 = 1; }
+            else                 { *count_out = 1; }
+            return true;
+        case MOPS_WRITE_8:
+            if (addr == aligned) { *count_out = 1; }
+            else                 { *count_out = 4; counters_out.full_5 = 1; }
+            return true;
 
         case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
         case MOPS_ALIGNED_READ  + 0x20: case MOPS_ALIGNED_READ  + 0x30:
-            return 1;
-
         case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
         case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
-            return 1;
+            *count_out = 1;
+            return true;
 
         case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
         case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
@@ -176,50 +235,14 @@ uint32_t decode_potential_count(MemOp op) {
         case MOPS_BLOCK_WRITE        + 0x20: case MOPS_BLOCK_WRITE        + 0x30:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
         case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30:
-            return op.flags >> MOPS_BLOCK_COUNT_SBITS;
+            *count_out = op.flags >> MOPS_BLOCK_COUNT_SBITS;
+            return true;
 
         default:
-            // Invalid mode — should not happen on real data. Returning 0 makes
-            // the chunk visibly degenerate so verify catches it.
-            return 0;
+            atomicOr(d_invalid_mode_flag, 1u);
+            *count_out = 0;
+            return false;
     }
-}
-
-// =====================================================================
-// Decode: counter deltas (full_5, full_3, full_2, read_byte, write_byte)
-// Mirrors the side-effects of the same switch in mem_counter_single.cpp.
-//
-// Input:  op      — single memop record
-// Returns:        — ChunkCounters with at most one field set to 1, the rest 0.
-//                   READ_1 → read_byte; CWRITE_1 → write_byte; WRITE_1,
-//                   {READ,WRITE}_2/4/8 fall into full_5/3/2 by alignment.
-//                   ALIGNED_* and BLOCK_* don't touch counters.
-// =====================================================================
-
-__device__ __forceinline__
-ChunkCounters decode_counter_deltas(MemOp op) {
-    const uint32_t addr        = op.addr;
-    const uint32_t aligned     = addr & ZISK_ALIGN_MASK;
-    const uint8_t  mode        = op.flags & 0x3F;
-    const uint32_t off_in_word = addr & 0x07;
-    ChunkCounters c{0,0,0,0,0};
-
-    switch (mode) {
-        case MOPS_READ_1:    c.read_byte  = 1; break;
-        case MOPS_CWRITE_1:  c.write_byte = 1; break;
-        case MOPS_WRITE_1:   c.full_3     = 1; break;
-
-        case MOPS_READ_2:    if (off_in_word > 6) c.full_3 = 1; else c.full_2 = 1; break;
-        case MOPS_WRITE_2:   if (off_in_word > 6) c.full_5 = 1; else c.full_3 = 1; break;
-        case MOPS_READ_4:    if (off_in_word > 4) c.full_3 = 1; else c.full_2 = 1; break;
-        case MOPS_WRITE_4:   if (off_in_word > 4) c.full_5 = 1; else c.full_3 = 1; break;
-        case MOPS_READ_8:    if (off_in_word > 0) c.full_3 = 1;                      break;
-        case MOPS_WRITE_8:   if (addr != aligned) c.full_5 = 1;                      break;
-
-        // ALIGNED_*, BLOCK_* don't touch counters.
-        default: break;
-    }
-    return c;
 }
 
 // =====================================================================
@@ -240,32 +263,31 @@ ChunkCounters decode_counter_deltas(MemOp op) {
 // emit_pair_rw / emit_one_r / emit_one_w — write a single PotentialEmit pair
 // or singleton at *out. Each PotentialEmit carries:
 //   aligned_addr — 8-byte aligned raw address
-//   flags        — POT_FLAG_USED | (POT_FLAG_IS_RAM if RAM) | (POT_FLAG_KIND_W for W)
+//   flags        — (POT_FLAG_IS_RAM if RAM) | (POT_FLAG_KIND_W for W)
 //
 // In:     aligned — aligned 8-byte address to record (assumed valid)
 // Out:    out[]   — 1 slot for one_r/one_w, 2 slots (R then W) for pair_rw
 
 __device__ __forceinline__
 void emit_pair_rw(uint32_t aligned, PotentialEmit* out) {
-    const uint32_t base = (POT_FLAG_USED) | (is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u);
-    out[0].aligned_addr = aligned; out[0].flags = base;                       // R
-    out[1].aligned_addr = aligned; out[1].flags = base | POT_FLAG_KIND_W;     // W
+    const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
+    out[0].aligned_addr_packed = aligned | ram_bit;                       // R
+    out[1].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;     // W
 }
 
 __device__ __forceinline__
 void emit_one_r(uint32_t aligned, PotentialEmit* out) {
-    const uint32_t base = (POT_FLAG_USED) | (is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u);
-    out[0].aligned_addr = aligned; out[0].flags = base;
+    const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
+    out[0].aligned_addr_packed = aligned | ram_bit;
 }
 
 __device__ __forceinline__
 void emit_one_w(uint32_t aligned, PotentialEmit* out) {
-    const uint32_t base = (POT_FLAG_USED) | (is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u);
-    out[0].aligned_addr = aligned; out[0].flags = base | POT_FLAG_KIND_W;
+    const uint32_t ram_bit = is_ram_addr(aligned) ? POT_FLAG_IS_RAM : 0u;
+    out[0].aligned_addr_packed = aligned | ram_bit | POT_FLAG_KIND_W;
 }
 
 // Decode one memop into 1..4 PotentialEmit records (or 0..count for blocks).
-// Mirrors zisk/mem_counter_single.cpp::execute one-for-one.
 //
 // Big-block dispatch is decided by the caller via `skip_block`:
 //   - skip_block == true  → block op was claimed by blockop_emit_kernel; we
@@ -362,20 +384,21 @@ void decode_emit_inline(MemOp op, PotentialEmit* out, bool skip_block) {
 //
 // Pipeline order (per chunk, all on one stream — see main_preprocess.cu):
 //
-//   [1]  H2D memops + zero d_ram_count, d_spill_count
+//   [1]  H2D memops + zero d_ram_count, d_spill_count, d_spill_status
 //   [2]  decode_count_kernel       counts/chunk_counters/spill enqueue
 //   [3]  CUB ExclusiveSum(d_counts)        → d_potential_offsets
-//   [4]  fill_spill_bases_kernel   patches potential_base for spilled blocks
-//   [5]  decode_emit_kernel        writes PotentialEmit slots (non-spilled ops)
-//   [6]  blockop_emit_kernel       writes PotentialEmit slots for big blocks
-//   [7]  gather_ram_events_kernel  splits RAM (sort/scan) vs non-RAM (emit=1)
-//   [8]  CUB SortPairs             sort RAM events by (addr, orig_pos)
-//   [9]  extract_sorted_addr_kernel  → dense compact_addr column for RLE
-//   [10] CUB RunLengthEncode + ExclusiveSum  → d_run_offsets, d_num_unique
-//   [11] state_machine_by_run_kernel  per-segment state machine, scatters bits
-//   [12] CUB ExclusiveSum(d_emit_bits)        → d_final_offsets
-//   [13] compact_kernel            scatter surviving aligned addresses to d_out
-//   [14] D2H d_out
+//   [4]  decode_emit_kernel        writes PotentialEmit slots (non-spilled ops)
+//   [5]  blockop_emit_kernel       writes PotentialEmit slots for big blocks
+//                                  (reads slot bases from d_potential_offsets
+//                                  on the fly — no separate fill pass needed)
+//   [6]  gather_ram_events_kernel  splits RAM (sort/scan) vs non-RAM (emit=1)
+//   [7]  CUB SortPairs             sort RAM events by (addr, orig_pos)
+//   [8]  extract_sorted_addr_kernel  → dense compact_addr column for RLE
+//   [9]  CUB RunLengthEncode + ExclusiveSum  → d_run_offsets, d_num_unique
+//   [10] state_machine_by_run_kernel  per-segment state machine, scatters bits
+//   [11] CUB ExclusiveSum(d_emit_bits)        → d_final_offsets
+//   [12] compact_kernel            scatter surviving aligned addresses to d_out
+//   [13] D2H d_out
 // =====================================================================
 
 // Per-block shared-memory reducer for ChunkCounters. Each thread contributes
@@ -405,35 +428,6 @@ void block_reduce_counters(const ChunkCounters& my, ChunkCounters* g_dst) {
     }
 }
 
-// Helper: returns true iff `mode` (low 6 bits of MemOp.flags) is one of the
-// recognised opcodes. We check this in decode_count_kernel so the host can
-// fail loud on corrupted input — mem_counter_single.cpp throws in this case;
-// the GPU silently produced 0 emissions before this check was added.
-__host__ __device__ __forceinline__
-bool is_known_mode(uint8_t mode) {
-    switch (mode) {
-        case MOPS_READ_1:    case MOPS_CWRITE_1:  case MOPS_WRITE_1:
-        case MOPS_READ_2:    case MOPS_WRITE_2:
-        case MOPS_READ_4:    case MOPS_WRITE_4:
-        case MOPS_READ_8:    case MOPS_WRITE_8:
-        case MOPS_ALIGNED_READ  + 0x00: case MOPS_ALIGNED_READ  + 0x10:
-        case MOPS_ALIGNED_READ  + 0x20: case MOPS_ALIGNED_READ  + 0x30:
-        case MOPS_ALIGNED_WRITE + 0x00: case MOPS_ALIGNED_WRITE + 0x10:
-        case MOPS_ALIGNED_WRITE + 0x20: case MOPS_ALIGNED_WRITE + 0x30:
-        case MOPS_BLOCK_READ        + 0x00: case MOPS_BLOCK_READ        + 0x10:
-        case MOPS_BLOCK_READ        + 0x20: case MOPS_BLOCK_READ        + 0x30:
-        case MOPS_ALIGNED_BLOCK_READ+ 0x00: case MOPS_ALIGNED_BLOCK_READ+ 0x10:
-        case MOPS_ALIGNED_BLOCK_READ+ 0x20: case MOPS_ALIGNED_BLOCK_READ+ 0x30:
-        case MOPS_BLOCK_WRITE        + 0x00: case MOPS_BLOCK_WRITE        + 0x10:
-        case MOPS_BLOCK_WRITE        + 0x20: case MOPS_BLOCK_WRITE        + 0x30:
-        case MOPS_ALIGNED_BLOCK_WRITE+ 0x00: case MOPS_ALIGNED_BLOCK_WRITE+ 0x10:
-        case MOPS_ALIGNED_BLOCK_WRITE+ 0x20: case MOPS_ALIGNED_BLOCK_WRITE+ 0x30:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // [Step 1] One thread per memop. Writes its potential-emission count to
 // d_counts[i] (consumed by the upcoming exclusive-sum), accumulates the
 // per-chunk counter deltas via block_reduce_counters, and queues big block ops
@@ -452,9 +446,16 @@ bool is_known_mode(uint8_t mode) {
 // answers on corrupted input would otherwise be possible because every other
 // switch in this file falls through to default: break for unknown modes.
 //
-// Caller must zero *d_spill_count, d_spill_status[0..n_memops), and
-// *d_chunk_counters_entry before processing the first chunk; the host owns
-// resetting *d_invalid_mode_flag as well.
+// Caller-owned resets:
+//   - *d_spill_count                — zero BEFORE EVERY CHUNK (per-stream buffer
+//                                     is reused; new chunk needs a clean count)
+//   - d_spill_status[0..n_memops)   — zero BEFORE EVERY CHUNK (same reason; we
+//                                     memset only the active range each chunk)
+//   - *d_chunk_counters_entry       — zero ONCE at startup (each chunk writes
+//                                     to its own slot in the global array; we
+//                                     never reuse a slot)
+//   - *d_invalid_mode_flag          — zero ONCE at startup (sticky-OR; once
+//                                     set, the host aborts at end-of-pipeline)
 //
 // Input:  memops[n_memops]                  — per-chunk MemOp records (H2D'd)
 // Input:  n_memops                          — count
@@ -482,18 +483,13 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
     ChunkCounters my{0,0,0,0,0};
     if (i < n_memops) {
         MemOp op = memops[i];
-        const uint8_t mode = op.flags & 0x3F;
 
-        if (!is_known_mode(mode)) {
-            // Bad input. Flag for host inspection. Still set d_counts[i] = 0
-            // (matches decode_potential_count's default) so the prefix sum
-            // doesn't read garbage.
-            atomicOr(d_invalid_mode_flag, 1u);
-            d_counts[i] = 0;
-        } else {
-            d_counts[i] = decode_potential_count(op);
-            my = decode_counter_deltas(op);
-
+        // Fused: validity + d_counts[i] + counter deltas in a single switch.
+        // Returns false on unknown opcode (already flagged in
+        // *d_invalid_mode_flag and d_counts[i] zeroed for safe prefix sum).
+        // The block-op spill logic below only runs on valid ops.
+        if (decode(op, &d_counts[i], my, d_invalid_mode_flag)) {
+            const uint8_t mode = op.flags & 0x3F;
             const uint8_t base = mode & 0x0Fu;
             const bool is_block_read  = (base == (MOPS_BLOCK_READ  & 0x0F)) ||
                                         (base == (MOPS_ALIGNED_BLOCK_READ  & 0x0F));
@@ -508,8 +504,9 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
                         s.memop_idx       = i;
                         s.aligned_base    = op.addr;     // already aligned for blocks
                         s.count           = count;
-                        s.potential_base  = 0;            // filled later
                         s.kind_w          = is_block_write ? 1u : 0u;
+                        // potential_base lookup is deferred to blockop_emit_kernel
+                        // (reads d_potential_offsets[memop_idx] there).
                         d_spill[slot] = s;
                         d_spill_status[i] = 1;            // claimed by spill kernel
                     }
@@ -525,30 +522,7 @@ void decode_count_kernel(const MemOp* __restrict__ memops,
     block_reduce_counters(my, d_chunk_counters_entry);
 }
 
-// [Step 4] Patch potential_base on each spilled BlockOpSpill record now that
-// the prefix sum (Step 3, CUB ExclusiveSum) has filled d_potential_offsets.
-//
-// Grid is fixed at MAX_BLOCKOP_SPILL_PER_CHUNK / BLOCK; threads past the
-// actual count early-exit via *d_spill_count (avoiding a host sync).
-//
-// Input:  d_spill_count                          — number of valid spill entries
-// In/Out: d_spill[0..*d_spill_count)             — .potential_base set per entry
-// Input:  d_potential_offsets[memop_idx]         — slot base for that memop
-__global__
-void fill_spill_bases_kernel(BlockOpSpill* __restrict__ d_spill,
-                             const uint32_t* __restrict__ d_spill_count,
-                             const uint32_t* __restrict__ d_potential_offsets) {
-    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    // *d_spill_count may exceed MAX_BLOCKOP_SPILL_PER_CHUNK on overflow
-    // (decode_count_kernel keeps the atomic counter monotonic but only
-    // writes records for slot < MAX). Cap at MAX so we never read an
-    // uninitialised d_spill slot.
-    const uint32_t cap = min(*d_spill_count, MAX_BLOCKOP_SPILL_PER_CHUNK);
-    if (i >= cap) return;
-    d_spill[i].potential_base = d_potential_offsets[d_spill[i].memop_idx];
-}
-
-// [Step 5] One thread per memop. Writes the memop's potential emissions at
+// [Step 4] One thread per memop. Writes the memop's potential emissions at
 // the slot range [d_potential_offsets[i] .. d_potential_offsets[i+1]) in
 // d_potentials.
 //
@@ -577,7 +551,7 @@ void decode_emit_kernel(const MemOp* __restrict__ memops,
     decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0);
 }
 
-// [Step 6] One CTA per spilled big block. The CTA's threads stride through
+// [Step 5] One CTA per spilled big block. The CTA's threads stride through
 // the block's `count` aligned addresses and write a PotentialEmit per slot.
 //
 // Grid is fixed at MAX_BLOCKOP_SPILL_PER_CHUNK; CTAs with blockIdx.x >=
@@ -585,84 +559,105 @@ void decode_emit_kernel(const MemOp* __restrict__ memops,
 // already skipped these slots, so this step completes coverage of
 // d_potentials[0..total_potentials).
 //
-// Input:  d_spill[0..*d_spill_count)             — spill records (with potential_base)
+// *d_spill_count may exceed MAX_BLOCKOP_SPILL_PER_CHUNK on overflow
+// (decode_count_kernel keeps the atomic counter monotonic but only writes
+// records for slot < MAX). The min() cap keeps us from reading uninitialised
+// d_spill slots.
+//
+// Input:  d_spill[0..*d_spill_count)             — spill records
 // Input:  d_spill_count                          — number of valid spill entries
-// Output: d_potentials[s.potential_base..+count) — populated for each spill
+// Input:  d_potential_offsets[memop_idx]         — slot base lookup
+// Output: d_potentials[base..+count)             — populated for each spill
 __global__
 void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
                          const uint32_t* __restrict__ d_spill_count,
+                         const uint32_t* __restrict__ d_potential_offsets,
                          PotentialEmit* __restrict__ d_potentials) {
-    // Defensive cap: same reasoning as in fill_spill_bases_kernel. Grid is
-    // launched at MAX_BLOCKOP_SPILL_PER_CHUNK so blockIdx.x < MAX already,
-    // but we cap here too for symmetry / future-proofing.
     const uint32_t cap = min(*d_spill_count, MAX_BLOCKOP_SPILL_PER_CHUNK);
     if (blockIdx.x >= cap) return;
     const BlockOpSpill s = d_spill[blockIdx.x];
-    const uint32_t base_addr = s.aligned_base;
-    const uint32_t count     = s.count;
-    PotentialEmit* base = d_potentials + s.potential_base;
-    const uint32_t flags_base = POT_FLAG_USED | (s.kind_w ? POT_FLAG_KIND_W : 0u);
+    const uint32_t base_addr   = s.aligned_base;
+    const uint32_t count       = s.count;
+    const uint32_t base_offset = d_potential_offsets[s.memop_idx];
+    PotentialEmit* base = d_potentials + base_offset;
+    const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
     for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
         const uint32_t a = base_addr + i * 8u;
-        base[i].aligned_addr = a;
-        base[i].flags        = flags_base | (is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u);
+        const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
+        base[i].aligned_addr_packed = a | kind_bit | ram_bit;
     }
 }
 
-// Sort-key layout (tight, 47-bit pack):
-//   bits [0..20]  = orig_pos      (≤ 21 bits, fits POTENTIAL_CAP_PER_CHUNK=2M)
-//   bits [21..46] = compact_addr  (26 bits, fits 64M RAM slots)
-// Sorting by this key groups events by address and orders by chunk-local
-// orig_pos within each group. RAM_KEY_END_BIT is passed to CUB SortPairs.
+// Sort-key layout (everything in one 64-bit key — the sort uses CUB SortKeys,
+// no separate value array):
+//   bit  0          = kind_w        (Read/Write)
+//   bits [1..21]    = orig_pos      (≤ 21 bits, fits POTENTIAL_CAP_PER_CHUNK=2M)
+//   bits [22..47]   = compact_addr  (26 bits, fits 64M RAM slots)
 //
-// Sort value: (kind_w << 31) | orig_pos — state_machine_by_run_kernel uses
-// orig_pos to scatter the emit bit.
-#define ORIG_POS_BITS 21u
-#define ORIG_POS_MASK ((1u << ORIG_POS_BITS) - 1u)
-#define RAM_KEY_END_BIT 47
+// Total used bits: 48. RAM_KEY_END_BIT is passed to CUB.
+//
+// `orig_pos` is unique per event, so the key alone fully determines the sort
+// order — kind_w in the low bit is a free passenger.
+//
+// AFTER the sort, extract_sorted_packed_kernel walks the sorted keys once and
+// writes a compact 32-bit value `(kind_w << 31) | orig_pos` per event into
+// d_ram_vals_sorted. state_machine_by_run_kernel then reads only those 4-byte
+// values (NOT the 8-byte sorted keys), keeping its per-event memory traffic
+// half the size — this is what makes the SortKeys-vs-SortPairs swap a net win.
+//
+// Earlier attempt (state_machine reading the 64-bit keys directly) regressed
+// by 13 ms because state_machine is bandwidth-bound and dominates GPU time.
+//
+// Bit widths:
+#define KIND_W_BIT          0u
+#define ORIG_POS_SHIFT      1u
+#define ORIG_POS_BITS       21u
+#define ORIG_POS_MASK       ((1u << ORIG_POS_BITS) - 1u)
+#define COMPACT_ADDR_SHIFT  (ORIG_POS_SHIFT + ORIG_POS_BITS)   // 22
+#define RAM_KEY_END_BIT     48
 
-// [Step 7] One thread per potential slot. Splits the d_potentials stream:
-//   - non-RAM (or unused) slots: emit_bit set directly here (always 1 for
-//     used non-RAM, 0 for the unused tail), no further processing.
+// [Step 5] One thread per potential slot. Splits the d_potentials stream:
+//   - non-RAM slots: emit_bit set directly to 1 (always emit), no further
+//     processing.
 //   - RAM slots: the slot is atomically compacted into d_ram_keys/d_ram_vals
-//     and emit_bit defaults to 0 (will be overwritten by Step 11).
+//     and emit_bit defaults to 0 (will be overwritten by step 10's state
+//     machine, which decides whether the slot survives the duality collapse).
 //
-// Input:  d_potentials[0..n_potentials)          — populated by Steps 5 + 6
+// Every slot in [0, n_potentials) is guaranteed populated by the previous
+// phase (decode_emit + blockop_emit cover the range exactly), so there's no
+// "is this a real slot?" check.
+//
+// Input:  d_potentials[0..n_potentials)          — populated by Steps 3 + 4
 // Input:  n_potentials                           — exact upper bound (CPU pre-computed)
-// Output: d_ram_keys[0..*d_ram_count)            — packed (compact_addr, orig_pos)
-// Output: d_ram_vals[0..*d_ram_count)            — packed (kind_w, orig_pos)
+// Output: d_ram_keys[0..*d_ram_count)            — packed (compact_addr, orig_pos, kind_w)
 // In/Out: d_ram_count                            — atomic compaction counter
-// Output: d_emit_bits[0..n_potentials)           — 1 for non-RAM emits, 0 for RAM/unused
+// Output: d_emit_bits[0..n_potentials)           — 1 for non-RAM emits,
+//                                                   0 for RAM (set later by
+//                                                   state_machine_by_run_kernel)
 __global__
 void gather_ram_events_kernel(const PotentialEmit* __restrict__ d_potentials,
                               uint32_t n_potentials,
                               uint64_t* __restrict__ d_ram_keys,
-                              uint32_t* __restrict__ d_ram_vals,
                               uint32_t* __restrict__ d_ram_count,
                               uint32_t* __restrict__ d_emit_bits) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_potentials) return;
     PotentialEmit p = d_potentials[i];
-    const bool used   = (p.flags & POT_FLAG_USED)   != 0;
-    const bool is_ram = (p.flags & POT_FLAG_IS_RAM) != 0;
-    const bool kind_w = (p.flags & POT_FLAG_KIND_W) != 0;
 
-    if (!used) { d_emit_bits[i] = 0; return; }
-
-    if (is_ram) {
-        const uint32_t compact = ram_compact(p.aligned_addr);
-        const uint64_t key = ((uint64_t)compact << ORIG_POS_BITS) | (uint64_t)i;
-        const uint32_t val = ((uint32_t)(kind_w ? 1u : 0u) << 31) | i;
+    if (emit_is_ram(p)) {
+        const uint32_t compact = ram_compact(emit_aligned_addr(p));
+        const uint64_t key = ((uint64_t)compact << COMPACT_ADDR_SHIFT)
+                           | ((uint64_t)i      << ORIG_POS_SHIFT)
+                           | (emit_kind_w(p) ? 1ull : 0ull);
         const uint32_t slot = atomicAdd(d_ram_count, 1u);
         d_ram_keys[slot] = key;
-        d_ram_vals[slot] = val;
-        d_emit_bits[i] = 0;  // will be overwritten by state_machine_scan_kernel
+        d_emit_bits[i] = 0;  // overwritten by state_machine_by_run_kernel
     } else {
         d_emit_bits[i] = 1;  // non-RAM always emits
     }
 }
 
-// [Step 9] Extract the compact_addr high-bits from each sorted key into a
+// [Step 8] Extract the compact_addr high-bits from each sorted key into a
 // dense uint32 array, so cub::DeviceRunLengthEncode can group events by
 // address (RLE compares whole values, and the low 21 bits of the sort key
 // hold orig_pos which differs within a group — we strip them here).
@@ -676,10 +671,29 @@ void extract_sorted_addr_kernel(const uint64_t* __restrict__ d_sorted_keys,
                                 uint32_t* __restrict__ d_sorted_addr) {
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_events) return;
-    d_sorted_addr[i] = (uint32_t)(d_sorted_keys[i] >> ORIG_POS_BITS);
+    d_sorted_addr[i] = (uint32_t)(d_sorted_keys[i] >> COMPACT_ADDR_SHIFT);
 }
 
-// [Step 11] Per-segment R/W state machine. One thread per unique RAM address
+// [Step 8b] Extract a small per-event packed (kind_w, orig_pos) value into a
+// 32-bit array, so state_machine_by_run_kernel can read 4 bytes per event
+// instead of the 8-byte sorted key.
+//
+// Input:  d_sorted_keys[0..n_events)             — sorted 64-bit keys
+// Input:  n_events                               — n_ram for this chunk
+// Output: d_sorted_packed[0..n_events)           — (kind_w << 31) | orig_pos
+__global__
+void extract_sorted_packed_kernel(const uint64_t* __restrict__ d_sorted_keys,
+                                  uint32_t n_events,
+                                  uint32_t* __restrict__ d_sorted_packed) {
+    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_events) return;
+    const uint64_t k = d_sorted_keys[i];
+    const uint32_t orig_pos = (uint32_t)((k >> ORIG_POS_SHIFT) & ORIG_POS_MASK);
+    const uint32_t kind_w_bit = (uint32_t)(k & 1ull);
+    d_sorted_packed[i] = (kind_w_bit << 31) | orig_pos;
+}
+
+// [Step 10] Per-segment R/W state machine. One thread per unique RAM address
 // (RLE output, typically n_unique ≪ n_ram). Each thread reads its segment's
 // [start, end) from d_run_offsets, walks the events in chunk-order, applies
 // the duality rule, and scatters the resulting emit bits to d_emit_bits at
@@ -710,7 +724,7 @@ void state_machine_by_run_kernel(const uint32_t* __restrict__ d_run_offsets,
     bool state = false;
     for (uint32_t j = start; j < end; j++) {
         const uint32_t v = d_sorted_vals[j];
-        const bool kind_w    = (v >> 31) & 1u;
+        const bool kind_w    = (v >> 31);
         const uint32_t orig_pos = v & 0x7FFFFFFFu;
         uint32_t emit;
         if (kind_w) {
@@ -724,56 +738,7 @@ void state_machine_by_run_kernel(const uint32_t* __restrict__ d_run_offsets,
     }
 }
 
-// [DEAD CODE — kept for comparison] Earlier per-event implementation of the
-// state machine. Launched one thread per event, did a per-thread "am I a
-// segment start?" check via reading d_sorted_keys[i-1], and walked the
-// segment serially when so. Replaced by state_machine_by_run_kernel which
-// uses RLE to launch only n_unique threads (5–10× fewer); see [§6 of
-// preprocess_walkthrough.md](preprocess_walkthrough.md) for the measurement.
-//
-// Safe to delete once you no longer need to A/B compare against this version.
-__global__
-void state_machine_scan_kernel(const uint64_t* __restrict__ d_sorted_keys,
-                               const uint32_t* __restrict__ d_sorted_vals,
-                               uint32_t n_events,
-                               uint32_t* __restrict__ d_emit_bits) {
-    const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_events) return;
-    const uint64_t k = d_sorted_keys[i];
-    const uint32_t compact_addr = (uint32_t)(k >> ORIG_POS_BITS);
-
-    bool is_segment_start;
-    if (i == 0) {
-        is_segment_start = true;
-    } else {
-        const uint32_t prev_addr = (uint32_t)(d_sorted_keys[i - 1] >> ORIG_POS_BITS);
-        is_segment_start = (prev_addr != compact_addr);
-    }
-    if (!is_segment_start) return;
-
-    bool state = false;
-    uint32_t j = i;
-    while (j < n_events) {
-        const uint64_t kj = d_sorted_keys[j];
-        const uint32_t addr_j = (uint32_t)(kj >> ORIG_POS_BITS);
-        if (addr_j != compact_addr) break;
-        const uint32_t v = d_sorted_vals[j];
-        const bool kind_w = (v >> 31) & 1u;
-        const uint32_t orig_pos = v & 0x7FFFFFFFu;
-        uint32_t emit;
-        if (kind_w) {
-            emit = 1;
-            state = true;
-        } else {
-            if (state) { emit = 0; state = false; }
-            else       { emit = 1; state = true;  }
-        }
-        d_emit_bits[orig_pos] = emit;
-        j++;
-    }
-}
-
-// [Step 13] Compaction: one thread per potential slot. For each slot that
+// [Step 12] Compaction: one thread per potential slot. For each slot that
 // the state machine kept alive (d_emit_bits[i] == 1), scatter the aligned
 // address into d_out at the position given by d_final_offsets[i] (output of
 // Step 12's exclusive sum).
@@ -792,7 +757,7 @@ void compact_kernel(const PotentialEmit* __restrict__ d_potentials,
     const uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_potentials) return;
     if (d_emit_bits[i] == 0) return;
-    d_out[d_final_offsets[i]] = d_potentials[i].aligned_addr;
+    d_out[d_final_offsets[i]] = emit_aligned_addr(d_potentials[i]);
 }
 
 #endif  // MEM_PREPROCESS_CUH
