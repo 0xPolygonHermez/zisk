@@ -20,7 +20,7 @@ constexpr uint32_t N_ADDR_RAM   = 1u << 29;   // 512M
 constexpr uint32_t N_ADDR = N_ADDR_ROM + N_ADDR_INPUT + N_ADDR_RAM;  // 1.625G total addresses
 
 // Per-region instance size (rows per instance). Indexed by REGION_ROM/INPUT/RAM.
-constexpr uint32_t INSTANCE_SIZE[3]  = {1u << 22, 1u << 21, 1u << 22};
+constexpr uint32_t INSTANCE_SIZE[3]  = {1u << 21, 1u << 21, 1u << 22};
 constexpr uint32_t INSTANCE_SIZE_MAX = 1u << 22;  // upper bound for sizing buffers
 
 constexpr uint32_t MAX_INST_ROM   = 32;
