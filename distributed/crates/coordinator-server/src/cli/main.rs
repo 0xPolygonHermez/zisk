@@ -29,9 +29,31 @@ struct Args {
     )]
     config: Option<String>,
 
-    /// Override the gRPC listen port.
-    #[arg(long, short, env = "ZISK_COORDINATOR_PORT", help = "gRPC listen port")]
-    port: Option<u16>,
+    /// Override the external (client-facing) gRPC API port.
+    #[arg(
+        long,
+        short,
+        env = "ZISK_COORDINATOR_API_PORT",
+        help = "External gRPC API port (client-facing)"
+    )]
+    api_port: Option<u16>,
+
+    /// Override the internal cluster gRPC port (worker-facing).
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_CLUSTER_PORT",
+        help = "Internal cluster gRPC port (worker-facing)"
+    )]
+    cluster_port: Option<u16>,
+
+    /// Override the metrics port.
+    #[arg(
+        long,
+        env = "ZISK_COORDINATOR_METRICS_PORT",
+        value_name = "PORT",
+        help = "Prometheus metrics port (default: 9090)"
+    )]
+    metrics_port: Option<u16>,
 
     /// Override the log level.
     #[arg(
@@ -41,22 +63,19 @@ struct Args {
         help = "Log level: trace | debug | info | warn | error"
     )]
     log_level: Option<String>,
-
-    /// Override the backend mode.
-    #[arg(
-        long,
-        env = "ZISK_COORDINATOR_BACKEND",
-        value_name = "MODE",
-        help = "Backend mode: mock | coordinator"
-    )]
-    backend: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let cfg = Config::load(args.config, args.port, args.log_level, args.backend)?;
+    let cfg = Config::load(
+        args.config,
+        args.api_port,
+        args.cluster_port,
+        args.metrics_port,
+        args.log_level,
+    )?;
 
     // Init logging (keep the guard alive for the process lifetime)
     let _log_guard = init_logging(Some(&cfg.logging), None)?;
@@ -74,7 +93,7 @@ async fn main() -> Result<()> {
         BackendMode::Coordinator => {
             let coord_config = CoordinatorConfig::load(
                 cfg.coordinator.config_file.clone(),
-                Some(cfg.coordinator.worker_port),
+                Some(cfg.coordinator.port),
                 None,
                 false,
                 None,
@@ -83,7 +102,7 @@ async fn main() -> Result<()> {
 
             // Pre-bind the worker-facing port at startup so we fail fast on conflicts.
             let worker_addr: std::net::SocketAddr =
-                format!("0.0.0.0:{}", cfg.coordinator.worker_port).parse()?;
+                format!("0.0.0.0:{}", cfg.coordinator.port).parse()?;
             let worker_listener = TcpListener::bind(worker_addr).await?;
 
             // Spawn the worker-facing gRPC server — shuts down when the cancel token fires.
