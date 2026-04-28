@@ -164,13 +164,14 @@ impl AsmServices {
         local_rank: i32,
         hash_id: String,
         ziskemuasm_path: &Path,
+        with_hints: bool,
         options: AsmRunnerOptions,
     ) -> Result<AsmServices> {
         let pid = std::process::id();
         let hash8 = &hash_id[..hash_id.len().min(8)];
 
         let shm_prefix = format!("ZISK_{pid}_{local_rank}");
-        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}");
+        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}{hints}", hints = if with_hints { "_h" } else { "" });
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".

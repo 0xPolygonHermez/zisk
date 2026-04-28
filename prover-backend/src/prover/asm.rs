@@ -182,6 +182,7 @@ impl AsmProver {
             local_rank,
             elf.program_id.hash_id.as_ref().to_string(),
             &asm_mt_path,
+            with_hints,
             asm_runner_options,
         )?;
 
