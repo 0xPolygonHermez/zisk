@@ -145,6 +145,7 @@ message ContributionParams {
   uint32 total_workers = 7;
   repeated uint32 worker_allocation = 8;
   uint32 job_compute_units = 9;
+  string hash_id = 11;
 }
 
 message ProveParams {

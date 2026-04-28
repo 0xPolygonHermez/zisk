@@ -38,6 +38,7 @@ pub enum HintsModeDto {
 
 pub struct LaunchProofRequestDto {
     pub data_id: DataId,
+    pub hash_id: String,
     pub compute_capacity: Option<u32>,
     pub minimal_compute_capacity: Option<u32>,
     pub inputs_mode: InputsModeDto,
@@ -166,6 +167,7 @@ pub struct WrapParamsDto {
 }
 
 pub struct ContributionParamsDto {
+    pub hash_id: String,
     pub data_id: DataId,
     pub input_source: InputSourceDto,
     pub hints_source: HintsSourceDto,

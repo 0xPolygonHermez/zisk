@@ -135,18 +135,29 @@ impl Coordinator {
             );
         }
 
-        // Check for active setup before registering so the initial state is set atomically —
+        // Read all known setups before registering so the initial state is set atomically —
         // no window where the worker is Idle without having a guest program.
-        let setup = self.read_active_setup_dto().await;
+        let mut setups = self.read_all_setup_dtos().await;
+        let first_setup = if setups.is_empty() { None } else { Some(setups.remove(0)) };
         let initial_state =
-            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
+            if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
+        let worker_id = req.worker_id.clone();
         match self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
             .await
         {
-            Ok(()) => (true, "Registration successful".to_string(), setup),
+            Ok(()) => {
+                // Send any additional known setups (beyond the first) as messages.
+                for setup in setups {
+                    let msg = CoordinatorMessageDto::SetupProgram(setup);
+                    if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                        warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
+                    }
+                }
+                (true, "Registration successful".to_string(), first_setup)
+            }
             Err(e) => (false, format!("Registration failed: {e}"), None),
         }
     }
@@ -193,11 +204,12 @@ impl Coordinator {
         let directive =
             self.compute_reconnection_directive(&worker_id, last_known_job_id.clone()).await;
 
-        // Check for active setup before registering so the initial state is set atomically —
+        // Read all known setups before registering so the initial state is set atomically —
         // no window where the worker is Idle without having a guest program.
-        let setup = self.read_active_setup_dto().await;
+        let mut setups = self.read_all_setup_dtos().await;
+        let first_setup = if setups.is_empty() { None } else { Some(setups.remove(0)) };
         let default_state =
-            if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
+            if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         // For a KeepComputing reconnect, preserve the current Computing(job_id, phase)
         // state through the channel swap. For any other outcome, reset to the default.
@@ -239,7 +251,18 @@ impl Coordinator {
             }
         }
 
-        (true, "Reconnection successful".to_string(), directive, setup)
+        // Send any additional known setups (beyond the first) as messages.
+        for setup in setups {
+            let msg = CoordinatorMessageDto::SetupProgram(setup);
+            if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                warn!(
+                    "[Setup] Failed to send additional setup on reconnect to {}: {}",
+                    worker_id, e
+                );
+            }
+        }
+
+        (true, "Reconnection successful".to_string(), directive, first_setup)
     }
 
     /// Computes the reconciliation directive for a reconnecting worker based on

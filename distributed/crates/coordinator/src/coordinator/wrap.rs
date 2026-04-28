@@ -2,6 +2,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, CoordinatorError, CoordinatorResult,
 };
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use zisk_cluster_common::{
@@ -37,6 +38,7 @@ impl Coordinator {
         // Create a minimal job entry (no partitions / inputs needed for wrap)
         let job = Job::new(
             DataId::new(),
+            String::new(),
             InputsModeDto::InputsNone,
             HintsModeDto::HintsNone,
             ComputeCapacity::from(1),
@@ -44,7 +46,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            Default::default(),
+            BTreeMap::new(),
             false,
             ProofKind::VadcopFinal,
         );

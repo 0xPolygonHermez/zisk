@@ -971,6 +971,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let job = self.worker.new_job(
             job_id.clone(),
+            params.hash_id,
             data_ctx,
             params.rank_id,
             params.total_workers,
@@ -1033,6 +1034,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let job = self.worker.new_job(
             job_id.clone(),
+            params.hash_id,
             data_ctx,
             params.rank_id,
             params.total_workers,

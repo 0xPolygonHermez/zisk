@@ -27,14 +27,14 @@ async fn main() -> Result<()> {
 
     // let embedded_opts = EmbeddedOpts::default().minimal_memory();
     // let client = ProverClient::embedded().with_embedded_opts(embedded_opts).build()?;
-    let client = ProverClient::remote("http://127.0.0.1:7001").build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
 
     println!("Setting up first program...");
     client.upload(&PROGRAM1).run()?;
     client.setup(&PROGRAM1).run()?.await?;
-
+    
     println!("Setting up second program...");
     client.upload(&PROGRAM2).run()?;
     client.setup(&PROGRAM2).run()?.await?;
@@ -53,8 +53,8 @@ async fn main() -> Result<()> {
     let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
 
     println!("Verifying proof...");
-    // let vkey = PROGRAM1.vk()?;
-    vadcop_result.verify()?;
+    let vkey = PROGRAM1.vk()?;
+    vadcop_result.with_program_vk(&vkey).verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
     let n = 2000u32;
@@ -75,8 +75,8 @@ async fn main() -> Result<()> {
     let vadcop_result2 = client.prove(&PROGRAM2, stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    // let vkey2 = PROGRAM2.vk()?;
-    vadcop_result2.verify()?;
+    let vkey2 = PROGRAM2.vk()?;
+    vadcop_result2.with_program_vk(&vkey2).verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 
     println!("All proofs generated and verified successfully!");

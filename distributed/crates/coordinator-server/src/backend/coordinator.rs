@@ -259,6 +259,7 @@ impl BackendService for CoordinatorBackend {
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
                         data_id: DataId::new(),
+                        hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),
@@ -282,6 +283,7 @@ impl BackendService for CoordinatorBackend {
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
                         data_id: DataId::new(),
+                        hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
                         inputs_mode: domain_input_to_dto(&r.input),

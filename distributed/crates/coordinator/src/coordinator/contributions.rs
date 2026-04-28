@@ -48,11 +48,7 @@ impl Coordinator {
                         job.job_id, e
                     ))
                 })?;
-                info!(
-                    "Job {} using inline input data ({} bytes)",
-                    job.job_id,
-                    inputs.len()
-                );
+                info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
                 InputSourceDto::InputData(inputs)
             }
             InputsModeDto::InputsStream(_) => {
@@ -88,8 +84,10 @@ impl Coordinator {
 
         let cloned_active_workers = active_workers.clone();
         let execution_only = job.execution_only;
+        let job_hash_id = job.hash_id.clone();
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
+            let job_hash_id = job_hash_id.clone();
             let data_id = job.data_id.clone();
             let input_source = input_source.clone();
             let hints_source = hints_source.clone();
@@ -99,6 +97,7 @@ impl Coordinator {
 
             async move {
                 let contribution_params = ContributionParamsDto {
+                    hash_id: job_hash_id.clone(),
                     data_id,
                     input_source,
                     hints_source,

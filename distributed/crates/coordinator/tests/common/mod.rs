@@ -59,6 +59,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
         workers.iter().enumerate().map(|(i, _)| vec![i as u32]).collect();
     Job::new(
         Default::default(),
+        String::new(),
         InputsModeDto::InputsNone,
         HintsModeDto::HintsNone,
         ComputeCapacity::from(workers.len() as u32),

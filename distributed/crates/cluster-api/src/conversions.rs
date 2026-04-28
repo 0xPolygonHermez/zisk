@@ -229,6 +229,7 @@ impl From<ContributionParamsDto> for ContributionParams {
 
         ContributionParams {
             data_id: dto.data_id.as_string(),
+            hash_id: dto.hash_id,
             input_source,
             hints_path,
             hints_stream,

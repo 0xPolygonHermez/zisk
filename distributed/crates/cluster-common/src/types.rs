@@ -271,6 +271,7 @@ impl Display for PhaseTimings {
 #[derive(Debug)]
 pub struct Job {
     pub job_id: JobId,
+    pub hash_id: String,
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
     pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
@@ -303,6 +304,7 @@ impl Job {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_id: DataId,
+        hash_id: String,
         inputs_mode: InputsModeDto,
         hints_mode: HintsModeDto,
         compute_capacity: ComputeCapacity,
@@ -316,6 +318,7 @@ impl Job {
     ) -> Self {
         Self {
             job_id: JobId::new(),
+            hash_id,
             phase_timings: HashMap::new(),
             duration_ms: None,
             state: JobState::Created,
@@ -557,6 +560,7 @@ pub struct PartitionInfo {
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct ContributionsMessage {
     pub job_id: JobId,
+    pub hash_id: String,
     pub phase_inputs: ProvePhaseInputs,
     pub options: ProofOptions,
     pub input_source: InputSourceDto,
@@ -583,6 +587,7 @@ mod tests {
     fn make_job() -> Job {
         Job::new(
             Default::default(),
+            String::new(),
             crate::InputsModeDto::InputsNone,
             crate::HintsModeDto::HintsNone,
             ComputeCapacity::from(1u32),

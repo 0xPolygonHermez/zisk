@@ -2,6 +2,7 @@ use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use cargo_zisk::common::{get_proving_key, get_proving_key_snark};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -186,6 +187,7 @@ impl ProverConfig {
 #[derive(Debug, Clone)]
 pub struct JobContext {
     pub job_id: JobId,
+    pub hash_id: String,
     pub data_ctx: DataCtx,
     pub rank_id: u32,
     pub total_workers: u32,
@@ -206,8 +208,9 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover_config: ProverConfig,
 
     stream_actor: Option<StreamOrderingActor>,
-    guest_program: Option<Arc<GuestProgram>>,
-    program_vk: Option<ProgramVK>,
+    /// All set-up programs, keyed by hash_id. Supports multiple concurrent programs.
+    guest_programs: HashMap<String, Arc<GuestProgram>>,
+    program_vks: HashMap<String, ProgramVK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -252,8 +255,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
-            guest_program: None,
-            program_vk: None,
+            guest_programs: HashMap::new(),
+            program_vks: HashMap::new(),
             prover,
             prover_config,
             stream_actor: None,
@@ -315,8 +318,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             prover,
             prover_config,
             stream_actor: None,
-            guest_program: None,
-            program_vk: None,
+            guest_programs: HashMap::new(),
+            program_vks: HashMap::new(),
         })
     }
 
@@ -328,8 +331,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.world_rank()
     }
 
-    /// Re-run setup with a new guest program (e.g., after receiving SetupProgram from coordinator).
-    /// Updates `self.guest_program` on success.
+    /// Run setup for a guest program, storing it in the multi-program map.
+    /// Skips setup if this hash_id was already set up.
     pub fn run_setup(
         &mut self,
         hash_id: &str,
@@ -337,15 +340,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
-        // Check if new guest program is different from the current one to avoid unnecessary setup
-        if let Some(current_program) = &self.guest_program {
-            if current_program.program_id == new_guest_program.program_id {
-                info!("Received same guest program for setup. Skipping setup");
-                return self
-                    .program_vk
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("VK not available for current program"));
-            }
+        // Skip if already set up for this hash_id.
+        if let Some(vk) = self.program_vks.get(hash_id) {
+            info!("Received same guest program for setup (hash_id={}). Skipping setup", hash_id);
+            return Ok(vk.clone());
         }
 
         // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
@@ -362,8 +360,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .prover
             .prover
             .setup_internal(&new_guest_program, self.prover_config.hints || with_hints)?;
-        self.guest_program = Some(new_guest_program);
-        self.program_vk = Some(vk.clone());
+        self.guest_programs.insert(hash_id.to_string(), new_guest_program);
+        self.program_vks.insert(hash_id.to_string(), vk.clone());
         Ok(vk)
     }
 
@@ -448,6 +446,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn new_job(
         &mut self,
         job_id: JobId,
+        hash_id: String,
         data_ctx: DataCtx,
         rank_id: u32,
         total_workers: u32,
@@ -457,6 +456,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
+            hash_id,
             data_ctx,
             rank_id,
             total_workers,
@@ -480,7 +480,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.partial_contribution_mpi_broadcast(&job).await?;
-        Ok(self.partial_contribution(job, tx))
+        let hash_id = job.lock().await.hash_id.clone();
+        Ok(self.partial_contribution(job, hash_id, tx))
     }
 
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
@@ -493,6 +494,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
+                hash_id: job.hash_id.clone(),
                 phase_inputs,
                 options,
                 input_source: job.data_ctx.input_source.clone(),
@@ -519,7 +521,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.execution_only_mpi_broadcast(&job).await?;
-        Ok(self.execution_only(job, tx))
+        let hash_id = job.lock().await.hash_id.clone();
+        Ok(self.execution_only(job, hash_id, tx))
     }
 
     pub async fn execution_only_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
@@ -532,6 +535,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
+                hash_id: job.hash_id.clone(),
                 phase_inputs,
                 options,
                 input_source: job.data_ctx.input_source.clone(),
@@ -596,14 +600,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
+        hash_id: String,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
         let program_id = self
-            .guest_program
-            .as_ref()
-            .expect("Guest program must be set before computing contribution")
+            .guest_programs
+            .get(&hash_id)
+            .unwrap_or_else(|| panic!("Guest program not found for hash_id={hash_id}"))
             .program_id
             .clone();
 
@@ -680,11 +685,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
+        hash_id: String,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let guest_program =
-            self.guest_program.clone().expect("Guest program must be set before executing");
+        let guest_program = self
+            .guest_programs
+            .get(&hash_id)
+            .unwrap_or_else(|| panic!("Guest program not found for hash_id={hash_id}"))
+            .clone();
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
@@ -1224,10 +1233,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .await
             .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
 
-            self.guest_program = Some(guest_program);
+            self.guest_programs.insert(message.hash_id.clone(), guest_program);
         } else {
-            let program_id = self.guest_program.as_ref().map(|gp| gp.program_id.clone());
-            let guest_program = self.guest_program.clone();
+            // For Execution/Contributions MPI broadcasts, look up the program by hash_id from the message.
+            let guest_programs = self.guest_programs.clone();
             tokio::task::spawn_blocking(move || {
                 let deserialize_and_run = || -> Result<()> {
                     match tag {
@@ -1240,14 +1249,21 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                     )
                                 })?;
 
+                            let guest_program = guest_programs
+                                .get(&message.hash_id)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Guest program not found for hash_id={}",
+                                        message.hash_id
+                                    )
+                                })?
+                                .clone();
                             Self::execute_execution_task(
                                 &prover,
                                 message.input_source,
                                 message.hints_source,
                                 message.partition_info,
-                                &*guest_program.ok_or_else(|| {
-                                    anyhow::anyhow!("Guest program not set for Execution task")
-                                })?,
+                                &guest_program,
                             )?;
                         }
                         WorkerMpiTag::Contributions => {
@@ -1259,6 +1275,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                     )
                                 })?;
 
+                            let program_id = guest_programs
+                                .get(&message.hash_id)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Guest program not found for hash_id={}",
+                                        message.hash_id
+                                    )
+                                })?
+                                .program_id
+                                .clone();
                             Self::execute_contribution_task(
                                 message.job_id,
                                 &prover,
@@ -1266,9 +1292,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.input_source,
                                 message.hints_source,
                                 message.partition_info,
-                                program_id.as_ref().ok_or_else(|| {
-                                    anyhow::anyhow!("Guest program not set for Contribution task")
-                                })?,
+                                &program_id,
                                 message.options,
                             )?;
                         }

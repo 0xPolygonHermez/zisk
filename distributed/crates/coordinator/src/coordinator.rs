@@ -113,8 +113,9 @@ pub struct Coordinator {
     /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
     setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
-    // (hash_id, with_hints) of the currently active setup, if any
-    active_setup: RwLock<Option<(String, bool)>>,
+    /// All programs that have been set up: maps hash_id → with_hints.
+    /// Used to re-send all active setups to reconnecting workers.
+    active_setups: RwLock<HashMap<String, bool>>,
 
     /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
     /// Dropping or sending `None` signals EOF to the relay thread.
@@ -148,7 +149,7 @@ impl Coordinator {
             reconnections: AtomicU64::new(0),
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
-            active_setup: RwLock::new(None),
+            active_setups: RwLock::new(HashMap::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -324,28 +325,29 @@ impl Coordinator {
             .await;
         }
 
-        self.active_setup.write().await.replace((hash_id.to_string(), with_hints));
+        self.active_setups.write().await.insert(hash_id.to_string(), with_hints);
 
         Ok(job_id)
     }
 
-    /// Returns the active setup as a `SetupProgramDto` (reading the ELF from the on-disk cache),
-    /// or `None` if no setup is active or the cached ELF cannot be read.
-    async fn read_active_setup_dto(&self) -> Option<SetupProgramDto> {
-        let (hash_id, with_hints) = self.active_setup.read().await.clone()?;
-        let path = elf_cache_path(&hash_id);
-        match fs::read(&path) {
-            Ok(elf_bytes) => Some(SetupProgramDto {
-                job_id: JobId::new().as_string(),
-                elf_bytes,
-                hash_id,
-                with_hints,
-            }),
-            Err(e) => {
-                warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e);
-                None
+    /// Returns all active setups as `SetupProgramDto`s (reading ELF bytes from the on-disk cache).
+    /// Used to re-send all programs to reconnecting workers.
+    async fn read_all_setup_dtos(&self) -> Vec<SetupProgramDto> {
+        let setups = self.active_setups.read().await.clone();
+        let mut result = Vec::with_capacity(setups.len());
+        for (hash_id, with_hints) in setups {
+            let path = elf_cache_path(&hash_id);
+            match fs::read(&path) {
+                Ok(elf_bytes) => result.push(SetupProgramDto {
+                    job_id: JobId::new().as_string(),
+                    elf_bytes,
+                    hash_id,
+                    with_hints,
+                }),
+                Err(e) => warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e),
             }
         }
+        result
     }
 
     /// Initiates a new distributed proof job.
@@ -389,6 +391,7 @@ impl Coordinator {
         let mut job = self
             .create_job(
                 request.data_id.clone(),
+                request.hash_id.clone(),
                 requested,
                 minimum,
                 request.inputs_mode,
@@ -637,6 +640,7 @@ impl Coordinator {
     pub async fn create_job(
         &self,
         data_id: DataId,
+        hash_id: String,
         required_compute_capacity: ComputeCapacity,
         minimal_compute_capacity: ComputeCapacity,
         inputs_mode: InputsModeDto,
@@ -667,6 +671,7 @@ impl Coordinator {
 
         Ok(Job::new(
             data_id,
+            hash_id,
             inputs_mode,
             hints_mode,
             required_compute_capacity,
@@ -916,7 +921,7 @@ impl Coordinator {
         }
         result
     }
-    
+
     // MONITOR METHODS
     // ---------------------------------------------------------------
 
@@ -1050,6 +1055,7 @@ mod tests {
             workers.iter().enumerate().map(|(i, _)| vec![i as u32]).collect();
         Job::new(
             Default::default(),
+            String::new(),
             InputsModeDto::InputsNone,
             HintsModeDto::HintsNone,
             ComputeCapacity::from(workers.len() as u32),

@@ -39,7 +39,8 @@ use zisk_common::{
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_pil::ZiskPublicValues;
 use zisk_pil::{
-    SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS, ZISK_AIRGROUP_ID,
+    MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 use anyhow::Result;
@@ -189,10 +190,11 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             proofman_common::ProofmanError::InvalidSetup(format!("min_traces lock poisoned: {e}"))
         })? = Some(output.min_traces);
 
-        let (main_assignments, cost_main) = self
+        let main_assignments = self
             .planner
-            .assign_main_instances(&pctx, &sctx, global_ids, main_output.plans)
+            .assign_main_instances(&pctx, global_ids, main_output.plans)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
+        let main_instances_count = main_assignments.len();
         self.registry
             .populate_main_instances(&pctx, &self.state, main_assignments)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
@@ -280,7 +282,19 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         self.registry.configure_sm_instances(&pctx, &secn_planning);
 
         let mut cost_per_type = StatsCostPerType::default();
-        cost_per_type.add_cost(StatsType::Main, cost_main);
+        {
+            let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])?;
+            let n_bits = setup_main.stark_info.stark_struct.n_bits;
+            let total_cols: u64 = setup_main
+                .stark_info
+                .map_sections_n
+                .iter()
+                .filter(|(key, _)| *key != "const")
+                .map(|(_, value)| *value)
+                .sum();
+            let cost = (1 << n_bits) * total_cols;
+            cost_per_type.add_cost(StatsType::Main, cost * main_instances_count as u64);
+        }
 
         let mut secn_planning: Vec<_> = secn_planning.into_values().flatten().collect();
 
