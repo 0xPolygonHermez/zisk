@@ -180,7 +180,6 @@ test_elf() {
 
                 ensure cargo-zisk verify-constraints \
                     -e "${ELF_FILE}" \
-                    -p 6100 \
                     ${input_flag} \
                     2>&1 | tee "constraints_${input_file}.log" || return 1
                 if ! grep -F "All global constraints were successfully verified" \
@@ -194,7 +193,6 @@ test_elf() {
                 step "Proving (non-distributed) for ${input_file}..."
                 ensure cargo-zisk prove \
                     -e "${ELF_FILE}" \
-                    -p 6100 \
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_${input_file}.log" || return 1
@@ -239,7 +237,6 @@ test_elf() {
                 export RAYON_NUM_THREADS=$DISTRIBUTED_THREADS
                 ensure $MPI_CMD cargo-zisk prove \
                     -e "${ELF_FILE}" \
-                    -p 6100 \
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
                     2>&1 | tee "prove_dist_${input_file}.log" || return 1
