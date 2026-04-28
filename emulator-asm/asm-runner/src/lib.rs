@@ -101,9 +101,10 @@ pub fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "input_avail")
 }
 
-/// Shared memory name for precompile hints data
-pub fn shmem_precompile_name(prefix: &str) -> String {
-    build_shmem_name2(prefix, "precompile")
+/// Per-service shared memory name for precompile hints data.
+/// Each ASM service has its own precompile shmem; Rust writes the same data to all of them.
+pub fn shmem_precompile_name(prefix: &str, service: AsmService) -> String {
+    build_shmem_name(prefix, service, "precompile")
 }
 
 /// Shared memory name for precompile hints data

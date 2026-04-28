@@ -10,6 +10,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const ZISK_PUBLICS: usize = 64;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SetupKey {
+    pub hash_id: String,
+    pub with_hints: bool,
+}
+
+impl SetupKey {
+    pub fn new(hash_id: impl Into<String>, with_hints: bool) -> Self {
+        Self { hash_id: hash_id.into(), with_hints }
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramVK {
     pub vk: Vec<u8>,

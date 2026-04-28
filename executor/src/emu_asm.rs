@@ -73,23 +73,13 @@ impl EmulatorAsm {
         Ok(())
     }
 
-    pub fn use_hints(&self) -> Result<bool> {
-        Ok(self
-            .asm_resources
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        self.asm_resources
             .lock()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
-            .map(|r| r.use_hints())
-            .unwrap_or(false))
-    }
-
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
-        Ok(self
-            .asm_resources
-            .lock()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .and_then(|r| r.get_hints_processor()))
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .get_hints_processor()
     }
 
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {

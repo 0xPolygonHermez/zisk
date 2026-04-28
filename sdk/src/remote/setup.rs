@@ -18,7 +18,9 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
         let hash_id = program.program_id.hash_id.to_string();
-        let job_kind = DomainJobKind::Setup(DomainSetupRequest { hash_id, with_hints });
+        let program_name = program.program_id.name.to_string();
+        let job_kind =
+            DomainJobKind::Setup(DomainSetupRequest { hash_id, program_name, with_hints });
 
         let remote_job = self.gw.submit_job(job_kind)?;
 

@@ -205,6 +205,7 @@ impl TryFrom<JobKind> for DomainJobKind {
         match inner {
             job_kind::Kind::Setup(r) => Ok(DomainJobKind::Setup(DomainSetupRequest {
                 hash_id: r.hash_id,
+                program_name: r.program_name,
                 with_hints: r.with_hints,
             })),
             job_kind::Kind::Prove(r) => {
@@ -258,9 +259,11 @@ impl From<DomainJobKind> for JobKind {
     fn from(domain: DomainJobKind) -> Self {
         use job_kind::Kind;
         let kind = match domain {
-            DomainJobKind::Setup(r) => {
-                Kind::Setup(SetupRequest { hash_id: r.hash_id, with_hints: r.with_hints })
-            }
+            DomainJobKind::Setup(r) => Kind::Setup(SetupRequest {
+                hash_id: r.hash_id,
+                program_name: r.program_name,
+                with_hints: r.with_hints,
+            }),
             DomainJobKind::Prove(r) => Kind::Prove(ProveRequest {
                 hash_id: r.hash_id,
                 input: Some(InputKind::from(r.input)),

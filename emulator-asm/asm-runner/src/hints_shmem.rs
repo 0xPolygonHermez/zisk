@@ -49,8 +49,9 @@ struct SeparateSem {
 struct UnifiedResources {
     /// Control shared memory writer (single write_pos)
     control_writer: Arc<ControlShmem>,
-    /// Data shared memory writer (single data buffer)
-    data_writer: SharedMemoryWriter,
+    /// One data writer per service — each C service has its own precompile shmem segment,
+    /// so Rust writes the same hint data to all of them to keep them in sync.
+    data_writers: Vec<SharedMemoryWriter>,
 }
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
@@ -144,15 +145,19 @@ impl HintsShmem {
         control_writer: Arc<ControlShmem>,
     ) -> Result<UnifiedResources> {
         debug!("Initializing unified resources for precompile hints");
-        let data_name = shmem_precompile_name(shm_prefix);
-        Ok(UnifiedResources {
-            control_writer,
-            data_writer: SharedMemoryWriter::new(
-                &data_name,
-                Self::MAX_PRECOMPILE_SIZE as usize,
-                unlock_mapped_memory,
-            )?,
-        })
+        let data_writers = AsmServices::SERVICES
+            .iter()
+            .map(|service| {
+                let name = shmem_precompile_name(shm_prefix, *service);
+                SharedMemoryWriter::new(
+                    &name,
+                    Self::MAX_PRECOMPILE_SIZE as usize,
+                    unlock_mapped_memory,
+                )
+                .map_err(anyhow::Error::from)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(UnifiedResources { control_writer, data_writers })
     }
 }
 
@@ -241,8 +246,10 @@ impl StreamSink for HintsShmem {
             }
         }
 
-        // Write data ONCE to the unified shared memory buffer
-        unified.data_writer.write_ring_buffer(processed)?;
+        // Write data to each service's precompile buffer (same data, keeps all in sync)
+        for writer in &mut unified.data_writers {
+            writer.write_ring_buffer(processed)?;
+        }
 
         fence(Ordering::Release);
 
@@ -260,10 +267,12 @@ impl StreamSink for HintsShmem {
     }
 
     fn reset(&self) {
-        // Reset control writer and data writer to initial state for next stream
+        // Reset control writer and all data writers to initial state for next stream
         let mut unified = self.unified.borrow_mut();
         unified.control_writer.reset();
-        unified.data_writer.reset();
+        for writer in &mut unified.data_writers {
+            writer.reset();
+        }
 
         // Drain stale semaphore signals from previous execution
         if let Some(separate_sem) = self.separate_sem.borrow_mut().as_mut() {

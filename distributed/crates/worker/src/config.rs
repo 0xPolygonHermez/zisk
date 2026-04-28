@@ -127,7 +127,6 @@ impl WorkerServiceConfig {
 #[derive(Debug, Default, Clone)]
 pub struct ProverServiceConfigDto {
     pub asm: Option<PathBuf>,
-    pub hints: bool,
     pub emulator: bool,
     pub proving_key: Option<PathBuf>,
     pub proving_key_snark: Option<PathBuf>,

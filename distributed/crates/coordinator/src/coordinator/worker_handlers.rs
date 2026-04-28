@@ -10,6 +10,7 @@ use zisk_cluster_common::{
     HeartbeatAckDto, JobId, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
     WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
 };
+use zisk_common::SetupKey;
 
 /// Trait for sending messages to workers through various communication channels.
 ///
@@ -68,8 +69,11 @@ impl Coordinator {
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
+                    let hash_id = state.hash_id.clone();
+                    let program_name = state.program_name.clone();
+                    let with_hints = state.with_hints;
                     pending.remove(&job_id);
-                    Some(vks)
+                    Some((vks, hash_id, program_name, with_hints))
                 } else {
                     None
                 }
@@ -79,9 +83,15 @@ impl Coordinator {
             }
         };
 
-        if let Some(vks) = outcome {
+        if let Some((vks, hash_id, program_name, with_hints)) = outcome {
             let event = match validate_setup_vks(&ack.job_id, vks) {
-                Ok(vk) => CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk }),
+                Ok(vk) => {
+                    self.active_setups
+                        .write()
+                        .await
+                        .insert(SetupKey::new(hash_id, with_hints), program_name);
+                    CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk })
+                }
                 Err(e) => {
                     error!("[Setup] VK mismatch for job_id {}: {}", ack.job_id, e);
                     CoordinatorJobEvent::Failed(e)

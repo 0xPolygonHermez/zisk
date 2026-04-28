@@ -59,10 +59,14 @@ use zisk_cluster_common::{
     Job, JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto,
     LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
 };
+use zisk_common::SetupKey;
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
     vks: Vec<(WorkerId, Vec<u8>)>,
+    hash_id: String,
+    program_name: String,
+    with_hints: bool,
 }
 
 /// The main coordination service for managing distributed proof generation.
@@ -113,9 +117,9 @@ pub struct Coordinator {
     /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
     setup_pending: RwLock<HashMap<JobId, SetupPendingState>>,
-    /// All programs that have been set up: maps hash_id → with_hints.
-    /// Used to re-send all active setups to reconnecting workers.
-    active_setups: RwLock<HashMap<String, bool>>,
+    /// All programs that have been set up: maps SetupKey → program_name.
+    /// Two setups for the same program (hints vs. no-hints) coexist as separate entries.
+    active_setups: RwLock<HashMap<SetupKey, String>>,
 
     /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
     /// Dropping or sending `None` signals EOF to the relay thread.
@@ -239,8 +243,6 @@ impl Coordinator {
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
     pub fn register_guest_program(&self, elf_bytes: Vec<u8>) -> CoordinatorResult<String> {
         use blake3::Hasher;
-        use zisk_cluster_common::elf_cache_path;
-
         let mut hasher = Hasher::new();
         hasher.update(&elf_bytes);
         let hash_id = hasher.finalize().to_hex().to_string();
@@ -260,9 +262,12 @@ impl Coordinator {
 
     /// Reads the cached ELF for `hash_id` and broadcasts `SetupProgram` to all connected workers.
     /// Returns a `JobId` that can be used to track completion via `subscribe_job_events`.
-    pub async fn setup_program(&self, hash_id: &str, with_hints: bool) -> CoordinatorResult<JobId> {
-        use zisk_cluster_common::{elf_cache_path, SetupProgramDto};
-
+    pub async fn setup_program(
+        &self,
+        hash_id: &str,
+        program_name: String,
+        with_hints: bool,
+    ) -> CoordinatorResult<JobId> {
         let path = elf_cache_path(hash_id);
         let elf_bytes =
             fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
@@ -280,16 +285,23 @@ impl Coordinator {
 
         // Track which workers must ACK before the setup is considered complete.
         let pending: HashSet<WorkerId> = workers.iter().cloned().collect();
-        self.setup_pending
-            .write()
-            .await
-            .insert(job_id.clone(), SetupPendingState { pending, vks: Vec::new() });
+        self.setup_pending.write().await.insert(
+            job_id.clone(),
+            SetupPendingState {
+                pending,
+                vks: Vec::new(),
+                hash_id: hash_id.to_string(),
+                program_name: program_name.clone(),
+                with_hints,
+            },
+        );
 
         for worker_id in &workers {
             let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
                 job_id: job_id.as_string(),
                 elf_bytes: elf_bytes.clone(),
                 hash_id: hash_id.to_string(),
+                program_name: program_name.clone(),
                 with_hints,
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
@@ -325,8 +337,6 @@ impl Coordinator {
             .await;
         }
 
-        self.active_setups.write().await.insert(hash_id.to_string(), with_hints);
-
         Ok(job_id)
     }
 
@@ -335,13 +345,15 @@ impl Coordinator {
     async fn read_all_setup_dtos(&self) -> Vec<SetupProgramDto> {
         let setups = self.active_setups.read().await.clone();
         let mut result = Vec::with_capacity(setups.len());
-        for (hash_id, with_hints) in setups {
+        for (key, program_name) in setups {
+            let (hash_id, with_hints) = (key.hash_id, key.with_hints);
             let path = elf_cache_path(&hash_id);
             match fs::read(&path) {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
                     job_id: JobId::new().as_string(),
                     elf_bytes,
                     hash_id,
+                    program_name,
                     with_hints,
                 }),
                 Err(e) => warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e),

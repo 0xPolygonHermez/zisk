@@ -64,7 +64,7 @@ impl EmbeddedClient {
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
-                    if !p.was_setup_with_hints()? {
+                    if !p.was_setup_with_hints() {
                         anyhow::bail!(
                             "Program was set up without hints — call setup().with_hints() first"
                         );
@@ -85,7 +85,7 @@ impl EmbeddedClient {
                     }
                     p.execute(&program, zisk_common::io::ZiskStdin::new())?
                 } else {
-                    if p.was_setup_with_hints()? {
+                    if p.was_setup_with_hints() {
                         anyhow::bail!(
                             "Program was set up with hints — call .hints() on the request"
                         );

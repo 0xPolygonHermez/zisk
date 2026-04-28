@@ -12,7 +12,7 @@ use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProgramVK, Proof, ProofKind, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
@@ -33,6 +33,7 @@ use crate::config::ProverServiceConfigDto;
 #[derive(BorshSerialize, BorshDeserialize)]
 struct SetupMessage {
     hash_id: String,
+    program_name: String,
     elf_bytes: Vec<u8>,
     with_hints: bool,
 }
@@ -120,9 +121,6 @@ pub struct ProverConfig {
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
-    /// Whether to include precompile hints in the assembly generation
-    pub hints: bool,
-
     /// Enable GPU acceleration
     pub gpu: bool,
 
@@ -172,7 +170,6 @@ impl ProverConfig {
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
-            hints: prover_service_config.hints,
             gpu: prover_service_config.gpu,
             max_streams: prover_service_config.max_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
@@ -210,7 +207,8 @@ pub struct Worker<T: ZiskBackend + 'static> {
     stream_actor: Option<StreamOrderingActor>,
     /// All set-up programs, keyed by hash_id. Supports multiple concurrent programs.
     guest_programs: HashMap<String, Arc<GuestProgram>>,
-    program_vks: HashMap<String, ProgramVK>,
+    /// Two setups for the same program (one with hints, one without) coexist independently.
+    program_vks: HashMap<SetupKey, ProgramVK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
@@ -340,28 +338,29 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
-        // Skip if already set up for this hash_id.
-        if let Some(vk) = self.program_vks.get(hash_id) {
-            info!("Received same guest program for setup (hash_id={}). Skipping setup", hash_id);
+        // Skip if already set up for this (hash_id, with_hints) combination.
+        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints)) {
+            info!(
+                "Received same guest program for setup (hash_id={}, with_hints={}). Skipping setup",
+                hash_id, with_hints
+            );
             return Ok(vk.clone());
         }
 
         // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
+            program_name: new_guest_program.name().to_string(),
             elf_bytes: elf_bytes.to_vec(),
-            with_hints: self.prover_config.hints || with_hints,
+            with_hints,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        let vk = self
-            .prover
-            .prover
-            .setup_internal(&new_guest_program, self.prover_config.hints || with_hints)?;
+        let vk = self.prover.prover.setup_internal(&new_guest_program, with_hints)?;
         self.guest_programs.insert(hash_id.to_string(), new_guest_program);
-        self.program_vks.insert(hash_id.to_string(), vk.clone());
+        self.program_vks.insert(SetupKey::new(hash_id, with_hints), vk.clone());
         Ok(vk)
     }
 
@@ -791,6 +790,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         };
 
         let is_first_partition = partition_info.allocation.contains(&0);
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
 
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
@@ -814,7 +814,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         prover.set_stdin(stdin)?;
 
-        prover.register_program(program_id)?;
+        prover.register_program(program_id, with_hints)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -859,6 +859,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         };
 
         let is_first_partition = partition_info.allocation.contains(&0);
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
 
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
@@ -882,7 +883,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         prover.set_stdin(stdin.clone())?;
 
-        prover.register_program(&guest_program.program_id)?;
+        prover.register_program(&guest_program.program_id, with_hints)?;
 
         prover.set_partition(
             partition_info.total_compute_units,
@@ -952,9 +953,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 self.prover.reset_resources()?;
 
-                let processor = self.prover.get_hints_processor()?.ok_or_else(|| {
-                    anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
-                })?;
+                let processor = self.prover.get_hints_processor()?;
 
                 self.prover.set_active_services(is_first_partition)?;
 
@@ -1216,15 +1215,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let message: SetupMessage = borsh::from_slice(&bytes[1..])
                 .map_err(|e| anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e))?;
 
-            let elf_path = zisk_cluster_common::elf_cache_path(&message.hash_id);
-            if !elf_path.exists() {
-                if let Some(parent) = elf_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&elf_path, &message.elf_bytes)?;
-            }
-
-            let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
+            let guest_program =
+                Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
             let gp_clone = guest_program.clone();
             let with_hints = message.with_hints;
             tokio::task::spawn_blocking(move || {

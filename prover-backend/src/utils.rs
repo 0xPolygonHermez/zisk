@@ -95,11 +95,12 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 }
 
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
-    let stem = elf.name();
-    let stem = if with_hints { format!("{}-hints", stem) } else { stem.to_string() };
+    let name = elf.name();
     let hash = get_elf_data_hash(elf.elf());
+    let prefix = if name != hash { format!("{name}-{hash}") } else { hash };
+    let base = if with_hints { format!("{prefix}-hints") } else { prefix };
 
-    Ok((format!("{stem}-{hash}-mt.bin"), format!("{stem}-{hash}-rh.bin")))
+    Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
 }
 
 pub fn check_paths_exist(path: &PathBuf) -> Result<()> {

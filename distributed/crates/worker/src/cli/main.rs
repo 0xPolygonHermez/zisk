@@ -86,9 +86,6 @@ struct Cli {
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(long, default_value_t = false)]
-    pub hints: bool,
-
     #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
@@ -122,7 +119,6 @@ async fn main() -> Result<()> {
     let prover_config_dto = ProverServiceConfigDto {
         asm: cli.asm.clone(),
         emulator: cli.emulator,
-        hints: cli.hints,
         proving_key: cli.proving_key.clone(),
         proving_key_snark: cli.proving_key_snark.clone(),
         unlock_mapped_memory: cli.unlock_mapped_memory,

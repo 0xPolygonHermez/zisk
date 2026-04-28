@@ -55,6 +55,7 @@ message SetupProgram {
   bytes elf_bytes = 2;
   string hash_id = 3;
   bool with_hints = 4;
+  string program_name = 5;
 }
 
 message SetupProgramAck {

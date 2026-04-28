@@ -96,6 +96,7 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
                     job_id: dto.job_id,
                     elf_bytes: dto.elf_bytes,
                     hash_id: dto.hash_id,
+                    program_name: dto.program_name,
                     with_hints: dto.with_hints,
                 })),
             },
@@ -151,6 +152,7 @@ impl From<SetupProgramDto> for SetupProgram {
             job_id: dto.job_id,
             elf_bytes: dto.elf_bytes,
             hash_id: dto.hash_id,
+            program_name: dto.program_name,
             with_hints: dto.with_hints,
         }
     }

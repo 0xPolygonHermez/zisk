@@ -7468,6 +7468,7 @@ dependencies = [
  "uuid",
  "zisk-cluster-api",
  "zisk-cluster-common",
+ "zisk-common",
  "zisk-coordinator",
  "zisk-coordinator-api",
 ]

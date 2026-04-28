@@ -50,7 +50,9 @@ pub struct AsmSharedResources {
     /// Shared memory writer for inputs (shmem mapped once; semaphores bound per-program).
     pub inputs_shmem_writer: Arc<InputsShmemWriter>,
 
-    /// Hints processing pipeline (shmem mapped once; semaphores bound per-program).
+    /// Hints processing pipeline — `Some` only when the program was set up with hints.
+    /// The precompile shmem segments are created by the C binary only in hints mode;
+    /// attempting to open them without hints causes an immediate crash.
     hints_stream: Option<Arc<Mutex<ZiskStream<HintsProcessor<HintsShmem>>>>>,
 
     /// Pipeline for receiving inputs over a stream transport (QUIC, Unix socket).
@@ -58,15 +60,15 @@ pub struct AsmSharedResources {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub readers: AsmShmemReaders,
-
-    use_hints: bool,
 }
 
 impl std::fmt::Debug for AsmSharedResources {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let hints_init =
+            self.hints_stream.as_ref().and_then(|s| s.lock().ok().map(|g| g.is_initialized()));
         f.debug_struct("AsmSharedResources")
             .field("config", &self.config)
-            .field("hints_stream", &self.hints_stream.is_some())
+            .field("hints_stream", &hints_init)
             .finish_non_exhaustive()
     }
 }
@@ -74,15 +76,19 @@ impl std::fmt::Debug for AsmSharedResources {
 impl AsmSharedResources {
     /// Map all shmem segments. `shm_prefix` must already have been created via Phase 1.
     /// Semaphores are NOT opened here — call `bind_semaphores` on `AsmResources` before use.
+    ///
+    /// `with_hints` must match the value used during setup: the C binary only creates the
+    /// per-service precompile shmem segments when hints are enabled, so passing `true` here
+    /// without the C binary having created them will panic in `SharedMemoryWriter::new`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         world_rank: i32,
         local_rank: i32,
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
-        use_hints: bool,
         mpi_broadcast_fn: Option<MpiBroadcastFn>,
         init_rom: bool,
+        with_hints: bool,
         shm_prefix: &str,
     ) -> Result<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -101,7 +107,7 @@ impl AsmSharedResources {
         let inputs_stream =
             Arc::new(Mutex::new(ZiskStream::from_arc(Arc::clone(&inputs_shmem_writer))));
 
-        let hints_stream = if use_hints {
+        let hints_stream = if with_hints {
             let active_services =
                 if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
 
@@ -121,7 +127,6 @@ impl AsmSharedResources {
             }
 
             let hints_processor = builder.build()?;
-
             Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor))))
         } else {
             None
@@ -134,7 +139,6 @@ impl AsmSharedResources {
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             readers,
             inputs_shmem_writer,
-            use_hints,
         })
     }
 }
@@ -158,22 +162,24 @@ impl AsmResources {
     pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> Result<Self> {
         let sem_prefix = asm_services.sem_prefix();
         shared.inputs_shmem_writer.bind_semaphores(sem_prefix)?;
-        if shared.use_hints {
-            if let Some(stream) = &shared.hints_stream {
-                let processor = stream.lock().unwrap().get_processor();
-                processor.hints_sink().bind_semaphores(sem_prefix)?;
-            }
+
+        if let Some(hints_stream) = &shared.hints_stream {
+            let processor = hints_stream.lock().unwrap().get_processor();
+            processor.hints_sink().bind_semaphores(sem_prefix)?;
         }
+
         Ok(Self { shared, asm_services })
     }
 
-    pub fn use_hints(&self) -> bool {
-        self.shared.use_hints
-    }
-
-    /// Returns the concrete hints processor for passing to `StreamOrderingActor`.
-    pub fn get_hints_processor(&self) -> Option<Arc<HintsProcessor<HintsShmem>>> {
-        self.shared.hints_stream.as_ref().map(|s| s.lock().unwrap().get_processor())
+    /// Returns the concrete hints processor, or `Err` if not set up with hints.
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        self.shared
+            .hints_stream
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Program was not set up with hints"))?
+            .lock()
+            .map(|g| g.get_processor())
+            .map_err(|e| anyhow::anyhow!("hints_stream lock poisoned: {e}"))
     }
 
     /// Update the active ASM services for this partition.
@@ -181,74 +187,57 @@ impl AsmResources {
     /// Call once per partition start (not per stream reset).
     /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        if let Some(stream) = &self.shared.hints_stream {
-            let processor = stream
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-                .get_processor();
-            let services = if is_first_partition {
-                &AsmServices::SERVICES[..]
-            } else {
-                &AsmServices::SERVICES[..2]
-            };
-            processor.hints_sink().set_active_services(services)?;
-        }
-        Ok(())
+        let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
+        let processor = hints_stream
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .get_processor();
+        let services = if is_first_partition {
+            &AsmServices::SERVICES[..]
+        } else {
+            &AsmServices::SERVICES[..2]
+        };
+        processor.hints_sink().set_active_services(services)
     }
 
     /// Submit hint data directly to the shmem sink, bypassing the processing pipeline.
     ///
     /// Used in the gRPC streaming path where hints arrive pre-processed.
     pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
-        if let Some(stream) = &self.shared.hints_stream {
-            let processor = stream
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-                .get_processor();
-            processor.hints_sink().submit(data)?;
-
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("Hints stream not initialized"))
-        }
+        let processor = self.get_hints_processor()?;
+        processor.hints_sink().submit(data)
     }
 
     pub fn start_stream(&self) -> Result<()> {
-        if let Some(hints_stream) = &self.shared.hints_stream {
-            hints_stream
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-                .start_stream()?;
-        }
-
-        Ok(())
+        let Some(hints_stream) = &self.shared.hints_stream else {
+            return Err(anyhow::anyhow!("Program was not set up with hints"));
+        };
+        hints_stream.lock().map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?.start_stream()
     }
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        if let Some(hints_stream) = &self.shared.hints_stream {
-            hints_stream
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-                .set_stream_src(stream)?;
-
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("Hints stream not initialized"))
-        }
+        let Some(hints_stream) = &self.shared.hints_stream else {
+            return Err(anyhow::anyhow!("Program was not set up with hints"));
+        };
+        hints_stream
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .set_stream_src(stream)
     }
 
     pub fn is_hints_stream_initialized(&self) -> bool {
         self.shared
             .hints_stream
             .as_ref()
-            .map(|s| s.lock().unwrap().is_initialized())
+            .and_then(|s| s.lock().ok().map(|g| g.is_initialized()))
             .unwrap_or(false)
     }
 
     pub fn reset(&self) {
-        if let Some(hints_stream) = &self.shared.hints_stream {
-            hints_stream.lock().unwrap().reset();
+        if let Some(s) = &self.shared.hints_stream {
+            s.lock().unwrap().reset();
         }
+
         // Full reset: clear shmem data and size.  Every job re-streams its
         // input via the relay, so there is nothing to preserve.
         self.shared.inputs_shmem_writer.reset();
@@ -301,13 +290,12 @@ impl Drop for AsmResources {
     fn drop(&mut self) {
         // Shut down ASM microservices
         self.shared.inputs_shmem_writer.unbind_semaphores();
-        if self.shared.use_hints {
-            if let Some(stream) = &self.shared.hints_stream {
-                if let Ok(processor) = stream.lock().map(|g| g.get_processor()) {
-                    processor.hints_sink().unbind_semaphores();
-                }
+        if let Some(hints_stream) = &self.shared.hints_stream {
+            if let Ok(g) = hints_stream.lock() {
+                g.get_processor().hints_sink().unbind_semaphores();
             }
         }
+
         tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.world_rank);
         if let Err(e) = self.asm_services.stop_asm_services() {
             tracing::error!(

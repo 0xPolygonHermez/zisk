@@ -272,7 +272,7 @@ pub trait ProverEngine {
 
     fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
-    fn register_program(&self, program_id: &ProgramId) -> Result<()>;
+    fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
 
     fn executed_steps(&self) -> u64;
 
@@ -385,9 +385,7 @@ pub trait ProverEngine {
         Err(anyhow::anyhow!("register_inputs_stream not supported by this backend"))
     }
 
-    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
-        Ok(None)
-    }
+    fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>>;
 
     fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
         Ok(())
@@ -428,8 +426,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin(stdin)
     }
 
-    pub fn register_program(&self, program_id: &ProgramId) -> Result<()> {
-        self.prover.register_program(program_id)
+    pub fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
+        self.prover.register_program(program_id, with_hints)
     }
 
     /// Get the world rank of the prover. The world rank is the rank of the prover in the global MPI context.
@@ -613,7 +611,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.register_inputs_stream(stream)
     }
 
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.prover.get_hints_processor()
     }
 
@@ -650,8 +648,8 @@ impl ZiskProver<Asm> {
     }
 
     /// Returns `true` if the last `setup()` call used `.with_hints()`.
-    pub fn was_setup_with_hints(&self) -> Result<bool> {
-        Ok(self.get_hints_processor()?.is_some())
+    pub fn was_setup_with_hints(&self) -> bool {
+        self.get_hints_processor().is_ok()
     }
 }
 

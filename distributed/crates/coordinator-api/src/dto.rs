@@ -98,6 +98,7 @@ pub struct DomainComputeConstraints {
 #[derive(Debug, Clone)]
 pub struct DomainSetupRequest {
     pub hash_id: String,
+    pub program_name: String,
     pub with_hints: bool,
 }
 

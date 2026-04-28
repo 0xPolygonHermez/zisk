@@ -19,13 +19,13 @@ use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     {Arc, RwLock},
 };
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -71,7 +71,9 @@ struct ProgramEntry {
 
 pub struct AsmProver {
     core_prover: AsmCoreProver,
-    program_cache: RwLock<HashMap<ProgramId, ProgramEntry>>,
+    program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
+    /// Tracks whether the currently registered program was set up with hints.
+    current_with_hints: AtomicBool,
 }
 
 impl AsmProver {
@@ -103,7 +105,11 @@ impl AsmProver {
             is_distributed,
             logging_config,
         )?;
-        Ok(Self { core_prover, program_cache: RwLock::new(HashMap::new()) })
+        Ok(Self {
+            core_prover,
+            program_cache: RwLock::new(HashMap::new()),
+            current_with_hints: AtomicBool::new(false),
+        })
     }
 
     fn get_asm_cache_paths(
@@ -157,7 +163,12 @@ impl AsmProver {
 
         let init_rom = !is_distributed && world_rank == 0;
 
-        if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
+        if let Some(entry) = self
+            .program_cache
+            .read()
+            .unwrap()
+            .get(&SetupKey::new(&*elf.program_id.hash_id, with_hints))
+        {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
             self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
             return Ok(());
@@ -179,9 +190,9 @@ impl AsmProver {
             local_rank,
             unlock_mapped_memory,
             verbose_mode,
-            with_hints,
             mpi_broadcast_fn,
             init_rom,
+            with_hints,
             asm_services.shm_prefix(),
         )?);
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
@@ -190,7 +201,7 @@ impl AsmProver {
         self.core_prover.backend.set_asm_resources(resources.clone())?;
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
-            elf.program_id.clone(),
+            SetupKey::new(&*elf.program_id.hash_id, with_hints),
             ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
         );
 
@@ -207,7 +218,13 @@ impl ProverEngine for AsmProver {
 
     fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK> {
         // Early return if program is already cached.
-        if let Some(entry) = self.program_cache.read().unwrap().get(&elf.program_id) {
+        if let Some(entry) = self
+            .program_cache
+            .read()
+            .unwrap()
+            .get(&SetupKey::new(&*elf.program_id.hash_id, with_hints))
+        {
+            self.current_with_hints.store(with_hints, Ordering::SeqCst);
             return Ok(entry.program_vk.clone());
         }
 
@@ -273,6 +290,7 @@ impl ProverEngine for AsmProver {
             return Err(anyhow::anyhow!("Setup failed on another MPI rank"));
         }
 
+        self.current_with_hints.store(with_hints, Ordering::SeqCst);
         Ok(program_vk)
     }
 
@@ -288,20 +306,26 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+    fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
         // Required when multiple programs have been set up: setup() activates each program's
         // services in turn, so the last setup wins. register_program restores the right services.
         let guard = self.program_cache.read().unwrap();
-        let entry = guard.get(program_id).ok_or_else(|| {
-            anyhow::anyhow!("Program '{}' not found in cache. Call setup() first.", program_id.name)
-        })?;
+        let entry =
+            guard.get(&SetupKey::new(&*program_id.hash_id, with_hints)).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
+                    program_id.name,
+                    with_hints
+                )
+            })?;
         self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
         let rom = entry.zisk_rom.clone();
         drop(guard);
 
+        self.current_with_hints.store(with_hints, Ordering::SeqCst);
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
-        self.core_prover.backend.register_program(rom, &rom_bin_path)
+        self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)
     }
 
     fn executed_steps(&self) -> u64 {
@@ -317,7 +341,8 @@ impl ProverEngine for AsmProver {
     }
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.register_program(&program.program_id)?;
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        self.register_program(&program.program_id, with_hints)?;
         self.core_prover.backend.execute(stdin)
     }
 
@@ -329,7 +354,8 @@ impl ProverEngine for AsmProver {
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.register_program(&program.program_id)?;
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        self.register_program(&program.program_id, with_hints)?;
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
@@ -363,7 +389,8 @@ impl ProverEngine for AsmProver {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        self.register_program(&program.program_id)?;
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        self.register_program(&program.program_id, with_hints)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
@@ -374,7 +401,8 @@ impl ProverEngine for AsmProver {
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
-        self.register_program(&program.program_id)?;
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        self.register_program(&program.program_id, with_hints)?;
         self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
@@ -454,8 +482,12 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.register_inputs_stream(stream)
     }
 
-    fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
-        self.core_prover.backend.get_hints_processor()
+    fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        if self.current_with_hints.load(Ordering::SeqCst) {
+            self.core_prover.backend.get_hints_processor()
+        } else {
+            Err(anyhow::anyhow!("Current program was not set up with hints"))
+        }
     }
 
     fn set_active_services(&self, is_first_partition: bool) -> Result<()> {

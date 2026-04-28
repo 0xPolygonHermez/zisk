@@ -33,6 +33,7 @@ use super::{
     DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
+use zisk_common::SetupKey;
 
 // ── Internal state ────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ struct JobRecord {
 struct MockState {
     /// Content-addressed program registry (hash_id). Idempotent — same ELF = same hash.
     programs: HashSet<String>,
+    setups: HashMap<SetupKey, String>,
     jobs: HashMap<Uuid, JobRecord>,
     /// Per-job broadcast channel for `watch_job` subscribers.
     event_txs: HashMap<Uuid, broadcast::Sender<DomainJobEvent>>,
@@ -61,6 +63,7 @@ impl MockState {
     fn new() -> Self {
         Self {
             programs: HashSet::new(),
+            setups: HashMap::new(),
             jobs: HashMap::new(),
             event_txs: HashMap::new(),
             received_chunks: HashMap::new(),
@@ -342,6 +345,15 @@ impl BackendService for MockBackend {
                     return Err(ApiError::ProgramNotFound(hash_id.to_owned()));
                 }
             }
+        }
+
+        // Track setup jobs so list_active_setups can return them.
+        if let DomainJobKind::Setup(ref r) = kind {
+            self.state
+                .lock()
+                .await
+                .setups
+                .insert(SetupKey::new(r.hash_id.clone(), r.with_hints), r.program_name.clone());
         }
 
         let input_kind = kind.input_kind().cloned();
@@ -684,7 +696,11 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest { hash_id, with_hints: false }))
+            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
+                hash_id: hash_id.clone(),
+                program_name: hash_id,
+                with_hints: false,
+            }))
             .await
             .unwrap()
             .job_id;
@@ -746,6 +762,7 @@ mod tests {
         let err = b
             .submit_job(DomainJobKind::Setup(DomainSetupRequest {
                 hash_id: "nonexistent".into(),
+                program_name: "nonexistent".into(),
                 with_hints: false,
             }))
             .await

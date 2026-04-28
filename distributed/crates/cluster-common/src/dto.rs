@@ -100,6 +100,7 @@ pub struct SetupProgramDto {
     pub job_id: String,
     pub elf_bytes: Vec<u8>,
     pub hash_id: String,
+    pub program_name: String,
     pub with_hints: bool,
 }
 

@@ -111,10 +111,12 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Failed to set inputs stream source: {}", e))
     }
 
-    pub(crate) fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub(crate) fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         match self.asm_emulator() {
             Some(a) => a.get_hints_processor(),
-            None => Ok(None),
+            None => {
+                Err(anyhow::anyhow!("ASM resources not initialized, cannot get hints processor"))
+            }
         }
     }
 
@@ -144,11 +146,9 @@ impl ProverBackend {
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
         rom_bin_path: &std::path::Path,
+        with_hints: bool,
     ) -> Result<()> {
-        let use_hints =
-            self.executor.asm_emulator().map(|a| a.use_hints()).transpose()?.unwrap_or(false);
-
-        self.executor.set_rom(zisk_rom, use_hints)?;
+        self.executor.set_rom(zisk_rom, with_hints)?;
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
         self.proofman

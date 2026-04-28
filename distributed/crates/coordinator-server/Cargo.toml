@@ -15,6 +15,7 @@ zisk-coordinator-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
+zisk-common = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }

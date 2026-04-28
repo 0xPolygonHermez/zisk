@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use tracing::info;
 use zisk_coordinator_api::dto::{
     DomainInputChunk, DomainInputKind, DomainJobKind, DomainJobKindResponse, DomainProofKind,
-    DomainProveRequest, DomainSetupRequest, RegisterGuestProgramRequestDto, TerminalStatus,
+    DomainProveRequest, DomainSetupRequest, TerminalStatus,
 };
 use zisk_coordinator_client::CoordinatorClient;
 
@@ -97,22 +97,29 @@ fn connect(cli: &Cli) -> Result<CoordinatorClient> {
         .with_context(|| format!("Failed to connect to coordinator at {}", cli.coordinator))
 }
 
-/// Register the ELF and return its hash_id.
-fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<String> {
+/// Register the ELF and return its (hash_id, program_name).
+fn register_elf(client: &CoordinatorClient, elf_path: &PathBuf) -> Result<(String, String)> {
     let elf_bytes = std::fs::read(elf_path)
         .with_context(|| format!("Cannot read ELF: {}", elf_path.display()))?;
+    let program_name =
+        elf_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
     info!("Registering ELF ({} bytes) …", elf_bytes.len());
-    let req = RegisterGuestProgramRequestDto { zisk_elf: elf_bytes };
-    let hash_id = client.register_program(req.zisk_elf)?;
+    let hash_id = client.register_program(elf_bytes)?;
     info!("Registered. hash_id = {hash_id}");
-    Ok(hash_id)
+    Ok((hash_id, program_name))
 }
 
 /// Run setup for the given hash_id and wait until it completes.
-fn run_setup(client: &CoordinatorClient, hash_id: &str, with_hints: bool) -> Result<()> {
+fn run_setup(
+    client: &CoordinatorClient,
+    hash_id: &str,
+    program_name: String,
+    with_hints: bool,
+) -> Result<()> {
     info!("Running setup for hash_id = {hash_id}, with_hints = {with_hints} …");
     let job = client.submit_job(DomainJobKind::Setup(DomainSetupRequest {
         hash_id: hash_id.to_string(),
+        program_name,
         with_hints,
     }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
@@ -145,13 +152,13 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Register { elf } => {
-            let hash_id = register_elf(&client, elf)?;
+            let (hash_id, _) = register_elf(&client, elf)?;
             println!("Register completed. hash_id: {hash_id}");
         }
 
         Commands::Setup { elf, with_hints } => {
-            let hash_id = register_elf(&client, elf)?;
-            run_setup(&client, &hash_id, *with_hints)?;
+            let (hash_id, program_name) = register_elf(&client, elf)?;
+            run_setup(&client, &hash_id, program_name, *with_hints)?;
             println!("Setup completed for hash_id: {hash_id}");
         }
 
@@ -202,7 +209,22 @@ async fn main() -> Result<()> {
 
             // Live progress via watch (best-effort background task)
             let _watch = job.spawn_watch(|event| {
-                info!("Job event: {event:?}");
+                use zisk_coordinator_api::dto::DomainJobEvent;
+                match &event {
+                    DomainJobEvent::Queued(e) => info!(job_id = %e.job_id, "Job queued"),
+                    DomainJobEvent::Started(e) => info!(job_id = %e.job_id, "Job started"),
+                    DomainJobEvent::Progress(e) => {
+                        info!(job_id = %e.job_id, phase = ?e.phase, "Job progress")
+                    }
+                    DomainJobEvent::WaitingForInput(e) => {
+                        info!(job_id = %e.job_id, "Job waiting for input")
+                    }
+                    DomainJobEvent::Completed(e) => info!(job_id = %e.job_id, "Job completed"),
+                    DomainJobEvent::Cancelled(e) => info!(job_id = %e.job_id, "Job cancelled"),
+                    DomainJobEvent::Failed(e) => {
+                        info!(job_id = %e.job_id, failure = ?e.failure, "Job failed")
+                    }
+                }
                 false // keep watching
             });
 

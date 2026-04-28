@@ -911,7 +911,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             std::fs::write(&elf_path, &setup.elf_bytes)?;
         }
 
-        let guest_program = Arc::new(GuestProgram::from_uri(elf_path.to_str().unwrap())?);
+        let guest_program =
+            Arc::new(GuestProgram::from_bytes(setup.program_name, setup.elf_bytes.clone()));
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
         let vk = self.worker.run_setup(

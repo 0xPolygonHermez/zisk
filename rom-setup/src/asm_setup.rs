@@ -150,6 +150,15 @@ pub fn resolve_emulator_asm() -> Result<PathBuf> {
     Ok(emulator_asm_path)
 }
 
+fn asm_file_base(name: &str, hash: &str, hints: bool) -> String {
+    let prefix = if name != hash { format!("{name}-{hash}") } else { hash.to_string() };
+    if hints {
+        format!("{prefix}-hints")
+    } else {
+        prefix
+    }
+}
+
 /// Get the paths to all assembly binary files for a given ELF and output path
 pub fn get_assembly_file_paths(
     elf: &Path,
@@ -157,31 +166,18 @@ pub fn get_assembly_file_paths(
     hints: bool,
 ) -> Result<Vec<PathBuf>> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
-
-    let stem = elf
+    let elf_name = elf
         .file_stem()
         .context("Failed to extract file stem from ELF path")?
         .to_str()
         .context("Failed to convert ELF file stem to string")?;
-    let stem = if hints { format!("{stem}-hints") } else { stem.to_string() };
-    let new_filename = format!("{stem}-{elf_hash}.tmp");
-    let base_path = output_path.join(new_filename);
-    let file_stem = base_path
-        .file_stem()
-        .context("Failed to extract file stem from base path")?
-        .to_str()
-        .context("Failed to convert file stem to string")?;
+    let base = asm_file_base(elf_name, &elf_hash, hints);
 
-    let bin_mt_file = format!("{file_stem}-mt.bin");
-    let bin_mt_file = base_path.with_file_name(bin_mt_file);
-
-    let bin_rh_file = format!("{file_stem}-rh.bin");
-    let bin_rh_file = base_path.with_file_name(bin_rh_file);
-
-    let bin_mo_file = format!("{file_stem}-mo.bin");
-    let bin_mo_file = base_path.with_file_name(bin_mo_file);
-
-    Ok(vec![bin_mt_file, bin_rh_file, bin_mo_file])
+    Ok(vec![
+        output_path.join(format!("{base}-mt.bin")),
+        output_path.join(format!("{base}-rh.bin")),
+        output_path.join(format!("{base}-mo.bin")),
+    ])
 }
 
 /// Check if all assembly binary files exist for a given ELF and output path
@@ -227,23 +223,11 @@ pub fn generate_assembly(
         anyhow::bail!("ROM file is not a valid ELF file");
     }
 
-    let stem = if hints { format!("{elf_name}-hints") } else { elf_name.to_string() };
-    let new_filename = format!("{stem}-{elf_hash}.tmp");
-    let base_path = output_path.join(new_filename);
-    let file_stem = base_path
-        .file_stem()
-        .context("Failed to extract file stem from base path")?
-        .to_str()
-        .context("Failed to convert file stem to string")?;
+    let base = asm_file_base(elf_name, &elf_hash, hints);
 
-    let bin_mt_file = format!("{file_stem}-mt.bin");
-    let bin_mt_file = base_path.with_file_name(bin_mt_file);
-
-    let bin_rh_file = format!("{file_stem}-rh.bin");
-    let bin_rh_file = base_path.with_file_name(bin_rh_file);
-
-    let bin_mo_file = format!("{file_stem}-mo.bin");
-    let bin_mo_file = base_path.with_file_name(bin_mo_file);
+    let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
+    let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
+    let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
 
     let emulator_asm_path = resolve_emulator_asm()?;
 

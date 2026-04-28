@@ -6,7 +6,9 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
+use asm_runner::HintsShmem;
 use executor::initialize_executor;
+use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
@@ -111,7 +113,7 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_stdin(stdin)
     }
 
-    fn register_program(&self, program_id: &ProgramId) -> Result<()> {
+    fn register_program(&self, program_id: &ProgramId, _with_hints: bool) -> Result<()> {
         let rom = self
             .program_cache
             .read()
@@ -122,7 +124,7 @@ impl ProverEngine for EmuProver {
         })?;
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
-        self.core_prover.backend.register_program(rom, &rom_bin_path)
+        self.core_prover.backend.register_program(rom, &rom_bin_path, false)
     }
 
     fn executed_steps(&self) -> u64 {
@@ -138,7 +140,7 @@ impl ProverEngine for EmuProver {
     }
 
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput> {
-        self.register_program(&program.program_id)?;
+        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.execute(stdin)
     }
 
@@ -150,7 +152,7 @@ impl ProverEngine for EmuProver {
         minimal_memory: bool,
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        self.register_program(&program.program_id)?;
+        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
@@ -184,7 +186,7 @@ impl ProverEngine for EmuProver {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
-        self.register_program(&program.program_id)?;
+        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
@@ -195,7 +197,7 @@ impl ProverEngine for EmuProver {
         proof_kind: ProofKind,
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput> {
-        self.register_program(&program.program_id)?;
+        self.register_program(&program.program_id, false)?;
         self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
@@ -253,6 +255,10 @@ impl ProverEngine for EmuProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        Err(anyhow::anyhow!("EmuProver does not support hints"))
     }
 
     fn cancel(&self) {

@@ -96,6 +96,16 @@ impl GuestProgram {
         })
     }
 
+    /// Create a new guest program directly from ELF bytes and a name, without reading from disk.
+    pub fn from_bytes(name: impl Into<String>, elf_data: Vec<u8>) -> Self {
+        let name = name.into();
+        let hash_id = blake3::hash(&elf_data).to_hex().to_string();
+        Self {
+            program_id: ProgramId { name: Cow::Owned(name), hash_id: Cow::Owned(hash_id) },
+            elf: Elf::new(elf_data),
+        }
+    }
+
     /// Get the ELF binary bytes
     pub fn elf(&self) -> &[u8] {
         &self.elf.data
