@@ -48,6 +48,11 @@ impl Coordinator {
                         job.job_id, e
                     ))
                 })?;
+                info!(
+                    "Job {} using inline input data ({} bytes)",
+                    job.job_id,
+                    inputs.len()
+                );
                 InputSourceDto::InputData(inputs)
             }
             InputsModeDto::InputsStream(_) => {
