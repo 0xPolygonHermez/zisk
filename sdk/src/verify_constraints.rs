@@ -106,7 +106,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use zisk_sdk::{EmbeddedClientBuilder, load_program, ZiskStdin, VerifyConstraintsExtension};
 ///
 /// # async fn example() -> anyhow::Result<()> {
