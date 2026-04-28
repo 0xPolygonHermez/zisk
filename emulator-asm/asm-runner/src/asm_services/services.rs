@@ -171,7 +171,10 @@ impl AsmServices {
         let hash8 = &hash_id[..hash_id.len().min(8)];
 
         let shm_prefix = format!("ZISK_{pid}_{local_rank}");
-        let sem_prefix = format!("ZISK_{pid}_{hash8}_{local_rank}{hints}", hints = if with_hints { "_h" } else { "" });
+        let sem_prefix = format!(
+            "ZISK_{pid}_{hash8}_{local_rank}{hints}",
+            hints = if with_hints { "_h" } else { "" }
+        );
 
         // Strip it to get the base path.
         // `ziskemuasm_path` expected format: "<base>-??.bin".
