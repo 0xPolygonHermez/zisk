@@ -81,6 +81,7 @@ impl StdioHandle {
         }
 
         debug!("Received response from stdio service {}: {} bytes", service, in_buffer.len());
+        debug!("Raw response bytes from service {}: {:?}", service, &in_buffer);
         Ok(Res::from_response_payload(AsmServices::decode_response(&in_buffer)?))
     }
 }
