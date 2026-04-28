@@ -14,8 +14,8 @@ use zisk_cluster_common::{
 };
 
 use crate::{
-    coordinator::MessageSender,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
+    worker_handlers::MessageSender,
 };
 
 /// Information about a connected worker

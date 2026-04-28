@@ -14,8 +14,8 @@ use zisk_cluster_api::{zisk_distributed_api_server::*, *};
 use zisk_cluster_common::{CoordinatorMessageDto, SetupProgramAckDto, WorkerId};
 
 use crate::config::Config;
-use crate::coordinator::MessageSender;
 use crate::coordinator_errors::{CoordinatorError, CoordinatorResult};
+use crate::worker_handlers::MessageSender;
 use crate::Coordinator;
 
 /// gRPC message sender adapter for worker communication.

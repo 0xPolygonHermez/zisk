@@ -1,12 +1,9 @@
 //! Shared test utilities for in-crate unit tests.
 
-use std::sync::{Arc, Mutex};
-
-use zisk_cluster_common::{CoordinatorMessageDto, WorkerId};
-
-use crate::coordinator::MessageSender;
-use crate::coordinator_errors::CoordinatorResult;
 use crate::workers_pool::WorkersPool;
+use crate::{coordinator_errors::CoordinatorResult, worker_handlers::MessageSender};
+use std::sync::{Arc, Mutex};
+use zisk_cluster_common::{CoordinatorMessageDto, WorkerId};
 
 pub struct MockMessageSender {
     pub messages: Arc<Mutex<Vec<CoordinatorMessageDto>>>,
