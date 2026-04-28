@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -7,7 +6,7 @@ use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path};
 use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
 use zisk_prover_backend::GuestProgram;
 
-use crate::job_handle::{JobHandle, JobId};
+use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::Client;
 
 pub struct SetupResult {
@@ -63,7 +62,7 @@ impl<'a, C: Client> SetupRequest<'a, C> {
 
     /// Submit the setup, returning a [`JobHandle<SetupResult>`].
     pub fn run(self) -> Result<JobHandle<SetupResult>> {
-        let subs = Arc::new(Mutex::new(Vec::new()));
+        let subs = new_subscriber_list();
         let mut handle =
             self.client.run_setup(self.program, self.with_hints, self.timeout, subs)?;
 

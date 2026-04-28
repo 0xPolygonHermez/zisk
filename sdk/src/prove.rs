@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -8,7 +8,7 @@ use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
-use crate::job_handle::{JobHandle, JobId, Subscriber, SubscriberList};
+use crate::job_handle::{subscriber_list_from, JobHandle, JobId, Subscriber, SubscriberList};
 use crate::{Client, ExecutorKind};
 
 pub struct ProveResult {
@@ -140,7 +140,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
         let mode = self.resolve_mode();
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        let subs: SubscriberList = Arc::new(Mutex::new(self.subscribers));
+        let subs: SubscriberList = subscriber_list_from(self.subscribers);
         self.client.run_prove(
             self.program,
             self.stdin,

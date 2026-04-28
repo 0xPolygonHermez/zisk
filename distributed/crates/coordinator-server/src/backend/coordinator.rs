@@ -12,7 +12,7 @@ use tokio::{sync::RwLock, time::timeout};
 use tokio_stream::StreamExt as _;
 use tracing::warn;
 use uuid::Uuid;
-use zisk_cluster_common::JobPhase;
+use zisk_cluster_common::{JobPhase, JobState};
 use zisk_coordinator::{
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
@@ -190,6 +190,41 @@ fn is_terminal(event: &CoordinatorJobEvent) -> bool {
     )
 }
 
+/// Synthesize domain events the watcher missed before subscribing.
+///
+/// Queued and Started fire atomically at job creation, before `submit_job`
+/// returns. Any client calling `watch_job` after submission has always missed
+/// them. For jobs already past Contributions, the phase-transition Progress
+/// events are also synthesized.
+fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
+    let ts = Utc::now();
+    let queued = DomainJobEvent::Queued(DomainJobEventQueued { job_id, timestamp: ts });
+    let started = DomainJobEvent::Started(DomainJobEventStarted { job_id, timestamp: ts });
+    let progress =
+        |phase| DomainJobEvent::Progress(DomainJobEventProgress { job_id, phase, timestamp: ts });
+
+    match state {
+        JobState::Created => vec![queued],
+        JobState::Running(phase) => {
+            let mut events = vec![queued, started];
+            // Synthesize Progress events for phases already past.
+            // Progress(Prove) fires when Prove starts; Progress(Aggregate) when Aggregate starts.
+            match phase {
+                JobPhase::Prove => events.push(progress(DomainJobPhase::Prove)),
+                JobPhase::Aggregate => {
+                    events.push(progress(DomainJobPhase::Prove));
+                    events.push(progress(DomainJobPhase::Aggregate));
+                }
+                _ => {}
+            }
+            events
+        }
+        // Terminal: broadcast channel is already closed; subscribe_job_events
+        // returns None so watch_job returns an error before we reach this.
+        JobState::Completed | JobState::Failed | JobState::Cancelled => vec![],
+    }
+}
+
 // ── BackendService impl ──────────────────────────────────────────────────────
 
 #[async_trait]
@@ -330,11 +365,24 @@ impl BackendService for CoordinatorBackend {
 
     async fn watch_job(&self, job_id: Uuid) -> ApiResult<JobEventStream> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
+
+        // Subscribe before reading state so we don't miss events that fire in the gap.
         let rx = self
             .coordinator
             .subscribe_job_events(&job_id_internal)
             .await
             .ok_or_else(|| internal(format!("job {} not found", job_id)))?;
+
+        // Synthesize events the client missed between job submission and now.
+        // Clone the Arc first so we can drop the jobs map lock before awaiting the job lock.
+        let catchup = {
+            let job_arc = self.coordinator.jobs().read().await.get(&job_id_internal).cloned();
+            if let Some(arc) = job_arc {
+                catchup_events(&arc.read().await.state, job_id)
+            } else {
+                vec![]
+            }
+        };
 
         let job_id_str = job_id.to_string();
         let job_hash = self.job_hash.clone();
@@ -342,6 +390,11 @@ impl BackendService for CoordinatorBackend {
         let output = stream! {
             let mut rx = rx;
             let hash_id = job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
+
+            for event in catchup {
+                yield Ok(event);
+            }
+
             loop {
                 match rx.recv().await {
                     Ok(event) => {

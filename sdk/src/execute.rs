@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -7,7 +6,7 @@ use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
-use crate::job_handle::{JobHandle, JobId};
+use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::{Client, ExecutorKind};
 
 pub struct ExecuteResult {
@@ -88,7 +87,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     /// Submit the execution, returning a [`JobHandle<ExecuteOutput>`].
     pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
         let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
-        let subs = Arc::new(Mutex::new(Vec::new()));
+        let subs = new_subscriber_list();
         self.client.run_execute(self.program, self.stdin, self.hints, executor, self.timeout, subs)
     }
 }

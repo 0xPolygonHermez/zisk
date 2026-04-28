@@ -22,18 +22,49 @@ const PROGRESS_PROVE: u8 = 75;
 const PROGRESS_AGGREGATE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
-pub(crate) type SubscriberList = Arc<Mutex<Vec<Subscriber>>>;
 pub(crate) type PreProcessHook = Box<dyn FnOnce(&TerminalStatus) -> Result<()> + Send>;
 
+/// Event bus: buffers events while no subscriber is registered, then drains
+/// on the first `.on()` call.
+pub(crate) struct EventBus {
+    subscribers: Vec<Subscriber>,
+    /// Events received before any subscriber was registered.
+    pending: Vec<JobEvent>,
+}
+
+impl EventBus {
+    fn new() -> Self {
+        Self { subscribers: Vec::new(), pending: Vec::new() }
+    }
+
+    fn from_subscribers(subs: Vec<Subscriber>) -> Self {
+        Self { subscribers: subs, pending: Vec::new() }
+    }
+}
+
+pub(crate) type SubscriberList = Arc<Mutex<EventBus>>;
+
+pub(crate) fn new_subscriber_list() -> SubscriberList {
+    Arc::new(Mutex::new(EventBus::new()))
+}
+
+pub(crate) fn subscriber_list_from(subs: Vec<Subscriber>) -> SubscriberList {
+    Arc::new(Mutex::new(EventBus::from_subscribers(subs)))
+}
+
 pub(crate) fn fire_event(subscribers: &SubscriberList, event: JobEvent) {
-    let matching: Vec<Arc<dyn Fn(JobEvent) + Send + Sync>> = match subscribers.lock() {
-        Ok(subs) => subs
-            .iter()
-            .filter(|(filter, _)| *filter == JobEvent::All || *filter == event)
-            .map(|(_, cb)| Arc::clone(cb))
-            .collect(),
-        Err(_) => return,
-    };
+    let Ok(mut bus) = subscribers.lock() else { return };
+    if bus.subscribers.is_empty() {
+        bus.pending.push(event);
+        return;
+    }
+    let matching: Vec<Arc<dyn Fn(JobEvent) + Send + Sync>> = bus
+        .subscribers
+        .iter()
+        .filter(|(filter, _)| *filter == JobEvent::All || *filter == event)
+        .map(|(_, cb)| Arc::clone(cb))
+        .collect();
+    drop(bus);
     for cb in matching {
         cb(event.clone());
     }
@@ -95,7 +126,7 @@ pub struct JobHandle<T> {
 }
 
 impl<T> JobHandle<T> {
-    pub fn new_embedded(
+    pub(crate) fn new_embedded(
         handle: tokio::task::JoinHandle<Result<T>>,
         subscribers: SubscriberList,
         timeout: Option<Duration>,
@@ -110,7 +141,7 @@ impl<T> JobHandle<T> {
         }
     }
 
-    pub fn new_remote(
+    pub(crate) fn new_remote(
         remote_job: Job,
         subscribers: SubscriberList,
         timeout: Option<Duration>,
@@ -140,13 +171,25 @@ impl<T> JobHandle<T> {
     /// Register a post-submission event callback.
     ///
     /// Use [`JobEvent::All`] to subscribe to all events.
+    ///
+    /// If events arrived before this call (e.g. between job submission and
+    /// callback registration), they are replayed immediately and the buffer
+    /// is drained.
     pub fn on(
         &mut self,
         event: JobEvent,
         cb: impl Fn(JobEvent) + Send + Sync + 'static,
     ) -> &mut Self {
-        if let Ok(mut subs) = self.subscribers.lock() {
-            subs.push((event, Arc::new(cb)));
+        let cb: Arc<dyn Fn(JobEvent) + Send + Sync> = Arc::new(cb);
+        if let Ok(mut bus) = self.subscribers.lock() {
+            let pending = std::mem::take(&mut bus.pending);
+            bus.subscribers.push((event.clone(), Arc::clone(&cb)));
+            drop(bus);
+            for e in pending {
+                if event == JobEvent::All || event == e {
+                    cb(e);
+                }
+            }
         }
         self
     }

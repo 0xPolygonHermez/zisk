@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
             });
 
             // Wait for completion
-            info!("Waiting for proof …");
+            info!("Waiting for proof");
             match job.wait(None)? {
                 TerminalStatus::Completed(DomainJobKindResponse::Prove { proof: p, stats }) => {
                     info!(

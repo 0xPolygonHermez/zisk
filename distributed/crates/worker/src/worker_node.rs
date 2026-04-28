@@ -224,7 +224,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     }
                     match result {
                         Ok(message) => {
-                            if let Err(e) = self.handle_coordinator_message(message, &message_sender, &computation_tx).await {
+                            if let Err(e) = self.handle_coordinator_message(message, &message_sender, computation_tx).await {
                                 error!("Error handling coordinator message: {}", e);
                                 self.report_computation_error(&message_sender, &e.to_string()).await;
                                 break;

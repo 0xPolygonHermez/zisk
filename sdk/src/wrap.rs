@@ -1,10 +1,9 @@
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 
-use crate::job_handle::JobHandle;
+use crate::job_handle::{new_subscriber_list, JobHandle};
 use crate::prove::ProveResult;
 use crate::Client;
 
@@ -56,7 +55,7 @@ impl<'a, C: Client> WrapRequest<'a, C> {
 
     /// Submit the wrap, returning a [`JobHandle<ProveResult>`].
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
-        let subs = Arc::new(Mutex::new(Vec::new()));
+        let subs = new_subscriber_list();
         self.client.run_wrap(
             self.proof,
             self.proof_kind,
