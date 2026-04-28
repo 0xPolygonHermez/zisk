@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tracing::debug;
+use tracing::{debug, error};
 
 use super::services::AsmServices;
 use super::{AsmService, FromResponsePayload, PingRequest, PingResponse, ToRequestPayload};
@@ -36,19 +36,24 @@ impl StdioHandle {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
+        debug!("Sending request to stdio service {}", service);
         let out_buffer = AsmServices::encode_request(req.to_request_payload());
+        debug!("Encoded request for service {}: {} bytes", service, out_buffer.len());
         self.stdin
             .write_all(&out_buffer)
             .with_context(|| format!("Failed to write request to stdio service {service}"))?;
 
+        debug!("Request sent to stdio service {}, waiting for response...", service);
         let mut in_buffer = [0u8; 40];
         if let Err(e) = self.stdout.read_exact(&mut in_buffer) {
+            error!("Failed to read response from stdio service {}: {}", service, e);
             // Give the process a moment to fully exit if it hasn't yet
             let status = match self.child.try_wait() {
                 Ok(Some(status)) => Some(status),
                 Ok(None) => self.child.wait().ok(), // Process may still be exiting; wait briefly
                 Err(_) => None,
             };
+            error!("Checked stdio service {} process status after read failure: {:?}", service, status);
 
             if let Some(status) = status {
                 let stderr_output = {
@@ -70,17 +75,19 @@ impl StdioHandle {
                     "Service {service} process exited with {status} before responding.\nstderr:\n{stderr_snippet}"
                 ));
             }
+            error!("Service {service} process status unknown after read failure.");
             return Err(e)
                 .with_context(|| format!("Failed to read response from stdio service {service}"));
         }
 
+        debug!("Received response from stdio service {}: {} bytes", service, in_buffer.len());
         Ok(Res::from_response_payload(AsmServices::decode_response(&in_buffer)?))
     }
 }
 
 #[derive(Clone)]
 pub(super) struct StdioService {
-    pub(super) state: Arc<[Mutex<StdioHandle>; 3]>,
+    state: Arc<[Mutex<StdioHandle>; 3]>,
     pub(super) world_rank: i32,
     pub(super) local_rank: i32,
 }
@@ -186,6 +193,7 @@ impl StdioService {
         Req: ToRequestPayload,
         Res: FromResponsePayload,
     {
+        debug!("Sending request to stdio service {}", service);
         self.state[service.as_index()]
             .lock()
             .unwrap()
