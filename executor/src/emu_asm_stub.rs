@@ -67,7 +67,7 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_hints_processor(&self) -> Result<Option<Arc<HintsProcessor<HintsShmem>>>> {
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
