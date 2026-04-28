@@ -792,6 +792,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let is_first_partition = partition_info.allocation.contains(&0);
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
 
+        prover.register_program(program_id, with_hints)?;
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 prover.set_active_services(is_first_partition)?;
@@ -813,8 +815,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
 
         prover.set_stdin(stdin)?;
-
-        prover.register_program(program_id, with_hints)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -861,6 +861,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let is_first_partition = partition_info.allocation.contains(&0);
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
 
+        prover.register_program(&guest_program.program_id, with_hints)?;
+
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 prover.set_active_services(is_first_partition)?;
@@ -882,8 +884,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
 
         prover.set_stdin(stdin.clone())?;
-
-        prover.register_program(&guest_program.program_id, with_hints)?;
 
         prover.set_partition(
             partition_info.total_compute_units,

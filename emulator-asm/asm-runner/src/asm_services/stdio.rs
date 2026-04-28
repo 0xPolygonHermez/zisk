@@ -1,7 +1,8 @@
 use std::{
     io::{Read, Write},
-    process::{Child, ChildStderr, ChildStdin, ChildStdout, Stdio},
+    process::{Child, ChildStdin, ChildStdout, Stdio},
     sync::{Arc, Mutex},
+    thread,
 };
 
 use anyhow::{Context, Result};
@@ -20,7 +21,7 @@ use crate::{ShutdownRequest, ShutdownResponse};
 pub(super) struct StdioHandle {
     stdin: ChildStdin,
     stdout: ChildStdout,
-    stderr: ChildStderr,
+    _stderr_drain: thread::JoinHandle<()>,
     child: Child,
 }
 
@@ -53,26 +54,15 @@ impl StdioHandle {
                 Ok(None) => self.child.wait().ok(), // Process may still be exiting; wait briefly
                 Err(_) => None,
             };
-            error!("Checked stdio service {} process status after read failure: {:?}", service, status);
+            error!(
+                "Checked stdio service {} process status after read failure: {:?}",
+                service, status
+            );
 
             if let Some(status) = status {
-                let stderr_output = {
-                    let mut buf = Vec::new();
-                    self.stderr.read_to_end(&mut buf).ok();
-                    String::from_utf8(buf).unwrap_or_default()
-                };
-                let stderr_snippet = if stderr_output.is_empty() {
-                    String::from("(no stderr captured)")
-                } else {
-                    // Take last 2000 chars to avoid huge messages
-                    let start = stderr_output.len().saturating_sub(2000);
-                    stderr_output[start..].to_string()
-                };
-                tracing::error!(
-                    "Service {service} process crashed with {status}.\nstderr:\n{stderr_snippet}"
-                );
+                error!("Service {service} process crashed with {status}");
                 return Err(anyhow::anyhow!(
-                    "Service {service} process exited with {status} before responding.\nstderr:\n{stderr_snippet}"
+                    "Service {service} process exited with {status} before responding"
                 ));
             }
             error!("Service {service} process status unknown after read failure.");
@@ -126,7 +116,7 @@ impl StdioService {
     ) -> Result<StdioHandle> {
         let mut command =
             asm_service.build_service_command(trimmed_path, options, shm_prefix, sem_prefix);
-        command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
         let mut child = command
             .spawn()
@@ -134,9 +124,14 @@ impl StdioService {
 
         let stdin = child.stdin.take().context("Failed to open stdin for stdio service")?;
         let stdout = child.stdout.take().context("Failed to open stdout for stdio service")?;
-        let stderr = child.stderr.take().context("Failed to open stderr for stdio service")?;
+        let mut stderr = child.stderr.take().context("Failed to open stderr for stdio service")?;
 
-        Ok(StdioHandle { stdin, stdout, stderr, child })
+        let stderr_drain = thread::spawn(move || {
+            let mut chunk = [0u8; 4096];
+            while matches!(stderr.read(&mut chunk), Ok(n) if n > 0) {}
+        });
+
+        Ok(StdioHandle { stdin, stdout, _stderr_drain: stderr_drain, child })
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
