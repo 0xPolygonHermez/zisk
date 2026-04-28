@@ -115,12 +115,36 @@ impl StreamOrderingActor {
     }
 }
 
-impl Drop for StreamOrderingActor {
-    fn drop(&mut self) {
-        // Drop the sender first so the thread's recv() returns Err and exits
+impl StreamOrderingActor {
+    pub fn shutdown_and_join(mut self, timeout: std::time::Duration) {
         self.sender.take();
 
-        // Drop the ordering thread, it will terminate promptly once the channel is closed.
+        let Some(handle) = self.thread_handle.take() else { return };
+
+        // Bounded join: poll is_finished until timeout, then detach.
+        let deadline = std::time::Instant::now() + timeout;
+        while !handle.is_finished() {
+            if std::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    "StreamOrderingActor: shutdown timed out after {:?}; detaching thread",
+                    timeout
+                );
+                return; // detach
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = handle.join();
+    }
+}
+
+impl Drop for StreamOrderingActor {
+    fn drop(&mut self) {
+        // Drop the sender first so the thread's recv() returns Err and exits.
+        self.sender.take();
+
+        // Detach the ordering thread; it will terminate promptly once the channel
+        // is closed. Callers that need to *wait* for shutdown should use
+        // `shutdown_and_join` before dropping.
         self.thread_handle.take();
     }
 }

@@ -15,8 +15,8 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
-    Asm, AsmOptions, BackendProverOpts, Emu, ProgramId, ProverClientBuilder, ProverEngine,
-    ZiskBackend, ZiskProver,
+    Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
+    ZiskProver,
 };
 
 use crate::stream_ordering::StreamOrderingActor;
@@ -60,6 +60,10 @@ enum WorkerMpiTag {
 /// If a spawn_blocking task doesn't promptly observe the cancel signal,
 /// we'll detach it after this duration to keep the worker event loop responsive.
 const CANCELLATION_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Timeout for waiting for the stream-ordering actor to finish its current
+/// `process_hints` call when shutting it down between proves.
+const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -423,12 +427,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        // Drop the actor on a blocking thread: closes the channel, which signals the ordering
-        // thread to exit, without blocking the Tokio runtime worker thread.
+        // Shut down the stream actor on a blocking thread, waiting for its worker
+        // thread to exit. This avoids racing the next prove's reset against an
+        // in-flight `process_hints` call from the previous job.
         if let Some(stream_actor) = self.stream_actor.take() {
-            tokio::task::spawn_blocking(move || {
-                drop(stream_actor);
-            });
+            let _ = tokio::task::spawn_blocking(move || {
+                stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
+            })
+            .await;
         }
     }
 
@@ -438,6 +444,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn clear_current_job(&mut self) {
         self.cancel_current_computation().await;
         self.current_job = None;
+    }
+
+    pub fn prepare_for_new_job(
+        &self,
+        hash_id: &str,
+        with_hints: bool,
+        is_first_partition: bool,
+    ) -> Result<()> {
+        let program_id = self
+            .guest_programs
+            .get(hash_id)
+            .ok_or_else(|| anyhow::anyhow!("Guest program not found for hash_id={hash_id}"))?
+            .program_id
+            .clone();
+
+        self.prover.register_program(&program_id, with_hints)?;
+        self.prover.reset_resources()?;
+        self.prover.set_active_services(is_first_partition)?;
+        Ok(())
     }
 
     #[allow(clippy::type_complexity)]
@@ -479,8 +504,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.partial_contribution_mpi_broadcast(&job).await?;
-        let hash_id = job.lock().await.hash_id.clone();
-        Ok(self.partial_contribution(job, hash_id, tx))
+        Ok(self.partial_contribution(job, tx))
     }
 
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
@@ -599,17 +623,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
-        hash_id: String,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
-        let program_id = self
-            .guest_programs
-            .get(&hash_id)
-            .unwrap_or_else(|| panic!("Guest program not found for hash_id={hash_id}"))
-            .program_id
-            .clone();
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
@@ -633,7 +650,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 inputs_source,
                 hints_source,
                 partition_info,
-                &program_id,
                 options,
             );
 
@@ -778,7 +794,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
-        program_id: &ProgramId,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
@@ -789,28 +804,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        let is_first_partition = partition_info.allocation.contains(&0);
-        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-
-        prover.register_program(program_id, with_hints)?;
-
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
-                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
             HintsSourceDto::HintsData(hints_data) => {
-                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_vec(hints_data);
                 prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, set_active_services is called in route_stream_data
-                // when the Start message arrives.
-            }
-            HintsSourceDto::HintsNull => {
-                // No hints to set
+            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                // HintsNull: nothing to register.
             }
         }
 
@@ -858,28 +863,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        let is_first_partition = partition_info.allocation.contains(&0);
-        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-
-        prover.register_program(&guest_program.program_id, with_hints)?;
-
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
-                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
                 prover.register_hints_stream(hints_stream)?;
             }
             HintsSourceDto::HintsData(hints_data) => {
-                prover.set_active_services(is_first_partition)?;
                 let hints_stream = StreamSource::from_vec(hints_data);
                 prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, set_active_services is called in route_stream_data
-                // when the Start message arrives.
-            }
-            HintsSourceDto::HintsNull => {
-                // No hints to set
+            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                // HintsNull: nothing to register.
             }
         }
 
@@ -938,26 +933,24 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     ///
-    /// - `Start`: initialises the `HintsProcessor` (if needed), resets it, and spawns the actor.
+    /// - `Start`: spawns a new `StreamOrderingActor`. Resetting shmem and setting
+    ///   active services are NOT done here — they are handled synchronously by
+    ///   `prepare_for_new_job` before the contribution task is spawned, so reset
+    ///   is guaranteed to happen before the C services start reading and before
+    ///   any data is written via `process_hints`.
     /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.
     ///
     /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
-    pub async fn route_stream_data(
-        &mut self,
-        stream_data: StreamDataDto,
-        is_first_partition: bool,
-    ) -> Result<()> {
+    pub async fn route_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
         match &stream_data.stream_type {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.prover.reset_resources()?;
-
                 let processor = self.prover.get_hints_processor()?;
 
-                self.prover.set_active_services(is_first_partition)?;
-
-                // Replace any existing actor (handles reconnect / job restart)
+                // Replace any existing actor — `prepare_for_new_job` already ran
+                // `cancel_current_computation`, which joined the previous actor's
+                // worker thread, so this assignment can't race a stale process_hints.
                 self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
             }
             StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
@@ -1207,40 +1200,48 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
 
-        if tag == WorkerMpiTag::ContributionsHintsStream {
-            prover.submit_hint(&bytes)?;
-        } else if tag == WorkerMpiTag::ContributionsInputsStream {
-            prover.submit_input(&bytes)?;
-        } else if tag == WorkerMpiTag::Setup {
-            let message: SetupMessage = borsh::from_slice(&bytes[1..])
-                .map_err(|e| anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e))?;
+        match tag {
+            WorkerMpiTag::ContributionsHintsStream => {
+                prover.submit_hint(&bytes)?;
+            }
+            WorkerMpiTag::ContributionsInputsStream => {
+                prover.submit_input(&bytes)?;
+            }
+            WorkerMpiTag::Setup => {
+                let message: SetupMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e)
+                })?;
 
-            let guest_program =
-                Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
-            let gp_clone = guest_program.clone();
-            let with_hints = message.with_hints;
-            tokio::task::spawn_blocking(move || {
-                prover.prover.setup_internal(&gp_clone, with_hints)
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
+                let guest_program =
+                    Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
+                let gp_clone = guest_program.clone();
+                let with_hints = message.with_hints;
+                tokio::task::spawn_blocking(move || {
+                    prover.prover.setup_internal(&gp_clone, with_hints)
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
 
-            self.guest_programs.insert(message.hash_id.clone(), guest_program);
-        } else {
-            // For Execution/Contributions MPI broadcasts, look up the program by hash_id from the message.
-            let guest_programs = self.guest_programs.clone();
-            tokio::task::spawn_blocking(move || {
-                let deserialize_and_run = || -> Result<()> {
-                    match tag {
-                        WorkerMpiTag::Execution => {
-                            let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
-                                .map_err(|e| {
-                                    anyhow::anyhow!(
-                                        "Failed to deserialize Execution MPI broadcast: {}",
-                                        e
-                                    )
-                                })?;
+                self.guest_programs.insert(message.hash_id.clone(), guest_program);
+            }
+            WorkerMpiTag::Execution | WorkerMpiTag::Contributions => {
+                let message: ContributionsMessage =
+                    borsh::from_slice(&bytes[1..]).map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to deserialize Contributions/Execution MPI broadcast: {}",
+                            e
+                        )
+                    })?;
 
+                let with_hints = !matches!(message.hints_source, HintsSourceDto::HintsNull);
+                let is_first_partition = message.partition_info.allocation.contains(&0);
+                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_partition)?;
+
+                let guest_programs = self.guest_programs.clone();
+                let is_execution = matches!(tag, WorkerMpiTag::Execution);
+                tokio::task::spawn_blocking(move || {
+                    let run = || -> Result<()> {
+                        if is_execution {
                             let guest_program = guest_programs
                                 .get(&message.hash_id)
                                 .ok_or_else(|| {
@@ -1257,26 +1258,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.partition_info,
                                 &guest_program,
                             )?;
-                        }
-                        WorkerMpiTag::Contributions => {
-                            let message: ContributionsMessage = borsh::from_slice(&bytes[1..])
-                                .map_err(|e| {
-                                    anyhow::anyhow!(
-                                        "Failed to deserialize Contributions MPI broadcast: {}",
-                                        e
-                                    )
-                                })?;
-
-                            let program_id = guest_programs
-                                .get(&message.hash_id)
-                                .ok_or_else(|| {
-                                    anyhow::anyhow!(
-                                        "Guest program not found for hash_id={}",
-                                        message.hash_id
-                                    )
-                                })?
-                                .program_id
-                                .clone();
+                        } else {
                             Self::execute_contribution_task(
                                 message.job_id,
                                 &prover,
@@ -1284,50 +1266,36 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                 message.input_source,
                                 message.hints_source,
                                 message.partition_info,
-                                &program_id,
                                 message.options,
                             )?;
                         }
-                        WorkerMpiTag::Prove => {
-                            let message: ProveMessage =
-                                borsh::from_slice(&bytes[1..]).map_err(|e| {
-                                    anyhow::anyhow!(
-                                        "Failed to deserialize Prove MPI broadcast: {}",
-                                        e
-                                    )
-                                })?;
+                        Ok(())
+                    };
 
-                            Self::execute_prove_task(
-                                message.job_id,
-                                &prover,
-                                message.phase_inputs,
-                                options,
-                            )?;
-                        }
-                        WorkerMpiTag::Aggregate => {
-                            return Err(anyhow::anyhow!(
-                                "Aggregate phase is not supported in MPI broadcast"
-                            ));
-                        }
-                        WorkerMpiTag::ContributionsHintsStream
-                        | WorkerMpiTag::ContributionsInputsStream => {
-                            return Err(anyhow::anyhow!(
-                                "Stream phases should be handled separately and not reach this point"
-                            ));
-                        }
-                        WorkerMpiTag::Setup => {
-                            return Err(anyhow::anyhow!(
-                                "Setup phase should be handled outside the spawn_blocking block"
-                            ));
-                        }
+                    if let Err(e) = run() {
+                        error!("MPI broadcast task failed: {}. Waiting for new job...", e);
                     }
-                    Ok(())
-                };
+                });
+            }
+            WorkerMpiTag::Prove => {
+                let message: ProveMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Prove MPI broadcast: {}", e)
+                })?;
 
-                if let Err(e) = deserialize_and_run() {
-                    error!("MPI broadcast task failed: {}. Waiting for new job...", e);
-                }
-            });
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = Self::execute_prove_task(
+                        message.job_id,
+                        &prover,
+                        message.phase_inputs,
+                        options,
+                    ) {
+                        error!("MPI Prove task failed: {}. Waiting for new job...", e);
+                    }
+                });
+            }
+            WorkerMpiTag::Aggregate => {
+                return Err(anyhow::anyhow!("Aggregate phase is not supported in MPI broadcast"));
+            }
         }
         Ok(())
     }

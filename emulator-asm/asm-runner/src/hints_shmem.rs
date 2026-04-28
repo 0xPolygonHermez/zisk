@@ -282,11 +282,16 @@ impl StreamSink for HintsShmem {
             }
         }
 
-        for res in self.separate_shm.borrow().iter() {
-            assert!(
-                res.control_reader.read_u64_at(0) == 0,
-                "Control reader position should be reset to 0"
-            );
+        for (idx, res) in self.separate_shm.borrow().iter().enumerate() {
+            let read_pos = res.control_reader.read_u64_at(0);
+            if read_pos != 0 {
+                tracing::warn!(
+                    "HintsShmem::reset: control_reader[{}] read position is {} (expected 0). \
+                     Previous emulation may not have completed cleanly.",
+                    idx,
+                    read_pos
+                );
+            }
         }
     }
 }

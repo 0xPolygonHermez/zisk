@@ -967,6 +967,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             HintsSourceDto::HintsNull
         };
 
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
+        let is_first_partition = params.worker_allocation.contains(&0);
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
@@ -1029,6 +1033,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         } else {
             HintsSourceDto::HintsNull
         };
+
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
+        let is_first_partition = params.worker_allocation.contains(&0);
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
@@ -1236,9 +1244,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         let job = self.worker.current_job().unwrap();
-        let (current_job_id, is_first_partition) = {
+        let current_job_id = {
             let job_guard = job.lock().await;
-            (job_guard.job_id.clone(), job_guard.allocation.contains(&0))
+            job_guard.job_id.clone()
         };
 
         let stream_data_dto: StreamDataDto = stream_data.into();
@@ -1251,7 +1259,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
-        self.worker.route_stream_data(stream_data_dto, is_first_partition).await
+        self.worker.route_stream_data(stream_data_dto).await
     }
 
     async fn handle_input_stream_data(
