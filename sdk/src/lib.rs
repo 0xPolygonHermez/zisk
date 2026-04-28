@@ -13,6 +13,7 @@ mod setup;
 mod stdin;
 mod upload;
 mod verify;
+mod verify_constraints;
 mod wrap;
 
 pub use cancel::CancellationToken;
@@ -29,17 +30,20 @@ pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;
 pub use verify::VerifyBuilder;
+pub use verify_constraints::{
+    VerifyConstraintsExtension, VerifyConstraintsRequest, VerifyConstraintsResult,
+};
 pub use wrap::WrapRequest;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{
-    load_program, Elf, EmuOptions, GuestProgram, ProfilingMode, ProgramId,
+    load_program, Asm, AsmOptions, Elf, EmuOptions, GuestProgram, ProfilingMode, ProgramId,
 };
 
 pub use opts::EmbeddedOpts;
 
 // Re-export result and data types from backend (public outputs)
-pub use zisk_prover_backend::{ExecuteOutput, ProveOutput};
+pub use zisk_prover_backend::{setup_logger, ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
 // Re-export common types
 pub use proofman_common::VerboseMode;

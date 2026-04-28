@@ -195,12 +195,22 @@ impl GuestProgram {
 #[macro_export]
 macro_rules! load_program {
     ($name:literal) => {{
-        $crate::GuestProgram {
-            program_id: $crate::ProgramId::new_static(
-                $name,
-                env!(concat!("ZISK_ELF_HASH_", $name)),
-            ),
-            elf: $crate::Elf::from_embedded(include_bytes!(env!(concat!("ZISK_ELF_", $name)))),
+        #[cfg(zisk_skip_guest_build)]
+        {
+            $crate::GuestProgram {
+                program_id: $crate::ProgramId::new_static($name, ""),
+                elf: $crate::Elf::from_embedded(&[]),
+            }
+        }
+        #[cfg(not(zisk_skip_guest_build))]
+        {
+            $crate::GuestProgram {
+                program_id: $crate::ProgramId::new_static(
+                    $name,
+                    env!(concat!("ZISK_ELF_HASH_", $name)),
+                ),
+                elf: $crate::Elf::from_embedded(include_bytes!(env!(concat!("ZISK_ELF_", $name)))),
+            }
         }
     }};
 }

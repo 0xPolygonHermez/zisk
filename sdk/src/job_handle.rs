@@ -408,6 +408,14 @@ impl FromWaitResult for crate::prove::ProveResult {
     }
 }
 
+impl FromWaitResult for crate::verify_constraints::VerifyConstraintsResult {
+    fn from_terminal(_status: TerminalStatus, _job_id: JobId) -> Result<Self> {
+        // RemoteClient does not implement VerifyConstraintsExtension, so this path
+        // is unreachable in practice — kept only to satisfy the IntoFuture bound.
+        anyhow::bail!("verify_constraints is not supported on RemoteClient")
+    }
+}
+
 impl FromWaitResult for crate::execute::ExecuteResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {

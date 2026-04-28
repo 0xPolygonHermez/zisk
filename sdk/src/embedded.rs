@@ -4,6 +4,7 @@ pub(crate) mod execute;
 pub(crate) mod prove;
 pub(crate) mod setup;
 pub(crate) mod upload;
+pub(crate) mod verify_constraints;
 pub(crate) mod wrap;
 
 use std::path::PathBuf;

@@ -13,8 +13,29 @@ use std::{
 
 use anyhow::{Context, Result};
 
+fn should_skip_guest_build() -> bool {
+    if std::env::var("SKIP_GUEST_BUILD").is_ok() {
+        return true;
+    }
+    // cargo clippy sets RUSTC_WORKSPACE_WRAPPER to the clippy-driver binary.
+    // Cross-compiling the guest during a clippy run is pointless and would fail
+    // without the ZisK toolchain installed, so skip it.
+    if std::env::var("RUSTC_WORKSPACE_WRAPPER").map(|v| v.contains("clippy")).unwrap_or(false) {
+        return true;
+    }
+    false
+}
+
 // Helper for building a ZisK program.
 pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
+    // Always declare the cfg so rustc doesn't warn about it being unexpected in the host crate.
+    println!("cargo:rustc-check-cfg=cfg(zisk_skip_guest_build)");
+
+    if should_skip_guest_build() {
+        println!("cargo:rustc-cfg=zisk_skip_guest_build");
+        return;
+    }
+
     // Get the root package name and metadata.
     let program_dir = std::path::Path::new(path);
     let metadata_file = program_dir.join("Cargo.toml");
@@ -43,6 +64,13 @@ pub fn execute_build_program(
     args: &BuildArgs,
     program_dir: Option<PathBuf>,
 ) -> Result<Vec<(String, Utf8PathBuf)>> {
+    println!("cargo:rustc-check-cfg=cfg(zisk_skip_guest_build)");
+
+    if should_skip_guest_build() {
+        println!("cargo:rustc-cfg=zisk_skip_guest_build");
+        return Ok(vec![]);
+    }
+
     // If the program directory is not specified, use the current directory.
     let program_dir = program_dir
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory."));
@@ -55,7 +83,7 @@ pub fn execute_build_program(
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(args, &program_dir, &program_metadata);
+    let cmd = create_command(args, &program_dir, &program_metadata)?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
 
