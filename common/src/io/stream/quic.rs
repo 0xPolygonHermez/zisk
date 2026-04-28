@@ -282,7 +282,7 @@ impl StreamWrite for QuicStreamWriter {
     /// Each call to write() opens a new unidirectional stream, writes the data,
     /// and closes the stream, providing natural message boundaries.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
-        self.open()?;
+        self.wait_for_connection()?;
 
         let connection = self
             .connection

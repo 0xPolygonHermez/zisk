@@ -1277,9 +1277,9 @@ mod tests {
         // Should succeed (not error) — the late response is silently discarded
         coordinator.handle_stream_execute_task_response(late_response).await.unwrap();
 
-        // Worker should be set to Idle
+        // Worker should be set back to Ready (setup is still valid after job failure)
         let state = coordinator.workers_pool.worker_state(&w0_id).await;
-        assert_eq!(state, Some(WorkerState::Idle));
+        assert_eq!(state, Some(WorkerState::Ready));
 
         // Job should still be Failed (not revived)
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();

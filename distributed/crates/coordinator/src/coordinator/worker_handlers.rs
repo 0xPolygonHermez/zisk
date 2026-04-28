@@ -123,7 +123,7 @@ impl Coordinator {
         }
     }
 
-    /// Marks all Computing workers in the list as Idle.
+    /// Marks all Computing workers in the list as Ready.
     pub(super) async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
         self.workers_pool.mark_computing_workers_ready(worker_ids).await;
     }
@@ -452,7 +452,7 @@ impl Coordinator {
         self.validate_and_update_heartbeat(&message).await?;
 
         // If the job is already terminal (Failed/Completed), this is a late arrival
-        // (e.g. spawn_blocking finished after JobCancelled). Mark worker Idle and discard.
+        // (e.g. spawn_blocking finished after JobCancelled). Mark worker Ready and discard.
         let job_entry = {
             let jobs_map = self.jobs.read().await;
             jobs_map.get(&message.job_id).cloned()
