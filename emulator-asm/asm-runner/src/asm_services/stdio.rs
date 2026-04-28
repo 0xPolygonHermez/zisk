@@ -126,7 +126,7 @@ impl StdioService {
     ) -> Result<StdioHandle> {
         let mut command =
             asm_service.build_service_command(trimmed_path, options, shm_prefix, sem_prefix);
-        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command.stdin(Stdio::piped()).stdout(Stdio::piped());
 
         let mut child = command
             .spawn()
