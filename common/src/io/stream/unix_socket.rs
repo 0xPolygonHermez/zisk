@@ -14,6 +14,8 @@ use anyhow::{Context, Result};
 use super::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
+const MAX_MESSAGE_SIZE: usize = 128 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
     #[error("No client connected yet")]
@@ -21,6 +23,9 @@ pub enum UnixSocketError {
 
     #[error("Socket not connected")]
     NotConnected,
+
+    #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
+    MessageTooLarge(usize),
 
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
@@ -428,6 +433,10 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Returns `NoClientConnected` error if no client has connected yet.
     /// The caller can retry the write until a client connects.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
+        if item.len() > MAX_MESSAGE_SIZE {
+            return Err(UnixSocketError::MessageTooLarge(item.len()).into());
+        }
+
         self.open()?;
 
         // Receive socket from channel if we don't have it yet
@@ -512,9 +521,8 @@ impl StreamWrite for UnixSocketStreamWriter {
         Ok(())
     }
 
-    /// SOCK_SEQPACKET receiver buffer is 128 KB; stay well under it.
     fn max_message_size(&self) -> usize {
-        64 * 1024
+        MAX_MESSAGE_SIZE
     }
 }
 

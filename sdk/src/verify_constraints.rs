@@ -107,10 +107,11 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
 /// # Example
 ///
 /// ```rust,no_run
-/// use zisk_sdk::{EmbeddedClientBuilder, ZiskStdin, VerifyConstraintsExtension};
+/// use zisk_sdk::{EmbeddedClientBuilder, load_program, ZiskStdin, VerifyConstraintsExtension};
 ///
 /// # async fn example() -> anyhow::Result<()> {
-/// let client = EmbeddedClientBuilder::new().build()?;
+/// let client = EmbeddedClientBuilder::default().build()?;
+/// let program = load_program!("program.elf");
 /// let stdin = ZiskStdin::new();
 /// let result = client.verify_constraints(&program, stdin).run()?.await?;
 /// println!("steps: {}", result.get_execution_steps());

@@ -14,6 +14,8 @@ use zisk_common::io::UnixSocketStreamWriter;
 enum TransportKind {
     /// Unix socket / QUIC — writer owned here, opened by `start()`.
     Direct(Box<dyn StreamWrite>),
+    /// Socket managed externally.
+    External,
     /// gRPC push — sender injected by `set_input_sender()`.
     Grpc,
 }
@@ -86,16 +88,39 @@ impl ZiskStream {
     pub fn unix() -> Self {
         let path = format!("/tmp/zisk-input-{}.sock", uuid::Uuid::new_v4());
         let uri = format!("unix://{}", path);
-        let writer =
+        let mut writer =
             UnixSocketStreamWriter::new(&path).expect("failed to create UnixSocketStreamWriter");
+        writer.open().expect("failed to open UnixSocketStreamWriter");
         Self::from_writer(Box::new(writer), uri)
     }
 
+    /// Unix domain socket at an explicit path, managed externally.
+    ///
+    /// Use this when the socket is already bound and listening by another
+    /// process (e.g. `init_hints_socket`).
+    #[cfg(unix)]
+    pub fn unix_external(path: &str) -> Self {
+        let uri = format!("unix://{}", path);
+        Self {
+            inner: Arc::new(Inner {
+                transport: Mutex::new(TransportKind::External),
+                pending_frames: Mutex::new(Vec::new()),
+                uri,
+                live_state: Mutex::new(LiveState { ready: true, grpc: None }),
+                live_cond: Condvar::new(),
+            }),
+        }
+    }
+
     /// Unix domain socket at an explicit path.
+    ///
+    /// The socket starts listening immediately so the executor can connect
+    /// as soon as it launches.
     #[cfg(unix)]
     pub fn unix_at(path: &str) -> Result<Self> {
         let uri = format!("unix://{}", path);
-        let writer = UnixSocketStreamWriter::new(path)?;
+        let mut writer = UnixSocketStreamWriter::new(path)?;
+        writer.open()?;
         Ok(Self::from_writer(Box::new(writer), uri))
     }
 
@@ -155,17 +180,12 @@ impl ZiskStream {
         self.inner.pending_frames.lock().unwrap().push(frame);
     }
 
-    /// Buffer raw bytes without any framing header.
-    ///
-    /// Use this when the receiver expects plain binary data (e.g. hints relay),
-    /// as opposed to [`write_slice`](Self::write_slice) which prepends a
-    /// length-prefixed frame understood by the stdin reader.
-    pub fn write_bytes(&self, data: &[u8]) {
-        self.inner.pending_frames.lock().unwrap().push(data.to_vec());
-    }
-
     /// Send all buffered frames now.  Blocks until the stream is live.
     pub fn flush(&self) -> Result<()> {
+        if matches!(*self.inner.transport.lock().unwrap(), TransportKind::External) {
+            return Ok(());
+        }
+
         // Wait for ready, holding the live_state lock so we can pass it
         // straight into the gRPC send path (prevents a race with start/finish).
         let mut guard = self.inner.live_state.lock().unwrap();
@@ -261,10 +281,17 @@ impl ZiskStream {
             return Ok(());
         }
 
+        // External sockets are managed by the caller; nothing to open or drain.
+        if matches!(*self.inner.transport.lock().unwrap(), TransportKind::External) {
+            return Ok(());
+        }
+
         self.inner.live_state.lock().unwrap().ready = false;
 
-        // Open synchronously: bind + listen.  After this returns the socket
-        // path exists and readers can connect.
+        // For unix(), the socket is already listening from construction.
+        // open() is a no-op in that case. For reuse after finish(), the
+        // listener was closed, so open() re-binds. close() first handles
+        // the edge case of start() called without a preceding finish().
         {
             let mut transport = self.inner.transport.lock().unwrap();
             let TransportKind::Direct(writer) = &mut *transport else { unreachable!() };
@@ -335,6 +362,10 @@ impl ZiskStream {
                 state.close_blocking();
             }
         } else {
+            // External: caller owns the socket; don't touch state or close anything.
+            if matches!(*self.inner.transport.lock().unwrap(), TransportKind::External) {
+                return Ok(());
+            }
             self.inner.live_state.lock().unwrap().ready = false;
             let mut transport = self.inner.transport.lock().unwrap();
             if let TransportKind::Direct(writer) = &mut *transport {
@@ -360,6 +391,10 @@ impl ZiskStream {
                 let _ = state.sender.close().await;
             }
         } else {
+            // External: caller owns the socket; don't touch state or close anything.
+            if matches!(*self.inner.transport.lock().unwrap(), TransportKind::External) {
+                return Ok(());
+            }
             self.inner.live_state.lock().unwrap().ready = false;
             let mut transport = self.inner.transport.lock().unwrap();
             if let TransportKind::Direct(writer) = &mut *transport {
