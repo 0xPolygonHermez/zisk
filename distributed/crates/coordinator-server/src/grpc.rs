@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use futures::{Stream, StreamExt};
 use tonic::Streaming;
 use tonic::{Request, Response, Status};
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
 
 use crate::backend::BackendService;
@@ -59,7 +59,7 @@ impl<B: BackendService> GrpcAdapter<B> {
         match result {
             Ok(()) => {
                 if elapsed_ms > 5_000 {
-                    warn!(method, elapsed_ms, "slow gRPC call");
+                    tracing::debug!(method, elapsed_ms, "slow gRPC call");
                 } else {
                     tracing::debug!(method, elapsed_ms, "gRPC call OK");
                 }
@@ -80,7 +80,7 @@ impl<B: BackendService> GrpcAdapter<B> {
 impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
     type WatchJobStream = WatchJobStream;
 
-    #[instrument(skip(self, request), fields(elf_bytes))]
+    #[instrument(level = "debug", skip(self, request), fields(elf_bytes))]
     async fn register_guest_program(
         &self,
         request: Request<RegisterGuestProgramRequest>,
@@ -103,7 +103,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request))]
+    #[instrument(level = "debug", skip(self, request))]
     async fn job_request(
         &self,
         request: Request<JobRequestMessage>,
@@ -127,7 +127,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request), fields(job_id = %request.get_ref().job_id))]
+    #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
     async fn wait_job_result(
         &self,
         request: Request<WaitJobResultRequest>,
@@ -158,7 +158,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request), fields(job_id = %request.get_ref().job_id))]
+    #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
     async fn watch_job(
         &self,
         request: Request<WatchJobRequest>,
@@ -180,7 +180,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request))]
+    #[instrument(level = "debug", skip(self, request))]
     async fn push_job_input(
         &self,
         request: Request<Streaming<PushJobInputRequest>>,
@@ -222,7 +222,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request))]
+    #[instrument(level = "debug", skip(self, request))]
     async fn push_job_hints_input(
         &self,
         request: Request<Streaming<PushJobHintsInputRequest>>,
@@ -264,7 +264,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         result
     }
 
-    #[instrument(skip(self, request), fields(job_id = %request.get_ref().job_id))]
+    #[instrument(level = "debug", skip(self, request), fields(job_id = %request.get_ref().job_id))]
     async fn cancel_job(
         &self,
         request: Request<CancelJobRequest>,
