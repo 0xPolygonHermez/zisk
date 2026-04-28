@@ -89,6 +89,11 @@ pub struct CoordinatorConfig {
     /// Minimum compute units required to start any job. Jobs are rejected
     /// (`ResourceExhausted`) if available capacity falls below this floor.
     pub min_compute_units: u32,
+    /// Grace period in milliseconds before a disconnected worker's job is failed.
+    /// If the worker reconnects within this window the disconnect is treated as a
+    /// transient network blip and computation continues uninterrupted.
+    /// Default: 500 ms (suitable for same-datacenter clusters; increase for cross-DC).
+    pub reconnect_grace_period_ms: u64,
 }
 
 impl Config {
@@ -135,7 +140,8 @@ impl Config {
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
             .set_default("coordinator.default_compute_units", 0)?
-            .set_default("coordinator.min_compute_units", 1)?;
+            .set_default("coordinator.min_compute_units", 1)?
+            .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?;
 
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));

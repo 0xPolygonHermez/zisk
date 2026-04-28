@@ -10,7 +10,7 @@ use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::{self, Debug, Display},
     ops::Range,
 };
@@ -293,6 +293,10 @@ pub struct Job {
     pub metadata: BTreeMap<String, String>,
     pub execution_only: bool,
     pub proof_type: ProofKind,
+    /// Aggregation task currently in-flight to the aggregator (sent, not yet acked).
+    /// Re-sent verbatim if the aggregator reconnects before returning its result.
+    pub agg_task_inflight: Option<PendingAggTask>,
+    pub agg_task_queue: VecDeque<PendingAggTask>,
 }
 
 impl Job {
@@ -334,6 +338,8 @@ impl Job {
             metadata,
             execution_only,
             proof_type,
+            agg_task_inflight: None,
+            agg_task_queue: VecDeque::new(),
         }
     }
 
@@ -402,6 +408,8 @@ impl Job {
         self.results.clear();
         self.phase_timings.clear();
         self.challenges = None;
+        self.agg_task_inflight = None;
+        self.agg_task_queue.clear();
     }
 }
 
@@ -437,6 +445,13 @@ pub struct AggProofData {
     pub worker_idx: u32,
     pub airgroup_id: u64,
     pub values: Vec<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingAggTask {
+    pub proofs: Vec<AggProofData>,
+    pub all_done: bool,
+    pub proof_type: ProofKind,
 }
 
 #[derive(Debug, Clone)]

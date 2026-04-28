@@ -6,7 +6,7 @@
 
 use async_stream::stream;
 use futures_util::{Stream, StreamExt};
-use std::{pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{error, info};
@@ -65,9 +65,13 @@ impl Drop for ConnectionDropGuard {
         let coordinator = self.coordinator.clone();
         let generation = self.generation;
 
-        // Spawn async cleanup on drop — only if generation matches.
-        // Calls coordinator-level method that also fails the job if worker was Computing.
+        // Spawn async cleanup on drop. Sleep for the reconnection grace period first so
+        // a transient network blip does not kill the job. The generation check inside
+        // disconnect_worker_if_generation is a no-op if the worker reconnected (and thus
+        // incremented its connection generation) before the timer fires.
+        let grace_ms = coordinator.config().coordinator.reconnect_grace_period_ms;
         tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(grace_ms)).await;
             if let Err(e) =
                 coordinator.disconnect_worker_if_generation(&worker_id, generation).await
             {

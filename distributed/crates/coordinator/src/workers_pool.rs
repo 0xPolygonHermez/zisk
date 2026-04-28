@@ -203,7 +203,10 @@ impl WorkersPool {
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
             if !matches!(
                 worker.state,
-                WorkerState::Disconnected | WorkerState::Idle | WorkerState::Ready
+                WorkerState::Disconnected
+                    | WorkerState::Idle
+                    | WorkerState::Ready
+                    | WorkerState::Computing(_)
             ) {
                 let msg =
                     format!("Worker {} is already connected (state: {})", worker_id, worker.state);

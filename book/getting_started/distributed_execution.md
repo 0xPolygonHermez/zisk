@@ -162,6 +162,7 @@ The table below lists the available configuration options for the Coordinator:
 | `coordinator.max_total_workers` | - | - | Number | 1000 | Maximum total registered workers |
 | `coordinator.phase1_timeout_seconds` | - | - | Number | 300 | Phase 1 timeout in seconds |
 | `coordinator.phase2_timeout_seconds` | - | - | Number | 600 | Phase 2 timeout in seconds |
+| `coordinator.reconnect_grace_period_ms` | - | - | Number | 500 | Grace period (ms) before failing a disconnected computing worker's job. Increase for cross-datacenter deployments. |
 | `coordinator.webhook_url` | `--webhook-url` | - | String | - | *Optional*. Webhook URL to notify on job completion |
 
 

@@ -146,12 +146,13 @@ async fn main() -> Result<()> {
     match &cli.command {
         Commands::Register { elf } => {
             let hash_id = register_elf(&client, elf)?;
-            println!("{hash_id}");
+            println!("Register completed. hash_id: {hash_id}");
         }
 
         Commands::Setup { elf, with_hints } => {
             let hash_id = register_elf(&client, elf)?;
             run_setup(&client, &hash_id, *with_hints)?;
+            println!("Setup completed for hash_id: {hash_id}");
         }
 
         Commands::Prove { hash_id, input, hints, proof, output, proof_timeout } => {

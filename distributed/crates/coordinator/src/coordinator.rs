@@ -58,8 +58,8 @@ use zisk_cluster_common::{
     ExecuteTaskResponseResultDataDto, ExecutionResult, HeartbeatAckDto, HintsModeDto,
     HintsSourceDto, InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobExecutionMode,
     JobId, JobPhase, JobResult, JobResultData, JobState, LaunchProofRequestDto,
-    LaunchProofResponseDto, LaunchWrapRequestDto, PhaseTimings, ProofKind, ProofStarkDto,
-    ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
+    LaunchProofResponseDto, LaunchWrapRequestDto, PendingAggTask, PhaseTimings, ProofKind,
+    ProofStarkDto, ProveParamsDto, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
     StreamMessageKind, WorkerErrorDto, WorkerId, WorkerReconnectRequestDto,
     WorkerRegisterRequestDto, WorkerState, WrapParamsDto, ZiskExecutorTimeDto,
 };
@@ -1465,14 +1465,28 @@ impl Coordinator {
             );
         }
 
+        let worker_id = req.worker_id.clone();
+        let last_known_job_id = req.last_known_job_id.clone();
+
+        // Compute the directive first so we know whether to preserve the worker's
+        // Computing state. Doing this before register_worker avoids a window where
+        // the worker briefly appears Idle and becomes eligible for new job dispatch.
+        let directive =
+            self.compute_reconnection_directive(&worker_id, last_known_job_id.clone()).await;
+
         // Check for active setup before registering so the initial state is set atomically —
         // no window where the worker is Idle without having a guest program.
         let setup = self.read_active_setup_dto().await;
-        let initial_state =
+        let default_state =
             if setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
-        let worker_id = req.worker_id.clone();
-        let last_known_job_id = req.last_known_job_id.clone();
+        // For a KeepComputing reconnect, preserve the current Computing(job_id, phase)
+        // state through the channel swap. For any other outcome, reset to the default.
+        let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
+            self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
+        } else {
+            default_state
+        };
 
         if let Err(e) = self
             .workers_pool
@@ -1482,9 +1496,6 @@ impl Coordinator {
             return (false, format!("Reconnection failed: {e}"), None, None);
         }
 
-        // Reconcile stale job state
-        let directive = self.compute_reconnection_directive(&worker_id, last_known_job_id).await;
-
         if let Some(ref d) = directive {
             match d {
                 ReconnectionDirectiveDto::CancelStaleJob => {
@@ -1492,6 +1503,18 @@ impl Coordinator {
                 }
                 ReconnectionDirectiveDto::KeepComputing => {
                     info!("Reconnection of {worker_id}: job still active, keep computing");
+                    // If this worker is the aggregator and has an in-flight task, re-send it.
+                    // The previous channel may have dropped while the AggParams was in the TCP
+                    // send buffer, so the worker never received it.
+                    if let Some(job_id) = last_known_job_id.as_ref() {
+                        if let Err(e) =
+                            self.replay_inflight_agg_task_if_aggregator(&worker_id, job_id).await
+                        {
+                            warn!(
+                                "Failed to replay in-flight agg task for {worker_id} on reconnect: {e}"
+                            );
+                        }
+                    }
                 }
                 ReconnectionDirectiveDto::Idle => {}
             }
@@ -2734,11 +2757,24 @@ impl Coordinator {
         }
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
-        let proof_type = job.proof_type;
+        let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
 
-        drop(job); // Release jobs lock early
-
-        self.send_aggregation_task(&job_id, &agg_worker_id, proofs, all_done, proof_type).await?;
+        if job.agg_task_inflight.is_none() {
+            // Nothing in-flight — store a copy and dispatch the original immediately.
+            job.agg_task_inflight = Some(task.clone());
+            drop(job);
+            self.send_aggregation_task(
+                &job_id,
+                &agg_worker_id,
+                task.proofs,
+                task.all_done,
+                task.proof_type,
+            )
+            .await?;
+        } else {
+            // Task in-flight — queue this one; it will be sent after the ack.
+            job.agg_task_queue.push_back(task);
+        }
 
         Ok(())
     }
@@ -3014,8 +3050,74 @@ impl Coordinator {
         })
     }
 
+    /// Re-sends the in-flight aggregation task to a reconnecting aggregator.
+    /// No-op if the worker is not the aggregator for this job, or if no task is in-flight.
+    async fn replay_inflight_agg_task_if_aggregator(
+        &self,
+        worker_id: &WorkerId,
+        job_id: &JobId,
+    ) -> CoordinatorResult<()> {
+        let inflight = {
+            let jobs_map = self.jobs.read().await;
+            let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+            let job = job_entry.read().await;
+
+            // Only replay for the designated aggregator
+            if job.agg_worker_id.as_ref() != Some(worker_id) {
+                return Ok(());
+            }
+
+            job.agg_task_inflight.clone()
+        };
+
+        if let Some(task) = inflight {
+            info!("Replaying in-flight agg task to reconnected aggregator {worker_id}");
+            self.send_aggregation_task(
+                job_id,
+                worker_id,
+                task.proofs,
+                task.all_done,
+                task.proof_type,
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Clears the in-flight slot and dispatches the next queued aggregation task, if any.
+    /// Called after the aggregator acknowledges an intermediate step.
+    async fn dispatch_next_agg_task(&self, job_id: &JobId) -> CoordinatorResult<()> {
+        let (task, agg_worker_id) = {
+            let jobs_map = self.jobs.read().await;
+            let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+            let mut job = job_entry.write().await;
+
+            job.agg_task_inflight = None;
+
+            let Some(task) = job.agg_task_queue.pop_front() else {
+                return Ok(());
+            };
+            job.agg_task_inflight = Some(task.clone());
+            let agg_worker_id = job
+                .agg_worker_id
+                .clone()
+                .ok_or_else(|| CoordinatorError::Internal("No aggregator assigned".into()))?;
+            (task, agg_worker_id)
+        };
+
+        self.send_aggregation_task(
+            job_id,
+            &agg_worker_id,
+            task.proofs,
+            task.all_done,
+            task.proof_type,
+        )
+        .await
+    }
+
     /// Sends an aggregation task to the designated aggregator worker.
-    ///    
+    ///
     /// # Parameters
     ///
     /// * `job_id` - Identifier of the job being processed
@@ -3115,10 +3217,10 @@ impl Coordinator {
             }
         };
 
-        // Check if the final proof has no values.
-        // An empty proof_data means this was not the last aggregation step,
-        // so we need to wait for additional results to complete the job.
+        // Empty proof_data means this was an intermediate aggregation step.
+        // Clear the in-flight slot and dispatch the next queued task, if any.
         if proof_data.proof_data.is_empty() {
+            self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
         }
 

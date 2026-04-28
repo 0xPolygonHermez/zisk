@@ -110,10 +110,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     pub async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() == 0, "WorkerNodeGrpc should only be run by rank 0");
 
+        // Channel lives for the entire process lifetime so that a spawn_blocking task
+        // running through a transient disconnect can still deliver its result after
+        // the worker reconnects and a new event loop starts draining computation_rx.
+        let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
+
         loop {
             match self.worker.state() {
                 WorkerState::Disconnected => {
-                    if let Err(e) = self.connect_and_run().await {
+                    if let Err(e) = self.connect_and_run(&computation_tx, &mut computation_rx).await
+                    {
                         error!("Connection failed: {}", e);
                         tokio::time::sleep(Duration::from_secs(
                             self.worker_config.connection.reconnect_interval_seconds,
@@ -139,7 +145,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    async fn connect_and_run(&mut self) -> Result<()> {
+    async fn connect_and_run(
+        &mut self,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+        computation_rx: &mut mpsc::UnboundedReceiver<ComputationResult>,
+    ) -> Result<()> {
         info!("Connecting to coordinator at {}", self.worker_config.coordinator.url);
 
         let channel =
@@ -177,8 +187,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(connect_message)?;
         self.worker.set_state(WorkerState::Connecting);
 
-        // Create channels for computation results
-        let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
 
         // Main non-blocking event loop
@@ -266,9 +274,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
         }
-
-        // Cancel any running computation
-        self.worker.cancel_current_computation().await;
 
         self.worker.set_state(WorkerState::Disconnected);
         Ok(())
