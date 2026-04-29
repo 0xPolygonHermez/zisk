@@ -977,7 +977,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields 0.17.0",
+ "fields",
  "futures",
  "indicatif",
  "proofman",
@@ -1568,9 +1568,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "num-traits",
 ]
@@ -1957,6 +1957,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "evmap"
+version = "11.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b8874945f036109c72242964c1174cf99434e30cfa45bf45fedc983f50046f8"
+dependencies = [
+ "hashbag",
+ "left-right",
+ "smallvec",
+]
+
+[[package]]
 name = "executor"
 version = "0.17.0"
 dependencies = [
@@ -1964,7 +1975,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 0.17.0",
+ "fields",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -2050,19 +2061,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "0.16.1"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#40514977b0e84dd6a6e7babb4cf5caaadb1ef0a3"
-dependencies = [
- "cfg-if",
- "num-bigint",
- "paste",
- "serde",
-]
-
-[[package]]
-name = "fields"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2232,6 +2232,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52f04ae4152da20c76fe800fa48659201d5cf627c5149ca0b707b69d7eef6cf9"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "log",
+ "rustversion",
+ "windows-link 0.2.1",
+ "windows-result 0.4.1",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2341,6 +2356,12 @@ dependencies = [
  "crunchy",
  "zerocopy",
 ]
+
+[[package]]
+name = "hashbag"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7040a10f52cba493ddb09926e15d10a9d8a28043708a405931fe4c6f19fac064"
 
 [[package]]
 name = "hashbrown"
@@ -2957,6 +2978,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
+name = "left-right"
+version = "0.11.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f0c21e4c8ff95f487fb34e6f9182875f42c84cef966d29216bf115d9bba835a"
+dependencies = [
+ "crossbeam-utils",
+ "loom",
+ "slab",
+]
+
+[[package]]
 name = "lib-c"
 version = "0.17.0"
 
@@ -3072,6 +3104,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "loom"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+dependencies = [
+ "cfg-if",
+ "generator",
+ "scoped-tls",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3108,7 +3153,7 @@ name = "mem-common"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3151,21 +3196,22 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "0.24.3"
+version = "0.24.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d5312e9ba3771cfa961b585728215e3d972c950a3eed9252aa093d6301277e8"
+checksum = "b7cd3e9eb685089c784f5769b1197d348c7274bc20d4e1349650f63b91b6d0af"
 dependencies = [
- "ahash",
  "portable-atomic",
+ "rapidhash",
 ]
 
 [[package]]
 name = "metrics-exporter-prometheus"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3589659543c04c7dc5526ec858591015b87cd8746583b51b48ef4353f99dbcda"
+checksum = "5c0ca2990f7f78a72c4000ddce186db7d1b700477426563ee851c95ea3c0d0c4"
 dependencies = [
  "base64 0.22.1",
+ "evmap",
  "http-body-util",
  "hyper",
  "hyper-rustls",
@@ -3183,9 +3229,9 @@ dependencies = [
 
 [[package]]
 name = "metrics-util"
-version = "0.20.1"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdfb1365fea27e6dd9dc1dbc19f570198bc86914533ad639dae939635f096be4"
+checksum = "55ff5c12b797ebf094dc7c1d87e905efc0329cba332f96d51db03875441012b5"
 dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
@@ -3194,6 +3240,7 @@ dependencies = [
  "quanta",
  "rand 0.9.4",
  "rand_xoshiro",
+ "rapidhash",
  "sketches-ddsketch",
 ]
 
@@ -3657,10 +3704,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "colored",
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3783,7 +3830,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields 0.17.0",
+ "fields",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3819,7 +3866,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-secp256k1",
  "ark-std 0.5.0",
- "fields 0.17.0",
+ "fields",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3850,7 +3897,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3871,7 +3918,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3890,7 +3937,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3914,7 +3961,7 @@ name = "precomp-keccakf"
 version = "0.17.0"
 dependencies = [
  "circuit",
- "fields 0.17.0",
+ "fields",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3934,7 +3981,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3954,7 +4001,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3973,7 +4020,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4079,7 +4126,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "bincode",
  "blake3",
@@ -4090,7 +4137,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 0.17.0",
+ "fields",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4114,7 +4161,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "bincode",
  "borsh",
@@ -4124,7 +4171,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields 0.17.0",
+ "fields",
  "lazy_static",
  "libc",
  "libloading",
@@ -4146,9 +4193,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4159,7 +4206,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4169,7 +4216,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4178,7 +4225,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -4190,10 +4237,10 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "bytemuck",
- "fields 0.17.0",
+ "fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -4684,7 +4731,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields 0.17.0",
+ "fields",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4955,6 +5002,12 @@ checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "scopeguard"
@@ -5292,7 +5345,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5312,7 +5365,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5332,7 +5385,7 @@ name = "sm-frequent-ops"
 version = "0.17.0"
 dependencies = [
  "clap",
- "fields 0.17.0",
+ "fields",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -5346,7 +5399,7 @@ dependencies = [
 name = "sm-main"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -5365,7 +5418,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -5387,7 +5440,7 @@ version = "0.17.0"
 dependencies = [
  "anyhow",
  "asm-runner",
- "fields 0.17.0",
+ "fields",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -7104,10 +7157,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fremove-packed-gpu-features-0.17.0#70ebb89166fe5d9a4652d79c7bd66cb0361b813d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.0#fe2516c35ab31d923155ced489c0ab5334c2ad5f"
 dependencies = [
  "colored",
- "fields 0.17.0",
+ "fields",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7349,7 +7402,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
- "fields 0.17.0",
+ "fields",
  "libc",
  "proofman",
  "proofman-common",
@@ -7479,7 +7532,7 @@ name = "zisk-core"
 version = "0.17.0"
 dependencies = [
  "elf",
- "fields 0.17.0",
+ "fields",
  "lib-c",
  "lib-float",
  "paste",
@@ -7501,7 +7554,7 @@ version = "0.17.0"
 name = "zisk-pil"
 version = "0.17.0"
 dependencies = [
- "fields 0.17.0",
+ "fields",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -7534,7 +7587,7 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields 0.17.0",
+ "fields",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7559,7 +7612,7 @@ dependencies = [
  "bincode",
  "bytes",
  "colored",
- "fields 0.17.0",
+ "fields",
  "futures",
  "proofman-common",
  "rom-setup",
@@ -7597,7 +7650,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields 0.17.0",
+ "fields",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7634,7 +7687,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields 0.17.0",
+ "fields",
  "flate2",
  "mem-common",
  "memmap2",
@@ -7675,7 +7728,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields 0.16.1",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -7706,7 +7759,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields 0.17.0",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
