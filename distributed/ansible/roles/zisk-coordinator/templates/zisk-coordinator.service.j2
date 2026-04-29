@@ -1,0 +1,31 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=ZisK Coordinator — coordinator server for the ZisK proving system
+Documentation=https://github.com/0xPolygonHermez/zisk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ zisk_coordinator_user }}
+Group={{ zisk_coordinator_group }}
+WorkingDirectory={{ zisk_coordinator_work_dir }}
+ExecStart={{ zisk_coordinator_binary_dst }} --config {{ zisk_coordinator_config_dst }} -p {{ zisk_coordinator_port }}
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+Nice=-10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zisk-coordinator
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ zisk_coordinator_work_dir }}
+ReadOnlyPaths={{ zisk_coordinator_config_dir }}
+
+[Install]
+WantedBy=multi-user.target

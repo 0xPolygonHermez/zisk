@@ -1,0 +1,26 @@
+---
+# zisk-worker role defaults.
+# Mirrors distributed/scripts/worker/defaults.env. Override per host/group.
+
+zisk_worker_user: zisk-worker
+zisk_worker_group: zisk-worker
+zisk_worker_binary_dst: /usr/local/bin/zisk-worker
+zisk_worker_config_dir: /etc/zisk
+zisk_worker_config_dst: "{{ zisk_worker_config_dir }}/worker.toml"
+zisk_worker_work_dir: /var/lib/zisk-worker
+zisk_worker_log_dir: /var/log/zisk-worker
+zisk_worker_proving_key: "{{ zisk_worker_work_dir }}/provingKey"
+zisk_worker_unit_file: /etc/systemd/system/zisk-worker.service
+
+# Source paths on the Ansible control host. Operator must supply these.
+zisk_worker_binary_src: ""           # required: path to pre-built zisk-worker binary
+zisk_worker_config_src: ""           # optional: path to worker.toml; if empty and
+                                     #   target lacks a config, role leaves it absent
+
+# MPI configuration. Default: enabled with auto-detect.
+# To run single-process: set zisk_worker_mpi_enabled: false.
+# To override auto-detect: set ALL THREE of *_processes / *_numa_ppr / *_threads.
+zisk_worker_mpi_enabled: true
+zisk_worker_mpi_processes: ""
+zisk_worker_mpi_numa_ppr: ""
+zisk_worker_mpi_threads: ""

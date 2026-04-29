@@ -1,0 +1,16 @@
+---
+# Sample playbook: install zisk-coordinator on hosts in the [coordinator] group.
+#
+# Run with:
+#   ansible-playbook -i inventory.ini install-coordinator.yml \
+#     -e zisk_coordinator_binary_src=/path/to/built/zisk-coordinator
+#
+# Common overrides:
+#   zisk_coordinator_config_src: /path/to/coordinator.toml
+#   zisk_coordinator_port: 9090
+
+- name: Install zisk-coordinator
+  hosts: coordinator
+  become: true
+  roles:
+    - role: zisk-coordinator

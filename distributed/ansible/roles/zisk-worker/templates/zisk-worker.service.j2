@@ -1,0 +1,45 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=ZisK Worker — distributed proof generation worker
+Documentation=https://github.com/0xPolygonHermez/zisk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ zisk_worker_user }}
+Group={{ zisk_worker_group }}
+WorkingDirectory={{ zisk_worker_work_dir }}
+
+# HOME is needed so the worker resolves ~/.zisk/cache correctly.
+Environment=HOME={{ zisk_worker_work_dir }}
+
+{% if zisk_worker_mpi_enabled %}
+ExecStart={{ zisk_worker_mpirun_bin }} --report-bindings --allow-run-as-root \
+    -np {{ zisk_worker_mpi_processes }} \
+    -map-by ppr:{{ zisk_worker_mpi_numa_ppr }}:numa \
+    --bind-to numa \
+    --rank-by slot \
+    -x RAYON_NUM_THREADS={{ zisk_worker_mpi_threads }} \
+    {{ zisk_worker_binary_dst }} --config {{ zisk_worker_config_dst }} --proving-key {{ zisk_worker_proving_key }}
+{% else %}
+ExecStart={{ zisk_worker_binary_dst }} --config {{ zisk_worker_config_dst }} --proving-key {{ zisk_worker_proving_key }}
+{% endif %}
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+Nice=-10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zisk-worker
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ zisk_worker_work_dir }} {{ zisk_worker_log_dir }}
+ReadOnlyPaths={{ zisk_worker_config_dir }} {{ zisk_worker_proving_key }}
+
+[Install]
+WantedBy=multi-user.target
