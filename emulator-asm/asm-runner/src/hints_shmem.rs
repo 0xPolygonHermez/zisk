@@ -204,6 +204,29 @@ impl StreamSink for HintsShmem {
         // Read current write position once
         let write_pos = unified.control_writer.prec_hints_size();
 
+        // (1) Capture per-consumer read positions BEFORE flow-control wait. If a job starts
+        // with non-zero read positions (carried over from previous run), the math
+        // `occupied_space = write_pos - min_read_pos` underflows or returns a wrong value,
+        // and write_ring_buffer below scribbles in the wrong place → SIGSEGV in the C reader.
+        let pre_submit_read_positions: Vec<u64> = separate_shm[0..active]
+            .iter()
+            .map(|res| res.control_reader.read_u64_at(0))
+            .collect();
+        tracing::debug!(
+            "HintsShmem::submit: data_size={} write_pos={} read_positions={:?} active={}",
+            data_size,
+            write_pos,
+            pre_submit_read_positions,
+            active
+        );
+        if write_pos == 0 && pre_submit_read_positions.iter().any(|&p| p != 0) {
+            tracing::error!(
+                "HintsShmem::submit: STALE STATE write_pos=0 but read_positions={:?} \
+                 (carried over from previous job — flow-control math will be wrong)",
+                pre_submit_read_positions
+            );
+        }
+
         // Flow control: wait until all consumers have advanced enough
         // We need to wait for the slowest consumer (minimum read position)
         loop {
@@ -267,31 +290,93 @@ impl StreamSink for HintsShmem {
     }
 
     fn reset(&self) {
-        // Reset control writer and all data writers to initial state for next stream
         let mut unified = self.unified.borrow_mut();
+
+        // (1) Pre-reset snapshot: control writer's write position and per-service C-side read positions.
+        // If any read_pos != 0 here, the C side is starting the next job with stale state — likely cause
+        // of the SIGSEGV when ring-buffer indexing relies on writer/reader positions both being 0.
+        let pre_write_pos = unified.control_writer.prec_hints_size();
+        let pre_read_positions: Vec<u64> = self
+            .separate_shm
+            .borrow()
+            .iter()
+            .map(|res| res.control_reader.read_u64_at(0))
+            .collect();
+        let pre_active = self.active_count.load(Ordering::SeqCst);
+        tracing::info!(
+            "HintsShmem::reset: pre  write_pos={} read_positions={:?} active_count={}",
+            pre_write_pos,
+            pre_read_positions,
+            pre_active
+        );
+
         unified.control_writer.reset();
-        for writer in &mut unified.data_writers {
+        for (idx, writer) in unified.data_writers.iter_mut().enumerate() {
+            // (2) The data_writers are SharedMemoryWriter ring buffers. `reset()` only rewinds
+            // current_ptr to ptr — it does NOT zero memory or re-sync any C-side read position.
+            // Log so we can correlate with crashes triggered after wraparound on the next stream.
+            tracing::info!(
+                "HintsShmem::reset: data_writer[{}] rewinding ring-buffer current_ptr -> ptr",
+                idx
+            );
             writer.reset();
         }
 
         // Drain stale semaphore signals from previous execution
         if let Some(separate_sem) = self.separate_sem.borrow_mut().as_mut() {
-            for res in separate_sem.iter_mut() {
-                while res.sem_available.try_wait().is_ok() {}
-                while res.sem_read.try_wait().is_ok() {}
+            for (idx, res) in separate_sem.iter_mut().enumerate() {
+                let mut drained_avail = 0u32;
+                while res.sem_available.try_wait().is_ok() {
+                    drained_avail += 1;
+                }
+                let mut drained_read = 0u32;
+                while res.sem_read.try_wait().is_ok() {
+                    drained_read += 1;
+                }
+                if drained_avail > 0 || drained_read > 0 {
+                    // (3) Stale semaphore posts are a smoking gun for incomplete teardown of the
+                    // previous job. The C side may have posted sem_read after we already moved on,
+                    // or sem_available may be lingering from a partially-consumed batch.
+                    tracing::warn!(
+                        "HintsShmem::reset: drained stale semaphores for service[{}] sem_available={} sem_read={}",
+                        idx,
+                        drained_avail,
+                        drained_read
+                    );
+                }
             }
         }
 
         for (idx, res) in self.separate_shm.borrow().iter().enumerate() {
             let read_pos = res.control_reader.read_u64_at(0);
             if read_pos != 0 {
-                tracing::warn!(
-                    "HintsShmem::reset: control_reader[{}] read position is {} (expected 0). \
-                     Previous emulation may not have completed cleanly.",
+                // (3) Originally just a warn — promote to error so it's loud and add the writer's
+                // post-reset write position so we can see whether reader is ahead of writer
+                // (which would mean the next submit's flow-control math underflows).
+                tracing::error!(
+                    "HintsShmem::reset: control_reader[{}] read_pos={} != 0 after reset \
+                     (post_write_pos={}). Previous emulation didn't complete cleanly — \
+                     C-side will read garbage from offset {} on the next stream.",
                     idx,
+                    read_pos,
+                    unified.control_writer.prec_hints_size(),
                     read_pos
                 );
             }
         }
+
+        // (1) Post-reset snapshot.
+        let post_write_pos = unified.control_writer.prec_hints_size();
+        let post_read_positions: Vec<u64> = self
+            .separate_shm
+            .borrow()
+            .iter()
+            .map(|res| res.control_reader.read_u64_at(0))
+            .collect();
+        tracing::info!(
+            "HintsShmem::reset: post write_pos={} read_positions={:?}",
+            post_write_pos,
+            post_read_positions
+        );
     }
 }

@@ -43,6 +43,22 @@ impl ControlShmem {
     }
 
     pub fn reset(&self) {
+        // (1)+(2) Capture pre-reset values to detect stale state carried across jobs.
+        // PrecompilesSize is the hint write position the C side reads to know how far the
+        // hints buffer has been filled; if non-zero here, previous job's hint stream didn't
+        // drain correctly. InputsSize is checked the same way for input streams.
+        let pre_prec =
+            self.writers[0].read_u64_at(ControlShmemOffsets::PrecompilesSize as usize);
+        let pre_shut = self.writers[0].read_u64_at(ControlShmemOffsets::ShutdownFlag as usize);
+        let pre_in = self.writers[0].read_u64_at(ControlShmemOffsets::InputsSize as usize);
+        if pre_prec != 0 || pre_shut != 0 || pre_in != 0 {
+            tracing::info!(
+                "ControlShmem::reset: pre prec_hints_size={} shutdown_flag={} inputs_size={}",
+                pre_prec,
+                pre_shut,
+                pre_in
+            );
+        }
         for writer in &self.writers {
             writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, 0);
             writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0);

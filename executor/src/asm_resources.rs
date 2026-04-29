@@ -234,13 +234,22 @@ impl AsmResources {
     }
 
     pub fn reset(&self) {
+        // Easy boundary marker in worker.log so we can correlate per-job hint state.
+        tracing::info!(
+            "AsmResources::reset: BEGIN (rank={}/{})",
+            self.shared.config.local_rank,
+            self.shared.config.world_rank
+        );
         if let Some(s) = &self.shared.hints_stream {
             s.lock().unwrap().reset();
+        } else {
+            tracing::info!("AsmResources::reset: no hints_stream to reset");
         }
 
         // Full reset: clear shmem data and size.  Every job re-streams its
         // input via the relay, so there is nothing to preserve.
         self.shared.inputs_shmem_writer.reset();
+        tracing::info!("AsmResources::reset: END");
     }
 
     pub fn config(&self) -> &AsmResourcesConfig {

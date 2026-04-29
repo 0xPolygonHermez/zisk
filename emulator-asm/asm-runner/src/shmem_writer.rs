@@ -172,11 +172,32 @@ impl SharedMemoryWriter {
         unsafe {
             let current_offset = self.current_ptr.offset_from(self.ptr) as usize;
 
+            // (1) Log entry state of every ring-buffer write. Crashes on second invocation
+            // are suspected to be caused by the writer's current_ptr not being correctly
+            // reset (or wrap state being inconsistent with the C reader's expectation).
+            let wraps = current_offset + byte_size > self.size;
+            tracing::debug!(
+                "write_ring_buffer[{}]: byte_size={} current_offset={} buffer_size={} wraps={}",
+                self.name,
+                byte_size,
+                current_offset,
+                self.size,
+                wraps
+            );
+
             // Check if data wraps around the buffer
             if current_offset + byte_size > self.size {
                 // Split write: first part to end of buffer, second part from start
                 let first_part_size = self.size - current_offset;
                 let second_part_size = byte_size - first_part_size;
+
+                tracing::info!(
+                    "write_ring_buffer[{}]: WRAP first_part={} second_part={} new_current_offset={}",
+                    self.name,
+                    first_part_size,
+                    second_part_size,
+                    second_part_size
+                );
 
                 // Write first part to end of buffer
                 ptr::copy_nonoverlapping(data_ptr, self.current_ptr, first_part_size);
@@ -253,6 +274,17 @@ impl SharedMemoryWriter {
     }
 
     pub fn reset(&mut self) {
+        // (2) Log when the writer's local position is rewound. Pair this with the C-side
+        // reader's read_pos to detect the case where reader is stale (writer is reset to
+        // 0 but reader still expects the old offset).
+        let prev_offset = unsafe { self.current_ptr.offset_from(self.ptr) } as usize;
+        if prev_offset != 0 {
+            tracing::info!(
+                "SharedMemoryWriter::reset[{}]: rewinding current_ptr from offset {} to 0",
+                self.name,
+                prev_offset
+            );
+        }
         self.current_ptr = self.ptr;
     }
 }
