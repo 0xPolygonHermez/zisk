@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Poseidon2Trace;
+use zisk_pil::{Poseidon2TraceRow, Poseidon2TraceRowPacked, POSEIDON_2_AIR_IDS};
 
 /// The `Poseidon2Instance` struct represents an instance for the Poseidon2 State Machine.
 ///
@@ -46,8 +46,7 @@ impl<F: PrimeField64> Poseidon2Instance<F> {
 
     pub fn build_poseidon2_collector(&self, chunk_id: ChunkId) -> Poseidon2Collector {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Poseidon2Trace::<F>::AIR_ID,
+            self.ictx.plan.air_id, POSEIDON_2_AIR_IDS[0],
             "Poseidon2Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -76,6 +75,7 @@ impl<F: PrimeField64> Instance<F> for Poseidon2Instance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -84,7 +84,16 @@ impl<F: PrimeField64> Instance<F> for Poseidon2Instance<F> {
             })
             .collect();
 
-        Ok(Some(self.poseidon2_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.poseidon2_sm
+                    .compute_witness::<Poseidon2TraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(
+                self.poseidon2_sm.compute_witness::<Poseidon2TraceRow<F>>(&inputs, trace_buffer)?,
+            ))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -109,8 +118,7 @@ impl<F: PrimeField64> Instance<F> for Poseidon2Instance<F> {
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
-            self.ictx.plan.air_id,
-            Poseidon2Trace::<F>::AIR_ID,
+            self.ictx.plan.air_id, POSEIDON_2_AIR_IDS[0],
             "Poseidon2Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

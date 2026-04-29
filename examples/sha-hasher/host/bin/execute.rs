@@ -1,17 +1,11 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskStdin};
+use sha_hasher_common::Output;
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -22,22 +16,22 @@ fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::builder().emu().verify_constraints().build().unwrap();
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");
-    let (pk, _) = client.setup(&ELF)?;
+    client.setup(&PROGRAM).run()?.await?; // S'ha de fer un must use
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
-    println!("Duration: {:?}", result.get_duration());
+    println!("Duration: {:?}", result.get_execution_time());
 
     println!("Reading public outputs...");
-    let output: Output = result.get_public_values()?;
+    let output: Output = result.get_public_values_abi()?;
     println!("Public outputs:");
     println!("  Hash: {:02x?}", output.hash);
     println!("  Iterations: {}", output.iterations);

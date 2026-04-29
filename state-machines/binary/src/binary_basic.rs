@@ -11,21 +11,7 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::BinaryAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryTrace, BinaryTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{BinaryTracePacked, BinaryTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type BinaryTraceRowType<F> = BinaryTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type BinaryTraceType<F> = BinaryTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type BinaryTraceRowType<F> = BinaryTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type BinaryTraceType<F> = BinaryTrace<F>;
+use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRowOps};
 
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
@@ -153,9 +139,9 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &BinaryInput) -> BinaryTraceRowType<F> {
+    pub fn process_slice<R: BinaryTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
         // Create an empty trace
-        let mut row: BinaryTraceRowType<F> = Default::default();
+        let mut row: R = R::default();
 
         // Execute the opcode
         let opcode = input.op;
@@ -876,20 +862,14 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
-    /// # Arguments
-    /// * `operations` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    /// The trace layout (packed/non-packed) is determined by `R`, fixed at construction.
+    pub fn compute_witness<R: BinaryTraceRowOps<F>>(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut binary_trace = BinaryTraceType::new_from_vec(trace_buffer)?;
-
-        let num_rows = binary_trace.num_rows();
-
+        let mut trace = BinaryTrace::<R>::new_from_vec(trace_buffer)?;
+        let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);
 
@@ -900,31 +880,28 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        // Split the binary_e_trace.buffer into slices matching each inner vector’s length.
+        // Split the buffer into per-chunk slices and fill in parallel.
         let sizes: Vec<usize> = inputs.iter().map(|v| v.len()).collect();
         let mut slices = Vec::with_capacity(inputs.len());
-        let mut rest = &mut binary_trace.buffer[..];
+        let mut rest = &mut trace.buffer[..];
         for size in sizes {
             let (head, tail) = rest.split_at_mut(size);
             slices.push(head);
             rest = tail;
         }
-
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j]);
+            slice.iter_mut().enumerate().for_each(|(j, row)| {
+                *row = self.process_slice::<R>(&inputs[i][j]);
             });
         });
 
         // Set ADD(0,0) as the padding row
         let padding_size = num_rows - total_inputs;
         if padding_size > 0 {
-            let mut padding_row = BinaryTraceRowType::default();
+            let mut padding_row = R::default();
             padding_row.set_b_op(ADD_OP);
             padding_row.set_b_op_or_sext(ADD_OP as u16);
-
-            binary_trace.buffer[total_inputs..num_rows]
+            trace.buffer[total_inputs..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding_row);
 
@@ -944,8 +921,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         let mut air_values = BinaryAirValues::<F>::new();
         air_values.padding_size = F::from_usize(padding_size);
-        Ok(AirInstance::new_from_trace(
-            FromTrace::new(&mut binary_trace).with_air_values(&mut air_values),
-        ))
+        Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 }

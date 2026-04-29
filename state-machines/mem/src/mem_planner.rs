@@ -210,7 +210,7 @@ impl MemPlanner {
 
                 // Read addr_sorted arrays (processed data)
                 let mut addr_sorted = [Vec::new(), Vec::new(), Vec::new()];
-                for i in 0..3 {
+                for item in &mut addr_sorted {
                     file.read_exact(&mut buf)?;
                     let len = u32::from_le_bytes(buf);
                     for _ in 0..len {
@@ -218,7 +218,7 @@ impl MemPlanner {
                         let k = u32::from_le_bytes(buf);
                         file.read_exact(&mut buf)?;
                         let v = u32::from_le_bytes(buf);
-                        addr_sorted[i].push((k, v));
+                        item.push((k, v));
                     }
                 }
 
@@ -253,6 +253,7 @@ impl MemPlanner {
     }
 
     #[cfg(feature = "save_mem_counters")]
+    #[allow(dead_code)]
     fn generate_plans_from_serializable_counters(
         &self,
         saved_counters: &[(ChunkId, SerializableMemCounters)],
@@ -297,7 +298,7 @@ impl MemPlanner {
         counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
         let counters = Arc::new(counters);
         #[cfg(feature = "save_mem_counters")]
-        self.save_counters_to_file(counters.clone(), "mem_counters.bin");
+        let _ = self.save_counters_to_file(counters.clone(), "mem_counters.bin");
         self.generate_plans_from_counters(counters)
     }
 

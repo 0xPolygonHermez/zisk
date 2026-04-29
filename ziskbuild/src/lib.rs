@@ -11,6 +11,9 @@ pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
+    " [",
+    env!("ZISK_COMPUTE_MODE"),
+    "]",
     " (",
     env!("VERGEN_GIT_SHA"),
     " ",

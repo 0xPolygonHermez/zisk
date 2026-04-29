@@ -19,7 +19,7 @@ use zisk_common::{
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::ArithEqTrace;
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow, ArithEqTraceRowPacked};
 
 /// The `ArithEqInstance` struct represents an instance for the ArithEq State Machine.
 ///
@@ -50,7 +50,7 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
+            ArithEqTrace::<()>::AIR_ID,
             "ArithEqInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -67,7 +67,7 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
         assert_eq!(
             self.ictx.plan.air_id,
-            ArithEqTrace::<F>::AIR_ID,
+            ArithEqTrace::<()>::AIR_ID,
             "ArithEqInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -94,13 +94,26 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<ArithEqCollector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.arith_eq_sm.compute_witness(sctx, &inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(self.arith_eq_sm.compute_witness::<ArithEqTraceRowPacked<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        } else {
+            Ok(Some(self.arith_eq_sm.compute_witness::<ArithEqTraceRow<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

@@ -39,7 +39,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --release --features no_lib_link
+          args: --workspace --release
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
@@ -62,7 +62,7 @@ jobs:
       ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
-      PROVE_FLAGS: "-a -y"
+      PROVE_FLAGS: "-y"
       TERM: xterm
     steps:
       - name: Checkout sources
@@ -192,7 +192,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets -- -D warnings
-          # args: --all-features --all-targets -- -D warnings -A incomplete-features
+          # args: --all-targets -- -D warnings
+          args: --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1

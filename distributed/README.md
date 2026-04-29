@@ -4,27 +4,42 @@ A distributed proof generation system for the ZisK zkVM that orchestrates proof 
 
 ## Architecture
 
-The system is composed of two main actors:
+The system has two components:
 
-- **Coordinator:** Manages incoming proof requests and splits the work, based on required compute capacity, across distributed available workers.  
-- **Worker:** Registers to the coordinator, reporting its compute capacity, and waits for tasks to be assigned. A **Worker** can be a single machine or a cluster of machines.
+- **Coordinator** `zisk-coordinator`: The single entry point for clients. Exposes a public gRPC API, hosts the coordination engine, and listens for worker connections on a separate internal port.
+- **Worker** `zisk-worker`: Registers to the coordinator, reports its compute capacity, and executes assigned proof tasks.
+
+```
+             Client
+               │
+               │  gRPC (port 7000)
+               ▼
+┌──────────────────────────────┐
+│       zisk-coordinator       │
+│                              │
+│  ┌────────────────────────┐  │
+│  │   Coordination Engine  │  │◄── zisk-worker (port 50051, N workers)
+│  └────────────────────────┘  │
+│                              │
+│   Prometheus metrics :9090   │
+└──────────────────────────────┘
+```
 
 ## Proof Generation Process
 
-The process of generating a proof proceeds as follows:  
-1. The **Coordinator** starts on a host and listens for incoming proof requests.  
-2. **Worker** nodes connect to the Coordinator, registering their compute capacity and availability.  
-3. When a proof generation request is received, the Coordinator splits the work across multiple Workers according to the requested compute capacity. A proof generation job is divided into three phases:
-   - **Partial Contributions:** Each Worker computes its partial challenges.
-   - **Prove:** Workers compute the global challenge and generate their respective partial proofs.  
-   - **Aggregation:** A designated Worker aggregates all partial proofs and produces the final proof for the client.
-4. The Coordinator collects the final proof and returns it to the client.
+1. The **Coordinator** starts opening both the public API port and the internal cluster port.
+2. **Worker** nodes connect to the cluster's internal port, registering their compute capacity.
+3. When a proof request arrives via the public API, the coordinator selects workers and assigns each a partition of the total compute capacity. Each worker uses its assigned partition to independently determine which part of the computation to perform — the coordinator does not split the work itself, only the assignment. A proof job proceeds through three phases:
+   - **Contributions:** Each worker computes its partial challenges for its assigned partition.
+   - **Prove:** Each worker uses the global challenge to generate its partial proof.
+   - **Aggregation:** A designated worker aggregates all partial proofs into the final proof.
+4. The coordinator returns the final proof to the client.
 
-### Key Concepts
+## Key Concepts
 
-**Worker Selection:** The Coordinator selects Workers based on their reported compute capacity and availability. When a proof request is received, the Coordinator evaluates the required compute capacity and selects Workers sequentially from the pool of available Workers until the total capacity requirement is met. When a worker is assigned to a job, it is marked as busy and will not receive new tasks until it completes the current job.
+**Worker Selection:** Workers are selected based on their reported compute capacity and availability. When a proof request arrives, the coordinator evaluates the required capacity and picks workers sequentially from the idle pool until the total capacity requirement is met. Selected workers are marked busy for the duration of the job and will not receive new tasks until they finish.
 
-**Aggregator Selection:** The first Worker to send its partial proof to the Coordinator is selected as the Aggregator to perform the aggregation of all partial proofs into the final proof. The other Workers are marked as available again after sending their partial proofs.
+**Aggregator Selection:** The first worker to deliver its partial proof becomes the aggregator for that job. It combines all partial proofs into the final proof while the remaining workers are released back to the idle pool immediately after submitting their partial proofs.
 
 ## Quick Start
 
@@ -34,520 +49,340 @@ The process of generating a proof proceeds as follows:
 # Build binaries (from project root)
 cargo build --release --bin zisk-coordinator --bin zisk-worker
 
-# Run coordinator
+# Start the coordinator (listens for workers on :50051)
 cargo run --release --bin zisk-coordinator
 
-# Run a worker node (in another terminal)
-cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
-
-# Generate a proof (in another terminal)
-cargo run --release --bin zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
+# Start a worker (in another terminal) — connects to the coordinator port
+cargo run --release --bin zisk-worker -- --config distributed/crates/worker/config/dev.toml
 ```
 
 ### Docker Deployment
 
-The easiest way to run the distributed system:
+The easiest way to run the distributed system. All commands run from the **workspace root**.
 
 ```bash
-# 0. Build the Docker image (CPU-only, default)
-docker build -t zisk-distributed:latest -f distributed/Dockerfile .
+# Build images
+docker compose -f distributed/docker-compose.yml build
 
-# 0b. Build with GPU support (if needed)
-docker build --build-arg GPU=true -t zisk-distributed:gpu -f distributed/Dockerfile .
+# Start the coordinator only
+docker compose -f distributed/docker-compose.yml up coordinator
 
-# Create a user-defined network so container names resolve via DNS
-docker network create zisk-net || true
+# Start the full stack: coordinator + 4 workers + Prometheus
+docker compose -f distributed/docker-compose.yml up --scale worker=4
 
-# 1. Start coordinator container (detached)
-LOGS_DIR="<logs-folder>"
-docker run -d --rm --name zisk-coordinator \
-  --network zisk-net \
-  -v "$LOGS_DIR:/var/log/distributed" \
-  -e RUST_LOG=info \
-  zisk-distributed:latest \
-  zisk-coordinator --config /app/config/coordinator/dev.toml
-
-# 2. View coordinator logs
-docker logs -f zisk-coordinator
-
-# 3. Start worker container(s) in a different terminal(s) - they connect to coordinator by container name
-# Replace paths with your actual directories
-LOGS_DIR="<logs-folder>"
-PROVING_KEY_DIR="<provingKey-folder>"
-ELF_DIR="<elf-folder>"
-INPUTS_DIR="<inputs-folder>"
-docker run -d --rm --name zisk-worker-1 \
-  --network zisk-net --shm-size=20g \
-  -v "$LOGS_DIR:/var/log/distributed" \
-  -v "$HOME/.zisk/cache:/app/.zisk/cache:ro" \
-  -v "$PROVING_KEY_DIR:/app/proving-keys:ro" \
-  -v "$ELF_DIR:/app/elf:ro" \
-  -v "$INPUTS_DIR:/app/inputs:ro" \
-  -e RUST_LOG=info \
-  zisk-distributed:latest zisk-worker --coordinator-url http://zisk-coordinator:50051 \
-    --elf /app/elf/zec.elf --proving-key /app/proving-keys --inputs-folder /app/inputs
-
-# 4. View coordinator logs
-docker logs -f zisk-worker-1
-
-# Generate a proof (use filename only, not full path)
-docker exec -it zisk-coordinator \
-  zisk-coordinator prove --inputs-uri <input-filename> --compute-capacity 10
-
-# Stop containers
-docker stop zisk-coordinator zisk-worker-1
-docker rm zisk-coordinator zisk-worker-1
+# Build workers with GPU support
+docker compose -f distributed/docker-compose.yml build --build-arg GPU=true worker
+docker compose -f distributed/docker-compose.yml up --scale worker=4
 ```
 
-**Note:** 
-- **GPU Support:** Use `--build-arg GPU=true` when building if you need GPU acceleration
-- **Configuration:** Built-in configs are used by default, no external mounting needed
-- **Paths in container:**
-  - Configuration: `/app/config/{coordinator,worker}/`
-  - Binaries: `/app/bin/`
-  - Cache: `/app/.zisk/cache/` (mounted from host `$HOME/.zisk/cache`)
-  - Logs: `/var/log/distributed/`
+**Port mapping:**
 
-## Coordinator
+| Port | Service |
+|------|---------|
+| `7000` | Public gRPC API (clients connect here) |
+| `9090` | Prometheus metrics (coordinator) |
+| `9091` | Prometheus UI (mapped from the prometheus container) |
+| `50051` | Internal worker port (workers connect here, not exposed externally by default) |
 
-The coordinator is responsible for managing the distributed proof generation process. It receives proof requests from clients and assigns work to available workers.
+**Volumes:**
 
-To start a coordinator instance with default settings:
+Uncomment the cache volume in `docker-compose.yml` to mount proving keys and ELF cache from the host:
 
-```bash
-cargo run --release --bin zisk-coordinator
+```yaml
+volumes:
+  - ${ZISK_CACHE_DIR:-~/.zisk/cache}:/app/.zisk/cache:ro
 ```
 
-### Coordinator Configuration
+## Coordinator Configuration
 
-The coordinator can be configured using either a **TOML configuration file** or **command-line arguments**.
-If no configuration file is explicitly provided, the system falls back to the `ZISK_COORDINATOR_CONFIG_PATH` environment variable to locate one. If neither the CLI argument nor environment variable is set, built-in defaults are used.
+The coordinator is configured via a TOML file. The search order (later entries override earlier):
 
-**Example:**
+1. `/etc/zisk/coordinator.toml` — system-wide
+2. `$XDG_CONFIG_HOME/zisk/coordinator.toml` — user-level
+3. `./coordinator.toml` — current directory
+4. `ZISK_COORDINATOR_*` environment variables
+5. CLI flags
 
-```bash
-# You can specify the configuration file path using a command line argument:
-cargo run --release --bin zisk-coordinator -- --config /path/to/my-config.toml
+| TOML Key | CLI / Env | Default | Description |
+|---|---|---|---|
+| `service.name` | — | `ZisK Coordinator` | Service name |
+| `service.environment` | — | `development` | `development` \| `staging` \| `production` |
+| `server.host` | — | `0.0.0.0` | gRPC listen host |
+| `server.port` | `--api-port` / `ZISK_COORDINATOR_API_PORT` | `7000` | Client-facing gRPC API port |
+| `server.shutdown_timeout_seconds` | — | `30` | Graceful shutdown timeout |
+| `metrics.enabled` | — | `true` | Enable Prometheus metrics endpoint |
+| `metrics.host` | — | `0.0.0.0` | Metrics listen host |
+| `metrics.port` | `--metrics-port` / `ZISK_COORDINATOR_METRICS_PORT` | `9090` | Metrics listen port |
+| `logging.level` | `--log-level` / `RUST_LOG` | `info` | `trace` \| `debug` \| `info` \| `warn` \| `error` |
+| `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
+| `coordinator.port` | `--cluster-port` / `ZISK_COORDINATOR_CLUSTER_PORT` | `50051` | Worker-facing cluster port |
+| `coordinator.config_file` | — | — | Optional path to a coordinator TOML config |
 
-# You can specify the configuration file path using an environment variable:
-export ZISK_COORDINATOR_CONFIG_PATH="/path/to/my-config.toml"
-cargo run --release --bin zisk-coordinator
-```
-
-The table below lists the available configuration options for the Coordinator:
-
-| TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
-|-----------------------|--------------|---------------------|------|---------|-------------|
-| `service.name` | - | - | String | ZisK Distributed Coordinator | Service name |
-| `service.environment` | - | - | String | development | Service environment (development, staging, production) |
-| `server.host` | - | - | String | 0.0.0.0 | Server host |
-| `server.port` | `--port` | - | Number | 50051 | Server port |
-| `server.proofs_dir` | `--proofs-dir` | - | String | proofs | Directory to save generated proofs (conflicts with `--no-save-proofs`) |
-| - | `--no-save-proofs` | - | Boolean | false | Disable saving proofs (conflicts with `--proofs-dir`) |
-| - | `-c`, `--compressed-proofs` | - | Boolean | false | Generate compressed proofs |
-| `server.shutdown_timeout_seconds` | - | - | Number | 30 | Graceful shutdown timeout in seconds |
-| `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
-| `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
-| `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
-| `coordinator.max_workers_per_job` | - | - | Number | 10 | Maximum workers per proof job |
-| `coordinator.max_total_workers` | - | - | Number | 1000 | Maximum total registered workers |
-| `coordinator.phase1_timeout_seconds` | - | - | Number | 300 | Phase 1 timeout in seconds |
-| `coordinator.phase2_timeout_seconds` | - | - | Number | 600 | Phase 2 timeout in seconds |
-| `coordinator.webhook_url` | `--webhook-url` | - | String | - | *Optional*. Webhook URL to notify on job completion |
-
-
-#### Configuration Files examples
-
-Example development configuration file:
+#### Example: development config
 
 ```toml
 [service]
-name = "ZisK Distributed Coordinator"
 environment = "development"
 
 [logging]
-level = "debug"
+level  = "debug"
 format = "pretty"
+
+[backend]
+mode = "coordinator"
+
+[coordinator]
+cluster_port = 50051
 ```
 
-Example production configuration file:
+#### Example: production config
 
 ```toml
 [service]
-name = "ZisK Distributed Coordinator"  
 environment = "production"
 
 [server]
-host = "0.0.0.0"
-port = 50051
-proofs_dir = "proofs"
+port = 7000
+
+[metrics]
+enabled = true
+port    = 9090
 
 [logging]
-level = "info"
+level  = "info"
 format = "json"
-file_path = "/var/log/distributed/coordinator.log"
+
+[backend]
+mode = "coordinator"
 
 [coordinator]
-max_workers_per_job = 20      # Maximum workers per proof job
-max_total_workers = 5000      # Maximum total registered workers  
-phase1_timeout_seconds = 600  # 10 minutes for phase 1
-phase2_timeout_seconds = 1200 # 20 minutes for phase 2
-webhook_url = "http://webhook.example.com/notify?job_id={$job_id}"
+cluster_port = 50051
+# config_file = "/etc/zisk/coordinator-core.toml"  # optional: tune coordinator internals
 ```
 
-### Webhook URL
+### Coordinator tuning (optional)
 
-The Coordinator can notify an external service when a job finishes by sending a request to a configured webhook URL.
-The placeholder {$job_id} can be included in the URL and will be replaced with the finished job’s ID.
-If no placeholder is provided, the Coordinator automatically appends /{job_id} to the end of the URL.
-
-All webhook notifications are sent as JSON POST requests with the following structure:
-
-```json
-{
-  "job_id": "job_12345",
-  "success": true,
-  "duration_ms": 45000,
-  "proof": <array of u64...>,
-  "timestamp": "2025-10-03T14:30:00Z",
-  "error": null
-}
-```
-
-##### Fields Description
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `job_id` | `string` | Unique identifier for the proof generation job |
-| `success` | `boolean` | `true` if proof generation completed successfully, `false` if it failed |
-| `duration_ms` | `number` | Total execution time in milliseconds from job start to completion |
-| `proof` | `array<u64>` \| `null` | Final proof data as array of integers (only present on success) |
-| `timestamp` | `string` | ISO 8601 timestamp when the notification was sent |
-| `error` | `object` \| `null` | Error details (only present on failure) |
-
-##### Error Object Structure
-
-When `success` is `false`, the `error` field contains:
-
-```json
-{
-  "code": "WORKER_FAILURE",
-  "message": "Worker node-003 failed during proof generation: Out of memory"
-}
-```
-
-**Successful Proof Generation Example:**
-
-```json
-{
-  "job_id": "job_abc123",
-  "success": true,
-  "duration_ms": 32500,
-  "proof": [1234567890, 9876543210, 1357924680, ...],
-  "timestamp": "2025-10-03T14:30:25Z",
-  "error": null
-}
-```
-
-**Failed Job Example:**
-
-```json
-{
-  "job_id": "job_def456",
-  "success": false,
-  "duration_ms": 15000,
-  "proof": null,
-  "timestamp": "2025-10-03T14:31:10Z",
-  "error": {
-    "code": "WORKER_ERROR",
-    "message": "Memory exhaustion during proof generation"
-  }
-}
-```
-
-#### Webhook Implementation Guidelines
-
-*HTTP Requirements:*
-
-- **Method**: POST
-- **Content-Type**: `application/json`
-- **Timeout**: 10 seconds (configurable)
-- **Retry**: Currently no automatic retries (implement idempotency)
-
-*Recommended Response:*
-
-Your webhook endpoint should respond with:
-
-- **Success**: HTTP 200-299 status code
-- **Body**: Any valid response (ignored by coordinator)
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"received": true, "job_id": "job_abc123"}
-```
-
-If your webhook endpoint is unavailable or returns an error:
-
-- The coordinator logs the failure but continues operation
-- No automatic retries are performed
-- Consider implementing your own retry mechanism or message queue
-
-### Command Line Arguments
-
-```bash
-# Show help
-cargo run --release --bin zisk-coordinator -- --help
-
-# Run coordinator with custom port
-cargo run --release --bin zisk-coordinator -- --port 50051
-
-# Run with specific configuration
-cargo run --release --bin zisk-coordinator -- --config production.toml
-
-# Run with webhook URL  
-cargo run --release --bin zisk-coordinator -- --webhook-url http://webhook.example.com/notify --port 50051
-```
+Advanced coordinator parameters can be provided via a separate TOML file referenced by `coordinator.config_file`. Example files are in `distributed/crates/coordinator/config/`.
 
 ## Worker
 
-The worker is responsible for executing proof generation tasks assigned by the coordinator. It registers with the coordinator, reports its compute capacity, and waits for tasks to be assigned.
-
-To start a worker instance with default settings:
+The worker executes proof generation tasks assigned by the coordinator. It connects to the coordinator's worker port, registers its compute capacity, and waits for task assignments. Workers reconnect automatically on disconnection.
 
 ```bash
-cargo run --release --bin zisk-worker -- --elf <elf-file-path> --inputs-folder <inputs-folder>
+# Start a worker (connects to coordinator at 127.0.0.1:50051 by default)
+cargo run --release --bin zisk-worker -- --config worker.toml
+
+# Equivalent with individual flags
+cargo run --release --bin zisk-worker -- \
+  --coordinator-url http://<coordinator-host>:50051 \
+  --compute-capacity 10 \
+  --proving-key ~/.zisk/provingKey
+
+# GPU-accelerated worker
+cargo run --release --bin zisk-worker -- --config worker.toml --hints --shared-tables
 ```
 
-### Worker Configuration
+You can run multiple workers on the same machine by pointing each to a different config file. Each worker must have a unique `worker_id` (auto-generated UUID if unset).
 
-The worker can be configured using either a **TOML configuration file** or **command-line arguments**.
-If no configuration file is explicitly provided, the system falls back to the `ZISK_WORKER_CONFIG_PATH` environment variable to locate one. If neither the CLI argument nor environment variable is set, built-in defaults are used.
+## Worker Configuration
 
-**Example:**
+Workers are configured via a TOML file. The search order follows the same pattern as the coordinator, using the `ZISK_WORKER_CONFIG` environment variable.
 
-```bash
-# You can specify the configuration file path using a command line argument:
-cargo run --release --bin zisk-worker -- --config /path/to/my-config.toml
+| TOML Key | CLI / Env | Default | Description |
+|---|---|---|---|
+| `worker.worker_id` | `--worker-id` | Auto UUID | Unique worker identifier |
+| `worker.compute_capacity.compute_units` | `--compute-capacity` | `10` | Compute capacity in units |
+| `worker.environment` | — | `development` | `development` \| `production` |
+| `coordinator.url` | `--coordinator-url` | `http://127.0.0.1:50051` | gRPC URL of the coordinator's worker-facing port |
+| `connection.reconnect_interval_seconds` | — | `5` | Reconnection interval |
+| `connection.heartbeat_timeout_seconds` | — | `30` | Heartbeat timeout |
+| `logging.level` | `RUST_LOG` | `info` | Log level |
+| `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
+| `logging.file_path` | — | — | Optional log file path |
 
-# You can specify the configuration file path using an environment variable:
-export ZISK_WORKER_CONFIG_PATH="/path/to/my-config.toml"
-cargo run --release --bin zisk-worker
-```
+Additional CLI-only flags:
 
-### Input Files Handling
+| CLI Argument | Default | Description |
+|---|---|---|
+| `--proving-key` | `~/.zisk/provingKey` | Path to the setup (proving key) folder |
+| `--elf` | — | Path to ELF file |
+| `--asm` | `~/.zisk/cache` | Path to ASM file |
+| `--hints` | `false` | Enable precompile hints processing |
+| `--shared-tables` | `false` | Share tables when running in a cluster |
+| `--verify-constraints` | `false` | Verify constraints after witness generation |
+| `-n`, `--number-threads-witness` | — | Threads for witness computation |
+| `-t`, `--max-streams` | — | Maximum GPU streams |
 
-Workers need to know where to find input files for proof generation. The `--inputs-folder` parameter specifies the base directory where input files are stored:
-
-- **Default**: Current working directory (`.`) if not specified
-- **Usage**: When the coordinator sends a prove command with an input filename, the worker combines `--inputs-folder` + `filename` to locate the file
-- **Benefits**: Allows input files to be organized in a dedicated directory, separate from the worker executable
-
-**Example:**
-```bash
-# Worker with inputs in specific folder
-cargo run --release --bin zisk-worker -- --elf program.elf --inputs-folder /data/inputs/
-
-# Coordinator requests proof for "input.bin" -> Worker looks for "/data/inputs/input.bin"
-cargo run --release --bin zisk-coordinator -- prove --inputs-uri input.bin --compute-capacity 10
-```
-
-The table below lists the available configuration options for the Worker:
-
-| TOML Key              | CLI Argument     | Environment Variable| Type | Default | Description |
-|-----------------------|--------------|---------------------|------|---------|-------------|
-| `worker.worker_id` | `--worker-id` | - | String | Auto-generated UUID | Unique worker identifier |
-| `worker.compute_capacity.compute_units` | `--compute-capacity` | - | Number | 10 | Worker compute capacity (in compute units) |
-| `worker.environment` | - | - | String | development | Service environment (development, staging, production) |
-| `worker.inputs_folder` | `--inputs-folder` | - | String | . | Path to folder containing input files |
-| `coordinator.url` | `--coordinator-url` | - | String | http://127.0.0.1:50051 | Coordinator server URL |
-| `connection.reconnect_interval_seconds` | - | - | Number | 5 | Reconnection interval in seconds |
-| `connection.heartbeat_timeout_seconds` | - | - | Number | 30 | Heartbeat timeout in seconds |
-| `logging.level` | - | RUST_LOG | String | debug | Logging level (error, warn, info, debug, trace) |
-| `logging.format` | - | - | String | pretty | Logging format (pretty, json, compact) |
-| `logging.file_path` | - | - | String | - | *Optional*. Log file path (enables file logging) |
-| - | `--proving-key` | - | String | ~/.zisk/provingKey | Path to setup folder |
-| - | `--elf` | - | String | - | Path to ELF file |
-| - | `--asm` | - | String | ~/.zisk/cache | Path to ASM file (mutually exclusive with `--emulator`) |
-| - | `--emulator` | - | Boolean | false | Use prebuilt emulator (mutually exclusive with `--asm`) |
-| - | `--asm-port` | - | Number | 23115 | Base port for Assembly microservices |
-| - | `--shared-tables` | - | Boolean | false | Whether to share tables when worker is running in a cluster |
-| - | `-v`, `-vv`, `-vvv`, ... | - | Number | 0 | Verbosity level (0=error, 1=warn, 2=info, 3=debug, 4=trace) |
-| - | `-d`, `--debug` | - | String | - | Enable debug mode with optional component filter |
-| - | `--verify-constraints` | - | Boolean | false | Whether to verify constraints |
-| - | `--unlock-mapped-memory` | - | Boolean | false | Unlock memory map for the ROM file (mutually exclusive with `--emulator`) |
-| - | `--hints` | - | Boolean | false | Enable precompile hints processing |
-| - | `-m`, `--minimal-memory` | - | Boolean | false | Use minimal memory mode |
-| - | `-r`, `--rma` | - | Boolean | false | Enable RMA mode |
-| - | `-z`, `--preallocate` | - | Boolean | false | GPU preallocation flag |
-| - | `-t`, `--max-streams` | - | Number | - | Maximum number of GPU streams |
-| - | `-n`, `--number-threads-witness` | - | Number | - | Number of threads for witness computation |
-| - | `-x`, `--max-witness-stored` | - | Number | - | Maximum number of witnesses to store in memory |
-
-#### Configuration Files examples
-
-Example development configuration file:
+#### Example: production config
 
 ```toml
 [worker]
-compute_capacity.compute_units = 10
-environment = "development"
-
-[logging]
-level = "debug"
-format = "pretty"
-```
-
-Example production configuration file:
-
-```toml
-[worker]
-worker_id = "my-worker-001"
 compute_capacity.compute_units = 10
 environment = "production"
-inputs_folder = "/app/inputs"
 
 [coordinator]
-url = "http://127.0.0.1:50051"
+url = "http://<coordinator-host>:50051"
 
 [connection]
 reconnect_interval_seconds = 5
-heartbeat_timeout_seconds = 30
+heartbeat_timeout_seconds  = 30
 
 [logging]
-level = "info"
-format = "pretty"
-file_path = "/var/log/distributed/worker-001.log"
+level  = "info"
+format = "json"
+file_path = "/var/log/zisk/worker.log"
 ```
 
-## Launching a Proof
+## Coordinator API
 
-To launch a proof generation request, use the `prove` subcommand of the `zisk-coordinator` binary. This sends an RPC request to a running coordinator instance.
+The coordinator exposes a gRPC service `ZiskCoordinatorApi` on port 7000. Follow the proto definitions in `distributed/crates/coordinator-api/proto/zisk_coordinator_api.proto` for the full API specification. The main RPC methods are summarized below.
+
+### Operations
+
+#### `RegisterGuestProgram`
+
+Uploads a ZisK ELF binary to the coordinator. Returns a stable `hash_id` (blake3 of the ELF bytes). Idempotent — the same ELF always returns the same `hash_id`. Registering a program stores the ELF binary in the coordinator's cache and makes it available for subsequent setup jobs. The `hash_id` is used to reference the program in later requests.
+
+#### `JobRequest` — Setup
+
+Distributes the ELF binary to the workers to generate all necessary proving artifacts and load them in preparation for execution. This is necessary for any program to run on the cluster. Must be called once before any job is launched versus that program. The `hash_id` references the ELF registered via `RegisterGuestProgram`. Idempotent — calling setup multiple times with the same `hash_id` is a no-op after the first successful setup.
+
+#### `JobRequest` — Execute
+
+Runs the program with the given inputs and returns execution statistics and public outputs, **without generating a proof**. Useful for dry-runs, cost estimation, or output-only use cases.
+
+#### `JobRequest` — Prove
+
+Runs the program and generates a proof. The `proof_dest` field controls the output format and generation method. At this moment the coordinator supports three proof types: STARK, STARK Minimal, and PLONK.
+
+**Input kinds:**
+
+- `inline` — send the first chunk of input inline in the request. For additional data, use `PushJobInput` to stream more chunks; close the stream to signal EOF.
+- `stream_uri` — point to a URI (`file://`, `unix://`, `quic://`) the internal coordinator can fetch directly.
+
+#### `JobRequest` — Wrap
+
+Converts a proof into another proof type. Takes the `Proof` object returned by a Prove job.
+
+### Job monitoring
+
+Both methods work for any job kind. Use whichever fits your client model:
+
+| Method | Style | Use when |
+|---|---|---|
+| `WaitJobResult` | Long-poll (request/response) | Simple clients; loop until terminal |
+| `WatchJob` | Server-streaming | Event-driven clients; real-time progress |
+
+**`WaitJobResult`** blocks server-side for up to `timeout_seconds` (1–3600 s, default 5 s), then returns the current status. If the status is still `Running`, call again — no application-level sleep needed.
+
+**`WatchJob`** opens a stream that emits one `JobEvent` per state transition and closes automatically on the terminal event (`Completed`, `Failed`, or `Cancelled`). Safe to call after the job has already finished.
+
+Job states: `Queued` → `Running(phase)` → `WaitingForInput`? → `Completed` | `Failed` | `Cancelled`
+
+Phases within `Running`: `Contributions` → `Prove` → `Aggregate`
+
+### `PushJobInput`
+
+Stream additional input chunks to a job.
+
+### `CancelJob`
+
+Cancels a running or queued job.
+
+## Health Checking
+
+The coordinator implements the [gRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md):
+
+## Running as a System Service
+
+For production deployments without Docker, use the install scripts to register the binaries as systemd services. The scripts create a dedicated system user, install the config, write the unit file, and start the service.
+
+### Coordinator
 
 ```bash
-cargo run --release --bin zisk-coordinator -- prove --inputs-uri <input_filename> --compute-capacity 10
+# Build from source and install (run from workspace root)
+sudo distributed/crates/coordinator-server/scripts/install.sh
+
+# Use a pre-built binary
+sudo distributed/crates/coordinator-server/scripts/install.sh --binary target/release/zisk-coordinator
+
+# Use an existing config file
+sudo distributed/crates/coordinator-server/scripts/install.sh --config /path/to/coordinator.toml
+
+# Remove the service
+sudo distributed/crates/coordinator-server/scripts/install.sh --uninstall
 ```
 
-The `--compute-capacity` flag indicates the total compute units required to generate a proof. The coordinator will assign one or more workers to meet this capacity, distributing the workload if multiple workers are needed. Requests exceeding the combined capacity of available workers will not be processed and an error will be returned.
-
-### Prove Subcommand Arguments
-
-| CLI Argument | Short | Type | Default | Description |
-|---|---|---|---|---|
-| `--inputs-uri` | - | String | - | Path to the input file for proof generation |
-| `--compute-capacity` | `-c` | Number | *required* | Total compute units required for the proof |
-| `--coordinator-url` | - | String | http://127.0.0.1:50051 | URL of the coordinator to send the request to |
-| `--data-id` | - | String | Auto (from filename or UUID) | Custom identifier for the proof job |
-| `--hints-uri` | - | String | - | Path/URI to the precompile hints source |
-| `--stream-hints` | - | Boolean | false | Stream hints from the coordinator to workers via gRPC (see [Hints Stream](../book/getting_started/hints_stream.md)) |
-| `--direct-inputs` | `-x` | Boolean | false | Send input data inline via gRPC instead of as a file path |
-| `--minimal-compute-capacity` | `-m` | Number | Same as `--compute-capacity` | Minimum acceptable compute capacity (allows partial worker allocation) |
-| `--simulated-node` | - | Number | - | Simulated node ID (for testing) |
-
-### Input and Hints Modes
-
-The `prove` subcommand supports two modes for delivering inputs and hints to workers:
-
-**Input modes** (controlled by `--inputs-uri` and `--direct-inputs`):
-- **Path mode** (default): The coordinator sends the input file path to workers. Workers must have access to the file at the specified path.
-- **Data mode** (`--direct-inputs`): The coordinator reads the input file and sends its contents inline via gRPC. Workers do not need local access to the file.
-
-**Hints modes** (controlled by `--hints-uri` and `--stream-hints`):
-- **Path mode** (default): The coordinator sends the hints URI to workers. Each worker loads hints from the specified path independently.
-- **Streaming mode** (`--stream-hints`): The coordinator reads hints from the URI and broadcasts them to all workers in real-time via gRPC. See the [Hints Stream documentation](../book/getting_started/hints_stream.md) for details.
-
-**Examples:**
 ```bash
-# Basic proof with file path inputs
-zisk-coordinator prove --inputs-uri /data/inputs/my_input.bin --compute-capacity 10
-
-# Send input data directly (workers don't need local file access)
-zisk-coordinator prove --inputs-uri /data/inputs/my_input.bin -x --compute-capacity 10
-
-# With precompile hints in path mode (workers load hints locally)
-zisk-coordinator prove --inputs-uri input.bin --hints-uri /data/hints/hints.bin --compute-capacity 10
-
-# With precompile hints in streaming mode (coordinator broadcasts to workers)
-zisk-coordinator prove --inputs-uri input.bin --hints-uri unix:///tmp/hints.sock --stream-hints --compute-capacity 10
+sudo journalctl -u zisk-coordinator -f
 ```
 
-## Administrative Operations
-
-### Health Checks and Monitoring
-
-The coordinator exposes administrative endpoints for monitoring:
+### Worker
 
 ```bash
-# Basic health check
-grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/HealthCheck
+# Build from source and install
+sudo distributed/crates/worker/scripts/install.sh
 
-# System status
-grpcurl -plaintext 127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/SystemStatus
+# Specify the proving key directory
+sudo distributed/crates/worker/scripts/install.sh --proving-key /mnt/data/provingKey
 
-# List active jobs
-grpcurl -plaintext -d '{"active_only": true}' \
-  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/JobsList
+# Use a pre-built binary and existing config
+sudo distributed/crates/worker/scripts/install.sh \
+  --binary target/release/zisk-worker \
+  --config /path/to/worker.toml
 
-# List connected workers
-grpcurl -plaintext -d '{"available_only": true}' \
-  127.0.0.1:50051 zisk.distributed.api.v1.ZiskDistributedApi/WorkersList
+# Remove the service
+sudo distributed/crates/worker/scripts/install.sh --uninstall
+```
+
+```bash
+sudo journalctl -u zisk-worker -f
+```
+
+**Multiple workers per host** — install each instance with a different config file that sets a unique `worker_id` (or leaves it unset to auto-generate a UUID). Use systemd's template units to manage them together:
+
+```bash
+# Copy the generated unit to a template:
+sudo cp /etc/systemd/system/zisk-worker.service \
+        /etc/systemd/system/zisk-worker@.service
+# Edit ExecStart in the template to use %i:
+#   ExecStart=/usr/local/bin/zisk-worker --config /etc/zisk/worker-%i.toml
+
+sudo systemctl enable --now zisk-worker@1
+sudo systemctl enable --now zisk-worker@2
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
 **Worker can't connect to coordinator:**
-- Verify coordinator is running and accessible on the specified port
-- Check firewall settings if coordinator and worker are on different machines
-- Ensure correct URL format: `http://host:port` (not `https://` for default setup)
+- Verify the coordinator is running and the worker port is accessible (`50051` by default)
+- In Docker, confirm both services are on the same network (`zisk`)
+- Ensure `coordinator.url` in `worker.toml` matches the coordinator's hostname and worker port
 
-**Configuration not loading:**
-- Verify TOML syntax with a TOML validator
-- Check file permissions on configuration files
-- Use CLI overrides to test specific values
+**Coordinator fails to start:**
+- Check for port conflicts on `7000`, `9090`, or `50051`
+- Validate `coordinator.toml` with a TOML linter
+- Use `--log-level debug` for detailed startup logging
 
 **Worker not receiving tasks:**
-- Check worker registration in coordinator logs
-- Verify compute capacity is appropriate for available tasks
-- Ensure worker ID is unique if running multiple workers
-- Confirm coordinator has active jobs to distribute
+- Check worker registration in coordinator logs (`RUST_LOG=debug`)
+- Verify the worker's `compute_capacity` is sufficient for queued jobs
+- Ensure no two workers share the same `worker_id`
 
-**Input file not found errors:**
-- Verify the input file exists in the worker's `--inputs-folder` directory
-- Check file permissions - worker needs read access to input files
-- Ensure you're using the filename only (not full path) when launching proofs
-- Confirm `--inputs-folder` path is correct and accessible
-
-**Port conflicts:**
-- Use `--port` flag or update configuration file to change ports
-- Check for other services using the same ports
-
-### Debug Mode
-
-Enable detailed logging for troubleshooting by modifying configuration files or using CLI arguments:
+**Debug logging:**
 
 ```bash
-# Coordinator with debug logging (via config file)
-cargo run --release --bin zisk-coordinator -- --config debug-coordinator.toml
+# Coordinator
+RUST_LOG=debug cargo run --release --bin zisk-coordinator
 
-# Worker with debug logging (via config file)
-cargo run --release --bin zisk-worker -- --config debug-worker.toml
+# Worker
+RUST_LOG=debug cargo run --release --bin zisk-worker -- --config worker.toml
 ```
 
-Where `debug-coordinator.toml` or `debug-worker.toml` contains:
+Or via config file:
+
 ```toml
 [logging]
-level = "debug"
+level  = "debug"
 format = "pretty"
-```
-
-### Log Files
-
-When file logging is enabled, logs are written into specified paths in the configuration files. Ensure the application has write permissions to these paths.
-
-```toml
-[logging]
-file_path = "/var/log/distributed/coordinator.log"
 ```

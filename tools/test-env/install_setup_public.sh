@@ -29,7 +29,7 @@ main () {
     ensure tar -xf "${ZISK_SETUP_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
-    ensure cargo-zisk check-setup -a || return 1
+    ensure cargo-zisk check-setup || return 1
 
     step "Deleting downloaded public proving key..."
     rm -rf "${ZISK_SETUP_FILE}"

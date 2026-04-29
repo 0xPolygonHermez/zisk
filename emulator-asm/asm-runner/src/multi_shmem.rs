@@ -15,11 +15,8 @@ use tracing::debug;
 use anyhow::anyhow;
 use anyhow::Result;
 
-/// Represents a single mapped shared memory file within the multi-file structure.
 struct MappedFile {
     fd: i32,
-    #[allow(dead_code)] // May be useful for debugging/validation
-    size: usize,
 }
 
 /// A shared memory manager that supports multiple contiguous shared memory files.
@@ -47,9 +44,12 @@ unsafe impl<H: AsmShmemHeader> Sync for AsmMultiSharedMemory<H> {}
 
 impl<H: AsmShmemHeader> Drop for AsmMultiSharedMemory<H> {
     fn drop(&mut self) {
-        // Close all file descriptors
-        for mapped_file in &self.mapped_files {
-            unsafe { close(mapped_file.fd) };
+        for i in 0..self.mapped_files.len() {
+            let file_name = format!("{}_{}", self.base_name, i);
+            if let Ok(c_name) = CString::new(file_name) {
+                unsafe { shm_unlink(c_name.as_ptr()) };
+            }
+            unsafe { close(self.mapped_files[i].fd) };
         }
 
         // Unmap the entire reserved region (this handles all the MAP_FIXED mappings too)
@@ -207,13 +207,6 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
                 return Err(anyhow!("shm_open('{}') failed: {}", file_name, err));
             }
 
-            // Unlink to ensure cleanup
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                let err = io::Error::last_os_error();
-                close(fd);
-                return Err(anyhow!("shm_unlink('{}') failed: {}", file_name, err));
-            }
-
             // For _0, validate that the header has a non-zero allocated size
             if file_idx == 0 {
                 let temp_map = mmap(ptr::null_mut(), size_of::<H>(), PROT_READ, MAP_SHARED, fd, 0);
@@ -267,7 +260,7 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
                 file_name, file_size, mapped_ptr, offset
             );
 
-            self.mapped_files.push(MappedFile { fd, size: file_size });
+            self.mapped_files.push(MappedFile { fd });
         }
 
         Ok(())

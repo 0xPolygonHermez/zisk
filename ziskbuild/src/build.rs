@@ -13,8 +13,29 @@ use std::{
 
 use anyhow::{Context, Result};
 
+fn should_skip_guest_build() -> bool {
+    if std::env::var("SKIP_GUEST_BUILD").is_ok() {
+        return true;
+    }
+    // cargo clippy sets RUSTC_WORKSPACE_WRAPPER to the clippy-driver binary.
+    // Cross-compiling the guest during a clippy run is pointless and would fail
+    // without the ZisK toolchain installed, so skip it.
+    if std::env::var("RUSTC_WORKSPACE_WRAPPER").map(|v| v.contains("clippy")).unwrap_or(false) {
+        return true;
+    }
+    false
+}
+
 // Helper for building a ZisK program.
 pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
+    // Always declare the cfg so rustc doesn't warn about it being unexpected in the host crate.
+    println!("cargo:rustc-check-cfg=cfg(zisk_skip_guest_build)");
+
+    if should_skip_guest_build() {
+        println!("cargo:rustc-cfg=zisk_skip_guest_build");
+        return;
+    }
+
     // Get the root package name and metadata.
     let program_dir = std::path::Path::new(path);
     let metadata_file = program_dir.join("Cargo.toml");
@@ -23,36 +44,6 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
 
     // Activate the build command if the dependencies change.
     cargo_rerun_if_changed(&metadata, program_dir);
-
-    // Check if RUSTC_WORKSPACE_WRAPPER is set to clippy-driver (i.e. if `cargo clippy` is the
-    // current compiler). If so, don't execute `cargo prove build` because it breaks
-    // rust-analyzer's `cargo clippy` feature.
-    let is_clippy_driver = std::env::var("RUSTC_WORKSPACE_WRAPPER")
-        .map(|val| val.contains("clippy-driver"))
-        .unwrap_or(false);
-
-    // Check if this is a cargo check (when ELF files don't exist yet)
-    let is_cargo_check = std::env::var("CARGO_CFG_CHECK").is_ok();
-
-    if is_clippy_driver || is_cargo_check {
-        // For cargo check, skip setting env vars to avoid include_bytes! errors
-        if !is_cargo_check {
-            // Still need to set ELF env vars for clippy
-            let target_elf_paths = generate_elf_paths(&metadata, args.as_ref());
-            let hints = args
-                .as_ref()
-                .and_then(|a| a.hints)
-                .or_else(|| std::env::var("ZISK_HINTS").ok().and_then(|v| v.parse().ok()))
-                .unwrap_or(false);
-            print_elf_paths_cargo_directives(&target_elf_paths, hints);
-        }
-
-        println!(
-            "cargo:warning=Skipping build due to {} invocation.",
-            if is_cargo_check { "cargo check" } else { "clippy" }
-        );
-        return;
-    }
 
     // Build the program with the given arguments.
     let path_output = if let Some(args) = &args {
@@ -73,19 +64,18 @@ pub fn execute_build_program(
     args: &BuildArgs,
     program_dir: Option<PathBuf>,
 ) -> Result<Vec<(String, Utf8PathBuf)>> {
+    println!("cargo:rustc-check-cfg=cfg(zisk_skip_guest_build)");
+
+    if should_skip_guest_build() {
+        println!("cargo:rustc-cfg=zisk_skip_guest_build");
+        return Ok(vec![]);
+    }
+
     // If the program directory is not specified, use the current directory.
     let program_dir = program_dir
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory."));
     let program_dir: Utf8PathBuf =
         program_dir.try_into().expect("Failed to convert PathBuf to Utf8PathBuf");
-
-    // Check for ZISK_HINTS environment variables if not set in args
-    let mut args = args.clone();
-    if args.hints.is_none() {
-        if let Ok(env_hints) = std::env::var("ZISK_HINTS") {
-            args.hints = env_hints.parse().ok();
-        }
-    }
 
     // Get the program metadata.
     let program_metadata_file = program_dir.join("Cargo.toml");
@@ -93,9 +83,9 @@ pub fn execute_build_program(
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(&args, &program_dir, &program_metadata);
+    let cmd = create_command(args, &program_dir, &program_metadata)?;
 
-    let target_elf_paths = generate_elf_paths(&program_metadata, Some(&args));
+    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
 
     if target_elf_paths.len() > 1 && args.elf_name.is_some() {
         anyhow::bail!("--elf-name is not supported when --output-directory is used and multiple ELFs are built.");
@@ -106,7 +96,6 @@ pub fn execute_build_program(
     // Generate assembly for all ELF files (only if not already generated)
     let asm = args.asm.unwrap_or(false);
     let hints = args.hints.unwrap_or(false);
-    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
 
     let output_path = get_output_path(&None)?;
     for (_, elf_path) in target_elf_paths.iter() {
@@ -214,14 +203,18 @@ pub fn generate_elf_paths(
     vec![(bin_target.name.to_owned(), target_elf_path)]
 }
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], hints: bool) {
-    println!("cargo:rerun-if-env-changed=ZISK_HINTS");
-
     for (target_name, elf_path) in target_elf_paths.iter() {
         // Only set env var if the ELF file actually exists
         if elf_path.exists() {
             println!("cargo:rustc-env=ZISK_ELF_{target_name}={elf_path}");
             if hints {
                 println!("cargo:rustc-env=ZISK_ELF_{target_name}_WITH_HINTS=1");
+            }
+
+            // Compute and emit blake3 hash of the ELF file
+            if let Ok(elf_bytes) = std::fs::read(elf_path) {
+                let hash = blake3::hash(&elf_bytes).to_hex();
+                println!("cargo:rustc-env=ZISK_ELF_HASH_{target_name}={hash}");
             }
         }
     }

@@ -14,6 +14,8 @@ use anyhow::{Context, Result};
 use super::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
+const MAX_MESSAGE_SIZE: usize = 128 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
     #[error("No client connected yet")]
@@ -21,6 +23,9 @@ pub enum UnixSocketError {
 
     #[error("Socket not connected")]
     NotConnected,
+
+    #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
+    MessageTooLarge(usize),
 
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
@@ -372,14 +377,28 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Creates a listening socket and spawns a background thread to accept connections.
     /// This is non-blocking - the actual client connection happens lazily on first write.
     fn open(&mut self) -> Result<()> {
+        eprintln!("[zisk-sock] open() ENTER path={}", self.path.display());
         // If we already have a connected socket, we're done
         if self.socket.is_some() {
+            eprintln!("[zisk-sock] open() already connected path={}", self.path.display());
             return Ok(());
         }
 
         // Create listener if not exists
         if self.listener_fd.is_none() {
+            eprintln!("[zisk-sock] open() create_listener path={}", self.path.display());
             self.create_listener()?;
+            eprintln!(
+                "[zisk-sock] open() create_listener OK path={} fd={:?}",
+                self.path.display(),
+                self.listener_fd
+            );
+        } else {
+            eprintln!(
+                "[zisk-sock] open() listener already exists path={} fd={:?}",
+                self.path.display(),
+                self.listener_fd
+            );
         }
 
         // Spawn accept thread if not already running
@@ -387,8 +406,10 @@ impl StreamWrite for UnixSocketStreamWriter {
             let listener_fd = self.listener_fd.unwrap();
             let (tx, rx) = mpsc::channel();
             self.socket_receiver = Some(rx);
+            let path_log = self.path.display().to_string();
 
             let handle = thread::spawn(move || {
+                eprintln!("[zisk-sock] accept-thread BEGIN path={} fd={}", path_log, listener_fd);
                 // Retry accept on EINTR
                 let conn_fd = loop {
                     let fd = unsafe {
@@ -400,23 +421,32 @@ impl StreamWrite for UnixSocketStreamWriter {
                         if err.kind() == std::io::ErrorKind::Interrupted {
                             continue; // Retry on EINTR
                         }
-                        eprintln!("Accept failed: {}", err);
+                        eprintln!(
+                            "[zisk-sock] accept-thread accept FAILED path={} err={}",
+                            path_log, err
+                        );
                         return;
                     }
 
                     break fd;
                 };
 
+                eprintln!(
+                    "[zisk-sock] accept-thread accepted path={} conn_fd={}",
+                    path_log, conn_fd
+                );
                 // Convert to UnixStream
                 let stream = unsafe { UnixStream::from_raw_fd(conn_fd) };
 
                 // Send socket through channel
                 let _ = tx.send(stream);
+                eprintln!("[zisk-sock] accept-thread DONE path={}", path_log);
             });
 
             self.accept_thread = Some(handle);
         }
 
+        eprintln!("[zisk-sock] open() OK path={}", self.path.display());
         Ok(())
     }
 
@@ -428,6 +458,10 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Returns `NoClientConnected` error if no client has connected yet.
     /// The caller can retry the write until a client connects.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
+        if item.len() > MAX_MESSAGE_SIZE {
+            return Err(UnixSocketError::MessageTooLarge(item.len()).into());
+        }
+
         self.open()?;
 
         // Receive socket from channel if we don't have it yet
@@ -466,26 +500,86 @@ impl StreamWrite for UnixSocketStreamWriter {
 
     /// Close the stream
     fn close(&mut self) -> Result<()> {
+        eprintln!("[zisk-sock] close() ENTER path={}", self.path.display());
         self.flush()?;
 
-        // Clear the socket
+        // Clear the connected socket
         self.socket = None;
 
+        // Close the listener fd first — this unblocks the accept thread
+        // (accept() returns EBADF), allowing it to exit.
         if let Some(fd) = self.listener_fd.take() {
+            eprintln!(
+                "[zisk-sock] close() libc::close listener path={} fd={}",
+                self.path.display(),
+                fd
+            );
             unsafe { libc::close(fd) };
+        }
+
+        // Now join the accept thread and clear the channel
+        self.socket_receiver = None;
+        if let Some(handle) = self.accept_thread.take() {
+            eprintln!("[zisk-sock] close() joining accept-thread path={}", self.path.display());
+            let _ = handle.join();
+            eprintln!("[zisk-sock] close() accept-thread joined path={}", self.path.display());
         }
 
         // Clean up socket file
         if self.path.exists() {
             let _ = std::fs::remove_file(&self.path);
+            eprintln!("[zisk-sock] close() removed file path={}", self.path.display());
         }
 
+        eprintln!("[zisk-sock] close() OK path={}", self.path.display());
         Ok(())
     }
 
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.socket.is_some()
+    }
+
+    /// Block until a client has connected to the listening socket.
+    ///
+    /// Unix socket `open()` is non-blocking (spawns accept thread), so the first
+    /// `write()` can fail with `NoClientConnected` before the peer connects.
+    /// This method polls with a 5 ms sleep, timing out after 60 seconds.
+    fn wait_for_connection(&mut self) -> Result<()> {
+        eprintln!("[zisk-sock] wait_for_connection ENTER path={}", self.path.display());
+        let start = std::time::Instant::now();
+        let deadline = start + std::time::Duration::from_secs(60);
+        let mut last_log = start;
+        while !self.is_client_connected() {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                eprintln!(
+                    "[zisk-sock] wait_for_connection TIMEOUT path={} after {:?}",
+                    self.path.display(),
+                    now.duration_since(start)
+                );
+                anyhow::bail!("Timed out waiting for a client to connect to Unix socket");
+            }
+            if now.duration_since(last_log) >= std::time::Duration::from_secs(5) {
+                eprintln!(
+                    "[zisk-sock] wait_for_connection still waiting path={} elapsed={:?}",
+                    self.path.display(),
+                    now.duration_since(start)
+                );
+                last_log = now;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        eprintln!(
+            "[zisk-sock] wait_for_connection OK path={} after {:?}",
+            self.path.display(),
+            start.elapsed()
+        );
+        Ok(())
+    }
+
+    fn max_message_size(&self) -> usize {
+        MAX_MESSAGE_SIZE
     }
 }
 

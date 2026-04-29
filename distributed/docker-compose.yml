@@ -1,54 +1,89 @@
-version: '3.8'
+# docker-compose.yml — ZisK distributed proving stack
+#
+# Usage (from the workspace root):
+#
+#   Start the coordinator only:
+#     docker compose -f distributed/docker-compose.yml up coordinator
+#
+#   Start the full stack with N workers:
+#     docker compose -f distributed/docker-compose.yml up --scale worker=4
+#
+#   Build with GPU support for workers:
+#     docker compose -f distributed/docker-compose.yml build --build-arg GPU=true worker
 
 services:
+
+  # ── Coordinator ──────────────────────────────────────────────────────────────
+  # Public gRPC API + embedded coordination engine.
+  # Workers connect to the coordinator on port 50052 (internal to this container).
   coordinator:
     build:
       context: ..
-      dockerfile: distributed/Dockerfile
-      args:
-        GPU: false
+      dockerfile: distributed/Dockerfile.coordinator
+    image: zisk-coordinator:latest
+    container_name: zisk-coordinator
+    restart: on-failure
     ports:
-      - "50051:50051"
+      - "7001:7001" # public gRPC API
+      - "9091:9091" # Prometheus metrics
     volumes:
-      - ./logs:/var/log/distributed
-      # Uncomment to override config
-      # - ./crates/coordinator/config:/app/config/coordinator
+      - ./config/coordinator.toml:/etc/zisk/coordinator.toml:ro
     environment:
       - RUST_LOG=info
-    restart: unless-stopped
-    command: [ "zisk-coordinator", "--config", "/app/config/coordinator/prod.toml" ]
-
-  worker:
-    build:
-      context: ..
-      dockerfile: distributed/Dockerfile
-      args:
-        GPU: false # Set to true if GPU support is needed
-    volumes:
-      - ./logs:/var/log/distributed
-      # Uncomment to override config
-      # - ./crates/worker/config:/app/config/worker
-      # Mount proving key and ELF directories if needed
-      # - ${ZISK_CACHE_FOLDER}:/app/.zisk/cache:ro
-      # - ${PROVING_KEY_PATH}:/app/proving-keys:ro
-      # - ${ELF_INPUTS_PATH}:/app/elf-inputs:ro
-    environment:
-      - RUST_LOG=info
-    restart: unless-stopped
-    command: [ "zisk-worker", "--config", "/app/config/worker/prod.toml" ]
-    depends_on:
-      - coordinator
+    networks:
+      - zisk
     healthcheck:
-      test: [ "CMD", "pgrep", "-f", "zisk-worker" ]
+      test: [ "CMD", "grpc_health_probe", "-addr=:7001" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 15s
+
+  # ── Worker ───────────────────────────────────────────────────────────────────
+  # Scale with: docker compose up --scale worker=N
+  # Each instance gets a unique auto-generated worker_id (no worker_id in config).
+  worker:
+    build:
+      context: ..
+      dockerfile: distributed/Dockerfile.worker
+      args:
+        GPU: false # set to true for GPU-accelerated workers
+    image: zisk-worker:latest
+    restart: on-failure
+    volumes:
+      - ./config/worker.toml:/etc/zisk/worker.toml:ro
+      # Mount the ZisK home directory (provingKey, cache, etc.) from the host:
+      - ${ZISK_HOME:-~/.zisk}:/app/.zisk:ro
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      coordinator:
+        condition: service_started # workers reconnect automatically, no need to wait for healthy
+    networks:
+      - zisk
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: zisk-prometheus
+    restart: on-failure
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "coordinator:host-gateway"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+    networks:
+      - zisk
+    depends_on:
+      coordinator:
+        condition: service_healthy # wait for coordinator to pass health check before scraping
 
 networks:
-  default:
-    name: zisk-distributed
-
-volumes:
-  logs:
-    driver: local
+  zisk:
+    driver: bridge

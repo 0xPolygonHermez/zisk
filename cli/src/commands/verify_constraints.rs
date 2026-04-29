@@ -1,85 +1,70 @@
-use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
-
-use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
-use zisk_sdk::{ProverClient, ZiskVerifyConstraintsResult};
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{
+    AsmOptions, BackendProverOpts, ProverClientBuilder, VerifyConstraintsOutput,
+};
 
-#[derive(Parser)]
+use crate::common::detect_current_project_elf;
+use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
+
+#[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-#[command(propagate_version = true)]
-#[command(group(
-    clap::ArgGroup::new("input_mode")
-        .args(["asm", "emulator"])
-        .multiple(false)
-        .required(false)
-))]
+/// Verify the constraints of the guest program execution without generating a proof
 pub struct ZiskVerifyConstraints {
-    /// ROM file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
-    pub elf: PathBuf,
-
-    /// ASM file path
-    /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
-    pub asm: Option<PathBuf>,
+    /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
+    #[arg(short = 'e', long)]
+    pub elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[clap(short = 'l', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'l', long, conflicts_with = "asm")]
     pub emulator: bool,
 
-    /// Input path
-    #[clap(short = 'i', long, alias = "input", conflicts_with = "hints")]
+    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    /// Precompiles Hints path
-    #[clap(short = 'H', long, conflicts_with = "inputs")]
+    /// Precompiles hints file path for the guest
+    #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
 
-    /// Setup folder path
-    #[clap(short = 'k', long)]
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Base port for Assembly microservices (default: 23115).
-    /// A single execution will use 3 consecutive ports, from this port to port + 2.
-    /// If you are running multiple instances of ZisK using mpi on the same machine,
-    /// it will use from this base port to base port + 2 * number_of_instances.
-    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
-    /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(short = 'p', long, conflicts_with = "emulator")]
-    pub port: Option<u16>,
-
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    /// If you are running ZisK on a machine with limited memory, you may want to enable this option.
-    /// This option is mutually exclusive with `--emulator`.
-    #[clap(short = 'u', long, conflicts_with = "emulator")]
+    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
+    #[arg(short = 'u', long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
 
-    /// Redirect ASM emulator output to file
-    /// This option is mutually exclusive with `--emulator`
-    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
-    pub asm_out_file: bool,
-
-    #[clap(short = 'n', long, default_value_t = false)]
-    pub no_auto_setup: bool,
+    /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    pub gpu: bool,
 
     /// Verbosity (-v, -vv)
-    #[arg(short = 'v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
-    pub verbose: u8, // Using u8 to hold the number of `-v`
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 
-    #[clap(short = 'd', long)]
+    // Hidden flags
+    /// ASM file path
+    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
+    pub asm: Option<PathBuf>,
+
+    /// Redirect ASM emulator output to file
+    #[arg(long, hide = true, conflicts_with = "emulator")]
+    pub asm_out_file: bool,
+
+    /// Disable automatic ROM setup
+    #[arg(short = 'n', long, hide = true)]
+    pub no_auto_setup: bool,
+
+    /// Path to a debug configuration file
+    #[clap(short = 'd', long, hide = true)]
     pub debug: Option<Option<String>>,
-
-    #[clap(short = 'j', long, default_value_t = false)]
-    pub shared_tables: bool,
 }
 
 impl ZiskVerifyConstraints {
@@ -100,11 +85,22 @@ impl ZiskVerifyConstraints {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
+        if self.elf.is_none() {
+            self.elf = match detect_current_project_elf()? {
+                Some(elf) => Some(elf),
+                None => {
+                    anyhow::bail!(
+                        "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                    );
+                }
+            };
+        }
+
         print_banner();
 
         print_banner_command("Verify Constraints");
 
-        print_banner_field("Elf", self.elf.display());
+        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
         let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
         print_banner_field("Input", inputs_str);
@@ -143,55 +139,84 @@ impl ZiskVerifyConstraints {
             "--- VERIFY CONSTRAINTS SUMMARY ------------------------".bright_green().bold()
         );
         print_execution_summary(
-            &result.executor_summary.executor_time,
-            result.duration,
-            result.executor_summary.steps,
+            result.get_executor_time(),
+            result.get_duration(),
+            result.get_execution_steps(),
         );
 
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<ZiskVerifyConstraintsResult> {
-        let prover = ProverClient::builder()
+    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<VerifyConstraintsOutput> {
+        let mut prover_options = BackendProverOpts::default();
+
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+
+        let prover = ProverClientBuilder::new()
             .emu()
             .verify_constraints()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
-            .print_command_info()
+            .with_prover_options(prover_options)
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, false)?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
+        prover.setup(&guest_program).run()?;
 
-        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.debug.clone())
     }
 
     pub fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
-    ) -> Result<ZiskVerifyConstraintsResult> {
-        let prover = ProverClient::builder()
+    ) -> Result<VerifyConstraintsOutput> {
+        let mut prover_options = BackendProverOpts::default();
+
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(ref path) = self.proving_key {
+            prover_options = prover_options.proving_key(path.clone());
+        }
+
+        // ASM-specific options (only used if not emulator)
+        let mut asm_options = AsmOptions::default();
+        if let Some(ref path) = self.asm {
+            asm_options = asm_options.asm_path(path.clone());
+        }
+        if self.no_auto_setup {
+            asm_options = asm_options.no_auto_setup();
+        }
+        if self.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if self.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        prover_options = prover_options.with_asm_options(asm_options);
+
+        let prover = ProverClientBuilder::new()
             .asm()
             .verify_constraints()
-            .proving_key_path_opt(self.proving_key.clone())
-            .verbose(self.verbose)
-            .shared_tables(self.shared_tables)
-            .asm_path_opt(self.asm.clone())
-            .no_auto_setup(self.no_auto_setup)
-            .base_port_opt(self.port)
-            .unlock_mapped_memory(self.unlock_mapped_memory)
-            .asm_out_file(self.asm_out_file)
-            .print_command_info()
+            .with_prover_options(prover_options)
             .build()?;
 
-        let elf = ElfBinaryFromFile::new(&self.elf, hints_stream.is_some())?;
-        let (pk, _) = prover.setup(&elf)?;
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
+        if hints_stream.is_some() {
+            prover.setup(&guest_program).with_hints().run()?;
+        } else {
+            prover.setup(&guest_program).run()?;
+        }
 
         if let Some(hints_stream) = hints_stream {
-            pk.register_hints_stream(hints_stream)?;
+            prover.register_hints_stream(hints_stream)?;
         }
-        prover.verify_constraints_debug(&pk, stdin, self.debug.clone())
+        prover.verify_constraints(&guest_program, stdin, self.debug.clone())
     }
 }

@@ -161,7 +161,7 @@ main() {
     ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/ziskemu "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
+    # ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-worker "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
@@ -194,7 +194,7 @@ main() {
     fi
 
     step "Installing ZisK Rust toolchain..."
-    ensure cargo-zisk sdk install-toolchain || return 1
+    ensure cargo-zisk toolchain install || return 1
 
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {

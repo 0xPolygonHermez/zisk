@@ -60,14 +60,10 @@ pub fn print_banner_field(label: &str, value: impl std::fmt::Display) {
     println!("{} {}", format!("{: >12}", label).bright_green().bold(), value);
 }
 
-pub fn print_execution_summary(
-    executor_time: &ZiskExecutorTime,
-    total_duration: std::time::Duration,
-    steps: u64,
-) {
-    info!("Execution completed in {:.2?}, steps: {}", total_duration, steps);
+pub fn print_execution_summary(executor_time: &ZiskExecutorTime, total_duration: u64, steps: u64) {
+    info!("Execution completed in {}ms, steps: {}", total_duration, steps);
     info!(
-        "Execution summary: {} {:.2?} + {} {:.2?} + {} {:.2?} + {} {:.2?}",
+        "Execution summary: {} {}ms + {} {}ms + {} {}ms + {} {}ms",
         "Proofman".dimmed(),
         total_duration - executor_time.total_duration,
         "Execution".dimmed(),

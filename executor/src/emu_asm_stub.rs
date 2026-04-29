@@ -5,27 +5,23 @@ use std::{
 
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
 use anyhow::Result;
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use asm_runner::{AsmRunnerMO, AsmRunnerRH, HintsShmem};
+use precompiles_hints::HintsProcessor;
 
 use crate::AsmResources;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_rom::RomSM;
-use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{
+    io::{StreamSource, ZiskStdin},
+    AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope,
+};
 use zisk_core::ZiskRom;
 
 pub struct EmulatorAsm {}
 
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        _world_rank: i32,
-        _local_rank: i32,
-        _unlock_mapped_memory: bool,
-        _chunk_size: u64,
-        _rom_sm: Option<Arc<RomSM>>,
-        _verbose_mode: proofman_common::VerboseMode,
-    ) -> Self {
+    pub fn new(_chunk_size: u64) -> Self {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -44,18 +40,14 @@ impl EmulatorAsm {
         Vec<EmuTrace>,
         DeviceMetricsList,
         NestedDeviceMetricsList,
-        Option<JoinHandle<AsmRunnerMO>>,
-        Option<JoinHandle<AsmRunnerRH>>,
+        Option<JoinHandle<Result<AsmRunnerMO>>>,
+        Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
     )> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn set_asm_resources(&self, _asm_resources: AsmResources) {
-        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
-    }
-
-    pub fn set_rh_data(&self, _rh_data: AsmRunnerRH) {
+    pub fn set_asm_resources(&self, _asm_resources: Arc<AsmResources>) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
@@ -63,11 +55,39 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn reset_hints_stream(&self) {
+    pub fn reset(&self) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn use_hints(&self) -> Result<bool> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn set_hints_stream_src(&self, _stream: StreamSource) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn set_inputs_stream_src(&self, _stream: StreamSource) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn submit_hint_direct(&self, _data: &[u64]) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
+    pub fn append_raw_input(&self, _bytes: &[u8]) -> Result<()> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 }
