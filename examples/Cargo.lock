@@ -7235,6 +7235,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "uuid",
+ "zisk-common",
  "zisk-coordinator-api",
 ]
 
@@ -7272,6 +7273,7 @@ dependencies = [
  "uuid",
  "zisk-cluster-api",
  "zisk-cluster-common",
+ "zisk-common",
  "zisk-coordinator",
  "zisk-coordinator-api",
 ]

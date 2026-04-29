@@ -5,19 +5,19 @@ static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Starting ZisK Prover Client...");
-
     let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     client.upload(&PROGRAM).run()?;
-    client.setup(&PROGRAM).run()?.await?;
+
+    let setup_handle = client.setup(&PROGRAM).run()?;
+    setup_handle.await?;
 
     let input = ZiskStream::grpc();
 
     let handle = client.execute(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
     input.write(&1000u32);
     input.flush()?;
-    let result = handle.await?; // automatically calls finish() on the stream
+    let result = handle.await?;
 
     println!(
         "ZisK has executed program with {} cycles in {:?} ms",
@@ -25,7 +25,6 @@ async fn main() -> Result<()> {
         result.get_execution_time()
     );
 
-    // write → run() → flush() → await()  (finish is automatic on await)
     input.write(&2000u32);
     let prove_handle =
         client.prove(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;

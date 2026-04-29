@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     thread::JoinHandle,
 };
 
@@ -28,7 +28,7 @@ pub struct EmulatorAsm {
     chunk_size: u64,
 
     /// Assembly resources including shared memory and hints stream.
-    asm_resources: Mutex<Option<Arc<AsmResources>>>,
+    asm_resources: RwLock<Option<Arc<AsmResources>>>,
 
     asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
@@ -36,7 +36,7 @@ pub struct EmulatorAsm {
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(chunk_size: u64) -> Self {
-        Self { chunk_size, asm_resources: Mutex::new(None), asm_execution_info: Mutex::new(None) }
+        Self { chunk_size, asm_resources: RwLock::new(None), asm_execution_info: Mutex::new(None) }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
@@ -54,7 +54,7 @@ impl EmulatorAsm {
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         *self
             .asm_resources
-            .lock()
+            .write()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? =
             Some(asm_resources);
         Ok(())
@@ -64,7 +64,7 @@ impl EmulatorAsm {
     pub fn reset(&self) -> Result<()> {
         if let Some(resources) = self
             .asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
         {
@@ -75,7 +75,7 @@ impl EmulatorAsm {
 
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
@@ -85,7 +85,7 @@ impl EmulatorAsm {
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
         if let Some(resources) = self
             .asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
         {
@@ -97,7 +97,7 @@ impl EmulatorAsm {
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
@@ -106,7 +106,7 @@ impl EmulatorAsm {
 
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
@@ -119,7 +119,7 @@ impl EmulatorAsm {
     /// coordinator before data arrives here.
     pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
         self.asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
@@ -133,7 +133,7 @@ impl EmulatorAsm {
     /// appends incrementally as chunks arrive over the wire.
     pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
         self.asm_resources
-            .lock()
+            .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
@@ -175,13 +175,13 @@ impl EmulatorAsm {
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
     )> {
-        let asm_resources_guard = self
+        let asm_resources = self
             .asm_resources
-            .lock()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?;
-        let asm_resources = asm_resources_guard
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?;
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .clone();
 
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
@@ -243,7 +243,6 @@ impl EmulatorAsm {
                 )
             })
         });
-        drop(asm_resources_guard);
 
         let (min_traces, main_count, secn_count) =
             self.run_mt_assembly(zisk_rom, sm_bundle, stats)?;
@@ -316,13 +315,13 @@ impl EmulatorAsm {
                 });
             };
 
-            let asm_resources_guard = self
+            let asm_resources = self
                 .asm_resources
-                .lock()
-                .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?;
-            let asm_resources = asm_resources_guard
+                .read()
+                .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?;
+                .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+                .clone();
             let mt_shmem = &mut asm_resources
                 .readers()
                 .mt

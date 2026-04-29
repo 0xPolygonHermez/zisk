@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+zisk-common = { workspace = true }
 zisk-coordinator-api = { workspace = true }
 bytes = { workspace = true }
 tonic = { workspace = true }

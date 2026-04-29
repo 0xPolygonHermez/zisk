@@ -5,6 +5,7 @@ mod quic;
 mod stream_reader;
 mod stream_writer;
 mod zisk_stream;
+mod zisk_stream_writer;
 
 #[cfg(unix)]
 mod unix_socket;
@@ -16,6 +17,7 @@ pub use quic::{QuicStreamReader, QuicStreamWriter};
 pub use stream_reader::*;
 pub use stream_writer::*;
 pub use zisk_stream::*;
+pub use zisk_stream_writer::{BytesPushSender, ZiskStreamWriter};
 
 #[cfg(unix)]
 pub use unix_socket::{UnixSocketStreamReader, UnixSocketStreamWriter};

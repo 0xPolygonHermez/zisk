@@ -1,6 +1,6 @@
 use anyhow::Result;
 use sha2::{Digest, Sha256};
-use sha_hasher_host::Output;
+use sha_hasher_common::Output;
 use zisk_sdk::{
     load_program, ExecutorKind, GuestProgram, Proof, ProverClient, PublicValues, ZiskStdin,
 };

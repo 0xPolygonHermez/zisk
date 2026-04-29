@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sha_hasher_host::Output;
+use sha_hasher_common::Output;
 use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");

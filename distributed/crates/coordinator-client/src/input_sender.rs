@@ -135,3 +135,62 @@ impl Drop for InputSender {
         // Don't await the task in drop — just let it finish asynchronously.
     }
 }
+
+/// Adapter that lets [`InputSender`] plug into [`zisk_common::io::ZiskStreamWriter`]'s
+/// `Push` transport variant.
+///
+/// `ZiskStreamWriter` calls the [`BytesPushSender`] trait synchronously; this
+/// adapter bridges to `InputSender`'s async API by capturing a
+/// [`tokio::runtime::Handle`] at construction and using `block_on`
+/// (with `block_in_place` when the caller is already on a runtime thread).
+///
+/// Construct from a tokio runtime context — `Handle::current()` will panic
+/// otherwise.
+pub struct InputSenderPushAdapter {
+    sender: tokio::sync::Mutex<Option<InputSender>>,
+    rt: tokio::runtime::Handle,
+}
+
+impl InputSenderPushAdapter {
+    /// Wrap an `InputSender`. Captures the current tokio runtime handle for
+    /// later sync-from-async dispatch — must be called from inside a tokio
+    /// runtime.
+    pub fn new(sender: InputSender) -> Self {
+        Self {
+            sender: tokio::sync::Mutex::new(Some(sender)),
+            rt: tokio::runtime::Handle::current(),
+        }
+    }
+}
+
+impl zisk_common::io::BytesPushSender for InputSenderPushAdapter {
+    fn send_blocking(&self, data: Vec<u8>) -> anyhow::Result<()> {
+        let bytes = Bytes::from(data);
+        let send = async {
+            let guard = self.sender.lock().await;
+            let sender =
+                guard.as_ref().ok_or_else(|| anyhow::anyhow!("InputSender already closed"))?;
+            sender.send(bytes).await
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(_) => tokio::task::block_in_place(|| self.rt.block_on(send)),
+            Err(_) => self.rt.block_on(send),
+        }
+    }
+
+    fn close_blocking(self: Box<Self>) -> anyhow::Result<()> {
+        let rt = self.rt.clone();
+        let close = async move {
+            let mut guard = self.sender.lock().await;
+            if let Some(sender) = guard.take() {
+                sender.close().await
+            } else {
+                Ok(())
+            }
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(_) => tokio::task::block_in_place(|| rt.block_on(close)),
+            Err(_) => rt.block_on(close),
+        }
+    }
+}

@@ -29,7 +29,7 @@ ziskos::io::commit(&bytes);
 
 ### In Host
 ```rust
-use sha_hasher_host::Output; // Re-exported from common
+use sha_hasher_common::Output; // Re-exported from common
 
 let output = Output { 
     hash: hash.into(), 
