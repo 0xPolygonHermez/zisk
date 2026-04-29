@@ -36,6 +36,10 @@ impl ZiskStdin {
         self.0.read_bytes()
     }
 
+    pub fn read_data(&self) -> Vec<u8> {
+        self.0.read_data()
+    }
+
     /// Appends a serialized value to the stdin buffer.
     pub fn write<T: Serialize>(&self, data: &T) {
         self.0.write(data);
