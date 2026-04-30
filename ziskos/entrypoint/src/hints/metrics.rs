@@ -1,8 +1,10 @@
-use once_cell::sync::Lazy;
-use std::{collections::HashMap, sync::RwLock};
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, RwLock},
+};
 
-pub(crate) static HINTS_METRICS: Lazy<RwLock<HashMap<u32, HintRegisterInfo>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+pub(crate) static HINTS_METRICS: LazyLock<RwLock<HashMap<u32, HintRegisterInfo>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[derive(Clone, Debug)]
 pub(crate) struct HintRegisterInfo {

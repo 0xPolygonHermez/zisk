@@ -70,7 +70,7 @@ pub extern "C" fn zkvm_init() {
                 std::fs::create_dir_all(&dir).expect("failed to create tmp dir");
                 dir.join("hints.bin")
             });
-        crate::hints::init_hints_file(path, None).expect("hints init failed");
+        crate::hints::init_hints_file(path).expect("hints init failed");
     }
 }
 
