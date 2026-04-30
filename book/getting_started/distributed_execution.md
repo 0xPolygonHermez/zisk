@@ -164,7 +164,6 @@ A healthy startup log shows three "listening on" lines:
 ```
 INFO Starting ZisK Coordinator
 INFO server listening on 0.0.0.0:7000
-INFO worker port listening on 0.0.0.0:50051
 INFO metrics listening on 0.0.0.0:9090
 ```
 
@@ -182,7 +181,7 @@ In a second terminal:
 
 ```bash
 cargo run --release --bin zisk-worker -- \
-    --config distributed/crates/worker/config/dev.toml
+    --config distributed/deploy/config/worker.toml
 ```
 
 `dev.toml` points the worker at `http://127.0.0.1:50051`, advertises
@@ -198,10 +197,15 @@ INFO heartbeat ok
 The coordinator logs the matching side:
 
 ```
-INFO worker registered: <uuid> capacity=10
+INFO worker registered: <random-uid> capacity=10
 ```
 
 ### Health check
+
+With the coordinator and worker both running, verify the cluster in
+two steps: a liveness probe and an end-to-end proving job.
+
+**Liveness probe.** In a third terminal:
 
 ```bash
 curl http://127.0.0.1:9090/health
@@ -209,46 +213,23 @@ curl http://127.0.0.1:9090/health
 
 A healthy coordinator returns `200 OK` with an empty body.
 
-### Submit a proving job
-
-Any compiled ZisK guest works. The host program below talks to the
-**remote** prover:
-
-```rust
-use zisk_sdk::{GuestProgram, ProverClient, ZiskStdin, load_program};
-
-static PROGRAM: GuestProgram = load_program!("guest");
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
-
-    client.setup(&PROGRAM).run()?.await?;
-
-    let mut stdin = ZiskStdin::new();
-    stdin.write(&"Hello Zisk".to_string());
-
-    let proof = client.prove(&PROGRAM, stdin).run()?.await?;
-    proof.verify()?;
-
-    let digest: [u8; 32] = proof.get_publics().read()?;
-    println!("verified digest = 0x{}", hex::encode(digest));
-    Ok(())
-}
-```
+**Smoke-test proof.** Submit a real job from the included example:
 
 ```bash
-cargo run --release
+cd examples/sha-hasher/host
+cargo run --release --bin prove-remote
 ```
 
-The host uploads the ELF, the coordinator splits the job into
-segments and hands them to the worker, the worker produces STARK
-proofs, and the coordinator aggregates them into a final proof.
-Verification runs locally in milliseconds.
+The `prove-remote` binary builds a `ProverClient::remote("http://127.0.0.1:7000")`,
+uploads the guest ELF, and waits for the final proof. End-to-end:
+the coordinator splits the trace into segments and hands them to the
+worker, the worker produces STARK proofs, and the coordinator
+aggregates them into the final proof. Terminals 1 and 2 show the
+matching coordinator and worker activity.
 
 ---
 
-## Deployment on Linux
+## Deployment with scripts
 
 This section deploys the same two binaries on bare Linux hosts under
 systemd, the canonical path for a ZisK cluster.
@@ -273,7 +254,7 @@ cd zisk
 On the coordinator host:
 
 ```bash
-sudo distributed/crates/coordinator-server/scripts/install.sh
+sudo distributed/deploy/scripts/coordinator/install.sh
 ```
 
 The script:
@@ -286,13 +267,22 @@ The script:
 
 Verify the service:
 
+In Linux: 
+
 ```bash
 sudo systemctl status zisk-coordinator
 journalctl -u zisk-coordinator -f
 ```
 
-You should see the same three "listening on" lines from the
-quickstart. If the service is `failed`, journalctl shows the
+In Macos:
+
+```bash
+sudo launchctl print system/com.zisk.coordinator 
+tail -f /var/log/zisk-coordinator/zisk-coordinator.log 
+```
+
+You should see the same two "listening on" lines from the
+quickstart. If the service is `failed`, shows the
 underlying error (most often a port conflict or missing config
 field).
 
@@ -346,8 +336,15 @@ Edit `/etc/zisk/coordinator.toml`:
 
 After editing:
 
+In Linux:
+
 ```bash
 sudo systemctl restart zisk-coordinator
+```
+
+In Macos:
+```bash
+sudo launchctl kickstart -k system/com.zisk.coordinator
 ```
 
 ### Install workers
@@ -355,7 +352,7 @@ sudo systemctl restart zisk-coordinator
 On each worker host:
 
 ```bash
-sudo distributed/crates/worker/scripts/install.sh
+sudo distributed/deploy/scripts/worker/install.sh
 ```
 
 The worker is now running with the default
@@ -417,8 +414,14 @@ table.
 
 After editing:
 
+In Linux:
 ```bash
 sudo systemctl restart zisk-worker
+```
+
+In Macos:
+```bash
+sudo launchctl kickstart -k system/com.zisk.coordinator
 ```
 
 ### Add more workers
