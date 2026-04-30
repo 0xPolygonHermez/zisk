@@ -6,31 +6,39 @@
 #   sudo ./install.sh [OPTIONS]
 #
 # Options:
-#   --env PATH            Load env vars from PATH (default: ./.env if present)
-#   --binary PATH         Use a pre-built binary instead of building from source
-#   --config PATH         Install an existing worker.toml instead of the sample
-#   --proving-key PATH    Path to the proving key directory
-#                         (default: /var/lib/zisk-worker/provingKey)
-#   --mpi                 Force-enable MPI (default true on Linux, false on macOS)
-#   --no-mpi              Run the worker as a single process, no mpirun
-#   --mpi-processes N     Manual override for -np
-#   --mpi-numa-ppr N      Manual override for -map-by ppr:N:numa
-#   --mpi-threads N       Manual override for RAYON_NUM_THREADS
-#                         (--mpi-processes / --mpi-numa-ppr / --mpi-threads
-#                          must all be specified together if any are given)
-#   --no-start            Linux: enable but don't start.
-#                         macOS: write plist but don't load (same as --no-enable).
-#   --no-enable           Linux: install unit but don't enable or start.
-#                         macOS: write plist but don't load.
-#   --uninstall           Stop, disable, and remove the service (prompts for cleanup)
-#   -y, --yes             Skip every uninstall prompt (assume yes)
+#   --env PATH             Load env vars from PATH (default: ./.env if present)
+#   --binary PATH          Use a pre-built binary instead of building from source
+#   --config PATH          Install an existing worker.toml instead of the sample
+#   --proving-key PATH     Path to the proving key directory
+#                          (default: /var/lib/zisk-worker/provingKey)
+#   --coordinator-url URL  Distributed coordinator URL (overrides TOML)
+#   --worker-id ID         Worker identifier (overrides TOML; auto-UUID if unset)
+#   --compute-capacity N   Compute units to advertise (overrides TOML)
+#   --emulator             Use prebuilt emulator (mutex with --asm)
+#   --asm PATH             ASM file path (mutex with --emulator)
+#   --gpu                  Run with GPU (only meaningful in non-cpu-only builds)
+#   --mpi                  Force-enable MPI (default true on Linux, false on macOS)
+#   --no-mpi               Run the worker as a single process, no mpirun
+#   --mpi-processes N      Manual override for -np
+#   --mpi-numa-ppr N       Manual override for -map-by ppr:N:numa
+#   --mpi-threads N        Manual override for RAYON_NUM_THREADS
+#                          (--mpi-processes / --mpi-numa-ppr / --mpi-threads
+#                           must all be specified together if any are given)
+#   --no-start             Linux: enable but don't start.
+#                          macOS: write plist but don't load (same as --no-enable).
+#   --no-enable            Linux: install unit but don't enable or start.
+#                          macOS: write plist but don't load.
+#   --uninstall            Stop, disable, and remove the service (prompts for cleanup)
+#   -y, --yes              Skip every uninstall prompt (assume yes)
 #
 # Notes:
 #   On macOS, MPI defaults off — Apple Silicon has no NUMA, no CUDA. MPI on
 #   macOS is only useful for single-host multi-process testing.
 #
 # Env-var equivalents (CLI flags win): ZISK_WORKER_BINARY, ZISK_WORKER_CONFIG,
-# ZISK_WORKER_PROVING_KEY, ZISK_WORKER_MPI (true|false),
+# ZISK_WORKER_PROVING_KEY, ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
+# ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
+# ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS.
 
 set -euo pipefail
@@ -61,6 +69,12 @@ load_env_file "$@"
 BINARY_SRC="${ZISK_WORKER_BINARY:-}"
 CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
 PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
+COORDINATOR_URL="${ZISK_WORKER_COORDINATOR_URL:-}"
+WORKER_ID="${ZISK_WORKER_ID:-}"
+COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-}"
+EMULATOR="${ZISK_WORKER_EMULATOR:-false}"
+ASM_PATH="${ZISK_WORKER_ASM:-}"
+GPU="${ZISK_WORKER_GPU:-false}"
 MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
@@ -70,29 +84,39 @@ NO_ENABLE=false
 UNINSTALL=false
 ASSUME_YES=false
 
-case "$MPI_ENABLED" in
-    true|false) ;;
-    *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;;
-esac
+case "$MPI_ENABLED" in true|false) ;; *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;; esac
+case "$EMULATOR"    in true|false) ;; *) die "ZISK_WORKER_EMULATOR must be 'true' or 'false', got: ${EMULATOR}" ;; esac
+case "$GPU"         in true|false) ;; *) die "ZISK_WORKER_GPU must be 'true' or 'false', got: ${GPU}" ;; esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --env)            shift 2 ;;     # already consumed by load_env_file
-        --binary)         BINARY_SRC="$2";    shift 2 ;;
-        --config)         CONFIG_SRC="$2";    shift 2 ;;
-        --proving-key)    PROVING_KEY="$2";   shift 2 ;;
-        --mpi)            MPI_ENABLED=true;   shift ;;
-        --no-mpi)         MPI_ENABLED=false;  shift ;;
-        --mpi-processes)  MPI_NP="$2";        shift 2 ;;
-        --mpi-numa-ppr)   MPI_PPR="$2";       shift 2 ;;
-        --mpi-threads)    MPI_THREADS="$2";   shift 2 ;;
-        --no-start)       NO_START=true;      shift ;;
-        --no-enable)      NO_ENABLE=true;     shift ;;
-        --uninstall)      UNINSTALL=true;     shift ;;
-        -y|--yes)         ASSUME_YES=true;    shift ;;
+        --env)               shift 2 ;;     # already consumed by load_env_file
+        --binary)            BINARY_SRC="$2";       shift 2 ;;
+        --config)            CONFIG_SRC="$2";       shift 2 ;;
+        --proving-key)       PROVING_KEY="$2";      shift 2 ;;
+        --coordinator-url)   COORDINATOR_URL="$2";  shift 2 ;;
+        --worker-id)         WORKER_ID="$2";        shift 2 ;;
+        --compute-capacity)  COMPUTE_CAPACITY="$2"; shift 2 ;;
+        --emulator)          EMULATOR=true;         shift ;;
+        --asm)               ASM_PATH="$2";         shift 2 ;;
+        --gpu)               GPU=true;              shift ;;
+        --mpi)               MPI_ENABLED=true;      shift ;;
+        --no-mpi)            MPI_ENABLED=false;     shift ;;
+        --mpi-processes)     MPI_NP="$2";           shift 2 ;;
+        --mpi-numa-ppr)      MPI_PPR="$2";          shift 2 ;;
+        --mpi-threads)       MPI_THREADS="$2";      shift 2 ;;
+        --no-start)          NO_START=true;         shift ;;
+        --no-enable)         NO_ENABLE=true;        shift ;;
+        --uninstall)         UNINSTALL=true;        shift ;;
+        -y|--yes)            ASSUME_YES=true;       shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done
+
+# --emulator and --asm are mutually exclusive (binary enforces it; we fail earlier)
+if $EMULATOR && [[ -n "$ASM_PATH" ]]; then
+    die "--emulator and --asm are mutually exclusive."
+fi
 
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
@@ -193,6 +217,28 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
         printf '        <string>%s</string>\n' "${CONFIG_DST}"
         printf '        <string>--proving-key</string>\n'
         printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        if [[ -n "$COORDINATOR_URL" ]]; then
+            printf '        <string>--coordinator-url</string>\n'
+            printf '        <string>%s</string>\n' "${COORDINATOR_URL}"
+        fi
+        if [[ -n "$WORKER_ID" ]]; then
+            printf '        <string>--worker-id</string>\n'
+            printf '        <string>%s</string>\n' "${WORKER_ID}"
+        fi
+        if [[ -n "$COMPUTE_CAPACITY" ]]; then
+            printf '        <string>--compute-capacity</string>\n'
+            printf '        <string>%s</string>\n' "${COMPUTE_CAPACITY}"
+        fi
+        if $EMULATOR; then
+            printf '        <string>--emulator</string>\n'
+        fi
+        if [[ -n "$ASM_PATH" ]]; then
+            printf '        <string>--asm</string>\n'
+            printf '        <string>%s</string>\n' "${ASM_PATH}"
+        fi
+        if $GPU; then
+            printf '        <string>--gpu</string>\n'
+        fi
     }
 
     cat > "${LAUNCHD_PLIST}" <<PLIST
@@ -265,7 +311,16 @@ ${LOG_DIR}/${BINARY_NAME}.log  ${SERVICE_USER}:${SERVICE_GROUP}  640  ${LOG_ROTA
 NEWSYSLOG
     chmod 0644 "${NEWSYSLOG_CONF}"
 else
-    # Build ExecStart line
+    # Build worker args (everything after the binary path); appended to mpirun
+    # wrapper or to bare ExecStart depending on MPI_ENABLED.
+    WORKER_ARGS="--config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    [[ -n "$COORDINATOR_URL" ]]  && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
+    [[ -n "$WORKER_ID" ]]        && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
+    [[ -n "$COMPUTE_CAPACITY" ]] && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
+    $EMULATOR                    && WORKER_ARGS+=" --emulator"
+    [[ -n "$ASM_PATH" ]]         && WORKER_ARGS+=" --asm ${ASM_PATH}"
+    $GPU                         && WORKER_ARGS+=" --gpu"
+
     if $MPI_ENABLED; then
         EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
     -np ${MPI_NP} \\
@@ -273,10 +328,14 @@ else
     --bind-to numa \\
     --rank-by slot \\
     -x RAYON_NUM_THREADS=${MPI_THREADS} \\
-    ${BINARY_DST} --config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    ${BINARY_DST} ${WORKER_ARGS}"
     else
-        EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+        EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
     fi
+
+    # ReadOnlyPaths: include ASM_PATH so the sandbox can read it
+    READ_ONLY_PATHS="${CONFIG_DIR} ${PROVING_KEY}"
+    [[ -n "$ASM_PATH" ]] && READ_ONLY_PATHS+=" ${ASM_PATH}"
 
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
@@ -310,7 +369,7 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${WORK_DIR} ${LOG_DIR}
-ReadOnlyPaths=${CONFIG_DIR} ${PROVING_KEY}
+ReadOnlyPaths=${READ_ONLY_PATHS}
 
 [Install]
 WantedBy=multi-user.target

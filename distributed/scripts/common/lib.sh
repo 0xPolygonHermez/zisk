@@ -9,18 +9,27 @@
 # toggles such as --uninstall, --no-start and --no-enable remain CLI-only.
 #
 #   Coordinator
-#     ZISK_COORDINATOR_BINARY        pre-built binary path  (--binary)
-#     ZISK_COORDINATOR_CONFIG        TOML config path       (--config)
-#     ZISK_COORDINATOR_PORT          listening port         (--port)
+#     ZISK_COORDINATOR_BINARY        pre-built binary path     (--binary)
+#     ZISK_COORDINATOR_CONFIG        TOML config path          (--config)
+#     ZISK_COORDINATOR_API_PORT      client-facing API port    (--api-port)
+#     ZISK_COORDINATOR_CLUSTER_PORT  worker-facing port        (--cluster-port)
+#     ZISK_COORDINATOR_METRICS_PORT  Prometheus metrics port   (--metrics-port)
+#     RUST_LOG                       log level (trace..error)  (--log-level)
 #
 #   Worker
-#     ZISK_WORKER_BINARY             pre-built binary path  (--binary)
-#     ZISK_WORKER_CONFIG             TOML config path       (--config)
-#     ZISK_WORKER_PROVING_KEY        proving key directory  (--proving-key)
-#     ZISK_WORKER_MPI                true|false             (--mpi / --no-mpi)
-#     ZISK_WORKER_MPI_PROCESSES      -np override           (--mpi-processes)
-#     ZISK_WORKER_MPI_NUMA_PPR       ppr:N:numa override    (--mpi-numa-ppr)
-#     ZISK_WORKER_MPI_THREADS        RAYON_NUM_THREADS      (--mpi-threads)
+#     ZISK_WORKER_BINARY             pre-built binary path     (--binary)
+#     ZISK_WORKER_CONFIG             TOML config path          (--config)
+#     ZISK_WORKER_PROVING_KEY        proving key directory     (--proving-key)
+#     ZISK_WORKER_COORDINATOR_URL    coordinator gRPC URL      (--coordinator-url)
+#     ZISK_WORKER_ID                 worker identifier         (--worker-id)
+#     ZISK_WORKER_COMPUTE_CAPACITY   advertised compute units  (--compute-capacity)
+#     ZISK_WORKER_EMULATOR           true|false                (--emulator)
+#     ZISK_WORKER_ASM                ASM file path             (--asm)
+#     ZISK_WORKER_GPU                true|false                (--gpu)
+#     ZISK_WORKER_MPI                true|false                (--mpi / --no-mpi)
+#     ZISK_WORKER_MPI_PROCESSES      -np override              (--mpi-processes)
+#     ZISK_WORKER_MPI_NUMA_PPR       ppr:N:numa override       (--mpi-numa-ppr)
+#     ZISK_WORKER_MPI_THREADS        RAYON_NUM_THREADS         (--mpi-threads)
 
 info() { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
@@ -46,7 +55,7 @@ need_root() {
 #   defaults.env  <  .env file  <  pre-existing process env  <  CLI flags
 #
 # The function only sources; it does not export. Callers must reference the
-# resulting variables explicitly (e.g. PORT="${ZISK_COORDINATOR_PORT:-...}").
+# resulting variables explicitly (e.g. PORT="${ZISK_COORDINATOR_API_PORT:-...}").
 load_env_file() {
     local env_file=""
     local prev=""

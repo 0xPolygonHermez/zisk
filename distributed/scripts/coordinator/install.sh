@@ -6,19 +6,23 @@
 #   sudo ./install.sh [OPTIONS]
 #
 # Options:
-#   --env PATH       Load env vars from PATH (default: ./.env if present)
-#   --binary PATH    Use a pre-built binary instead of building from source
-#   --config PATH    Install an existing coordinator.toml instead of the sample
-#   --port N         Listening port (default: 7000)
-#   --no-start       Linux: enable but don't start.
-#                    macOS: write plist but don't load (same as --no-enable).
-#   --no-enable      Linux: install unit but don't enable or start.
-#                    macOS: write plist but don't load.
-#   --uninstall      Stop, disable, and remove the service (prompts for cleanup)
-#   -y, --yes        Skip every uninstall prompt (assume yes)
+#   --env PATH         Load env vars from PATH (default: ./.env if present)
+#   --binary PATH      Use a pre-built binary instead of building from source
+#   --config PATH      Install an existing coordinator.toml instead of the sample
+#   --api-port N       Client-facing gRPC API port (default: 7000)
+#   --cluster-port N   Worker-facing gRPC port (optional; TOML default if unset)
+#   --metrics-port N   Prometheus metrics port (optional; TOML default if unset)
+#   --log-level LEVEL  trace | debug | info | warn | error (optional; RUST_LOG)
+#   --no-start         Linux: enable but don't start.
+#                      macOS: write plist but don't load (same as --no-enable).
+#   --no-enable        Linux: install unit but don't enable or start.
+#                      macOS: write plist but don't load.
+#   --uninstall        Stop, disable, and remove the service (prompts for cleanup)
+#   -y, --yes          Skip every uninstall prompt (assume yes)
 #
 # Env-var equivalents (CLI flags win): ZISK_COORDINATOR_BINARY,
-# ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_PORT.
+# ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_API_PORT,
+# ZISK_COORDINATOR_CLUSTER_PORT, ZISK_COORDINATOR_METRICS_PORT, RUST_LOG.
 
 set -euo pipefail
 
@@ -40,7 +44,10 @@ load_env_file "$@"
 
 BINARY_SRC="${ZISK_COORDINATOR_BINARY:-}"
 CONFIG_SRC="${ZISK_COORDINATOR_CONFIG:-}"
-PORT="${ZISK_COORDINATOR_PORT:-$DEFAULT_PORT}"
+API_PORT="${ZISK_COORDINATOR_API_PORT:-$DEFAULT_API_PORT}"
+CLUSTER_PORT="${ZISK_COORDINATOR_CLUSTER_PORT:-}"
+METRICS_PORT="${ZISK_COORDINATOR_METRICS_PORT:-}"
+LOG_LEVEL="${RUST_LOG:-}"
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
@@ -48,14 +55,17 @@ ASSUME_YES=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --env)       shift 2 ;;     # already consumed by load_env_file
-        --binary)    BINARY_SRC="$2";  shift 2 ;;
-        --config)    CONFIG_SRC="$2";  shift 2 ;;
-        --port)      PORT="$2";        shift 2 ;;
-        --no-start)  NO_START=true;    shift ;;
-        --no-enable) NO_ENABLE=true;   shift ;;
-        --uninstall) UNINSTALL=true;   shift ;;
-        -y|--yes)    ASSUME_YES=true;  shift ;;
+        --env)           shift 2 ;;     # already consumed by load_env_file
+        --binary)        BINARY_SRC="$2";    shift 2 ;;
+        --config)        CONFIG_SRC="$2";    shift 2 ;;
+        --api-port)      API_PORT="$2";      shift 2 ;;
+        --cluster-port)  CLUSTER_PORT="$2";  shift 2 ;;
+        --metrics-port)  METRICS_PORT="$2";  shift 2 ;;
+        --log-level)     LOG_LEVEL="$2";     shift 2 ;;
+        --no-start)      NO_START=true;      shift ;;
+        --no-enable)     NO_ENABLE=true;     shift ;;
+        --uninstall)     UNINSTALL=true;     shift ;;
+        -y|--yes)        ASSUME_YES=true;    shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done
@@ -135,6 +145,27 @@ fi
 # 6. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
     info "Writing plist to ${LAUNCHD_PLIST}..."
+
+    build_program_args() {
+        printf '        <string>%s</string>\n' "${BINARY_DST}"
+        printf '        <string>--config</string>\n'
+        printf '        <string>%s</string>\n' "${CONFIG_DST}"
+        printf '        <string>--api-port</string>\n'
+        printf '        <string>%s</string>\n' "${API_PORT}"
+        if [[ -n "$CLUSTER_PORT" ]]; then
+            printf '        <string>--cluster-port</string>\n'
+            printf '        <string>%s</string>\n' "${CLUSTER_PORT}"
+        fi
+        if [[ -n "$METRICS_PORT" ]]; then
+            printf '        <string>--metrics-port</string>\n'
+            printf '        <string>%s</string>\n' "${METRICS_PORT}"
+        fi
+        if [[ -n "$LOG_LEVEL" ]]; then
+            printf '        <string>--log-level</string>\n'
+            printf '        <string>%s</string>\n' "${LOG_LEVEL}"
+        fi
+    }
+
     cat > "${LAUNCHD_PLIST}" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -146,12 +177,7 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
 
     <key>ProgramArguments</key>
     <array>
-        <string>${BINARY_DST}</string>
-        <string>--config</string>
-        <string>${CONFIG_DST}</string>
-        <string>-p</string>
-        <string>${PORT}</string>
-    </array>
+$(build_program_args)    </array>
 
     <key>UserName</key>
     <string>${SERVICE_USER}</string>
@@ -201,6 +227,12 @@ ${LOG_DIR}/${BINARY_NAME}.log  ${SERVICE_USER}:${SERVICE_GROUP}  640  ${LOG_ROTA
 NEWSYSLOG
     chmod 0644 "${NEWSYSLOG_CONF}"
 else
+    # Build ExecStart line — required flags first, optional appended only when set
+    EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST} --api-port ${API_PORT}"
+    [[ -n "$CLUSTER_PORT" ]] && EXEC_START+=" --cluster-port ${CLUSTER_PORT}"
+    [[ -n "$METRICS_PORT" ]] && EXEC_START+=" --metrics-port ${METRICS_PORT}"
+    [[ -n "$LOG_LEVEL" ]]    && EXEC_START+=" --log-level ${LOG_LEVEL}"
+
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
 [Unit]
@@ -214,7 +246,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${WORK_DIR}
-ExecStart=${BINARY_DST} --config ${CONFIG_DST} -p ${PORT}
+${EXEC_START}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
