@@ -172,9 +172,11 @@ main() {
 
     ensure cp ziskup/ziskup "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/libziskclib.a "${ZISK_BIN_DIR}" || return 1
-    # libziskc.a is built by lib-c (Makefile-driven) and published to
-    # <workspace>/target/zisk-libs/ regardless of --target.
-    ensure cp target/zisk-libs/libziskc.a "${ZISK_BIN_DIR}" || return 1
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        # libziskc.a is built by lib-c (Makefile-driven) and published to
+        # <workspace>/target/zisk-libs/ regardless of --target. Only built on Linux.
+        ensure cp target/zisk-libs/libziskc.a "${ZISK_BIN_DIR}" || return 1
+    fi
 
     step "Copying emulator-asm files..."
     if [[ "${PLATFORM}" == "linux" ]]; then

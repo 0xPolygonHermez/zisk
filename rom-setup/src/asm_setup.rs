@@ -334,7 +334,7 @@ pub fn generate_assembly(
             clean_cmd.arg(arg);
         }
         let status = clean_cmd
-            .current_dir(&emulator_asm_path)
+            .current_dir(emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             .status()
@@ -355,7 +355,7 @@ pub fn generate_assembly(
             build_cmd.arg(arg);
         }
         let status = build_cmd
-            .current_dir(&emulator_asm_path)
+            .current_dir(emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             .status()
