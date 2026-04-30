@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskStdin, ZiskHints};
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -7,11 +7,14 @@ async fn main() -> Result<()> {
 
     let elf_path = "hints/example/zec-reth.elf";
     let program = GuestProgram::from_uri(elf_path)?;
-    
+
     let hints_path = "hints/example/24654300_hints.bin";
     let hints = ZiskHints::from_file(hints_path)?;
-    
-    let client = ProverClient::embedded().executor(ExecutorKind::Assembly).build()?;
+
+    let builder = ProverClient::embedded().executor(ExecutorKind::Assembly);
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up program...");
     client.upload(&program).run()?;
@@ -26,7 +29,7 @@ async fn main() -> Result<()> {
         .await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?} ms",
+        "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

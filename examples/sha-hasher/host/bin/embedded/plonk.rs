@@ -15,7 +15,10 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let client = ProverClient::embedded().gpu().plonk().build()?;
+    let builder = ProverClient::embedded().plonk();
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up program and generating verification key...");
     client.setup(&PROGRAM).run()?.await?;
@@ -23,13 +26,8 @@ async fn main() -> Result<()> {
 
     println!("Generating PLONK proof (this may take a while)...");
     let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?.await?;
-    println!("PLONK proof generated successfully in {:?}", snark_proof.get_proving_time());
+    println!("PLONK proof generated successfully in {} ms", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
-
-    // Alternatively, it can also be done in two steps
-    // let vadcop_result = client.prove(&PROGRAM, stdin)?.run()?;
-    // let vkey = PROGRAM.vk()?;
-    // let snark_proof = client.wrap_proof(vadcop_result.get_proof(), ProofMode::Plonk)?;
 
     println!("Verifying PLONK proof...");
     snark_proof.verify()?;

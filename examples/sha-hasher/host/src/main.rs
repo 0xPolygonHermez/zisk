@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
     let setup_handle = client.setup(&PROGRAM).run()?;
     setup_handle.await?;
 
-    let input = ZiskStream::grpc();
+    let input = ZiskStream::unix();
 
     let handle = client.execute(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
     input.write(&1000u32);
@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     let result = handle.await?;
 
     println!(
-        "ZisK has executed program with {} cycles in {:?} ms",
+        "ZisK has executed program with {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

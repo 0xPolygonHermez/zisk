@@ -3207,7 +3207,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "multiple-program-host"
+name = "multiple-programs-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",

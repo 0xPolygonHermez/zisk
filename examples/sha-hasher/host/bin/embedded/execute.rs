@@ -16,10 +16,13 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let builder = ProverClient::embedded();
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?.await?; // S'ha de fer un must use
+    client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
@@ -28,7 +31,7 @@ async fn main() -> Result<()> {
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
-    println!("Duration: {:?}", result.get_execution_time());
+    println!("Duration: {} ms", result.get_execution_time());
 
     println!("Reading public outputs...");
     let output: Output = result.get_public_values_abi()?;
