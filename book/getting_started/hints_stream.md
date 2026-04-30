@@ -23,7 +23,7 @@ flowchart LR
 ## Table of Contents
 
 1. [Hint Format and Protocol](#1-hint-format-and-protocol)
-2. [Hints in CLI Execution](#2-hints-in-cli-execution)
+2. [Using Hints with the SDK](#2-using-hints-with-the-sdk)
 3. [Hints in Distributed Execution](#3-hints-in-distributed-execution)
 4. [Custom Hint Handlers](#4-custom-hint-handlers)
 5. [Generating Hints in Guest Programs](#5-generating-hints-in-guest-programs)
@@ -178,18 +178,74 @@ CTRL_START                          ← Reset state, begin stream
 CTRL_END                            ← Wait for completion, end stream
 ```
 
-## 2. Hints in CLI Execution
+## 2. Consuming Hints
 
-There are four CLI commands (`execute`, `prove`, `verify-constraints`, `stats`) that support hints stream system by providing a URI via the `--hints` option. The URI determines the input stream source for hints, which can be a file, Unix socket, QUIC stream, or other custom transport.
-The supported schemes are:
+Once a guest program has produced a hints binary file (see [Section 5](#5-generating-hints-in-guest-programs)), you can feed it to the prover either programmatically through the ZisK SDK or via the ZisK CLI.
+
+> **Note:** Hints are only supported with the **Assembly executor**. The emulator-based executor does not use the hints pipeline.
+
+### 2.1 SDK
+
+Load the file with `ZiskHints::from_file` and pass it to `.hints(...)` on the executor:
+
+```rust
+use anyhow::Result;
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskStdin, ZiskHints};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let elf_path = "hints/example/zec-reth.elf";
+    let program = GuestProgram::from_uri(elf_path)?;
+
+    let hints_path = "hints/example/24654300_hints.bin";
+    let hints = ZiskHints::from_file(hints_path)?;
+
+    let client = ProverClient::embedded()
+        .executor(ExecutorKind::Assembly)
+        .build()?;
+
+    client.upload(&program).run()?;
+    client.setup(&program).with_hints().run()?.await?;
+
+    let result = client
+        .execute(&program, ZiskStdin::new())
+        .hints(hints)
+        .executor(ExecutorKind::Assembly)
+        .run()?
+        .await?;
+
+    println!(
+        "Program executed successfully: {} cycles in {:.2?} ms",
+        result.get_execution_steps(),
+        result.get_execution_time()
+    );
+
+    Ok(())
+}
+```
+
+**Notes:**
+- Setup must be run with `.with_hints()` so the assembly ROM is generated with hint support enabled. Without it, the prover will not consume the hints stream.
+- `ZiskHints::from_file` loads the binary produced by the guest's hint generation. The returned value can be reused across multiple `.execute(...)` / `.prove(...)` calls.
+- The same pattern works for `prove`, `verify-constraints`, and `stats` operations exposed by `ProverClient`.
+
+A complete runnable example is available at `examples/hints/host/src/main.rs`.
+
+### 2.2 CLI
+
+Four `cargo-zisk` commands accept a `--hints` flag pointing to the hints file: `execute`, `prove`, `verify-constraints`, and `stats`. Pass the path with the `file://` scheme:
+
 ```
 --hints file://path      → File stream reader
---hints unix://path      → Unix socket stream reader
---hints quic://host:port → Quic stream reader
---hints (plain path)     → File stream reader
 ```
 
-> **Note:** Only ASM mode supports hints. The emulator mode does not use the hints pipeline.
+Example:
+
+```bash
+cargo-zisk prove --elf program.elf --hints file:///abs/path/hints.bin
+```
+
+`--hints` is mutually exclusive with `--inputs` (`-i`): if you provide hints, the inputs are recovered from the hint stream itself rather than from a separate input file.
 
 ## 3. Hints in Distributed Execution
 
