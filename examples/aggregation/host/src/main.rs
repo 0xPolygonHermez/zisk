@@ -1,5 +1,13 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+
+#[derive(Serialize, Deserialize)]
+struct GuestPublics {
+    n: u32,
+    module: u32,
+    b: u32,
+}
 
 static PROGRAM1: GuestProgram = load_program!("guest");
 static PROGRAM2: GuestProgram = load_program!("guest-agg");
@@ -32,6 +40,29 @@ async fn main() -> Result<()> {
         result.get_execution_steps(),
         result.get_execution_time()
     );
+
+    let publics: GuestPublics = result.get_public_values()?;
+
+    let expected_module: u32 = 233;
+    let expected_b = {
+        let mut a: u32 = 0;
+        let mut b: u32 = 1;
+        for _ in 0..n {
+            let c = (a + b) % expected_module;
+            a = b;
+            b = c;
+        }
+        b
+    };
+
+    assert_eq!(publics.n, n, "expected n={}, got {}", n, publics.n);
+    assert_eq!(
+        publics.module, expected_module,
+        "expected module={}, got {}",
+        expected_module, publics.module
+    );
+    assert_eq!(publics.b, expected_b, "expected b={}, got {}", expected_b, publics.b);
+    println!("Publics OK: n={}, module={}, b={}", publics.n, publics.module, publics.b);
 
     println!("Generating first proof for program...");
     let vadcop_result1 = client.prove(&PROGRAM1, stdin).run()?.await?;
