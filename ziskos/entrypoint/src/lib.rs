@@ -58,6 +58,12 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_init")]
 pub extern "C" fn zkvm_init() {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        read_input_reset();
+        crate::io::write_output_reset();
+    }
+
     #[cfg(all(
         not(all(target_os = "zkvm", target_vendor = "zisk")),
         zisk_hints,
@@ -125,7 +131,7 @@ const INPUT_INITIAL_OFFSET: usize = 0;
 static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 
 /// Reset the input position to the beginning.
-pub fn read_reset() {
+pub fn read_input_reset() {
     unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
 }
 
@@ -135,7 +141,6 @@ static NATIVE_INPUT: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(N
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn set_native_input(data: Vec<u8>) {
     *NATIVE_INPUT.lock().unwrap() = Some(data);
-    read_reset();
 }
 
 /// Read a slice directly from INPUT_ADDR without copying (zero-copy).
