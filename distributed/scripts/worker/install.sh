@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# install.sh — install zisk-worker as a systemd service on Linux.
+# install.sh — install zisk-worker as a systemd service (Linux) or launchd
+#              daemon (macOS).
 #
 # Usage:
 #   sudo ./install.sh [OPTIONS]
@@ -10,31 +11,27 @@
 #   --config PATH         Install an existing worker.toml instead of the sample
 #   --proving-key PATH    Path to the proving key directory
 #                         (default: /var/lib/zisk-worker/provingKey)
-#   --mpi                 Force-enable MPI (default on Linux)
+#   --mpi                 Force-enable MPI (default true on Linux, false on macOS)
 #   --no-mpi              Run the worker as a single process, no mpirun
 #   --mpi-processes N     Manual override for -np
 #   --mpi-numa-ppr N      Manual override for -map-by ppr:N:numa
 #   --mpi-threads N       Manual override for RAYON_NUM_THREADS
 #                         (--mpi-processes / --mpi-numa-ppr / --mpi-threads
 #                          must all be specified together if any are given)
-#   --no-start            Enable but do not start the service
-#   --no-enable           Install unit file but do not enable or start
+#   --no-start            Linux: enable but don't start.
+#                         macOS: write plist but don't load (same as --no-enable).
+#   --no-enable           Linux: install unit but don't enable or start.
+#                         macOS: write plist but don't load.
 #   --uninstall           Stop, disable, and remove the service (prompts for cleanup)
 #   -y, --yes             Skip every uninstall prompt (assume yes)
+#
+# Notes:
+#   On macOS, MPI defaults off — Apple Silicon has no NUMA, no CUDA. MPI on
+#   macOS is only useful for single-host multi-process testing.
 #
 # Env-var equivalents (CLI flags win): ZISK_WORKER_BINARY, ZISK_WORKER_CONFIG,
 # ZISK_WORKER_PROVING_KEY, ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS.
-#
-# What this script does:
-#   1. Verifies it's running on Linux
-#   2. Creates the 'zisk-worker' system user
-#   3. Builds or installs the binary to /usr/local/bin/zisk-worker
-#   4. Installs config to /etc/zisk/worker.toml
-#   5. Creates working directories (/var/lib/zisk-worker, /var/log/zisk)
-#   6. Detects MPI parameters (unless --no-mpi)
-#   7. Writes /etc/systemd/system/zisk-worker.service
-#   8. Runs: systemctl daemon-reload && systemctl enable --now zisk-worker
 
 set -euo pipefail
 
@@ -47,7 +44,15 @@ source "${COMMON_DIR}/lib.sh"
 # shellcheck source=./defaults.env
 source "${SCRIPT_DIR}/defaults.env"
 
-require_os "Linux"
+[[ "$OS_NAME" == "Linux" || "$OS_NAME" == "Darwin" ]] || \
+    die "unsupported OS: ${OS_NAME}. Only Linux and Darwin are supported."
+
+# OS-aware MPI default — Linux on by default, Darwin off.
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    MPI_DEFAULT=false
+else
+    MPI_DEFAULT=true
+fi
 
 # ── load .env (if any), then argument parsing ─────────────────────────────────
 
@@ -56,7 +61,7 @@ load_env_file "$@"
 BINARY_SRC="${ZISK_WORKER_BINARY:-}"
 CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
 PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
-MPI_ENABLED="${ZISK_WORKER_MPI:-true}"
+MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
@@ -93,15 +98,21 @@ done
 
 if $UNINSTALL; then
     need_root
-    [[ -f "${UNIT_FILE}" ]] || die "${BINARY_NAME} is not installed (${UNIT_FILE} not found)."
+
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        marker="${LAUNCHD_PLIST}"
+    else
+        marker="${UNIT_FILE}"
+    fi
+    [[ -f "$marker" ]] || die "${BINARY_NAME} is not installed (${marker} not found)."
     confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
 
-    # Recover install-time paths from unit metadata; fall back to defaults.env
-    data_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" DATA_DIR)"
-    log_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" LOG_DIR)"
-    config_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" CONFIG_DIR)"
-    svc_user="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" SVC_USER)"
-    svc_group="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" SVC_GROUP)"
+    # Recover install-time paths from metadata; fall back to defaults.env
+    data_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" DATA_DIR)"
+    log_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" LOG_DIR)"
+    config_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" CONFIG_DIR)"
+    svc_user="$(read_unit_metadata "$marker" "${BINARY_NAME}" SVC_USER)"
+    svc_group="$(read_unit_metadata "$marker" "${BINARY_NAME}" SVC_GROUP)"
     : "${data_dir:=$WORK_DIR}"
     : "${log_dir:=$LOG_DIR}"
     : "${config_dir:=$CONFIG_DIR}"
@@ -109,10 +120,15 @@ if $UNINSTALL; then
     : "${svc_group:=$SERVICE_GROUP}"
 
     info "Stopping and removing ${BINARY_NAME}..."
-    systemctl stop    "${BINARY_NAME}" 2>/dev/null || true
-    systemctl disable "${BINARY_NAME}" 2>/dev/null || true
-    rm -f "${UNIT_FILE}" "${BINARY_DST}"
-    systemctl daemon-reload
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
+        rm -f "${LAUNCHD_PLIST}" "${BINARY_DST}" "${NEWSYSLOG_CONF}"
+    else
+        systemctl stop    "${BINARY_NAME}" 2>/dev/null || true
+        systemctl disable "${BINARY_NAME}" 2>/dev/null || true
+        rm -f "${UNIT_FILE}" "${BINARY_DST}"
+        systemctl daemon-reload
+    fi
 
     prompt_remove_dir "${log_dir}" "log directory"
     prompt_remove_dir "${data_dir}" "data directory"
@@ -128,50 +144,142 @@ fi
 need_root
 
 # 1. Resolve MPI configuration
-resolve_mpi_config "Install OpenMPI, load the module, or pass --no-mpi."
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    resolve_mpi_config "Install OpenMPI (brew install open-mpi), or pass --no-mpi."
+else
+    resolve_mpi_config "Install OpenMPI, load the module, or pass --no-mpi."
+fi
 
 # 2. Build or use pre-built binary
 build_or_use_binary "zisk-worker"
 
 # 3. Create system group + user
-if ! getent group "${SERVICE_GROUP}" &>/dev/null; then
-    info "Creating system group '${SERVICE_GROUP}'..."
-    groupadd --system "${SERVICE_GROUP}"
-fi
-if ! id "${SERVICE_USER}" &>/dev/null; then
-    info "Creating system user '${SERVICE_USER}'..."
-    useradd --system --gid "${SERVICE_GROUP}" --no-create-home --shell /usr/sbin/nologin "${SERVICE_USER}"
-fi
+create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "${WORK_DIR}"
 
 # 4. Install binary
-info "Installing binary to ${BINARY_DST}..."
-install -m 755 "${BINARY_SRC}" "${BINARY_DST}"
+install_binary "${BINARY_SRC}" "${BINARY_DST}"
 
 # 5. Install config
 mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
 
-# 6. Create working and log directories
+# 6. Create working and log directories. Pre-create ~/.zisk/cache for HOME-resolution.
 mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 
-# 7. Build ExecStart line
-if $MPI_ENABLED; then
-    EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
+# 7. Write service unit
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    info "Writing plist to ${LAUNCHD_PLIST}..."
+
+    build_program_args() {
+        if $MPI_ENABLED; then
+            printf '        <string>%s</string>\n' "${MPIRUN_BIN}"
+            printf '        <string>--report-bindings</string>\n'
+            printf '        <string>--allow-run-as-root</string>\n'
+            printf '        <string>-np</string>\n'
+            printf '        <string>%s</string>\n' "${MPI_NP}"
+            printf '        <string>-map-by</string>\n'
+            printf '        <string>ppr:%s:numa</string>\n' "${MPI_PPR}"
+            printf '        <string>--bind-to</string>\n'
+            printf '        <string>numa</string>\n'
+            printf '        <string>--rank-by</string>\n'
+            printf '        <string>slot</string>\n'
+            printf '        <string>-x</string>\n'
+            printf '        <string>RAYON_NUM_THREADS=%s</string>\n' "${MPI_THREADS}"
+        fi
+        printf '        <string>%s</string>\n' "${BINARY_DST}"
+        printf '        <string>--config</string>\n'
+        printf '        <string>%s</string>\n' "${CONFIG_DST}"
+        printf '        <string>--proving-key</string>\n'
+        printf '        <string>%s</string>\n' "${PROVING_KEY}"
+    }
+
+    cat > "${LAUNCHD_PLIST}" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${LAUNCHD_LABEL}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+$(build_program_args)    </array>
+
+    <key>UserName</key>
+    <string>${SERVICE_USER}</string>
+
+    <key>GroupName</key>
+    <string>${SERVICE_GROUP}</string>
+
+    <key>WorkingDirectory</key>
+    <string>${WORK_DIR}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>${WORK_DIR}</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>${LOG_DIR}/${BINARY_NAME}.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>${LOG_DIR}/${BINARY_NAME}.log</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>Nice</key>
+    <integer>-10</integer>
+
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65535</integer>
+    </dict>
+</dict>
+</plist>
+
+<!-- Install metadata (read by --uninstall; do not edit) -->
+<!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
+<!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
+<!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
+<!-- ${BINARY_NAME}:SVC_USER=${SERVICE_USER} -->
+<!-- ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP} -->
+PLIST
+
+    chown root:wheel "${LAUNCHD_PLIST}"
+    chmod 0644 "${LAUNCHD_PLIST}"
+
+    # 8. Write newsyslog rotation config
+    info "Writing newsyslog config to ${NEWSYSLOG_CONF}..."
+    cat > "${NEWSYSLOG_CONF}" <<NEWSYSLOG
+# ${BINARY_NAME} log rotation — max ${LOG_MAX_SIZE_MB}MB per file, keep ${LOG_ROTATIONS} rotations, gzipped
+${LOG_DIR}/${BINARY_NAME}.log  ${SERVICE_USER}:${SERVICE_GROUP}  640  ${LOG_ROTATIONS}  $(( LOG_MAX_SIZE_MB * 1024 ))  *  JG
+NEWSYSLOG
+    chmod 0644 "${NEWSYSLOG_CONF}"
+else
+    # Build ExecStart line
+    if $MPI_ENABLED; then
+        EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
     -np ${MPI_NP} \\
     -map-by ppr:${MPI_PPR}:numa \\
     --bind-to numa \\
     --rank-by slot \\
     -x RAYON_NUM_THREADS=${MPI_THREADS} \\
     ${BINARY_DST} --config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
-else
-    EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
-fi
+    else
+        EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    fi
 
-# 8. Write systemd unit file
-info "Writing unit file to ${UNIT_FILE}..."
-cat > "${UNIT_FILE}" <<EOF
+    info "Writing unit file to ${UNIT_FILE}..."
+    cat > "${UNIT_FILE}" <<EOF
 [Unit]
 Description=ZisK Worker — distributed proof generation worker
 Documentation=https://github.com/0xPolygonHermez/zisk
@@ -214,23 +322,50 @@ WantedBy=multi-user.target
 # ${BINARY_NAME}:SVC_USER=${SERVICE_USER}
 # ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP}
 EOF
+fi
 
-systemctl daemon-reload
-
-if $NO_ENABLE; then
-    info "Unit file installed. Service not enabled (--no-enable)."
-    info "To enable: sudo systemctl enable --now ${BINARY_NAME}"
-elif $NO_START; then
-    systemctl enable "${BINARY_NAME}"
-    info "Service enabled but not started (--no-start)."
-    info "To start: sudo systemctl start ${BINARY_NAME}"
+# 9. Activate service (or skip)
+SHOW_HINTS=true
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    if $NO_ENABLE || $NO_START; then
+        flag=$($NO_ENABLE && echo "--no-enable" || echo "--no-start")
+        info "Plist installed. Service not loaded (${flag})."
+        info "To load: sudo launchctl load -w ${LAUNCHD_PLIST}"
+        SHOW_HINTS=false
+    else
+        info "Loading service via launchctl..."
+        launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
+        launchctl load -w "${LAUNCHD_PLIST}"
+    fi
 else
-    systemctl enable --now "${BINARY_NAME}"
+    systemctl daemon-reload
+    if $NO_ENABLE; then
+        info "Unit file installed. Service not enabled (--no-enable)."
+        info "To enable: sudo systemctl enable --now ${BINARY_NAME}"
+        SHOW_HINTS=false
+    elif $NO_START; then
+        systemctl enable "${BINARY_NAME}"
+        info "Service enabled but not started (--no-start)."
+        info "To start: sudo systemctl start ${BINARY_NAME}"
+        SHOW_HINTS=false
+    else
+        systemctl enable --now "${BINARY_NAME}"
+    fi
+fi
+
+# 10. Print post-install hints (only when fully activated)
+if $SHOW_HINTS; then
     echo
     info "✓ ${BINARY_NAME} installed and started."
     echo
-    echo "  Status:    systemctl status ${BINARY_NAME}"
-    echo "  Logs:      journalctl -u ${BINARY_NAME} -f"
-    echo "  Restart:   systemctl restart ${BINARY_NAME}"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        echo "  Status:    sudo launchctl print system/${LAUNCHD_LABEL}"
+        echo "  Logs:      tail -f ${LOG_DIR}/${BINARY_NAME}.log"
+        echo "  Restart:   sudo launchctl kickstart -k system/${LAUNCHD_LABEL}"
+    else
+        echo "  Status:    systemctl status ${BINARY_NAME}"
+        echo "  Logs:      journalctl -u ${BINARY_NAME} -f"
+        echo "  Restart:   systemctl restart ${BINARY_NAME}"
+    fi
     echo "  Uninstall: sudo $(basename "${BASH_SOURCE[0]}") --uninstall"
 fi

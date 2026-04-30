@@ -26,6 +26,11 @@ info() { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
 die()  { echo "[ERROR] $*" >&2; exit 1; }
 
+# Detected once on source. Used to branch service-management, user creation,
+# binary install, and uninstall helpers. Linux | Darwin (other OSes will
+# fail any branch that doesn't recognise them).
+OS_NAME="$(uname -s)"
+
 need_root() {
     if [[ $EUID -ne 0 ]]; then
         die "this script must be run as root (sudo)."
@@ -60,15 +65,6 @@ load_env_file() {
         info "Loading environment from ${env_file}"
         # shellcheck disable=SC1090
         set -a; source "$env_file"; set +a
-    fi
-}
-
-require_os() {
-    local expected="$1"
-    local actual
-    actual="$(uname -s)"
-    if [[ "$actual" != "$expected" ]]; then
-        die "this script targets ${expected}; current OS is ${actual}. Use the matching install script instead."
     fi
 }
 
@@ -121,31 +117,56 @@ install_config_or_sample() {
     fi
 }
 
-# darwin_create_service_user USER GROUP REAL_NAME HOME_DIR
-# Creates a macOS system group + user via dscl, idempotently. Allocates the
-# next-available GID/UID by scanning existing entries.
-darwin_create_service_user() {
-    local user="$1" group="$2" real_name="$3" home="$4"
-    local gid uid
-
-    if ! dscl . -read "/Groups/${group}" &>/dev/null; then
-        info "Creating group '${group}'..."
-        gid=$(( $(dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | sort -n | tail -1) + 1 ))
-        dscl . -create "/Groups/${group}"
-        dscl . -create "/Groups/${group}" PrimaryGroupID "$gid"
-        dscl . -create "/Groups/${group}" RecordName    "${group}"
+# create_service_user USER GROUP REAL_NAME [HOME_DIR]
+# Creates a system group and a system user, idempotently. Branches Linux/Darwin.
+# HOME_DIR is required on Darwin (passed to NFSHomeDirectory) and ignored on
+# Linux (where we use --no-create-home). On Darwin the next-available GID/UID
+# is allocated by scanning existing dscl entries.
+create_service_user() {
+    local user="$1" group="$2" real_name="$3" home="${4:-}"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        [[ -n "$home" ]] || die "create_service_user: HOME_DIR required on Darwin"
+        local gid uid
+        if ! dscl . -read "/Groups/${group}" &>/dev/null; then
+            info "Creating group '${group}'..."
+            gid=$(( $(dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            dscl . -create "/Groups/${group}"
+            dscl . -create "/Groups/${group}" PrimaryGroupID "$gid"
+            dscl . -create "/Groups/${group}" RecordName    "${group}"
+        fi
+        if ! dscl . -read "/Users/${user}" &>/dev/null; then
+            info "Creating user '${user}'..."
+            uid=$(( $(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            gid=$(dscl . -read "/Groups/${group}" PrimaryGroupID | awk '{print $2}')
+            dscl . -create "/Users/${user}"
+            dscl . -create "/Users/${user}" UniqueID         "$uid"
+            dscl . -create "/Users/${user}" PrimaryGroupID   "$gid"
+            dscl . -create "/Users/${user}" UserShell        /usr/bin/false
+            dscl . -create "/Users/${user}" RealName         "${real_name}"
+            dscl . -create "/Users/${user}" NFSHomeDirectory "${home}"
+        fi
+    else
+        if ! getent group "$group" &>/dev/null; then
+            info "Creating system group '${group}'..."
+            groupadd --system "$group"
+        fi
+        if ! id "$user" &>/dev/null; then
+            info "Creating system user '${user}'..."
+            useradd --system --gid "$group" --no-create-home --shell /usr/sbin/nologin "$user"
+        fi
     fi
+}
 
-    if ! dscl . -read "/Users/${user}" &>/dev/null; then
-        info "Creating user '${user}'..."
-        uid=$(( $(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1) + 1 ))
-        gid=$(dscl . -read "/Groups/${group}" PrimaryGroupID | awk '{print $2}')
-        dscl . -create "/Users/${user}"
-        dscl . -create "/Users/${user}" UniqueID         "$uid"
-        dscl . -create "/Users/${user}" PrimaryGroupID   "$gid"
-        dscl . -create "/Users/${user}" UserShell        /usr/bin/false
-        dscl . -create "/Users/${user}" RealName         "${real_name}"
-        dscl . -create "/Users/${user}" NFSHomeDirectory "${home}"
+# install_binary SRC DST
+# Installs SRC to DST with mode 0755 and root ownership. Branches OS for the
+# group: root:root on Linux, root:wheel on Darwin.
+install_binary() {
+    local src="$1" dst="$2"
+    info "Installing binary to ${dst}..."
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        install -m 755 -o root -g wheel "$src" "$dst"
+    else
+        install -m 755 "$src" "$dst"
     fi
 }
 
@@ -249,7 +270,7 @@ prompt_remove_user_group() {
     local user="$1" group="$2"
     [[ -n "$user" && -n "$group" ]] || return 0
     confirm "Remove system user '${user}' and group '${group}'?" || return 0
-    if [[ "$(uname -s)" == "Darwin" ]]; then
+    if [[ "$OS_NAME" == "Darwin" ]]; then
         if dscl . -read "/Users/${user}" &>/dev/null; then
             dscl . -delete "/Users/${user}" && info "Removed user '${user}'."
         fi
