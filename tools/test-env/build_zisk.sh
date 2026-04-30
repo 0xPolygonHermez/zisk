@@ -118,9 +118,9 @@ main() {
 
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
-    if [[ "${BUILD_GPU}" == "1" ]]; then
-        FEATURES+=("gpu")
-        warn "Building with GPU support..."
+    if [[ "${BUILD_ONLY_CPU}" == "1" ]]; then
+        FEATURES+=("cpu-only")
+        warn "Building with CPU only..."
     fi
 
     BUILD_FEATURES=""
