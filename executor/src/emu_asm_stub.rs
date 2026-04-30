@@ -22,7 +22,7 @@ pub struct EmulatorAsm {}
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(_chunk_size: u64) -> Self {
-        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+        Self {}
     }
 
     #[allow(clippy::type_complexity)]
