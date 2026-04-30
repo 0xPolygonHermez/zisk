@@ -114,8 +114,17 @@ build_or_use_binary() {
     local pkg="$1"
     if [[ -z "${BINARY_SRC}" ]]; then
         require_workspace_root
-        info "Building ${BINARY_NAME} from source..."
-        cargo build --release -p "${pkg}" --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+        # If invoked via sudo, run cargo as the original user so target/ and
+        # ~/.cargo stay user-owned. -H sets HOME to the user's home so the
+        # cargo registry/cache is read from the right place.
+        if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+            info "Building ${BINARY_NAME} as ${SUDO_USER} (target/ stays user-owned)..."
+            sudo -u "$SUDO_USER" -H cargo build --release -p "${pkg}" \
+                --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+        else
+            info "Building ${BINARY_NAME} from source..."
+            cargo build --release -p "${pkg}" --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+        fi
         BINARY_SRC="${WORKSPACE_ROOT}/target/release/${BINARY_NAME}"
     fi
     [[ -f "${BINARY_SRC}" ]] || die "binary not found at ${BINARY_SRC}"
