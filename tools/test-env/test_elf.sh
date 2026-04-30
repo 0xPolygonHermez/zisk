@@ -174,19 +174,14 @@ test_elf() {
             fi
 
             step "Verifying constraints for ${input_file}..."
-            if [[ "${BUILD_GPU}" == "1" ]]; then
-                warn "Skipping verify constraints for GPU mode"
-            else
-
-                ensure cargo-zisk verify-constraints \
-                    -e "${ELF_FILE}" \
-                    ${input_flag} \
-                    2>&1 | tee "constraints_${input_file}.log" || return 1
-                if ! grep -F "All global constraints were successfully verified" \
-                         "constraints_${input_file}.log"; then
-                    err "verify constraints failed for ${input_file}"
-                    return 1
-                fi
+            ensure cargo-zisk verify-constraints \
+                -e "${ELF_FILE}" \
+                ${input_flag} \
+                2>&1 | tee "constraints_${input_file}.log" || return 1
+            if ! grep -F "All global constraints were successfully verified" \
+                        "constraints_${input_file}.log"; then
+                err "verify constraints failed for ${input_file}"
+                return 1
             fi
 
             if [[ "${DISABLE_PROVE}" != "1" ]]; then
