@@ -5,12 +5,16 @@
 #   sudo ./install.sh [OPTIONS]
 #
 # Options:
+#   --env PATH       Load env vars from PATH (default: ./.env if present)
 #   --binary PATH    Use a pre-built binary instead of building from source
 #   --config PATH    Install an existing coordinator.toml instead of the sample
 #   --port N         Listening port (default: 7000)
 #   --no-start       Enable but do not start the service
 #   --no-enable      Install unit file but do not enable or start
 #   --uninstall      Stop, disable, and remove the service and binary
+#
+# Env-var equivalents (CLI flags win): ZISK_COORDINATOR_BINARY,
+# ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_PORT.
 #
 # What this script does:
 #   1. Verifies it's running on Linux
@@ -34,17 +38,20 @@ source "${SCRIPT_DIR}/defaults.env"
 
 require_os "Linux"
 
-# ── argument parsing ──────────────────────────────────────────────────────────
+# ── load .env (if any), then argument parsing ─────────────────────────────────
 
-BINARY_SRC=""
-CONFIG_SRC=""
-PORT="${DEFAULT_PORT}"
+load_env_file "$@"
+
+BINARY_SRC="${ZISK_COORDINATOR_BINARY:-}"
+CONFIG_SRC="${ZISK_COORDINATOR_CONFIG:-}"
+PORT="${ZISK_COORDINATOR_PORT:-$DEFAULT_PORT}"
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --env)       shift 2 ;;     # already consumed by load_env_file
         --binary)    BINARY_SRC="$2";  shift 2 ;;
         --config)    CONFIG_SRC="$2";  shift 2 ;;
         --port)      PORT="$2";        shift 2 ;;

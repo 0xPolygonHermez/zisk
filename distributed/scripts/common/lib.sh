@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 # Shared bash helpers for ZisK install scripts.
 # Source this file: source "${SCRIPT_DIR}/../common/lib.sh"
+#
+# ── Environment-variable convention ──────────────────────────────────────────
+# Install scripts read the following env vars (typically populated from a .env
+# file via load_env_file). CLI flags always override env vars; env vars
+# override defaults.env. Only configuration values are exposed; operational
+# toggles such as --uninstall, --no-start and --no-enable remain CLI-only.
+#
+#   Coordinator
+#     ZISK_COORDINATOR_BINARY        pre-built binary path  (--binary)
+#     ZISK_COORDINATOR_CONFIG        TOML config path       (--config)
+#     ZISK_COORDINATOR_PORT          listening port         (--port)
+#
+#   Worker
+#     ZISK_WORKER_BINARY             pre-built binary path  (--binary)
+#     ZISK_WORKER_CONFIG             TOML config path       (--config)
+#     ZISK_WORKER_PROVING_KEY        proving key directory  (--proving-key)
+#     ZISK_WORKER_MPI                true|false             (--mpi / --no-mpi)
+#     ZISK_WORKER_MPI_PROCESSES      -np override           (--mpi-processes)
+#     ZISK_WORKER_MPI_NUMA_PPR       ppr:N:numa override    (--mpi-numa-ppr)
+#     ZISK_WORKER_MPI_THREADS        RAYON_NUM_THREADS      (--mpi-threads)
 
 info() { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }
@@ -9,6 +29,37 @@ die()  { echo "[ERROR] $*" >&2; exit 1; }
 need_root() {
     if [[ $EUID -ne 0 ]]; then
         die "this script must be run as root (sudo)."
+    fi
+}
+
+# load_env_file [ARGS...]
+# Loads environment variables from a .env file. Caller passes "$@" so this
+# function can scan for an explicit --env <path> override before falling back
+# to ./.env in the current working directory.
+#
+# Precedence (low → high) once layered into install scripts:
+#   defaults.env  <  .env file  <  pre-existing process env  <  CLI flags
+#
+# The function only sources; it does not export. Callers must reference the
+# resulting variables explicitly (e.g. PORT="${ZISK_COORDINATOR_PORT:-...}").
+load_env_file() {
+    local env_file=""
+    local prev=""
+    for arg in "$@"; do
+        if [[ "$prev" == "--env" ]]; then
+            env_file="$arg"
+            break
+        fi
+        prev="$arg"
+    done
+    if [[ -z "$env_file" && -f "./.env" ]]; then
+        env_file="./.env"
+    fi
+    if [[ -n "$env_file" ]]; then
+        [[ -f "$env_file" ]] || die "env file not found: ${env_file}"
+        info "Loading environment from ${env_file}"
+        # shellcheck disable=SC1090
+        set -a; source "$env_file"; set +a
     fi
 }
 

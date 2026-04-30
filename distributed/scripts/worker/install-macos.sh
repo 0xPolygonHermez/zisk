@@ -5,6 +5,7 @@
 #   sudo ./install-macos.sh [OPTIONS]
 #
 # Options:
+#   --env PATH            Load env vars from PATH (default: ./.env if present)
 #   --binary PATH         Use a pre-built binary instead of building from source
 #   --config PATH         Install an existing worker.toml instead of the sample
 #   --proving-key PATH    Path to the proving key directory
@@ -15,6 +16,10 @@
 #   --mpi-numa-ppr N      Manual override for -map-by ppr:N:numa
 #   --mpi-threads N       Manual override for RAYON_NUM_THREADS
 #   --uninstall           Stop, unload, and remove the service and binary
+#
+# Env-var equivalents (CLI flags win): ZISK_WORKER_BINARY, ZISK_WORKER_CONFIG,
+# ZISK_WORKER_PROVING_KEY, ZISK_WORKER_MPI (true|false),
+# ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS.
 #
 # Notes:
 #   macOS has no NUMA support and no CUDA on Apple Silicon. MPI on macOS is
@@ -43,19 +48,27 @@ source "${SCRIPT_DIR}/defaults.env"
 
 require_os "Darwin"
 
-# ── argument parsing ──────────────────────────────────────────────────────────
+# ── load .env (if any), then argument parsing ─────────────────────────────────
 
-BINARY_SRC=""
-CONFIG_SRC=""
-PROVING_KEY="${PROVING_KEY_DEFAULT}"
-MPI_ENABLED=false   # macOS default: MPI off
-MPI_NP=""
-MPI_PPR=""
-MPI_THREADS=""
+load_env_file "$@"
+
+BINARY_SRC="${ZISK_WORKER_BINARY:-}"
+CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
+PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
+MPI_ENABLED="${ZISK_WORKER_MPI:-false}"   # macOS default: MPI off
+MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
+MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
+MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
 UNINSTALL=false
+
+case "$MPI_ENABLED" in
+    true|false) ;;
+    *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;;
+esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --env)            shift 2 ;;     # already consumed by load_env_file
         --binary)         BINARY_SRC="$2";    shift 2 ;;
         --config)         CONFIG_SRC="$2";    shift 2 ;;
         --proving-key)    PROVING_KEY="$2";   shift 2 ;;
