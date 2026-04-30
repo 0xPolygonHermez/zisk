@@ -7415,7 +7415,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall dma_memcpy_fast\n";
                     }
@@ -7475,7 +7475,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcmp_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memcmp\n";
                     }
@@ -7523,7 +7523,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_inputcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_inputcpy\n";
                     }
@@ -7571,7 +7571,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_xmemset_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memset\n";
                     }
