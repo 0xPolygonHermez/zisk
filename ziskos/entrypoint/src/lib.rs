@@ -14,6 +14,7 @@ mod alloc;
 mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub use fcall::*;
+pub mod ffi;
 pub mod io;
 pub use profile::*;
 pub mod syscalls;
