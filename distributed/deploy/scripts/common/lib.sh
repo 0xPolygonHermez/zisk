@@ -50,6 +50,20 @@ need_root() {
     fi
 }
 
+# print_banner SERVICE
+# Identifies ZisK and the service being installed. Called at the top of each
+# install script so operators see what they're running and where to find the
+# project before any sudo prompt or build output scrolls past.
+print_banner() {
+    local service="$1"
+    cat <<BANNER
+============================================================
+  ZisK — distributed proving system  (${service} installer)
+  https://github.com/0xPolygonHermez/zisk
+============================================================
+BANNER
+}
+
 # load_env_file [ARGS...]
 # Loads environment variables from a .env file. Caller passes "$@" so this
 # function can scan for an explicit --env <path> override before falling back

@@ -35,6 +35,8 @@ source "${COMMON_DIR}/lib.sh"
 # shellcheck source=./defaults.env
 source "${SCRIPT_DIR}/defaults.env"
 
+print_banner coordinator
+
 # ── load .env (if any), then argument parsing ─────────────────────────────────
 
 load_env_file "$@"

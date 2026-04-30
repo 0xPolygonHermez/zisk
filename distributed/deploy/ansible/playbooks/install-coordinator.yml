@@ -13,5 +13,15 @@
 - name: Install zisk-coordinator
   hosts: coordinator
   become: true
+  pre_tasks:
+    - name: ZisK installation banner
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "  ZisK — distributed proving system  (coordinator installer)"
+          - "  https://github.com/0xPolygonHermez/zisk"
+          - "============================================================"
+      run_once: true
+      tags: always
   roles:
     - role: zisk-coordinator

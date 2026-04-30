@@ -16,5 +16,15 @@
 - name: Install zisk-worker
   hosts: workers
   become: true
+  pre_tasks:
+    - name: ZisK installation banner
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "  ZisK — distributed proving system  (worker installer)"
+          - "  https://github.com/0xPolygonHermez/zisk"
+          - "============================================================"
+      run_once: true
+      tags: always
   roles:
     - role: zisk-worker

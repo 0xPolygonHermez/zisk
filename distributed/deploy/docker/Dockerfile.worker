@@ -77,6 +77,14 @@ COPY --from=builder /app/target/release/zisk-worker /usr/local/bin/zisk-worker
 # Rust tooling and the worker itself resolve $HOME to locate ~/.zisk/cache
 ENV HOME=/app
 
+LABEL org.opencontainers.image.title="zisk-worker" \
+      org.opencontainers.image.description="Distributed proof-generation worker for the ZisK proving system" \
+      org.opencontainers.image.source="https://github.com/0xPolygonHermez/zisk" \
+      org.opencontainers.image.url="https://github.com/0xPolygonHermez/zisk" \
+      org.opencontainers.image.documentation="https://github.com/0xPolygonHermez/zisk/blob/main/distributed/README.md" \
+      org.opencontainers.image.vendor="0xPolygonHermez" \
+      org.opencontainers.image.licenses="Apache-2.0 OR MIT"
+
 USER zisk
 
 ENTRYPOINT ["zisk-worker"]

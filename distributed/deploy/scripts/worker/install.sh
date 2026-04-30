@@ -54,6 +54,8 @@ source "${COMMON_DIR}/lib.sh"
 # shellcheck source=./defaults.env
 source "${SCRIPT_DIR}/defaults.env"
 
+print_banner worker
+
 # OS-aware MPI default — Linux on by default, Darwin off.
 if [[ "$OS_NAME" == "Darwin" ]]; then
     MPI_DEFAULT=false

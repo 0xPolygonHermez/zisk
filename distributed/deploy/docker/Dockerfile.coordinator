@@ -75,6 +75,14 @@ COPY --from=probe   /grpc_health_probe                      /usr/local/bin/grpc_
 # Public gRPC API | Prometheus metrics | Worker-facing coordinator (internal)
 EXPOSE 7001 9091 50052
 
+LABEL org.opencontainers.image.title="zisk-coordinator" \
+      org.opencontainers.image.description="Coordinator server for the ZisK distributed proving system" \
+      org.opencontainers.image.source="https://github.com/0xPolygonHermez/zisk" \
+      org.opencontainers.image.url="https://github.com/0xPolygonHermez/zisk" \
+      org.opencontainers.image.documentation="https://github.com/0xPolygonHermez/zisk/blob/main/distributed/README.md" \
+      org.opencontainers.image.vendor="0xPolygonHermez" \
+      org.opencontainers.image.licenses="Apache-2.0 OR MIT"
+
 USER zisk
 
 ENTRYPOINT ["zisk-coordinator"]
