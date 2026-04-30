@@ -36,9 +36,11 @@ warn() { echo "[WARN]  $*" >&2; }
 die()  { echo "[ERROR] $*" >&2; exit 1; }
 
 # Detected once on source. Used to branch service-management, user creation,
-# binary install, and uninstall helpers. Linux | Darwin (other OSes will
-# fail any branch that doesn't recognise them).
+# binary install, and uninstall helpers. Anything other than Linux/Darwin is
+# rejected here so callers don't need to repeat the guard.
 OS_NAME="$(uname -s)"
+[[ "$OS_NAME" == "Linux" || "$OS_NAME" == "Darwin" ]] || \
+    die "lib.sh: unsupported OS '${OS_NAME}'. Only Linux and Darwin are supported."
 
 need_root() {
     if [[ $EUID -ne 0 ]]; then
@@ -244,21 +246,21 @@ confirm() {
     [[ "$(echo "$reply" | tr '[:upper:]' '[:lower:]')" == "y" ]]
 }
 
-# read_unit_metadata FILE BIN KEY
-# Reads a metadata value embedded in FILE (systemd unit or launchd plist).
-# Prints the value to stdout; returns empty string if FILE missing or key absent.
+# read_unit_metadata FILE KEY
+# Reads a metadata value for ${BINARY_NAME} embedded in FILE (systemd unit or
+# launchd plist). Prints the value to stdout; empty if FILE missing or key absent.
 read_unit_metadata() {
-    local file="$1" bin="$2" key="$3"
+    local file="$1" key="$2"
     [[ -f "$file" ]] || return 0
-    local marker="${bin}:${key}="
+    local marker="${BINARY_NAME}:${key}="
     if [[ "$file" == *.plist ]]; then
-        grep -- "<!-- ${marker}" "$file" 2>/dev/null \
-            | sed "s|.*<!-- ${marker}\(.*\) -->|\1|" \
-            | head -n1
+        awk -v m="<!-- ${marker}" -v e=" -->" \
+            'index($0,m) { s=index($0,m)+length(m); print substr($0,s,index($0,e)-s); exit }' \
+            "$file"
     else
-        grep -- "^# ${marker}" "$file" 2>/dev/null \
-            | sed "s|^# ${marker}||" \
-            | head -n1
+        awk -v m="^# ${marker}" \
+            '$0 ~ m { sub(m,""); print; exit }' \
+            "$file"
     fi
 }
 
@@ -288,12 +290,126 @@ prompt_remove_user_group() {
         fi
     else
         if id "$user" &>/dev/null; then
-            userdel "$user" 2>/dev/null && info "Removed user '${user}'." || \
+            if userdel "$user" 2>/dev/null; then
+                info "Removed user '${user}'."
+            else
                 warn "Could not remove user '${user}' (may have running processes)."
+            fi
         fi
         if getent group "$group" &>/dev/null; then
-            groupdel "$group" 2>/dev/null && info "Removed group '${group}'." || \
+            if groupdel "$group" 2>/dev/null; then
+                info "Removed group '${group}'."
+            else
                 warn "Could not remove group '${group}'."
+            fi
         fi
     fi
+}
+
+# ── service lifecycle (install/uninstall/activate/post-install hints) ─────────
+#
+# These read service-identity globals from the caller's defaults.env:
+#   BINARY_NAME, BINARY_DST, UNIT_FILE, LAUNCHD_PLIST, LAUNCHD_LABEL,
+#   NEWSYSLOG_CONF, WORK_DIR, LOG_DIR, CONFIG_DIR, SERVICE_USER, SERVICE_GROUP
+
+# uninstall_service
+# Stops + removes the service, then prompts for cleanup of dirs and svc user.
+# Recovers install-time paths from the unit/plist metadata footer; falls back
+# to the caller's defaults.env globals if metadata is missing (lets pre-Phase-2
+# installs still uninstall cleanly).
+uninstall_service() {
+    need_root
+
+    local marker
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        marker="${LAUNCHD_PLIST}"
+    else
+        marker="${UNIT_FILE}"
+    fi
+    [[ -f "$marker" ]] || die "${BINARY_NAME} is not installed (${marker} not found)."
+    confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
+
+    local data_dir log_dir config_dir svc_user svc_group
+    data_dir="$(read_unit_metadata "$marker" DATA_DIR)"
+    log_dir="$(read_unit_metadata "$marker" LOG_DIR)"
+    config_dir="$(read_unit_metadata "$marker" CONFIG_DIR)"
+    svc_user="$(read_unit_metadata "$marker" SVC_USER)"
+    svc_group="$(read_unit_metadata "$marker" SVC_GROUP)"
+    : "${data_dir:=$WORK_DIR}"
+    : "${log_dir:=$LOG_DIR}"
+    : "${config_dir:=$CONFIG_DIR}"
+    : "${svc_user:=$SERVICE_USER}"
+    : "${svc_group:=$SERVICE_GROUP}"
+
+    info "Stopping and removing ${BINARY_NAME}..."
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
+        rm -f "${LAUNCHD_PLIST}" "${BINARY_DST}" "${NEWSYSLOG_CONF}"
+    else
+        systemctl stop    "${BINARY_NAME}" 2>/dev/null || true
+        systemctl disable "${BINARY_NAME}" 2>/dev/null || true
+        rm -f "${UNIT_FILE}" "${BINARY_DST}"
+        systemctl daemon-reload
+    fi
+
+    prompt_remove_dir "${log_dir}" "log directory"
+    prompt_remove_dir "${data_dir}" "data directory"
+    prompt_remove_dir "${config_dir}" "config directory"
+    prompt_remove_user_group "${svc_user}" "${svc_group}"
+
+    info "${BINARY_NAME} uninstalled."
+}
+
+# activate_service
+# Starts/enables (or skips) the freshly-installed service. Reads NO_ENABLE and
+# NO_START booleans from the caller. Sets SHOW_HINTS=true on full activation,
+# false otherwise (caller branches on it to print management hints).
+activate_service() {
+    SHOW_HINTS=false
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        if $NO_ENABLE || $NO_START; then
+            local flag
+            flag=$($NO_ENABLE && echo "--no-enable" || echo "--no-start")
+            info "Plist installed. Service not loaded (${flag})."
+            info "To load: sudo launchctl load -w ${LAUNCHD_PLIST}"
+        else
+            info "Loading service via launchctl..."
+            launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
+            launchctl load -w "${LAUNCHD_PLIST}"
+            SHOW_HINTS=true
+        fi
+    else
+        systemctl daemon-reload
+        if $NO_ENABLE; then
+            info "Unit file installed. Service not enabled (--no-enable)."
+            info "To enable: sudo systemctl enable --now ${BINARY_NAME}"
+        elif $NO_START; then
+            systemctl enable "${BINARY_NAME}"
+            info "Service enabled but not started (--no-start)."
+            info "To start: sudo systemctl start ${BINARY_NAME}"
+        else
+            systemctl enable --now "${BINARY_NAME}"
+            SHOW_HINTS=true
+        fi
+    fi
+}
+
+# print_post_install_hints CALLER_PATH
+# Prints management hints. Caller passes ${BASH_SOURCE[0]} so the "Uninstall"
+# hint references the actual script the user invoked.
+print_post_install_hints() {
+    local caller="$1"
+    echo
+    info "✓ ${BINARY_NAME} installed and started."
+    echo
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        echo "  Status:    sudo launchctl print system/${LAUNCHD_LABEL}"
+        echo "  Logs:      tail -f ${LOG_DIR}/${BINARY_NAME}.log"
+        echo "  Restart:   sudo launchctl kickstart -k system/${LAUNCHD_LABEL}"
+    else
+        echo "  Status:    systemctl status ${BINARY_NAME}"
+        echo "  Logs:      journalctl -u ${BINARY_NAME} -f"
+        echo "  Restart:   systemctl restart ${BINARY_NAME}"
+    fi
+    echo "  Uninstall: sudo $(basename "$caller") --uninstall"
 }

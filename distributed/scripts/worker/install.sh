@@ -52,9 +52,6 @@ source "${COMMON_DIR}/lib.sh"
 # shellcheck source=./defaults.env
 source "${SCRIPT_DIR}/defaults.env"
 
-[[ "$OS_NAME" == "Linux" || "$OS_NAME" == "Darwin" ]] || \
-    die "unsupported OS: ${OS_NAME}. Only Linux and Darwin are supported."
-
 # OS-aware MPI default — Linux on by default, Darwin off.
 if [[ "$OS_NAME" == "Darwin" ]]; then
     MPI_DEFAULT=false
@@ -121,45 +118,7 @@ fi
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
 if $UNINSTALL; then
-    need_root
-
-    if [[ "$OS_NAME" == "Darwin" ]]; then
-        marker="${LAUNCHD_PLIST}"
-    else
-        marker="${UNIT_FILE}"
-    fi
-    [[ -f "$marker" ]] || die "${BINARY_NAME} is not installed (${marker} not found)."
-    confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
-
-    # Recover install-time paths from metadata; fall back to defaults.env
-    data_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" DATA_DIR)"
-    log_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" LOG_DIR)"
-    config_dir="$(read_unit_metadata "$marker" "${BINARY_NAME}" CONFIG_DIR)"
-    svc_user="$(read_unit_metadata "$marker" "${BINARY_NAME}" SVC_USER)"
-    svc_group="$(read_unit_metadata "$marker" "${BINARY_NAME}" SVC_GROUP)"
-    : "${data_dir:=$WORK_DIR}"
-    : "${log_dir:=$LOG_DIR}"
-    : "${config_dir:=$CONFIG_DIR}"
-    : "${svc_user:=$SERVICE_USER}"
-    : "${svc_group:=$SERVICE_GROUP}"
-
-    info "Stopping and removing ${BINARY_NAME}..."
-    if [[ "$OS_NAME" == "Darwin" ]]; then
-        launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
-        rm -f "${LAUNCHD_PLIST}" "${BINARY_DST}" "${NEWSYSLOG_CONF}"
-    else
-        systemctl stop    "${BINARY_NAME}" 2>/dev/null || true
-        systemctl disable "${BINARY_NAME}" 2>/dev/null || true
-        rm -f "${UNIT_FILE}" "${BINARY_DST}"
-        systemctl daemon-reload
-    fi
-
-    prompt_remove_dir "${log_dir}" "log directory"
-    prompt_remove_dir "${data_dir}" "data directory"
-    prompt_remove_dir "${config_dir}" "config directory"
-    prompt_remove_user_group "${svc_user}" "${svc_group}"
-
-    info "${BINARY_NAME} uninstalled."
+    uninstall_service
     exit 0
 fi
 
@@ -383,48 +342,6 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# 9. Activate service (or skip)
-SHOW_HINTS=true
-if [[ "$OS_NAME" == "Darwin" ]]; then
-    if $NO_ENABLE || $NO_START; then
-        flag=$($NO_ENABLE && echo "--no-enable" || echo "--no-start")
-        info "Plist installed. Service not loaded (${flag})."
-        info "To load: sudo launchctl load -w ${LAUNCHD_PLIST}"
-        SHOW_HINTS=false
-    else
-        info "Loading service via launchctl..."
-        launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
-        launchctl load -w "${LAUNCHD_PLIST}"
-    fi
-else
-    systemctl daemon-reload
-    if $NO_ENABLE; then
-        info "Unit file installed. Service not enabled (--no-enable)."
-        info "To enable: sudo systemctl enable --now ${BINARY_NAME}"
-        SHOW_HINTS=false
-    elif $NO_START; then
-        systemctl enable "${BINARY_NAME}"
-        info "Service enabled but not started (--no-start)."
-        info "To start: sudo systemctl start ${BINARY_NAME}"
-        SHOW_HINTS=false
-    else
-        systemctl enable --now "${BINARY_NAME}"
-    fi
-fi
-
-# 10. Print post-install hints (only when fully activated)
-if $SHOW_HINTS; then
-    echo
-    info "✓ ${BINARY_NAME} installed and started."
-    echo
-    if [[ "$OS_NAME" == "Darwin" ]]; then
-        echo "  Status:    sudo launchctl print system/${LAUNCHD_LABEL}"
-        echo "  Logs:      tail -f ${LOG_DIR}/${BINARY_NAME}.log"
-        echo "  Restart:   sudo launchctl kickstart -k system/${LAUNCHD_LABEL}"
-    else
-        echo "  Status:    systemctl status ${BINARY_NAME}"
-        echo "  Logs:      journalctl -u ${BINARY_NAME} -f"
-        echo "  Restart:   systemctl restart ${BINARY_NAME}"
-    fi
-    echo "  Uninstall: sudo $(basename "${BASH_SOURCE[0]}") --uninstall"
-fi
+# 9. Activate service and (if started) print management hints
+activate_service
+$SHOW_HINTS && print_post_install_hints "${BASH_SOURCE[0]}"
