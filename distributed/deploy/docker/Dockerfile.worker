@@ -4,8 +4,8 @@
 # Workers connect to the coordinator's embedded coordination engine (port 50051).
 #
 # Build context must be the workspace root:
-#   docker build -f distributed/Dockerfile.worker -t zisk-worker .
-#   docker build --build-arg GPU=true -f distributed/Dockerfile.worker -t zisk-worker:gpu .
+#   docker build -f distributed/deploy/docker/Dockerfile.worker -t zisk-worker .
+#   docker build --build-arg GPU=true -f distributed/deploy/docker/Dockerfile.worker -t zisk-worker:gpu .
 
 # ── Build stage ────────────────────────────────────────────────────────────────
 FROM rust:bookworm AS builder

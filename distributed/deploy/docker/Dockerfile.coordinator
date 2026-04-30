@@ -4,7 +4,7 @@
 # run any proof computation itself.
 #
 # Build context must be the workspace root:
-#   docker build -f distributed/Dockerfile.coordinator -t zisk-coordinator .
+#   docker build -f distributed/deploy/docker/Dockerfile.coordinator -t zisk-coordinator .
 
 # ── grpc-health-probe ─────────────────────────────────────────────────────────
 # Static binary used by the container healthcheck and grpc-health-probe CLI.

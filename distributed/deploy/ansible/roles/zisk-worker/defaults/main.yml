@@ -1,6 +1,6 @@
 ---
 # zisk-worker role defaults.
-# Mirrors distributed/scripts/worker/defaults.env. Override per host/group.
+# Mirrors distributed/deploy/scripts/worker/defaults.env. Override per host/group.
 
 zisk_worker_user: zisk-worker
 zisk_worker_group: zisk-worker
@@ -16,6 +16,16 @@ zisk_worker_unit_file: /etc/systemd/system/zisk-worker.service
 zisk_worker_binary_src: ""           # required: path to pre-built zisk-worker binary
 zisk_worker_config_src: ""           # optional: path to worker.toml; if empty and
                                      #   target lacks a config, role leaves it absent
+
+# Service-config CLI overrides — leave empty to use the value from worker.toml.
+# emulator and asm are mutually exclusive at the binary; setting both is rejected.
+zisk_worker_coordinator_url: ""      # gRPC URL of the coordinator       (--coordinator-url)
+zisk_worker_id: ""                   # worker identifier                 (--worker-id)
+zisk_worker_compute_capacity: ""     # compute units to advertise        (--compute-capacity)
+zisk_worker_emulator: false          # use prebuilt emulator             (--emulator)
+zisk_worker_asm: ""                  # ASM file path                     (--asm)
+zisk_worker_gpu: false               # run with GPU                      (--gpu)
+zisk_worker_log_level: ""            # trace|debug|info|warn|error       (--log-level)
 
 # MPI configuration. Default: enabled with auto-detect.
 # To run single-process: set zisk_worker_mpi_enabled: false.

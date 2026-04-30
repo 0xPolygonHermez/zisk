@@ -10,7 +10,14 @@ Type=simple
 User={{ zisk_coordinator_user }}
 Group={{ zisk_coordinator_group }}
 WorkingDirectory={{ zisk_coordinator_work_dir }}
-ExecStart={{ zisk_coordinator_binary_dst }} --config {{ zisk_coordinator_config_dst }} -p {{ zisk_coordinator_port }}
+{#- Coordinator arg list — required + conditional appends. -#}
+{%- set coord_args -%}
+--config {{ zisk_coordinator_config_dst }} --api-port {{ zisk_coordinator_api_port }}
+{%- if zisk_coordinator_cluster_port %} --cluster-port {{ zisk_coordinator_cluster_port }}{% endif -%}
+{%- if zisk_coordinator_metrics_port %} --metrics-port {{ zisk_coordinator_metrics_port }}{% endif -%}
+{%- if zisk_coordinator_log_level %} --log-level {{ zisk_coordinator_log_level }}{% endif -%}
+{%- endset %}
+ExecStart={{ zisk_coordinator_binary_dst }} {{ coord_args }}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535

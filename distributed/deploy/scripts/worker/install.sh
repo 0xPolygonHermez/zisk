@@ -17,6 +17,7 @@
 #   --emulator             Use prebuilt emulator (mutex with --asm)
 #   --asm PATH             ASM file path (mutex with --emulator)
 #   --gpu                  Run with GPU (only meaningful in non-cpu-only builds)
+#   --log-level LEVEL      trace | debug | info | warn | error (optional; RUST_LOG)
 #   --mpi                  Force-enable MPI (default true on Linux, false on macOS)
 #   --no-mpi               Run the worker as a single process, no mpirun
 #   --mpi-processes N      Manual override for -np
@@ -39,7 +40,8 @@
 # ZISK_WORKER_PROVING_KEY, ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
 # ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
 # ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
-# ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS.
+# ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
+# RUST_LOG.
 
 set -euo pipefail
 
@@ -72,6 +74,7 @@ COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-}"
 EMULATOR="${ZISK_WORKER_EMULATOR:-false}"
 ASM_PATH="${ZISK_WORKER_ASM:-}"
 GPU="${ZISK_WORKER_GPU:-false}"
+LOG_LEVEL="${RUST_LOG:-}"
 MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
@@ -97,6 +100,7 @@ while [[ $# -gt 0 ]]; do
         --emulator)          EMULATOR=true;         shift ;;
         --asm)               ASM_PATH="$2";         shift 2 ;;
         --gpu)               GPU=true;              shift ;;
+        --log-level)         LOG_LEVEL="$2";        shift 2 ;;
         --mpi)               MPI_ENABLED=true;      shift ;;
         --no-mpi)            MPI_ENABLED=false;     shift ;;
         --mpi-processes)     MPI_NP="$2";           shift 2 ;;
@@ -198,6 +202,10 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
         if $GPU; then
             printf '        <string>--gpu</string>\n'
         fi
+        if [[ -n "$LOG_LEVEL" ]]; then
+            printf '        <string>--log-level</string>\n'
+            printf '        <string>%s</string>\n' "${LOG_LEVEL}"
+        fi
     }
 
     cat > "${LAUNCHD_PLIST}" <<PLIST
@@ -279,6 +287,7 @@ else
     $EMULATOR                    && WORKER_ARGS+=" --emulator"
     [[ -n "$ASM_PATH" ]]         && WORKER_ARGS+=" --asm ${ASM_PATH}"
     $GPU                         && WORKER_ARGS+=" --gpu"
+    [[ -n "$LOG_LEVEL" ]]        && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
 
     if $MPI_ENABLED; then
         EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\

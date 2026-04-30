@@ -1,12 +1,14 @@
 ---
-- name: Validate required role inputs
+- name: Validate role inputs
   ansible.builtin.assert:
     that:
       - zisk_worker_binary_src | length > 0
       - ansible_facts['os_family'] != 'Darwin'
+      - not (zisk_worker_emulator and zisk_worker_asm | length > 0)
     fail_msg: >-
-      zisk-worker role requires a Linux target and zisk_worker_binary_src
-      pointing at a pre-built binary on the Ansible control host.
+      zisk-worker requires: a Linux target; zisk_worker_binary_src pointing at
+      a pre-built binary on the Ansible control host; zisk_worker_emulator and
+      zisk_worker_asm not both set (mutually exclusive at the binary).
 
 - name: Validate MPI parameter triplet (all-or-none)
   ansible.builtin.assert:

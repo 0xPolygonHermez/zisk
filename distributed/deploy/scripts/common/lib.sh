@@ -14,7 +14,6 @@
 #     ZISK_COORDINATOR_API_PORT      client-facing API port    (--api-port)
 #     ZISK_COORDINATOR_CLUSTER_PORT  worker-facing port        (--cluster-port)
 #     ZISK_COORDINATOR_METRICS_PORT  Prometheus metrics port   (--metrics-port)
-#     RUST_LOG                       log level (trace..error)  (--log-level)
 #
 #   Worker
 #     ZISK_WORKER_BINARY             pre-built binary path     (--binary)
@@ -30,6 +29,9 @@
 #     ZISK_WORKER_MPI_PROCESSES      -np override              (--mpi-processes)
 #     ZISK_WORKER_MPI_NUMA_PPR       ppr:N:numa override       (--mpi-numa-ppr)
 #     ZISK_WORKER_MPI_THREADS        RAYON_NUM_THREADS         (--mpi-threads)
+#
+#   Shared
+#     RUST_LOG                       log level (trace..error)  (--log-level)
 
 info() { echo "[INFO]  $*"; }
 warn() { echo "[WARN]  $*" >&2; }

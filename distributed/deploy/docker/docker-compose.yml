@@ -3,13 +3,13 @@
 # Usage (from the workspace root):
 #
 #   Start the coordinator only:
-#     docker compose -f distributed/docker-compose.yml up coordinator
+#     docker compose -f distributed/deploy/docker/docker-compose.yml up coordinator
 #
 #   Start the full stack with N workers:
-#     docker compose -f distributed/docker-compose.yml up --scale worker=4
+#     docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
 #
 #   Build with GPU support for workers:
-#     docker compose -f distributed/docker-compose.yml build --build-arg GPU=true worker
+#     docker compose -f distributed/deploy/docker/docker-compose.yml build --build-arg GPU=true worker
 
 services:
 
@@ -18,8 +18,8 @@ services:
   # Workers connect to the coordinator on port 50052 (internal to this container).
   coordinator:
     build:
-      context: ..
-      dockerfile: distributed/Dockerfile.coordinator
+      context: ../../..
+      dockerfile: distributed/deploy/docker/Dockerfile.coordinator
     image: zisk-coordinator:latest
     container_name: zisk-coordinator
     restart: on-failure
@@ -27,9 +27,9 @@ services:
       - "7001:7001" # public gRPC API
       - "9091:9091" # Prometheus metrics
     volumes:
-      - ./config/coordinator.toml:/etc/zisk/coordinator.toml:ro
+      - ../config/coordinator.toml:/etc/zisk/coordinator.toml:ro
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=${RUST_LOG:-info}
     networks:
       - zisk
     healthcheck:
@@ -44,18 +44,18 @@ services:
   # Each instance gets a unique auto-generated worker_id (no worker_id in config).
   worker:
     build:
-      context: ..
-      dockerfile: distributed/Dockerfile.worker
+      context: ../../..
+      dockerfile: distributed/deploy/docker/Dockerfile.worker
       args:
         GPU: false # set to true for GPU-accelerated workers
     image: zisk-worker:latest
     restart: on-failure
     volumes:
-      - ./config/worker.toml:/etc/zisk/worker.toml:ro
+      - ../config/worker.toml:/etc/zisk/worker.toml:ro
       # Mount the ZisK home directory (provingKey, cache, etc.) from the host:
       - ${ZISK_HOME:-~/.zisk}:/app/.zisk:ro
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       coordinator:
         condition: service_started # workers reconnect automatically, no need to wait for healthy
@@ -72,7 +72,7 @@ services:
     extra_hosts:
       - "coordinator:host-gateway"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
