@@ -8,5 +8,6 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 build = "build.rs"
+links = "ziskc"
 
 [dependencies]

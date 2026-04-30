@@ -14,8 +14,9 @@ use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    // Load the embedded float library
-    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
+    // Load the embedded float library. The path is wired up by `core/build.rs`
+    // via `lib-float`'s build-script metadata so the ELF can live under OUT_DIR.
+    const FLOAT_LIB_DATA: &[u8] = include_bytes!(env!("ZISK_FLOAT_ELF"));
 
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =

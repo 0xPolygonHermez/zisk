@@ -123,6 +123,10 @@ jobs:
           cp ./target/${TARGET}/release/zisk-coordinator           zisk-dist/bin/
           cp ./ziskup/ziskup                                       zisk-dist/bin/
           cp ./target/${TARGET}/release/libziskclib.a              zisk-dist/bin/
+          # libziskc.a is built by lib-c (Makefile-driven) and published to
+          # <workspace>/target/zisk-libs/ regardless of --target. The installed
+          # emulator-asm Makefile picks it up via its `-L../../bin` fallback.
+          cp ./target/zisk-libs/libziskc.a                         zisk-dist/bin/
 
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src

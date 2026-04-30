@@ -6,10 +6,10 @@ else
       CFLAGS = -O3 -fPIC
 endif
 
-# Directories
-BUILD_DIR = build
-LIB_DIR = lib
-SRC_DIR = src
+# Directories (overridable so the Rust build script can redirect into OUT_DIR)
+BUILD_DIR ?= build
+LIB_DIR ?= lib
+SRC_DIR ?= src
 
 # Output library
 LIB_NAME = libziskc.a
@@ -67,9 +67,13 @@ $(BUILD_DIR):
 $(LIB_DIR):
 	mkdir -p $(LIB_DIR)
 
-# Library target
+# Library target.
+# `D` makes the archive deterministic (zeros member mtimes/uid/gid/mode), so
+# rebuilds with identical sources produce byte-identical archives. Required for
+# the rom-setup asm-binary cache key to stay valid across clean rebuilds on
+# binutils versions that don't default to deterministic archives.
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
-	ar rcs $@ $(ALL_OBJS)
+	ar Drcs $@ $(ALL_OBJS)
 
 # Test binary
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(LIB_FILE)

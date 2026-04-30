@@ -150,13 +150,70 @@ pub fn resolve_emulator_asm() -> Result<PathBuf> {
     Ok(emulator_asm_path)
 }
 
-fn asm_file_base(name: &str, hash: &str, hints: bool) -> String {
+fn asm_file_base(name: &str, hash: &str, hints: bool, deps_hash: &str) -> String {
     let prefix = if name != hash { format!("{name}-{hash}") } else { hash.to_string() };
+    // `deps_hash` keys the cache on the contents of libziskc.a / libziskclib.a /
+    // ziskfloat.elf so a workspace rebuild of any of them produces a different
+    // cache filename and the emu binary is regenerated against the new libs.
+    // Empty in installed mode where the libs don't change between runs.
+    let prefix = if deps_hash.is_empty() { prefix } else { format!("{prefix}-d{deps_hash}") };
     if hints {
         format!("{prefix}-hints")
     } else {
         prefix
     }
+}
+
+/// Resolve the lib paths that the emulator-asm Makefile will link against,
+/// in the same order as `compute_make_overrides`. Returns an empty vec in
+/// installed mode (no `<workspace>/target/`), where libs don't change between
+/// runs and a deps hash isn't needed.
+fn resolve_link_inputs(emulator_asm_path: &Path) -> Vec<PathBuf> {
+    let Some(parent) = emulator_asm_path.parent() else { return Vec::new() };
+    let target_dir = parent.join("target");
+    if !target_dir.exists() {
+        return Vec::new();
+    }
+    vec![
+        target_dir.join("zisk-libs").join("libziskc.a"),
+        target_dir.join("release").join("libziskclib.a"),
+        target_dir.join("zisk-libs").join("ziskfloat.elf"),
+    ]
+}
+
+/// Hash the link-time inputs (libziskc.a, libziskclib.a, ziskfloat.elf) so the
+/// asm cache key changes whenever any of them is rebuilt. Returns an empty
+/// string when there's nothing to hash (installed mode), letting the caller
+/// fall back to the legacy elf-only cache key.
+fn compute_deps_hash(emulator_asm_path: &Path) -> String {
+    let inputs = resolve_link_inputs(emulator_asm_path);
+    if inputs.is_empty() {
+        return String::new();
+    }
+    let mut hasher = blake3::Hasher::new();
+    for path in &inputs {
+        // Hash the basename + a separator + length + content so two inputs of
+        // the same content but different roles can never collide.
+        let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+        hasher.update(name.as_bytes());
+        hasher.update(&[0u8]);
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                hasher.update(&(bytes.len() as u64).to_le_bytes());
+                hasher.update(&bytes);
+            }
+            Err(_) => {
+                // Missing input — record the absence so a later present-state
+                // produces a different hash. The actual link will fail loudly
+                // downstream if the lib really is missing.
+                hasher.update(b"<missing>");
+            }
+        }
+        hasher.update(&[0xffu8]);
+    }
+    let digest = hasher.finalize();
+    // 12 hex chars (48 bits) is plenty to distinguish lib versions.
+    digest.to_hex().as_str()[..12].to_string()
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path
@@ -171,13 +228,28 @@ pub fn get_assembly_file_paths(
         .context("Failed to extract file stem from ELF path")?
         .to_str()
         .context("Failed to convert ELF file stem to string")?;
-    let base = asm_file_base(elf_name, &elf_hash, hints);
+    let base = compute_asm_basename(elf_name, &elf_hash, hints);
 
     Ok(vec![
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
         output_path.join(format!("{base}-mo.bin")),
     ])
+}
+
+/// Build the cache-base filename for the asm emulator binaries — the part
+/// before `-{mt,rh,mo}.bin`. This is the **canonical** entry point: any caller
+/// constructing a path to an asm binary (producer or consumer) must route
+/// through here so the deps_hash segment stays consistent.
+pub fn compute_asm_basename(elf_name: &str, elf_hash: &str, hints: bool) -> String {
+    // In installed mode `resolve_emulator_asm` succeeds but
+    // `compute_deps_hash` returns an empty string — we silently fall back to
+    // the legacy elf-only key in that case.
+    let deps_hash = match resolve_emulator_asm() {
+        Ok(p) => compute_deps_hash(&p),
+        Err(_) => String::new(),
+    };
+    asm_file_base(elf_name, elf_hash, hints, &deps_hash)
 }
 
 /// Check if all assembly binary files exist for a given ELF and output path
@@ -223,13 +295,20 @@ pub fn generate_assembly(
         anyhow::bail!("ROM file is not a valid ELF file");
     }
 
-    let base = asm_file_base(elf_name, &elf_hash, hints);
+    let emulator_asm_path = resolve_emulator_asm()?;
+    let deps_hash = compute_deps_hash(&emulator_asm_path);
+    let base = asm_file_base(elf_name, &elf_hash, hints, &deps_hash);
 
     let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
     let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
     let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
 
-    let emulator_asm_path = resolve_emulator_asm()?;
+    // Decide where the Makefile should drop its intermediates and find the
+    // ziskc / ziskclib static libs. In workspace mode we point everything at
+    // `<workspace>/target/...` so `cargo clean` removes it; in installed mode
+    // we leave the Makefile's defaults alone (they resolve relative to the
+    // install dir).
+    let make_dir_overrides = compute_make_overrides(&emulator_asm_path);
 
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;
@@ -249,9 +328,13 @@ pub fn generate_assembly(
             .map_err(|e| anyhow::anyhow!("Error converting ELF to assembly: {}", e))?;
 
         // Build the emulator assembly
-        let status = Command::new("make")
-            .arg("clean")
-            .current_dir(emulator_asm_path)
+        let mut clean_cmd = Command::new("make");
+        clean_cmd.arg("clean");
+        for arg in &make_dir_overrides {
+            clean_cmd.arg(arg);
+        }
+        let status = clean_cmd
+            .current_dir(&emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             .status()
@@ -263,11 +346,16 @@ pub fn generate_assembly(
 
         let out_file_str = file.to_str().context("Failed to convert output file path to string")?;
 
-        let status = Command::new("make")
+        let mut build_cmd = Command::new("make");
+        build_cmd
             .arg(format!("EMU_PATH={}", asm_file_str))
             .arg(format!("OUT_PATH={}", out_file_str))
-            .arg(format!("TRACE_TARGET={trace_target}"))
-            .current_dir(emulator_asm_path)
+            .arg(format!("TRACE_TARGET={trace_target}"));
+        for arg in &make_dir_overrides {
+            build_cmd.arg(arg);
+        }
+        let status = build_cmd
+            .current_dir(&emulator_asm_path)
             .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
             .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             .status()
@@ -279,4 +367,24 @@ pub fn generate_assembly(
     }
 
     Ok(())
+}
+
+/// Compute the `make` arg overrides for `BUILD_DIR`, `ZISKC_LIB_DIR`, and
+/// `ZISKCLIB_LIB_DIR`. In a workspace build we redirect them under `target/`
+/// so `cargo clean` reaches them; in installed mode we return an empty list
+/// so the Makefile defaults stand.
+fn compute_make_overrides(emulator_asm_path: &Path) -> Vec<String> {
+    let Some(parent) = emulator_asm_path.parent() else { return Vec::new() };
+    let target_dir = parent.join("target");
+    if !target_dir.exists() {
+        return Vec::new();
+    }
+    let build_dir = target_dir.join("zisk-emulator-asm-build");
+    let ziskc_lib_dir = target_dir.join("zisk-libs");
+    let ziskclib_lib_dir = target_dir.join("release");
+    vec![
+        format!("BUILD_DIR={}", build_dir.display()),
+        format!("ZISKC_LIB_DIR={}", ziskc_lib_dir.display()),
+        format!("ZISKCLIB_LIB_DIR={}", ziskclib_lib_dir.display()),
+    ]
 }

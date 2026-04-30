@@ -122,8 +122,21 @@ impl HintsShmem {
     }
 
     /// Drop the semaphore handles (does not unlink — the binary owns the names).
+    ///
+    /// Uses `try_borrow_mut` because this is typically called from `Drop` while
+    /// a `submit` thread may still be parked on a semaphore (holding the
+    /// `RefCell` borrow). Panicking there would mask the real error that
+    /// triggered the teardown; the OS reclaims named semaphores on exit.
     pub fn unbind_semaphores(&self) {
-        *self.separate_sem.borrow_mut() = None;
+        match self.separate_sem.try_borrow_mut() {
+            Ok(mut g) => *g = None,
+            Err(_) => {
+                tracing::warn!(
+                    "HintsShmem::unbind_semaphores: separate_sem still borrowed (submit in flight); \
+                     skipping unbind, OS will reclaim on exit"
+                );
+            }
+        }
     }
 
     /// Update the number of active ASM services notified on each submit.
