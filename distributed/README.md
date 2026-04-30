@@ -62,17 +62,17 @@ The easiest way to run the distributed system. All commands run from the **works
 
 ```bash
 # Build images
-docker compose -f distributed/docker-compose.yml build
+docker compose -f distributed/deploy/docker/docker-compose.yml build
 
 # Start the coordinator only
-docker compose -f distributed/docker-compose.yml up coordinator
+docker compose -f distributed/deploy/docker/docker-compose.yml up coordinator
 
 # Start the full stack: coordinator + 4 workers + Prometheus
-docker compose -f distributed/docker-compose.yml up --scale worker=4
+docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
 
 # Build workers with GPU support
-docker compose -f distributed/docker-compose.yml build --build-arg GPU=true worker
-docker compose -f distributed/docker-compose.yml up --scale worker=4
+docker compose -f distributed/deploy/docker/docker-compose.yml build --build-arg GPU=true worker
+docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
 ```
 
 **Port mapping:**
@@ -301,16 +301,16 @@ For production deployments without Docker, use the install scripts to register t
 
 ```bash
 # Build from source and install (run from workspace root)
-sudo distributed/crates/coordinator-server/scripts/install.sh
+sudo distributed/deploy/scripts/coordinator/install.sh
 
 # Use a pre-built binary
-sudo distributed/crates/coordinator-server/scripts/install.sh --binary target/release/zisk-coordinator
+sudo distributed/deploy/scripts/coordinator/install.sh --binary target/release/zisk-coordinator
 
 # Use an existing config file
-sudo distributed/crates/coordinator-server/scripts/install.sh --config /path/to/coordinator.toml
+sudo distributed/deploy/scripts/coordinator/install.sh --config /path/to/coordinator.toml
 
 # Remove the service
-sudo distributed/crates/coordinator-server/scripts/install.sh --uninstall
+sudo distributed/deploy/scripts/coordinator/install.sh --uninstall
 ```
 
 ```bash
@@ -321,18 +321,18 @@ sudo journalctl -u zisk-coordinator -f
 
 ```bash
 # Build from source and install
-sudo distributed/crates/worker/scripts/install.sh
+sudo distributed/deploy/scripts/worker/install.sh
 
 # Specify the proving key directory
-sudo distributed/crates/worker/scripts/install.sh --proving-key /mnt/data/provingKey
+sudo distributed/deploy/scripts/worker/install.sh --proving-key /mnt/data/provingKey
 
 # Use a pre-built binary and existing config
-sudo distributed/crates/worker/scripts/install.sh \
+sudo distributed/deploy/scripts/worker/install.sh \
   --binary target/release/zisk-worker \
   --config /path/to/worker.toml
 
 # Remove the service
-sudo distributed/crates/worker/scripts/install.sh --uninstall
+sudo distributed/deploy/scripts/worker/install.sh --uninstall
 ```
 
 ```bash

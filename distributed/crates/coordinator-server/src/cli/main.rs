@@ -105,6 +105,8 @@ async fn main() -> Result<()> {
                 format!("0.0.0.0:{}", cfg.coordinator.port).parse()?;
             let worker_listener = TcpListener::bind(worker_addr).await?;
 
+            tracing::info!("cluster coordinator listening on {addr}", addr = worker_addr);
+
             // Spawn the worker-facing gRPC server — shuts down when the cancel token fires.
             let worker_coordinator = Arc::clone(&coordinator);
             let cancel_worker = cancel.clone();

@@ -58,11 +58,12 @@ The `--compute-capacity` flag specifies how many compute units the proof require
 For multi-machine setups, Docker simplifies deployment:
 
 ```bash
-# Build the image (CPU-only)
-docker build -t zisk-distributed:latest -f distributed/Dockerfile .
+# Build coordinator + worker images (CPU-only)
+docker build -t zisk-coordinator:latest -f distributed/deploy/docker/Dockerfile.coordinator .
+docker build -t zisk-worker:latest      -f distributed/deploy/docker/Dockerfile.worker      .
 
-# For GPU support
-docker build --build-arg GPU=true -t zisk-distributed:gpu -f distributed/Dockerfile .
+# Build the worker image with GPU support
+docker build --build-arg GPU=true -t zisk-worker:gpu -f distributed/deploy/docker/Dockerfile.worker .
 
 # Create a network for container DNS resolution
 docker network create zisk-net || true
