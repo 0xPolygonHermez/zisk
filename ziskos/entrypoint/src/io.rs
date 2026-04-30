@@ -2,7 +2,9 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-use crate::{read_input, set_output};
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+use crate::read_input;
+use crate::set_output;
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Read a deserializable object from the input stream.
