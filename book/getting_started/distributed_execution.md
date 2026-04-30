@@ -159,14 +159,6 @@ The coordinator binds three default ports on startup:
 | 50051 | Worker-facing gRPC port. Workers connect here.              |
 | 9090  | Prometheus metrics endpoint and `/health` liveness probe.   |
 
-A healthy startup log shows three "listening on" lines:
-
-```
-INFO Starting ZisK Coordinator
-INFO server listening on 0.0.0.0:7000
-INFO metrics listening on 0.0.0.0:9090
-```
-
 If the coordinator exits with `Address already in use`, override the
 offending port:
 
@@ -184,7 +176,7 @@ cargo run --release --bin zisk-worker -- \
     --config distributed/deploy/config/worker.toml
 ```
 
-`dev.toml` points the worker at `http://127.0.0.1:50051`, advertises
+`worker.toml` points the worker at `http://127.0.0.1:50051`, advertises
 ten compute units, and sets the log level to debug. On a successful
 handshake:
 
@@ -267,18 +259,9 @@ The script:
 
 Verify the service:
 
-In Linux: 
-
 ```bash
 sudo systemctl status zisk-coordinator
-journalctl -u zisk-coordinator -f
-```
-
-In Macos:
-
-```bash
-sudo launchctl print system/com.zisk.coordinator 
-tail -f /var/log/zisk-coordinator/zisk-coordinator.log 
+sudo journalctl -u zisk-coordinator -f
 ```
 
 You should see the same two "listening on" lines from the
@@ -336,32 +319,39 @@ Edit `/etc/zisk/coordinator.toml`:
 
 After editing:
 
-In Linux:
-
 ```bash
 sudo systemctl restart zisk-coordinator
 ```
 
-In Macos:
-```bash
-sudo launchctl kickstart -k system/com.zisk.coordinator
-```
-
 ### Install workers
 
-On each worker host:
+Workers need the proving keys on local disk before they can start.
+On each worker host, download and extract them first:
 
 ```bash
-sudo distributed/deploy/scripts/worker/install.sh
+wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-0.16.0.tar.gz
+tar -xzf zisk-provingkey-0.16.0.tar.gz
 ```
 
-The worker is now running with the default
-`http://127.0.0.1:50051` coordinator URL — it has nothing to talk to
-until you point it at your real coordinator.
+Then run the installer, pointing it at the extracted directory:
+
+```bash
+sudo distributed/deploy/scripts/worker/install.sh \
+    --proving-key /path/to/provingKey --gpu
+```
+
+If you skip `--proving-key`, the installer falls back to
+`/var/lib/zisk-worker/provingKey`; place (or symlink) the extracted
+keys there if you prefer the default. The --gpu flag can be ommited 
+if want to work with cpu.
+
+The worker starts immediately, but its default coordinator URL
+(`http://127.0.0.1:50051`) points at localhost — it will keep retrying
+this address until you redirect it to your real coordinator.
 
 #### Point the worker at the coordinator
 
-Edit `/etc/zisk/worker.toml`:
+Edit `/etc/zisk/worker.toml` and set the coordinator URL:
 
 ```toml
 [coordinator]
@@ -370,7 +360,7 @@ url = "http://<coordinator-host>:50051"
 
 ```bash
 sudo systemctl restart zisk-worker
-journalctl -u zisk-worker -f
+sudo journalctl -u zisk-worker -f
 ```
 
 Workers retry the connection every `reconnect_interval_seconds`
@@ -414,14 +404,10 @@ table.
 
 After editing:
 
-In Linux:
+* In Linux:
+
 ```bash
 sudo systemctl restart zisk-worker
-```
-
-In Macos:
-```bash
-sudo launchctl kickstart -k system/com.zisk.coordinator
 ```
 
 ### Add more workers
@@ -467,10 +453,10 @@ TOML:
 | ---                             | ---                   | ---                                      |
 | `--proving-key`                 | `~/.zisk/provingKey`  | Path to the proving-key folder           |
 | `--elf`                         | (none)                | Path to the ELF file                     |
-| `--hints`                       | `false`               | Enable precompile hints processing       |
 | `--shared-tables`               | `false`               | Share tables when running in a cluster   |
 | `--verify-constraints`          | `false`               | Verify constraints after witness gen     |
 | `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
+| `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
 | `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
 
 CLI flags override the config file for one-off testing:
