@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, OperationBusData, PayloadType, OPERATION_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::ArithEq384Trace;
+use zisk_pil::{ArithEq384TraceRow, ArithEq384TraceRowPacked, ARITH_EQ_384_AIR_IDS};
 
 use crate::{
     Arith384ModInput, ArithEq384Input, ArithEq384SM, Bls12_381ComplexAddInput,
@@ -47,12 +47,11 @@ impl<F: PrimeField64> ArithEq384Instance<F> {
     /// * `bus_id` - The bus ID associated with this instance.
     ///
     /// # Returns
-    /// A new `Arith256Instance` instance initialized with the provided state machine and
+    /// A new `ArithEq384Instance` instance initialized with the provided state machine and
     /// context.
     pub fn new(arith_eq_384_sm: Arc<ArithEq384SM<F>>, mut ictx: InstanceCtx) -> Self {
         assert_eq!(
-            ictx.plan.air_id,
-            ArithEq384Trace::<F>::AIR_ID,
+            ictx.plan.air_id, ARITH_EQ_384_AIR_IDS[0],
             "ArithEq384Instance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -68,8 +67,7 @@ impl<F: PrimeField64> ArithEq384Instance<F> {
 
     pub fn build_arith_eq_384_collector(&self, chunk_id: ChunkId) -> ArithEq384Collector {
         assert_eq!(
-            self.ictx.plan.air_id,
-            ArithEq384Trace::<F>::AIR_ID,
+            self.ictx.plan.air_id, ARITH_EQ_384_AIR_IDS[0],
             "ArithEq384Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -96,6 +94,7 @@ impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
         sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -104,7 +103,19 @@ impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
             })
             .collect();
 
-        Ok(Some(self.arith_eq_384_sm.compute_witness(sctx, &inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(self.arith_eq_384_sm.compute_witness::<ArithEq384TraceRowPacked<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        } else {
+            Ok(Some(self.arith_eq_384_sm.compute_witness::<ArithEq384TraceRow<F>>(
+                sctx,
+                &inputs,
+                trace_buffer,
+            )?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.

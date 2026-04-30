@@ -23,40 +23,11 @@ pub fn get_ops_costs(ops: &[u64]) -> (u64, u64) {
     for (op, count) in ops.iter().enumerate() {
         if let Ok(inst) = ZiskOp::try_from_code(op as u8) {
             if inst.input_size() > 0 {
-                precompiled_cost += inst.steps() * (*count);
+                precompiled_cost += inst.cost() * (*count);
             } else {
-                ops_cost += inst.steps() * (*count);
+                ops_cost += inst.cost() * (*count);
             }
         }
     }
     (ops_cost, precompiled_cost)
-}
-
-pub fn get_ops_ranking(ops: &[u64]) -> Vec<(u8, u64, u64)> {
-    let mut ranking: Vec<(u8, u64, u64)> = Vec::new();
-
-    for (opcode, count) in ops.iter().enumerate() {
-        if *count > 0 && opcode > 1 {
-            if let Ok(inst) = ZiskOp::try_from_code(opcode as u8) {
-                let cost = *count * inst.steps();
-                ranking.push((opcode as u8, *count, cost));
-            }
-        }
-    }
-
-    // Ordenar por coste descendente (mayor coste primero)
-    ranking.sort_by(|a, b| b.2.cmp(&a.2));
-    ranking
-}
-
-/// Returns a vector of opcodes ranked by cost (1-based ranking)
-pub fn get_ops_ranks(ops: &[u64]) -> [usize; 256] {
-    let mut ranks = [0usize; 256];
-    let ranking = get_ops_ranking(ops);
-
-    for (rank, (opcode, _, _)) in ranking.iter().enumerate() {
-        ranks[*opcode as usize] = rank + 1; // 1-based ranking
-    }
-
-    ranks
 }

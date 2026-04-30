@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, PayloadType, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::Add256Trace;
+use zisk_pil::{Add256Trace, Add256TraceRow, Add256TraceRowPacked};
 
 /// The `Add256Instance` struct represents an instance for the Add256 State Machine.
 ///
@@ -47,7 +47,7 @@ impl<F: PrimeField64> Add256Instance<F> {
     pub fn build_add256_collector(&self, chunk_id: ChunkId) -> Add256Collector {
         assert_eq!(
             self.ictx.plan.air_id,
-            Add256Trace::<F>::AIR_ID,
+            Add256Trace::<()>::AIR_ID,
             "Add256Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
@@ -76,13 +76,20 @@ impl<F: PrimeField64> Instance<F> for Add256Instance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| collector.as_any().downcast::<Add256Collector>().unwrap().inputs)
             .collect();
 
-        Ok(Some(self.add256_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.add256_sm.compute_witness::<Add256TraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.add256_sm.compute_witness::<Add256TraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -108,7 +115,7 @@ impl<F: PrimeField64> Instance<F> for Add256Instance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            Add256Trace::<F>::AIR_ID,
+            Add256Trace::<()>::AIR_ID,
             "Add256Instance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

@@ -39,7 +39,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --release --features no_lib_link
+          args: --workspace --release
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
@@ -59,10 +59,10 @@ jobs:
     env:
       ZISK_GHA: "1"
       ZISK_REPO_DIR: ${{ github.workspace }}
-      ZISK_TESTVECTORS_BRANCH: "main"
+      ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
       DISTRIBUTED_PROCESSES: "2"
       DISTRIBUTED_THREADS: "64"
-      PROVE_FLAGS: "-a -y"
+      PROVE_FLAGS: "-y"
       TERM: xterm
     steps:
       - name: Checkout sources
@@ -86,6 +86,8 @@ jobs:
           ./build_setup.sh
 
       - name: Test sha_hasher
+        env:
+          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.0"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
@@ -140,6 +142,8 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
+        env:
+          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.0"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
@@ -188,7 +192,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets -- -D warnings
-          # args: --all-features --all-targets -- -D warnings -A incomplete-features
+          # args: --all-targets -- -D warnings
+          args: --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1

@@ -319,7 +319,7 @@ impl MemAlignInstanceCounter {
         } else {
             totals.0 + totals.1 + totals.2 + totals.3 + totals.4
         };
-        println!("MEM_ALIGN_SEGMENT AIR:{} SEGMENT:{} FULL_5:{} FULL_3:{} FULL_2:{} READ_BYTE:{} WRITE_BYTE:{} TOTAL:{total}",
-            self.air_id, segment_id, totals.0, totals.1, totals.2, totals.3, totals.4);
+        println!("MEM_ALIGN_SEGMENT AIR:{} FULL_5:{} FULL_3:{} FULL_2:{} READ_BYTE:{} WRITE_BYTE:{} TOTAL:{total}",
+            self.air_id, totals.0, totals.1, totals.2, totals.3, totals.4);
     }
 }

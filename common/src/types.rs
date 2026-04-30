@@ -1,8 +1,4 @@
-use anyhow::Result;
 use std::fmt;
-use std::fs;
-use std::path::Path;
-use std::time::Duration;
 use std::time::Instant;
 
 /// Type representing a chunk identifier.
@@ -78,7 +74,7 @@ pub enum StatsType {
     Other,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCostPerType {
     pub main_cost: u64,
     pub opcode_cost: u64,
@@ -143,21 +139,21 @@ impl fmt::Display for StatsCostPerType {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorTime {
     /// Total executor duration of the entire execution process.
-    pub total_duration: Duration,
+    pub total_duration: u64,
     /// Duration of the execution phase.
-    pub execution_duration: Duration,
+    pub execution_duration: u64,
     /// Duration of the counting and planning phase for main state machines.
-    pub count_and_plan_duration: Duration,
+    pub count_and_plan_duration: u64,
     /// Duration of the counting and planning phase for memory operations from ASM runner.
-    pub count_and_plan_mo_duration: Duration,
+    pub count_and_plan_mo_duration: u64,
     /// Execution duration of the ASM runner.
     pub asm_execution_duration: Option<AsmExecutionInfo>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorSummary {
     pub steps: u64,
     pub executor_time: ZiskExecutorTime,
@@ -265,71 +261,7 @@ impl Stats {
     }
 }
 
-pub trait ElfBinaryLike {
-    fn elf(&self) -> &[u8];
-    fn name(&self) -> &str;
-    fn with_hints(&self) -> bool;
-    fn path(&self) -> Option<String>;
-}
-
-pub struct ElfBinaryFromFile {
-    pub elf: Vec<u8>,
-    pub name: String,
-    pub with_hints: bool,
-    pub path: Option<String>,
-}
-
-impl ElfBinaryFromFile {
-    pub fn new(elf: &Path, with_hints: bool) -> Result<Self> {
-        let elf_bin = fs::read(elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", elf.display(), e))?;
-        Ok(Self {
-            elf: elf_bin,
-            name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            with_hints,
-            path: Some(elf.to_str().unwrap().to_string()),
-        })
-    }
-}
-
-impl ElfBinaryLike for ElfBinaryFromFile {
-    fn elf(&self) -> &[u8] {
-        &self.elf
-    }
-    fn name(&self) -> &str {
-        &self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.clone()
-    }
-}
-
-pub struct ElfBinary {
-    pub elf: &'static [u8],
-    pub name: &'static str,
-    pub with_hints: bool,
-    pub path: Option<&'static str>,
-}
-
-impl ElfBinaryLike for ElfBinary {
-    fn elf(&self) -> &[u8] {
-        self.elf
-    }
-    fn name(&self) -> &str {
-        self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.map(|s| s.to_string())
-    }
-}
-
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AsmExecutionInfo {
     pub time: f32,
     pub mhz: f32,

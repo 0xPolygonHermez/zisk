@@ -44,12 +44,6 @@ pub fn keccak_f_expr(
         keccak_f_pi(&mut expr_manager);
         expr_manager.copy_sout_expr_ids_to_sin_expr_ids();
 
-        // Reset expressions
-        for i in 0..1600 {
-            expr_manager.sin_expr_ids[i] =
-                expr_manager.create_manual_reset_expression(expr_manager.sin_expr_ids[i]);
-        }
-
         // χ step
         expr_manager.set_context(Some("χ"));
         keccak_f_chi(&mut expr_manager);
@@ -58,6 +52,12 @@ pub fn keccak_f_expr(
         // ι step
         expr_manager.set_context(Some("ι"));
         keccak_f_iota(&mut expr_manager, r);
+
+        // Reset expressions
+        for i in 0..1600 {
+            expr_manager.sout_expr_ids[i] =
+                expr_manager.create_manual_reset_expression(expr_manager.sout_expr_ids[i]);
+        }
 
         // End of round
         expr_manager.set_context(Some("End of round"));
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn test_keccak_f_expr() {
         let config = ExpressionManagerConfig {
-            value_reset_threshold: 1 << 22,
+            value_reset_threshold: 1 << 23,
             degree_reset_threshold: 3,
             sin_count: 1600,
             sout_count: 1600,

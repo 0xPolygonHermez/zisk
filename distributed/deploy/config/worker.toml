@@ -1,0 +1,22 @@
+# worker.toml — ZisK Worker Docker configuration
+#
+# Mounted into each worker container at /etc/zisk/worker.toml.
+# All workers in the compose stack share this config; per-worker
+# identity (worker_id) is left unset so each container gets a
+# unique auto-generated UUID.
+
+[worker]
+compute_capacity.compute_units = 10
+environment = "production"
+
+[coordinator]
+# "zisk-coordinator" resolves to the coordinator container via Docker's internal DNS.
+url = "http://coordinator:50052"
+
+[connection]
+reconnect_interval_seconds = 5
+heartbeat_timeout_seconds  = 30
+
+[logging]
+level  = "info"
+format = "json"

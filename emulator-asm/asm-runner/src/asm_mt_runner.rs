@@ -23,14 +23,8 @@ pub struct MTShMemReader {
 }
 
 impl MTShMemReader {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MT, local_rank, None);
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
         let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
             &output_name,
@@ -60,16 +54,12 @@ impl AsmRunnerMT {
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MT, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MT);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -78,8 +68,6 @@ impl AsmRunnerMT {
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-
             stats_begin!(_thread_stats, _parent_id, _mt_scope, "ASM_MT", 0);
             let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
@@ -110,7 +98,6 @@ impl AsmRunnerMT {
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
         const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32; // 384 bytes
 
-        let __stats = _stats.clone();
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
             preloaded
@@ -195,9 +182,22 @@ impl AsmRunnerMT {
 
         let response = handle.map_err(AsmRunError::ServiceError)?;
 
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM MT service returned non-zero result: {}",
+                response.result
+            ));
+        }
+        if response.trace_len == 0 {
+            return Err(anyhow::anyhow!("ASM MT service returned empty trace"));
+        }
+        if response.trace_len > response.allocated_len {
+            return Err(anyhow::anyhow!(
+                "ASM MT service trace_len ({}) exceeds allocated_len ({})",
+                response.trace_len,
+                response.allocated_len
+            ));
+        }
 
         stats_end!(_stats, &_runner_scope);
         Ok((emu_traces, asm_execution_info))

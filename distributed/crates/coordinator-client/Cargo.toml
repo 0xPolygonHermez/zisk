@@ -1,0 +1,18 @@
+[package]
+name = "zisk-coordinator-client"
+description = "ZisK Coordinator blocking client and remote job handle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zisk-common = { workspace = true }
+zisk-coordinator-api = { workspace = true }
+bytes = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }

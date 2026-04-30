@@ -7415,7 +7415,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall dma_memcpy_fast\n";
                     }
@@ -7475,7 +7475,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcmp_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memcmp\n";
                     }
@@ -7523,7 +7523,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_inputcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_inputcpy\n";
                     }
@@ -7571,7 +7571,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_xmemset_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memset\n";
                     }
@@ -7590,17 +7590,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Dma64Aligned => {
-                unimplemented!("Internal opcode Dma64Aligned");
-            }
-            ZiskOp::DmaUnaligned => {
-                unimplemented!("Internal opcode DmaUnaligned");
-            }
-            ZiskOp::DmaPre => {
-                unimplemented!("Internal opcode DmaPre");
-            }
-            ZiskOp::DmaPost => {
-                unimplemented!("Internal opcode DmaPost");
+            ZiskOp::Profile => {
+                unimplemented!("Internal opcode Profile");
             }
         }
     }
@@ -8360,6 +8351,10 @@ impl ZiskRom2Asm {
         let mut previous_size = 0;
 
         for (i, size) in load_sizes.iter().enumerate() {
+            if *size == 0 {
+                continue;
+            }
+
             // Store next aligned address value in mem_reads, and advance it
             *code += &format!(
                 "\tmov {REG_VALUE}, [{REG_ADDRESS} + {i}*8] {}\n",

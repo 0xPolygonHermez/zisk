@@ -1,10 +1,12 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("multiple-program-guest");
-pub const ELF2: ElfBinary = include_elf!("multiple-program-guest-2");
+use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
 
-fn main() -> Result<()> {
+static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
+static PROGRAM2: GuestProgram = load_program!("multiple-program-guest-2");
+
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
 
     // Create an input stream and write '1000' to it.
@@ -13,31 +15,38 @@ fn main() -> Result<()> {
     stdin.write(&n);
 
     // Create a `ProverClient` method.
-    let client = ProverClient::builder().build().unwrap();
+    // let client = ProverClient::embedded().build()?;
+
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up first program...");
-    let (pk, vkey) = client.setup(&ELF)?;
+    client.upload(&PROGRAM1).run()?;
+    client.setup(&PROGRAM1).run()?.await?;
 
     println!("Setting up second program...");
-    let (pk2, vkey2) = client.setup(&ELF2)?;
+    client.upload(&PROGRAM2).run()?;
+    client.setup(&PROGRAM2).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
-        result.get_duration()
+        result.get_execution_time()
     );
 
     println!("Generating proof for first program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
-
+    let vkey = PROGRAM1.vk()?;
+    vadcop_result.with_program_vk(&vkey).verify()?;
     println!("Successfully generated and verified proof for first program!\n");
 
     let n = 2000u32;
@@ -46,21 +55,20 @@ fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing second program...");
-    let result2 = client.execute(&pk2, stdin2.clone())?;
+    let result2 = client.execute(&PROGRAM2, stdin2.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
+        "Program executed successfully: {} cycles in {} ms",
         result2.get_execution_steps(),
-        result2.get_duration()
+        result2.get_execution_time()
     );
 
     println!("Generating proof for second program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result2 = client.prove(&pk2, stdin2).with_proof_options(proof_opts).run()?;
+    let vadcop_result2 = client.prove(&PROGRAM2, stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result2.get_proof(), vadcop_result2.get_publics(), &vkey2)?;
-
+    let vkey2 = PROGRAM2.vk()?;
+    vadcop_result2.with_program_vk(&vkey2).verify()?;
     println!("Successfully generated and verified proof for second program!\n");
 
     println!("All proofs generated and verified successfully!");

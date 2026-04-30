@@ -1,8 +1,3 @@
-// #pragma arg -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles 
-// #pragma arg -o pil/zisk.pilout 
-// #pragma arg -O fixed-to-file 
-// #pragma arg -u tmp/fixed
-
 require "std_direct.pil"
 
 require "operations.pil"
@@ -138,7 +133,7 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    Keccakf(N: 2**17, mem_ops_in_parallel: 25);
+    Keccakf(N: 2**17);
     virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);

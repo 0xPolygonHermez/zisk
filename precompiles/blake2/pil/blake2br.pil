@@ -322,18 +322,25 @@ airtemplate Blake2br(const int N = 2**20) {
 
     // va: diagonal inputs come from column outputs at specific offsets
     (CLK[12] + CLK[15] + CLK[18] + CLK[21]) * (va[0] - 10'va[0]) === 0;
+    (CLK[12] + CLK[15] + CLK[18] + CLK[21]) * (va[1] - 10'va[1]) === 0;
 
     // vb: different routing for each diagonal
     (CLK[12] + CLK[15] + CLK[18]) * (vb_packed[0] - 7'vb_packed[0]) === 0;
+    (CLK[12] + CLK[15] + CLK[18]) * (vb_packed[1] - 7'vb_packed[1]) === 0;
     CLK[21] * (vb_packed[0] - 19'vb_packed[0]) === 0;
+    CLK[21] * (vb_packed[1] - 19'vb_packed[1]) === 0;
 
     // vc: pairs have same routing
     (CLK[12] + CLK[15]) * (vc[0] - 4'vc[0]) === 0;
+    (CLK[12] + CLK[15]) * (vc[1] - 4'vc[1]) === 0;
     (CLK[18] + CLK[21]) * (vc[0] - 16'vc[0]) === 0;
+    (CLK[18] + CLK[21]) * (vc[1] - 16'vc[1]) === 0;
 
     // vd: first diagonal different from rest
-    (CLK[12]) * (vd_packed[0] - 'vd_packed[0]) === 0;
+    CLK[12] * (vd_packed[0] - 'vd_packed[0]) === 0;
+    CLK[12] * (vd_packed[1] - 'vd_packed[1]) === 0;
     (CLK[15] + CLK[18] + CLK[21]) * (vd_packed[0] - 13'vd_packed[0]) === 0;
+    (CLK[15] + CLK[18] + CLK[21]) * (vd_packed[1] - 13'vd_packed[1]) === 0;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // MEMORY INTERFACE

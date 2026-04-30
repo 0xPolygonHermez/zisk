@@ -9,6 +9,7 @@
 #include "constants.hpp"
 #include "globals.hpp"
 #include "asm_provided.hpp"
+#include "log.hpp"
 
 // This file contains trace logging functions that are used only for debugging purposes, to log the
 // content of the generated traces in a human-readable format.  These functions are not used by the
@@ -52,72 +53,66 @@
 void log_minimal_trace(void)
 {
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Minimal trace used size = %lu B\n", pOutput[3]); // Minimal trace used size [8]
+    asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    asm_printf("Minimal trace used size = %lu B\n", pOutput[3]); // Minimal trace used size [8]
 
-    printf("Trace content:\n");
+    asm_printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
+    asm_printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %lu (@=%p):\n", c, chunk);
+        asm_printf("Chunk %lu (@=%p):\n", c, chunk);
 
         // Log current chunk start state
-        printf("\tStart state:\n");
-        printf("\t\tpc=0x%lx\n", chunk[i]);
+        asm_printf("\tStart state:\n");
+        asm_printf("\t\tpc=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tsp=0x%lx\n", chunk[i]);
+        asm_printf("\t\tsp=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tc=0x%lx\n", chunk[i]);
+        asm_printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
-        printf("\t\tstep=%lu\n", chunk[i]);
+        asm_printf("\t\tstep=%lu\n", chunk[i]);
         i++;
-        printf("\t\t");
         for (uint64_t r=1; r<34; r++)
         {
-            printf("reg[%lu]=0x%lx ", r, chunk[i]);
+            asm_printf("\t\treg[%lu]=0x%lx\n", r, chunk[i]);
             i++;
         }
-        printf("\n");
 
         // Log current chunk last state
-        printf("\tEnd state:\n");
-        printf("\t\tc=0x%lx\n", chunk[i]);
+        asm_printf("\tEnd state:\n");
+        asm_printf("\t\tc=0x%lx\n", chunk[i]);
         i++;
         // Log current chunk end
-        printf("\t\tend=%lu\n", chunk[i]);
+        asm_printf("\t\tend=%lu\n", chunk[i]);
         i++;
         // Log current chunk steps
-        printf("\t\tsteps=%lu\n", chunk[i]);
+        asm_printf("\t\tsteps=%lu\n", chunk[i]);
         i++;
 
         uint64_t mem_reads_size = chunk[i];
-        printf("\t\tmem_reads_size=%lu\n", mem_reads_size);
+        asm_printf("\t\tmem_reads_size=%lu\n", mem_reads_size);
         i++;
         if (mem_reads_size > 10000000)
         {
-            printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
             exit(-1);
         }
         if (trace_trace)
         {
             for (uint64_t m=0; m<mem_reads_size; m++)
             {
-                printf("\t\tchunk[%lu].mem_reads[%lu]=%08lx\n", c, m, chunk[i]);
+                asm_printf("\t\tchunk[%lu].mem_reads[%lu]=%08lx\n", c, m, chunk[i]);
                 i++;
             }
         }
@@ -129,28 +124,26 @@ void log_minimal_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    asm_printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 void log_histogram(void)
 {
     uint64_t *  pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
-    printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
+    asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
+    asm_printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
 
-    printf("BIOS histogram:\n");
+    asm_printf("BIOS histogram:\n");
     uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
 
     // BIOS
     uint64_t bios_size = trace[0];
-    printf("BIOS size=%lu\n", bios_size);
+    asm_printf("BIOS size=%lu\n", bios_size);
     if (bios_size > 100000000)
     {
-        printf("ERROR: Bios size is too high=%lu\n", bios_size);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Bios size is too high=%lu\n", bios_size);
         exit(-1);
     }
     if (trace_trace)
@@ -158,18 +151,16 @@ void log_histogram(void)
         uint64_t * bios = trace + 1;
         for (uint64_t i=0; i<bios_size; i++)
         {
-            printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), bios[i] );
+            asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), bios[i] );
         }
     }
 
     // Program
     uint64_t program_size = trace[bios_size + 1];
-    printf("Program size=%lu\n", program_size);
+    asm_printf("Program size=%lu\n", program_size);
     if (program_size > 100000000)
     {
-        printf("ERROR: Program size is too high=%lu\n", program_size);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Program size is too high=%lu\n", program_size);
         exit(-1);
     }
     if (trace_trace)
@@ -179,12 +170,12 @@ void log_histogram(void)
         {
             if (program[i] != 0)
             {
-                printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x80000000 + i, program[i]);
+                asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x80000000 + i, program[i]);
             }
         }
     }
 
-    printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
+    asm_printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
 }
 
 /* Trace data structure
@@ -205,37 +196,33 @@ void log_histogram(void)
 void log_main_trace(void)
 {
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Main trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
+    asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    asm_printf("Main trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
 
-    printf("Trace content:\n");
+    asm_printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
+    asm_printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %lu:\n", c);
+        asm_printf("Chunk %lu:\n", c);
 
         uint64_t main_trace_size = chunk[i];
-        printf("\tmem_reads_size=%lu\n", main_trace_size);
+        asm_printf("\tmem_reads_size=%lu\n", main_trace_size);
         i++;
         main_trace_size /= 7;
         if (main_trace_size > 10000000)
         {
-            printf("ERROR: Main_trace size is too high=%lu\n", main_trace_size);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Main_trace size is too high=%lu\n", main_trace_size);
             exit(-1);
         }
 
@@ -243,7 +230,7 @@ void log_main_trace(void)
         {
             for (uint64_t m=0; m<main_trace_size; m++)
             {
-                printf("\t\tchunk[%lu].main_trace[%lu]=[%lx,%lx,%lx,%lx,%lx,%lx,%lx]\n",
+                asm_printf("\t\tchunk[%lu].main_trace[%lu]=[%lx,%lx,%lx,%lx,%lx,%lx,%lx]\n",
                     c,
                     m,
                     chunk[i],
@@ -265,32 +252,26 @@ void log_main_trace(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    asm_printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 static void buffer2file (const void * buffer_address, size_t buffer_length, const char * file_name)
 {
     if (!file_name)
     {
-        printf("ERROR: buffer2file() found invalid file_name\n");
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: buffer2file() found invalid file_name\n");
         exit(-1);
     }
     if (!buffer_address)
     {
-        printf("ERROR: buffer2file() found invalid buffer_address\n");
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: buffer2file() found invalid buffer_address\n");
         exit(-1);
     }
 
     FILE * file = fopen(file_name, "wb");
     if (!file)
     {
-        printf("ERROR: buffer2file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: buffer2file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
         exit(-1);
     }
 
@@ -299,9 +280,7 @@ static void buffer2file (const void * buffer_address, size_t buffer_length, cons
         size_t bytes_written = fwrite(buffer_address, 1, buffer_length, file);
         if (bytes_written != buffer_length)
         {
-            printf("ERROR: buffer2file() failed calling fwrite(%s) buffer_address=%p buffer_length=%zu errno=%d=%s\n", file_name, buffer_address, buffer_length, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: buffer2file() failed calling fwrite(%s) buffer_address=%p buffer_length=%zu errno=%d=%s\n", file_name, buffer_address, buffer_length, errno, strerror(errno));
             fclose(file);
             exit(-1);
         }
@@ -309,9 +288,7 @@ static void buffer2file (const void * buffer_address, size_t buffer_length, cons
 
     if (fclose(file) != 0)
     {
-        printf("ERROR: buffer2file() failed calling fclose(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: buffer2file() failed calling fclose(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
         exit(-1);
     }
 }
@@ -336,40 +313,36 @@ void log_mem_op(void)
 {
     // Log header
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
+    asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    asm_printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
 
-    printf("Trace content:\n");
+    asm_printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
+    asm_printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
     for (uint64_t c=0; c<number_of_chunks; c++)
     {
         uint64_t i=0;
-        printf("Chunk %lu:\n", c);
+        asm_printf("Chunk %lu:\n", c);
 
         uint64_t end = chunk[i];
-        printf("\tend=%lu\n", end);
+        asm_printf("\tend=%lu\n", end);
         i++;
 
         uint64_t mem_op_trace_size = chunk[i];
-        printf("\tmem_op_trace_size=%lu\n", mem_op_trace_size);
+        asm_printf("\tmem_op_trace_size=%lu\n", mem_op_trace_size);
         i++;
         if (mem_op_trace_size > 10000000)
         {
-            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
             exit(-1);
         }
 
@@ -385,7 +358,7 @@ void log_mem_op(void)
                 ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
             if (trace_trace || !inside_range)
             {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
+                asm_printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
                     c,
                     m,
                     chunk[i],
@@ -402,7 +375,7 @@ void log_mem_op(void)
         //Set next chunk pointer
         chunk = chunk + i;
     }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    asm_printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 /* Memory trace structure (for 1 chunk)
@@ -418,18 +391,18 @@ void log_mem_op(void)
 */
 void log_mem_trace(void)
 {
-    printf("Trace content:\n");
+    asm_printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)TRACE_ADDR;
-    printf("log_mem_trace() trace_address=%p\n", trace);
+    asm_printf("log_mem_trace() trace_address=%p\n", trace);
     uint64_t i=0;
-    printf("Version = 0x%06lx\n", trace[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", trace[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", trace[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", trace[3]); // Main trace used size [8]
+    asm_printf("Version = 0x%06lx\n", trace[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", trace[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", trace[2]); // Allocated size [8]
+    asm_printf("Memory operations trace used size = %lu B\n", trace[3]); // Main trace used size [8]
     i += 4;
     uint64_t number_of_entries = trace[i];
     i++;
-    printf("Trace size=%lu\n", number_of_entries);
+    asm_printf("Trace size=%lu\n", number_of_entries);
 
     for (uint64_t m = 0; m < number_of_entries; m++)
     {
@@ -450,7 +423,7 @@ void log_mem_trace(void)
         bool bError = !(address_is_inside_range && width_is_valid);
         if (trace_trace || bError)
         {
-            printf("\tmem_trace[%lu] = %016lx = [inc_step=%lu, u_step=%lu, write=%lx, width=%lx, address=%lx] %s\n",
+            asm_printf("\tmem_trace[%lu] = %016lx = [inc_step=%lu, u_step=%lu, write=%lx, width=%lx, address=%lx] %s\n",
                 m,
                 addr_step,
                 incremental_step,
@@ -549,7 +522,7 @@ void log_mem_trace(void)
             m++;
             if (trace_trace)
             {
-                printf("\t\tread_value[%lu] = 0x%lx\n", i, value);
+                asm_printf("\t\tread_value[%lu] = 0x%lx\n", i, value);
             }
         }
 
@@ -560,31 +533,29 @@ void log_mem_trace(void)
             m++;
             if (trace_trace)
             {
-                printf("\t\twrite_value[%lu] = 0x%lx\n", i, value);
+                asm_printf("\t\twrite_value[%lu] = 0x%lx\n", i, value);
             }
         }
     }
-    printf("Trace=%p number_of_entries=%lu\n", trace, number_of_entries);
+    asm_printf("Trace=%p number_of_entries=%lu\n", trace, number_of_entries);
 }
 
 void save_mem_op_to_files(void)
 {
     // Log header
     uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
+    asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
+    asm_printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
 
-    printf("Trace content:\n");
+    asm_printf("Trace content:\n");
     uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
     uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
+    asm_printf("Number of chunks=%lu\n", number_of_chunks);
     if (number_of_chunks > 1000000)
     {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
         exit(-1);
     }
     uint64_t * chunk = trace + 1;
@@ -594,9 +565,7 @@ void save_mem_op_to_files(void)
         int file_name_len = snprintf(file_name, sizeof(file_name), "/tmp/mem_count_data_%lu.bin", c);
         if (file_name_len < 0 || (size_t)file_name_len >= sizeof(file_name))
         {
-            fprintf(stderr, "ERROR: Failed to construct file name for chunk=%lu\n", c);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Failed to construct file name for chunk=%lu\n", c);
             exit(-1);
         }
 
@@ -606,20 +575,18 @@ void save_mem_op_to_files(void)
         i++;
         if (mem_op_trace_size > 10000000)
         {
-            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
             exit(-1);
         }
 
-        printf("Chunk %lu: file=%s length=%lu\n", c, file_name, mem_op_trace_size);
+        asm_printf("Chunk %lu: file=%s length=%lu\n", c, file_name, mem_op_trace_size);
 
         buffer2file(&chunk[i], mem_op_trace_size * 8, file_name);
 
         //Set next chunk pointer: skip [end] and [mem_op_trace_size] headers plus data
         chunk = chunk + mem_op_trace_size + 2;
     }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
+    asm_printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
 }
 
 /* Trace data structure
@@ -636,20 +603,18 @@ void log_chunk_player_main_trace(void)
     uint64_t * chunk = (uint64_t *)TRACE_ADDR;
     uint64_t i = 0;
 
-    printf("Version = 0x%06lx\n", chunk[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", chunk[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", chunk[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", chunk[3]); // Main trace used size [8]
+    asm_printf("Version = 0x%06lx\n", chunk[0]); // Version, e.g. v1.0.0 [8]
+    asm_printf("Exit code = %lu\n", chunk[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
+    asm_printf("Allocated size = %lu B\n", chunk[2]); // Allocated size [8]
+    asm_printf("Memory operations trace used size = %lu B\n", chunk[3]); // Main trace used size [8]
     i = 4;
 
     uint64_t mem_reads_size = chunk[i];
     i++;
-    printf("mem_reads_size=%lu\n", mem_reads_size);
+    asm_printf("mem_reads_size=%lu\n", mem_reads_size);
     if (mem_reads_size > 10000000)
     {
-        printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
         exit(-1);
     }
     //if (trace_trace)
@@ -657,17 +622,17 @@ void log_chunk_player_main_trace(void)
         for (uint64_t m=0; m<mem_reads_size; m++)
         {
             uint64_t op = chunk[i];
-            if (trace_trace) printf("\tmem_reads[%lu] op=0x%lx\n", m, chunk[i]);
+            if (trace_trace) asm_printf("\tmem_reads[%lu] op=0x%lx\n", m, chunk[i]);
             i++;
             m++;
             if (op > 0xFF)
             {
-                printf("ERROR!! Invalid op=%lu=0x%lx\n", op, op);
+                asm_printf("ERROR!! Invalid op=%lu=0x%lx\n", op, op);
             }
-            if (trace_trace) printf("\tmem_reads[%lu] a=0x%08lx\n", m, chunk[i]);
+            if (trace_trace) asm_printf("\tmem_reads[%lu] a=0x%08lx\n", m, chunk[i]);
             i++;
             m++;
-            if (trace_trace) printf("\tmem_reads[%lu] b=0x%08lx\n", m, chunk[i]);
+            if (trace_trace) asm_printf("\tmem_reads[%lu] b=0x%08lx\n", m, chunk[i]);
             i++;
             m++;
             if (   (op == 0xf1) // Keccak
@@ -678,12 +643,12 @@ void log_chunk_player_main_trace(void)
                 || (op == 0xf5) // Secp256k1Dbl
                 )
             {
-                if (trace_trace) printf("\tmem_reads[%lu] precompiled_address=%08lx\n", m, chunk[i]);
+                if (trace_trace) asm_printf("\tmem_reads[%lu] precompiled_address=%08lx\n", m, chunk[i]);
                 i++;
                 m++;
             }
         }
     }
 
-    printf("Chunk=%p size=%lu\n", chunk, mem_reads_size);
+    asm_printf("Chunk=%p size=%lu\n", chunk, mem_reads_size);
 }

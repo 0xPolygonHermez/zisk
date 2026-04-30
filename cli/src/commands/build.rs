@@ -1,38 +1,42 @@
 use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
-use zisk_build::{ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Build the program to a RISC-V ELF file using the ZisK toolchain
 pub struct ZiskBuild {
-    #[clap(short = 'F', long)]
+    /// Space or comma separated list of features to activate
+    #[arg(short = 'F', long)]
     features: Option<String>,
 
-    #[clap(long)]
+    /// Activate all available features
+    #[arg(long)]
     all_features: bool,
 
-    #[clap(long)]
+    /// Build artifacts in release mode, with optimizations
+    #[arg(long)]
     release: bool,
 
-    #[clap(long)]
+    /// Do not activate the `default` feature
+    #[arg(long)]
     no_default_features: bool,
 
-    #[arg(short, long)]
-    name: Option<String>,
+    /// Copy final artifacts to this directory
+    #[arg(long)]
+    artifact_dir: Option<String>,
 
-    #[clap(short = 'z', long)]
-    zisk_path: Option<String>,
-
-    #[clap(long)]
-    hints: bool,
+    /// Toolchain name to use
+    #[arg(long, hide = true)]
+    toolchain_name: Option<String>,
 }
 
 impl ZiskBuild {
     pub fn run(&self) -> Result<()> {
         // Construct the cargo run command
-        let toolchain_name = if let Some(name) = self.name.as_deref() {
-            println!("using toolchain_name: {name}");
+        let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
+            println!("Using toolchain_name: {name}");
             name
         } else {
             "zisk"
@@ -43,6 +47,8 @@ impl ZiskBuild {
         // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
         let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
         command.env("RUSTFLAGS", flags.trim());
+
+        command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
 
         // Add the feature selection flags
         if let Some(features) = &self.features {
@@ -56,6 +62,9 @@ impl ZiskBuild {
         }
         if self.release {
             command.arg("--release");
+        }
+        if let Some(artifact_dir) = &self.artifact_dir {
+            command.arg("--artifact-dir").arg(artifact_dir);
         }
 
         command.args(["--target", ZISK_TARGET]);

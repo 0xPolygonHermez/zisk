@@ -7,13 +7,13 @@ use crate::{
 
 use super::constants::{NQR_FP, P, P_MINUS_ONE};
 
-/// Sign function in Fp
+/// Sign function in the base field of the BLS12-381 curve
 #[inline]
 pub fn sgn0_fp_bls12_381(x: &[u64; 6]) -> u64 {
     x[0] & 1
 }
 
-/// Addition in Fp
+/// Addition in the base field of the BLS12-381 curve
 #[inline]
 pub fn add_fp_bls12_381(
     x: &[u64; 6],
@@ -36,7 +36,7 @@ pub fn add_fp_bls12_381(
     *params.d
 }
 
-/// Doubling in Fp
+/// Doubling in the base field of the BLS12-381 curve
 #[inline]
 pub fn dbl_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 6] {
     // 2·x + 0 or x·1 + x
@@ -55,7 +55,7 @@ pub fn dbl_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<
     *params.d
 }
 
-/// Subtraction in Fp
+/// Subtraction in the base field of the BLS12-381 curve
 #[inline]
 pub fn sub_fp_bls12_381(
     x: &[u64; 6],
@@ -78,7 +78,7 @@ pub fn sub_fp_bls12_381(
     *params.d
 }
 
-/// Negation in Fp
+/// Negation in the base field of the BLS12-381 curve
 #[inline]
 pub fn neg_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 6] {
     // x·(-1) + 0
@@ -97,7 +97,7 @@ pub fn neg_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<
     *params.d
 }
 
-/// Multiplication in Fp
+/// Multiplication in the base field of the BLS12-381 curve
 #[inline]
 pub fn mul_fp_bls12_381(
     x: &[u64; 6],
@@ -120,7 +120,7 @@ pub fn mul_fp_bls12_381(
     *params.d
 }
 
-/// Squaring in Fp
+/// Squaring in the base field of the BLS12-381 curve
 #[inline]
 pub fn square_fp_bls12_381(
     x: &[u64; 6],
@@ -142,7 +142,7 @@ pub fn square_fp_bls12_381(
     *params.d
 }
 
-/// Square root in Fp
+/// Square root in the base field of the BLS12-381 curve
 #[inline]
 pub fn sqrt_fp_bls12_381(
     x: &[u64; 6],
@@ -188,7 +188,7 @@ pub fn sqrt_fp_bls12_381(
     }
 }
 
-/// Inversion of a non-zero element in Fp
+/// Inversion in the base field of the BLS12-381 curve
 #[inline]
 pub fn inv_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 6] {
     // if x == 0, return 0

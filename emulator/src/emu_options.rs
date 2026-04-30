@@ -67,6 +67,21 @@ pub struct EmuOptions {
     /// Generates legacy statistics about steps and usage.  Enabled with `-x`.
     #[clap(short = 'x', long, value_name = "LEGACY_STATS", default_value = "false")]
     pub legacy_stats: bool,
+    /// Generates SDK-style statistics (compact format).  Enabled with `--sdk`.
+    #[clap(long = "sdk", value_name = "SDK", default_value = "false")]
+    pub sdk: bool,
+    /// Show opcodes section in SDK report.
+    /// Requires option: --sdk
+    #[clap(long, value_name = "OPCODES", default_value = "false")]
+    pub opcodes: bool,
+    /// Show profile tags section in SDK report.
+    /// Requires option: --sdk
+    #[clap(long, value_name = "PROFILE_TAGS", default_value = "false")]
+    pub profile_tags: bool,
+    /// Show top functions section in SDK report (automatically enables -S).
+    /// Requires option: --sdk
+    #[clap(long, value_name = "TOP_FUNCTIONS", default_value = "false")]
+    pub top_functions: bool,
     /// Generates statistics about opcodes and memory usage.  Enabled with `-X`.
     #[clap(short = 'X', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
@@ -109,14 +124,14 @@ pub struct EmuOptions {
     pub roi_filter: Option<String>,
     /// Track function calls to filtered symbols, specifying number of parameters to log.
     /// Requires options: -S --roi-filter
-    #[clap(long, value_name = "TRACK_CALLS", default_value = "0")]
+    #[clap(long = "track-call-args", value_name = "TRACK_CALL_ARGS", default_value = "0")]
     pub track_calls: usize,
     /// Separator for tracked call parameters in output files.
-    /// Requires option: --track-calls
+    /// Requires option: --track-call-args
     #[clap(long, value_name = "TRACK_SEPARATOR", default_value = ";")]
     pub track_separator: String,
     /// Output directory path for tracked call files.
-    /// Requires option: --track-calls
+    /// Requires option: --track-call-args
     #[clap(long, value_name = "TRACK_OUTPUT_PATH", default_value = ".")]
     pub track_output_path: String,
     /// Disable thousands separator in statistics reports.
@@ -138,6 +153,24 @@ pub struct EmuOptions {
     /// In mode fast, without stats, show executing lines each 16Msteps.
     #[clap(long, default_value = "false")]
     pub with_progress: bool,
+    /// Output file path for the profiler data (default: profile.json.gz).
+    /// Requires options: -S -X
+    #[clap(long, value_name = "PROFILER_OUTPUT")]
+    pub profiler_output: Option<String>,
+    /// Shorten long ROI function names in statistics reports.
+    /// Optionally specify maximum length (default: 160 characters).
+    /// Example: --compact-names or --compact-names=80
+    /// Requires options: -S -X
+    #[clap(long, value_name = "MAX_LENGTH", num_args = 0..=1, default_value = "160", default_missing_value = "160")]
+    pub compact_names: usize,
+    /// Disable compacting of long ROI function names in statistics reports.
+    /// Requires options: -S -X
+    #[clap(long, value_name = "NO_COMPACT_NAMES", default_value = "false")]
+    pub no_compact_names: bool,
+    /// Set the width of SDK report output (default: 120).
+    /// Requires option: --sdk
+    #[clap(long, value_name = "WIDTH", default_value = "120")]
+    pub sdk_width: usize,
 }
 
 impl Default for EmuOptions {
@@ -166,6 +199,10 @@ impl Default for EmuOptions {
             top_roi: 25,
             top_roi_detail: false,
             legacy_stats: false,
+            sdk: false,
+            opcodes: false,
+            profile_tags: false,
+            top_functions: false,
             coverage: false,
             top_histogram: 0,
             main_name: "main".to_string(),
@@ -180,6 +217,10 @@ impl Default for EmuOptions {
             steps: false,
             with_progress: false,
             legacy_inputs: None,
+            profiler_output: None,
+            compact_names: 160,
+            no_compact_names: false,
+            sdk_width: 120,
         }
     }
 }
@@ -201,6 +242,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "METRICS: {:?}", self.log_metrics)?;
         writeln!(f, "STATS: {:?}", self.stats)?;
         writeln!(f, "LEGACY_STATS: {:?}", self.legacy_stats)?;
+        writeln!(f, "SDK: {:?}", self.sdk)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
@@ -236,5 +278,38 @@ impl EmuOptions {
             && !self.generate_minimal_traces
             && !self.log_output
             && !self.log_output_riscof
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum ProfilingMode {
+    /// Tag-level inline profiling (`--sdk --profile-tags`).
+    Inline,
+    /// Per-opcode + top-functions summary (`--sdk --opcodes --top-functions`).
+    Summary,
+    /// Full profiler output written to disk (`--sdk --profiler-output`).
+    Complete,
+}
+
+impl ProfilingMode {
+    pub fn apply(self, options: &mut EmuOptions) {
+        match self {
+            ProfilingMode::Inline => {
+                options.sdk = true;
+                options.stats = true;
+                options.profile_tags = true;
+            }
+            ProfilingMode::Summary => {
+                options.sdk = true;
+                options.stats = true;
+                options.opcodes = true;
+                options.top_functions = true;
+            }
+            ProfilingMode::Complete => {
+                options.sdk = true;
+                options.stats = true;
+                options.profiler_output = Some("profile.json.gz".to_string());
+            }
+        }
     }
 }

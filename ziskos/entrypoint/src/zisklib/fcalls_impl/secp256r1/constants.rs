@@ -2,11 +2,13 @@ use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
 lazy_static! {
+    /// secp256r1 base field prime.
     pub static ref P: BigUint = BigUint::parse_bytes(
         b"ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
         16
     )
     .unwrap();
+    /// secp256r1 group order.
     pub static ref N: BigUint = BigUint::parse_bytes(
         b"ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
         16
@@ -14,11 +16,14 @@ lazy_static! {
     .unwrap();
 }
 
+/// Curve parameter $a = -3 \bmod p$.
 pub const E_A: [u64; 4] =
     [0xFFFF_FFFF_FFFF_FFFC, 0x0000_0000_FFFF_FFFF, 0x0000_0000_0000_0000, 0xFFFF_FFFF_0000_0001];
 
+/// The point at infinity, represented as all zeros.
 pub const IDENTITY: [u64; 8] = [0u64; 8];
 
+/// secp256r1 generator point $G$ in affine coordinates `(x, y)`.
 pub const G: [u64; 8] = [
     0xF4A1_3945_D898_C296,
     0x7703_7D81_2DEB_33A0,

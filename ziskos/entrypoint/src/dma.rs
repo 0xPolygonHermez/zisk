@@ -82,6 +82,19 @@ macro_rules! ziskos_memcpy {
             );
         }
     }};
+    (dst_ptr: $dst:expr, $src:expr, $size:literal) => {{
+        unsafe {
+            core::arch::asm!(
+                "csrs {port}, {src}",
+                "addi x0, {dst}, {size}",
+                port = const zisk_definitions::SYSCALL_DMA_MEMCPY_ID,
+                size = const $size,
+                dst = in(reg) $dst,
+                src = in(reg) $src.as_ptr(),
+                options(nostack, preserves_flags),
+            );
+        }
+    }};
     (ptr: $dst:expr, $src:expr, $size:expr) => {{
         unsafe {
             core::arch::asm!(
@@ -89,8 +102,8 @@ macro_rules! ziskos_memcpy {
                 "add x0, {dst}, {size}",
                 port = const zisk_definitions::SYSCALL_DMA_MEMCPY_ID,
                 size = in(reg) $size,
-                dst = in(reg) $dst,      // ya es *mut u8, sin as_mut_ptr()
-                src = in(reg) $src,      // ya es *mut u8, sin as_ptr()
+                dst = in(reg) $dst,      // it is already a *mut u8, sin as_mut_ptr()
+                src = in(reg) $src,      // it is already a *mut u8, sin as_ptr()
                 options(nostack, preserves_flags),
             );
         }

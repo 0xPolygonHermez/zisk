@@ -12,21 +12,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::BinaryExtensionAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{BinaryExtensionTracePacked, BinaryExtensionTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type BinaryExtensionTraceType<F> = BinaryExtensionTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type BinaryExtensionTraceRowType<F> = BinaryExtensionTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type BinaryExtensionTraceType<F> = BinaryExtensionTrace<F>;
+use zisk_pil::{BinaryExtensionAirValues, BinaryExtensionTrace, BinaryExtensionTraceRowOps};
 
 // Constants for bit masks and operations.
 const MASK_32: u64 = 0xFFFFFFFF;
@@ -118,12 +104,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice(&self, input: &BinaryInput) -> BinaryExtensionTraceRowType<F> {
+    pub fn process_slice<R: BinaryExtensionTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
         // Create an empty trace
-        let mut row = BinaryExtensionTraceRowType::default();
+        let mut row: R = Default::default();
         row.set_op(input.op);
 
         // Set if the opcode is a shift operation
@@ -325,23 +311,17 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness(
+    pub fn compute_witness<R: BinaryExtensionTraceRowOps<F>>(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut binary_e_trace = BinaryExtensionTraceType::new_from_vec(trace_buffer)?;
+        let mut binary_e_trace = BinaryExtensionTrace::<R>::new_from_vec(trace_buffer)?;
 
         let num_rows = binary_e_trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(
-            total_inputs <= num_rows,
-            "{} <= {} ({})",
-            total_inputs,
-            num_rows,
-            BinaryExtensionTraceType::<F>::NUM_ROWS
-        );
+        debug_assert!(total_inputs <= num_rows, "{} <= {}", total_inputs, num_rows);
 
         tracing::debug!(
             "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
@@ -363,7 +343,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice(&inputs[i][j]);
+                *trace_row = self.process_slice::<R>(&inputs[i][j]);
             });
         });
 
@@ -381,7 +361,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         }
 
         // Set SEXT_B(0) as the padding row
-        let mut padding_row = BinaryExtensionTraceRowType::default();
+        let mut padding_row: R = Default::default();
         padding_row.set_op(SEXT_B_OP);
 
         binary_e_trace.buffer[total_inputs..num_rows]

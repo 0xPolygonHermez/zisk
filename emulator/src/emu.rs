@@ -1,15 +1,14 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{
-    ElfSymbolReader, EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions,
-};
+use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
 };
+use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBusTrait;
@@ -22,7 +21,7 @@ use zisk_core::{
 };
 
 pub const ZISK_PUBLICS: usize = 64;
-const HEAP_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
+const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -65,7 +64,7 @@ pub struct Emu<'a> {
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
 ///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
 ///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, chunk_size: u64, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
-///                 Emu::step_slice_full_trace<F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> EmuFullTraceStep<F>
+///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> R
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
 /// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
@@ -104,7 +103,7 @@ impl<'a> Emu<'a> {
         }
 
         // Sort read sections by start address to improve performance when using binary search
-        ctx.inst_ctx.mem.read_sections.sort_by(|a, b| a.start.cmp(&b.start));
+        ctx.inst_ctx.mem.read_sections.sort_by_key(|a| a.start);
 
         // Get registers
         //emu.get_regs(); // TODO: ask Jordi
@@ -1550,24 +1549,6 @@ impl<'a> Emu<'a> {
         self.set_pc(instruction);
         self.ctx.inst_ctx.end = instruction.end;
         self.ctx.inst_ctx.step += 1;
-        // if debug {
-        //     print!(
-        //         ">==OUT==> #{} 0x{:X} ({}) {} {:?}",
-        //         self.ctx.inst_ctx.step,
-        //         self.ctx.inst_ctx.pc,
-        //         instruction.op_str,
-        //         instruction.verbose,
-        //         self.ctx.inst_ctx.regs,
-        //     );
-        //     for (index, &value) in self.ctx.inst_ctx.regs.iter().enumerate() {
-        //         if initial_regs[index] == value {
-        //             print!(" {:}:0x{:X}", index, value);
-        //         } else {
-        //             print!(" {:}:\x1B[1;31m0x{:X}\x1B[0m", index, value);
-        //         }
-        //     }
-        //     println!();
-        // }
     }
 
     /// Run the whole program
@@ -1581,10 +1562,12 @@ impl<'a> Emu<'a> {
         self.ctx = self.create_emu_context(inputs.clone(), options);
 
         let mut elf = ElfSymbolReader::new();
-        let mut heap_top = 0u64;
-        let mut heap_bottom = 0u64;
-        let mut heap_pos_address = 0u64;
-        if options.read_symbols {
+
+        // Automatically enable read_symbols if top_functions is enabled
+        let read_symbols = options.read_symbols || options.top_functions;
+
+        if read_symbols {
+            self.ctx.stats.set_top_roi_detail(options.top_roi_detail);
             if let Some(elf_file) = &options.elf {
                 println!("Loading symbols from ELF file: {elf_file}");
 
@@ -1595,11 +1578,8 @@ impl<'a> Emu<'a> {
                         Err(e) => eprintln!("Invalid ROI filter regex '{}': {}", roi_filter, e),
                     }
                 }
-
-                if let Ok(address) = elf.load_from_file(elf_file, &HEAP_SYMBOLS) {
-                    heap_bottom = address[0];
-                    heap_top = address[1];
-                    heap_pos_address = address[2];
+                if let Ok(address) = elf.load_from_file(elf_file, &LOAD_SYMBOLS) {
+                    self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
                 }
                 let mut count = 0;
                 let mut roi_count = 0;
@@ -1649,29 +1629,26 @@ impl<'a> Emu<'a> {
                             eprintln!("Error initializing ROI tracking: {}", e);
                         }
                     } else {
-                        eprintln!("Warning: --track-calls specified but no ROI symbols found");
+                        eprintln!("Warning: --track-call-args specified but no ROI symbols found");
                     }
                 }
 
-                count = 0;
-                for (id, tag) in elf.profile_tags() {
-                    count += 1;
-                    self.ctx.stats.add_profile_tag(*id, tag);
-                }
-                println!("Loaded {} profile tags", count);
                 self.ctx.stats.set_top_rois(options.top_roi);
                 self.ctx.stats.set_roi_callers(options.roi_callers);
-                self.ctx.stats.set_top_roi_detail(options.top_roi_detail);
                 self.ctx.stats.set_main_name(options.main_name.clone());
                 self.ctx.stats.set_use_thousands_sep(!options.no_thousands_sep);
                 self.ctx.stats.set_top_rois_filter(options.top_roi_filter);
+                // If no_compact_names is true, disable compacting; otherwise use the specified max length
+                self.ctx.stats.set_compact_names(if options.no_compact_names {
+                    None
+                } else {
+                    Some(options.compact_names)
+                });
             }
         } else if !options.is_fast() {
             if let Some(elf_file) = &options.elf {
-                if let Ok(address) = elf.get_symbols_from_file(elf_file, &HEAP_SYMBOLS) {
-                    heap_bottom = address[0];
-                    heap_top = address[1];
-                    heap_pos_address = address[2];
+                if let Ok(address) = elf.get_symbols_from_file(elf_file, &LOAD_SYMBOLS) {
+                    self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
                 }
             }
         }
@@ -1686,7 +1663,15 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_coverage(options.coverage);
 
         self.ctx.stats.set_legacy_stats(options.legacy_stats);
+        self.ctx.stats.set_sdk(options.sdk);
+        self.ctx.stats.set_sdk_opcodes(options.opcodes);
+        self.ctx.stats.set_sdk_profile_tags(options.profile_tags);
+        self.ctx.stats.set_sdk_top_functions(options.top_functions);
+        self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
+        if let Some(profiler_output) = &options.profiler_output {
+            self.ctx.stats.set_profiler_output(profiler_output.clone());
+        }
 
         // Check that callback is provided if chunk size is specified
         if let Some(chunk_size) = options.chunk_size {
@@ -1746,17 +1731,12 @@ impl<'a> Emu<'a> {
             }
             return;
         }
-        //println!("Emu::run() full-equipe");
 
         // Store the stats option into the emulator context
         self.ctx.do_stats = options.stats || options.legacy_stats;
 
         // While not done
         while !self.ctx.inst_ctx.end {
-            // println!(
-            //     "DEBUG_TRACE {:09} 0x{:08x} {:?}",
-            //     self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc, self.ctx.inst_ctx.regs
-            // );
             if options.verbose {
                 println!(
                     "Emu::run() step={} ctx.pc={}",
@@ -1830,13 +1810,7 @@ impl<'a> Emu<'a> {
 
         // Print stats report
         if self.ctx.do_stats {
-            if heap_pos_address != 0 {
-                let heap_pos = self.ctx.inst_ctx.mem.read(heap_pos_address, 8);
-                let heap_size = heap_top - heap_bottom;
-                let heap_used = heap_pos - heap_bottom;
-                self.ctx.stats.set_ram_usage(heap_size, heap_used);
-            }
-            self.ctx.stats.update_costs();
+            self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
@@ -2013,18 +1987,13 @@ impl<'a> Emu<'a> {
 
         // Retrieve statistics data
         if self.ctx.do_stats {
+            self.ctx.stats.before_op();
             if instruction.input_size > 0 {
                 if let Ok(inst) = ZiskOp::try_from_code(instruction.op) {
                     inst.call_stats(&self.ctx.inst_ctx, &mut self.ctx.stats);
                 }
             }
-            self.ctx.stats.on_op(
-                instruction,
-                self.ctx.inst_ctx.a,
-                self.ctx.inst_ctx.b,
-                pc,
-                &self.ctx.inst_ctx.regs,
-            );
+            self.ctx.stats.on_op(instruction, &self.ctx.inst_ctx);
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction
@@ -2532,13 +2501,16 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_full_trace<F: PrimeField64>(
+    pub fn step_slice_full_trace<R, F: PrimeField64>(
         &mut self,
+        trace: &mut R,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&mut [u32]>,
-    ) -> EmuFullTraceStep<F> {
+    ) where
+        R: MainTraceRowOps<F>,
+    {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
         }
@@ -2584,13 +2556,10 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
-        let full_trace_step =
-            Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
+        Self::build_full_trace_step::<R, F>(trace, instruction, &self.ctx.inst_ctx, reg_trace);
 
         *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
         self.ctx.inst_ctx.step += 1;
-
-        full_trace_step
     }
 
     pub fn intermediate_value<F: PrimeField64>(value: u64) -> [F; 2] {
@@ -2598,11 +2567,14 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn build_full_trace_step<F: PrimeField64>(
+    pub fn build_full_trace_step<R, F: PrimeField64>(
+        trace: &mut R,
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
-    ) -> EmuFullTraceStep<F> {
+    ) where
+        R: MainTraceRowOps<F>,
+    {
         // Calculate intermediate values
         let a: [u32; 2] =
             [(inst_ctx.a & 0xFFFFFFFF) as u32, ((inst_ctx.a >> 32) & 0xFFFFFFFF) as u32];
@@ -2647,7 +2619,6 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        let mut trace = EmuFullTraceStep::default();
         trace.set_a(0, a[0]);
         trace.set_a(1, a[1]);
         trace.set_b(0, b[0]);
@@ -2713,7 +2684,6 @@ impl<'a> Emu<'a> {
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
         trace.set_store_reg_prev_value(0, store_prev_value[0]);
         trace.set_store_reg_prev_value(1, store_prev_value[1]);
-        trace
     }
 
     /// Returns if the emulation ended

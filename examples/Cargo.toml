@@ -10,15 +10,13 @@ members = [
     "aggregation/guest_agg",
     "big-program/host",
     "big-program/guest",
+    "hints/host",
 ]
 
 resolver = "2"
 
 [profile.release]
 opt-level = 3
-
-[profile.release.package."proofman-verifier"]
-opt-level = 0
 
 [workspace.dependencies]
 # Guest dependencies

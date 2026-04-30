@@ -21,6 +21,7 @@ num-bigint = { workspace = true }
 num-traits = { workspace = true }
 
 cfg-if = "1.0"
+crunchy = "0.2"
 
 [features]
 default = []

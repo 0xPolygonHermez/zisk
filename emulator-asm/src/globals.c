@@ -13,12 +13,19 @@ bool trace_trace = false;
 bool verbose = false;
 bool save_to_file = false;
 bool share_input_shm = false;
-bool open_input_shm = false;
+bool create_input_shm = true;
+bool create_internal_shm = true;
+bool create_output_shm = true;
+bool delete_input_shm = true;
+bool delete_internal_shm = true;
+bool delete_output_shm = true;
+bool just_create_all_shm = false;
 char input_file[4096] = {0};
 bool redirect_output_to_file = false;
 bool server = false;
 bool client = false;
 char shm_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
+char sem_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
 int map_locked_flag = MAP_LOCKED;
 uint64_t chunk_mask = 0x0;
 bool do_shutdown = false;
@@ -26,19 +33,27 @@ uint64_t number_of_mt_requests = 1;
 uint16_t port = 0;
 uint64_t chunk_player_address = 0;
 bool wait_flag = true;
+bool stdio = false;
+int server_pid = 0;
 
-char precompile_file_name[4096] = {0};
+// Shared memory names
 char shmem_control_input_name[128] = {0};
 char shmem_control_output_name[128] = {0};
 char shmem_input_name[128] = {0};
 char shmem_output_name[128] = {0};
 char shmem_mt_name[128] = {0};
 char shmem_precompile_name[128] = {0};
+char shmem_rom_name[128] = {0};
+char shmem_ram_name[128] = {0};
+
+// Semaphore names
 char sem_prec_avail_name[128] = {0};
 char sem_prec_read_name[128] = {0};
 char sem_chunk_done_name[128] = {0};
 char sem_shutdown_done_name[128] = {0};
 char sem_input_avail_name[128] = {0};
+
+char precompile_file_name[4096] = {0};
 char file_lock_name[128] = {0};
 char log_name[128] = {0};
 bool call_chunk_done = false;
@@ -67,6 +82,12 @@ int shmem_output_fd = -1;
 
 // Input MT trace shared memory
 int shmem_mt_fd = -1;
+
+// ROM shared memory
+int shmem_rom_fd = -1;
+
+// RAM shared memory
+int shmem_ram_fd = -1;
 
 // Chunk done semaphore: notifies the caller when a new chunk has been processed
 sem_t * sem_chunk_done = NULL;
