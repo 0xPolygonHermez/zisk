@@ -452,10 +452,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         is_first_partition: bool,
     ) -> Result<()> {
-        eprintln!(
-            "[worker] prepare_for_new_job hash={} with_hints={} first_part={}",
-            hash_id, with_hints, is_first_partition
-        );
         let program_id = self
             .guest_programs
             .get(hash_id)
@@ -463,13 +459,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .program_id
             .clone();
 
-        eprintln!("[worker] prepare_for_new_job → register_program");
         self.prover.register_program(&program_id, with_hints)?;
-        eprintln!("[worker] prepare_for_new_job → reset_resources");
         self.prover.reset_resources()?;
-        eprintln!("[worker] prepare_for_new_job → set_active_services");
         self.prover.set_active_services(is_first_partition)?;
-        eprintln!("[worker] prepare_for_new_job DONE");
         Ok(())
     }
 

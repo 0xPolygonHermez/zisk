@@ -300,12 +300,6 @@ impl Coordinator {
 
         let job_id = job.job_id.clone();
         let workers_pool = Arc::clone(&self.workers_pool);
-        eprintln!(
-            "[input-relay] initialize_input_relay spawn job={} uri={} workers={}",
-            job_id,
-            inputs_uri,
-            active_workers.len()
-        );
 
         // Grab the job Arc so the relay thread can mark it failed on error.
         let job_arc = self
@@ -354,7 +348,6 @@ impl Coordinator {
         workers: &[WorkerId],
         workers_pool: &WorkersPool,
     ) -> anyhow::Result<()> {
-        eprintln!("[input-relay] ENTER job={} uri={}", job_id, inputs_uri);
         let mut stream = StreamSource::from_uri(inputs_uri)?;
 
         // The SDK creates its listener after receiving the submit_job response, so
@@ -364,41 +357,20 @@ impl Coordinator {
             let connect_start = std::time::Instant::now();
             let deadline = connect_start + std::time::Duration::from_secs(60);
             let mut last_log = connect_start;
-            let mut attempts = 0u32;
             loop {
                 match stream.open() {
                     Ok(_) => {
-                        eprintln!(
-                            "[input-relay] open() OK job={} uri={} attempts={} elapsed={:?}",
-                            job_id,
-                            inputs_uri,
-                            attempts,
-                            connect_start.elapsed()
-                        );
                         break;
                     }
                     Err(e) => {
-                        attempts += 1;
                         let now = std::time::Instant::now();
                         if now >= deadline {
-                            eprintln!(
-                                "[input-relay] open() TIMEOUT job={} uri={} attempts={} err={}",
-                                job_id, inputs_uri, attempts, e
-                            );
                             return Err(e.context(format!(
                                 "timed out waiting for input stream socket to become available: {}",
                                 inputs_uri
                             )));
                         }
                         if now.duration_since(last_log) >= std::time::Duration::from_secs(5) {
-                            eprintln!(
-                                "[input-relay] open() still retrying job={} uri={} attempts={} elapsed={:?} last_err={}",
-                                job_id,
-                                inputs_uri,
-                                attempts,
-                                connect_start.elapsed(),
-                                e
-                            );
                             last_log = now;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -408,15 +380,10 @@ impl Coordinator {
         }
 
         info!("Input relay started for job {} from {}", job_id, inputs_uri);
-        eprintln!("[input-relay] reading job={} uri={}", job_id, inputs_uri);
 
-        let mut chunks = 0u32;
-        let mut bytes = 0usize;
         loop {
             match stream.next() {
                 Ok(Some(chunk)) => {
-                    chunks += 1;
-                    bytes += chunk.len();
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -437,17 +404,9 @@ impl Coordinator {
                 }
                 Ok(None) => {
                     info!("Input relay finished for job {} (stream ended)", job_id);
-                    eprintln!(
-                        "[input-relay] EOF job={} uri={} chunks={} bytes={}",
-                        job_id, inputs_uri, chunks, bytes
-                    );
                     return Ok(());
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[input-relay] ERROR job={} uri={} chunks={} bytes={} err={}",
-                        job_id, inputs_uri, chunks, bytes, e
-                    );
                     return Err(e);
                 }
             }
