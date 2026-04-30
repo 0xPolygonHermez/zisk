@@ -392,7 +392,6 @@ impl StreamWrite for UnixSocketStreamWriter {
             let listener_fd = self.listener_fd.unwrap();
             let (tx, rx) = mpsc::channel();
             self.socket_receiver = Some(rx);
-            let path_log = self.path.display().to_string();
 
             let handle = thread::spawn(move || {
                 // Retry accept on EINTR
