@@ -47,7 +47,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON_DIR="${SCRIPT_DIR}/../common"
-WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 
 # shellcheck source=../common/lib.sh
 source "${COMMON_DIR}/lib.sh"
