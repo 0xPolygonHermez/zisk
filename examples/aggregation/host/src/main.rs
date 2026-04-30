@@ -23,7 +23,10 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     let embedded_opts = EmbeddedOpts::default().minimal_memory();
-    let client = ProverClient::embedded().with_embedded_opts(embedded_opts).gpu().build()?;
+    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up first program...");
     client.setup(&PROGRAM1).run()?.await?;
@@ -36,7 +39,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?} ms",
+        "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

@@ -15,22 +15,42 @@ sha-hasher-common = { path = "../common" }
 [build-dependencies]
 zisk-sdk = { workspace = true }
 
+[features]
+default = []
+gpu = []
+
 [[bin]]
 name = "prove"
-path = "bin/prove.rs"
+path = "bin/embedded/prove.rs"
 
 [[bin]]
 name = "execute"
-path = "bin/execute.rs"
+path = "bin/embedded/execute.rs"
 
 [[bin]]
 name = "plonk"
-path = "bin/plonk.rs"
+path = "bin/embedded/plonk.rs"
 
 [[bin]]
 name = "minimal"
-path = "bin/minimal.rs"
+path = "bin/embedded/minimal.rs"
 
 [[bin]]
 name = "run"
 path = "bin/run.rs"
+
+[[bin]]
+name = "prove-remote"
+path = "bin/remote/prove.rs"
+
+[[bin]]
+name = "execute-remote"
+path = "bin/remote/execute.rs"
+
+[[bin]]
+name = "plonk-remote"
+path = "bin/remote/plonk.rs"
+
+[[bin]]
+name = "minimal-remote"
+path = "bin/remote/minimal.rs"

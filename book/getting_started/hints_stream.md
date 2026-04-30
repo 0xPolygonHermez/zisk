@@ -23,7 +23,7 @@ flowchart LR
 ## Table of Contents
 
 1. [Hint Format and Protocol](#1-hint-format-and-protocol)
-2. [Hints in CLI Execution](#2-hints-in-cli-execution)
+2. [Using Hints with the SDK](#2-using-hints-with-the-sdk)
 3. [Hints in Distributed Execution](#3-hints-in-distributed-execution)
 4. [Custom Hint Handlers](#4-custom-hint-handlers)
 5. [Generating Hints in Guest Programs](#5-generating-hints-in-guest-programs)
@@ -178,18 +178,74 @@ CTRL_START                          ← Reset state, begin stream
 CTRL_END                            ← Wait for completion, end stream
 ```
 
-## 2. Hints in CLI Execution
+## 2. Consuming Hints
 
-There are four CLI commands (`execute`, `prove`, `verify-constraints`, `stats`) that support hints stream system by providing a URI via the `--hints` option. The URI determines the input stream source for hints, which can be a file, Unix socket, QUIC stream, or other custom transport.
-The supported schemes are:
+Once a guest program has produced a hints binary file (see [Section 5](#5-generating-hints-in-guest-programs)), you can feed it to the prover either programmatically through the ZisK SDK or via the ZisK CLI.
+
+> **Note:** Hints are only supported with the **Assembly executor**. The emulator-based executor does not use the hints pipeline.
+
+### 2.1 SDK
+
+Load the file with `ZiskHints::from_file` and pass it to `.hints(...)` on the executor:
+
+```rust
+use anyhow::Result;
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskStdin, ZiskHints};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let elf_path = "hints/example/zec-reth.elf";
+    let program = GuestProgram::from_uri(elf_path)?;
+
+    let hints_path = "hints/example/24654300_hints.bin";
+    let hints = ZiskHints::from_file(hints_path)?;
+
+    let client = ProverClient::embedded()
+        .executor(ExecutorKind::Assembly)
+        .build()?;
+
+    client.upload(&program).run()?;
+    client.setup(&program).with_hints().run()?.await?;
+
+    let result = client
+        .execute(&program, ZiskStdin::new())
+        .hints(hints)
+        .executor(ExecutorKind::Assembly)
+        .run()?
+        .await?;
+
+    println!(
+        "Program executed successfully: {} cycles in {:.2?} ms",
+        result.get_execution_steps(),
+        result.get_execution_time()
+    );
+
+    Ok(())
+}
+```
+
+**Notes:**
+- Setup must be run with `.with_hints()` so the assembly ROM is generated with hint support enabled. Without it, the prover will not consume the hints stream.
+- `ZiskHints::from_file` loads the binary produced by the guest's hint generation. The returned value can be reused across multiple `.execute(...)` / `.prove(...)` calls.
+- The same pattern works for `prove`, `verify-constraints`, and `stats` operations exposed by `ProverClient`.
+
+A complete runnable example is available at `examples/hints/host/src/main.rs`.
+
+### 2.2 CLI
+
+Four `cargo-zisk` commands accept a `--hints` flag pointing to the hints file: `execute`, `prove`, `verify-constraints`, and `stats`. Pass the path with the `file://` scheme:
+
 ```
 --hints file://path      → File stream reader
---hints unix://path      → Unix socket stream reader
---hints quic://host:port → Quic stream reader
---hints (plain path)     → File stream reader
 ```
 
-> **Note:** Only ASM mode supports hints. The emulator mode does not use the hints pipeline.
+Example:
+
+```bash
+cargo-zisk prove --elf program.elf --hints file:///abs/path/hints.bin
+```
+
+`--hints` is mutually exclusive with `--inputs` (`-i`): if you provide hints, the inputs are recovered from the hint stream itself rather than from a separate input file.
 
 ## 3. Hints in Distributed Execution
 
@@ -237,31 +293,84 @@ Each worker receives the stream of hints, buffers them if they arrive out of ord
 
 ### 3.2. Hints Mode Configuration
 
-When starting a worker, if the `--hints` option is provided, the worker prepares to receive hints from the coordinator.
-When launching a proof generation job where hints will be provided, the workers must be started to receive and process hints.
-A hints stream system can be configured in two ways:
+When calling the coordinator with `.hints()` prepares to receive hints from the coordinator. A hints system can be configured in two ways:
+
 * **Streaming mode**: Workers receive hints from the coordinator via gRPC. This is the default and recommended mode for production, as it allows real-time processing of hints as they are generated.
 * **Path mode**: Workers load hints from a local path/URI. This is useful for debugging or when hints are pre-generated and stored in a file. In this mode, the coordinator does not send hints to workers; instead, each worker reads the hints directly from the specified path.
 
 #### 3.2.1 Coordinator Hints Streaming Mode
 
-To start the coordinator in streaming mode, provide the `--hints-uri` option with a URI that the `coordinator` will connect to, and set `--stream-hints` to enable broadcasting to workers. The URI determines the input stream source for hints.
-The supported schemes are:
-```
---hints-uri file://path      → File stream reader
---hints-uri unix://path      → Unix socket stream reader
---hints-uri quic://host:port → Quic stream reader
---hints-uri (plain path)     → File stream reader
+The transport for the live hints stream is chosen on the SDK side by constructing a `ZiskStream` and passing it as the hints source on the `execute`/`prove` call.
+
+| Constructor                              | Transport                                                                |
+| ---                                      | ---                                                                      |
+| `ZiskStream::unix()`                     | Unix domain socket at an auto-assigned path under `/tmp/`                |
+| `ZiskStream::unix_at("/path")`           | Unix domain socket at an explicit path                                   |
+| `ZiskStream::quic("quic://host:port")`   | QUIC transport (use `quic://127.0.0.1:0` to let the OS pick a port)      |
+| `ZiskStream::grpc()`                     | gRPC push transport (data pushed to the coordinator via `PushJobInput`)  |
+
+Example launching a prove job with hints streamed over a Unix socket:
+
+```rust
+use anyhow::Result;
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskStdin, ZiskStream};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let program = GuestProgram::from_uri("hints/example/zec-reth.elf")?;
+
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let hints = ZiskStream::unix();
+
+    let prove_handle = client
+        .prove(&program, ZiskStdin::new())
+        .hints(hints.clone())
+        .executor(ExecutorKind::Assembly)
+        .run()?;
+
+    let proof = prove_handle.await?;
+
+    Ok(())
+}
 ```
 
-Example to launch a prove command in streaming mode:
-```
-zisk-coordinator prove --hints-uri unix:///tmp/hints.sock --stream-hints ...
-```
+Switching transports is a one-line change at the call site — replace `ZiskStream::unix()` with `ZiskStream::grpc()` or `ZiskStream::quic("quic://0.0.0.0:0")`.
 
 #### 3.2.2 Worker Hints non-Streaming Mode
 
-To start a worker in non-streaming mode, provide the `--hints-uri` option with a URI that points to the local workers path where hints are stored, without the `--stream-hints` option. In this mode the worker(s) will load hints from the specified URI instead of receiving them from the coordinator. This mode is useful for debugging or when hints are pre-generated and stored in a file.
+Non-streaming mode is also selected from the SDK call. Instead of constructing a `ZiskStream`, build a `ZiskHints` from a pre-generated file (or in-memory bytes) and pass it to `.hints(...)`. The coordinator skips broadcasting in this case — each worker loads the hints directly from the URI baked into the `ZiskHints` value. This is useful for debugging or when hints are pre-generated.
+
+| Constructor                       | Source                                            |
+| ---                               | ---                                               |
+| `ZiskHints::from_file("/path")`   | Hints binary on disk (file path or `file://` URI) |
+| `ZiskHints::memory(bytes)`        | Hints already loaded into memory                  |
+| `ZiskHints::from(&value)`         | Serializable Rust value (encoded with bincode)    |
+
+Example launching a prove job that loads hints from a file:
+
+```rust
+use anyhow::Result;
+use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskStdin, ZiskHints};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let program = GuestProgram::from_uri("hints/example/zec-reth.elf")?;
+
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let hints = ZiskHints::from_file("/var/lib/zisk/hints/24654300_hints.bin")?;
+
+    let proof = client
+        .prove(&program, ZiskStdin::new())
+        .hints(hints)
+        .executor(ExecutorKind::Assembly)
+        .run()?
+        .await?;
+
+    Ok(())
+}
+```
+
+The same `ZiskHints` value can be reused across multiple `.execute(...)` / `.prove(...)` calls. As with streaming mode, no coordinator or worker flags are required to switch between sources — the SDK call decides.
 
 ## 4. Custom Hint Handlers
 

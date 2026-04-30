@@ -21,7 +21,10 @@ async fn main() -> Result<()> {
     println!("Input loaded successfully");
 
     // Create a `ProverClient` method.
-    let client = ProverClient::embedded().build()?;
+    let builder = ProverClient::embedded();
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     client.setup(&PROGRAM).run()?.await?;
 
@@ -29,7 +32,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
 
     println!(
-        "ZisK has executed program with {} cycles in {:?} ms",
+        "ZisK has executed program with {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );

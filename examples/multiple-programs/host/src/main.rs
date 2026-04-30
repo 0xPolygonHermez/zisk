@@ -7,9 +7,6 @@ static PROGRAM2: GuestProgram = load_program!("multiple-program-guest-2");
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Alternative: load at runtime from a URI (file path or http(s)://)
-    // let program2 = GuestProgram::from_uri("../multiple-program-guest-2/target/guest.elf")?;
-
     println!("Starting ZisK Prover Client...\n");
 
     // Create an input stream and write '1000' to it.
@@ -17,24 +14,19 @@ async fn main() -> Result<()> {
     let stdin = ZiskStdin::new();
     stdin.write(&n);
 
-    // Stdin can be created using null(), memory(), from(), file(), or stream() methods.
-    // let _stdin = ZiskStdin::stream("unix:///tmp/stdin.sock")?;
-    // Hints can be created using memory(), from(), or file() methods.
-    // let _hints = ZiskHints::file("/path/to/hints.bin")?;
-
     // Create a `ProverClient` method.
     // let client = ProverClient::embedded().build()?;
 
-    // let embedded_opts = EmbeddedOpts::default().minimal_memory();
-    // let client = ProverClient::embedded().with_embedded_opts(embedded_opts).build()?;
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
-
-    // let _remote_client = ProverClient::embedded().remote("localhost:3000").gpu().build()?;  // future
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
     println!("Setting up first program...");
     client.upload(&PROGRAM1).run()?;
     client.setup(&PROGRAM1).run()?.await?;
-    
+
     println!("Setting up second program...");
     client.upload(&PROGRAM2).run()?;
     client.setup(&PROGRAM2).run()?.await?;
@@ -44,7 +36,7 @@ async fn main() -> Result<()> {
     let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?} ms",
+        "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );
@@ -66,7 +58,7 @@ async fn main() -> Result<()> {
     let result2 = client.execute(&PROGRAM2, stdin2.clone()).run()?.await?;
 
     println!(
-        "Program executed successfully: {} cycles in {:.2?} ms",
+        "Program executed successfully: {} cycles in {} ms",
         result2.get_execution_steps(),
         result2.get_execution_time()
     );
