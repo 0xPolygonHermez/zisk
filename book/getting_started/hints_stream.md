@@ -327,36 +327,66 @@ As a result, for each `zisklib` function invocation, the `HintsProcessor` may ge
 
 ### 5.2 Initialize/Finalize Hint Stream
 
-To start hints generation from your guest program you must call one of the following functions from the `ziskos::hints` crate:
+When using the `ziskos::entrypoint!(main)` macro, hint generation is initialized and finalized **automatically** around your guest entry function. You only need to compile with `--cfg zisk_hints` (see [5.3](#53-enable-hints-at-compile-time)) and, optionally, set environment variables to control the output paths.
+
+The macro expands to roughly:
+
+```rust
+fn main() {
+    zkvm_init();         // initialize hints
+    super::ZISK_ENTRY();  // your guest entry function
+    zkvm_deinit();       // closes hints
+}
+```
+
+`zkvm_init` and `zkvm_deinit` are also exposed as `extern "C"` symbols so they can be called from C guest programs (see [5.7 Using Hints from C Guest Programs](#57-using-hints-from-c-guest-programs)).
+
+#### 5.2.1 Environment Variables
+
+| Variable           | Description                                            | Default            |
+|--------------------|--------------------------------------------------------|--------------------|
+| `ZISK_HINTS_OUTPUT`| Path to the hints binary file written by `zkvm_init`.  | `./tmp/hints.bin`  |
+| `ZISK_INPUT_FILE`  | Path to the input file consumed by `read_input_slice`. | `build/input.bin`  |
+
+The `./tmp/` directory is created automatically if it does not exist.
+
+#### 5.2.2 Manual API
+
+If you need finer control (e.g., streaming hints over a Unix socket, configuring a debug file, providing a synchronization signal to the host), call the lower-level functions directly instead of relying on the `entrypoint!` macro.
 
 ```rust
 pub fn init_hints_file(hints_file_path: PathBuf, ready: Option<oneshot::Sender<()>>) -> Result<()>
 ```
 
-This function stores the generated hints in the file specified by the `hints_file_path` parameter.
+Stores the generated hints in the file specified by `hints_file_path`.
 
 ```rust
-pub fn init_hints_socket(socket_path: PathBuf, debug_file: Option<PathBuf>, ready: Option<oneshot::Sender<()>>) -> Result<()>
+pub fn init_hints_socket(
+    socket_path: PathBuf,
+    debug_file: Option<PathBuf>,
+    write_flush_threshold: Option<usize>,
+    ready: Option<oneshot::Sender<()>>,
+) -> Result<()>
 ```
 
-This function sends the hints through the Unix socket specified by the `socket_path` parameter.
+Sends the hints through the Unix socket specified by `socket_path`.
 
-The optional `ready` parameter can be used for synchronization with the host when the guest program is executed in a separate thread to generate hints in parallel. It signals `ready` when the hints generation is ready to start writing hints through the Unix socket.
+- The optional `debug_file` stores a copy of the hints sent through the socket, useful for later debugging.
+- The optional `write_flush_threshold` controls the buffered-write flush size; `None` uses the default.
+- The optional `ready` parameter can be used for synchronization with the host when the guest is executed in a separate thread to generate hints in parallel. It signals `ready` when the writer is ready to start sending hints over the socket.
 
-The optional `debug_file` parameter can be used to store, in the specified file, a copy of the hints sent through the socket. This file can later be used for debugging purposes.
-
-To close hints generation you must call:
+To close hints generation:
 
 ```rust
 pub fn close_hints() -> Result<()>
 ```
 
-You should call these functions only when the guest is compiled for the native target used for hints generation. This can be achieved by placing the code under the following configuration flag:
+Place these calls under `#[cfg(zisk_hints)]` so they are only compiled into the native target used for hints generation:
 
 ```rust
 #[cfg(zisk_hints)]
 {
-    // Initialization/Finalize Hints generation code
+    // Initialization / finalization code
     ...
 }
 ```
@@ -373,7 +403,7 @@ Once the guest program is set up to generate hints for the native target, it mus
 RUSTFLAGS='--cfg zisk_hints' cargo build --release
 ```
 
-After compiling, executing the guest program will generate the hints binary file at the specified location (if `init_hints_file` was used) or start writing hints to the specified Unix socket (if `init_hints_socket` was used).
+After compiling, executing the guest program will generate the hints. By default — when relying on the `entrypoint!` macro — the binary file is written to `./tmp/hints.bin`; set `ZISK_HINTS_OUTPUT` to override the path. If you used the manual API instead, the file/socket location follows what was passed to `init_hints_file`/`init_hints_socket`.
 
 If a hints file was generated, it can be consumed using the `--hints` flag in the `cargo-zisk` commands that support hints (as explained in [Hints in CLI Execution](#2-hints-in-cli-execution)).
 
@@ -428,3 +458,35 @@ fn hint_custom(hint_id: u32, data_ptr: *const u8, data_len: usize, is_result: u8
 ```
 
 and following the same guidelines described for the built-in FFI hint helper functions.
+
+### 5.7 Using Hints from C Guest Programs
+
+The `ziskos` crate is published as both an `rlib` and a `staticlib`, so C guest programs can link against the resulting `.a` archive and call the hint lifecycle functions through the C ABI. Two symbols are exposed:
+
+```c
+extern void zkvm_init(void);
+extern void zkvm_deinit(void);
+```
+
+`zkvm_init` initializes the hint stream and `zkvm_deinit` finalizes it. They are no-ops when compiled without `--cfg zisk_hints`, so the same C code works for both native (hint generation) and zkVM target builds without modification.
+
+A minimal C guest program looks like:
+
+```c
+extern void zkvm_init(void);
+extern void zkvm_deinit(void);
+
+int main(void) {
+    zkvm_init();
+
+    // Guest logic, including any FFI hint calls
+    // (hint_sha256, hint_keccak256, hint_input_data, ...)
+
+    zkvm_deinit();
+    return 0;
+}
+```
+
+When linking the C guest against `ziskos` for native hint generation, the same environment variables described in [5.2.1](#521-environment-variables) (`ZISK_HINTS_OUTPUT`, `ZISK_INPUT_FILE`) control the file paths used by `zkvm_init` and the input reader.
+
+The FFI hint helper functions listed in [5.5 FFI Hints Helper Functions](#55-ffi-hints-helper-functions) are all `extern "C"` and use the same signatures from C — declare them with `extern` in your C source and link against the same `ziskos` archive.
