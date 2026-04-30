@@ -9,6 +9,31 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Borsh adapters for `bytes::Bytes`.
+///
+/// Encodes identically to `Vec<u8>`: a `u32` little-endian length prefix
+/// followed by the raw bytes. This preserves full wire compatibility with
+/// peers that use `Vec<u8>`.
+mod borsh_bytes {
+    use borsh::{BorshDeserialize, BorshSerialize};
+    use bytes::Bytes;
+    use std::io::{Read, Result, Write};
+
+    pub fn serialize<W: Write>(bytes: &Bytes, writer: &mut W) -> Result<()> {
+        let len = bytes.len() as u32;
+        BorshSerialize::serialize(&len, writer)?;
+        writer.write_all(bytes)?;
+        Ok(())
+    }
+
+    pub fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Bytes> {
+        let len = u32::deserialize_reader(reader)? as usize;
+        let mut buf = vec![0u8; len];
+        reader.read_exact(&mut buf)?;
+        Ok(Bytes::from(buf))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
     // No inputs are provided
@@ -181,7 +206,13 @@ pub struct ContributionParamsDto {
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub enum InputSourceDto {
     InputPath(String),
-    InputData(Vec<u8>),
+    InputData(
+        #[borsh(
+            serialize_with = "borsh_bytes::serialize",
+            deserialize_with = "borsh_bytes::deserialize_reader"
+        )]
+        bytes::Bytes,
+    ),
     InputNull,
 }
 

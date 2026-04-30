@@ -7381,6 +7381,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "borsh",
+ "bytes",
  "chrono",
  "proofman",
  "proofman-common",
@@ -7402,6 +7403,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
+ "bytes",
  "fields",
  "libc",
  "proofman",
@@ -7429,6 +7431,7 @@ dependencies = [
  "async-stream",
  "bincode",
  "blake3",
+ "bytes",
  "cargo-zisk",
  "chrono",
  "clap",

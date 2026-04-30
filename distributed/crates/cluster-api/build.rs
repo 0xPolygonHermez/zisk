@@ -15,6 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_well_known_types(false)
         .disable_comments(["."])
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
+        // Using `bytes::Bytes` instead of `Vec<u8>` to enable zero-copy end-to-end.
+        .bytes(".zisk.distributed.api.v1.ContributionParams.input_data")
         // Add support for proto3 optional fields
         .protoc_arg("--experimental_allow_proto3_optional")
         .compile_protos(&["proto/zisk_cluster_api.proto"], &["proto/"])?;

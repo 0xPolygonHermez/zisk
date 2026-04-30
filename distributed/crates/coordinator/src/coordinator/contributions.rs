@@ -49,7 +49,7 @@ impl Coordinator {
                     ))
                 })?;
                 info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
-                InputSourceDto::InputData(inputs)
+                InputSourceDto::InputData(bytes::Bytes::from(inputs))
             }
             InputsModeDto::InputsStream(_) => {
                 // Coordinator will relay streamed inputs to workers via InputStreamData.

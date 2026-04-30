@@ -1,12 +1,12 @@
 use anyhow::Result;
+use bytes::{Bytes, BytesMut};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Cursor, Read};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 struct Inner {
-    data: Mutex<Vec<u8>>,
-    cursor: Mutex<Cursor<Vec<u8>>>,
+    cursor: Mutex<Cursor<BytesMut>>,
 }
 
 #[derive(Clone)]
@@ -22,17 +22,25 @@ impl Default for ZiskStdin {
 
 impl ZiskStdin {
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Inner {
-                data: Mutex::new(Vec::new()),
-                cursor: Mutex::new(Cursor::new(Vec::new())),
-            }),
-        }
+        Self::from_bytes_mut(BytesMut::new())
     }
 
+    /// Construct a `ZiskStdin` from an owned `Vec<u8>`.
+    /// Zero-copy: the buffer is moved into `Bytes` without reallocation.
     pub fn from_vec(data: Vec<u8>) -> Self {
-        let cursor = Cursor::new(data.clone());
-        Self { inner: Arc::new(Inner { data: Mutex::new(data), cursor: Mutex::new(cursor) }) }
+        Self::from_bytes(Bytes::from(data))
+    }
+
+    /// Construct a `ZiskStdin` from `bytes::Bytes`.
+    /// Zero-copy if the buffer is uniquely owned (e.g., freshly received data);
+    /// otherwise performs a single allocation and copy to obtain a mutable buffer.
+    pub fn from_bytes(data: Bytes) -> Self {
+        let buf = data.try_into_mut().unwrap_or_else(|shared| BytesMut::from(shared.as_ref()));
+        Self::from_bytes_mut(buf)
+    }
+
+    fn from_bytes_mut(buf: BytesMut) -> Self {
+        Self { inner: Arc::new(Inner { cursor: Mutex::new(Cursor::new(buf)) }) }
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -61,7 +69,7 @@ impl ZiskStdin {
     }
 
     pub fn read_data(&self) -> Vec<u8> {
-        self.inner.data.lock().unwrap().clone()
+        self.inner.cursor.lock().unwrap().get_ref().to_vec()
     }
 
     pub fn read_bytes(&self) -> Vec<u8> {
@@ -85,13 +93,6 @@ impl ZiskStdin {
         let padding = (8 - (total_len % 8)) % 8;
         let len_bytes = data_len.to_le_bytes();
 
-        let mut buf = self.inner.data.lock().unwrap();
-        buf.extend_from_slice(&len_bytes);
-        buf.extend_from_slice(data);
-        if padding > 0 {
-            buf.extend_from_slice(&vec![0u8; padding]);
-        }
-
         let mut cursor = self.inner.cursor.lock().unwrap();
         cursor.get_mut().extend_from_slice(&len_bytes);
         cursor.get_mut().extend_from_slice(data);
@@ -101,7 +102,7 @@ impl ZiskStdin {
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, self.inner.data.lock().unwrap().as_slice())?;
+        std::fs::write(path, self.inner.cursor.lock().unwrap().get_ref().as_ref())?;
         Ok(())
     }
 
@@ -116,9 +117,9 @@ impl ZiskStdin {
     }
 
     pub fn clear(&self) {
-        self.inner.data.lock().unwrap().clear();
         let mut cursor = self.inner.cursor.lock().unwrap();
-        *cursor = Cursor::new(Vec::new());
+        cursor.set_position(0);
+        cursor.get_mut().clear();
     }
 
     fn read_raw(&self) -> std::io::Result<Vec<u8>> {

@@ -808,7 +808,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_bytes(input_data),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -867,7 +867,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_bytes(input_data),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 

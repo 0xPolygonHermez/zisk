@@ -32,6 +32,7 @@ rustls = { version = "0.23", features = ["ring"] }
 rcgen = "0.14"
 
 bincode = { workspace = true }
+bytes = { workspace = true }
 
 [features]
 default = []
