@@ -184,3 +184,86 @@ resolve_mpi_config() {
     [[ -z "$MPIRUN_BIN" ]] && die "mpirun not found in PATH. ${missing_hint}"
     info "Using mpirun: ${MPIRUN_BIN}"
 }
+
+# ── uninstall helpers ────────────────────────────────────────────────────────
+#
+# Install scripts embed a metadata footer in the generated systemd unit (or
+# launchd plist) at install time. Uninstall reads it back so the cleanup uses
+# the paths actually installed, even if defaults.env has since changed.
+#
+#   systemd: trailing "# zisk-coordinator:DATA_DIR=/var/lib/zisk" lines
+#   launchd: trailing "<!-- zisk-coordinator:DATA_DIR=... -->" lines
+#
+# Set ASSUME_YES=true (e.g. via --yes / -y) to skip every prompt below.
+
+# confirm PROMPT [DEFAULT]
+# Y/N prompt. DEFAULT is "y" or "n" (default "n"). Returns 0 on yes, 1 on no.
+# When ASSUME_YES=true, returns 0 without reading.
+confirm() {
+    local prompt="$1" default="${2:-n}" reply
+    if [[ "${ASSUME_YES:-false}" == "true" ]]; then
+        return 0
+    fi
+    if [[ "$default" == "y" ]]; then
+        read -r -p "${prompt} [Y/n] " reply
+        reply="${reply:-y}"
+    else
+        read -r -p "${prompt} [y/N] " reply
+        reply="${reply:-n}"
+    fi
+    [[ "$(echo "$reply" | tr '[:upper:]' '[:lower:]')" == "y" ]]
+}
+
+# read_unit_metadata FILE BIN KEY
+# Reads a metadata value embedded in FILE (systemd unit or launchd plist).
+# Prints the value to stdout; returns empty string if FILE missing or key absent.
+read_unit_metadata() {
+    local file="$1" bin="$2" key="$3"
+    [[ -f "$file" ]] || return 0
+    local marker="${bin}:${key}="
+    if [[ "$file" == *.plist ]]; then
+        grep -- "<!-- ${marker}" "$file" 2>/dev/null \
+            | sed "s|.*<!-- ${marker}\(.*\) -->|\1|" \
+            | head -n1
+    else
+        grep -- "^# ${marker}" "$file" 2>/dev/null \
+            | sed "s|^# ${marker}||" \
+            | head -n1
+    fi
+}
+
+# prompt_remove_dir DIR LABEL
+# Prompts to remove DIR (default no). No-op if DIR doesn't exist.
+prompt_remove_dir() {
+    local dir="$1" label="$2"
+    [[ -n "$dir" && -d "$dir" ]] || return 0
+    if confirm "Remove ${label} '${dir}'?"; then
+        rm -rf "$dir"
+        info "Removed ${dir}."
+    fi
+}
+
+# prompt_remove_user_group USER GROUP
+# Prompts to remove a system user + group (default no). Branches on OS.
+prompt_remove_user_group() {
+    local user="$1" group="$2"
+    [[ -n "$user" && -n "$group" ]] || return 0
+    confirm "Remove system user '${user}' and group '${group}'?" || return 0
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        if dscl . -read "/Users/${user}" &>/dev/null; then
+            dscl . -delete "/Users/${user}" && info "Removed user '${user}'."
+        fi
+        if dscl . -read "/Groups/${group}" &>/dev/null; then
+            dscl . -delete "/Groups/${group}" && info "Removed group '${group}'."
+        fi
+    else
+        if id "$user" &>/dev/null; then
+            userdel "$user" 2>/dev/null && info "Removed user '${user}'." || \
+                warn "Could not remove user '${user}' (may have running processes)."
+        fi
+        if getent group "$group" &>/dev/null; then
+            groupdel "$group" 2>/dev/null && info "Removed group '${group}'." || \
+                warn "Could not remove group '${group}'."
+        fi
+    fi
+}

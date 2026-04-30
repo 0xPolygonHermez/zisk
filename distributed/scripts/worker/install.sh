@@ -19,7 +19,8 @@
 #                          must all be specified together if any are given)
 #   --no-start            Enable but do not start the service
 #   --no-enable           Install unit file but do not enable or start
-#   --uninstall           Stop, disable, and remove the service and binary
+#   --uninstall           Stop, disable, and remove the service (prompts for cleanup)
+#   -y, --yes             Skip every uninstall prompt (assume yes)
 #
 # Env-var equivalents (CLI flags win): ZISK_WORKER_BINARY, ZISK_WORKER_CONFIG,
 # ZISK_WORKER_PROVING_KEY, ZISK_WORKER_MPI (true|false),
@@ -62,6 +63,7 @@ MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
+ASSUME_YES=false
 
 case "$MPI_ENABLED" in
     true|false) ;;
@@ -82,6 +84,7 @@ while [[ $# -gt 0 ]]; do
         --no-start)       NO_START=true;      shift ;;
         --no-enable)      NO_ENABLE=true;     shift ;;
         --uninstall)      UNINSTALL=true;     shift ;;
+        -y|--yes)         ASSUME_YES=true;    shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done
@@ -90,14 +93,33 @@ done
 
 if $UNINSTALL; then
     need_root
-    info "Uninstalling ${BINARY_NAME}..."
+    [[ -f "${UNIT_FILE}" ]] || die "${BINARY_NAME} is not installed (${UNIT_FILE} not found)."
+    confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
+
+    # Recover install-time paths from unit metadata; fall back to defaults.env
+    data_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" DATA_DIR)"
+    log_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" LOG_DIR)"
+    config_dir="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" CONFIG_DIR)"
+    svc_user="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" SVC_USER)"
+    svc_group="$(read_unit_metadata "${UNIT_FILE}" "${BINARY_NAME}" SVC_GROUP)"
+    : "${data_dir:=$WORK_DIR}"
+    : "${log_dir:=$LOG_DIR}"
+    : "${config_dir:=$CONFIG_DIR}"
+    : "${svc_user:=$SERVICE_USER}"
+    : "${svc_group:=$SERVICE_GROUP}"
+
+    info "Stopping and removing ${BINARY_NAME}..."
     systemctl stop    "${BINARY_NAME}" 2>/dev/null || true
     systemctl disable "${BINARY_NAME}" 2>/dev/null || true
     rm -f "${UNIT_FILE}" "${BINARY_DST}"
     systemctl daemon-reload
-    info "Done. Config and data directories are left in place."
-    info "Remove manually if no longer needed:"
-    info "  sudo rm -rf ${CONFIG_DIR} ${WORK_DIR} ${LOG_DIR}"
+
+    prompt_remove_dir "${log_dir}" "log directory"
+    prompt_remove_dir "${data_dir}" "data directory"
+    prompt_remove_dir "${config_dir}" "config directory"
+    prompt_remove_user_group "${svc_user}" "${svc_group}"
+
+    info "${BINARY_NAME} uninstalled."
     exit 0
 fi
 
@@ -184,6 +206,13 @@ ReadOnlyPaths=${CONFIG_DIR} ${PROVING_KEY}
 
 [Install]
 WantedBy=multi-user.target
+
+# Install metadata (read by --uninstall; do not edit)
+# ${BINARY_NAME}:DATA_DIR=${WORK_DIR}
+# ${BINARY_NAME}:LOG_DIR=${LOG_DIR}
+# ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR}
+# ${BINARY_NAME}:SVC_USER=${SERVICE_USER}
+# ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP}
 EOF
 
 systemctl daemon-reload

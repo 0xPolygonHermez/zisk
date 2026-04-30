@@ -9,7 +9,8 @@
 #   --binary PATH    Use a pre-built binary instead of building from source
 #   --config PATH    Install an existing coordinator.toml instead of the sample
 #   --port N         Listening port (default: 7000, maps to --api-port)
-#   --uninstall      Stop, unload, and remove the service and binary
+#   --uninstall      Stop, unload, and remove the service (prompts for cleanup)
+#   -y, --yes        Skip every uninstall prompt (assume yes)
 #
 # Env-var equivalents (CLI flags win): ZISK_COORDINATOR_BINARY,
 # ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_PORT.
@@ -45,6 +46,7 @@ BINARY_SRC="${ZISK_COORDINATOR_BINARY:-}"
 CONFIG_SRC="${ZISK_COORDINATOR_CONFIG:-}"
 PORT="${ZISK_COORDINATOR_PORT:-$DEFAULT_PORT}"
 UNINSTALL=false
+ASSUME_YES=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --config)    CONFIG_SRC="$2";  shift 2 ;;
         --port)      PORT="$2";        shift 2 ;;
         --uninstall) UNINSTALL=true;   shift ;;
+        -y|--yes)    ASSUME_YES=true;  shift ;;
         *) die "Unknown option: $1" ;;
     esac
 done
@@ -61,11 +64,31 @@ done
 
 if $UNINSTALL; then
     need_root
-    info "Uninstalling ${BINARY_NAME}..."
+    [[ -f "${LAUNCHD_PLIST}" ]] || die "${BINARY_NAME} is not installed (${LAUNCHD_PLIST} not found)."
+    confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
+
+    # Recover install-time paths from plist metadata; fall back to defaults.env
+    data_dir="$(read_unit_metadata "${LAUNCHD_PLIST}" "${BINARY_NAME}" DATA_DIR)"
+    log_dir="$(read_unit_metadata "${LAUNCHD_PLIST}" "${BINARY_NAME}" LOG_DIR)"
+    config_dir="$(read_unit_metadata "${LAUNCHD_PLIST}" "${BINARY_NAME}" CONFIG_DIR)"
+    svc_user="$(read_unit_metadata "${LAUNCHD_PLIST}" "${BINARY_NAME}" SVC_USER)"
+    svc_group="$(read_unit_metadata "${LAUNCHD_PLIST}" "${BINARY_NAME}" SVC_GROUP)"
+    : "${data_dir:=$WORK_DIR}"
+    : "${log_dir:=$LOG_DIR}"
+    : "${config_dir:=$CONFIG_DIR}"
+    : "${svc_user:=$SERVICE_USER}"
+    : "${svc_group:=$SERVICE_GROUP}"
+
+    info "Stopping and removing ${BINARY_NAME}..."
     launchctl unload "${LAUNCHD_PLIST}" 2>/dev/null || true
     rm -f "${LAUNCHD_PLIST}" "${BINARY_DST}" "${NEWSYSLOG_CONF}"
-    info "Done. Config files under ${CONFIG_DIR}/ are left in place."
-    info "Remove manually if no longer needed: sudo rm -rf ${CONFIG_DIR}"
+
+    prompt_remove_dir "${log_dir}" "log directory"
+    prompt_remove_dir "${data_dir}" "data directory"
+    prompt_remove_dir "${config_dir}" "config directory"
+    prompt_remove_user_group "${svc_user}" "${svc_group}"
+
+    info "${BINARY_NAME} uninstalled."
     exit 0
 fi
 
@@ -140,6 +163,13 @@ cat > "${LAUNCHD_PLIST}" <<PLIST
     </dict>
 </dict>
 </plist>
+
+<!-- Install metadata (read by --uninstall; do not edit) -->
+<!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
+<!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
+<!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
+<!-- ${BINARY_NAME}:SVC_USER=${SERVICE_USER} -->
+<!-- ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP} -->
 PLIST
 
 chown root:wheel "${LAUNCHD_PLIST}"
