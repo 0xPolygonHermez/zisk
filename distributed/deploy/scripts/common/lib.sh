@@ -19,6 +19,7 @@
 #     ZISK_WORKER_BINARY             pre-built binary path     (--binary)
 #     ZISK_WORKER_CONFIG             TOML config path          (--config)
 #     ZISK_WORKER_PROVING_KEY        proving key directory     (--proving-key)
+#     ZISK_WORKER_PROVING_KEY_SNARK  SNARK proving key dir     (--proving-key-snark)
 #     ZISK_WORKER_COORDINATOR_URL    coordinator gRPC URL      (--coordinator-url)
 #     ZISK_WORKER_ID                 worker identifier         (--worker-id)
 #     ZISK_WORKER_COMPUTE_CAPACITY   advertised compute units  (--compute-capacity)

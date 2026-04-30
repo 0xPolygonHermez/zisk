@@ -11,6 +11,7 @@
 #   --config PATH          Install an existing worker.toml instead of the sample
 #   --proving-key PATH     Path to the proving key directory
 #                          (default: /var/lib/zisk-worker/provingKey)
+#   --proving-key-snark PATH  Path to the SNARK proving key directory (optional)
 #   --coordinator-url URL  Distributed coordinator URL (overrides TOML)
 #   --worker-id ID         Worker identifier (overrides TOML; auto-UUID if unset)
 #   --compute-capacity N   Compute units to advertise (overrides TOML)
@@ -37,7 +38,8 @@
 #   macOS is only useful for single-host multi-process testing.
 #
 # Env-var equivalents (CLI flags win): ZISK_WORKER_BINARY, ZISK_WORKER_CONFIG,
-# ZISK_WORKER_PROVING_KEY, ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
+# ZISK_WORKER_PROVING_KEY, ZISK_WORKER_PROVING_KEY_SNARK,
+# ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
 # ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
 # ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
@@ -70,6 +72,7 @@ load_env_file "$@"
 BINARY_SRC="${ZISK_WORKER_BINARY:-}"
 CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
 PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
+PROVING_KEY_SNARK="${ZISK_WORKER_PROVING_KEY_SNARK:-}"
 COORDINATOR_URL="${ZISK_WORKER_COORDINATOR_URL:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
 COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-}"
@@ -96,6 +99,7 @@ while [[ $# -gt 0 ]]; do
         --binary)            BINARY_SRC="$2";       shift 2 ;;
         --config)            CONFIG_SRC="$2";       shift 2 ;;
         --proving-key)       PROVING_KEY="$2";      shift 2 ;;
+        --proving-key-snark) PROVING_KEY_SNARK="$2"; shift 2 ;;
         --coordinator-url)   COORDINATOR_URL="$2";  shift 2 ;;
         --worker-id)         WORKER_ID="$2";        shift 2 ;;
         --compute-capacity)  COMPUTE_CAPACITY="$2"; shift 2 ;;
@@ -182,6 +186,10 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
         printf '        <string>%s</string>\n' "${CONFIG_DST}"
         printf '        <string>--proving-key</string>\n'
         printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        if [[ -n "$PROVING_KEY_SNARK" ]]; then
+            printf '        <string>--proving-key-snark</string>\n'
+            printf '        <string>%s</string>\n' "${PROVING_KEY_SNARK}"
+        fi
         if [[ -n "$COORDINATOR_URL" ]]; then
             printf '        <string>--coordinator-url</string>\n'
             printf '        <string>%s</string>\n' "${COORDINATOR_URL}"
@@ -283,6 +291,7 @@ else
     # Build worker args (everything after the binary path); appended to mpirun
     # wrapper or to bare ExecStart depending on MPI_ENABLED.
     WORKER_ARGS="--config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --proving-key-snark ${PROVING_KEY_SNARK}"
     [[ -n "$COORDINATOR_URL" ]]  && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
     [[ -n "$WORKER_ID" ]]        && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
     [[ -n "$COMPUTE_CAPACITY" ]] && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
@@ -303,9 +312,10 @@ else
         EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
     fi
 
-    # ReadOnlyPaths: include ASM_PATH so the sandbox can read it
+    # ReadOnlyPaths: include ASM_PATH and PROVING_KEY_SNARK so the sandbox can read them
     READ_ONLY_PATHS="${CONFIG_DIR} ${PROVING_KEY}"
-    [[ -n "$ASM_PATH" ]] && READ_ONLY_PATHS+=" ${ASM_PATH}"
+    [[ -n "$ASM_PATH" ]]          && READ_ONLY_PATHS+=" ${ASM_PATH}"
+    [[ -n "$PROVING_KEY_SNARK" ]] && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
 
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
