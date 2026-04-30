@@ -7439,6 +7439,7 @@ dependencies = [
  "futures-util",
  "hex",
  "humantime",
+ "metrics",
  "proofman",
  "proofman-util",
  "prost-types",

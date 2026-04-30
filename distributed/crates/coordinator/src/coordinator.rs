@@ -221,19 +221,25 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(false);
             }
             job.change_state(JobState::Cancelled);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
         };
 
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
         self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_CANCELLED,
+            &worker_ids,
+            phase1_start,
+        );
 
         info!("Cancelled job {}", job_id);
 
@@ -255,6 +261,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
+            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
         }
 
         Ok(hash_id)
@@ -449,6 +456,8 @@ impl Coordinator {
         self.dispatch_contributions_messages(&job, &active_workers).await?;
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
+
+        crate::metrics::record_job_started();
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -756,7 +765,7 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
 
             // Prevent double-fail races (monitor + worker error racing)
@@ -765,7 +774,7 @@ impl Coordinator {
             }
 
             job.change_state(JobState::Failed);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
             // job write lock released here
         };
 
@@ -777,6 +786,12 @@ impl Coordinator {
         }
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_FAILURE,
+            &worker_ids,
+            phase1_start,
+        );
 
         error!("Failed job {} (reason: {})", job_id, reason.as_ref());
 

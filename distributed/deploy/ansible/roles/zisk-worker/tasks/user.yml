@@ -1,0 +1,15 @@
+---
+- name: Ensure zisk-worker group exists
+  ansible.builtin.group:
+    name: "{{ zisk_worker_group }}"
+    system: true
+    state: present
+
+- name: Ensure zisk-worker user exists
+  ansible.builtin.user:
+    name: "{{ zisk_worker_user }}"
+    group: "{{ zisk_worker_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    state: present

@@ -1,0 +1,24 @@
+---
+# zisk-coordinator role defaults.
+# Mirrors distributed/deploy/scripts/coordinator/defaults.env. Override per host/group.
+
+zisk_coordinator_user: zisk-coordinator
+zisk_coordinator_group: zisk-coordinator
+zisk_coordinator_binary_dst: /usr/local/bin/zisk-coordinator
+zisk_coordinator_config_dir: /etc/zisk
+zisk_coordinator_config_dst: "{{ zisk_coordinator_config_dir }}/coordinator.toml"
+zisk_coordinator_work_dir: /var/lib/zisk-coordinator
+zisk_coordinator_log_dir: /var/log/zisk-coordinator
+zisk_coordinator_unit_file: /etc/systemd/system/zisk-coordinator.service
+
+# Client-facing gRPC API port (maps to --api-port).
+zisk_coordinator_api_port: 7000
+
+# Optional overrides — leave empty to use the value from coordinator.toml.
+zisk_coordinator_cluster_port: ""    # worker-facing gRPC port      (--cluster-port)
+zisk_coordinator_metrics_port: ""    # Prometheus metrics port      (--metrics-port)
+zisk_coordinator_log_level: ""       # trace|debug|info|warn|error  (--log-level)
+
+# Source paths on the Ansible control host. Operator must supply binary_src.
+zisk_coordinator_binary_src: ""      # required: path to pre-built zisk-coordinator binary
+zisk_coordinator_config_src: ""      # optional: path to coordinator.toml

@@ -1,0 +1,30 @@
+---
+# Sample playbook: install zisk-worker on hosts in the [workers] inventory group.
+#
+# Run with:
+#   ansible-playbook -i inventory.ini install-worker.yml \
+#     -e zisk_worker_binary_src=/path/to/built/zisk-worker
+#
+# Common overrides (set in inventory, group_vars, or -e):
+#   zisk_worker_config_src: /path/to/worker.toml
+#   zisk_worker_proving_key: /mnt/zisk/provingKey
+#   zisk_worker_mpi_enabled: false                # disable MPI entirely
+#   zisk_worker_mpi_processes: 4                  # manual override (set all 3)
+#   zisk_worker_mpi_numa_ppr: 2
+#   zisk_worker_mpi_threads: 16
+
+- name: Install zisk-worker
+  hosts: workers
+  become: true
+  pre_tasks:
+    - name: ZisK installation banner
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "  ZisK — distributed proving system  (worker installer)"
+          - "  https://github.com/0xPolygonHermez/zisk"
+          - "============================================================"
+      run_once: true
+      tags: always
+  roles:
+    - role: zisk-worker
