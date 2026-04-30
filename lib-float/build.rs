@@ -4,85 +4,108 @@ use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
-        return;
-    }
-
     // Source path
     let c_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("c");
     if !c_path.exists() {
         panic!("Missing c_path = {}", c_path.display());
     }
 
-    // Build/output directories under OUT_DIR so `cargo clean` removes them.
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set by cargo"));
-    let build_folder = out_dir.join("build");
-    let library_folder = out_dir.join("lib");
     let library_name = "ziskfloat";
-    let lib_file = library_folder.join(format!("lib{library_name}.a"));
-    let elf_file = library_folder.join("ziskfloat.elf");
+    let elf_name = "ziskfloat.elf";
+    let in_tree_lib_dir = c_path.join("lib");
+    let in_tree_lib = in_tree_lib_dir.join(format!("lib{library_name}.a"));
+    let in_tree_elf = in_tree_lib_dir.join(elf_name);
 
-    fs::create_dir_all(&build_folder)
-        .unwrap_or_else(|e| panic!("Failed to create build directory: {e}"));
-    fs::create_dir_all(&library_folder)
-        .unwrap_or_else(|e| panic!("Failed to create lib directory: {e}"));
-
-    // Track sources first so we can decide whether a rebuild is needed.
-    let source_files = find_source_files(&c_path);
-    eprintln!("Tracking {} source files", source_files.len());
-    for file in &source_files {
-        println!("cargo:rerun-if-changed={}", file.display());
-    }
-    println!("cargo:rerun-if-changed={}", c_path.join("Makefile").display());
-
-    if needs_rebuild(&source_files, &lib_file) {
-        eprintln!("Building lib-float into {}", out_dir.display());
-        run_command(
-            "make",
-            &[
-                &format!("BUILD_DIR={}", build_folder.display()),
-                &format!("LIB_DIR={}", library_folder.display()),
-            ],
-            &c_path,
-        );
-    } else {
-        eprintln!("lib-float artifacts up to date, skipping rebuild");
-    }
-
-    if !lib_file.exists() {
-        panic!("`{}` was not found after build", lib_file.display());
-    }
-    if !elf_file.exists() {
-        panic!("`{}` was not found after build", elf_file.display());
-    }
-
-    // Publish the artifacts at a stable workspace-relative location so other
-    // tooling (and downstream crates that don't depend on us via `links`) can
-    // find them. Living under target/ means `cargo clean` removes it too.
+    // The runtime publish path (`<workspace>/target/zisk-libs/`) is the
+    // canonical location every other crate (notably `core`) reads from.
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set by cargo"));
     let runtime_dir = workspace_target_dir(&out_dir).join("zisk-libs");
     fs::create_dir_all(&runtime_dir)
         .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
     let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
-    let runtime_elf = runtime_dir.join("ziskfloat.elf");
-    fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
-        panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
-    });
-    fs::copy(&elf_file, &runtime_elf).unwrap_or_else(|e| {
-        panic!("Failed to copy {} to {}: {e}", elf_file.display(), runtime_elf.display())
-    });
+    let runtime_elf = runtime_dir.join(elf_name);
 
-    // Expose the ELF path to dependent crates' build scripts as
-    // `DEP_ZISKFLOAT_ELF_PATH` (cargo passes `cargo:KEY=VALUE` from a
-    // `links`-tagged crate as `DEP_<links_uppercased>_<KEY>`).
-    println!("cargo:lib_dir={}", library_folder.display());
-    println!("cargo:elf_path={}", elf_file.display());
-    println!("cargo:runtime_lib_dir={}", runtime_dir.display());
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
-    // Link the static library into our own crate.
-    println!("cargo:rustc-link-search=native={}", library_folder.display());
-    println!("cargo:rustc-link-lib=static={library_name}");
-    for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
-        println!("cargo:rustc-link-lib={lib}");
+    if target_os == "linux" {
+        // Linux: build from source via the Makefile, then publish the fresh
+        // artifacts to `target/zisk-libs/`. Build outputs land under OUT_DIR
+        // so `cargo clean` reaches them.
+        let build_folder = out_dir.join("build");
+        let library_folder = out_dir.join("lib");
+        let lib_file = library_folder.join(format!("lib{library_name}.a"));
+        let elf_file = library_folder.join(elf_name);
+
+        fs::create_dir_all(&build_folder)
+            .unwrap_or_else(|e| panic!("Failed to create build directory: {e}"));
+        fs::create_dir_all(&library_folder)
+            .unwrap_or_else(|e| panic!("Failed to create lib directory: {e}"));
+
+        let source_files = find_source_files(&c_path);
+        eprintln!("Tracking {} source files", source_files.len());
+        for file in &source_files {
+            println!("cargo:rerun-if-changed={}", file.display());
+        }
+        println!("cargo:rerun-if-changed={}", c_path.join("Makefile").display());
+
+        if needs_rebuild(&source_files, &lib_file) {
+            eprintln!("Building lib-float into {}", out_dir.display());
+            run_command(
+                "make",
+                &[
+                    &format!("BUILD_DIR={}", build_folder.display()),
+                    &format!("LIB_DIR={}", library_folder.display()),
+                ],
+                &c_path,
+            );
+        } else {
+            eprintln!("lib-float artifacts up to date, skipping rebuild");
+        }
+
+        if !lib_file.exists() {
+            panic!("`{}` was not found after build", lib_file.display());
+        }
+        if !elf_file.exists() {
+            panic!("`{}` was not found after build", elf_file.display());
+        }
+
+        fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
+            panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
+        });
+        fs::copy(&elf_file, &runtime_elf).unwrap_or_else(|e| {
+            panic!("Failed to copy {} to {}: {e}", elf_file.display(), runtime_elf.display())
+        });
+
+        println!("cargo:lib_dir={}", library_folder.display());
+        println!("cargo:elf_path={}", elf_file.display());
+        println!("cargo:runtime_lib_dir={}", runtime_dir.display());
+
+        println!("cargo:rustc-link-search=native={}", library_folder.display());
+        println!("cargo:rustc-link-lib=static={library_name}");
+        for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
+            println!("cargo:rustc-link-lib={lib}");
+        }
+    } else {
+        if !in_tree_elf.exists() {
+            panic!(
+                "non-Linux build needs the vendored `{}` fallback, but it's missing",
+                in_tree_elf.display()
+            );
+        }
+        println!("cargo:rerun-if-changed={}", in_tree_elf.display());
+        if in_tree_lib.exists() {
+            println!("cargo:rerun-if-changed={}", in_tree_lib.display());
+        }
+        fs::copy(&in_tree_elf, &runtime_elf).unwrap_or_else(|e| {
+            panic!("Failed to copy {} to {}: {e}", in_tree_elf.display(), runtime_elf.display())
+        });
+        if in_tree_lib.exists() {
+            fs::copy(&in_tree_lib, &runtime_lib).unwrap_or_else(|e| {
+                panic!("Failed to copy {} to {}: {e}", in_tree_lib.display(), runtime_lib.display())
+            });
+        }
+        println!("cargo:elf_path={}", runtime_elf.display());
+        println!("cargo:runtime_lib_dir={}", runtime_dir.display());
     }
 }
 

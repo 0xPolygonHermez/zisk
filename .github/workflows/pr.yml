@@ -35,6 +35,36 @@ jobs:
           command: check
           args: --all-targets # --all-features
 
+      - name: Verify vendored lib-float fallback matches Linux build
+        run: |
+          set -e
+          built_elf=target/zisk-libs/ziskfloat.elf
+          built_a=target/zisk-libs/libziskfloat.a
+          vendored_elf=lib-float/c/lib/ziskfloat.elf
+          vendored_a=lib-float/c/lib/libziskfloat.a
+          for pair in "$built_elf:$vendored_elf" "$built_a:$vendored_a"; do
+            built="${pair%%:*}"
+            vendored="${pair##*:}"
+            if [ ! -f "$built" ]; then
+              echo "::error::expected $built to exist after cargo check (lib-float build script didn't run?)"
+              exit 1
+            fi
+            if [ ! -f "$vendored" ]; then
+              echo "::error::vendored fallback $vendored is missing — non-Linux builds will fail"
+              exit 1
+            fi
+            if ! cmp -s "$built" "$vendored"; then
+              echo "::error::$(basename "$built") in target/zisk-libs/ differs from the vendored fallback at $vendored."
+              echo "::error::macOS builds use the vendored copy; please refresh it:"
+              echo "::error::    cp $built $vendored"
+              echo "::error::    git add $vendored && git commit"
+              echo "Built  SHA: $(sha256sum "$built"   | awk '{print $1}')"
+              echo "Vendor SHA: $(sha256sum "$vendored" | awk '{print $1}')"
+              exit 1
+            fi
+          done
+          echo "✓ vendored lib-float fallback is in sync with the Linux build"
+
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:

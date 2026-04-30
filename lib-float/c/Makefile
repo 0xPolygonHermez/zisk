@@ -8,7 +8,12 @@ endif
 
 INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64-GCC -I ./SoftFloat-3e/source/8086
 ZISK_INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64-GCC -I ./SoftFloat-3e/source/8086
-ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany
+# `-fno-ident` suppresses the `.comment` section gcc would otherwise embed
+# (which holds the compiler version string and breaks byte-determinism across
+# different gcc versions — necessary so the vendored fallback at
+# `lib-float/c/lib/ziskfloat.elf` matches a fresh build on any contributor's
+# machine).
+ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany -fno-ident
 ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64
 
 # Output directories (overridable so the Rust build script can redirect into OUT_DIR)
@@ -199,8 +204,11 @@ all:
 
 	riscv64-unknown-elf-as $(ZISK_ASM_CFLAGS) src/start.S -o $(BUILD_DIR)/start.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c src/main.cpp $(ZISK_INC) -o $(BUILD_DIR)/main.o
-	riscv64-unknown-elf-ld -T scripts/link_main.ld $(BUILD_DIR)/start.o $(BUILD_DIR)/main.o $(BUILD_DIR)/libziskfloat.a -o $(BUILD_DIR)/ziskfloatmain.elf
-	riscv64-unknown-elf-ld -T scripts/link.ld $(BUILD_DIR)/libziskfloat.a -o $(BUILD_DIR)/ziskfloat.elf
+	# `--build-id=none` forces no build-id note regardless of binutils default
+	# (some distros enable build-id by default, which would inject a random
+	# hash on every link and break the deterministic vendored-fallback contract).
+	riscv64-unknown-elf-ld --build-id=none -T scripts/link_main.ld $(BUILD_DIR)/start.o $(BUILD_DIR)/main.o $(BUILD_DIR)/libziskfloat.a -o $(BUILD_DIR)/ziskfloatmain.elf
+	riscv64-unknown-elf-ld --build-id=none -T scripts/link.ld $(BUILD_DIR)/libziskfloat.a -o $(BUILD_DIR)/ziskfloat.elf
 	cp $(BUILD_DIR)/ziskfloat.elf $(LIB_DIR)/
 
 ziskdump:
