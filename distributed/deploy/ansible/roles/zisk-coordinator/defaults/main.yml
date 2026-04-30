@@ -7,7 +7,7 @@ zisk_coordinator_group: zisk-coordinator
 zisk_coordinator_binary_dst: /usr/local/bin/zisk-coordinator
 zisk_coordinator_config_dir: /etc/zisk
 zisk_coordinator_config_dst: "{{ zisk_coordinator_config_dir }}/coordinator.toml"
-zisk_coordinator_work_dir: /var/lib/zisk
+zisk_coordinator_work_dir: /var/lib/zisk-coordinator
 zisk_coordinator_log_dir: /var/log/zisk-coordinator
 zisk_coordinator_unit_file: /etc/systemd/system/zisk-coordinator.service
 

@@ -94,13 +94,14 @@ mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/coordinator-server/config/coordinator.example.toml"
 
-# 5. Create working (and log on macOS) directories
+# 5. Create working (and log on macOS) directories. Pre-create ~/.zisk/cache so
+# code that resolves $HOME at startup finds a writable location.
 if [[ "$OS_NAME" == "Darwin" ]]; then
-    mkdir -p "${WORK_DIR}" "${LOG_DIR}"
-    chown "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
+    mkdir -p "${WORK_DIR}" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
+    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 else
-    mkdir -p "${WORK_DIR}"
-    chown "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
+    mkdir -p "${WORK_DIR}" "${WORK_DIR}/.zisk/cache"
+    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
 fi
 
 # 6. Write service unit
@@ -148,6 +149,12 @@ $(build_program_args)    </array>
 
     <key>WorkingDirectory</key>
     <string>${WORK_DIR}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>${WORK_DIR}</string>
+    </dict>
 
     <key>KeepAlive</key>
     <true/>
@@ -207,6 +214,11 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${WORK_DIR}
+
+# HOME override — system users have no /home/<user>; point at WORK_DIR so
+# code that resolves ~/.zisk/cache (and similar) finds a writable location.
+Environment=HOME=${WORK_DIR}
+
 ${EXEC_START}
 Restart=on-failure
 RestartSec=3

@@ -161,7 +161,49 @@ install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
 mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 
-# 7. Write service unit
+# 7. Install ZisK companion tools + asm rom-setup sources into the worker's
+# $HOME (= WORK_DIR). Mirrors the manual setup:
+#   $HOME/.zisk/bin/{cargo-zisk,ziskemu,riscv2zisk,zisk-coordinator,zisk-worker,libziskclib.a}
+# and on Linux x86_64:
+#   $HOME/.zisk/zisk/emulator-asm/{src,Makefile}
+#   $HOME/.zisk/zisk/lib-c
+ZISK_BIN_DIR="${WORK_DIR}/.zisk/bin"
+ZISK_ZISK_DIR="${WORK_DIR}/.zisk/zisk"
+RELEASE_DIR="${WORKSPACE_ROOT}/target/release"
+
+# Workspace-wide build — produces every binary listed below in target/release/
+# regardless of which crate owns each one (binary names and package names
+# don't always align). Run as the invoking user when via sudo so target/
+# ownership stays correct (matches build_or_use_binary).
+info "Building ZisK workspace for companion tools..."
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    sudo -u "$SUDO_USER" -H cargo build --release \
+        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+else
+    cargo build --release \
+        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+fi
+
+mkdir -p "${ZISK_BIN_DIR}"
+for tool in cargo-zisk ziskemu riscv2zisk zisk-coordinator zisk-worker libziskclib.a; do
+    src="${RELEASE_DIR}/${tool}"
+    [[ -f "${src}" ]] || die "expected build artifact missing: ${src}"
+    cp "${src}" "${ZISK_BIN_DIR}/${tool}"
+done
+info "Installed ZisK tools to ${ZISK_BIN_DIR}/"
+
+# Linux x86_64 only: assembly rom-setup sources (asm execution unsupported on macOS).
+if [[ "${OS_NAME}" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
+    info "Installing emulator-asm sources for rom setup..."
+    mkdir -p "${ZISK_ZISK_DIR}/emulator-asm"
+    cp -r "${WORKSPACE_ROOT}/emulator-asm/src" "${ZISK_ZISK_DIR}/emulator-asm/"
+    cp    "${WORKSPACE_ROOT}/emulator-asm/Makefile" "${ZISK_ZISK_DIR}/emulator-asm/"
+    cp -r "${WORKSPACE_ROOT}/lib-c" "${ZISK_ZISK_DIR}/lib-c"
+fi
+
+chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}/.zisk"
+
+# 8. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
     info "Writing plist to ${LAUNCHD_PLIST}..."
 
@@ -280,7 +322,7 @@ PLIST
     chown root:wheel "${LAUNCHD_PLIST}"
     chmod 0644 "${LAUNCHD_PLIST}"
 
-    # 8. Write newsyslog rotation config
+    # 9. Write newsyslog rotation config
     info "Writing newsyslog config to ${NEWSYSLOG_CONF}..."
     cat > "${NEWSYSLOG_CONF}" <<NEWSYSLOG
 # ${BINARY_NAME} log rotation — max ${LOG_MAX_SIZE_MB}MB per file, keep ${LOG_ROTATIONS} rotations, gzipped
@@ -337,7 +379,18 @@ Environment=HOME=${WORK_DIR}
 ${EXEC_START}
 Restart=on-failure
 RestartSec=5
-LimitNOFILE=65535
+
+# Resource limits — large mmap'd ROM regions, deep MPI stacks, many open
+# shm/data files. Use unlimited so the worker is constrained by physical
+# resources, not by default systemd hardening.
+LimitMEMLOCK=infinity
+# LimitSTACK=infinity
+# LimitNOFILE=infinity
+# LimitNPROC=infinity
+# LimitAS=infinity
+# LimitDATA=infinity
+# LimitCORE=infinity
+
 Nice=-10
 StandardOutput=journal
 StandardError=journal
@@ -363,6 +416,6 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# 9. Activate service and (if started) print management hints
+# 10. Activate service and (if started) print management hints
 activate_service
 $SHOW_HINTS && print_post_install_hints "${BASH_SOURCE[0]}"

@@ -249,7 +249,7 @@ resolve_mpi_config() {
 # launchd plist) at install time. Uninstall reads it back so the cleanup uses
 # the paths actually installed, even if defaults.env has since changed.
 #
-#   systemd: trailing "# zisk-coordinator:DATA_DIR=/var/lib/zisk" lines
+#   systemd: trailing "# zisk-coordinator:DATA_DIR=/var/lib/zisk-coordinator" lines
 #   launchd: trailing "<!-- zisk-coordinator:DATA_DIR=... -->" lines
 #
 # Set ASSUME_YES=true (e.g. via --yes / -y) to skip every prompt below.

@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::remote("http://127.0.0.1:7001").build()?;
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program...");
     client.upload(&PROGRAM).run()?;
