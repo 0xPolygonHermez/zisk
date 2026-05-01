@@ -8,6 +8,10 @@ cfg_if! {
     }
 }
 
+/// Signals the host that the guest is ready to consume input at `address`.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
+/// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_input_ready(address: &u64) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]

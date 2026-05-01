@@ -3,7 +3,8 @@ use super::fp2::{
     bn254_fp2_sub,
 };
 
-/// Computes the coefficients (𝜆,𝜇) of a line passing through points (x1,y1),(x2,y2)
+/// Computes the coefficients (𝜆,𝜇) of a line passing through points (x1,y1),(x2,y2).
+/// It assumes that x1 != x2.
 pub fn fcall_bn254_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x1: &[u64; 8] = &params[0..8].try_into().unwrap();
@@ -37,7 +38,8 @@ pub fn bn254_twist_add_line_coeffs(
     (lambda, mu)
 }
 
-/// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y)
+/// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y).
+/// It assumes y != 0.
 pub fn fcall_bn254_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x: &[u64; 8] = &params[0..8].try_into().unwrap();

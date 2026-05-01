@@ -4,15 +4,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use serde::{Deserialize, Serialize};
+use alloy_sol_types::SolValue;
 use sha2::{Digest, Sha256};
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Output {
-    hash: [u8; 32],
-    iterations: u32,
-    magic_number: u32,
-}
+use sha_hasher_common::Output;
 
 fn main() {
     // Read the input data
@@ -28,10 +22,15 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    let output = Output { hash, iterations: n, magic_number: 0xDEADBEEF };
+    let output = Output { hash: hash.into(), iterations: n, magic_number: 0xDEADBEEF };
 
     println!("Computed hash: {:02x?}", output.hash);
     println!("Iterations: {}", output.iterations);
 
-    ziskos::io::commit(&output);
+    let bytes = output.abi_encode();
+
+    println!("Bytes to commit: {:?}", bytes);
+
+    // Write raw ABI-encoded bytes directly (no bincode serialization)
+    ziskos::io::commit_slice(&bytes);
 }

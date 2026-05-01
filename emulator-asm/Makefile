@@ -63,9 +63,9 @@ build/zisk.ld:
 	    > build/zisk.ld
 
 # Compile the final executable
-$(OUT_PATH): build/zisk.ld build/emu.o src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/emu.c src/chfast/keccak.c src/bcon/bcon_sha256.c build/dma.o
+$(OUT_PATH): build/zisk.ld build/emu.o src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o
 	mkdir -p $(OUT_DIR)
-	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/emu.c src/chfast/keccak.c src/bcon/bcon_sha256.c -L../lib-c/c/lib -L../../bin -L../target/release -L../target/debug -lc build/emu.o -lc build/dma.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
+	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../lib-c/c/lib -L../../bin -L../target/release -L../target/debug -lc build/emu.o -lc build/dma.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
 
 clean:
 	rm -rf build

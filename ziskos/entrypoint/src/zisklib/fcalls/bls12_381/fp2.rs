@@ -17,27 +17,27 @@ cfg_if! {
 
 }
 
-/// Executes the multiplicative inverse computation over the complex extension field of the `bls12_381` curve.
+/// Compute the multiplicative inverse of a field element in the complex extension field of the BLS12-381 curve.
 ///
-/// `fcall_bls12_381_fp2_inv` performs an inversion of a 512-bit extension field element,
-/// represented as an array of eight `u64` values.
-///
-/// - `fcall_bls12_381_fp2_inv` performs the inversion and **returns the result directly**.
+/// `fcall_bls12_381_fp2_inv` operates on a 384-bit field element represented as an array of twelve `u64` values,
+/// and returns the inverse as an array of twelve `u64` values.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// The caller must also ensure that the input value is non-zero.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bls12_381_fp2_inv(
-    p_value: &[u64; 12],
+    x: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let result: [u64; 12] = bls12_381_fp2_inv(p_value);
+        let result: [u64; 12] = bls12_381_fp2_inv(x);
         #[cfg(feature = "hints")]
         {
             hints.push(result.len() as u64);
@@ -47,7 +47,7 @@ pub fn fcall_bls12_381_fp2_inv(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(p_value, 12);
+        ziskos_fcall_param!(x, 12);
         ziskos_fcall!(FCALL_BLS12_381_FP2_INV_ID);
         #[cfg(not(feature = "inputcpy"))]
         {
@@ -76,27 +76,26 @@ pub fn fcall_bls12_381_fp2_inv(
     }
 }
 
-/// Executes the multiplicative inverse computation over the base field of the `bls12_381` curve.
+/// Compute the square root of a field element in the complex extension field of the BLS12-381 curve, if it exists.
 ///
-/// `fcall_bls12_381_fp2_sqrt` performs an inversion of a 256-bit field element,
-/// represented as an array of four `u64` values.
-///
-/// - `fcall_bls12_381_fp2_sqrt` performs the inversion and **returns the result directly**.
+/// `fcall_bls12_381_fp2_sqrt` operates on a 384-bit field element represented as an array of twelve `u64` values,
+/// and returns an array of thirteen `u64` values where the first value indicates whether a square root exists (1) or not (0),
+/// and the remaining twelve values represent the square root.
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bls12_381_fp2_sqrt(
-    p_value: &[u64; 12],
+    x: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 13] {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let result: [u64; 13] = bls12_381_fp2_sqrt_13(p_value);
+        let result: [u64; 13] = bls12_381_fp2_sqrt_13(x);
         #[cfg(feature = "hints")]
         {
             hints.push(result.len() as u64);
@@ -106,7 +105,7 @@ pub fn fcall_bls12_381_fp2_sqrt(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(p_value, 16);
+        ziskos_fcall_param!(x, 16);
         ziskos_fcall!(FCALL_BLS12_381_FP2_SQRT_ID);
         #[cfg(not(feature = "inputcpy"))]
         {

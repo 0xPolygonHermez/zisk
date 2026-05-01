@@ -16,26 +16,31 @@ cfg_if! {
     }
 }
 
-/// Computes the coefficients for the line defining the addition of two points on the `bls12_381` twist.
+/// Computes the coefficients for the line defining the addition of two points on the BLS12-381 twist.
+///
+/// `fcall_bls12_381_twist_add_line_coeffs` takes two points on the twist, each represented as an array of 24 `u64` values
+/// (12 for x and 12 for y), and returns the line coefficients as two arrays of 12 `u64` values each (lambda and mu).
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that data is aligned to a 64-bit boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// The caller must ensure that x-coordinates of the input points are distinct.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bls12_381_twist_add_line_coeffs(
-    p1_value: &[u64; 24],
-    p2_value: &[u64; 24],
+    p1: &[u64; 24],
+    p2: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 12], [u64; 12]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let x1: [u64; 12] = p1_value[0..12].try_into().unwrap();
-        let y1: [u64; 12] = p1_value[12..24].try_into().unwrap();
-        let x2: [u64; 12] = p2_value[0..12].try_into().unwrap();
-        let y2: [u64; 12] = p2_value[12..24].try_into().unwrap();
+        let x1: [u64; 12] = p1[0..12].try_into().unwrap();
+        let y1: [u64; 12] = p1[12..24].try_into().unwrap();
+        let x2: [u64; 12] = p2[0..12].try_into().unwrap();
+        let y2: [u64; 12] = p2[12..24].try_into().unwrap();
         let (lambda, mu): ([u64; 12], [u64; 12]) =
             bls12_381_twist_add_line_coeffs(&x1, &y1, &x2, &y2);
         #[cfg(feature = "hints")]
@@ -49,39 +54,39 @@ pub fn fcall_bls12_381_twist_add_line_coeffs(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(p1_value, 24);
-        ziskos_fcall_param!(p2_value, 24);
+        ziskos_fcall_param!(p1, 24);
+        ziskos_fcall_param!(p2, 24);
         ziskos_fcall!(FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID);
         #[cfg(not(feature = "inputcpy"))]
         {
             (
                 [
-                    ziskos_fcall_get(), // 0
-                    ziskos_fcall_get(), // 1
-                    ziskos_fcall_get(), // 2
-                    ziskos_fcall_get(), // 3
-                    ziskos_fcall_get(), // 4
-                    ziskos_fcall_get(), // 5
-                    ziskos_fcall_get(), // 6
-                    ziskos_fcall_get(), // 7
-                    ziskos_fcall_get(), // 8
-                    ziskos_fcall_get(), // 9
-                    ziskos_fcall_get(), // 10
-                    ziskos_fcall_get(), // 11
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
                 ],
                 [
-                    ziskos_fcall_get(), // 0
-                    ziskos_fcall_get(), // 1
-                    ziskos_fcall_get(), // 2
-                    ziskos_fcall_get(), // 3
-                    ziskos_fcall_get(), // 4
-                    ziskos_fcall_get(), // 5
-                    ziskos_fcall_get(), // 6
-                    ziskos_fcall_get(), // 7
-                    ziskos_fcall_get(), // 8
-                    ziskos_fcall_get(), // 9
-                    ziskos_fcall_get(), // 10
-                    ziskos_fcall_get(), // 11
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
                 ],
             )
         }
@@ -97,23 +102,28 @@ pub fn fcall_bls12_381_twist_add_line_coeffs(
     }
 }
 
-/// Computes the coefficients for the line defining the doubling of a point on the `bls12_381` twist.
+/// Computes the coefficients for the line defining the doubling of a point on the BLS12-381 twist.
+///
+/// `fcall_bls12_381_twist_dbl_line_coeffs` takes a point on the twist, represented as an array of 24 `u64` values
+/// (12 for x and 12 for y), and returns the line coefficients as two arrays of 12 `u64` values each (lambda and mu).
 ///
 /// ### Safety
 ///
-/// The caller must ensure that the input pointer (`p_value`) is valid and aligned to an 8-byte boundary.
+/// The caller must ensure that data is aligned to a 64-bit boundary.
 ///
-/// Note that this is a *free-input call*, meaning the Zisk VM does not automatically verify the correctness
+/// The caller must ensure that the y-coordinate of the input point is non-zero.
+///
+/// Note that this is a *free-input call*, meaning the ZisK VM does not automatically verify the correctness
 /// of the result. It is the caller's responsibility to ensure it.
 #[allow(unused_variables)]
 pub fn fcall_bls12_381_twist_dbl_line_coeffs(
-    p_value: &[u64; 24],
+    p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 12], [u64; 12]) {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        let x: [u64; 12] = p_value[0..12].try_into().unwrap();
-        let y: [u64; 12] = p_value[12..24].try_into().unwrap();
+        let x: [u64; 12] = p[0..12].try_into().unwrap();
+        let y: [u64; 12] = p[12..24].try_into().unwrap();
         let (lambda, mu): ([u64; 12], [u64; 12]) = bls12_381_twist_dbl_line_coeffs(&x, &y);
         #[cfg(feature = "hints")]
         {
@@ -125,38 +135,38 @@ pub fn fcall_bls12_381_twist_dbl_line_coeffs(
     }
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
-        ziskos_fcall_param!(p_value, 24);
+        ziskos_fcall_param!(p, 24);
         ziskos_fcall!(FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID);
         #[cfg(not(feature = "inputcpy"))]
         {
             (
                 [
-                    ziskos_fcall_get(), // 0
-                    ziskos_fcall_get(), // 1
-                    ziskos_fcall_get(), // 2
-                    ziskos_fcall_get(), // 3
-                    ziskos_fcall_get(), // 4
-                    ziskos_fcall_get(), // 5
-                    ziskos_fcall_get(), // 6
-                    ziskos_fcall_get(), // 7
-                    ziskos_fcall_get(), // 8
-                    ziskos_fcall_get(), // 9
-                    ziskos_fcall_get(), // 10
-                    ziskos_fcall_get(), // 11
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
                 ],
                 [
-                    ziskos_fcall_get(), // 0
-                    ziskos_fcall_get(), // 1
-                    ziskos_fcall_get(), // 2
-                    ziskos_fcall_get(), // 3
-                    ziskos_fcall_get(), // 4
-                    ziskos_fcall_get(), // 5
-                    ziskos_fcall_get(), // 6
-                    ziskos_fcall_get(), // 7
-                    ziskos_fcall_get(), // 8
-                    ziskos_fcall_get(), // 9
-                    ziskos_fcall_get(), // 10
-                    ziskos_fcall_get(), // 11
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
+                    ziskos_fcall_get(),
                 ],
             )
         }

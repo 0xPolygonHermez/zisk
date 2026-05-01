@@ -7,16 +7,10 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::Dma64AlignedMemCpyAirValues;
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    Dma64AlignedMemCpyTracePacked as Dma64AlignedMemCpyTrace,
-    Dma64AlignedMemCpyTraceRowPacked as Dma64AlignedMemCpyTraceRow,
+use zisk_pil::{
+    Dma64AlignedMemCpyAirValues, Dma64AlignedMemCpyTrace, Dma64AlignedMemCpyTraceRow,
+    Dma64AlignedMemCpyTraceRowOps, Dma64AlignedMemCpyTraceRowPacked,
 };
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{Dma64AlignedMemCpyTrace, Dma64AlignedMemCpyTraceRow};
 
 use crate::{
     dma_trace, Dma64AlignedInput, Dma64AlignedModule, DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
@@ -55,11 +49,11 @@ impl<F: PrimeField64> Dma64AlignedMemCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Dma64AlignedMemCpyTraceRowOps<F>>(
         &self,
         input: &Dma64AlignedInput,
-        trace: &mut [Dma64AlignedMemCpyTraceRow<F>],
-        _local_16_bits_table: &mut [u32], // for input_cpy
+        trace: &mut [R],
+        _local_16_bits_table: &mut [u32],
         air_values: &mut Dma64AlignedMemCpyAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -141,32 +135,19 @@ impl<F: PrimeField64> Dma64AlignedMemCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut Dma64AlignedMemCpyTraceRow<F>) {
+    pub fn process_empty_slice<R: Dma64AlignedMemCpyTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
-}
-impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemCpySM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_64_aligned_memcpy"
-    }
 
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: Dma64AlignedMemCpyTraceRowOps<F>>(
         &self,
         inputs: &[Vec<Dma64AlignedInput>],
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Dma64AlignedMemCpyTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = Dma64AlignedMemCpyTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs
@@ -257,5 +238,34 @@ impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemCpySM<F> {
         timer_stop_and_log_trace!(DMA_64_ALIGNED_TRACE);
         let from_trace = FromTrace::new(&mut trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemCpySM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_64_aligned_memcpy"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<Dma64AlignedInput>],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<Dma64AlignedMemCpyTraceRowPacked<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<Dma64AlignedMemCpyTraceRow<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        }
     }
 }

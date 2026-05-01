@@ -1,4 +1,6 @@
-/// Definition of the `SyscallComplex256` structure, representing a complex field element over a 256-bit field.
+//! Shared data structures for complex field elements used by Fp2 syscalls.
+
+/// A complex field element over a 256-bit base field, represented as `x + y·i`.
 #[derive(Debug)]
 #[repr(C)]
 pub struct SyscallComplex256 {
@@ -6,7 +8,7 @@ pub struct SyscallComplex256 {
     pub y: [u64; 4],
 }
 
-/// Definition of the `SyscallComplex384` structure, representing a complex field element over a 384-bit field.
+/// A complex field element over a 384-bit base field, represented as `x + y·i`.
 #[derive(Debug)]
 #[repr(C)]
 pub struct SyscallComplex384 {

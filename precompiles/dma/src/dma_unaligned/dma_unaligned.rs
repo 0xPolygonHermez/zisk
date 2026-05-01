@@ -8,23 +8,9 @@ use precompiles_helpers::DmaInfo;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
-use zisk_pil::{DmaUnalignedAirValues, DUAL_RANGE_BYTE_ID};
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{DmaUnalignedTracePacked, DmaUnalignedTraceRowPacked};
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow};
-
-#[cfg(feature = "packed")]
-type DmaUnalignedTraceRowType<F> = DmaUnalignedTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type DmaUnalignedTraceType<F> = DmaUnalignedTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type DmaUnalignedTraceRowType<F> = DmaUnalignedTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type DmaUnalignedTraceType<F> = DmaUnalignedTrace<F>;
+use zisk_pil::{
+    DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
+};
 
 pub struct DmaUnalignedPrevSegment {
     pub seq_end: bool,
@@ -69,10 +55,10 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: DmaUnalignedTraceRowOps<F>>(
         &self,
         input: &DmaUnalignedInput,
-        trace: &mut [DmaUnalignedTraceRowType<F>],
+        trace: &mut [R],
         local_dual_byte_table: &mut [u64],
         air_values: &mut DmaUnalignedAirValues<F>,
     ) -> usize {
@@ -89,6 +75,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         let mut seq_end = false;
         let mut next_value = 0;
         assert!(rows > 0);
+        #[allow(clippy::explicit_counter_loop)]
         for (irow, row) in trace.iter_mut().enumerate().take(rows) {
             row.set_main_step(input.step);
             row.set_is_memeq(input.is_mem_eq);
@@ -187,7 +174,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut DmaUnalignedTraceRowType<F>) {
+    pub fn process_empty_slice<R: DmaUnalignedTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
@@ -200,14 +187,14 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: DmaUnalignedTraceRowOps<F>>(
         &self,
         inputs: &[Vec<DmaUnalignedInput>],
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaUnalignedTraceType::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = DmaUnalignedTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs

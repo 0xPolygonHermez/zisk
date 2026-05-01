@@ -13,3 +13,4 @@
 
 # Developer Guide
 - [Ziskof](./developer/ziskof.md)
+- [Profiling Programs](./developer/profiling.md)

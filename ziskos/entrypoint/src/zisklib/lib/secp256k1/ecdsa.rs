@@ -1,16 +1,12 @@
-use tiny_keccak::{Hasher, Keccak};
-
-use crate::zisklib::{eq, fcall_secp256k1_ecdsa_verify, gt, ZERO_256};
+use crate::zisklib::{
+    be_bytes_to_u64_4, eq, fcall_secp256k1_ecdsa_verify, gt, u64_4_to_be_bytes, ZERO_256,
+};
 
 use super::{
     constants::N_MINUS_ONE,
-    curve::{secp256k1_is_on_curve, secp256k1_lift_x, secp256k1_triple_scalar_mul_with_g},
-    scalar::{secp256k1_fn_neg, secp256k1_fn_reduce},
+    curve::{is_on_curve_secp256k1, lift_x_secp256k1, triple_scalar_mul_with_g_secp256k1},
+    scalar::{neg_fn_secp256k1, reduce_fn_secp256k1},
 };
-
-// ECDSA verify result codes
-pub const ECDSA_VERIFY_SUCCESS: u8 = 0;
-pub const ECDSA_VERIFY_ERROR: u8 = 1;
 
 /// ECDSA recover result codes
 pub const ECDSA_RECOVER_SUCCESS: u8 = 0;
@@ -26,7 +22,7 @@ pub const ECDSA_RECOVER_ERR_RECOVERY_FAILED: u8 = 5;
 /// - 0 = valid signature
 /// - 1 = public key not on curve
 /// - 2 = invalid signature
-pub fn secp256k1_ecdsa_verify(
+pub fn ecdsa_verify_secp256k1(
     pk: &[u64; 8],
     z: &[u64; 4],
     r: &[u64; 4],
@@ -34,7 +30,7 @@ pub fn secp256k1_ecdsa_verify(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     // pk must be on the curve
-    if !secp256k1_is_on_curve(
+    if !is_on_curve_secp256k1(
         pk,
         #[cfg(feature = "hints")]
         hints,
@@ -60,7 +56,7 @@ pub fn secp256k1_ecdsa_verify(
 
     // Check the recovered point is valid
     // Note: Identity point would be raised here
-    if !secp256k1_is_on_curve(
+    if !is_on_curve_secp256k1(
         &point,
         #[cfg(feature = "hints")]
         hints,
@@ -69,12 +65,12 @@ pub fn secp256k1_ecdsa_verify(
     }
 
     // Check that [z]G + [r]PK + [-s](x,y) == 𝒪
-    let neg_s = secp256k1_fn_neg(
+    let neg_s = neg_fn_secp256k1(
         s,
         #[cfg(feature = "hints")]
         hints,
     );
-    if secp256k1_triple_scalar_mul_with_g(
+    if triple_scalar_mul_with_g_secp256k1(
         z,
         r,
         &neg_s,
@@ -91,7 +87,7 @@ pub fn secp256k1_ecdsa_verify(
     // Check that x ≡ r (mod n)
     let point_x: [u64; 4] = [point[0], point[1], point[2], point[3]];
     eq(
-        &secp256k1_fn_reduce(
+        &reduce_fn_secp256k1(
             &point_x,
             #[cfg(feature = "hints")]
             hints,
@@ -109,7 +105,7 @@ pub fn secp256k1_ecdsa_verify(
 /// - 3 = invalid recid (not 0 or 1)
 /// - 4 = point not on curve
 /// - 5 = recovery failed
-pub fn secp256k1_ecdsa_recover(
+pub fn ecdsa_recover_secp256k1(
     r: &[u64; 4],
     s: &[u64; 4],
     z: &[u64; 4],
@@ -142,7 +138,7 @@ pub fn secp256k1_ecdsa_recover(
 
     // Compute the y-coordinate from x and the parity bit
     let y_is_odd = (recid & 1) == 1;
-    let r_point = secp256k1_lift_x(
+    let r_point = lift_x_secp256k1(
         &x,
         y_is_odd,
         #[cfg(feature = "hints")]
@@ -156,12 +152,12 @@ pub fn secp256k1_ecdsa_recover(
     // The following functions hints (x,y) satisfying
     //    (x, y) == [s⁻¹·z (mod n)]G + [s⁻¹·r (mod n)]R iff  [z]G + [r]R + [-s](x, y) == 𝒪
     // We can use it by flipping the signs of r and s and its order
-    let neg_s = secp256k1_fn_neg(
+    let neg_s = neg_fn_secp256k1(
         s,
         #[cfg(feature = "hints")]
         hints,
     );
-    let neg_r = secp256k1_fn_neg(
+    let neg_r = neg_fn_secp256k1(
         r,
         #[cfg(feature = "hints")]
         hints,
@@ -177,7 +173,7 @@ pub fn secp256k1_ecdsa_recover(
 
     // Check the recovered point is valid
     // Note: Identity point would be raised here
-    if !secp256k1_is_on_curve(
+    if !is_on_curve_secp256k1(
         &point,
         #[cfg(feature = "hints")]
         hints,
@@ -186,7 +182,7 @@ pub fn secp256k1_ecdsa_recover(
     }
 
     // Check that [z]G + [-s]R + [r](xQ,yQ) == 𝒪
-    if secp256k1_triple_scalar_mul_with_g(
+    if triple_scalar_mul_with_g_secp256k1(
         z,
         &neg_s,
         r,
@@ -206,36 +202,54 @@ pub fn secp256k1_ecdsa_recover(
 
 // ==================== C FFI Functions ====================
 
-/// C-compatible wrapper for secp256k1_ecdsa_verify and address recovery
+/// ECDSA signature verification with little-endian u64 limb inputs.
+/// Returns 1 if the signature is valid, 0 otherwise.
+///
+/// # Safety
+/// - `pk_ptr` must point to a valid `[u64; 8]` array (public key x ‖ y, little-endian limbs)
+/// - `z_ptr` must point to a valid `[u64; 4]` array (message hash, little-endian limbs)
+/// - `r_ptr` must point to a valid `[u64; 4]` array (signature r, little-endian limbs)
+/// - `s_ptr` must point to a valid `[u64; 4]` array (signature s, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_ecdsa_verify_c")]
+pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
+    pk_ptr: *const u64,
+    z_ptr: *const u64,
+    r_ptr: *const u64,
+    s_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let pk = &*(pk_ptr as *const [u64; 8]);
+    let z = &*(z_ptr as *const [u64; 4]);
+    let r = &*(r_ptr as *const [u64; 4]);
+    let s = &*(s_ptr as *const [u64; 4]);
+    ecdsa_verify_secp256k1(
+        pk,
+        z,
+        r,
+        s,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// ECDSA signature verification with big-endian byte inputs.
 ///
 /// # Safety
 /// - `sig` must point to at least 64 bytes (r || s, big-endian)
 /// - `msg` must point to at least 32 bytes (message hash, big-endian)
 /// - `pk` must point to at least 64 bytes (x || y, big-endian)
-/// - `output` must point to a writable buffer of at least 32 bytes
-///
-/// # Arguments
-/// - `sig` - 64 bytes: r (32 bytes) || s (32 bytes), big-endian
-/// - `msg` - 32 bytes message hash, big-endian
-/// - `pk` - 64 bytes: x (32 bytes) || y (32 bytes), big-endian
-/// - `output` - Output buffer for the recovered address (32 bytes)
-///
-/// # Returns
-/// - `Ok([u8; 32])` - Recovered address if signature is valid
-/// - `Err(u8)` - Error code
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_ecdsa_verify_and_address_recover_c")]
-pub unsafe extern "C" fn secp256k1_ecdsa_verify_and_address_recover_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn secp256k1_ecdsa_verify_bytes_c(
     sig: *const u8,
     msg: *const u8,
     pk: *const u8,
-    output: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
+) -> bool {
     let sig_bytes: &[u8; 64] = &*(sig as *const [u8; 64]);
     let msg_bytes: &[u8; 32] = &*(msg as *const [u8; 32]);
     let pk_bytes: &[u8; 64] = &*(pk as *const [u8; 64]);
-    let output_bytes: &mut [u8; 32] = &mut *(output as *mut [u8; 32]);
 
     // Parse r, s from big-endian bytes
     let r_bytes: [u8; 32] = sig_bytes[0..32].try_into().unwrap();
@@ -246,49 +260,42 @@ pub unsafe extern "C" fn secp256k1_ecdsa_verify_and_address_recover_c(
     let pk_y_bytes: [u8; 32] = pk_bytes[32..64].try_into().unwrap();
 
     // Convert to little-endian u64 limbs
-    let r = bytes_be_to_u64_le(&r_bytes);
-    let s = bytes_be_to_u64_le(&s_bytes);
-    let z = bytes_be_to_u64_le(msg_bytes);
-    let pk_x = bytes_be_to_u64_le(&pk_x_bytes);
-    let pk_y = bytes_be_to_u64_le(&pk_y_bytes);
+    let r = be_bytes_to_u64_4(&r_bytes);
+    let s = be_bytes_to_u64_4(&s_bytes);
+    let z = be_bytes_to_u64_4(msg_bytes);
+    let pk_x = be_bytes_to_u64_4(&pk_x_bytes);
+    let pk_y = be_bytes_to_u64_4(&pk_y_bytes);
 
     let pk_arr: [u64; 8] = [pk_x[0], pk_x[1], pk_x[2], pk_x[3], pk_y[0], pk_y[1], pk_y[2], pk_y[3]];
-    if secp256k1_ecdsa_verify(
+    ecdsa_verify_secp256k1(
         &pk_arr,
         &z,
         &r,
         &s,
         #[cfg(feature = "hints")]
         hints,
-    ) {
-        // Signature is valid - compute and return the address from the public key
-        let address = pubkey_to_address(&pk_arr);
-        output_bytes.copy_from_slice(&address);
-        ECDSA_VERIFY_SUCCESS
-    } else {
-        ECDSA_VERIFY_ERROR
-    }
+    )
 }
 
-/// C-compatible wrapper for secp256k1_ecdsa_recover
+/// C-compatible wrapper for ecdsa_recover_secp256k1
 ///
 /// # Safety
 /// - `sig` must point to at least 64 bytes (r || s, big-endian)
 /// - `msg` must point to at least 32 bytes (message hash, big-endian)
-/// - `output` must point to a writable buffer of at least 32 bytes
+/// - `output` must point to a writable buffer of 64 bytes
 ///
 /// # Arguments
 /// - `sig` - 64 bytes: r (32 bytes) || s (32 bytes), big-endian
 /// - `recid` - Recovery ID (0 or 1)
 /// - `msg` - 32 bytes message hash, big-endian
-/// - `output` - Output buffer for the recovered address (32 bytes)
+/// - `output` - Output buffer for the recovered public key (64 bytes)
 ///
 /// # Returns
-/// - `Ok([u32; 8])` - Recovered address if recovery is successful
+/// - `Ok([u64; 8])` - Recovered pubkey if recovery is successful
 /// - `Err(u8)` - Error code
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_ecdsa_address_recover_c")]
-pub unsafe extern "C" fn secp256k1_ecdsa_address_recover_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn secp256k1_ecdsa_recover_c(
     sig: *const u8,
     recid: u8,
     msg: *const u8,
@@ -297,18 +304,18 @@ pub unsafe extern "C" fn secp256k1_ecdsa_address_recover_c(
 ) -> u8 {
     let sig_bytes: &[u8; 64] = &*(sig as *const [u8; 64]);
     let msg_bytes: &[u8; 32] = &*(msg as *const [u8; 32]);
-    let output_bytes: &mut [u8; 32] = &mut *(output as *mut [u8; 32]);
+    let output_bytes: &mut [u8; 64] = &mut *(output as *mut [u8; 64]);
 
     // Parse r, s, z from big-endian bytes
     let r_bytes: [u8; 32] = sig_bytes[0..32].try_into().unwrap();
     let s_bytes: [u8; 32] = sig_bytes[32..64].try_into().unwrap();
 
-    let r = bytes_be_to_u64_le(&r_bytes);
-    let s = bytes_be_to_u64_le(&s_bytes);
-    let z = bytes_be_to_u64_le(msg_bytes);
+    let r = be_bytes_to_u64_4(&r_bytes);
+    let s = be_bytes_to_u64_4(&s_bytes);
+    let z = be_bytes_to_u64_4(msg_bytes);
 
     // Perform ecrecover
-    match secp256k1_ecdsa_recover(
+    match ecdsa_recover_secp256k1(
         &r,
         &s,
         &z,
@@ -317,56 +324,13 @@ pub unsafe extern "C" fn secp256k1_ecdsa_address_recover_c(
         hints,
     ) {
         Ok(pk) => {
-            let result = pubkey_to_address(&pk);
-            output_bytes.copy_from_slice(&result);
+            // pk is [u64; 8]: x in limbs [0..4] and y in limbs [4..8], little-endian
+            let x = [pk[0], pk[1], pk[2], pk[3]];
+            let y = [pk[4], pk[5], pk[6], pk[7]];
+            output_bytes[..32].copy_from_slice(&u64_4_to_be_bytes(&x));
+            output_bytes[32..].copy_from_slice(&u64_4_to_be_bytes(&y));
             ECDSA_RECOVER_SUCCESS
         }
         Err(code) => code,
     }
-}
-
-/// Convert big-endian bytes to little-endian u64 limbs (32 bytes -> [u64; 4])
-fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut result = [0u64; 4];
-    for i in 0..4 {
-        for j in 0..8 {
-            result[3 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
-        }
-    }
-    result
-}
-
-fn u64_le_to_bytes_be(limbs: &[u64; 4]) -> [u8; 32] {
-    let mut result = [0u8; 32];
-    for i in 0..4 {
-        for j in 0..8 {
-            result[i * 8 + j] = ((limbs[3 - i] >> (8 * (7 - j))) & 0xff) as u8;
-        }
-    }
-    result
-}
-
-fn pubkey_to_address(pk: &[u64; 8]) -> [u8; 32] {
-    let x = [pk[0], pk[1], pk[2], pk[3]];
-    let y = [pk[4], pk[5], pk[6], pk[7]];
-
-    let x_bytes = u64_le_to_bytes_be(&x);
-    let y_bytes = u64_le_to_bytes_be(&y);
-
-    // Concatenate x and y
-    let mut pk_bytes = [0u8; 64];
-    pk_bytes[0..32].copy_from_slice(&x_bytes);
-    pk_bytes[32..64].copy_from_slice(&y_bytes);
-
-    // Hash with keccak256
-    let mut hasher = Keccak::v256();
-    hasher.update(&pk_bytes);
-    let mut hash = [0u8; 32];
-    hasher.finalize(&mut hash);
-
-    // Ethereum address is last 20 bytes
-    let mut result = [0u8; 32];
-    result[12..32].copy_from_slice(&hash[12..32]);
-
-    result
 }

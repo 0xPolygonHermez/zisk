@@ -95,7 +95,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     (12) => {
         [
             read_csr_ffe(),
@@ -111,7 +111,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     (16) => {
         [
             read_csr_ffe(),
@@ -131,7 +131,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     ($len:expr) => {{
         let mut arr = [0u64; $len];
         let mut i = 0;

@@ -7,16 +7,10 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{Dma64AlignedInputCpyAirValues, DUAL_RANGE_BYTE_ID};
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    Dma64AlignedInputCpyTracePacked as Dma64AlignedInputCpyTrace,
-    Dma64AlignedInputCpyTraceRowPacked as Dma64AlignedInputCpyTraceRow,
+use zisk_pil::{
+    Dma64AlignedInputCpyAirValues, Dma64AlignedInputCpyTrace, Dma64AlignedInputCpyTraceRow,
+    Dma64AlignedInputCpyTraceRowOps, Dma64AlignedInputCpyTraceRowPacked, DUAL_RANGE_BYTE_ID,
 };
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{Dma64AlignedInputCpyTrace, Dma64AlignedInputCpyTraceRow};
 
 use crate::{
     dma_trace, Dma64AlignedInput, Dma64AlignedModule, DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
@@ -63,11 +57,11 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Dma64AlignedInputCpyTraceRowOps<F>>(
         &self,
         input: &Dma64AlignedInput,
-        trace: &mut [Dma64AlignedInputCpyTraceRow<F>],
-        local_dual_byte: &mut [u64], // for input_cpy
+        trace: &mut [R],
+        local_dual_byte: &mut [u64],
         values_24_bits: &mut Vec<u32>,
         air_values: &mut Dma64AlignedInputCpyAirValues<F>,
     ) -> usize {
@@ -150,31 +144,19 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut Dma64AlignedInputCpyTraceRow<F>) {
+    pub fn process_empty_slice<R: Dma64AlignedInputCpyTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
-}
-impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedInputCpySM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_64_aligned_inputcpy"
-    }
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+
+    fn compute_witness_inner<R: Dma64AlignedInputCpyTraceRowOps<F>>(
         &self,
         inputs: &[Vec<Dma64AlignedInput>],
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Dma64AlignedInputCpyTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = Dma64AlignedInputCpyTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs
@@ -266,5 +248,34 @@ impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedInputCpySM<F> {
         timer_stop_and_log_trace!(DMA_64_ALIGNED_TRACE);
         let from_trace = FromTrace::new(&mut trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedInputCpySM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_64_aligned_inputcpy"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<Dma64AlignedInput>],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<Dma64AlignedInputCpyTraceRowPacked<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<Dma64AlignedInputCpyTraceRow<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        }
     }
 }

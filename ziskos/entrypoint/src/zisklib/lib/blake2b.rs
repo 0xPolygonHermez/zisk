@@ -1,3 +1,5 @@
+//! BLAKE2b hash function.
+
 use crate::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
 
 /// BLAKE2b initialization vectors
@@ -12,6 +14,10 @@ const IV: [u64; 8] = [
     0x5BE0CD19137E2179,
 ];
 
+/// BLAKE2b compression function F as defined in RFC 7693.
+///
+/// Updates the hash state `h` in place by mixing the message block `m`
+/// over `rounds` iterations using counter `t` and finalization flag `f`.
 pub fn blake2b_compress(
     rounds: u32,
     h: &mut [u64; 8],
@@ -33,10 +39,10 @@ pub fn blake2b_compress(
     }
 
     for r in 0..rounds {
-        blake2b_round(
-            &mut v,
-            m,
-            r,
+        let mut params =
+            SyscallBlake2bRoundParams { index: (r % 10) as u64, state: &mut v, input: m };
+        syscall_blake2b_round(
+            &mut params,
             #[cfg(feature = "hints")]
             hints,
         );
@@ -47,29 +53,15 @@ pub fn blake2b_compress(
     }
 }
 
-fn blake2b_round(
-    v: &mut [u64; 16],
-    m: &[u64; 16],
-    round: u32,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) {
-    let mut params = SyscallBlake2bRoundParams { index: (round % 10) as u64, state: v, input: m };
-    syscall_blake2b_round(
-        &mut params,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-}
-
 /// C-compatible wrapper for full Blake2b compression function
 ///
 /// # Safety
 /// - `state` must point to a writable buffer of at least 8 `u64`s
 /// - `message` must point to at least 16 `u64`s
 /// - `offset` must point to at least 2 `u64`s
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_blake2b_compress_c")]
-pub unsafe extern "C" fn blake2b_compress_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn blake2b_compress_c(
     rounds: u32,
     state: *mut u64,
     message: *const u64,

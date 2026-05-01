@@ -13,7 +13,6 @@ pub use blake2::{blake2b_compress, blake2b_round};
 pub use common::*;
 pub use dma::*;
 pub use keccak::{
-    keccak_f, keccak_f_expr, keccak_f_round_states, keccak_f_rounds, keccak_f_state,
-    keccakf_idx_pos, keccakf_state_from_linear, keccakf_state_to_linear,
-    keccakf_state_to_linear_1d,
+    keccak_f, keccak_f_expr, keccak_f_round, keccakf_bit_pos, keccakf_state_flatten,
+    keccakf_state_from_linear,
 };

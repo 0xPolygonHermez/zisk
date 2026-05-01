@@ -15,6 +15,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+zkvm-interface = { workspace = true }
 lib-c = { workspace = true }
 
 num-bigint = { workspace = true }
@@ -33,6 +34,7 @@ bincode = { workspace = true }
 paste = "1.0"
 sha2 = { workspace = true }
 fields = { workspace = true }
+ripemd = { workspace = true }
 
 anyhow = { workspace = true }
 zisk-verifier = { workspace = true }

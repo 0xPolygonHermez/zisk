@@ -7,6 +7,7 @@ edition = "2021"
 zisk-sdk = { workspace = true }
 anyhow = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 sha2 = "0.10.8"
 
 [build-dependencies]
@@ -14,5 +15,4 @@ zisk-sdk = { workspace = true }
 
 [features]
 default = []
-packed = []
-gpu = ["zisk-sdk/gpu"]
+gpu = []

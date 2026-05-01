@@ -319,23 +319,33 @@ impl Emulator for ZiskEmulator {
         // Build an input data buffer either from the provided inputs path (if provided), or leave
         // it empty
         let mut inputs = Vec::new();
-        if options.inputs.is_some() {
+        if let Some(inputs_path) = &options.inputs {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(options.inputs.clone().unwrap());
-            inputs = fs::read(path).expect("Could not read inputs file");
+            let path = PathBuf::from(inputs_path);
+            inputs = fs::read(&path).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not read inputs file '{}': {e}",
+                    path.display()
+                )))
+            })?;
         }
 
         // Build an input data buffer either from the provided inputs path (if provided), or leave
         // it empty
-        if options.legacy_inputs.is_some() {
+        if let Some(legacy_inputs_path) = &options.legacy_inputs {
             if options.inputs.is_some() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "Legacy input file and input file options are incompatible",
                 )));
             }
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(options.legacy_inputs.clone().unwrap());
-            let file_data = fs::read(path).expect("Could not read inputs file");
+            // Read inputs data from the provided legacy inputs path
+            let path = PathBuf::from(legacy_inputs_path);
+            let file_data = fs::read(&path).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not read legacy inputs file '{}': {e}",
+                    path.display()
+                )))
+            })?;
 
             // Build legacy format: 8 bytes length (native endianness) + file content + padding to multiple of 8
             let file_len = file_data.len() as u64;

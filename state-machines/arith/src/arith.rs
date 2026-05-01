@@ -53,9 +53,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
     /// A boxed implementation of `ArithPlanner`.
     fn build_planner(&self) -> Box<dyn Planner> {
         Box::new(ArithPlanner::new().add_instance(InstanceInfo::new(
-            ArithTrace::<F>::AIRGROUP_ID,
-            ArithTrace::<F>::AIR_ID,
-            ArithTrace::<F>::NUM_ROWS,
+            ArithTrace::<()>::AIRGROUP_ID,
+            ArithTrace::<()>::AIR_ID,
+            ArithTrace::<()>::NUM_ROWS,
             ZiskOperationType::Arith,
         )))
     }
@@ -69,7 +69,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
     /// A boxed implementation of `StdInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            ArithTrace::<F>::AIR_ID => {
+            ArithTrace::<()>::AIR_ID => {
                 Box::new(ArithFullInstance::new(self.arith_full_sm.clone(), ictx, self.std.clone()))
             }
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),

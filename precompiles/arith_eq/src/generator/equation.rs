@@ -346,11 +346,7 @@ impl Equation {
     }
 
     fn index_to_row_offset(index: usize, row: usize, terms_by_clock: usize) -> i32 {
-        if terms_by_clock == 0 {
-            0
-        } else {
-            (index / terms_by_clock) as i32 - row as i32
-        }
+        index.checked_div(terms_by_clock).map(|q| q as i32 - row as i32).unwrap_or(0)
     }
     // fn add_zero_terms(&mut self) {
     //     let total_chunks = self.config.chunks * 2;
@@ -368,7 +364,7 @@ impl Equation {
         let mut line = CodeLine::new(terms_by_clock > 0, self.config.comment_col);
         for (icol, addition_cols) in self.terms.iter().enumerate() {
             let mut out = String::new();
-            let clock = if terms_by_clock == 0 { 0 } else { icol / terms_by_clock };
+            let clock = icol.checked_div(terms_by_clock).unwrap_or(0);
             if addition_cols.is_empty() {
                 output.push(format!("{}{}", 0, last_end_of_line));
                 continue;

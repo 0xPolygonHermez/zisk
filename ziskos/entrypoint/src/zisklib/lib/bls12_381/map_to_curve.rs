@@ -21,10 +21,12 @@ use super::{
 };
 
 // G1 map to curve result codes
+#[allow(dead_code)]
 const G1_MAP_TO_CURVE_SUCCESS: u8 = 0;
 const G1_MAP_TO_CURVE_ERR_NOT_IN_FIELD: u8 = 1;
 
 // G2 map to curve result codes
+#[allow(dead_code)]
 const G2_MAP_TO_CURVE_SUCCESS: u8 = 0;
 const G2_MAP_TO_CURVE_ERR_NOT_IN_FIELD: u8 = 1;
 
@@ -665,12 +667,18 @@ fn eval_poly_fp2<const N: usize>(
 /// - `fp` must point to a valid `[u8; 48]`
 /// - `ret` must point to a valid `[u8; 96]` for the output
 ///
+/// Map-to-curve result codes
+#[allow(dead_code)]
+pub(crate) const FP_TO_G1_SUCCESS: u8 = 0;
+#[allow(dead_code)]
+pub(crate) const FP2_TO_G2_SUCCESS: u8 = 0;
+
 /// Returns:
 /// - 0 = success
 /// - 1 = error (input not in field)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_fp_to_g1_c")]
-pub unsafe extern "C" fn bls12_381_fp_to_g1_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn bls12_381_fp_to_g1_c(
     ret: *mut u8,
     fp: *const u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -708,9 +716,9 @@ pub unsafe extern "C" fn bls12_381_fp_to_g1_c(
 /// Returns:
 /// - 0 = success
 /// - 1 = error (input not in field)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_fp2_to_g2_c")]
-pub unsafe extern "C" fn bls12_381_fp2_to_g2_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn bls12_381_fp2_to_g2_c(
     ret: *mut u8,
     fp2: *const u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

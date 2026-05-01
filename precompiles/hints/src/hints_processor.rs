@@ -12,12 +12,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
+use zisk_cluster_common::{JobPhase, StreamMessage};
 use zisk_common::io::{StreamProcessor, StreamSink};
 use zisk_common::{
     BuiltInHint, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
 };
-use zisk_distributed_common::{JobPhase, StreamMessage};
 
 use crate::hint_handlers::HintHandlers;
 

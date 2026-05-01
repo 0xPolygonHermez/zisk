@@ -42,7 +42,7 @@
 //!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
 //!     index `(pc-ROM_ENTRY)/4`
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::{ZiskInst, ZiskInstBuilder, ROM_ENTRY};
 
@@ -81,7 +81,7 @@ pub struct ZiskRom {
 
     /// Map of instructions that are part of the ROM; the key is the ROM address (pc)
     /// This map contains the instructions that are part of the program, i.e. address >= ROM_ADDR
-    pub insts: HashMap<u64, ZiskInstBuilder>,
+    pub insts: BTreeMap<u64, ZiskInstBuilder>,
 
     /// List of RO sections as found in the ELF file
     pub ro_data: Vec<RoData>,

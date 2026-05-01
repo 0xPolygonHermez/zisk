@@ -48,7 +48,9 @@ CPP_OBJS = $(BUILD_DIR)/fecc.o \
            $(BUILD_DIR)/globals.o \
            $(BUILD_DIR)/goldilocks_base_field.o \
            $(BUILD_DIR)/poseidon2_goldilocks.o \
-		   $(BUILD_DIR)/blake2.o
+		   $(BUILD_DIR)/blake2.o \
+		   $(BUILD_DIR)/keccak.o \
+		   $(BUILD_DIR)/bcon_sha256.o
 
 ALL_OBJS = $(ASM_OBJS) $(CPP_OBJS)
 
@@ -169,6 +171,12 @@ $(BUILD_DIR)/poseidon2_goldilocks.o: $(SRC_DIR)/poseidon2/poseidon2_goldilocks.c
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/blake2.o: $(SRC_DIR)/blake2/blake2.cpp $(SRC_DIR)/blake2/blake2.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/keccak.o: $(SRC_DIR)/chfast/keccak.c $(SRC_DIR)/chfast/keccak.h $(SRC_DIR)/chfast/hash_types.h $(SRC_DIR)/chfast/attributes.h | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/bcon_sha256.o: $(SRC_DIR)/bcon/bcon_sha256.c $(SRC_DIR)/bcon/bcon_sha256.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:

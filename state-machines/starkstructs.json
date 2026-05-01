@@ -1,11 +1,37 @@
 {
-    "Keccakf": { "powBits": 23, "lastLevelVerification": 1, "hasCompressor": true },
-    "Sha256f": { "hasCompressor": true },
-    "ArithEq": { "hasCompressor": true },
-    "ArithEq384": { "hasCompressor": true },
-    "VirtualTable0": { "lastLevelVerification": 1 },
-    "VirtualTable1": { "lastLevelVerification": 1 },
-    "SpecifiedRanges": { "lastLevelVerification": 1 },
-    "Poseidon2": { "blowupFactor": 2 },
-    "Rom": { "powBits": 20 }
+  "Keccakf": {
+    "powBits": 23,
+    "lastLevelVerification": 1,
+    "hasCompressor": true
+  },
+  "Sha256f": {
+    "hasCompressor": true
+  },
+  "ArithEq": {
+    "hasCompressor": true
+  },
+  "ArithEq384": {
+    "hasCompressor": true
+  },
+  "VirtualTable0": {
+    "lastLevelVerification": 1
+  },
+  "VirtualTable1": {
+    "lastLevelVerification": 1
+  },
+  "SpecifiedRanges": {
+    "lastLevelVerification": 1
+  },
+  "Poseidon2": {
+    "blowupFactor": 2
+  },
+  "Rom": {
+    "powBits": 20
+  },
+  "DmaPrePost": {
+    "hasCompressor": true
+  },
+  "Blake2br": {
+    "hasCompressor": true
+  }
 }

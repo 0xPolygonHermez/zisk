@@ -15,10 +15,7 @@ pub struct SyscallBn254CurveAddParams<'a> {
     pub p2: &'a SyscallPoint256,
 }
 
-/// Performs the addition of two points on the Bn254 curve, storing the result in the first point.
-///
-/// The `Bn254CurveAdd` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Bn254CurveAdd`.
+/// Performs the addition of two points on the BN254 curve, storing the result in the first point.
 ///
 /// `Bn254CurveAdd` operates on two points, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
@@ -27,7 +24,9 @@ pub struct SyscallBn254CurveAddParams<'a> {
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// The caller must ensure that the points `p1` and `p2` are valid points on the BN254 curve.
 ///
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the BN254 base field.
 ///

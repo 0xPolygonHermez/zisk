@@ -16,6 +16,7 @@
 #include "ffiasm/fec.hpp"
 #include "ffiasm/fnec.hpp"
 #include "common/utils.hpp"
+#include "chfast/zisk_keccak.h"
 
 #define N_TESTS 1000000
 #define MAX_TEST_SIZE_U64  36  // Enough for the largest test
@@ -1251,7 +1252,7 @@ void Div256_benchmark(uint64_t *data) {
         for (uint64_t i = 0; i<N_TESTS; i++)
         {
             uint64_t *test_data = data + i * TEST_SIZE_U64;
-            BigInt256Div(test_data, test_data + 8);
+            Uint256Div(test_data, test_data + 8);
         }
 
         uint64_t duration = TimeDiff(startTime);
@@ -1263,56 +1264,99 @@ void Div256_benchmark(uint64_t *data) {
     }
 }
 
+void Keccakf_benchmark(uint64_t *data) {
+
+    try {
+        const uint64_t TEST_SIZE_U64 = 25;
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            for (uint64_t j = 0; j < TEST_SIZE_U64; j++) {
+                data[i * TEST_SIZE_U64 + j] = (uint64_t)rand();
+            }
+        }
+
+        struct timeval startTime;
+        gettimeofday(&startTime, NULL);
+        for (uint64_t i = 0; i<N_TESTS; i++)
+        {
+            uint64_t *test_data = data + i * TEST_SIZE_U64;
+            zisk_keccakf1600(test_data);
+        }
+
+        uint64_t duration = TimeDiff(startTime);
+        double tp = duration == 0 ? 0 : double(N_TESTS)/duration;
+        print_results("Keccakf", duration, tp);
+    }
+    catch (const std::exception & e) {
+        printf("Keccakf                      |Exception: %s\n", e.what());
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    if (argc > 1)
+    bool all = true;
+    bool keccak = false;
+
+    for (int i=1; i<argc; i++)
     {
-        if (strcmp(argv[1], "-v") == 0)
+        if (strcmp(argv[i], "-v") == 0)
         {
             verbose = true;
-        } 
+            continue;
+        }
+        if (( strcmp(argv[i], "-k") == 0) || (strcmp(argv[i], "keccak") == 0) )
+        {
+            keccak = true;
+            all = false;
+            continue;
+        }
+        printf("Unknown option: %s\n", argv[i]);
+        printf("Usage: %s [-v] [-k]\n", argv[0]);
+        printf("  -v: verbose output\n");
+        printf("  -k|keccak: run only Keccakf benchmark\n");
+        fflush(stdout);
+        exit(EXIT_FAILURE);
     }
 
-    setlocale(LC_NUMERIC, "en_US.UTF-8");  // usa locale del sistema
-    // o específico:    
+    setlocale(LC_NUMERIC, "en_US.UTF-8");  // use system locale
+    // or specific:
     uint64_t *data = (uint64_t *)malloc(N_TESTS * MAX_TEST_SIZE_U64 * sizeof(uint64_t));
     printf("Test                        |duration   (us)|average    (ns)|TP (Mcalls/sec)\n");
     printf("----------------------------|---------------|---------------|---------------\n");
 
-    secp256k1_add_benchmark(data);
-    secp256k1_dbl_benchmark(data);
+    if (all) secp256k1_add_benchmark(data);
+    if (all) secp256k1_dbl_benchmark(data);
     // secp256k1_add_fe_benchmark(data);
     // secp256k1_dbl_fe_benchmark(data);
-    InverseFpEc_benchmark(data);
-    InverseFnEc_benchmark(data);
-    SqrtFpEcParity_benchmark(data);
-    BN254CurveAddP_benchmark(data);
-    BN254CurveDblP_benchmark(data);
-    BN254FpInv_benchmark(data);
-    BN254ComplexAddP_benchmark(data);
-    BN254ComplexSubP_benchmark(data);
-    BN254ComplexMulP_benchmark(data);
-    BN254ComplexInv_benchmark(data);
-    BN254TwistAddLineCoeffs_benchmark(data);
-    BN254TwistDblLineCoeffs_benchmark(data);
-    Arith256_benchmark(data);
-    FastArith256_benchmark(data);
-    Arith256Mod_benchmark(data);
-    Arith384_benchmark(data);
-    Arith384Mod_benchmark(data);
-    BLS12_381CurveAddP_benchmark(data);
-    BLS12_381CurveDblP_benchmark(data);
-    BLS12_381ComplexAddP_benchmark(data);
-    BLS12_381ComplexSubP_benchmark(data);
-    BLS12_381ComplexMulP_benchmark(data);
-    Add256_benchmark(data);
-
-    BN254FpInv_test();
-    BN254ComplexInv_test();
-    BN254TwistAddLineCoeffs_test();
-    BN254TwistDblLineCoeffs_test();
-    
-    Div256_benchmark(data);
+    if (all) InverseFpEc_benchmark(data);
+    if (all) InverseFnEc_benchmark(data);
+    if (all) SqrtFpEcParity_benchmark(data);
+    if (all) BN254CurveAddP_benchmark(data);
+    if (all) BN254CurveDblP_benchmark(data);
+    if (all) BN254FpInv_benchmark(data);
+    if (all) BN254ComplexAddP_benchmark(data);
+    if (all) BN254ComplexSubP_benchmark(data);
+    if (all) BN254ComplexMulP_benchmark(data);
+    if (all) BN254ComplexInv_benchmark(data);
+    if (all) BN254TwistAddLineCoeffs_benchmark(data);
+    if (all) BN254TwistDblLineCoeffs_benchmark(data);
+    if (all) Arith256_benchmark(data);
+    if (all) FastArith256_benchmark(data);
+    if (all) Arith256Mod_benchmark(data);
+    if (all) Arith384_benchmark(data);
+    if (all) Arith384Mod_benchmark(data);
+    if (all) BLS12_381CurveAddP_benchmark(data);
+    if (all) BLS12_381CurveDblP_benchmark(data);
+    if (all) BLS12_381ComplexAddP_benchmark(data);
+    if (all) BLS12_381ComplexSubP_benchmark(data);
+    if (all) BLS12_381ComplexMulP_benchmark(data);
+    if (all) Add256_benchmark(data);
+    if (all) BN254FpInv_test();
+    if (all) BN254ComplexInv_test();
+    if (all) BN254TwistAddLineCoeffs_test();
+    if (all) BN254TwistDblLineCoeffs_test();
+    if (all) Div256_benchmark(data);
+    if (all || keccak) Keccakf_benchmark(data);
 
     free(data);
 }

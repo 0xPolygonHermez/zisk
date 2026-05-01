@@ -49,6 +49,20 @@ main() {
     --nokey)
       SETUP_KEY="none"
       ;;
+    --gpu)
+      if [[ "${USE_GPU}" == "false" ]]; then
+        err "--gpu and --cpu are mutually exclusive"
+        exit 1
+      fi
+      USE_GPU=true
+      ;;
+    --cpu)
+      if [[ "${USE_GPU}" == "true" ]]; then
+        err "--gpu and --cpu are mutually exclusive"
+        exit 1
+      fi
+      USE_GPU=false
+      ;;
     -h | --help)
       usage
       exit 0
@@ -76,6 +90,14 @@ main() {
       exit 1
       ;;
   esac
+
+  # Detect CUDA toolkit availability.
+  HAS_CUDA=false
+  if [ "${PLATFORM}" = "linux" ] && {
+    [ -d "/usr/local/cuda" ] || [ -n "${CUDA_HOME+x}" ] || (check_cmd nvcc && nvcc --version >/dev/null 2>&1)
+  }; then
+    HAS_CUDA=true
+  fi
 
   # Print the banner after successfully parsing args
   banner
@@ -111,6 +133,37 @@ main() {
   if [[ -n "${GH_RUNNER}" ]]; then
     warn "Running from GitHub action, installing proving key"
     SETUP_KEY="proving"
+    USE_GPU=false
+  fi
+
+  # Determine whether to use GPU or CPU binaries (linux only), if USE_GPU is not set
+  if [[ -z "${USE_GPU}" ]]; then
+    if [ "${PLATFORM}" = "linux" ]; then
+      if [ "${HAS_CUDA}" = "true" ]; then
+        USE_GPU=true
+      else
+        warn "CUDA was not detected on this system"
+        say "The version with only CPU support will be installed by default"
+        say ""
+        say "Do you want to:"
+        say "  1) Install CPU version (default - just press enter)"
+        say "  2) Install GPU version"
+        read -p ">" cuda_choice < /dev/tty
+        cuda_choice=${cuda_choice:-1}
+
+        case "${cuda_choice}" in
+          1) USE_GPU=false ;;
+          2) USE_GPU=true ;;
+          *)
+            err "invalid option, aborting installation"
+            exit 1
+            ;;
+        esac
+      fi
+    else
+      # For macOS, we only install the CPU version as GPU support is not available yet
+      USE_GPU=false
+    fi
   fi
 
   # Ask user about key installation if SETUP_KEY is not set
@@ -169,6 +222,23 @@ main() {
     fi
 
     rm -f "${tmp}"
+
+    if [ "${PLATFORM}" = "linux" ]; then
+      # Set up binaries based on GPU/CPU selection (linux only)
+      if [ "${USE_GPU}" = "true" ]; then
+        step "Configuring GPU binaries..."
+        rm -f "${ZISK_BIN_DIR}/cargo-zisk-cpu"
+        rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
+        mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
+        mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
+      else
+        step "Configuring CPU binaries..."
+        rm -f "${ZISK_BIN_DIR}/cargo-zisk-gpu"
+        rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
+        mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
+        mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
+      fi
+    fi
   fi
 
   # Print installed version message
@@ -194,7 +264,7 @@ EOF
   done
 
   step "Installing ZisK Rust toolchain..."
-  ensure "${CARGO_ZISK}" sdk install-toolchain
+  ensure "${CARGO_ZISK}" toolchain install
 
   # Install the proving/verify key setup
   IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
@@ -270,6 +340,8 @@ OPTIONS:
     --platform      Install a specific platform (supports linux and darwin)
     --provingkey    Install the proving key
     --verifykey     Install the verify key
+    --gpu           Install the GPU version (linux only)
+    --cpu           Install the CPU version (linux only)
     --nokey         No proving/verify key installation
 
 COMMANDS:
@@ -424,7 +496,7 @@ setup_snark_command() {
     err "cargo-zisk not found. Please install ZisK first with 'ziskup'"
     exit 1
   fi
-  
+
   ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
 
   # Parse version to get setup version

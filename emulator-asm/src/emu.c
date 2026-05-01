@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "emu.hpp"
+#include "log.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
@@ -18,11 +19,9 @@
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
-#include "bcon/bcon_sha256.hpp"
+#include "../../lib-c/c/src/chfast/zisk_keccak.h"
 
 extern void zisk_sha256(uint64_t state[4], uint64_t input[8]);
-
-extern void keccakf1600_generic(uint64_t state[25]);
 
 #ifdef DEBUG
 bool emu_verbose = false;
@@ -92,13 +91,13 @@ void print_asm_call_metrics (uint64_t total_duration)
 {
     uint64_t duration, percentage, asm_call_total_duration = 0;
 
-    printf("\nprint_asm_call_metrics:\n");
+    asm_printf("\nprint_asm_call_metrics:\n");
 
     // Print keccak metrics
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.keccak_duration * 1000) / total_duration;
     duration = asm_call_metrics.keccak_counter == 0 ? 0 : (asm_call_metrics.keccak_duration * 1000) / asm_call_metrics.keccak_counter;
     asm_call_total_duration += asm_call_metrics.keccak_duration;
-    printf("Keccak: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Keccak: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.keccak_counter,
         asm_call_metrics.keccak_duration,
         duration,
@@ -108,7 +107,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.sha256_duration * 1000) / total_duration;
     duration = asm_call_metrics.sha256_counter == 0 ? 0 : (asm_call_metrics.sha256_duration * 1000) / asm_call_metrics.sha256_counter;
     asm_call_total_duration += asm_call_metrics.sha256_duration;
-    printf("SHA256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("SHA256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.sha256_counter,
         asm_call_metrics.sha256_duration,
         duration,
@@ -118,7 +117,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake2_duration * 1000) / total_duration;
     duration = asm_call_metrics.blake2_counter == 0 ? 0 : (asm_call_metrics.blake2_duration * 1000) / asm_call_metrics.blake2_counter;
     asm_call_total_duration += asm_call_metrics.blake2_duration;
-    printf("Blake2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Blake2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.blake2_counter,
         asm_call_metrics.blake2_duration,
         duration,
@@ -128,7 +127,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.poseidon2_duration * 1000) / total_duration;
     duration = asm_call_metrics.poseidon2_counter == 0 ? 0 : (asm_call_metrics.poseidon2_duration * 1000) / asm_call_metrics.poseidon2_counter;
     asm_call_total_duration += asm_call_metrics.poseidon2_duration;
-    printf("Poseidon2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Poseidon2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.poseidon2_counter,
         asm_call_metrics.poseidon2_duration,
         duration,
@@ -138,7 +137,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.arith256_duration * 1000) / total_duration;
     duration = asm_call_metrics.arith256_counter == 0 ? 0 : (asm_call_metrics.arith256_duration * 1000) / asm_call_metrics.arith256_counter;
     asm_call_total_duration += asm_call_metrics.arith256_duration;
-    printf("Arith256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Arith256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.arith256_counter,
         asm_call_metrics.arith256_duration,
         duration,
@@ -148,7 +147,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.arith256_mod_duration * 1000) / total_duration;
     duration = asm_call_metrics.arith256_mod_counter == 0 ? 0 : (asm_call_metrics.arith256_mod_duration * 1000) / asm_call_metrics.arith256_mod_counter;
     asm_call_total_duration += asm_call_metrics.arith256_mod_duration;
-    printf("Arith256 mod: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Arith256 mod: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.arith256_mod_counter,
         asm_call_metrics.arith256_mod_duration,
         duration,
@@ -158,7 +157,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256k1_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.secp256k1_add_counter == 0 ? 0 : (asm_call_metrics.secp256k1_add_duration * 1000) / asm_call_metrics.secp256k1_add_counter;
     asm_call_total_duration += asm_call_metrics.secp256k1_add_duration;
-    printf("secp256k1_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("secp256k1_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.secp256k1_add_counter,
         asm_call_metrics.secp256k1_add_duration,
         duration,
@@ -168,7 +167,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256k1_dbl_duration * 1000) / total_duration;
     duration = asm_call_metrics.secp256k1_dbl_counter == 0 ? 0 : (asm_call_metrics.secp256k1_dbl_duration * 1000) / asm_call_metrics.secp256k1_dbl_counter;
     asm_call_total_duration += asm_call_metrics.secp256k1_dbl_duration;
-    printf("secp256k1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("secp256k1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.secp256k1_dbl_counter,
         asm_call_metrics.secp256k1_dbl_duration,
         duration,
@@ -178,7 +177,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256r1_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.secp256r1_add_counter == 0 ? 0 : (asm_call_metrics.secp256r1_add_duration * 1000) / asm_call_metrics.secp256r1_add_counter;
     asm_call_total_duration += asm_call_metrics.secp256r1_add_duration;
-    printf("secp256r1_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("secp256r1_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.secp256r1_add_counter,
         asm_call_metrics.secp256r1_add_duration,
         duration,
@@ -188,7 +187,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.secp256r1_dbl_duration * 1000) / total_duration;
     duration = asm_call_metrics.secp256r1_dbl_counter == 0 ? 0 : (asm_call_metrics.secp256r1_dbl_duration * 1000) / asm_call_metrics.secp256r1_dbl_counter;
     asm_call_total_duration += asm_call_metrics.secp256r1_dbl_duration;
-    printf("secp256r1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("secp256r1_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.secp256r1_dbl_counter,
         asm_call_metrics.secp256r1_dbl_duration,
         duration,
@@ -198,7 +197,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.fcall_duration * 1000) / total_duration;
     duration = asm_call_metrics.fcall_counter == 0 ? 0 : (asm_call_metrics.fcall_duration * 1000) / asm_call_metrics.fcall_counter;
     asm_call_total_duration += asm_call_metrics.fcall_duration;
-    printf("fcall: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("fcall: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.fcall_counter,
         asm_call_metrics.fcall_duration,
         duration,
@@ -208,7 +207,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.inverse_fp_ec_duration * 1000) / total_duration;
     duration = asm_call_metrics.inverse_fp_ec_counter == 0 ? 0 : (asm_call_metrics.inverse_fp_ec_duration * 1000) / asm_call_metrics.inverse_fp_ec_counter;
     asm_call_total_duration += asm_call_metrics.inverse_fp_ec_duration;
-    printf("inverse_fp_ec: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("inverse_fp_ec: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.inverse_fp_ec_counter,
         asm_call_metrics.inverse_fp_ec_duration,
         duration,
@@ -218,7 +217,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.inverse_fn_ec_duration * 1000) / total_duration;
     duration = asm_call_metrics.inverse_fn_ec_counter == 0 ? 0 : (asm_call_metrics.inverse_fn_ec_duration * 1000) / asm_call_metrics.inverse_fn_ec_counter;
     asm_call_total_duration += asm_call_metrics.inverse_fn_ec_duration;
-    printf("inverse_fn_ec: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("inverse_fn_ec: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.inverse_fn_ec_counter,
         asm_call_metrics.inverse_fn_ec_duration,
         duration,
@@ -228,7 +227,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.sqrt_fp_ec_parity_duration * 1000) / total_duration;
     duration = asm_call_metrics.sqrt_fp_ec_parity_counter == 0 ? 0 : (asm_call_metrics.sqrt_fp_ec_parity_duration * 1000) / asm_call_metrics.sqrt_fp_ec_parity_counter;
     asm_call_total_duration += asm_call_metrics.sqrt_fp_ec_parity_duration;
-    printf("sqrt_fp_ec_parity: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("sqrt_fp_ec_parity: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.sqrt_fp_ec_parity_counter,
         asm_call_metrics.sqrt_fp_ec_parity_duration,
         duration,
@@ -238,7 +237,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bn254_curve_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.bn254_curve_add_counter == 0 ? 0 : (asm_call_metrics.bn254_curve_add_duration * 1000) / asm_call_metrics.bn254_curve_add_counter;
     asm_call_total_duration += asm_call_metrics.bn254_curve_add_duration;
-    printf("bn254_curve_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bn254_curve_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_curve_add_counter,
         asm_call_metrics.bn254_curve_add_duration,
         duration,
@@ -248,7 +247,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bn254_curve_dbl_duration * 1000) / total_duration;
     duration = asm_call_metrics.bn254_curve_dbl_counter == 0 ? 0 : (asm_call_metrics.bn254_curve_dbl_duration * 1000) / asm_call_metrics.bn254_curve_dbl_counter;
     asm_call_total_duration += asm_call_metrics.bn254_curve_dbl_duration;
-    printf("bn254_curve_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bn254_curve_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_curve_dbl_counter,
         asm_call_metrics.bn254_curve_dbl_duration,
         duration,
@@ -258,7 +257,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bn254_complex_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.bn254_complex_add_counter == 0 ? 0 : (asm_call_metrics.bn254_complex_add_duration * 1000) / asm_call_metrics.bn254_complex_add_counter;
     asm_call_total_duration += asm_call_metrics.bn254_complex_add_duration;
-    printf("bn254_complex_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bn254_complex_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_complex_add_counter,
         asm_call_metrics.bn254_complex_add_duration,
         duration,
@@ -268,7 +267,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bn254_complex_sub_duration * 1000) / total_duration;
     duration = asm_call_metrics.bn254_complex_sub_counter == 0 ? 0 : (asm_call_metrics.bn254_complex_sub_duration * 1000) / asm_call_metrics.bn254_complex_sub_counter;
     asm_call_total_duration += asm_call_metrics.bn254_complex_sub_duration;
-    printf("bn254_complex_sub: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bn254_complex_sub: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_complex_sub_counter,
         asm_call_metrics.bn254_complex_sub_duration,
         duration,
@@ -278,7 +277,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bn254_complex_mul_duration * 1000) / total_duration;
     duration = asm_call_metrics.bn254_complex_mul_counter == 0 ? 0 : (asm_call_metrics.bn254_complex_mul_duration * 1000) / asm_call_metrics.bn254_complex_mul_counter;
     asm_call_total_duration += asm_call_metrics.bn254_complex_mul_duration;
-    printf("bn254_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bn254_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bn254_complex_mul_counter,
         asm_call_metrics.bn254_complex_mul_duration,
         duration,
@@ -288,7 +287,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_curve_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.bls12_381_curve_add_counter == 0 ? 0 : (asm_call_metrics.bls12_381_curve_add_duration * 1000) / asm_call_metrics.bls12_381_curve_add_counter;
     asm_call_total_duration += asm_call_metrics.bls12_381_curve_add_duration;
-    printf("bls12_381_curve_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bls12_381_curve_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_curve_add_counter,
         asm_call_metrics.bls12_381_curve_add_duration,
         duration,
@@ -298,7 +297,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_curve_dbl_duration * 1000) / total_duration;
     duration = asm_call_metrics.bls12_381_curve_dbl_counter == 0 ? 0 : (asm_call_metrics.bls12_381_curve_dbl_duration * 1000) / asm_call_metrics.bls12_381_curve_dbl_counter;
     asm_call_total_duration += asm_call_metrics.bls12_381_curve_dbl_duration;
-    printf("bls12_381_curve_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bls12_381_curve_dbl: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_curve_dbl_counter,
         asm_call_metrics.bls12_381_curve_dbl_duration,
         duration,
@@ -308,7 +307,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_add_duration * 1000) / total_duration;
     duration = asm_call_metrics.bls12_381_complex_add_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_add_duration * 1000) / asm_call_metrics.bls12_381_complex_add_counter;
     asm_call_total_duration += asm_call_metrics.bls12_381_complex_add_duration;
-    printf("bls12_381_complex_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bls12_381_complex_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_complex_add_counter,
         asm_call_metrics.bls12_381_complex_add_duration,
         duration,
@@ -318,7 +317,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_sub_duration * 1000) / total_duration;
     duration = asm_call_metrics.bls12_381_complex_sub_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_sub_duration * 1000) / asm_call_metrics.bls12_381_complex_sub_counter;
     asm_call_total_duration += asm_call_metrics.bls12_381_complex_sub_duration;
-    printf("bls12_381_complex_sub: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bls12_381_complex_sub: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_complex_sub_counter,
         asm_call_metrics.bls12_381_complex_sub_duration,
         duration,
@@ -328,7 +327,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.bls12_381_complex_mul_duration * 1000) / total_duration;
     duration = asm_call_metrics.bls12_381_complex_mul_counter == 0 ? 0 : (asm_call_metrics.bls12_381_complex_mul_duration * 1000) / asm_call_metrics.bls12_381_complex_mul_counter;
     asm_call_total_duration += asm_call_metrics.bls12_381_complex_mul_duration;
-    printf("bls12_381_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("bls12_381_complex_mul: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.bls12_381_complex_mul_counter,
         asm_call_metrics.bls12_381_complex_mul_duration,
         duration,
@@ -338,7 +337,7 @@ void print_asm_call_metrics (uint64_t total_duration)
     percentage = total_duration == 0 ? 0 : (asm_call_metrics.add256_duration * 1000) / total_duration;
     duration = asm_call_metrics.add256_counter == 0 ? 0 : (asm_call_metrics.add256_duration * 1000) / asm_call_metrics.add256_counter;
     asm_call_total_duration += asm_call_metrics.add256_duration;
-    printf("Add256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+    asm_printf("Add256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.add256_counter,
         asm_call_metrics.add256_duration,
         duration,
@@ -346,7 +345,7 @@ void print_asm_call_metrics (uint64_t total_duration)
 
     // Print total asm call percentage
     percentage = total_duration == 0 ? 0 : (asm_call_total_duration * 1000) / total_duration;
-    printf("TOTAL: total duration = %lu us, asm call duration = %lu us, per thousand = %lu = %lu %%\n\n",
+    asm_printf("TOTAL: total duration = %lu us, asm call duration = %lu us, per thousand = %lu = %lu %%\n\n",
         total_duration,
         asm_call_total_duration,
         percentage,
@@ -370,7 +369,7 @@ void precompile_cache_store_init(void)
     assert(precompile_cache_loading == false);
     precompile_file = fopen(precompile_cache_filename, "wb");
     if (precompile_file == NULL) {
-        printf("precompile_cache_store_init() Error opening file %s\n", precompile_cache_filename);
+        asm_printf("precompile_cache_store_init() Error opening file %s\n", precompile_cache_filename);
         exit(-1);
     }
     precompile_cache_storing = true;
@@ -383,7 +382,7 @@ void precompile_cache_load_init(void)
     assert(precompile_cache_loading == false);
     precompile_file = fopen(precompile_cache_filename, "rb");
     if (precompile_file == NULL) {
-        printf("precompile_cache_load_init() Error opening file %s\n", precompile_cache_filename);
+        asm_printf("precompile_cache_load_init() Error opening file %s\n", precompile_cache_filename);
         exit(-1);
     }
     precompile_cache_loading = true;
@@ -413,7 +412,7 @@ void precompile_cache_store( uint8_t* data, uint64_t size)
     uint64_t previous_total_precompile_cache_size = total_precompile_cache_size;
     total_precompile_cache_size += size;
     total_precompile_cache_counter++;
-    printf("precompile_cache_store() Stored %lu bytes at pos=%lu file_size=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, previous_total_precompile_cache_size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+    asm_printf("precompile_cache_store() Stored %lu bytes at pos=%lu file_size=%ld total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, previous_total_precompile_cache_size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
 #endif
 }
 
@@ -423,13 +422,13 @@ void precompile_cache_load( uint8_t* data, uint64_t size)
     assert(precompile_cache_loading == true);
     size_t read_size = fread(data, 1, size, precompile_file);
     if (read_size != size) {
-        printf("precompile_cache_load() Error reading file %s read_size=%lu expected size=%lu pos=%lu\n", precompile_cache_filename, read_size, size, ftell(precompile_file));
+        asm_printf("precompile_cache_load() Error reading file %s read_size=%zu expected size=%lu pos=%ld\n", precompile_cache_filename, read_size, size, ftell(precompile_file));
         exit(-1);
     }
 #ifdef ASM_PRECOMPILE_CACHE_DEBUG
     total_precompile_cache_size += size;
     total_precompile_cache_counter++;
-    printf("precompile_cache_load() Loaded %lu bytes at pos=%lu total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
+    asm_printf("precompile_cache_load() Loaded %lu bytes at pos=%ld total_precompile_cache_size=%lu total_precompile_cache_counter=%lu\n", size, ftell(precompile_file), total_precompile_cache_size, total_precompile_cache_counter);
 #endif
 }
 
@@ -440,14 +439,14 @@ uint64_t print_abcflag_counter = 0;
 extern int _print_abcflag(uint64_t a, uint64_t b, uint64_t c, uint64_t flag)
 {
     uint64_t * pMem = (uint64_t *)0xa0012118;
-    printf("counter=%lu a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
+    asm_printf("counter=%lu a=%08lx b=%08lx c=%08lx flag=%08lx mem=%08lx\n", print_abcflag_counter, a, b, c, flag, *pMem);
     // uint64_t *pRegs = (uint64_t *)RAM_ADDR;
     // for (int i=0; i<32; i++)
     // {
-    //     printf("r%d=%08lx ", i, pRegs[i]);
+    //     asm_raw_printf("r%d=%08lx ", i, pRegs[i]);
     // }
-    // printf("\n");
-    fflush(stdout);
+    // asm_raw_printf("\n");
+    // fflush(stdout);
     print_abcflag_counter++;
     return 0;
 }
@@ -458,7 +457,7 @@ extern int _print_char(uint64_t param)
 {
     printed_chars_counter++;
     char c = param;
-    printf("%c", c);
+    asm_raw_printf("%c", c);
     return 0;
 }
 
@@ -466,7 +465,7 @@ uint64_t print_step_counter = 0;
 extern int _print_step(uint64_t step)
 {
 #ifdef DEBUG
-    printf("step=%lu\n", print_step_counter);
+    asm_printf("step=%lu\n", print_step_counter);
     print_step_counter++;
     // struct timeval stop_time;
     // gettimeofday(&stop_time,NULL);
@@ -474,7 +473,7 @@ extern int _print_step(uint64_t step)
     // uint64_t duration_s = duration/1000;
     // if (duration_s == 0) duration_s = 1;
     // uint64_t speed = step / duration_s;
-    // if (emu_verbose) printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
+    // if (emu_verbose) asm_printf("print_step() Counter=%d Step=%d Duration=%dus Speed=%dsteps/ms\n", print_step_counter, step, duration, speed);
 #endif
     return 0;
 }
@@ -512,16 +511,16 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_keccak() calling keccakf1600_generic() counter=%lu address=%08lx\n", asm_call_metrics.keccak_counter, address);
+    if (emu_verbose) asm_printf("opcode_keccak() calling zisk_keccakf1600() counter=%lu address=%08lx\n", asm_call_metrics.keccak_counter, address);
 #else
     if (emu_verbose)
     {
-        printf("opcode_keccak() calling keccakf1600_generic() address=%08lx\n", address);
+        asm_printf("opcode_keccak() calling zisk_keccakf1600() address=%08lx\n", address);
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
+            asm_raw_printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 #endif
@@ -531,7 +530,7 @@ extern int _opcode_keccak(uint64_t address)
     {
 #endif
         // Call keccak-f compression function
-        keccakf1600_generic((uint64_t *)address);
+        zisk_keccakf1600((uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE
         // Store result in cache
@@ -547,12 +546,12 @@ extern int _opcode_keccak(uint64_t address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("opcode_keccak() called keccakf1600_generic()\n");
+        asm_printf("opcode_keccak() called zisk_keccakf1600()\n");
         for (uint64_t i=0; i<200; i++)
         {
-            printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
+            asm_raw_printf("%02x", ((uint8_t *)(uintptr_t)address)[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -570,9 +569,9 @@ extern int _opcode_sha256(uint64_t * address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_sha256() calling zisk_sha256() counter=%lu address=%p\n", asm_call_metrics.sha256_counter, address);
+    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() counter=%lu address=%p\n", asm_call_metrics.sha256_counter, address);
 #else
-    if (emu_verbose) printf("opcode_sha256() calling zisk_sha256() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_sha256() calling zisk_sha256() address=%p\n", address);
 #endif
 #endif
 
@@ -595,7 +594,7 @@ extern int _opcode_sha256(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_sha256() called zisk_sha256()\n");
+    if (emu_verbose) asm_printf("opcode_sha256() called zisk_sha256()\n");
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.sha256_counter++;
@@ -612,9 +611,9 @@ extern int _opcode_blake2(uint64_t * address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_blake2() calling blake2b() counter=%lu address=%p\n", asm_call_metrics.blake2_counter, address);
+    if (emu_verbose) asm_printf("opcode_blake2() calling blake2b() counter=%lu address=%p\n", asm_call_metrics.blake2_counter, address);
 #else
-    if (emu_verbose) printf("opcode_blake2() calling blake2b() address=%p\n", address);
+    if (emu_verbose) asm_printf("opcode_blake2() calling blake2b() address=%p\n", address);
 #endif
 #endif
 
@@ -637,7 +636,7 @@ extern int _opcode_blake2(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_blake2() called blake2b()\n");
+    if (emu_verbose) asm_printf("opcode_blake2() called blake2b()\n");
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.blake2_counter++;
@@ -654,9 +653,9 @@ extern int _opcode_poseidon2(uint64_t address)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("opcode_poseidon2() calling poseidon2_hash() counter=%lu address=%08lx\n", asm_call_metrics.poseidon2_counter, address);
+    if (emu_verbose) asm_printf("opcode_poseidon2() calling poseidon2_hash() counter=%lu address=%08lx\n", asm_call_metrics.poseidon2_counter, address);
 #else
-    if (emu_verbose) printf("opcode_poseidon2() calling poseidon2_hash() address=%08lx\n", address);
+    if (emu_verbose) asm_printf("opcode_poseidon2() calling poseidon2_hash() address=%08lx\n", address);
 #endif
 #endif
 
@@ -679,7 +678,7 @@ extern int _opcode_poseidon2(uint64_t address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_poseidon2() called poseidon2_hash()\n");
+    if (emu_verbose) asm_printf("opcode_poseidon2() called poseidon2_hash()\n");
 #endif
 #ifdef ASM_CALL_METRICS
     asm_call_metrics.poseidon2_counter++;
@@ -705,13 +704,13 @@ extern int _opcode_arith256(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_arith256() calling Arith256() counter=%lu address=%p\n", asm_call_metrics.arith256_counter, address);
+        asm_printf("opcode_arith256() calling Arith256() counter=%lu address=%p\n", asm_call_metrics.arith256_counter, address);
 #else
-        printf("opcode_arith256() calling Arith256() address=%p\n", address);
+        asm_printf("opcode_arith256() calling Arith256() address=%p\n", address);
 #endif
-        printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
-        printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
-        printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
+        asm_printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
+        asm_printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
+        asm_printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
     }
 #endif
 
@@ -723,7 +722,7 @@ extern int _opcode_arith256(uint64_t * address)
         int result = Arith256 (a, b, c, dl, dh);
         if (result != 0)
         {
-            printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
+            asm_printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
             exit(-1);
         }
 
@@ -741,11 +740,11 @@ extern int _opcode_arith256(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_arith256() called Arith256()\n");
+    if (emu_verbose) asm_printf("opcode_arith256() called Arith256()\n");
     if (emu_verbose)
     {
-        printf("dl = %lx:%lx:%lx:%lx\n", dl[3], dl[2], dl[1], dl[0]);
-        printf("dh = %lx:%lx:%lx:%lx\n", dh[3], dh[2], dh[1], dh[0]);
+        asm_printf("dl = %lx:%lx:%lx:%lx\n", dl[3], dl[2], dl[1], dl[0]);
+        asm_printf("dh = %lx:%lx:%lx:%lx\n", dh[3], dh[2], dh[1], dh[0]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -772,14 +771,14 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
+        asm_printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
 #else
-        printf("opcode_arith256_mod() calling Arith256Mod() address=%p\n", address);
+        asm_printf("opcode_arith256_mod() calling Arith256Mod() address=%p\n", address);
 #endif
-        printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
-        printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
-        printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
-        printf("module = %lx:%lx:%lx:%lx\n", module[3], module[2], module[1], module[0]);
+        asm_printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
+        asm_printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
+        asm_printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
+        asm_printf("module = %lx:%lx:%lx:%lx\n", module[3], module[2], module[1], module[0]);
     }
 #endif
 
@@ -791,7 +790,7 @@ extern int _opcode_arith256_mod(uint64_t * address)
         int result = Arith256Mod (a, b, c, module, d);
         if (result != 0)
         {
-            printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
+            asm_printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
             exit(-1);
         }
 
@@ -807,10 +806,10 @@ extern int _opcode_arith256_mod(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_arith256_mod() called Arith256Mod()\n");
+    if (emu_verbose) asm_printf("opcode_arith256_mod() called Arith256Mod()\n");
     if (emu_verbose)
     {
-        printf("d = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0]);
+        asm_printf("d = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -837,14 +836,14 @@ extern int _opcode_arith384_mod(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_arith384_mod() calling Arith384Mod() counter=%lu address=%p\n", asm_call_metrics.arith384_mod_counter, address);
+        asm_printf("opcode_arith384_mod() calling Arith384Mod() counter=%lu address=%p\n", asm_call_metrics.arith384_mod_counter, address);
 #else
-        printf("opcode_arith384_mod() calling Arith384Mod() address=%p\n", address);
+        asm_printf("opcode_arith384_mod() calling Arith384Mod() address=%p\n", address);
 #endif
-        printf("a = %lx:%lx:%lx:%lx:%lx:%lx\n", a[5], a[4], a[3], a[2], a[1], a[0]);
-        printf("b = %lx:%lx:%lx:%lx:%lx:%lx\n", b[5], b[4], b[3], b[2], b[1], b[0]);
-        printf("c = %lx:%lx:%lx:%lx:%lx:%lx\n", c[5], c[4], c[3], c[2], c[1], c[0]);
-        printf("module = %lx:%lx:%lx:%lx:%lx:%lx\n", module[5], module[4], module[3], module[2], module[1], module[0]);
+        asm_printf("a = %lx:%lx:%lx:%lx:%lx:%lx\n", a[5], a[4], a[3], a[2], a[1], a[0]);
+        asm_printf("b = %lx:%lx:%lx:%lx:%lx:%lx\n", b[5], b[4], b[3], b[2], b[1], b[0]);
+        asm_printf("c = %lx:%lx:%lx:%lx:%lx:%lx\n", c[5], c[4], c[3], c[2], c[1], c[0]);
+        asm_printf("module = %lx:%lx:%lx:%lx:%lx:%lx\n", module[5], module[4], module[3], module[2], module[1], module[0]);
     }
 #endif
 
@@ -856,7 +855,7 @@ extern int _opcode_arith384_mod(uint64_t * address)
         int result = Arith384Mod (a, b, c, module, d);
         if (result != 0)
         {
-            printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
+            asm_printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
             exit(-1);
         }
 
@@ -872,10 +871,10 @@ extern int _opcode_arith384_mod(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_arith384_mod() called Arith384Mod()\n");
+    if (emu_verbose) asm_printf("opcode_arith384_mod() called Arith384Mod()\n");
     if (emu_verbose)
     {
-        printf("d = %lx:%lx:%lx:%lx:%lx:%lx\n", d[5], d[4], d[3], d[2], d[1], d[0]);
+        asm_printf("d = %lx:%lx:%lx:%lx:%lx:%lx\n", d[5], d[4], d[3], d[2], d[1], d[0]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -898,14 +897,14 @@ extern int _opcode_secp256k1_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_secp256k1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.secp256k1_add_counter, address, p1, p2);
+        asm_printf("opcode_secp256k1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.secp256k1_add_counter, address, p1, p2);
 #else
-        printf("opcode_secp256k1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("opcode_secp256k1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -922,7 +921,7 @@ extern int _opcode_secp256k1_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -940,8 +939,8 @@ extern int _opcode_secp256k1_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p3.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p3.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p3.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p3.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -964,12 +963,12 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%lu address=%p\n", asm_call_metrics.secp256k1_dbl_counter, address);
+        asm_printf("opcode_secp256k1_dbl() calling AddPointEcP() counter=%lu address=%p\n", asm_call_metrics.secp256k1_dbl_counter, address);
 #else
-        printf("opcode_secp256k1_dbl() calling AddPointEcP() address=%p\n", address);
+        asm_printf("opcode_secp256k1_dbl() calling AddPointEcP() address=%p\n", address);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 
@@ -985,7 +984,7 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -1001,11 +1000,11 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
+    if (emu_verbose) asm_printf("opcode_secp256k1_dbl() called AddPointEcP()\n");
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1028,14 +1027,14 @@ extern int _opcode_secp256r1_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_secp256r1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.secp256r1_add_counter, address, p1, p2);
+        asm_printf("opcode_secp256r1_add() calling AddPointEcP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.secp256r1_add_counter, address, p1, p2);
 #else
-        printf("opcode_secp256r1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("opcode_secp256r1_add() calling AddPointEcP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0], p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4], p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -1052,7 +1051,7 @@ extern int _opcode_secp256r1_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_secp256r1_add() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256r1_add() failed callilng AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -1070,7 +1069,7 @@ extern int _opcode_secp256r1_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p3 = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1093,12 +1092,12 @@ extern int _opcode_secp256r1_dbl(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_secp256r1_dbl() calling AddPointEcP() counter=%lu address=%p\n", asm_call_metrics.secp256r1_dbl_counter, address);
+        asm_printf("opcode_secp256r1_dbl() calling AddPointEcP() counter=%lu address=%p\n", asm_call_metrics.secp256r1_dbl_counter, address);
 #else
-        printf("opcode_secp256r1_dbl() calling AddPointEcP() address=%p\n", address);
+        asm_printf("opcode_secp256r1_dbl() calling AddPointEcP() address=%p\n", address);
 #endif
-        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 
@@ -1114,7 +1113,7 @@ extern int _opcode_secp256r1_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_secp256r1_dbl() failed callilng secp256r1_add_point_ecp() result=%d;", result);
+            asm_printf("_opcode_secp256r1_dbl() failed callilng secp256r1_add_point_ecp() result=%d;", result);
             exit(-1);
         }
 
@@ -1130,11 +1129,11 @@ extern int _opcode_secp256r1_dbl(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_secp256r1_dbl() called secp256r1_add_point_ecp()\n");
+    if (emu_verbose) asm_printf("opcode_secp256r1_dbl() called secp256r1_add_point_ecp()\n");
     if (emu_verbose)
     {
-        printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lu:%lu:%lu:%lu = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4], p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1152,21 +1151,21 @@ uint64_t print_fcall_ctx_counter = 0;
 extern int _print_fcall_ctx(void)
 {
     struct FcallContext * ctx = (struct FcallContext *)&fcall_ctx;
-    printf("print_fcall_ctx(%lu) address=0x%p\n", print_fcall_ctx_counter, ctx);
-    printf("\tfunction_id=0x%lu\n", ctx->function_id);
-    printf("\tparams_max_size=%lu=0x%lx\n", ctx->params_max_size, ctx->params_max_size);
-    printf("\tparams_size=0x%lu\n", ctx->params_size);
+    asm_printf("print_fcall_ctx(%lu) address=0x%p\n", print_fcall_ctx_counter, ctx);
+    asm_printf("\tfunction_id=0x%lu\n", ctx->function_id);
+    asm_printf("\tparams_max_size=%lu=0x%lx\n", ctx->params_max_size, ctx->params_max_size);
+    asm_printf("\tparams_size=0x%lu\n", ctx->params_size);
     for (int i=0; i<32; i++)
     {
-        printf("\t\tparams[%d]=%lu=0x%lx\n", i, ctx->params[i], ctx->params[i]);
+        asm_printf("\t\tparams[%d]=%lu=0x%lx\n", i, ctx->params[i], ctx->params[i]);
     }
-    printf("\tresult_max_size=0x%lu\n", ctx->result_max_size);
-    printf("\tresult_size=0x%lu\n", ctx->result_size);
+    asm_printf("\tresult_max_size=0x%lu\n", ctx->result_max_size);
+    asm_printf("\tresult_size=0x%lu\n", ctx->result_size);
     for (int i=0; i<32; i++)
     {
-        printf("\t\tresult[%d]=%lu=0x%lx\n", i, ctx->result[i], ctx->result[i]);
+        asm_printf("\t\tresult[%d]=%lu=0x%lx\n", i, ctx->result[i], ctx->result[i]);
     }
-    printf("\n");
+    asm_printf("\n");
     print_fcall_ctx_counter++;
 }
 
@@ -1177,19 +1176,19 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #endif
 #ifdef DEBUG
 #ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_fcall(%lu) counter=%lu\n", ctx->function_id, asm_call_metrics.fcall_counter);
+    if (emu_verbose) asm_printf("_opcode_fcall(%lu) counter=%lu\n", ctx->function_id, asm_call_metrics.fcall_counter);
 #else
-    if (emu_verbose) printf("_opcode_fcall(%lu)\n", ctx->function_id);
+    if (emu_verbose) asm_printf("_opcode_fcall(%lu)\n", ctx->function_id);
 #endif
     if (emu_verbose)
     {
-        printf("_opcode_fcall() calling Fcall() with params_size=%lu\n", ctx->params_size);
-        printf("params=");
+        asm_printf("_opcode_fcall() calling Fcall() with params_size=%lu\n", ctx->params_size);
+        asm_raw_printf("params=");
         for (uint64_t i=0; i<ctx->params_size; i++)
         {
-            printf("%lx ", ctx->params[i]);
+            asm_raw_printf("%lx ", ctx->params[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
     int iresult;
@@ -1202,7 +1201,7 @@ extern int _opcode_fcall(struct FcallContext * ctx)
         iresult = Fcall(ctx);
         if (iresult < 0)
         {
-            printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
+            asm_printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
             exit(-1);
         }
 
@@ -1222,13 +1221,13 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("_opcode_fcall() called Fcall() and got result_size=%lu\n", ctx->result_size);
-        printf("results=");
+        asm_printf("_opcode_fcall() called Fcall() and got result_size=%lu\n", ctx->result_size);
+        asm_raw_printf("results=");
         for (uint64_t i=0; i<ctx->result_size; i++)
         {
-            printf("%lx ", ctx->result[i]);
+            asm_raw_printf("%lx ", ctx->result[i]);
         }
-        printf("\n");
+        asm_raw_printf("\n");
     }
 #endif
 
@@ -1239,150 +1238,6 @@ extern int _opcode_fcall(struct FcallContext * ctx)
 #endif
     return iresult;
 }
-
-/*
-extern int _opcode_inverse_fp_ec(uint64_t params, uint64_t result)
-{
-#ifdef ASM_CALL_METRICS
-    gettimeofday(&asm_call_start, NULL);
-#endif
-#ifdef DEBUG
-#ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_inverse_fp_ec() counter=%lu\n", asm_call_metrics.inverse_fp_ec_counter);
-#else
-    if (emu_verbose) printf("_opcode_inverse_fp_ec()\n");
-#endif
-#endif
-
-#ifdef ASM_PRECOMPILE_CACHE
-    if (precompile_cache_storing)
-    {
-#endif
-        // Call inverse function
-        int iresult = InverseFpEc (
-            (unsigned long *)params, // a
-            (unsigned long *)result // r
-        );
-        if (iresult != 0)
-        {
-            printf("_opcode_inverse_fp_ec() failed callilng InverseFpEc() result=%d;", iresult);
-            exit(-1);
-        }
-
-#ifdef ASM_PRECOMPILE_CACHE
-        // Store result in cache
-        precompile_cache_store((uint8_t *)result, 4*8);
-    }
-    else if (precompile_cache_loading)
-    {
-        // Load result from cache
-        precompile_cache_load((uint8_t *)result, 4*8);
-    }
-#endif
-
-#ifdef ASM_CALL_METRICS
-    asm_call_metrics.inverse_fp_ec_counter++;
-    gettimeofday(&asm_call_stop, NULL);
-    asm_call_metrics.inverse_fp_ec_duration += TimeDiff(asm_call_start, asm_call_stop);
-#endif
-    return 0;
-}
-
-extern int _opcode_inverse_fn_ec(uint64_t params, uint64_t result)
-{
-#ifdef ASM_CALL_METRICS
-    gettimeofday(&asm_call_start, NULL);
-#endif
-#ifdef DEBUG
-#ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_inverse_fn_ec() counter=%lu\n", asm_call_metrics.inverse_fn_ec_counter);
-#else
-    if (emu_verbose) printf("_opcode_inverse_fn_ec()\n");
-#endif
-#endif
-
-#ifdef ASM_PRECOMPILE_CACHE
-    if (precompile_cache_storing)
-    {
-#endif
-        // Call inverse function
-        int iresult = InverseFnEc (
-            (unsigned long *)params, // a
-            (unsigned long *)result // r
-        );
-        if (iresult != 0)
-        {
-            printf("_opcode_inverse_fn_ec() failed callilng InverseFnEc() result=%d;", iresult);
-            exit(-1);
-        }
-
-#ifdef ASM_PRECOMPILE_CACHE
-        // Store result in cache
-        precompile_cache_store((uint8_t *)result, 4*8);
-    }
-    else if (precompile_cache_loading)
-    {
-        // Load result from cache
-        precompile_cache_load((uint8_t *)result, 4*8);
-    }
-#endif
-
-#ifdef ASM_CALL_METRICS
-    asm_call_metrics.inverse_fn_ec_counter++;
-    gettimeofday(&asm_call_stop, NULL);
-    asm_call_metrics.inverse_fn_ec_duration += TimeDiff(asm_call_start, asm_call_stop);
-#endif
-    return 0;
-}
-
-extern int _opcode_sqrt_fp_ec_parity(uint64_t params, uint64_t result)
-{
-#ifdef ASM_CALL_METRICS
-    gettimeofday(&asm_call_start, NULL);
-#endif
-#ifdef DEBUG
-#ifdef ASM_CALL_METRICS
-    if (emu_verbose) printf("_opcode_sqrt_fp_ec_parity() counter=%lu\n", asm_call_metrics.fcall_counter);
-#else
-    if (emu_verbose) printf("_opcode_sqrt_fp_ec_parity()\n");
-#endif
-#endif
-
-#ifdef ASM_PRECOMPILE_CACHE
-    if (precompile_cache_storing)
-    {
-#endif
-        // Call sqrt function
-        int iresult = SqrtFpEcParity (
-            (unsigned long *)params, // a
-            *(unsigned long *)(params + 4*8), // parity
-            (unsigned long *)result // r
-        );
-        if (iresult != 0)
-        {
-            printf("_opcode_sqrt_fp_ec_parity() failed callilng SqrtFpEcParity() result=%d;", iresult);
-            exit(-1);
-        }
-
-#ifdef ASM_PRECOMPILE_CACHE
-        // Store result in cache
-        precompile_cache_store((uint8_t *)result, 5*8);
-    }
-    else if (precompile_cache_loading)
-    {
-        // Load result from cache
-        precompile_cache_load((uint8_t *)result, 5*8);
-    }
-#endif
-
-#ifdef ASM_CALL_METRICS
-    asm_call_metrics.sqrt_fp_ec_parity_counter++;
-    gettimeofday(&asm_call_stop, NULL);
-    asm_call_metrics.sqrt_fp_ec_parity_duration += TimeDiff(asm_call_start, asm_call_stop);
-#endif
-    return 0;
-}
-*/
 
 /*********/
 /* BN254 */
@@ -1400,14 +1255,14 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_curve_add() calling BN254CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_curve_add_counter, address, p1, p2);
+        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_curve_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bn254_curve_add() calling BN254CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_curve_add() calling BN254CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -1423,7 +1278,7 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
+            asm_printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1441,8 +1296,8 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1464,12 +1319,12 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_curve_dbl() calling BN254CurveDblP() counter=%lu address=%p p1_address=%p\n", asm_call_metrics.bn254_curve_dbl_counter, address, p1);
+        asm_printf("_opcode_bn254_curve_dbl() calling BN254CurveDblP() counter=%lu address=%p p1_address=%p\n", asm_call_metrics.bn254_curve_dbl_counter, address, p1);
 #else
-        printf("_opcode_bn254_curve_dbl() calling BN254CurveDblP() address=%p p1_address=%p\n", address, p1);
+        asm_printf("_opcode_bn254_curve_dbl() calling BN254CurveDblP() address=%p p1_address=%p\n", address, p1);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 
@@ -1484,7 +1339,7 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
+            asm_printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
             exit(-1);
         }
 
@@ -1502,8 +1357,8 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1526,14 +1381,14 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_add_counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_add() calling BN254ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -1549,7 +1404,7 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1567,8 +1422,8 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1591,14 +1446,14 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_sub_counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_sub_counter, address, p1, p2);
 #else
-        printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_sub() calling BN254ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -1614,7 +1469,7 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
             exit(-1);
         }
 
@@ -1632,8 +1487,8 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1656,14 +1511,14 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_mul_counter, address, p1, p2);
+        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bn254_complex_mul_counter, address, p1, p2);
 #else
-        printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bn254_complex_mul() calling BN254ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
-        printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
     }
 #endif
 
@@ -1679,7 +1534,7 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
             exit(-1);
         }
 
@@ -1697,8 +1552,8 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1725,14 +1580,14 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bl12_381_curve_add_counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bl12_381_curve_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_curve_add() calling BLS12_381CurveAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
-        printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
 
@@ -1748,7 +1603,7 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1766,8 +1621,8 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1789,12 +1644,12 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() counter=%lu address=%p p1_address=%p\n", asm_call_metrics.bls12_381_curve_dbl_counter, address, p1);
+        asm_printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() counter=%lu address=%p p1_address=%p\n", asm_call_metrics.bls12_381_curve_dbl_counter, address, p1);
 #else
-        printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() address=%p p1_address=%p\n", address, p1);
+        asm_printf("_opcode_bls12_381_curve_dbl() calling BLS12_381CurveDblP() address=%p p1_address=%p\n", address, p1);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 
@@ -1809,7 +1664,7 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
             exit(-1);
         }
 
@@ -1827,8 +1682,8 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1851,14 +1706,14 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_add_counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_add_counter, address, p1, p2);
 #else
-        printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_add() calling BLS12_381ComplexAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
-        printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
 
@@ -1874,7 +1729,7 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1892,8 +1747,8 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1916,14 +1771,14 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_sub_counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_sub_counter, address, p1, p2);
 #else
-        printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_sub() calling BLS12_381ComplexSubP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
-        printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
 
@@ -1939,7 +1794,7 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
             exit(-1);
         }
 
@@ -1957,8 +1812,8 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -1981,14 +1836,14 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_mul_counter, address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.bls12_381_complex_mul_counter, address, p1, p2);
 #else
-        printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+        asm_printf("_opcode_bls12_381_complex_mul() calling BLS12_381ComplexMulP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
 #endif
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
-        printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
-        printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[5], p2[4], p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p2[11], p2[10], p2[9], p2[8], p2[7], p2[6]);
     }
 #endif
 
@@ -2004,7 +1859,7 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
         );
         if (result != 0)
         {
-            printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
             exit(-1);
         }
 
@@ -2022,8 +1877,8 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
 #ifdef DEBUG
     if (emu_verbose)
     {
-        printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
-        printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
+        asm_printf("p1.x = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[5], p1[4], p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx:%lx:%lx\n", p1[11], p1[10], p1[9], p1[8], p1[7], p1[6]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
@@ -2050,13 +1905,13 @@ extern uint64_t _opcode_add256(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        printf("opcode_add256() calling Add256() counter=%lu address=%p\n", asm_call_metrics.add256_counter, address);
+        asm_printf("opcode_add256() calling Add256() counter=%lu address=%p\n", asm_call_metrics.add256_counter, address);
 #else
-        printf("opcode_add256() calling Add256() address=%p\n", address);
+        asm_printf("opcode_add256() calling Add256() address=%p\n", address);
 #endif
-        printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
-        printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
-        printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
+        asm_printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
+        asm_printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
+        asm_printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
     }
 #endif
 
@@ -2071,7 +1926,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
         int icout = Add256 (a, b, cin, c);
         if (icout < 0)
         {
-            printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
+            asm_printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
             exit(-1);
         }
         cout = (uint64_t)icout;
@@ -2090,11 +1945,11 @@ extern uint64_t _opcode_add256(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) printf("opcode_add256() called Add256()\n");
+    if (emu_verbose) asm_printf("opcode_add256() called Add256()\n");
     if (emu_verbose)
     {
-        printf("cout = %lu\n", cout);
-        printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
+        asm_printf("cout = %lu\n", cout);
+        asm_printf("c = %lx:%lx:%lx:%lx\n", c[3], c[2], c[1], c[0]);
     }
 #endif
 #ifdef ASM_CALL_METRICS
