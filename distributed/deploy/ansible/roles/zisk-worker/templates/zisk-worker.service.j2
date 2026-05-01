@@ -1,4 +1,24 @@
 {{ ansible_managed | comment }}
+{# Effective SNARK key path: explicit override wins, else default to bundle path when --with-snark is on. #}
+{% if zisk_worker_proving_key_snark | length > 0 %}
+{%- set effective_snark = zisk_worker_proving_key_snark -%}
+{% elif zisk_worker_with_snark %}
+{%- set effective_snark = zisk_worker_bundle_dir ~ '/provingKeySnark' -%}
+{% else %}
+{%- set effective_snark = '' -%}
+{% endif %}
+{# Worker arg list — required + conditional appends. Used by both ExecStart branches. #}
+{%- set worker_args -%}
+--config {{ zisk_worker_config_dst }} --proving-key {{ zisk_worker_proving_key }}
+{%- if effective_snark | length > 0 %} --proving-key-snark {{ effective_snark }}{% endif -%}
+{%- if zisk_worker_coordinator_url %} --coordinator-url {{ zisk_worker_coordinator_url }}{% endif -%}
+{%- if zisk_worker_id %} --worker-id {{ zisk_worker_id }}{% endif -%}
+{%- if zisk_worker_compute_capacity %} --compute-capacity {{ zisk_worker_compute_capacity }}{% endif -%}
+{%- if zisk_worker_emulator %} --emulator{% endif -%}
+{%- if zisk_worker_asm %} --asm {{ zisk_worker_asm }}{% endif -%}
+{%- if zisk_worker_gpu %} --gpu{% endif -%}
+{%- if zisk_worker_log_level %} --log-level {{ zisk_worker_log_level }}{% endif -%}
+{%- endset %}
 [Unit]
 Description=ZisK Worker — distributed proof generation worker
 Documentation=https://github.com/0xPolygonHermez/zisk
@@ -9,23 +29,15 @@ Wants=network-online.target
 Type=simple
 User={{ zisk_worker_user }}
 Group={{ zisk_worker_group }}
+SupplementaryGroups={{ zisk_worker_zisk_group }}
 WorkingDirectory={{ zisk_worker_work_dir }}
 
-# HOME is needed so the worker resolves ~/.zisk/cache correctly.
-Environment=HOME={{ zisk_worker_work_dir }}
+# Resolver paths (see common/src/paths.rs::ZiskPaths). ZISK_HOME points at the
+# shared, read-only bundle; ZISK_CACHE_DIR is per-service mutable state.
+Environment=ZISK_HOME={{ zisk_worker_bundle_dir }}
+Environment=ZISK_CACHE_DIR={{ zisk_worker_work_dir }}/cache
 
-{#- Worker arg list — required + conditional appends. Used by both branches. -#}
-{%- set worker_args -%}
---config {{ zisk_worker_config_dst }} --proving-key {{ zisk_worker_proving_key }}
-{%- if zisk_worker_coordinator_url %} --coordinator-url {{ zisk_worker_coordinator_url }}{% endif -%}
-{%- if zisk_worker_id %} --worker-id {{ zisk_worker_id }}{% endif -%}
-{%- if zisk_worker_compute_capacity %} --compute-capacity {{ zisk_worker_compute_capacity }}{% endif -%}
-{%- if zisk_worker_emulator %} --emulator{% endif -%}
-{%- if zisk_worker_asm %} --asm {{ zisk_worker_asm }}{% endif -%}
-{%- if zisk_worker_gpu %} --gpu{% endif -%}
-{%- if zisk_worker_log_level %} --log-level {{ zisk_worker_log_level }}{% endif -%}
-{%- endset -%}
-{% if zisk_worker_mpi_enabled -%}
+{% if zisk_worker_mpi_enabled %}
 ExecStart={{ zisk_worker_mpirun_bin }} --report-bindings --allow-run-as-root \
     -np {{ zisk_worker_mpi_processes }} \
     -map-by ppr:{{ zisk_worker_mpi_numa_ppr }}:numa \
@@ -33,12 +45,17 @@ ExecStart={{ zisk_worker_mpirun_bin }} --report-bindings --allow-run-as-root \
     --rank-by slot \
     -x RAYON_NUM_THREADS={{ zisk_worker_mpi_threads }} \
     {{ zisk_worker_binary_dst }} {{ worker_args }}
-{%- else %}
+{% else %}
 ExecStart={{ zisk_worker_binary_dst }} {{ worker_args }}
-{%- endif %}
+{% endif %}
+
 Restart=on-failure
 RestartSec=5
-LimitNOFILE=65535
+
+# Resource limits — large mmap'd ROM regions, deep MPI stacks, many open
+# shm/data files. mlock the proving key for hot-path speed.
+LimitMEMLOCK=infinity
+
 Nice=-10
 StandardOutput=journal
 StandardError=journal
@@ -50,7 +67,8 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths={{ zisk_worker_work_dir }} {{ zisk_worker_log_dir }}
-ReadOnlyPaths={{ zisk_worker_config_dir }} {{ zisk_worker_proving_key }}{% if zisk_worker_asm %} {{ zisk_worker_asm }}{% endif %}
+ReadOnlyPaths={{ zisk_worker_config_dir }} {{ zisk_worker_bundle_dir }}{% if zisk_worker_asm %} {{ zisk_worker_asm }}{% endif %}{% if effective_snark | length > 0 and not effective_snark.startswith(zisk_worker_bundle_dir + '/') %} {{ effective_snark }}{% endif %}
+
 
 [Install]
 WantedBy=multi-user.target

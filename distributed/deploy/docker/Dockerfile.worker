@@ -69,13 +69,16 @@ RUN chmod +x /tmp/tools/test-env/*.sh && \
 
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin zisk
 
-RUN mkdir -p /etc/zisk /app/.zisk/cache /var/log/zisk \
+RUN mkdir -p /etc/zisk /app/cache /app/inputs /var/log/zisk \
     && chown -R zisk:zisk /app /var/log/zisk
 
 COPY --from=builder /app/target/release/zisk-worker /usr/local/bin/zisk-worker
 
-# Rust tooling and the worker itself resolve $HOME to locate ~/.zisk/cache
-ENV HOME=/app
+# Resolver paths (see common/src/paths.rs::ZiskPaths). The shared bundle
+# (proving key + toolchain) is expected to be mounted at /opt/zisk; cache and
+# inputs live under /app for per-container mutable state.
+ENV ZISK_HOME=/opt/zisk \
+    ZISK_CACHE_DIR=/app/cache
 
 LABEL org.opencontainers.image.title="zisk-worker" \
       org.opencontainers.image.description="Distributed proof-generation worker for the ZisK proving system" \

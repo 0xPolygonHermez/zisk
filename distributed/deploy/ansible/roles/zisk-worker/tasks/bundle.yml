@@ -1,0 +1,60 @@
+---
+# Populate the shared ZisK bundle (toolchain + proving key) at
+# {{ zisk_worker_bundle_dir }} via ziskup --system. Idempotent — ziskup
+# short-circuits via .zisk-version marker when already at the requested version.
+
+- name: Refresh apt cache if stale (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_pkg_mgr == "apt"
+
+# Runtime libs needed by cargo-zisk + zisk-worker. ziskup invokes cargo-zisk
+# during its post-install version stamping; missing libs cause silent failure
+# (cargo-zisk fails in a subshell → empty marker → idempotency broken).
+- name: Ensure ZisK runtime libraries + curl are installed
+  ansible.builtin.package:
+    name:
+      - curl
+      - libsodium23
+      - libomp5
+      - libgomp1
+      - libopenmpi3
+    state: present
+
+- name: Create temp dir for ziskup
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: zisk-deploy.
+  register: _zisk_ziskup_tmp
+  changed_when: false
+
+- name: Download ziskup script
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/0xPolygonHermez/zisk/{{ zisk_worker_deploy_branch }}/ziskup/ziskup"
+    dest: "{{ _zisk_ziskup_tmp.path }}/ziskup"
+    mode: "0755"
+    timeout: 30
+    force: true
+  changed_when: false
+
+- name: Run ziskup --system to populate bundle
+  ansible.builtin.command:
+    cmd: >-
+      {{ _zisk_ziskup_tmp.path }}/ziskup
+      --system
+      --prefix {{ zisk_worker_bundle_dir }}
+      --owner {{ zisk_worker_zisk_group }}:{{ zisk_worker_zisk_group }}
+      --yes
+      --nokey
+      {% if zisk_worker_with_snark %}--with-snark{% endif %}
+      {% if zisk_worker_ziskup_version | length > 0 %}--version {{ zisk_worker_ziskup_version }}{% endif %}
+  changed_when: "'already installed' not in _zisk_ziskup_run.stdout"
+  register: _zisk_ziskup_run
+
+- name: Remove ziskup temp dir
+  ansible.builtin.file:
+    path: "{{ _zisk_ziskup_tmp.path }}"
+    state: absent
+  when: _zisk_ziskup_tmp.path is defined
+  changed_when: false

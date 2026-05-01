@@ -7,9 +7,12 @@
 #
 # Common overrides (set in inventory, group_vars, or -e):
 #   zisk_worker_config_src: /path/to/worker.toml
-#   zisk_worker_proving_key: /mnt/zisk/provingKey
-#   zisk_worker_mpi_enabled: false                # disable MPI entirely
-#   zisk_worker_mpi_processes: 4                  # manual override (set all 3)
+#   zisk_worker_proving_key: /mnt/zisk/provingKey  # default: /opt/zisk/provingKey
+#   zisk_worker_with_snark: true                   # also install SNARK key
+#   zisk_worker_proving_key_snark: /mnt/...        # override SNARK key path
+#   zisk_worker_ziskup_version: "0.17.0"           # pin ziskup release
+#   zisk_worker_mpi_enabled: false                 # disable MPI entirely
+#   zisk_worker_mpi_processes: 4                   # manual override (set all 3)
 #   zisk_worker_mpi_numa_ppr: 2
 #   zisk_worker_mpi_threads: 16
 

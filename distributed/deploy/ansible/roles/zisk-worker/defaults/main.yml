@@ -9,8 +9,26 @@ zisk_worker_config_dir: /etc/zisk
 zisk_worker_config_dst: "{{ zisk_worker_config_dir }}/worker.toml"
 zisk_worker_work_dir: /var/lib/zisk-worker
 zisk_worker_log_dir: /var/log/zisk-worker
-zisk_worker_proving_key: "{{ zisk_worker_work_dir }}/provingKey"
 zisk_worker_unit_file: /etc/systemd/system/zisk-worker.service
+
+# Shared ZisK bundle (toolchain + proving key) populated by ziskup --system.
+# Same group ('zisk') is added as a supplementary group to the service user
+# so the worker can read the bundle.
+zisk_worker_bundle_dir: /opt/zisk
+zisk_worker_zisk_group: zisk
+zisk_worker_proving_key: "{{ zisk_worker_bundle_dir }}/provingKey"
+
+# SNARK proving key. When zisk_worker_with_snark is true, the bundle.yml task
+# tells ziskup to also download provingKeySnark/ alongside the STARK key.
+# zisk_worker_proving_key_snark, if set, is forwarded to the worker as
+# --proving-key-snark; defaults to bundle's location when --with-snark is on.
+zisk_worker_with_snark: false
+zisk_worker_proving_key_snark: ""
+
+# ziskup version + branch used by bundle.yml. Override to pin a specific
+# release, branch, or tag.
+zisk_worker_ziskup_version: ""           # e.g. "0.17.0"; empty = latest
+zisk_worker_deploy_branch: main          # branch to fetch ziskup from
 
 # Source paths on the Ansible control host. Operator must supply these.
 zisk_worker_binary_src: ""           # required: path to pre-built zisk-worker binary

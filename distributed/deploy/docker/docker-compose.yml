@@ -52,10 +52,14 @@ services:
     restart: on-failure
     volumes:
       - ../config/worker.toml:/etc/zisk/worker.toml:ro
-      # Mount the ZisK home directory (provingKey, cache, etc.) from the host:
-      - ${ZISK_HOME:-~/.zisk}:/app/.zisk:ro
+      # Mount the shared ZisK bundle (toolchain + proving key) read-only.
+      # Default host path /opt/zisk matches `ziskup --system` output; override
+      # via ZISK_HOME env var if your bundle lives elsewhere.
+      - ${ZISK_HOME:-/opt/zisk}:/opt/zisk:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info}
+      - ZISK_HOME=/opt/zisk
+      - ZISK_CACHE_DIR=/app/cache
     depends_on:
       coordinator:
         condition: service_started # workers reconnect automatically, no need to wait for healthy

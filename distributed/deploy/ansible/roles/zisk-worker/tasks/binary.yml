@@ -26,6 +26,8 @@
   when: zisk_worker_config_src | length > 0
   notify: restart zisk-worker
 
+# Mutable per-service state only. Read-only toolchain + proving key live in
+# zisk_worker_bundle_dir (managed by bundle.yml).
 - name: Ensure working directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -35,7 +37,6 @@
     mode: "0755"
   loop:
     - "{{ zisk_worker_work_dir }}"
+    - "{{ zisk_worker_work_dir }}/cache"
     - "{{ zisk_worker_work_dir }}/inputs"
-    - "{{ zisk_worker_work_dir }}/.zisk"
-    - "{{ zisk_worker_work_dir }}/.zisk/cache"
     - "{{ zisk_worker_log_dir }}"

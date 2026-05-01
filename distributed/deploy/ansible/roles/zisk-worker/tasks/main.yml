@@ -26,6 +26,7 @@
   when: zisk_worker_mpi_enabled
 
 - ansible.builtin.import_tasks: user.yml
+- ansible.builtin.import_tasks: bundle.yml
 - ansible.builtin.import_tasks: mpi_facts.yml
   when: zisk_worker_mpi_enabled
 - ansible.builtin.import_tasks: binary.yml

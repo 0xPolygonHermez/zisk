@@ -1,15 +1,24 @@
 ---
+- name: Ensure shared zisk group exists (read access to /opt/zisk bundle)
+  ansible.builtin.group:
+    name: "{{ zisk_worker_zisk_group }}"
+    system: true
+    state: present
+
 - name: Ensure zisk-worker group exists
   ansible.builtin.group:
     name: "{{ zisk_worker_group }}"
     system: true
     state: present
 
-- name: Ensure zisk-worker user exists
+- name: Ensure zisk-worker user exists (with zisk as supplementary group)
   ansible.builtin.user:
     name: "{{ zisk_worker_user }}"
     group: "{{ zisk_worker_group }}"
+    groups: "{{ zisk_worker_zisk_group }}"
+    append: true
     system: true
     create_home: false
+    home: /var/empty
     shell: /usr/sbin/nologin
     state: present
