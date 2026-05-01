@@ -17,6 +17,13 @@ SYSTEM_MODE=false
 PREFIX=""
 OWNER=""
 ASSUME_YES=false
+FORCE=false
+
+# Marker written into ${ZISK_DIR} after a successful install. In --system mode,
+# subsequent invocations short-circuit if the marker matches the requested
+# version (avoids re-downloading the tarball for every additional service that
+# reuses the shared bundle).
+ZISK_VERSION_MARKER=".zisk-version"
 
 main() {
   need_cmd curl
@@ -81,6 +88,9 @@ main() {
       ;;
     -y | --yes)
       ASSUME_YES=true
+      ;;
+    --force)
+      FORCE=true
       ;;
     -h | --help)
       usage
@@ -157,6 +167,22 @@ main() {
     ZISK_VERSION="latest"
   else
     ZISK_VERSION="v${ZISK_VERSION}"
+  fi
+
+  # In --system mode, short-circuit if the bundle is already installed at the
+  # requested version. Avoids re-downloading the tarball when both worker and
+  # coordinator install on the same host. Pass --force to refresh anyway.
+  # Marker stores the bare version (e.g. "0.17.0"); requested version may be
+  # "latest" or "vX.Y.Z" — strip the leading 'v' before comparing.
+  if $SYSTEM_MODE && ! $FORCE && [[ -f "${ZISK_DIR}/${ZISK_VERSION_MARKER}" ]]; then
+    installed=$(cat "${ZISK_DIR}/${ZISK_VERSION_MARKER}" 2>/dev/null || true)
+    requested="${ZISK_VERSION#v}"
+    if [[ -n "$installed" ]] && \
+       { [[ "$requested" == "latest" ]] || [[ "$requested" == "$installed" ]]; }; then
+      step "Bundle already installed at ${installed} (in ${ZISK_DIR})."
+      say "Use --force to refresh, or --version <X> to install a different version."
+      return 0
+    fi
   fi
 
   ZISKUP_REPO="0xPolygonHermez/zisk"
@@ -301,6 +327,9 @@ main() {
   ZISK_VERSION=$(echo "$(ensure "${CARGO_ZISK}" --version)" | awk '{print $2}')
   say "Installed ZisK version ${ZISK_VERSION}"
 
+  # Write the version marker so subsequent --system runs can short-circuit.
+  echo "${ZISK_VERSION}" > "${ZISK_DIR}/${ZISK_VERSION_MARKER}"
+
   for bin in "${BINS[@]}"; do
     bin_path="$ZISK_BIN_DIR/$bin"
 
@@ -424,6 +453,10 @@ OPTIONS:
     --owner U:G    chown the install tree to U:G after extraction. With --system,
                    missing user or group are created in the system uid/gid range.
     -y, --yes      Non-interactive: accept defaults for prompts.
+    --force        With --system: re-install even if the version marker shows the
+                   bundle is already at the requested version. Default is to
+                   short-circuit (avoids re-download when worker + coordinator
+                   install on the same host).
 
 COMMANDS:
     setup_snark     Install SNARK proving key (provingKeySnark)
