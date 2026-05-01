@@ -52,7 +52,9 @@ WORKER_INSTALL="$(cd "${SCRIPT_DIR}/../worker" && pwd)/install.sh"
 BUNDLE='/Library/Application Support/ZisK'
 PLIST='/Library/LaunchDaemons/com.zisk.worker.plist'
 NEWSYSLOG='/etc/newsyslog.d/zisk-worker.conf'
-WORK_DIR='/var/lib/zisk-worker'
+# macOS state path — defaults.env now uses /usr/local/var/ on Darwin (avoids
+# SIP issues with /var/lib/ that the previous test exposed).
+WORK_DIR='/usr/local/var/zisk-worker'
 LOG_DIR='/var/log/zisk-worker'
 SVC_BIN='/usr/local/bin/zisk-worker'
 

@@ -41,7 +41,7 @@ COORD_INSTALL="$(cd "${SCRIPT_DIR}/../coordinator" && pwd)/install.sh"
 BUNDLE='/Library/Application Support/ZisK'
 PLIST='/Library/LaunchDaemons/com.zisk.coordinator.plist'
 NEWSYSLOG='/etc/newsyslog.d/zisk-coordinator.conf'
-WORK_DIR='/var/lib/zisk-coordinator'
+WORK_DIR='/usr/local/var/zisk-coordinator'
 LOG_DIR='/var/log/zisk-coordinator'
 SVC_BIN='/usr/local/bin/zisk-coordinator'
 
