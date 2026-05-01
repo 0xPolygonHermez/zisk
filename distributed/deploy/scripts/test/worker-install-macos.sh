@@ -28,11 +28,9 @@
 
 set -euo pipefail
 
-PASS=0; FAIL=0
-ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; PASS=$((PASS+1)); }
-fail() { printf "  \033[31m✗\033[0m %s\n" "$*" >&2; FAIL=$((FAIL+1)); }
-info() { printf "\033[1;36m== %s ==\033[0m\n" "$*"; }
-warn() { printf "\033[1;33m! %s\033[0m\n" "$*" >&2; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 LOAD_MODE=false
 for arg in "$@"; do
@@ -45,7 +43,6 @@ for arg in "$@"; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKER_INSTALL="$(cd "${SCRIPT_DIR}/../worker" && pwd)/install.sh"
 [[ -x "$WORKER_INSTALL" ]] || { echo "worker/install.sh not found at $WORKER_INSTALL"; exit 1; }
 
@@ -63,29 +60,11 @@ info "Pre-flight"
 [[ "$(uname -s)" == "Darwin" ]] && ok "host is Darwin" || { fail "this test is for macOS only"; exit 1; }
 [[ "$EUID" -eq 0 ]] && ok "running as root" || { fail "must run as sudo / root"; exit 1; }
 
-if curl -fsI -o /dev/null --max-time 5 https://github.com/0xPolygonHermez/zisk/releases/latest 2>/dev/null; then
-    ok "github.com reachable"
-else
-    fail "github.com unreachable — ziskup --system needs to download v0.17.0 tarball"
-    exit 1
-fi
-
-# Verify the Darwin tarball exists for THIS host's architecture. Without this
-# check, an Intel Mac would silently 404 and tar would fail with a confusing
-# 'not in gzip format' error from the saved HTML page.
-case "$(uname -m)" in
-    arm64|aarch64) ARCH=arm64 ;;
-    x86_64)        ARCH=amd64 ;;
-    *)             ARCH=amd64 ;;
-esac
-TARBALL_URL="https://github.com/0xPolygonHermez/zisk/releases/latest/download/cargo_zisk_darwin_${ARCH}.tar.gz"
-if curl -fsIL -o /dev/null --max-time 10 "$TARBALL_URL" 2>/dev/null; then
-    ok "release tarball exists for darwin_${ARCH}"
-else
-    fail "release tarball NOT found at $TARBALL_URL"
-    fail "v0.17.0 may only ship one Darwin arch; check the GitHub releases page."
-    exit 1
-fi
+check_github_reachable
+# tarball check catches the missing-arch case (e.g., Intel Mac when only
+# darwin_arm64 is shipped) — would otherwise 404 and tar would fail with
+# a confusing 'not in gzip format' error from the saved HTML page.
+check_tarball_exists darwin
 
 # Detect previous install; bail to avoid clobbering operator's real deploy.
 if launchctl print system/com.zisk.worker >/dev/null 2>&1; then

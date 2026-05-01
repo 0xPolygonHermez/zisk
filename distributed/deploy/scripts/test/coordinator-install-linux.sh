@@ -14,11 +14,9 @@
 
 set -euo pipefail
 
-PASS=0; FAIL=0
-ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; PASS=$((PASS+1)); }
-fail() { printf "  \033[31m✗\033[0m %s\n" "$*" >&2; FAIL=$((FAIL+1)); }
-info() { printf "\033[1;36m== %s ==\033[0m\n" "$*"; }
-warn() { printf "\033[1;33m! %s\033[0m\n" "$*" >&2; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 START_MODE=false
 for arg in "$@"; do
@@ -31,7 +29,6 @@ for arg in "$@"; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COORD_INSTALL="$(cd "${SCRIPT_DIR}/../coordinator" && pwd)/install.sh"
 [[ -x "$COORD_INSTALL" ]] || { echo "coordinator/install.sh not found at $COORD_INSTALL"; exit 1; }
 
@@ -47,25 +44,8 @@ info "Pre-flight"
 [[ "$(uname -s)" == "Linux" ]] && ok "host is Linux" || { fail "Linux only"; exit 1; }
 [[ "$EUID" -eq 0 ]] && ok "running as root" || { fail "must run as root"; exit 1; }
 
-if curl -fsI -o /dev/null --max-time 5 https://github.com/0xPolygonHermez/zisk/releases/latest 2>/dev/null; then
-    ok "github.com reachable"
-else
-    fail "github.com unreachable"
-    exit 1
-fi
-
-case "$(uname -m)" in
-    aarch64) ARCH=arm64 ;;
-    x86_64)  ARCH=amd64 ;;
-    *)       ARCH=amd64 ;;
-esac
-TARBALL_URL="https://github.com/0xPolygonHermez/zisk/releases/latest/download/cargo_zisk_linux_${ARCH}.tar.gz"
-if curl -fsIL -o /dev/null --max-time 10 "$TARBALL_URL" 2>/dev/null; then
-    ok "release tarball exists for linux_${ARCH}"
-else
-    fail "release tarball NOT found at $TARBALL_URL"
-    exit 1
-fi
+check_github_reachable
+check_tarball_exists linux
 
 if systemctl is-enabled zisk-coordinator >/dev/null 2>&1 || systemctl is-active zisk-coordinator >/dev/null 2>&1; then
     fail "zisk-coordinator unit is already enabled/active — refusing to clobber."
