@@ -175,28 +175,24 @@ require_workspace_root() {
        To install from a standalone copy, pass --binary <path> and --config <path>."
 }
 
-# build_or_use_binary CARGO_PACKAGE
-# If $BINARY_SRC is unset, builds CARGO_PACKAGE from the workspace and assigns
-# the resulting binary path to $BINARY_SRC. Validates the binary exists.
-# Reads/writes globals: BINARY_NAME, BINARY_SRC, WORKSPACE_ROOT.
-build_or_use_binary() {
-    local pkg="$1"
+# resolve_service_binary CARGO_PACKAGE
+# Resolves $BINARY_SRC for the install: prefer an explicit --binary path,
+# otherwise pick the one from the shared bundle (${BUNDLE_DIR}/bin/${BINARY_NAME})
+# which ziskup --system has populated by the time this runs. The CARGO_PACKAGE
+# arg is kept for API compatibility but is no longer used (no in-script build).
+# Reads/writes globals: BINARY_NAME, BINARY_SRC, BUNDLE_DIR.
+resolve_service_binary() {
+    local pkg="$1"  # unused — kept for backwards-compatible call sites
     if [[ -z "${BINARY_SRC}" ]]; then
-        require_workspace_root
-        # If invoked via sudo, run cargo as the original user so target/ and
-        # ~/.cargo stay user-owned. -H sets HOME to the user's home so the
-        # cargo registry/cache is read from the right place.
-        if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-            info "Building ${BINARY_NAME} as ${SUDO_USER} (target/ stays user-owned)..."
-            sudo -u "$SUDO_USER" -H cargo build --release -p "${pkg}" \
-                --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
-        else
-            info "Building ${BINARY_NAME} from source..."
-            cargo build --release -p "${pkg}" --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
-        fi
-        BINARY_SRC="${WORKSPACE_ROOT}/target/release/${BINARY_NAME}"
+        BINARY_SRC="${BUNDLE_DIR}/bin/${BINARY_NAME}"
     fi
-    [[ -f "${BINARY_SRC}" ]] || die "binary not found at ${BINARY_SRC}"
+    [[ -f "${BINARY_SRC}" ]] || die "binary not found at ${BINARY_SRC} \
+(populate the bundle via 'ziskup --system' first, or pass --binary <path>)"
+}
+
+# Backwards-compatible alias for old call sites + documentation.
+build_or_use_binary() {
+    resolve_service_binary "$@"
 }
 
 # install_config_or_sample CONFIG_SRC CONFIG_DST GROUP SAMPLE_PATH

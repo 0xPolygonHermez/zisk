@@ -143,36 +143,16 @@ else
     resolve_mpi_config "Install OpenMPI, load the module, or pass --no-mpi."
 fi
 
-# 2. Build or use pre-built binary
-build_or_use_binary "zisk-worker"
-
-# 3. Create system group + user
-create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "${WORK_DIR}"
-
-# 4. Install binary
-install_binary "${BINARY_SRC}" "${BINARY_DST}"
-
-# 5. Install config
-mkdir -p "${CONFIG_DIR}"
-install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
-    "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
-
-# 6. Create per-service working dirs (mutable runtime state only) and log dir.
-mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache" "${LOG_DIR}"
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
-
-# 7. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. The bundle is
-# read-only toolchain payload (bin/ + zisk/ + optional provingKey/) shared
-# across services; ziskup --system creates the 'zisk' system user/group,
-# downloads the release tarball, extracts to ${BUNDLE_DIR}, applies 0750 perms.
-# Idempotent — safe to re-run.
+# 2. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. ziskup --system
+# creates the 'zisk' system user/group, downloads the release tarball, extracts
+# to ${BUNDLE_DIR}, applies 0750 perms. Idempotent — safe to re-run.
 #
-# Proving key is downloaded separately (see ZISK_WORKER_PROVING_KEY override
-# below); --nokey here just skips the inline proving-key download in ziskup.
+# Proving key is downloaded separately (see ZISK_WORKER_PROVING_KEY override);
+# --nokey here just skips the inline proving-key download in ziskup.
 #
 # ziskup lookup order:
-#   1. ${BUNDLE_DIR}/bin/ziskup  — already-installed bundle (re-install case)
-#   2. ziskup on PATH            — operator-installed
+#   1. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (re-install)
+#   2. ziskup on PATH                  — operator-installed
 #   3. ${WORKSPACE_ROOT}/ziskup/ziskup — dev fallback (running from a clone)
 ZISKUP_BIN=""
 if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
@@ -188,9 +168,26 @@ fi
 info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
 "${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
 
-# Add the worker service user to the 'zisk' group so it can read the bundle
-# (ziskup created the group; install.sh already created the per-service user).
+# 3. Resolve the zisk-worker binary (from --binary if given, else from the
+# bundle ziskup just populated). NO local cargo build.
+resolve_service_binary "zisk-worker"
+
+# 4. Create system group + user (with 'zisk' as supplementary group so it can
+# read the bundle).
+create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "${WORK_DIR}"
 add_user_to_group "${SERVICE_USER}" zisk
+
+# 5. Install binary
+install_binary "${BINARY_SRC}" "${BINARY_DST}"
+
+# 6. Install config
+mkdir -p "${CONFIG_DIR}"
+install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
+    "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
+
+# 7. Create per-service working dirs (mutable runtime state only) and log dir.
+mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache" "${LOG_DIR}"
+chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 
 # 8. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
