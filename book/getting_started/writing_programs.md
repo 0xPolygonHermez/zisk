@@ -103,7 +103,7 @@ The output can be any type that implements the `Serialize` trait. The data will 
 
 Before compiling your program for ZisK, you can test it on the native architecture just like any regular Rust program using the `cargo` command.
 
-Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the `cargo-zisk` CLI tool:
+Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V architecture), using the `cargo-zisk` CLI tool from the guest project folder:
 
 ```bash
 cargo-zisk build
@@ -121,11 +121,11 @@ In this case, the `guest` ELF file will be generated in the `./target/elf/riscv6
 
 ## Execute
 
-You can test your compiled program using the ZisK emulator before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
+You can test your compiled program using the emulator before generating a proof. Use the `-i` (`--inputs`) flag to specify the location of the input file:
 
 ```bash
 cargo-zisk build --release
-ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin
+cargo-zisk run --release -i ../host/tmp/input.bin
 ```
 
 If the program requires a large number of ZisK steps, you might encounter the following error:
@@ -134,7 +134,7 @@ Error during emulation: EmulationNoCompleted
 Error: Error executing Run command
 ```
 
-To resolve this, you can increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
+To resolve this, use ziskemu directly and increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
 ```bash
 ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -n 10000000000
 ```
@@ -142,72 +142,108 @@ ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.b
 ## Metrics and Statistics
 
 ### Performance Metrics
-You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in the `cargo-zisk run` command or in `ziskemu` tool:
+You can get performance metrics related to the program execution in ZisK using the `-m` (`--log-metrics`) flag in `ziskemu` tool:
 
 
 ```bash
-ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -m
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i ../host/tmp/input.bin -m
 ```
 
 The output will include details such as execution time, throughput, and clock cycles per step:
 ```
-process_rom() steps=85309 duration=0.0009 tp=89.8565 Msteps/s freq=3051.0000 33.9542 clocks/step
+process_rom() steps=4450270 duration=0.0436 tp=102.0505 Msteps/s freq=3504.0000 34.3359 clocks/step
 ...
 ```
 
 ### Execution Statistics
-You can get statistics related to the program execution in Zisk using the `-X` (`--stats`) flag in `ziskemu` tool:
+You can get statistics related to the program execution in Zisk using the `-p` (`--profiling`) flag with `summary` in `cargo-zisk`:
 
 
 ```bash
-ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -X
+cargo-zisk run --release -i ../host/tmp/input.bin -p summary
 ```
 
-The output will include details such as cost definitions, total cost, register reads/writes, opcode statistics, etc:
+The output will include details such as cost definitions, total cost, opcode statistics, etc:
+
 ```
-Cost definitions:
-    AREA_PER_SEC: 1000000 steps
-    COST_MEMA_R1: 0.00002 sec
-    COST_MEMA_R2: 0.00004 sec
-    COST_MEMA_W1: 0.00004 sec
-    COST_MEMA_W2: 0.00008 sec
-    COST_USUAL: 0.000008 sec
-    COST_STEP: 0.00005 sec
-
-Total Cost: 12.81 sec
-    Main Cost: 4.27 sec 85308 steps
-    Mem Cost: 2.22 sec 222052 steps
-    Mem Align: 0.05 sec 2701 steps
-    Opcodes: 6.24 sec 1270 steps (81182 ops)
-    Usual: 0.03 sec 4127 steps
-    Memory: 135563 a reads + 1625 na1 reads + 10 na2 reads + 84328 a writes + 524 na1 writes + 2 na2 writes = 137198 reads + 84854 writes = 222052 r/w
-
-Opcodes:
-    flag: 0.00 sec (0 steps/op) (89 ops)
-    copyb: 0.00 sec (0 steps/op) (10568 ops)
-    add: 1.12 sec (77 steps/op) (14569 ops)
-    ltu: 0.01 sec (77 steps/op) (101 ops)
-    ...
-    xor: 1.06 sec (77 steps/op) (13774 ops)
-    signextend_b: 0.03 sec (109 steps/op) (320 ops)
-    signextend_w: 0.03 sec (109 steps/op) (320 ops)
-...
+R╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ REPORT SUMMARY                                                                                                    ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  STEPS                                                                                                    4,450,270  ║
+║  COST                                                                                                   787,338,404  ║
+║  RAM                                                                                            0.00 MB / 507.75 MB  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ COST DISTRIBUTION SUMMARY                                                                                         ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  CATEGORY                                                                                               COST      %  ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  Base         █████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     293,601,280  37.3%  ║
+║  Main         ██████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     302,618,360  38.4%  ║
+║  Opcodes      █████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░     174,799,164  22.2%  ║
+║  Precompiles  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░         234,155   0.0%  ║
+║  Memory       ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      16,085,445   2.0%  ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  Total                                                                                           787,338,404 100.0%  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ COST DISTRIBUTION BY OPCODE                                            ║  ◆ OPS vs FROPS                          ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  OPCODE                                                      COST      %  ║      OPS + FROPS           FROPS      %  ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  xor                      █░░░░░░░░░░░░░░░░░░░░░░      41,398,920   5.3%  ║       42,240,480         841,560   2.0%  ║
+║  or                       █░░░░░░░░░░░░░░░░░░░░░░      36,646,620   4.7%  ║       38,881,560       2,234,940   5.7%  ║
+║  srl_w                    █░░░░░░░░░░░░░░░░░░░░░░      34,606,615   4.4%  ║       36,040,000       1,433,385   4.0%  ║
+║  sll                      █░░░░░░░░░░░░░░░░░░░░░░      30,019,783   3.8%  ║       34,007,662       3,987,879  11.7%  ║
+║  add                      ░░░░░░░░░░░░░░░░░░░░░░░      16,846,475   2.1%  ║       16,998,100         151,625   0.9%  ║
+║  and                      ░░░░░░░░░░░░░░░░░░░░░░░      12,917,580   1.6%  ║       13,456,080         538,500   4.0%  ║
+║  signextend_w             ░░░░░░░░░░░░░░░░░░░░░░░         849,590   0.1%  ║          849,590               0   0.0%  ║
+║  signextend_b             ░░░░░░░░░░░░░░░░░░░░░░░         848,053   0.1%  ║          848,053               0   0.0%  ║
+║  srl                      ░░░░░░░░░░░░░░░░░░░░░░░         429,883   0.1%  ║          439,953          10,070   2.3%  ║
+║  dma_xmemset              ░░░░░░░░░░░░░░░░░░░░░░░         200,496   0.0%  ║                                          ║
+║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  ║
+║  Total                                                175,033,319  22.2%  ║      184,735,683       9,702,364   5.3%  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  ◆ TOP COST FUNCTIONS                                                                                                ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║   0 sha2::sha256::compress256                                           ████████████░░░░░░░░     473,976,966  60.2%  ║
+║   1 std::io::stdio::_print                                              ░░░░░░░░░░░░░░░░░░░░       4,290,957   0.5%  ║
+║   2 core::fmt::write                                                    ░░░░░░░░░░░░░░░░░░░░       4,258,155   0.5%  ║
+║   3 <alloc::vec::Vec<u8> as core::fmt::Debug>::fmt                      ░░░░░░░░░░░░░░░░░░░░       3,852,860   0.5%  ║
+║   4 <core::fmt::builders::DebugSet>::entry                              ░░░░░░░░░░░░░░░░░░░░       3,746,448   0.5%  ║
+║   5 <std::..::Adapter<…> as core::fmt::Write>::write_str                ░░░░░░░░░░░░░░░░░░░░       2,549,696   0.3%  ║
+║   6 <&u8 as core::fmt::Debug>::fmt                                      ░░░░░░░░░░░░░░░░░░░░       2,193,178   0.3%  ║
+║   7 <u8 as core::fmt::Display>::fmt                                     ░░░░░░░░░░░░░░░░░░░░       2,105,434   0.3%  ║
+║   8 <std::..::LineWriterShim<…> as std::io::Write>::write_all           ░░░░░░░░░░░░░░░░░░░░       1,953,802   0.2%  ║
+║   9 <core::fmt::Formatter>::pad_integral                                ░░░░░░░░░░░░░░░░░░░░       1,820,586   0.2%  ║
+║  10 core::slice::memchr::memrchr                                        ░░░░░░░░░░░░░░░░░░░░         843,066   0.1%  ║
+║  11 memset                                                              ░░░░░░░░░░░░░░░░░░░░         499,356   0.1%  ║
+║  12 <std::io::buffered::bufwriter::BufWriter<…>>::flush_buf             ░░░░░░░░░░░░░░░░░░░░         202,008   0.0%  ║
+║  13 sys_write                                                           ░░░░░░░░░░░░░░░░░░░░         196,791   0.0%  ║
+║  14 <core::fmt::Formatter>::pad_integral::write_prefix                  ░░░░░░░░░░░░░░░░░░░░         190,411   0.0%  ║
+║  15 memcpy                                                              ░░░░░░░░░░░░░░░░░░░░         117,529   0.0%  ║
+║  16 ziskos::io::commit_slice                                            ░░░░░░░░░░░░░░░░░░░░          85,079   0.0%  ║
+║  17 <alloy_primitives::..::FixedBytes<…> as core::fmt::Debug>::fmt      ░░░░░░░░░░░░░░░░░░░░          57,891   0.0%  ║
+║  18 <u32 as core::fmt::Display>::fmt                                    ░░░░░░░░░░░░░░░░░░░░          29,674   0.0%  ║
+║  19 <core::fmt::Formatter as core::fmt::Write>::write_str               ░░░░░░░░░░░░░░░░░░░░          19,363   0.0%  ║
+║  20 <core::fmt::Formatter>::debug_list                                  ░░░░░░░░░░░░░░░░░░░░          13,582   0.0%  ║
+║  21 <core::fmt::builders::DebugList>::finish                            ░░░░░░░░░░░░░░░░░░░░          13,189   0.0%  ║
+║  22 <…>::initialize::<…>                                                ░░░░░░░░░░░░░░░░░░░░           7,830   0.0%  ║
+║  23 <u32>::_fmt_inner                                                   ░░░░░░░░░░░░░░░░░░░░           7,338   0.0%  ║
+║  24 std::io::stdio::print_to_buffer_if_capture_used                     ░░░░░░░░░░░░░░░░░░░░           6,165   0.0%  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ## Prove
 
 ### Program Setup
 
-Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
+Before generating a proof, you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
 
 ```bash
-cargo-zisk program-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -k $HOME/.zisk/provingKey
+cargo-zisk program-setup
 ```
-In this command:
-
-* `-e` (`--elf`) specifies the ELF file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
-
 The program setup files will be generated in the `cache` directory located at `$HOME/.zisk`.
 
 To clean the `cache` directory content, use the following command:
@@ -215,39 +251,16 @@ To clean the `cache` directory content, use the following command:
 cargo-zisk utils clean-cache --all
 ```
 
-### Verify Constraints
-
-Before generating a proof (which can take some time), you can verify that all constraints are satisfied:
-
-```bash
-cargo-zisk verify-constraints -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey
-```
-In this command:
-
-* `-e` (`--elf`) specifies the ELF file location.
-* `-i` (`--input`) specifies the input file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
-
-If everything is correct, you will see an output similar to:
-
-```
-[INFO ] GlCstVfy: --> Checking global constraints
-[INFO ] CstrVrfy: ··· ✓ All global constraints were successfully verified
-[INFO ] CstrVrfy: ··· ✓ All constraints were verified
-```
-
 ### Generate Proof
 
 To generate a proof, run the following command:
 
 ```bash
-cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof
+cargo-zisk prove -i ../host/tmp/input.bin -o proof
 ```
 In this command:
 
-* `-e` (`--elf`) specifies the ELF file location.
 * `-i` (`--input`) specifies the input file location.
-* `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
 
 If the process is successful, you should see a message similar to:
@@ -295,7 +308,7 @@ To enable GPU support:
 3. Once GPU support is enabled, add the `--gpu` flag to your `prove` commands:
 
    ```bash
-   cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof --gpu
+   cargo-zisk prove -i ../host/tmp/input.bin -o proof --gpu
    ```
 
 > **Note:** It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
@@ -309,7 +322,7 @@ You can combine GPU-based execution with concurrent proof generation using multi
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/vadcop_final_proof.bin -k $HOME/.zisk/provingKey
+cargo-zisk verify -p ./proof/vadcop_final_proof.bin
 ```
 
 In this command:
