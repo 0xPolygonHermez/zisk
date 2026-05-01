@@ -175,14 +175,12 @@ require_workspace_root() {
        To install from a standalone copy, pass --binary <path> and --config <path>."
 }
 
-# resolve_service_binary CARGO_PACKAGE
+# resolve_service_binary
 # Resolves $BINARY_SRC for the install: prefer an explicit --binary path,
 # otherwise pick the one from the shared bundle (${BUNDLE_DIR}/bin/${BINARY_NAME})
-# which ziskup --system has populated by the time this runs. The CARGO_PACKAGE
-# arg is kept for API compatibility but is no longer used (no in-script build).
+# which ziskup --system has populated by the time this runs.
 # Reads/writes globals: BINARY_NAME, BINARY_SRC, BUNDLE_DIR.
 resolve_service_binary() {
-    local pkg="$1"  # unused — kept for backwards-compatible call sites
     if [[ -z "${BINARY_SRC}" ]]; then
         BINARY_SRC="${BUNDLE_DIR}/bin/${BINARY_NAME}"
     fi
@@ -190,9 +188,22 @@ resolve_service_binary() {
 (populate the bundle via 'ziskup --system' first, or pass --binary <path>)"
 }
 
-# Backwards-compatible alias for old call sites + documentation.
-build_or_use_binary() {
-    resolve_service_binary "$@"
+# resolve_ziskup_bin
+# Locates the ziskup script via a 3-level fallback:
+#   1. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (re-install)
+#   2. ziskup on PATH                  — operator-installed
+#   3. ${WORKSPACE_ROOT}/ziskup/ziskup — dev fallback (running from a clone)
+# Echoes the resolved path; dies if none found.
+resolve_ziskup_bin() {
+    if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
+        echo "${BUNDLE_DIR}/bin/ziskup"
+    elif command -v ziskup >/dev/null 2>&1; then
+        command -v ziskup
+    elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
+        echo "${WORKSPACE_ROOT}/ziskup/ziskup"
+    else
+        die "ziskup not found in ${BUNDLE_DIR}/bin/, on PATH, or at ${WORKSPACE_ROOT}/ziskup/ziskup"
+    fi
 }
 
 # install_config_or_sample CONFIG_SRC CONFIG_DST GROUP SAMPLE_PATH

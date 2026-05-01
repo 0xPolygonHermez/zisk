@@ -146,25 +146,8 @@ fi
 # 2. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. ziskup --system
 # creates the 'zisk' system user/group, downloads the release tarball, extracts
 # to ${BUNDLE_DIR}, applies 0750 perms. Idempotent — safe to re-run.
-#
-# Proving key is downloaded separately (see ZISK_WORKER_PROVING_KEY override);
-# --nokey here just skips the inline proving-key download in ziskup.
-#
-# ziskup lookup order:
-#   1. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (re-install)
-#   2. ziskup on PATH                  — operator-installed
-#   3. ${WORKSPACE_ROOT}/ziskup/ziskup — dev fallback (running from a clone)
-ZISKUP_BIN=""
-if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
-    ZISKUP_BIN="${BUNDLE_DIR}/bin/ziskup"
-elif command -v ziskup >/dev/null 2>&1; then
-    ZISKUP_BIN="$(command -v ziskup)"
-elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
-    ZISKUP_BIN="${WORKSPACE_ROOT}/ziskup/ziskup"
-else
-    die "ziskup not found in ${BUNDLE_DIR}/bin/, on PATH, or at ${WORKSPACE_ROOT}/ziskup/ziskup"
-fi
-
+# --nokey skips the inline proving-key download (operator passes --proving-key).
+ZISKUP_BIN="$(resolve_ziskup_bin)"
 info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
 "${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
 

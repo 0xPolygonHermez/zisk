@@ -80,20 +80,9 @@ fi
 
 need_root
 
-# 1. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. ziskup --system
-# creates 'zisk' user/group, downloads release tarball, extracts to ${BUNDLE_DIR}.
-# Idempotent — safe to re-run; if worker install.sh ran first, this is a no-op.
-ZISKUP_BIN=""
-if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
-    ZISKUP_BIN="${BUNDLE_DIR}/bin/ziskup"
-elif command -v ziskup >/dev/null 2>&1; then
-    ZISKUP_BIN="$(command -v ziskup)"
-elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
-    ZISKUP_BIN="${WORKSPACE_ROOT}/ziskup/ziskup"
-else
-    die "ziskup not found in ${BUNDLE_DIR}/bin/, on PATH, or at ${WORKSPACE_ROOT}/ziskup/ziskup"
-fi
-
+# 1. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. Idempotent —
+# if worker install.sh ran first on this host, this is a near-no-op.
+ZISKUP_BIN="$(resolve_ziskup_bin)"
 info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
 "${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
 
