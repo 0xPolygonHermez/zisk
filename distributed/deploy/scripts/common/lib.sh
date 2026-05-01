@@ -458,10 +458,13 @@ uninstall_service() {
         systemctl daemon-reload
     fi
 
+    # Drop the service user/group FIRST, then dirs. On macOS, dirs registered
+    # as a user's home (NFSHomeDirectory) acquire ACLs that block rm -rf until
+    # the dscl record is gone. Linux is order-insensitive.
+    prompt_remove_user_group "${svc_user}" "${svc_group}"
     prompt_remove_dir "${log_dir}" "log directory"
     prompt_remove_dir "${data_dir}" "data directory"
     prompt_remove_dir "${config_dir}" "config directory"
-    prompt_remove_user_group "${svc_user}" "${svc_group}"
 
     info "${BINARY_NAME} uninstalled."
 }

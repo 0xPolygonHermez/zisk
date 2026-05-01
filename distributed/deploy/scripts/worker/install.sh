@@ -156,8 +156,10 @@ info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
 resolve_service_binary "zisk-worker"
 
 # 4. Create system group + user (with 'zisk' as supplementary group so it can
-# read the bundle).
-create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "${WORK_DIR}"
+# read the bundle). Home is /var/empty (matches coordinator + sshd convention);
+# pointing it at WORK_DIR triggers macOS dscl-managed-home ACLs that block
+# rm -rf during uninstall.
+create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "/var/empty"
 add_user_to_group "${SERVICE_USER}" zisk
 
 # 5. Install binary
