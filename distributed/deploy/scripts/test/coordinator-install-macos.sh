@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# mac-smoke-coordinator.sh — end-to-end smoke for the coordinator install on a
-# real macOS host. Mirror of mac-smoke.sh with coordinator-specific paths.
+# coordinator-install-macos.sh — end-to-end smoke for the coordinator install on a
+# real macOS host. Mirror of worker-install-macos.sh with coordinator-specific paths.
 #
 # Usage (run on macOS, as root):
 #   cd <zisk-clone>
-#   sudo bash distributed/deploy/scripts/test/mac-smoke-coordinator.sh           # safe default
-#   sudo bash distributed/deploy/scripts/test/mac-smoke-coordinator.sh --load    # also launchctl load
+#   sudo bash distributed/deploy/scripts/test/coordinator-install-macos.sh           # safe default
+#   sudo bash distributed/deploy/scripts/test/coordinator-install-macos.sh --load    # also launchctl load
 #
 # Differences from worker:
 #   - Coordinator unit/plist sets NO env vars (Stage 1 dropped the HOME=

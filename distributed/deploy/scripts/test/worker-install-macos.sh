@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# mac-smoke.sh — end-to-end smoke for the worker install on a real macOS host.
+# worker-install-macos.sh — end-to-end smoke for the worker install on a real macOS host.
 #
 # Usage (run on macOS, as root):
 #   cd <zisk-clone>
-#   sudo bash distributed/deploy/scripts/test/mac-smoke.sh           # safe default
-#   sudo bash distributed/deploy/scripts/test/mac-smoke.sh --load    # also launchctl load
+#   sudo bash distributed/deploy/scripts/test/worker-install-macos.sh           # safe default
+#   sudo bash distributed/deploy/scripts/test/worker-install-macos.sh --load    # also launchctl load
 #
 # What it does:
 #   1. Pre-flight: Darwin, root, internet
