@@ -190,19 +190,22 @@ resolve_service_binary() {
 
 # resolve_ziskup_bin
 # Locates the ziskup script via a 3-level fallback:
-#   1. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (re-install)
-#   2. ziskup on PATH                  — operator-installed
-#   3. ${WORKSPACE_ROOT}/ziskup/ziskup — dev fallback (running from a clone)
+#   1. ziskup on PATH                  — operator's explicit choice (also lets
+#                                        tests inject a stub via PATH)
+#   2. ${WORKSPACE_ROOT}/ziskup/ziskup — workspace clone (dev case)
+#   3. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (last resort;
+#                                        may lag this branch if the latest
+#                                        release predates new ziskup features)
 # Echoes the resolved path; dies if none found.
 resolve_ziskup_bin() {
-    if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
-        echo "${BUNDLE_DIR}/bin/ziskup"
-    elif command -v ziskup >/dev/null 2>&1; then
+    if command -v ziskup >/dev/null 2>&1; then
         command -v ziskup
     elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
         echo "${WORKSPACE_ROOT}/ziskup/ziskup"
+    elif [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
+        echo "${BUNDLE_DIR}/bin/ziskup"
     else
-        die "ziskup not found in ${BUNDLE_DIR}/bin/, on PATH, or at ${WORKSPACE_ROOT}/ziskup/ziskup"
+        die "ziskup not found on PATH, at ${WORKSPACE_ROOT}/ziskup/ziskup, or in ${BUNDLE_DIR}/bin/"
     fi
 }
 
