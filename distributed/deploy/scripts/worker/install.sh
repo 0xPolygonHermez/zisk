@@ -10,7 +10,9 @@
 #   --binary PATH          Use a pre-built binary instead of building from source
 #   --config PATH          Install an existing worker.toml instead of the sample
 #   --proving-key PATH     Path to the proving key directory
-#                          (default: /var/lib/zisk-worker/provingKey)
+#                          default: ${BUNDLE_DIR}/provingKey.
+#   --with-snark           Download also the SNARK proving key into the bundle.
+#                          Without this flag, only the STARK key is installed.
 #   --proving-key-snark PATH  Path to the SNARK proving key directory (optional)
 #   --coordinator-url URL  Distributed coordinator URL (overrides TOML)
 #   --worker-id ID         Worker identifier (overrides TOML; auto-UUID if unset)
@@ -43,11 +45,66 @@
 # ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
 # ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
-# RUST_LOG.
+# ZISK_WORKER_WITH_SNARK (true|false), RUST_LOG.
+
+# ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
+# When this script runs without its sibling files (curl | bash, or copied
+# without lib.sh/defaults.env/mpi_params.sh/ziskup nearby), download the
+# deploy tree from GitHub and re-exec from the temp copy.
+#
+# Usage from a fresh server (no clone needed):
+#
+#   curl -fsL https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/distributed/deploy/scripts/worker/install.sh \
+#       | sudo bash -s -- --gpu --config /etc/zisk/worker.toml --coordinator-url <URL>
+#
+#   # Pin a non-default branch (e.g., a PR under review):
+#   ZISK_DEPLOY_BRANCH=feature/foo curl -fsL .../install.sh | sudo bash -s -- ...
+_self="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
+if [[ -n "$_self" && -f "$_self" ]]; then
+    SELF_DIR="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)" || SELF_DIR=""
+fi
+unset _self
+if [[ -z "${SELF_DIR}" \
+   || ! -f "${SELF_DIR}/../common/lib.sh" \
+   || ! -f "${SELF_DIR}/defaults.env" ]]; then
+    echo "[bootstrap] no sibling deploy scripts found; fetching from GitHub..."
+    # Prefer /var/tmp (FHS non-volatile temp; almost always exec-allowed) over
+    # /tmp (often mounted noexec on hardened or container environments).
+    BOOTSTRAP_TMP=$(mktemp -d /var/tmp/zisk-deploy.XXXXXX 2>/dev/null) \
+                || BOOTSTRAP_TMP=$(mktemp -d /tmp/zisk-deploy.XXXXXX)
+    BRANCH="${ZISK_DEPLOY_BRANCH:-main}"
+    BASE="https://raw.githubusercontent.com/0xPolygonHermez/zisk/${BRANCH}"
+    mkdir -p \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common" \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker" \
+        "${BOOTSTRAP_TMP}/distributed/crates/worker/config" \
+        "${BOOTSTRAP_TMP}/ziskup"
+    for f in \
+        distributed/deploy/scripts/common/lib.sh \
+        distributed/deploy/scripts/common/mpi_params.sh \
+        distributed/deploy/scripts/worker/install.sh \
+        distributed/deploy/scripts/worker/defaults.env \
+        distributed/crates/worker/config/prod.toml \
+        ziskup/ziskup ; do
+        if ! curl -fsL --retry 3 --max-time 30 "${BASE}/${f}" -o "${BOOTSTRAP_TMP}/${f}"; then
+            echo "[bootstrap] failed to download ${f} from ${BRANCH}" >&2
+            rm -rf "${BOOTSTRAP_TMP}"
+            exit 1
+        fi
+    done
+    chmod +x "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common/mpi_params.sh" \
+             "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker/install.sh" \
+             "${BOOTSTRAP_TMP}/ziskup/ziskup"
+    # Clean up the bootstrap dir on exit (success, failure, or interrupt).
+    trap 'rm -rf "${BOOTSTRAP_TMP}"' EXIT
+    bash "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker/install.sh" "$@"
+    exit $?
+fi
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SELF_DIR}"
 COMMON_DIR="${SCRIPT_DIR}/../common"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 
@@ -84,6 +141,7 @@ MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
+WITH_SNARK="${ZISK_WORKER_WITH_SNARK:-false}"
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
@@ -92,6 +150,7 @@ ASSUME_YES=false
 case "$MPI_ENABLED" in true|false) ;; *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;; esac
 case "$EMULATOR"    in true|false) ;; *) die "ZISK_WORKER_EMULATOR must be 'true' or 'false', got: ${EMULATOR}" ;; esac
 case "$GPU"         in true|false) ;; *) die "ZISK_WORKER_GPU must be 'true' or 'false', got: ${GPU}" ;; esac
+case "$WITH_SNARK"  in true|false) ;; *) die "ZISK_WORKER_WITH_SNARK must be 'true' or 'false', got: ${WITH_SNARK}" ;; esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -112,6 +171,7 @@ while [[ $# -gt 0 ]]; do
         --mpi-processes)     MPI_NP="$2";           shift 2 ;;
         --mpi-numa-ppr)      MPI_PPR="$2";          shift 2 ;;
         --mpi-threads)       MPI_THREADS="$2";      shift 2 ;;
+        --with-snark)        WITH_SNARK=true;       shift ;;
         --no-start)          NO_START=true;         shift ;;
         --no-enable)         NO_ENABLE=true;        shift ;;
         --uninstall)         UNINSTALL=true;        shift ;;
@@ -147,9 +207,16 @@ fi
 # creates the 'zisk' system user/group, downloads the release tarball, extracts
 # to ${BUNDLE_DIR}, applies 0750 perms. Idempotent — safe to re-run.
 # --nokey skips the inline proving-key download (operator passes --proving-key).
+# --with-snark adds the SNARK proving key (only valid with --system).
 ZISKUP_BIN="$(resolve_ziskup_bin)"
-info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
-"${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
+ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey)
+$WITH_SNARK && ZISKUP_ARGS+=(--with-snark)
+info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
+"${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
+
+# Default --proving-key-snark to the bundle's location when --with-snark was
+# passed (operator can still override with --proving-key-snark <path>).
+$WITH_SNARK && : "${PROVING_KEY_SNARK:=${BUNDLE_DIR}/provingKeySnark}"
 
 # 3. Resolve the zisk-worker binary (from --binary if given, else from the
 # bundle ziskup just populated). NO local cargo build.

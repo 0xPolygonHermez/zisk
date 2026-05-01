@@ -24,9 +24,64 @@
 # ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_API_PORT,
 # ZISK_COORDINATOR_CLUSTER_PORT, ZISK_COORDINATOR_METRICS_PORT, RUST_LOG.
 
+# ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
+# When this script runs without its sibling files (curl | bash, or copied
+# without lib.sh/defaults.env/mpi_params.sh/ziskup nearby), download the
+# deploy tree from GitHub and re-exec from the temp copy.
+#
+# Usage from a fresh server (no clone needed):
+#
+#   curl -fsL https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/distributed/deploy/scripts/coordinator/install.sh \
+#       | sudo bash -s -- --api-port 7000
+#
+#   # Pin a non-default branch (e.g., a PR under review):
+#   ZISK_DEPLOY_BRANCH=feature/foo curl -fsL .../install.sh | sudo bash -s -- ...
+_self="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
+if [[ -n "$_self" && -f "$_self" ]]; then
+    SELF_DIR="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)" || SELF_DIR=""
+fi
+unset _self
+if [[ -z "${SELF_DIR}" \
+   || ! -f "${SELF_DIR}/../common/lib.sh" \
+   || ! -f "${SELF_DIR}/defaults.env" ]]; then
+    echo "[bootstrap] no sibling deploy scripts found; fetching from GitHub..."
+    # Prefer /var/tmp (FHS non-volatile temp; almost always exec-allowed) over
+    # /tmp (often mounted noexec on hardened or container environments).
+    BOOTSTRAP_TMP=$(mktemp -d /var/tmp/zisk-deploy.XXXXXX 2>/dev/null) \
+                || BOOTSTRAP_TMP=$(mktemp -d /tmp/zisk-deploy.XXXXXX)
+    BRANCH="${ZISK_DEPLOY_BRANCH:-main}"
+    BASE="https://raw.githubusercontent.com/0xPolygonHermez/zisk/${BRANCH}"
+    mkdir -p \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common" \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/coordinator" \
+        "${BOOTSTRAP_TMP}/distributed/crates/coordinator-server/config" \
+        "${BOOTSTRAP_TMP}/ziskup"
+    for f in \
+        distributed/deploy/scripts/common/lib.sh \
+        distributed/deploy/scripts/common/mpi_params.sh \
+        distributed/deploy/scripts/coordinator/install.sh \
+        distributed/deploy/scripts/coordinator/defaults.env \
+        distributed/crates/coordinator-server/config/coordinator.example.toml \
+        ziskup/ziskup ; do
+        if ! curl -fsL --retry 3 --max-time 30 "${BASE}/${f}" -o "${BOOTSTRAP_TMP}/${f}"; then
+            echo "[bootstrap] failed to download ${f} from ${BRANCH}" >&2
+            rm -rf "${BOOTSTRAP_TMP}"
+            exit 1
+        fi
+    done
+    chmod +x "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common/mpi_params.sh" \
+             "${BOOTSTRAP_TMP}/distributed/deploy/scripts/coordinator/install.sh" \
+             "${BOOTSTRAP_TMP}/ziskup/ziskup"
+    # Clean up the bootstrap dir on exit (success, failure, or interrupt).
+    trap 'rm -rf "${BOOTSTRAP_TMP}"' EXIT
+    bash "${BOOTSTRAP_TMP}/distributed/deploy/scripts/coordinator/install.sh" "$@"
+    exit $?
+fi
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SELF_DIR}"
 COMMON_DIR="${SCRIPT_DIR}/../common"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 

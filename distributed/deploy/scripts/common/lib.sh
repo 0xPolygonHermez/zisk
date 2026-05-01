@@ -164,17 +164,6 @@ load_env_file() {
     fi
 }
 
-# Validates that ${WORKSPACE_ROOT} points at a real ZisK workspace clone
-# (Cargo.toml present). Call from any branch that needs to read source-tree
-# files (cargo build, sample configs). Avoids confusing downstream errors
-# when the script is shipped standalone without the surrounding repo.
-require_workspace_root() {
-    [[ -f "${WORKSPACE_ROOT}/Cargo.toml" ]] || die \
-"workspace root not found at ${WORKSPACE_ROOT} (Cargo.toml missing).
-       This script expects to run from a clone of the ZisK repository.
-       To install from a standalone copy, pass --binary <path> and --config <path>."
-}
-
 # resolve_service_binary
 # Resolves $BINARY_SRC for the install: prefer an explicit --binary path,
 # otherwise pick the one from the shared bundle (${BUNDLE_DIR}/bin/${BINARY_NAME})
@@ -220,12 +209,11 @@ install_config_or_sample() {
         info "Installing config from ${src}..."
         install -m 640 -o root -g "${group}" "${src}" "${dst}"
     elif [[ ! -f "${dst}" ]]; then
-        require_workspace_root
-        info "Installing sample config to ${dst}..."
         if [[ -f "${sample}" ]]; then
+            info "Installing sample config to ${dst}..."
             install -m 640 -o root -g "${group}" "${sample}" "${dst}"
         else
-            warn "sample config not found at ${sample}; skipping."
+            warn "sample config not found at ${sample}; pass --config or place a config at ${dst}."
         fi
     else
         info "Config already exists at ${dst}; leaving unchanged."

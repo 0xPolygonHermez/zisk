@@ -18,6 +18,7 @@ PREFIX=""
 OWNER=""
 ASSUME_YES=false
 FORCE=false
+WITH_SNARK=false
 
 # Marker written into ${ZISK_DIR} after a successful install. In --system mode,
 # subsequent invocations short-circuit if the marker matches the requested
@@ -29,7 +30,7 @@ main() {
   need_cmd curl
 
   # Check if this is a setup_snark command
-  if [[ "$1" == "setup_snark" ]]; then
+  if [[ "${1:-}" == "setup_snark" ]]; then
     setup_snark_command
     exit 0
   fi
@@ -92,6 +93,9 @@ main() {
     --force)
       FORCE=true
       ;;
+    --with-snark)
+      WITH_SNARK=true
+      ;;
     -h | --help)
       usage
       exit 0
@@ -122,6 +126,13 @@ main() {
     if [[ -z "$OWNER" ]]; then
       OWNER="zisk:zisk"
     fi
+  fi
+
+  # --with-snark only makes sense for --system installs (services co-locate the
+  # SNARK key inside the shared bundle). User-mode installs use `ziskup setup_snark`.
+  if $WITH_SNARK && ! $SYSTEM_MODE; then
+    err "--with-snark requires --system (use 'ziskup setup_snark' for user-mode SNARK key)"
+    exit 1
   fi
   if [[ -n "$PREFIX" ]]; then
     ZISK_DIR="$PREFIX"
@@ -375,6 +386,17 @@ EOF
       ;;
   esac
 
+  # SNARK proving key (system mode only — gated by --with-snark validation above).
+  # Skipped if already present unless --force was passed.
+  if $WITH_SNARK; then
+    if ! $FORCE && [[ -d "${ZISK_DIR}/provingKeySnark" ]]; then
+      step "SNARK proving key already installed at ${ZISK_DIR}/provingKeySnark."
+      say "Use --force to refresh."
+    else
+      install_setup_snark
+    fi
+  fi
+
   if $SYSTEM_MODE; then
     # Apply ownership and tighten permissions on the bundle.
     chown -R "$OWNER" "$ZISK_DIR"
@@ -457,6 +479,8 @@ OPTIONS:
                    bundle is already at the requested version. Default is to
                    short-circuit (avoids re-download when worker + coordinator
                    install on the same host).
+    --with-snark   Only works with --system. Download and install the SNARK proving key.
+                   Skipped if already present unless --force is also given.
 
 COMMANDS:
     setup_snark     Install SNARK proving key (provingKeySnark)
