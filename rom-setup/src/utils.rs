@@ -2,36 +2,29 @@ use anyhow::{Context, Result};
 use fields::{Goldilocks, PrimeField64};
 use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanResult};
 use sm_rom::RomSM;
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use zisk_common::ZiskPaths;
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
-
-pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
 pub const ROM_MERKLE_TREE_ARITY: u64 = 4;
 pub const ROM_BLOWUP_FACTOR: u64 = 2;
 
-/// Gets the user's home directory as specified by the HOME environment variable.
-pub fn get_home_dir() -> String {
-    env::var("HOME").expect("get_home_dir() failed to get HOME environment variable")
+/// Gets the bundle root directory (e.g., `~/.zisk` or `/opt/zisk`).
+pub fn get_default_zisk_path() -> PathBuf {
+    ZiskPaths::global().home.clone()
 }
 
-/// Gets the default zisk folder location in the home installation directory.
-pub fn get_default_zisk_path() -> PathBuf {
-    let zisk_path = format!("{}/.zisk", get_home_dir());
-    PathBuf::from(zisk_path)
+/// Gets the cache directory used for ROM bin caches.
+pub fn get_default_cache_path() -> PathBuf {
+    ZiskPaths::global().cache.clone()
 }
 
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
-        let cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join(DEFAULT_CACHE_PATH))
-            .unwrap_or_else(|_| panic!("$HOME environment variable is not set"));
-
+        let cache_path = get_default_cache_path();
         ensure_dir_exists(&cache_path);
         cache_path
     } else {

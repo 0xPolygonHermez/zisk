@@ -7403,6 +7403,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "bincode",
+ "dirs",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
  "libc",
  "proofman",

@@ -51,6 +51,74 @@ need_root() {
     fi
 }
 
+# bundle_dir_for_os
+# Echoes the platform-specific install root for the read-only ZisK bundle:
+#   Linux  → /opt/zisk
+#   Darwin → /Library/Application Support/ZisK
+# This is the path ziskup --system writes to, where worker (and future
+# coordinator bundle consumers) read bin/, zisk/, provingKey/ from.
+bundle_dir_for_os() {
+    case "$OS_NAME" in
+        Linux)  echo "/opt/zisk" ;;
+        Darwin) echo "/Library/Application Support/ZisK" ;;
+        *)      die "bundle_dir_for_os: unsupported OS '${OS_NAME}'" ;;
+    esac
+}
+
+# ensure_zisk_user_group BUNDLE_DIR
+# Creates the shared 'zisk' system user and group if missing. Sets the user's
+# home dir to BUNDLE_DIR. Idempotent. Branches Linux/Darwin.
+ensure_zisk_user_group() {
+    local bundle="$1"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        local gid uid
+        if ! dscl . -read /Groups/zisk &>/dev/null; then
+            info "Creating system group 'zisk'..."
+            gid=$(( $(dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            dscl . -create /Groups/zisk
+            dscl . -create /Groups/zisk PrimaryGroupID "$gid"
+            dscl . -create /Groups/zisk RecordName    zisk
+        fi
+        if ! dscl . -read /Users/zisk &>/dev/null; then
+            info "Creating system user 'zisk'..."
+            uid=$(( $(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            gid=$(dscl . -read /Groups/zisk PrimaryGroupID | awk '{print $2}')
+            dscl . -create /Users/zisk
+            dscl . -create /Users/zisk UniqueID         "$uid"
+            dscl . -create /Users/zisk PrimaryGroupID   "$gid"
+            dscl . -create /Users/zisk UserShell        /usr/bin/false
+            dscl . -create /Users/zisk RealName         "ZisK Bundle"
+            dscl . -create /Users/zisk NFSHomeDirectory "${bundle}"
+        fi
+    else
+        if ! getent group zisk &>/dev/null; then
+            info "Creating system group 'zisk'..."
+            groupadd --system zisk
+        fi
+        if ! id zisk &>/dev/null; then
+            info "Creating system user 'zisk'..."
+            useradd --system --gid zisk -d "${bundle}" -s /usr/sbin/nologin zisk
+        fi
+    fi
+}
+
+# add_user_to_group USER GROUP
+# Adds an existing user to an existing supplementary group. Idempotent.
+add_user_to_group() {
+    local user="$1" group="$2"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        if ! dseditgroup -o checkmember -m "$user" "$group" &>/dev/null; then
+            info "Adding ${user} to group ${group}..."
+            dseditgroup -o edit -a "$user" -t user "$group"
+        fi
+    else
+        if ! id -nG "$user" 2>/dev/null | tr ' ' '\n' | grep -qx "$group"; then
+            info "Adding ${user} to group ${group}..."
+            usermod -aG "$group" "$user"
+        fi
+    fi
+}
+
 # print_banner SERVICE
 # Identifies ZisK and the service being installed. Called at the top of each
 # install script so operators see what they're running and where to find the
@@ -223,8 +291,10 @@ resolve_mpi_config() {
     [[ -n "$MPI_THREADS" ]] && manual_count=$((manual_count + 1))
 
     if ! $MPI_ENABLED; then
-        [[ "$manual_count" -gt 0 ]] && die "--mpi-processes/--mpi-numa-ppr/--mpi-threads cannot be used with --no-mpi."
-        return
+        if [[ "$manual_count" -gt 0 ]]; then
+            die "--mpi-processes/--mpi-numa-ppr/--mpi-threads cannot be used with --no-mpi."
+        fi
+        return 0
     fi
 
     if [[ "$manual_count" -gt 0 && "$manual_count" -lt 3 ]]; then

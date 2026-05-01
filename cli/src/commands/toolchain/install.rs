@@ -1,6 +1,5 @@
 use crate::download_file;
 use anyhow::Result;
-use dirs::home_dir;
 use rand::{distr::Alphanumeric, Rng};
 use reqwest::Client;
 use std::{
@@ -37,7 +36,7 @@ impl ZiskInstallToolchain {
             .build()?;
 
         // Setup variables.
-        let root_dir = home_dir().unwrap().join(".zisk");
+        let root_dir = zisk_common::ZiskPaths::global().home.clone();
         match fs::read_dir(&root_dir) {
             Ok(entries) =>
             {

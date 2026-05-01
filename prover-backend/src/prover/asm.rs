@@ -15,7 +15,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
+use rom_setup::{generate_assembly, get_default_cache_path, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
@@ -116,10 +116,7 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
-            .join(DEFAULT_CACHE_PATH);
+        let default_cache_path = get_default_cache_path();
         let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);

@@ -5,13 +5,18 @@
 set -eo pipefail
 
 BASE_DIR=${XDG_CONFIG_HOME:-${HOME}}
-ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
-ZISK_BIN_DIR="${ZISK_DIR}/bin"
-CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+DEFAULT_USER_ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
 BINS=(cargo-zisk ziskemu)
 BUCKET_URL="https://storage.googleapis.com/zisk-setup"
 
-mkdir -p "${ZISK_BIN_DIR}"
+# Filled in by main() after arg parsing.
+ZISK_DIR=""
+ZISK_BIN_DIR=""
+CARGO_ZISK=""
+SYSTEM_MODE=false
+PREFIX=""
+OWNER=""
+ASSUME_YES=false
 
 main() {
   need_cmd curl
@@ -63,6 +68,20 @@ main() {
       fi
       USE_GPU=false
       ;;
+    --system)
+      SYSTEM_MODE=true
+      ;;
+    --prefix)
+      shift
+      PREFIX=$1
+      ;;
+    --owner)
+      shift
+      OWNER=$1
+      ;;
+    -y | --yes)
+      ASSUME_YES=true
+      ;;
     -h | --help)
       usage
       exit 0
@@ -76,6 +95,37 @@ main() {
     esac
     shift
   done
+
+  # Resolve install root and identity now that flags are parsed.
+  if $SYSTEM_MODE; then
+    if [[ "$(id -u)" -ne 0 ]]; then
+      err "ziskup --system requires root"
+      exit 1
+    fi
+    if [[ -z "$PREFIX" ]]; then
+      case "$(uname -s)" in
+        Linux)  PREFIX="/opt/zisk" ;;
+        Darwin) PREFIX="/Library/Application Support/ZisK" ;;
+        *) err "unsupported platform for --system: $(uname -s)"; exit 1 ;;
+      esac
+    fi
+    if [[ -z "$OWNER" ]]; then
+      OWNER="zisk:zisk"
+    fi
+  fi
+  if [[ -n "$PREFIX" ]]; then
+    ZISK_DIR="$PREFIX"
+  else
+    ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  fi
+  ZISK_BIN_DIR="${ZISK_DIR}/bin"
+  CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+
+  mkdir -p "${ZISK_BIN_DIR}"
+
+  if $SYSTEM_MODE; then
+    ensure_owner_user_group "$OWNER" "$ZISK_DIR"
+  fi
 
   uname_s=$(uname -s)
   PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")
@@ -141,6 +191,8 @@ main() {
     if [ "${PLATFORM}" = "linux" ]; then
       if [ "${HAS_CUDA}" = "true" ]; then
         USE_GPU=true
+      elif $ASSUME_YES; then
+        USE_GPU=false
       else
         warn "CUDA was not detected on this system"
         say "The version with only CPU support will be installed by default"
@@ -168,34 +220,38 @@ main() {
 
   # Ask user about key installation if SETUP_KEY is not set
   if [[ -z "${SETUP_KEY}" ]]; then
-    step "Setup installation options:"
-    say "1) Install proving key (default - just press enter)"
-    say "2) Install proving key (no constant tree files)"
-    say "3) Install verify key"
-    say "4) None"
+    if $ASSUME_YES; then
+      SETUP_KEY="proving"
+    else
+      step "Setup installation options:"
+      say "1) Install proving key (default - just press enter)"
+      say "2) Install proving key (no constant tree files)"
+      say "3) Install verify key"
+      say "4) None"
 
-    # Read user input with default option set to 1
-    read -p ">" user_choice < /dev/tty
-    user_choice=${user_choice:-1}
+      # Read user input with default option set to 1
+      read -p ">" user_choice < /dev/tty
+      user_choice=${user_choice:-1}
 
-    case "${user_choice}" in
-        1)
-          SETUP_KEY="proving"
-          ;;
-        2)
-          SETUP_KEY="proving-no-consttree"
-          ;;
-        3)
-          SETUP_KEY="verify"
-          ;;
-        4)
-          SETUP_KEY="none"
-          ;;
-        *)
-          err "invalid option, aborting installation"
-          exit 1
-          ;;
-    esac
+      case "${user_choice}" in
+          1)
+            SETUP_KEY="proving"
+            ;;
+          2)
+            SETUP_KEY="proving-no-consttree"
+            ;;
+          3)
+            SETUP_KEY="verify"
+            ;;
+          4)
+            SETUP_KEY="none"
+            ;;
+          *)
+            err "invalid option, aborting installation"
+            exit 1
+            ;;
+      esac
+    fi
   fi
 
   # Compute the URL of the release tarball in the zisk repository
@@ -263,8 +319,10 @@ EOF
     fi
   done
 
-  step "Installing ZisK Rust toolchain..."
-  ensure "${CARGO_ZISK}" toolchain install
+  if ! $SYSTEM_MODE; then
+    step "Installing ZisK Rust toolchain..."
+    ensure "${CARGO_ZISK}" toolchain install
+  fi
 
   # Install the proving/verify key setup
   IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
@@ -287,6 +345,20 @@ EOF
       exit 1
       ;;
   esac
+
+  if $SYSTEM_MODE; then
+    # Apply ownership and tighten permissions on the bundle.
+    chown -R "$OWNER" "$ZISK_DIR"
+    find "$ZISK_DIR" -type d -exec chmod 0750 {} \;
+    if [[ -d "$ZISK_BIN_DIR" ]]; then
+      find "$ZISK_BIN_DIR" -type f -exec chmod 0750 {} \;
+    fi
+
+    step "Done! ZisK version ${ZISK_VERSION} has been installed at ${ZISK_DIR}."
+    say "Set ZISK_HOME=${ZISK_DIR} in your service unit (Environment=) so the worker resolves bundle paths."
+    echo
+    return
+  fi
 
   # Determine the profile file and preferred shell based on the current shell
   case "${SHELL}" in
@@ -337,12 +409,21 @@ OPTIONS:
     -h, --help      Print help information
     -v, --version   Install a specific version
     --arch          Install a specific architecture (supports amd64 and arm64)
-    --platform      Install a specific platform (supports linux and darwin)
-    --provingkey    Install the proving key
-    --verifykey     Install the verify key
-    --gpu           Install the GPU version (linux only)
-    --cpu           Install the CPU version (linux only)
-    --nokey         No proving/verify key installation
+    --platform     Install a specific platform (supports linux and darwin)
+    --provingkey   Install the proving key
+    --verifykey    Install the verify key
+    --gpu          Install the GPU version (linux only)
+    --cpu          Install the CPU version (linux only)
+    --nokey        No proving/verify key installation
+    --system       System-wide install (root required). Defaults --prefix to
+                   /opt/zisk on Linux or /Library/Application Support/ZisK on macOS,
+                   defaults --owner to zisk:zisk (created if missing). Skips toolchain
+                   install and PATH/profile mutation.
+    --prefix DIR   Install to DIR instead of \$HOME/.zisk (or the system default
+                   when used with --system).
+    --owner U:G    chown the install tree to U:G after extraction. With --system,
+                   missing user or group are created in the system uid/gid range.
+    -y, --yes      Non-interactive: accept defaults for prompts.
 
 COMMANDS:
     setup_snark     Install SNARK proving key (provingKeySnark)
@@ -378,6 +459,58 @@ need_cmd() {
 
 check_cmd() {
   command -v "$1" &>/dev/null
+}
+
+# Create the user:group from "$1" if missing, with $2 as the user's home dir.
+# Behavior is platform-aware: useradd/groupadd on Linux, dscl on macOS.
+ensure_owner_user_group() {
+  local owner="$1"
+  local home_dir="$2"
+  local user_name="${owner%%:*}"
+  local group_name="${owner##*:}"
+  if [[ -z "$user_name" || -z "$group_name" || "$user_name" == "$owner" ]]; then
+    err "--owner expected user:group, got: $owner"
+    exit 1
+  fi
+  case "$(uname -s)" in
+    Linux)
+      if ! getent group "$group_name" >/dev/null 2>&1; then
+        ensure groupadd --system "$group_name"
+      fi
+      if ! id "$user_name" >/dev/null 2>&1; then
+        ensure useradd --system -g "$group_name" -d "$home_dir" -s /usr/sbin/nologin "$user_name"
+      fi
+      ;;
+    Darwin)
+      # Find a free GID/UID below 500 (system range on macOS).
+      if ! dscl . -read "/Groups/$group_name" >/dev/null 2>&1; then
+        local gid=300
+        while dscl . -read "/Groups/_g$gid" >/dev/null 2>&1 || \
+              dscl . -list /Groups gid 2>/dev/null | awk '{print $2}' | grep -q "^${gid}$"; do
+          gid=$((gid + 1))
+        done
+        ensure dscl . -create "/Groups/$group_name"
+        ensure dscl . -create "/Groups/$group_name" PrimaryGroupID "$gid"
+      fi
+      if ! dscl . -read "/Users/$user_name" >/dev/null 2>&1; then
+        local uid=300
+        while dscl . -list /Users UniqueID 2>/dev/null | awk '{print $2}' | grep -q "^${uid}$"; do
+          uid=$((uid + 1))
+        done
+        local gid
+        gid=$(dscl . -read "/Groups/$group_name" PrimaryGroupID | awk '{print $2}')
+        ensure dscl . -create "/Users/$user_name"
+        ensure dscl . -create "/Users/$user_name" UniqueID "$uid"
+        ensure dscl . -create "/Users/$user_name" PrimaryGroupID "$gid"
+        ensure dscl . -create "/Users/$user_name" UserShell /usr/bin/false
+        ensure dscl . -create "/Users/$user_name" NFSHomeDirectory "$home_dir"
+      fi
+      ;;
+    *)
+      err "ensure_owner_user_group: unsupported platform $(uname -s)"
+      exit 1
+      ;;
+  esac
 }
 
 # Run a command that should never fail. If the command fails execution
@@ -422,16 +555,16 @@ install_setup() {
     ensure md5sum -c "${KEY_FILE}.md5"
 
     # Delete old provingKey, verifyKey and cache folders
-    rm -rf "${HOME}/.zisk/provingKey"
-    rm -rf "${HOME}/.zisk/verifyKey"
-    rm -rf "${HOME}/.zisk/cache"
+    rm -rf "${ZISK_DIR}/provingKey"
+    rm -rf "${ZISK_DIR}/verifyKey"
+    rm -rf "${ZISK_DIR}/cache"
 
     # Extract the key
     step "Installing ${KEY_TYPE} key version ${SETUP_VERSION}..."
     if [ "${PLATFORM}" = "linux" ]; then
-      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --overwrite -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     else
-      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     fi
 
     rm -f "${KEY_FILE}"
@@ -458,14 +591,14 @@ install_setup_snark() {
     ensure md5sum -c "${KEY_FILE}.md5"
 
     # Delete old provingKey, verifyKey and cache folders
-    rm -rf "${HOME}/.zisk/provingKeySnark"
+    rm -rf "${ZISK_DIR}/provingKeySnark"
 
     # Extract the key
     step "Installing SNARK proving key version ${SETUP_VERSION}..."
     if [ "${PLATFORM}" = "linux" ]; then
-      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --overwrite -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     else
-      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     fi
 
     rm -f "${KEY_FILE}"
@@ -477,6 +610,11 @@ install_setup_snark() {
 setup_snark_command() {
   # Print banner
   banner
+
+  # Resolve install root (setup_snark uses the user-mode default).
+  ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  ZISK_BIN_DIR="${ZISK_DIR}/bin"
+  CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
 
   # Detect platform
   uname_s=$(uname -s)

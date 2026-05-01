@@ -94,13 +94,14 @@ mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/coordinator-server/config/coordinator.example.toml"
 
-# 5. Create working (and log on macOS) directories. Pre-create ~/.zisk/cache so
-# code that resolves $HOME at startup finds a writable location.
+# 5. Create working (and log on macOS) directories. Coordinator does not run
+# rom-setup so it doesn't need a cache/ dir; only WORK_DIR is created so
+# WorkingDirectory= in the unit/plist resolves.
 if [[ "$OS_NAME" == "Darwin" ]]; then
-    mkdir -p "${WORK_DIR}" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
+    mkdir -p "${WORK_DIR}" "${LOG_DIR}"
     chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 else
-    mkdir -p "${WORK_DIR}" "${WORK_DIR}/.zisk/cache"
+    mkdir -p "${WORK_DIR}"
     chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
 fi
 
@@ -150,12 +151,6 @@ $(build_program_args)    </array>
     <key>WorkingDirectory</key>
     <string>${WORK_DIR}</string>
 
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>HOME</key>
-        <string>${WORK_DIR}</string>
-    </dict>
-
     <key>KeepAlive</key>
     <true/>
 
@@ -176,7 +171,7 @@ $(build_program_args)    </array>
 </dict>
 </plist>
 
-<!-- Install metadata (read by --uninstall; do not edit) -->
+<!-- Install metadata (read at uninstall time; do not edit) -->
 <!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
 <!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
 <!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
@@ -215,10 +210,6 @@ User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${WORK_DIR}
 
-# HOME override — system users have no /home/<user>; point at WORK_DIR so
-# code that resolves ~/.zisk/cache (and similar) finds a writable location.
-Environment=HOME=${WORK_DIR}
-
 ${EXEC_START}
 Restart=on-failure
 RestartSec=3
@@ -250,4 +241,6 @@ fi
 
 # 8. Activate service and (if started) print management hints
 activate_service
-$SHOW_HINTS && print_post_install_hints "${BASH_SOURCE[0]}"
+if $SHOW_HINTS; then
+    print_post_install_hints "${BASH_SOURCE[0]}"
+fi

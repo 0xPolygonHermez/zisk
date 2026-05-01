@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::get_elf_data_hash;

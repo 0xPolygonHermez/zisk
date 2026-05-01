@@ -157,51 +157,40 @@ mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
 
-# 6. Create working and log directories. Pre-create ~/.zisk/cache for HOME-resolution.
-mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
+# 6. Create per-service working dirs (mutable runtime state only) and log dir.
+mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache" "${LOG_DIR}"
 chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 
-# 7. Install ZisK companion tools + asm rom-setup sources into the worker's
-# $HOME (= WORK_DIR). Mirrors the manual setup:
-#   $HOME/.zisk/bin/{cargo-zisk,ziskemu,riscv2zisk,zisk-coordinator,zisk-worker,libziskclib.a}
-# and on Linux x86_64:
-#   $HOME/.zisk/zisk/emulator-asm/{src,Makefile}
-#   $HOME/.zisk/zisk/lib-c
-ZISK_BIN_DIR="${WORK_DIR}/.zisk/bin"
-ZISK_ZISK_DIR="${WORK_DIR}/.zisk/zisk"
-RELEASE_DIR="${WORKSPACE_ROOT}/target/release"
-
-# Workspace-wide build — produces every binary listed below in target/release/
-# regardless of which crate owns each one (binary names and package names
-# don't always align). Run as the invoking user when via sudo so target/
-# ownership stays correct (matches build_or_use_binary).
-info "Building ZisK workspace for companion tools..."
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-    sudo -u "$SUDO_USER" -H cargo build --release \
-        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+# 7. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. The bundle is
+# read-only toolchain payload (bin/ + zisk/ + optional provingKey/) shared
+# across services; ziskup --system creates the 'zisk' system user/group,
+# downloads the release tarball, extracts to ${BUNDLE_DIR}, applies 0750 perms.
+# Idempotent — safe to re-run.
+#
+# Proving key is downloaded separately (see ZISK_WORKER_PROVING_KEY override
+# below); --nokey here just skips the inline proving-key download in ziskup.
+#
+# ziskup lookup order:
+#   1. ${BUNDLE_DIR}/bin/ziskup  — already-installed bundle (re-install case)
+#   2. ziskup on PATH            — operator-installed
+#   3. ${WORKSPACE_ROOT}/ziskup/ziskup — dev fallback (running from a clone)
+ZISKUP_BIN=""
+if [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
+    ZISKUP_BIN="${BUNDLE_DIR}/bin/ziskup"
+elif command -v ziskup >/dev/null 2>&1; then
+    ZISKUP_BIN="$(command -v ziskup)"
+elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
+    ZISKUP_BIN="${WORKSPACE_ROOT}/ziskup/ziskup"
 else
-    cargo build --release \
-        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+    die "ziskup not found in ${BUNDLE_DIR}/bin/, on PATH, or at ${WORKSPACE_ROOT}/ziskup/ziskup"
 fi
 
-mkdir -p "${ZISK_BIN_DIR}"
-for tool in cargo-zisk ziskemu riscv2zisk zisk-coordinator zisk-worker libziskclib.a; do
-    src="${RELEASE_DIR}/${tool}"
-    [[ -f "${src}" ]] || die "expected build artifact missing: ${src}"
-    cp "${src}" "${ZISK_BIN_DIR}/${tool}"
-done
-info "Installed ZisK tools to ${ZISK_BIN_DIR}/"
+info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
+"${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
 
-# Linux x86_64 only: assembly rom-setup sources (asm execution unsupported on macOS).
-if [[ "${OS_NAME}" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
-    info "Installing emulator-asm sources for rom setup..."
-    mkdir -p "${ZISK_ZISK_DIR}/emulator-asm"
-    cp -r "${WORKSPACE_ROOT}/emulator-asm/src" "${ZISK_ZISK_DIR}/emulator-asm/"
-    cp    "${WORKSPACE_ROOT}/emulator-asm/Makefile" "${ZISK_ZISK_DIR}/emulator-asm/"
-    cp -r "${WORKSPACE_ROOT}/lib-c" "${ZISK_ZISK_DIR}/lib-c"
-fi
-
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}/.zisk"
+# Add the worker service user to the 'zisk' group so it can read the bundle
+# (ziskup created the group; install.sh already created the per-service user).
+add_user_to_group "${SERVICE_USER}" zisk
 
 # 8. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
@@ -284,8 +273,10 @@ $(build_program_args)    </array>
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>HOME</key>
-        <string>${WORK_DIR}</string>
+        <key>ZISK_HOME</key>
+        <string>${BUNDLE_DIR}</string>
+        <key>ZISK_CACHE_DIR</key>
+        <string>${WORK_DIR}/cache</string>
     </dict>
 
     <key>KeepAlive</key>
@@ -311,7 +302,7 @@ $(build_program_args)    </array>
 </dict>
 </plist>
 
-<!-- Install metadata (read by --uninstall; do not edit) -->
+<!-- Install metadata (read at uninstall time; do not edit) -->
 <!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
 <!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
 <!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
@@ -354,10 +345,12 @@ else
         EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
     fi
 
-    # ReadOnlyPaths: include ASM_PATH and PROVING_KEY_SNARK so the sandbox can read them
-    READ_ONLY_PATHS="${CONFIG_DIR} ${PROVING_KEY}"
+    # ReadOnlyPaths: bundle is the toolchain payload + proving key; optional
+    # ASM and SNARK key are appended only when explicitly set.
+    READ_ONLY_PATHS="${CONFIG_DIR} ${BUNDLE_DIR}"
     [[ -n "$ASM_PATH" ]]          && READ_ONLY_PATHS+=" ${ASM_PATH}"
-    [[ -n "$PROVING_KEY_SNARK" ]] && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
+    [[ -n "$PROVING_KEY_SNARK" && "$PROVING_KEY_SNARK" != "${BUNDLE_DIR}"/* ]] \
+        && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
 
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
@@ -371,10 +364,12 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
+SupplementaryGroups=zisk
 WorkingDirectory=${WORK_DIR}
 
-# HOME is needed so the worker resolves ~/.zisk/cache correctly.
-Environment=HOME=${WORK_DIR}
+# Resolver paths (see common/src/paths.rs::ZiskPaths).
+Environment=ZISK_HOME=${BUNDLE_DIR}
+Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache
 
 ${EXEC_START}
 Restart=on-failure
@@ -418,4 +413,6 @@ fi
 
 # 10. Activate service and (if started) print management hints
 activate_service
-$SHOW_HINTS && print_post_install_hints "${BASH_SOURCE[0]}"
+if $SHOW_HINTS; then
+    print_post_install_hints "${BASH_SOURCE[0]}"
+fi
