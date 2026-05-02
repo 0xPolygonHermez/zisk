@@ -151,6 +151,26 @@ grep -A1 '<key>WorkingDirectory</key>' "$PLIST" \
 grep -A1 '<string>--api-port</string>' "$PLIST" | grep -q '<string>7000</string>' \
     && ok "plist --api-port = 7000 (default)" \
     || fail "plist --api-port not 7000"
+grep -q "<!-- zisk-coordinator:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
+    && ok "metadata footer has CONFIG_FILE" \
+    || fail "metadata footer missing CONFIG_FILE"
+
+# ── 7b. ziskup install receipt ───────────────────────────────────────────────
+info "ziskup receipt at $BUNDLE/.zisk-receipt"
+RECEIPT="$BUNDLE/.zisk-receipt"
+[[ -f "$RECEIPT" ]] && ok "$RECEIPT exists" || { fail "$RECEIPT missing"; exit 1; }
+grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$RECEIPT" \
+    && ok "receipt has version field" \
+    || fail "receipt missing/invalid version"
+grep -qE '^manifest=.*\bbin\b' "$RECEIPT" \
+    && ok "receipt manifest includes 'bin'" \
+    || fail "receipt manifest missing 'bin'"
+grep -q '^created_user=zisk$' "$RECEIPT" \
+    && ok "receipt records created_user=zisk" \
+    || fail "receipt missing created_user"
+grep -q '^created_group=zisk$' "$RECEIPT" \
+    && ok "receipt records created_group=zisk" \
+    || fail "receipt missing created_group"
 
 # ── 8. newsyslog rotation ─────────────────────────────────────────────────────
 info "newsyslog config"
@@ -180,7 +200,11 @@ fi
 
 # ── 10. uninstall sweep ───────────────────────────────────────────────────────
 info "Running coordinator install.sh --uninstall -y"
-"$COORD_INSTALL" --uninstall -y 2>&1 | sed 's/^/    /' || warn "uninstall exited non-zero"
+UNINSTALL_OUT=$("$COORD_INSTALL" --uninstall -y 2>&1) || warn "uninstall exited non-zero"
+echo "$UNINSTALL_OUT" | sed 's/^/    /'
+echo "$UNINSTALL_OUT" | grep -q 'sudo ziskup --uninstall --system' \
+    && ok "uninstall output points operator at 'ziskup --uninstall --system'" \
+    || fail "uninstall output missing bundle-removal hint"
 
 [[ ! -f "$PLIST"     ]] && ok "plist removed"            || fail "plist still present"
 [[ ! -f "$SVC_BIN"   ]] && ok "service binary removed"   || fail "$SVC_BIN still present"

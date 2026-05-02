@@ -255,7 +255,9 @@ create_service_user() {
         fi
         if ! id "$user" &>/dev/null; then
             info "Creating system user '${user}'..."
-            useradd --system --gid "$group" --no-create-home --shell /usr/sbin/nologin "$user"
+            local useradd_args=(--system --gid "$group" --no-create-home --shell /usr/sbin/nologin)
+            [[ -n "$home" ]] && useradd_args+=(--home-dir "$home")
+            useradd "${useradd_args[@]}" "$user"
         fi
     fi
 }
@@ -369,6 +371,22 @@ prompt_remove_dir() {
     fi
 }
 
+# prompt_remove_config_file FILE DIR
+# Prompts to remove a service's config file, then rmdirs DIR if it's now
+# empty (silent on non-empty — leaves sibling services' configs intact).
+# No-ops if FILE doesn't exist.
+prompt_remove_config_file() {
+    local file="$1" dir="$2"
+    [[ -n "$file" && -f "$file" ]] || return 0
+    if confirm "Remove config file '${file}'?"; then
+        rm -f "$file"
+        info "Removed ${file}."
+        if [[ -n "$dir" && -d "$dir" ]] && rmdir "$dir" 2>/dev/null; then
+            info "Removed empty ${dir}."
+        fi
+    fi
+}
+
 # prompt_remove_user_group USER GROUP
 # Prompts to remove a system user + group (default no). Branches on OS.
 prompt_remove_user_group() {
@@ -423,15 +441,17 @@ uninstall_service() {
     [[ -f "$marker" ]] || die "${BINARY_NAME} is not installed (${marker} not found)."
     confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
 
-    local data_dir log_dir config_dir svc_user svc_group
+    local data_dir log_dir config_dir config_file svc_user svc_group
     data_dir="$(read_unit_metadata "$marker" DATA_DIR)"
     log_dir="$(read_unit_metadata "$marker" LOG_DIR)"
     config_dir="$(read_unit_metadata "$marker" CONFIG_DIR)"
+    config_file="$(read_unit_metadata "$marker" CONFIG_FILE)"
     svc_user="$(read_unit_metadata "$marker" SVC_USER)"
     svc_group="$(read_unit_metadata "$marker" SVC_GROUP)"
     : "${data_dir:=$WORK_DIR}"
     : "${log_dir:=$LOG_DIR}"
     : "${config_dir:=$CONFIG_DIR}"
+    : "${config_file:=$CONFIG_DST}"
     : "${svc_user:=$SERVICE_USER}"
     : "${svc_group:=$SERVICE_GROUP}"
 
@@ -452,9 +472,22 @@ uninstall_service() {
     prompt_remove_user_group "${svc_user}" "${svc_group}"
     prompt_remove_dir "${log_dir}" "log directory"
     prompt_remove_dir "${data_dir}" "data directory"
-    prompt_remove_dir "${config_dir}" "config directory"
+    # config_dir is shared between services (worker + coordinator both keep
+    # their .toml under /etc/zisk). Remove only this service's own config
+    # file, then rmdir the parent — succeeds silently iff the dir is empty
+    # so a sibling service's config is never collateral damage.
+    prompt_remove_config_file "${config_file}" "${config_dir}"
 
     info "${BINARY_NAME} uninstalled."
+
+    # The shared ZisK bundle (/opt/zisk on Linux, /Library/Application Support/ZisK
+    # on macOS) and the 'zisk' system user/group are NOT touched here — they
+    # may still be in use by other ZisK services on this host. Tell the
+    # operator how to clean them up when they're truly done with ZisK.
+    echo
+    info "The shared ZisK bundle and 'zisk' system user remain on this host."
+    echo "  To remove them (only when no other ZisK service is installed):"
+    echo "    sudo ziskup --uninstall --system"
 }
 
 # activate_service

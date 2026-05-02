@@ -19,12 +19,28 @@ OWNER=""
 ASSUME_YES=false
 FORCE=false
 WITH_SNARK=false
+UNINSTALL=false
 
-# Marker written into ${ZISK_DIR} after a successful install. In --system mode,
-# subsequent invocations short-circuit if the marker matches the requested
-# version (avoids re-downloading the tarball for every additional service that
-# reuses the shared bundle).
-ZISK_VERSION_MARKER=".zisk-version"
+# Receipt of what ziskup installed, written into ${ZISK_DIR}. Single file,
+# key=value format, bash-parseable (no jq/yq dependency). Read by --uninstall
+# to undo only what was installed. Schema:
+#   version       — bare version string ("0.17.0"). --system short-circuits on
+#                   match unless --force.
+#   manifest      — space-separated list of subdirs ziskup created (bin, zisk,
+#                   provingKey, provingKeySnark, toolchains, ...). --uninstall
+#                   only removes what's listed, so operator-supplied files in
+#                   the prefix survive.
+#   created_user  — set only if ziskup CREATED the system user (vs. operator
+#                   pre-created it). Empty/missing means do-not-touch.
+#                   --uninstall keys off this — ziskup undoes only what it did.
+#   created_group — same as created_user but for the group.
+ZISK_RECEIPT_FILE=".zisk-receipt"
+
+# Bundle subdirs ziskup populates. Used by `--uninstall` as the fallback when
+# the state file is missing (older installs). The install path adds the
+# matching entries to the manifest as artifacts land. When you add a new
+# subdir, append it here AND emit a manifest_add call at the install site.
+ZISK_KNOWN_SUBDIRS=(bin zisk provingKey provingKeySnark verifyKey cache toolchains)
 
 main() {
   need_cmd curl
@@ -96,6 +112,9 @@ main() {
     --with-snark)
       WITH_SNARK=true
       ;;
+    --uninstall)
+      UNINSTALL=true
+      ;;
     -h | --help)
       usage
       exit 0
@@ -109,6 +128,12 @@ main() {
     esac
     shift
   done
+
+  # --uninstall is its own flow — runs and exits before the install path below.
+  if $UNINSTALL; then
+    uninstall_command
+    exit 0
+  fi
 
   # Resolve install root and identity now that flags are parsed.
   if $SYSTEM_MODE; then
@@ -183,10 +208,10 @@ main() {
   # In --system mode, short-circuit if the bundle is already installed at the
   # requested version. Avoids re-downloading the tarball when both worker and
   # coordinator install on the same host. Pass --force to refresh anyway.
-  # Marker stores the bare version (e.g. "0.17.0"); requested version may be
+  # State file stores bare version (e.g. "0.17.0"); requested version may be
   # "latest" or "vX.Y.Z" — strip the leading 'v' before comparing.
-  if $SYSTEM_MODE && ! $FORCE && [[ -f "${ZISK_DIR}/${ZISK_VERSION_MARKER}" ]]; then
-    installed=$(cat "${ZISK_DIR}/${ZISK_VERSION_MARKER}" 2>/dev/null || true)
+  if $SYSTEM_MODE && ! $FORCE; then
+    installed=$(receipt_get version)
     requested="${ZISK_VERSION#v}"
     if [[ -n "$installed" ]] && \
        { [[ "$requested" == "latest" ]] || [[ "$requested" == "$installed" ]]; }; then
@@ -338,8 +363,12 @@ main() {
   ZISK_VERSION=$(echo "$(ensure "${CARGO_ZISK}" --version)" | awk '{print $2}')
   say "Installed ZisK version ${ZISK_VERSION}"
 
-  # Write the version marker so subsequent --system runs can short-circuit.
-  echo "${ZISK_VERSION}" > "${ZISK_DIR}/${ZISK_VERSION_MARKER}"
+  # Stamp the bundle so subsequent --system runs can short-circuit.
+  receipt_set version "${ZISK_VERSION}"
+
+  manifest_reset
+  manifest_add bin
+  [[ -d "${ZISK_DIR}/zisk" ]] && manifest_add zisk
 
   for bin in "${BINS[@]}"; do
     bin_path="$ZISK_BIN_DIR/$bin"
@@ -362,6 +391,7 @@ EOF
   if ! $SYSTEM_MODE; then
     step "Installing ZisK Rust toolchain..."
     ensure "${CARGO_ZISK}" toolchain install
+    manifest_add toolchains
   fi
 
   # Install the proving/verify key setup
@@ -370,12 +400,15 @@ EOF
   case "${SETUP_KEY}" in
     proving)
       install_setup "proving" 1
+      manifest_add provingKey
       ;;
     proving-no-consttree)
       install_setup "proving" 0
+      manifest_add provingKey
       ;;
     verify)
       install_setup "verify" 0
+      manifest_add verifyKey
       ;;
     none)
       # Do nothing
@@ -395,6 +428,7 @@ EOF
     else
       install_setup_snark
     fi
+    manifest_add provingKeySnark
   fi
 
   if $SYSTEM_MODE; then
@@ -481,6 +515,12 @@ OPTIONS:
                    install on the same host).
     --with-snark   Only works with --system. Download and install the SNARK proving key.
                    Skipped if already present unless --force is also given.
+    --uninstall    Remove the ZisK bundle. Only the subdirs ziskup tracked at install
+                   time are deleted (operator-supplied files in the prefix survive).
+                   Combine with --system for the system bundle. With --system also
+                   removes the zisk system user/group iff ziskup itself created them
+                   (operator-managed users are never touched). Refuses to run while
+                   a ZisK service is still installed unless --force is given.
 
 COMMANDS:
     setup_snark     Install SNARK proving key (provingKeySnark)
@@ -520,6 +560,10 @@ check_cmd() {
 
 # Create the user:group from "$1" if missing, with $2 as the user's home dir.
 # Behavior is platform-aware: useradd/groupadd on Linux, dscl on macOS.
+# Records created_user / created_group in the state file ONLY when the
+# user/group was actually created (not when it pre-existed). --uninstall
+# keys off these fields, so operator-managed users are never removed by
+# ziskup — it undoes only what it did.
 ensure_owner_user_group() {
   local owner="$1"
   local home_dir="$2"
@@ -529,13 +573,16 @@ ensure_owner_user_group() {
     err "--owner expected user:group, got: $owner"
     exit 1
   fi
+  local created_user=false created_group=false
   case "$(uname -s)" in
     Linux)
       if ! getent group "$group_name" >/dev/null 2>&1; then
         ensure groupadd --system "$group_name"
+        created_group=true
       fi
       if ! id "$user_name" >/dev/null 2>&1; then
         ensure useradd --system -g "$group_name" -d "$home_dir" -s /usr/sbin/nologin "$user_name"
+        created_user=true
       fi
       ;;
     Darwin)
@@ -548,6 +595,7 @@ ensure_owner_user_group() {
         done
         ensure dscl . -create "/Groups/$group_name"
         ensure dscl . -create "/Groups/$group_name" PrimaryGroupID "$gid"
+        created_group=true
       fi
       if ! dscl . -read "/Users/$user_name" >/dev/null 2>&1; then
         local uid=300
@@ -561,6 +609,7 @@ ensure_owner_user_group() {
         ensure dscl . -create "/Users/$user_name" PrimaryGroupID "$gid"
         ensure dscl . -create "/Users/$user_name" UserShell /usr/bin/false
         ensure dscl . -create "/Users/$user_name" NFSHomeDirectory "$home_dir"
+        created_user=true
       fi
       ;;
     *)
@@ -568,7 +617,65 @@ ensure_owner_user_group() {
       exit 1
       ;;
   esac
+  # Record in state file ONLY when WE actually created them. Empty/missing
+  # entries tell --uninstall to leave operator-managed users alone.
+  if $created_user;  then receipt_set created_user  "$user_name";  fi
+  if $created_group; then receipt_set created_group "$group_name"; fi
 }
+
+# Path to the state file.
+receipt_path() { echo "${ZISK_DIR}/${ZISK_RECEIPT_FILE}"; }
+
+# Read a single value by key from the state file. Empty if key/file missing.
+receipt_get() {
+  local key="$1"
+  local file; file=$(receipt_path)
+  [[ -f "$file" ]] || return 0
+  awk -F= -v k="$key" '$1 == k { sub(/^[^=]+=/, ""); print; exit }' "$file"
+}
+
+# Set key=value in the state file. Replaces existing line if present, else
+# appends. Portable (no `sed -i`, which differs between GNU and BSD).
+receipt_set() {
+  local key="$1" value="$2"
+  local file; file=$(receipt_path)
+  mkdir -p "$(dirname "$file")"
+  if [[ ! -f "$file" ]]; then
+    {
+      echo "# ZisK install receipt. Read by 'ziskup --uninstall'. Do not edit."
+      echo "${key}=${value}"
+    } > "$file"
+    return 0
+  fi
+  awk -v k="$key" -v v="$value" -F= '
+    $1 == k { print k "=" v; found=1; next }
+    { print }
+    END { if (!found) print k "=" v }
+  ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+}
+
+# Append a value to a space-separated list field (idempotent).
+receipt_append_list() {
+  local key="$1" value="$2"
+  local current item
+  current=$(receipt_get "$key")
+  for item in $current; do
+    [[ "$item" == "$value" ]] && return 0
+  done
+  if [[ -n "$current" ]]; then
+    receipt_set "$key" "$current $value"
+  else
+    receipt_set "$key" "$value"
+  fi
+}
+
+# Reset only the manifest field (other state — version, created_user — must
+# survive). Called at install start so a re-install with different flags
+# (e.g. --nokey vs --provingkey) doesn't accumulate stale subdirs.
+manifest_reset() { receipt_set manifest ""; }
+
+# Append a subdir to the manifest list (idempotent).
+manifest_add()   { receipt_append_list manifest "$1"; }
 
 # Run a command that should never fail. If the command fails execution
 # will immediately terminate with an error showing the failing command.
@@ -661,6 +768,126 @@ install_setup_snark() {
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
     say "Installed SNARK proving key version ${SETUP_VERSION}"
+}
+
+# Uninstall handler — invoked from main() when --uninstall is passed. Removes
+# the ZisK bundle. Manifest-aware: only subdirs ziskup tracked at install time
+# are removed, so operator-supplied files in the prefix survive. Uninstall
+# refuses to run while a service unit/plist that references the bundle is
+# still installed (override with --force).
+uninstall_command() {
+  banner
+
+  # Resolve prefix using the same flag logic as install — operators get
+  # consistent behavior whether they're installing or removing.
+  if $SYSTEM_MODE; then
+    if [[ "$(id -u)" -ne 0 ]]; then
+      err "ziskup --uninstall --system requires root"
+      exit 1
+    fi
+    if [[ -z "$PREFIX" ]]; then
+      case "$(uname -s)" in
+        Linux)  PREFIX="/opt/zisk" ;;
+        Darwin) PREFIX="/Library/Application Support/ZisK" ;;
+        *) err "unsupported platform for --system: $(uname -s)"; exit 1 ;;
+      esac
+    fi
+  fi
+  if [[ -n "$PREFIX" ]]; then
+    ZISK_DIR="$PREFIX"
+  else
+    ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  fi
+
+  if [[ ! -d "$ZISK_DIR" ]]; then
+    warn "Nothing to uninstall: $ZISK_DIR does not exist"
+    return 0
+  fi
+
+  # Sanity check: refuse to nuke the bundle while a ZisK service that
+  # depends on it is still installed. --force overrides for emergency
+  # cleanup. Only meaningful in --system mode (services live in /etc/...).
+  if $SYSTEM_MODE && ! $FORCE; then
+    local active_services=()
+    case "$(uname -s)" in
+      Linux)
+        for s in /etc/systemd/system/zisk-*.service; do
+          [[ -e "$s" ]] && active_services+=("$(basename "$s" .service)")
+        done
+        ;;
+      Darwin)
+        for p in /Library/LaunchDaemons/com.zisk.*.plist; do
+          [[ -e "$p" ]] && active_services+=("$(basename "$p" .plist)")
+        done
+        ;;
+    esac
+    if [[ ${#active_services[@]} -gt 0 ]]; then
+      err "Refusing to uninstall: service(s) still installed: ${active_services[*]}"
+      err "Run their --uninstall first, or pass --force to proceed anyway."
+      exit 1
+    fi
+  fi
+
+  step "Removing ZisK bundle at $ZISK_DIR..."
+
+  # Read manifest from state file. Fall back to ZISK_KNOWN_SUBDIRS for
+  # bundles installed by older ziskups that didn't yet write state.
+  local subdirs=() manifest_value
+  manifest_value=$(receipt_get manifest)
+  if [[ -n "$manifest_value" ]]; then
+    read -r -a subdirs <<< "$manifest_value"
+  else
+    subdirs=("${ZISK_KNOWN_SUBDIRS[@]}")
+  fi
+
+  for sub in "${subdirs[@]}"; do
+    if [[ -d "$ZISK_DIR/$sub" ]]; then
+      rm -rf "$ZISK_DIR/$sub"
+      say "  Removed $sub/"
+    fi
+  done
+
+  # User/group cleanup — only when state recorded that ziskup itself created
+  # them. Operator-managed users (no marker) are silently left alone:
+  # ziskup undoes only what ziskup did.
+  if $SYSTEM_MODE; then
+    local u g
+    u=$(receipt_get created_user)
+    g=$(receipt_get created_group)
+    case "$(uname -s)" in
+      Linux)
+        if [[ -n "$u" ]] && id "$u" >/dev/null 2>&1; then
+          userdel "$u" 2>/dev/null && say "  Removed user '$u'" \
+                                   || warn "  Could not remove user '$u'"
+        fi
+        if [[ -n "$g" ]] && getent group "$g" >/dev/null 2>&1; then
+          groupdel "$g" 2>/dev/null && say "  Removed group '$g'" \
+                                    || warn "  Could not remove group '$g'"
+        fi
+        ;;
+      Darwin)
+        if [[ -n "$u" ]] && dscl . -read "/Users/$u" >/dev/null 2>&1; then
+          dscl . -delete "/Users/$u" && say "  Removed user '$u'"
+        fi
+        if [[ -n "$g" ]] && dscl . -read "/Groups/$g" >/dev/null 2>&1; then
+          dscl . -delete "/Groups/$g" && say "  Removed group '$g'"
+        fi
+        ;;
+    esac
+  fi
+
+  rm -f "$(receipt_path)"
+
+  # Try rmdir — succeeds only if dir is empty. If operator put extra files
+  # inside the prefix, they survive and the dir is left intact.
+  if rmdir "$ZISK_DIR" 2>/dev/null; then
+    say "  Removed empty $ZISK_DIR"
+  else
+    warn "  $ZISK_DIR not empty — operator-supplied files preserved"
+  fi
+
+  step "Done. ZisK uninstalled from $ZISK_DIR."
+  echo
 }
 
 # Setup SNARK command handler

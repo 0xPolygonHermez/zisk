@@ -237,9 +237,16 @@ mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
 
-# 7. Create per-service working dirs (mutable runtime state only) and log dir.
-mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache" "${LOG_DIR}"
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
+# 7. Create per-service working dirs (mutable runtime state only). LOG_DIR is
+# only created on macOS — Linux pipes logs to journald, no on-disk log dir
+# needed (and creating it leaves a dangling empty dir that --uninstall would
+# prompt about).
+mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache"
+chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    mkdir -p "${LOG_DIR}"
+    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${LOG_DIR}"
+fi
 
 # 8. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
@@ -355,6 +362,7 @@ $(build_program_args)    </array>
 <!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
 <!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
 <!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
+<!-- ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST} -->
 <!-- ${BINARY_NAME}:SVC_USER=${SERVICE_USER} -->
 <!-- ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP} -->
 PLIST
@@ -445,7 +453,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${WORK_DIR} ${LOG_DIR}
+ReadWritePaths=${WORK_DIR}
 ReadOnlyPaths=${READ_ONLY_PATHS}
 
 [Install]
@@ -455,6 +463,7 @@ WantedBy=multi-user.target
 # ${BINARY_NAME}:DATA_DIR=${WORK_DIR}
 # ${BINARY_NAME}:LOG_DIR=${LOG_DIR}
 # ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR}
+# ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST}
 # ${BINARY_NAME}:SVC_USER=${SERVICE_USER}
 # ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP}
 EOF

@@ -175,6 +175,26 @@ else
     fail "plist --proving-key argument not in bundle"
     grep -B1 -A2 'proving-key' "$PLIST" | head
 fi
+grep -q "<!-- zisk-worker:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
+    && ok "metadata footer has CONFIG_FILE" \
+    || fail "metadata footer missing CONFIG_FILE — uninstall would fall back to live global"
+
+# ── 7b. ziskup install receipt ───────────────────────────────────────────────
+info "ziskup receipt at $BUNDLE/.zisk-receipt"
+RECEIPT="$BUNDLE/.zisk-receipt"
+[[ -f "$RECEIPT" ]] && ok "$RECEIPT exists" || { fail "$RECEIPT missing"; exit 1; }
+grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$RECEIPT" \
+    && ok "receipt has version field" \
+    || fail "receipt missing/invalid version"
+grep -qE '^manifest=.*\bbin\b' "$RECEIPT" \
+    && ok "receipt manifest includes 'bin'" \
+    || fail "receipt manifest missing 'bin'"
+grep -q '^created_user=zisk$' "$RECEIPT" \
+    && ok "receipt records created_user=zisk" \
+    || fail "receipt missing created_user (ziskup --uninstall would skip user removal)"
+grep -q '^created_group=zisk$' "$RECEIPT" \
+    && ok "receipt records created_group=zisk" \
+    || fail "receipt missing created_group"
 
 # ── 8. newsyslog rotation config ──────────────────────────────────────────────
 info "newsyslog config"
@@ -208,7 +228,11 @@ fi
 
 # ── 10. uninstall sweep ───────────────────────────────────────────────────────
 info "Running worker install.sh --uninstall -y"
-"$WORKER_INSTALL" --uninstall -y 2>&1 | sed 's/^/    /' || warn "uninstall exited non-zero"
+UNINSTALL_OUT=$("$WORKER_INSTALL" --uninstall -y 2>&1) || warn "uninstall exited non-zero"
+echo "$UNINSTALL_OUT" | sed 's/^/    /'
+echo "$UNINSTALL_OUT" | grep -q 'sudo ziskup --uninstall --system' \
+    && ok "uninstall output points operator at 'ziskup --uninstall --system'" \
+    || fail "uninstall output missing bundle-removal hint"
 
 [[ ! -f "$PLIST"      ]] && ok "plist removed"            || fail "plist still present"
 [[ ! -f "$SVC_BIN"    ]] && ok "service binary removed"   || fail "$SVC_BIN still present"

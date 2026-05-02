@@ -138,8 +138,9 @@ need_root
 # 1. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. Idempotent —
 # if worker install.sh ran first on this host, this is a near-no-op.
 ZISKUP_BIN="$(resolve_ziskup_bin)"
-info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} --system..."
-"${ZISKUP_BIN}" --system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey
+ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey)
+info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
+"${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
 
 # 2. Resolve the zisk-coordinator binary (from --binary or from the bundle).
 resolve_service_binary "zisk-coordinator-server"
@@ -152,12 +153,12 @@ add_user_to_group "${SERVICE_USER}" zisk
 # 4. Install binary
 install_binary "${BINARY_SRC}" "${BINARY_DST}"
 
-# 4. Install config
+# 5. Install config
 mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/coordinator-server/config/coordinator.example.toml"
 
-# 5. Create working (and log on macOS) directories. Coordinator does not run
+# 6. Create working (and log on macOS) directories. Coordinator does not run
 # rom-setup so it doesn't need a cache/ dir; only WORK_DIR is created so
 # WorkingDirectory= in the unit/plist resolves.
 if [[ "$OS_NAME" == "Darwin" ]]; then
@@ -168,7 +169,7 @@ else
     chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
 fi
 
-# 6. Write service unit
+# 7. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
     info "Writing plist to ${LAUNCHD_PLIST}..."
 
@@ -238,6 +239,7 @@ $(build_program_args)    </array>
 <!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
 <!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
 <!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
+<!-- ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST} -->
 <!-- ${BINARY_NAME}:SVC_USER=${SERVICE_USER} -->
 <!-- ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP} -->
 PLIST
@@ -245,7 +247,7 @@ PLIST
     chown root:wheel "${LAUNCHD_PLIST}"
     chmod 0644 "${LAUNCHD_PLIST}"
 
-    # 7. Write newsyslog rotation config
+    # 8. Write newsyslog rotation config
     info "Writing newsyslog config to ${NEWSYSLOG_CONF}..."
     cat > "${NEWSYSLOG_CONF}" <<NEWSYSLOG
 # ${BINARY_NAME} log rotation — max ${LOG_MAX_SIZE_MB}MB per file, keep ${LOG_ROTATIONS} rotations, gzipped
@@ -297,12 +299,13 @@ WantedBy=multi-user.target
 # ${BINARY_NAME}:DATA_DIR=${WORK_DIR}
 # ${BINARY_NAME}:LOG_DIR=${LOG_DIR}
 # ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR}
+# ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST}
 # ${BINARY_NAME}:SVC_USER=${SERVICE_USER}
 # ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP}
 EOF
 fi
 
-# 8. Activate service and (if started) print management hints
+# 9. Activate service and (if started) print management hints
 activate_service
 if $SHOW_HINTS; then
     print_post_install_hints "${BASH_SOURCE[0]}"
