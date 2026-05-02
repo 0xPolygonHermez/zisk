@@ -1,0 +1,162 @@
+{{- $coordinatorUrl := required "values.coordinator.url is required (set --set coordinator.url=...)" .Values.coordinator.url -}}
+{{- $strategy := .Values.provingKey.strategy -}}
+{{- if not (has $strategy (list "pvc" "image" "download")) -}}
+{{- fail (printf "values.provingKey.strategy must be one of: pvc, image, download (got %q)" $strategy) -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: {{ .Values.workloadKind }}
+metadata:
+  name: {{ include "zisk-worker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zisk-worker.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  {{- if eq .Values.workloadKind "StatefulSet" }}
+  serviceName: {{ include "zisk-worker.fullname" . }}-headless
+  podManagementPolicy: Parallel
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "zisk-worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "zisk-worker.selectorLabels" . | nindent 8 }}
+      {{- if .Values.config.workerToml }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "zisk-worker.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- if eq $strategy "download" }}
+      # Slow + bandwidth-heavy: each pod re-downloads the bundle on start. Use
+      # only for one-off testing or single-replica setups; for production,
+      # switch to strategy=pvc (ReadOnlyMany).
+      initContainers:
+        - name: fetch-proving-key
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cd /opt/zisk
+              fetch() {
+                  url="$1"; md5_url="$2"; out="$3"
+                  echo "fetching $url..."
+                  curl -fsL "$url" -o "$out"
+                  if [ -n "$md5_url" ]; then
+                      curl -fsL "$md5_url" -o "$out.md5"
+                      md5sum -c "$out.md5"
+                  fi
+                  tar -xzf "$out"
+                  rm -f "$out" "$out.md5"
+              }
+              fetch {{ .Values.provingKey.download.starkUrl | quote }} \
+                    {{ .Values.provingKey.download.starkMd5Url | quote }} \
+                    pk.tar.gz
+              {{- if .Values.provingKey.snark.enabled }}
+              fetch {{ .Values.provingKey.download.snarkUrl | quote }} \
+                    {{ .Values.provingKey.download.snarkMd5Url | quote }} \
+                    snark.tar.gz
+              {{- end }}
+          volumeMounts:
+            - name: bundle
+              mountPath: /opt/zisk
+      {{- end }}
+
+      containers:
+        - name: zisk-worker
+          image: {{ include "zisk-worker.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--config=/etc/zisk/worker.toml"
+            - "--proving-key=/opt/zisk/provingKey"
+            - "--coordinator-url={{ $coordinatorUrl }}"
+            {{- if .Values.provingKey.snark.enabled }}
+            - "--proving-key-snark=/opt/zisk/provingKeySnark"
+            {{- end }}
+            {{- if .Values.worker.workerId }}
+            - "--worker-id={{ .Values.worker.workerId }}"
+            {{- end }}
+            - "--compute-capacity={{ .Values.worker.computeCapacity }}"
+            {{- if .Values.worker.emulator }}
+            - "--emulator"
+            {{- end }}
+            {{- if .Values.worker.asm }}
+            - "--asm={{ .Values.worker.asm }}"
+            {{- end }}
+            {{- if .Values.worker.gpu }}
+            - "--gpu"
+            {{- end }}
+            {{- if .Values.worker.logLevel }}
+            - "--log-level={{ .Values.worker.logLevel }}"
+            {{- end }}
+          # Resolver paths — match the systemd unit so the binary feels at home.
+          env:
+            - name: ZISK_HOME
+              value: /opt/zisk
+            - name: ZISK_CACHE_DIR
+              value: /var/cache/zisk
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if ne $strategy "image" }}
+            - name: bundle
+              mountPath: /opt/zisk
+              readOnly: true
+            {{- end }}
+            {{- if .Values.config.workerToml }}
+            - name: config
+              mountPath: /etc/zisk
+              readOnly: true
+            {{- end }}
+            - name: cache
+              mountPath: /var/cache/zisk
+
+      volumes:
+        {{- if eq $strategy "pvc" }}
+        - name: bundle
+          persistentVolumeClaim:
+            claimName: {{ .Values.provingKey.pvc.claimName }}
+            readOnly: true
+        {{- else if eq $strategy "download" }}
+        - name: bundle
+          emptyDir:
+            sizeLimit: 80Gi
+        {{- end }}
+        {{- if .Values.config.workerToml }}
+        - name: config
+          configMap:
+            name: {{ include "zisk-worker.fullname" . }}-config
+        {{- end }}
+        # Cache: emptyDir for stateless workers. For a persistent cache,
+        # switch workloadKind to StatefulSet and replace this with a
+        # volumeClaimTemplate.
+        - name: cache
+          emptyDir:
+            sizeLimit: {{ .Values.cache.size }}

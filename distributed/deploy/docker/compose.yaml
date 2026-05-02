@@ -1,15 +1,15 @@
-# docker-compose.yml — ZisK distributed proving stack
+# compose.yaml — ZisK distributed proving stack
 #
 # Usage (from the workspace root):
 #
 #   Start the coordinator only:
-#     docker compose -f distributed/deploy/docker/docker-compose.yml up coordinator
+#     docker compose -f distributed/deploy/docker/compose.yaml up coordinator
 #
 #   Start the full stack with N workers:
-#     docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
+#     docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
 #
 #   Build with GPU support for workers:
-#     docker compose -f distributed/deploy/docker/docker-compose.yml build --build-arg GPU=true worker
+#     docker compose -f distributed/deploy/docker/compose.yaml build --build-arg GPU=true worker
 
 services:
 
