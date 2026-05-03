@@ -41,6 +41,7 @@ NEWSYSLOG='/etc/newsyslog.d/zisk-coordinator.conf'
 WORK_DIR='/usr/local/var/zisk-coordinator'
 LOG_DIR='/var/log/zisk-coordinator'
 SVC_BIN='/usr/local/bin/zisk-coordinator'
+CONFIG='/etc/zisk/coordinator.toml'
 
 # ── pre-flight ────────────────────────────────────────────────────────────────
 info "Pre-flight"
@@ -151,6 +152,7 @@ grep -A1 '<key>WorkingDirectory</key>' "$PLIST" \
 grep -A1 '<string>--api-port</string>' "$PLIST" | grep -q '<string>7000</string>' \
     && ok "plist --api-port = 7000 (default)" \
     || fail "plist --api-port not 7000"
+[[ -f "$CONFIG" ]] && ok "$CONFIG exists" || fail "$CONFIG missing"
 grep -q "<!-- zisk-coordinator:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"
