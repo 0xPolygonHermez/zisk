@@ -46,6 +46,39 @@
 # ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
 # ZISK_WORKER_WITH_SNARK (true|false), RUST_LOG.
+#
+# ── file layout (where install.sh puts things) ───────────────────────────────
+# Runtime paths are resolved by common/src/paths.rs::ZiskPaths via ZISK_HOME
+# (the shared bundle) and ZISK_CACHE_DIR (per-service writable cache). Both
+# env vars are baked into the systemd unit / launchd plist below.
+#
+# Linux service mode:
+#   Binary               /usr/local/bin/zisk-worker
+#   Config               /etc/zisk/worker.toml
+#   Systemd unit         /etc/systemd/system/zisk-worker.service
+#   Logs                 journald (no on-disk log dir)
+#   Service user         zisk-worker:zisk-worker (+ supplementary 'zisk')
+#   State (writable)     /var/lib/zisk-worker/
+#     ZISK_CACHE_DIR       /var/lib/zisk-worker/cache/   (ELF cache, ROM histograms)
+#     inputs               /var/lib/zisk-worker/inputs/
+#   Bundle (read-only)   /opt/zisk/                     ← ZISK_HOME (shared with coordinator)
+#     binaries             /opt/zisk/bin/                (zisk-worker, libziskclib.a, ziskemu, …)
+#     emulator-asm         /opt/zisk/zisk/emulator-asm/  (asm runners)
+#     rust toolchains      /opt/zisk/toolchains/         (rustup-managed; guest compilation)
+#     proving key          /opt/zisk/provingKey/         (default; --proving-key overrides)
+#     SNARK key            /opt/zisk/provingKeySnark/    (only when --with-snark)
+#     verify key           /opt/zisk/verifyKey/          (optional; populated by `ziskup --system --verifykey`)
+#
+# macOS service mode (bundle root differs — FHS doesn't apply on macOS):
+#   Binary               /usr/local/bin/zisk-worker
+#   Config               /etc/zisk/worker.toml
+#   launchd plist        /Library/LaunchDaemons/com.zisk.worker.plist
+#   Log file             /var/log/zisk-worker/zisk-worker.log  (rotated by newsyslog)
+#   newsyslog config     /etc/newsyslog.d/zisk-worker.conf
+#   State (writable)     /usr/local/var/zisk-worker/    (mac /var/lib trips SIP)
+#     ZISK_CACHE_DIR       /usr/local/var/zisk-worker/cache/
+#     inputs               /usr/local/var/zisk-worker/inputs/
+#   Bundle (read-only)   /Library/Application Support/ZisK/  ← ZISK_HOME
 
 # ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
 # When this script runs without its sibling files (curl | bash, or copied

@@ -23,6 +23,31 @@
 # Env-var equivalents (CLI flags win): ZISK_COORDINATOR_BINARY,
 # ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_API_PORT,
 # ZISK_COORDINATOR_CLUSTER_PORT, ZISK_COORDINATOR_METRICS_PORT, RUST_LOG.
+#
+# ── file layout (where install.sh puts things) ───────────────────────────────
+# Coordinator does NOT access the ZisK bundle at runtime (no proving key, no
+# rom-setup, no ELF cache), so it does not export ZISK_HOME / ZISK_CACHE_DIR
+# in its unit/plist. The bundle is still populated via ziskup --system at
+# install time so the 'zisk' system group exists and a co-located worker can
+# share it without re-bootstrapping.
+#
+# Linux service mode:
+#   Binary               /usr/local/bin/zisk-coordinator
+#   Config               /etc/zisk/coordinator.toml
+#   Systemd unit         /etc/systemd/system/zisk-coordinator.service
+#   Logs                 journald (no on-disk log dir)
+#   Service user         zisk-coordinator:zisk-coordinator (+ supplementary 'zisk')
+#   State (writable)     /var/lib/zisk-coordinator/    (no cache/ — none needed)
+#   Bundle (read-only)   /opt/zisk/                    (populated for parity; unused at runtime)
+#
+# macOS service mode (bundle root differs — FHS doesn't apply on macOS):
+#   Binary               /usr/local/bin/zisk-coordinator
+#   Config               /etc/zisk/coordinator.toml
+#   launchd plist        /Library/LaunchDaemons/com.zisk.coordinator.plist
+#   Log file             /var/log/zisk-coordinator/zisk-coordinator.log  (rotated by newsyslog)
+#   newsyslog config     /etc/newsyslog.d/zisk-coordinator.conf
+#   State (writable)     /usr/local/var/zisk-coordinator/   (mac /var/lib trips SIP)
+#   Bundle (read-only)   /Library/Application Support/ZisK/
 
 # ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
 # When this script runs without its sibling files (curl | bash, or copied

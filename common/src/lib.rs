@@ -20,7 +20,7 @@ pub use emu_minimal_trace::*;
 pub use executor_stats::*;
 pub use hints::*;
 pub use instance_context::*;
-pub use paths::ZiskPaths;
+pub use paths::*;
 pub use planner_helpers::*;
 pub use proof::*;
 pub use proof_log::*;

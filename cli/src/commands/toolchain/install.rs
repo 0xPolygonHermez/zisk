@@ -8,6 +8,7 @@ use std::{
     process::Command,
 };
 use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
+use zisk_common::{BIN_DIR, CACHE_DIR, PROVING_KEY_DIR, TOOLCHAINS_DIR, VERIFY_KEY_DIR, ZISK_DIR};
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -46,13 +47,12 @@ impl ZiskInstallToolchain {
                         let entry_path = entry.path();
                         let entry_name = entry_path.file_name().unwrap();
                         if entry_path.is_dir()
-                            && entry_name != "bin"
-                            && entry_name != "circuits"
-                            && entry_name != "toolchains"
-                            && entry_name != "provingKey"
-                            && entry_name != "verifyKey"
-                            && entry_name != "cache"
-                            && entry_name != "zisk"
+                            && entry_name != BIN_DIR
+                            && entry_name != TOOLCHAINS_DIR
+                            && entry_name != PROVING_KEY_DIR
+                            && entry_name != VERIFY_KEY_DIR
+                            && entry_name != CACHE_DIR
+                            && entry_name != ZISK_DIR
                         {
                             if let Err(err) = fs::remove_dir_all(&entry_path) {
                                 println!("Failed to remove directory {entry_path:?}: {err}");
@@ -133,7 +133,7 @@ impl ZiskInstallToolchain {
             .status()?;
 
         // Move the toolchain to a randomly named directory in the 'toolchains' folder
-        let toolchains_dir = root_dir.join("toolchains");
+        let toolchains_dir = zisk_common::ZiskPaths::global().toolchains.clone();
         fs::create_dir_all(&toolchains_dir)?;
         let random_string: String =
             rand::rng().sample_iter(&Alphanumeric).take(10).map(char::from).collect();
