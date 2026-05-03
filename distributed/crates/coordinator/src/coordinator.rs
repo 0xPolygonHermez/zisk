@@ -55,11 +55,11 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    elf_cache_path, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto,
-    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
+    ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
+    PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
 };
-use zisk_common::SetupKey;
+use zisk_common::{SetupKey, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -253,7 +253,7 @@ impl Coordinator {
         hasher.update(&elf_bytes);
         let hash_id = hasher.finalize().to_hex().to_string();
 
-        let path = elf_cache_path(&hash_id);
+        let path = ZiskPaths::global().elf_cache(&hash_id);
         if !path.exists() {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)
@@ -275,7 +275,7 @@ impl Coordinator {
         program_name: String,
         with_hints: bool,
     ) -> CoordinatorResult<JobId> {
-        let path = elf_cache_path(hash_id);
+        let path = ZiskPaths::global().elf_cache(hash_id);
         let elf_bytes =
             fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
@@ -354,7 +354,7 @@ impl Coordinator {
         let mut result = Vec::with_capacity(setups.len());
         for (key, program_name) in setups {
             let (hash_id, with_hints) = (key.hash_id, key.with_hints);
-            let path = elf_cache_path(&hash_id);
+            let path = ZiskPaths::global().elf_cache(&hash_id);
             match fs::read(&path) {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
                     job_id: JobId::new().as_string(),

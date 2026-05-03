@@ -11,12 +11,12 @@ use tracing::{error, info, warn};
 use zisk_cluster_api::contribution_params::InputSource;
 use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
-use zisk_cluster_common::{elf_cache_path, DataId, JobId};
 use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
     StreamDataDto, WorkerState,
 };
-use zisk_common::{ProgramVK, Proof, ZiskExecutorTime};
+use zisk_cluster_common::{DataId, JobId};
+use zisk_common::{ProgramVK, Proof, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -1010,7 +1010,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
 
-        let elf_path = elf_cache_path(&setup.hash_id);
+        let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
 
         // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
         // exists it is identical to what we received — skip write and re-setup.

@@ -12,19 +12,9 @@ use zisk_pil::{RomRomTrace, PILOUT_HASH};
 pub const ROM_MERKLE_TREE_ARITY: u64 = 4;
 pub const ROM_BLOWUP_FACTOR: u64 = 2;
 
-/// Gets the bundle root directory (e.g., `~/.zisk` or `/opt/zisk`).
-pub fn get_default_zisk_path() -> PathBuf {
-    ZiskPaths::global().home.clone()
-}
-
-/// Gets the cache directory used for ROM bin caches.
-pub fn get_default_cache_path() -> PathBuf {
-    ZiskPaths::global().cache.clone()
-}
-
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
-        let cache_path = get_default_cache_path();
+        let cache_path = ZiskPaths::global().cache.clone();
         ensure_dir_exists(&cache_path);
         cache_path
     } else {

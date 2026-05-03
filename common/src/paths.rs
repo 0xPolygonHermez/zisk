@@ -48,6 +48,13 @@ impl ZiskPaths {
         static INSTANCE: OnceLock<ZiskPaths> = OnceLock::new();
         INSTANCE.get_or_init(Self::from_env)
     }
+
+    /// Content-addressed ELF cache path for a given hash.
+    ///
+    /// Layout: `${cache}/{hash_id}.elf`.
+    pub fn elf_cache(&self, hash_id: &str) -> PathBuf {
+        self.cache.join(format!("{}.elf", hash_id))
+    }
 }
 
 fn default_home() -> PathBuf {
@@ -135,6 +142,23 @@ mod tests {
             assert_eq!(p.cache, PathBuf::from("/tmp/zisk-cache"));
             assert_eq!(p.home, dirs::home_dir().unwrap().join(".zisk"));
         });
+    }
+
+    #[test]
+    fn elf_cache_path_uses_cache_dir() {
+        with_env(
+            &[
+                ("ZISK_HOME", Some("/opt/zisk")),
+                ("ZISK_CACHE_DIR", Some("/var/lib/zisk-worker/cache")),
+            ],
+            || {
+                let p = ZiskPaths::from_env();
+                assert_eq!(
+                    p.elf_cache("abc123"),
+                    PathBuf::from("/var/lib/zisk-worker/cache/abc123.elf")
+                );
+            },
+        );
     }
 
     #[test]
