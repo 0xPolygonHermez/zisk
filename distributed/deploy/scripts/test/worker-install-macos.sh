@@ -54,6 +54,7 @@ NEWSYSLOG='/etc/newsyslog.d/zisk-worker.conf'
 WORK_DIR='/usr/local/var/zisk-worker'
 LOG_DIR='/var/log/zisk-worker'
 SVC_BIN='/usr/local/bin/zisk-worker'
+CONFIG='/etc/zisk/worker.toml'
 
 # ── pre-flight ────────────────────────────────────────────────────────────────
 info "Pre-flight"
@@ -175,6 +176,7 @@ else
     fail "plist --proving-key argument not in bundle"
     grep -B1 -A2 'proving-key' "$PLIST" | head
 fi
+[[ -f "$CONFIG" ]] && ok "$CONFIG exists" || fail "$CONFIG missing"
 grep -q "<!-- zisk-worker:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE — uninstall would fall back to live global"
