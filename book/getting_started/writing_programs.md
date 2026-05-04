@@ -155,7 +155,7 @@ Error: Error executing Run command
 
 To resolve this, use ziskemu directly and increase the number of execution steps using the `-n` (`--max-steps`) flag. For example:
 ```bash
-ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -n 10000000000
+ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i ../host/tmp/input.bin -n 10000000000
 ```
 
 ## Metrics and Statistics
@@ -289,9 +289,10 @@ If the process is successful, you should see a message similar to:
 
 ```
 ...
-[INFO ] ProofMan:     ✓ Vadcop Final proof was verified
-[INFO ]      stop <<< GENERATING_VADCOP_PROOF 91706ms
-[INFO ] ProofMan: Proofs generated successfully
+INFO: --- PROVE SUMMARY ------------------------
+INFO: Proof Time: 5.097 seconds
+INFO: Execution completed in 5097ms, steps: 4450272
+INFO: Execution summary: Proofman 4910ms + Execution 34ms + Count&Plan 17ms + Count&Plan MO 0ms
 ```
 
 ### Concurrent Proof Generation
@@ -318,7 +319,7 @@ The total memory requirement increases proportionally with the number of process
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p ./proof/vadcop_final_proof.bin
+cargo-zisk verify -p proof
 ```
 
 In this command:
