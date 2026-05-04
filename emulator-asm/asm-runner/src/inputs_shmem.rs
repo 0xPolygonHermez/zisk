@@ -119,8 +119,9 @@ impl StreamSink for InputsShmemWriter {
         self.append_input(&reinterpret_vec(hints.to_vec())?)
     }
 
-    fn reset(&self) {
+    fn reset(&self) -> anyhow::Result<()> {
         self.reset();
+        Ok(())
     }
 }
 
@@ -130,7 +131,8 @@ impl StreamProcessor for InputsShmemWriter {
         Ok(false)
     }
 
-    fn reset(&self) {
+    fn reset(&self) -> anyhow::Result<()> {
         InputsShmemWriter::reset(self);
+        Ok(())
     }
 }

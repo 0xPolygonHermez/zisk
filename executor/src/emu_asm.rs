@@ -68,7 +68,7 @@ impl EmulatorAsm {
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
         {
-            resources.reset();
+            resources.reset()?;
         }
         Ok(())
     }

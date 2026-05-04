@@ -230,7 +230,9 @@ impl Coordinator {
             job.workers.clone()
         };
 
-        self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
+        let undeliverable =
+            self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
+        self.disconnect_undeliverable_workers(&undeliverable).await;
         self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
@@ -757,7 +759,8 @@ impl Coordinator {
         };
 
         // These operations only need the worker IDs, not the job lock.
-        self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
+        let undeliverable = self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
+        self.disconnect_undeliverable_workers(&undeliverable).await;
         self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
@@ -1172,6 +1175,65 @@ mod tests {
             let state = coordinator.workers_pool.worker_state(wid).await;
             assert_eq!(state, Some(WorkerState::Ready), "Worker {} should be Ready", wid);
         }
+    }
+
+    #[tokio::test]
+    async fn test_fail_job_disconnects_workers_with_closed_channels() {
+        use crate::test_utils::FailingMessageSender;
+
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        // Worker 0 has a working channel; worker 1 simulates a dropped stream.
+        let alive_id = WorkerId::from("alive".to_string());
+        let (alive_sender, _alive_msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(alive_id.clone(), 1u32, Box::new(alive_sender), WorkerState::Idle)
+            .await
+            .unwrap();
+
+        let dead_id = WorkerId::from("dead".to_string());
+        coordinator
+            .workers_pool
+            .register_worker(
+                dead_id.clone(),
+                1u32,
+                Box::new(FailingMessageSender),
+                WorkerState::Idle,
+            )
+            .await
+            .unwrap();
+
+        let worker_ids = vec![alive_id.clone(), dead_id.clone()];
+        let mut job = create_test_job(&worker_ids);
+        job.change_state(JobState::Running(JobPhase::Contributions));
+        let job_id = job.job_id.clone();
+        for wid in &worker_ids {
+            coordinator
+                .workers_pool
+                .mark_worker_with_state(
+                    wid,
+                    WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
+                )
+                .await
+                .unwrap();
+        }
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+
+        coordinator.fail_job(&job_id, "test").await.unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&alive_id).await,
+            Some(WorkerState::Ready),
+            "alive worker must be Ready"
+        );
+        // Closed channel ⇒ Disconnected, not Ready — dispatch must skip it.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&dead_id).await,
+            Some(WorkerState::Disconnected),
+            "worker with closed channel must be Disconnected"
+        );
     }
 
     #[tokio::test]

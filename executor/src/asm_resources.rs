@@ -233,14 +233,15 @@ impl AsmResources {
             .unwrap_or(false)
     }
 
-    pub fn reset(&self) {
+    pub fn reset(&self) -> Result<()> {
         if let Some(s) = &self.shared.hints_stream {
-            s.lock().unwrap().reset();
+            s.lock().map_err(|e| anyhow::anyhow!("hints_stream mutex poisoned: {e}"))?.reset()?;
         }
 
         // Full reset: clear shmem data and size.  Every job re-streams its
         // input via the relay, so there is nothing to preserve.
         self.shared.inputs_shmem_writer.reset();
+        Ok(())
     }
 
     pub fn config(&self) -> &AsmResourcesConfig {

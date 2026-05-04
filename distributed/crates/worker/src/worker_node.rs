@@ -21,6 +21,19 @@ use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
 
+/// Exit on fatal cleanup error so the supervisor can restart the worker.
+/// In-process recovery is unsafe — the previous job's actor thread may still
+/// hold `HintsShmem` locks that the next job would race.
+fn die_on_fatal_cleanup<T>(result: Result<T>) -> T {
+    match result {
+        Ok(v) => v,
+        Err(e) => {
+            error!("Fatal cleanup error — worker process must restart: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 pub enum WorkerNode<T: ZiskBackend + 'static> {
     WorkerGrpc(WorkerNodeGrpc<T>),
     WorkerMpi(WorkerNodeMpi<T>),
@@ -197,10 +210,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             // On panic/cancel, the handle branch fires and we report the error.
             let mut computation_handle = self.worker.take_current_computation();
 
-            // biased: computation_rx must be checked before the JoinHandle branch.
-            // When a task completes normally, both become ready simultaneously.
-            // Without biased, select! picks non-deterministically and the JoinHandle
-            // branch could win, discarding the actual result.
+            // Branches are polled in declaration order. This is a soft preference,
+            // not a correctness guarantee — a cross-thread wakeup race can still let
+            // the JoinHandle resolve before the channel poll observes a just-sent
+            // message, so the JoinHandle Ok(()) arm re-drains the channel via try_recv.
+            // The ordering still matters for branch priority: compute results >
+            // coordinator messages > task health > heartbeat.
             tokio::select! {
                 biased;
 
@@ -236,11 +251,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
                 }
-                // Monitor the computation task handle directly. This branch only
-                // fires when the task finishes WITHOUT sending a ComputationResult
-                // (panic, cancellation, or unexpected silent exit).
-                // Because of biased, computation_rx is checked first — so this only
-                // fires when the channel is empty (i.e., the task truly didn't send).
+                // Monitor the computation task handle directly. Fires on panic,
+                // cancellation, or silent exit. `biased` checks computation_rx first,
+                // but a cross-thread wakeup race can let the JoinHandle resolve before
+                // the channel poll observes a just-sent message — so on `Ok(())` we
+                // re-drain the channel before declaring a silent exit.
                 join_result = async { computation_handle.as_mut().unwrap().await }, if computation_handle.is_some() => {
                     match join_result {
                         Err(join_error) => {
@@ -250,11 +265,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             self.worker.set_state(WorkerState::Ready);
                         }
                         Ok(()) => {
-                            // Task completed without sending a ComputationResult — shouldn't
-                            // happen in normal operation, but handle it defensively.
-                            warn!("Computation task exited without sending a result");
-                            self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Ready);
+                            match computation_rx.try_recv() {
+                                Ok(result) => {
+                                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
+                                        error!("Error handling computation result: {}", e);
+                                        self.report_computation_error(&message_sender, &e.to_string()).await;
+                                        break;
+                                    }
+                                }
+                                Err(_) => {
+                                    warn!("Computation task exited without sending a result");
+                                    self.worker.set_current_job(None);
+                                    self.worker.set_state(WorkerState::Ready);
+                                }
+                            }
                         }
                     }
                 }
@@ -730,7 +754,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            self.worker.clear_current_job().await;
+                            die_on_fatal_cleanup(self.worker.clear_current_job().await);
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
                             info!("Coordinator confirmed active job; keep computing");
@@ -738,14 +762,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                self.worker.clear_current_job().await;
+                                die_on_fatal_cleanup(self.worker.clear_current_job().await);
                             }
                         }
                         Some(Err(_)) => {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            self.worker.clear_current_job().await;
+                            die_on_fatal_cleanup(self.worker.clear_current_job().await);
                         }
                     }
 
@@ -827,7 +851,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        self.worker.clear_current_job().await;
+                        die_on_fatal_cleanup(self.worker.clear_current_job().await);
                         self.worker.set_state(WorkerState::Ready);
                     }
                 }
@@ -935,7 +959,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation().await;
+        die_on_fatal_cleanup(self.worker.cancel_current_computation().await);
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -1002,7 +1026,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Execution-only for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation().await;
+        die_on_fatal_cleanup(self.worker.cancel_current_computation().await);
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {

@@ -412,7 +412,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.clone()
     }
 
-    pub async fn cancel_current_computation(&mut self) {
+    /// Cancels the in-flight computation and joins the stream actor.
+    ///
+    /// Returns `Err` if the actor thread does not exit within
+    /// `STREAM_ACTOR_SHUTDOWN_TIMEOUT`; callers must treat this as fatal and
+    /// exit the process — the actor may still hold a `HintsShmem` lock that
+    /// would race the next job's reset.
+    pub async fn cancel_current_computation(&mut self) -> Result<()> {
         self.prover.cancel();
 
         if let Some(handle) = self.current_computation.take() {
@@ -427,23 +433,26 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
         }
 
-        // Shut down the stream actor on a blocking thread, waiting for its worker
-        // thread to exit. This avoids racing the next prove's reset against an
-        // in-flight `process_hints` call from the previous job.
         if let Some(stream_actor) = self.stream_actor.take() {
-            let _ = tokio::task::spawn_blocking(move || {
-                stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
+            let join = tokio::task::spawn_blocking(move || {
+                stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT)
             })
-            .await;
+            .await
+            .map_err(|e| anyhow::anyhow!("Stream actor shutdown task panicked: {e}"))?;
+            join.map_err(|e| anyhow::anyhow!("{e}"))?;
         }
+
+        Ok(())
     }
 
     /// Cancels any in-flight computation and clears the current job context.
     /// Use this when the worker should become fully idle (e.g., job cancelled,
-    /// stale job cleared on reconnection).
-    pub async fn clear_current_job(&mut self) {
-        self.cancel_current_computation().await;
+    /// stale job cleared on reconnection). See [`cancel_current_computation`]
+    /// for the fatal-error contract.
+    pub async fn clear_current_job(&mut self) -> Result<()> {
+        self.cancel_current_computation().await?;
         self.current_job = None;
+        Ok(())
     }
 
     pub fn prepare_for_new_job(

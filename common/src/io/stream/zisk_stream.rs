@@ -15,7 +15,9 @@ pub trait StreamProcessor: Send + Sync + 'static {
     /// `true` if CTRL_END was encountered (signals end of stream), `false` otherwise.
     fn process_hints(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
 
-    fn reset(&self) {}
+    fn reset(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 /// Trait for submitting processed hints to a sink.
@@ -29,7 +31,9 @@ pub trait StreamProcessor: Send + Sync + 'static {
 pub trait StreamSink: Send + Sync + 'static {
     fn submit(&self, processed: &[u64]) -> anyhow::Result<()>;
 
-    fn reset(&self) {}
+    fn reset(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 enum ThreadCommand {
@@ -157,9 +161,10 @@ impl<P: StreamProcessor> ZiskStream<P> {
         Ok(())
     }
 
-    pub fn reset(&mut self) {
-        self.hints_processor.reset();
+    pub fn reset(&mut self) -> Result<()> {
+        self.hints_processor.reset()?;
         self.initialized.store(false, Ordering::SeqCst);
+        Ok(())
     }
 
     /// Trigger the background thread to process hints asynchronously.

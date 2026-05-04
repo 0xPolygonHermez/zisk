@@ -661,16 +661,17 @@ impl<S: StreamSink> HintsProcessor<S> {
         Ok(())
     }
 
-    pub fn reset_state(&self) {
+    pub fn reset_state(&self) -> Result<()> {
         self.num_hint.store(0, Ordering::Relaxed);
         self.state.reset();
         if let Some(stats) = self.stats.as_ref() {
             stats.lock().unwrap().clear();
         }
-        self.hints_sink.reset();
+        self.hints_sink.reset()?;
         self.stream_active.store(false, Ordering::Release);
         self.instant.lock().unwrap().take();
         self.pending_partial.lock().unwrap().take();
+        Ok(())
     }
 
     pub fn hints_sink(&self) -> Arc<S> {
@@ -698,8 +699,8 @@ impl<S: StreamSink> StreamProcessor for HintsProcessor<S> {
         self.process_hints(data, first_batch)
     }
 
-    fn reset(&self) {
-        self.reset_state();
+    fn reset(&self) -> Result<()> {
+        self.reset_state()
     }
 }
 
@@ -840,7 +841,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Unknown custom hint code"));
 
         // Reset should clear any error state
-        p.reset_state();
+        p.reset_state().expect("reset_state failed");
         assert!(!p.state.error_flag.load(Ordering::Acquire));
 
         // Should be able to process new hints after reset (8 bytes = 1 u64)
@@ -1536,7 +1537,7 @@ mod tests {
         }
 
         // Reset should clear pending partial
-        p.reset_state();
+        p.reset_state().expect("reset_state failed");
 
         // Verify pending partial is cleared
         {

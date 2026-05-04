@@ -23,6 +23,17 @@ impl MessageSender for MockMessageSender {
     }
 }
 
+/// `MessageSender` that always returns a `channel closed` error.
+pub struct FailingMessageSender;
+
+impl MessageSender for FailingMessageSender {
+    fn send(&self, _msg: CoordinatorMessageDto) -> CoordinatorResult<()> {
+        Err(crate::coordinator_errors::CoordinatorError::Internal(
+            "Failed to send message: channel closed".to_string(),
+        ))
+    }
+}
+
 pub async fn register_test_worker(
     pool: &WorkersPool,
     id: &str,

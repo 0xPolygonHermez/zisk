@@ -105,13 +105,15 @@ impl Coordinator {
     }
 
     /// Sends cancellation messages to all workers assigned to a job.
-    /// Best-effort: logs warnings on failure but continues.
+    /// Returns the worker IDs whose channel was closed, so callers can mark
+    /// them `Disconnected` instead of `Ready`.
     pub(crate) async fn cancel_job_workers(
         &self,
         worker_ids: &[WorkerId],
         job_id: &JobId,
         reason: &str,
-    ) {
+    ) -> Vec<WorkerId> {
+        let mut undeliverable = Vec::new();
         for worker_id in worker_ids {
             let msg = CoordinatorMessageDto::JobCancelled(zisk_cluster_common::JobCancelledDto {
                 job_id: job_id.clone(),
@@ -119,13 +121,25 @@ impl Coordinator {
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("Failed to send cancellation to worker {}: {}", worker_id, e);
+                undeliverable.push(worker_id.clone());
             }
         }
+        undeliverable
     }
 
     /// Marks all Computing workers in the list as Ready.
     pub(super) async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
         self.workers_pool.mark_computing_workers_ready(worker_ids).await;
+    }
+
+    /// Marks workers whose cancellation send failed as `Disconnected`, so
+    /// later `ensure_workers_ready` and dispatch skip them.
+    pub(crate) async fn disconnect_undeliverable_workers(&self, worker_ids: &[WorkerId]) {
+        for worker_id in worker_ids {
+            if let Err(e) = self.workers_pool.disconnect_worker(worker_id).await {
+                warn!("Failed to disconnect undeliverable worker {}: {}", worker_id, e);
+            }
+        }
     }
 
     /// Handles new worker registration. Returns `(accepted, message)`.

@@ -324,7 +324,7 @@ impl BackendService for CoordinatorBackend {
             .coordinator
             .subscribe_job_events(&job_id_internal)
             .await
-            .ok_or_else(|| internal(format!("job {} not found", job_id)))?;
+            .ok_or(ApiError::JobNotFound(job_id))?;
 
         let result = timeout(timeout_dur, async {
             loop {
@@ -373,7 +373,7 @@ impl BackendService for CoordinatorBackend {
             .coordinator
             .subscribe_job_events(&job_id_internal)
             .await
-            .ok_or_else(|| internal(format!("job {} not found", job_id)))?;
+            .ok_or(ApiError::JobNotFound(job_id))?;
 
         // Synthesize events the client missed between job submission and now.
         // Clone the Arc first so we can drop the jobs map lock before awaiting the job lock.

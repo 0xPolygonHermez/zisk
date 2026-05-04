@@ -152,7 +152,8 @@ impl StreamProcessor for PrecompileHintsRelay {
         self.process_hints(data, first_batch)
     }
 
-    fn reset(&self) {
+    fn reset(&self) -> Result<()> {
         self.reset_state();
+        Ok(())
     }
 }

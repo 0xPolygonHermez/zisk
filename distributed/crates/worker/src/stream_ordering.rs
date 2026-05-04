@@ -115,25 +115,50 @@ impl StreamOrderingActor {
     }
 }
 
+/// Returned by [`StreamOrderingActor::shutdown_and_join`] on timeout. The
+/// thread is detached and may still hold `HintsShmem` locks; the caller must
+/// exit the process.
+#[must_use]
+#[derive(Debug)]
+pub struct ShutdownTimeout {
+    pub timeout: std::time::Duration,
+}
+
+impl std::fmt::Display for ShutdownTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StreamOrderingActor: shutdown timed out after {:?}", self.timeout)
+    }
+}
+
+impl std::error::Error for ShutdownTimeout {}
+
 impl StreamOrderingActor {
-    pub fn shutdown_and_join(mut self, timeout: std::time::Duration) {
+    /// Closes the input channel and joins the worker thread within `timeout`.
+    /// On timeout, detaches the thread and returns `Err`; callers must exit.
+    pub fn shutdown_and_join(
+        mut self,
+        timeout: std::time::Duration,
+    ) -> std::result::Result<(), ShutdownTimeout> {
         self.sender.take();
 
-        let Some(handle) = self.thread_handle.take() else { return };
+        let Some(handle) = self.thread_handle.take() else {
+            return Ok(());
+        };
 
-        // Bounded join: poll is_finished until timeout, then detach.
         let deadline = std::time::Instant::now() + timeout;
         while !handle.is_finished() {
             if std::time::Instant::now() >= deadline {
-                tracing::warn!(
-                    "StreamOrderingActor: shutdown timed out after {:?}; detaching thread",
+                tracing::error!(
+                    "StreamOrderingActor: shutdown timed out after {:?}; thread still running",
                     timeout
                 );
-                return; // detach
+                drop(handle);
+                return Err(ShutdownTimeout { timeout });
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let _ = handle.join();
+        Ok(())
     }
 }
 
@@ -142,9 +167,83 @@ impl Drop for StreamOrderingActor {
         // Drop the sender first so the thread's recv() returns Err and exits.
         self.sender.take();
 
-        // Detach the ordering thread; it will terminate promptly once the channel
-        // is closed. Callers that need to *wait* for shutdown should use
-        // `shutdown_and_join` before dropping.
-        self.thread_handle.take();
+        // Reaching here with a live handle means `shutdown_and_join` was never
+        // called. The thread may still hold HintsShmem locks; abort if it
+        // doesn't exit promptly so the next job can't race it.
+        let Some(handle) = self.thread_handle.take() else { return };
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        while !handle.is_finished() {
+            if std::time::Instant::now() >= deadline {
+                tracing::error!(
+                    "StreamOrderingActor::drop: worker thread still running 500ms after \
+                     channel closed; aborting to prevent next-job race"
+                );
+                std::process::abort();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = handle.join();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+    struct BlockingProcessor {
+        release: Arc<AtomicBool>,
+    }
+
+    impl StreamProcessor for BlockingProcessor {
+        fn process_hints(&self, _data: &[u64], _first_batch: bool) -> Result<bool> {
+            while !self.release.load(AtomicOrdering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn shutdown_timeout_returns_err() {
+        let release = Arc::new(AtomicBool::new(false));
+        let processor = Arc::new(BlockingProcessor { release: release.clone() });
+        let actor = StreamOrderingActor::new(processor, JobId::from("test-job".to_string()));
+
+        actor
+            .send(StreamDataDto {
+                job_id: JobId::from("test-job".to_string()),
+                stream_type: StreamMessageKind::Data,
+                stream_payload: Some(zisk_cluster_common::StreamPayloadDto {
+                    sequence_number: 1,
+                    payload: vec![0u8; 8],
+                }),
+            })
+            .unwrap();
+        // Let the worker thread dequeue and start blocking before we shut down.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let err = actor
+            .shutdown_and_join(std::time::Duration::from_millis(100))
+            .expect_err("expected timeout error while processor is blocked");
+        assert!(err.to_string().contains("shutdown timed out"));
+
+        release.store(true, AtomicOrdering::SeqCst);
+    }
+
+    #[test]
+    fn shutdown_clean_returns_ok() {
+        struct NoopProcessor;
+        impl StreamProcessor for NoopProcessor {
+            fn process_hints(&self, _data: &[u64], _first_batch: bool) -> Result<bool> {
+                Ok(false)
+            }
+        }
+        let actor =
+            StreamOrderingActor::new(Arc::new(NoopProcessor), JobId::from("clean-job".to_string()));
+        actor
+            .shutdown_and_join(std::time::Duration::from_secs(5))
+            .expect("clean shutdown must succeed");
     }
 }
