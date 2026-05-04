@@ -38,12 +38,12 @@ Let's show these changes using the example program from the [Quickstart](./quick
 #![no_main]
 ziskos::entrypoint!(main);
 
+use alloy_sol_types::SolValue;
+use common::Output;
 use sha2::{Digest, Sha256};
-use std::convert::TryInto;
-use ziskos::{read_input_slice, set_output};
-use byteorder::ByteOrder;
 
 fn main() {
+    // Read the input data
     let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
@@ -56,7 +56,21 @@ fn main() {
         hash = Into::<[u8; 32]>::into(*digest);
     }
 
-    ziskos::io::commit(&output);
+    let output = Output {
+        hash: hash.into(),
+        iterations: n,
+        magic_number: 0xDEADBEEF,
+    };
+
+    println!("Computed hash: {:02x?}", output.hash);
+    println!("Iterations: {}", output.iterations);
+
+    let bytes = output.abi_encode();
+
+    println!("Bytes to commit: {:?}", bytes);
+
+    // Write raw ABI-encoded bytes directly (no bincode serialization)
+    ziskos::io::commit_slice(&bytes);
 }
 ```
 
@@ -65,12 +79,15 @@ fn main() {
 [package]
 name = "guest"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 byteorder = "1.5.0"
 sha2 = "0.10.8"
-ziskos = { git = "https://github.com/0xPolygonHermez/zisk.git" }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+ziskos = { workspace = true }
+alloy-sol-types = "1.5.7"
+common = { path = "../common" }
 ```
 
 ### Input/Output Data
@@ -89,15 +106,18 @@ You can also read custom types that implement the `Deserialize` trait:
 let my_data: MyStruct = ziskos::io::read();
 ```
 
-To write public output data, use the `ziskos::io::commit()` function, which serializes and commits the output:
+To write public output data, use the `ziskos::io::commit_slice()` function, which commits a slice to the output:
 
 ```rust
-// Commit the hash as public output
-let hash: [u8; 32] = compute_hash();
-ziskos::io::commit(&hash);
+    let bytes = output.abi_encode();
+
+    println!("Bytes to commit: {:?}", bytes);
+
+    // Write raw ABI-encoded bytes directly (no bincode serialization)
+    ziskos::io::commit_slice(&bytes);
 ```
 
-The output can be any type that implements the `Serialize` trait. The data will be serialized and made available as public outputs that can be verified by anyone checking the proof.
+You can also use `commit()` function to output any type that implements the `Serialize` trait. The data will be serialized and made available as public outputs that can be verified by anyone checking the proof.
 
 ## Build
 
@@ -109,7 +129,7 @@ Once your program is ready to run on ZisK, compile it into an ELF file (RISC-V a
 cargo-zisk build
 ```
 
-This command compiles the program using the `zisk` target. The resulting `guest` ELF file (without extension) is generated in the `./target/riscv64ima-zisk-zkvm-elf/debug` directory.
+This command compiles the program using the `zisk` target. The resulting `guest` ELF file (without extension) is generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/debug` directory.
 
 For production, compile the ELF file with the `--release` flag, similar to how you compile Rust projects:
 
@@ -124,7 +144,6 @@ In this case, the `guest` ELF file will be generated in the `./target/elf/riscv6
 You can test your compiled program using the emulator before generating a proof. Use the `-i` (`--inputs`) flag to specify the location of the input file:
 
 ```bash
-cargo-zisk build --release
 cargo-zisk run --release -i ../host/tmp/input.bin
 ```
 
@@ -258,10 +277,13 @@ To generate a proof, run the following command:
 ```bash
 cargo-zisk prove -i ../host/tmp/input.bin -o proof
 ```
+
 In this command:
 
 * `-i` (`--input`) specifies the input file location.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
+
+**Note**: If you have installed the GPU version of the ZisK binaries, you can use the `--gpu` flag to enable GPU acceleration during proof generation.
 
 If the process is successful, you should see a message similar to:
 
@@ -290,32 +312,6 @@ In this command:
 Running a Zisk proof with multiple processes enables efficient workload distribution across multiple servers. **On a single server with many cores, splitting execution into smaller subsets of cores generally improves performance by increasing concurrency**. As a general rule, `<num_processes>` * `<num_threads_per_process>` should match the number of available CPU cores or double that if hyperthreading is enabled.
 
 The total memory requirement increases proportionally with the number of processes. If each process requires approximately 25GB of memory, running P processes will require roughly (25 * P)GB of memory. Ensure that the system has sufficient available memory to accommodate all running processes.
-
-### GPU Proof Generation
-
-Zisk proofs can also be generated on GPUs to significantly improve performance and scalability. GPU support is only available for NVIDIA GPUs.
-
-To enable GPU support:
-
-1. Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads).
-
-2. Confirm that Zisk was built with GPU support by checking whether the version string ends in `[gpu]` rather than `[cpu]`:
-
-   ```bash
-   cargo-zisk --version
-   ```
-
-3. Once GPU support is enabled, add the `--gpu` flag to your `prove` commands:
-
-   ```bash
-   cargo-zisk prove -i ../host/tmp/input.bin -o proof --gpu
-   ```
-
-> **Note:** It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
-
-You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section.
-
-> **Note:** GPU memory is typically more limited than CPU memory. When combining GPU execution with concurrent proof generation, ensure that each process has sufficient memory available on the GPU to avoid out-of-memory errors.
 
 ### Verify Proof
 

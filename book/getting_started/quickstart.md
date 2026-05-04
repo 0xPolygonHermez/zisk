@@ -99,6 +99,7 @@ These outputs should match the native execution, confirming the program works co
 To generate a cryptographic proof of execution, run:
 
 ```bash
+mkdir tmp
 cargo run --release --bin prove
 ```
 
@@ -108,7 +109,7 @@ This will:
 3. Generate the polynomial commitments
 4. Create the zk-STARK proof
 
-The proof will be saved in the `./proof` directory. This process may take several minutes depending on the program complexity.
+The proof will be saved in the `./tmp` directory. This process may take several minutes depending on the program complexity.
 
 ## Compressed Proof (Optional)
 
