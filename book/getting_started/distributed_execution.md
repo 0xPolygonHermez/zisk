@@ -363,11 +363,13 @@ sudo systemctl restart zisk-coordinator
 ### Install workers
 
 Workers need the proving keys on local disk before they can start.
-On each worker host, download and extract them first:
+On each worker host, download and extract them first. Remember to replace `X.X.X` 
+with the current version of zisk you are using.
+
 
 ```bash
-wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-0.17.0.tar.gz
-tar -xzf zisk-provingkey-0.17.0.tar.gz
+wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-X.X.X.tar.gz
+tar -xzf zisk-provingkey-X.X.X.tar.gz
 ```
 
 Then run the installer, pointing it at the extracted directory:
