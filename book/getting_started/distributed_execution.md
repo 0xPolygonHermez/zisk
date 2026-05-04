@@ -170,7 +170,7 @@ cd zisk
 ### Build the binaries
 
 ```bash
-cargo build --release --bin zisk-coordinator --bin zisk-worker
+cargo build --release --bin zisk-coordinator --bin zisk-worker --bin cargo-zisk
 ```
 
 The first build takes several minutes. The output binaries land at:
@@ -370,13 +370,16 @@ with the current version of zisk you are using.
 ```bash
 wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-X.X.X.tar.gz
 tar -xzf zisk-provingkey-X.X.X.tar.gz
+./target/release/cargo-zisk check-setup --proving-key provingKey --gpu
+sudo mv provingKey /var/lib/zisk-worker/
+sudo chown zisk-worker:zisk-worker -R /var/lib/zisk-worker/provingKey
 ```
 
 Then run the installer, pointing it at the extracted directory:
 
 ```bash
 sudo distributed/deploy/scripts/worker/install.sh \
-    --proving-key /path/to/provingKey --gpu
+    --proving-key /var/lib/zisk-worker/provingKey --gpu
 ```
 
 If you skip `--proving-key`, the installer falls back to
