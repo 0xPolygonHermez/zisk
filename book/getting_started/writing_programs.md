@@ -275,7 +275,7 @@ cargo-zisk utils clean-cache --all
 To generate a proof, run the following command:
 
 ```bash
-cargo-zisk prove -i ../host/tmp/input.bin -o proof
+cargo-zisk prove -i ../host/tmp/input.bin -o proof.bin
 ```
 
 In this command:
@@ -319,7 +319,7 @@ The total memory requirement increases proportionally with the number of process
 To verify a generated proof, use the following command:
 
 ```bash
-cargo-zisk verify -p proof
+cargo-zisk verify -p proof.bin
 ```
 
 In this command:
