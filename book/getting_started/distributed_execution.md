@@ -159,6 +159,7 @@ exercises the production binaries end-to-end.
 - Linux x86_64
 - Rust toolchain (`cargo --version` should work)
 - ~32 GB free RAM (Assembly emulator preallocates large shared regions)
+- Zisk installed. Follow installation guide.
 
 Clone the repo:
 
@@ -166,26 +167,10 @@ Clone the repo:
 git clone https://github.com/0xPolygonHermez/zisk.git
 cd zisk
 ```
-
-### Build the binaries
-
-```bash
-cargo build --release --bin zisk-coordinator --bin zisk-worker
-```
-
-The first build takes several minutes. The output binaries land at:
-
-```
-target/release/zisk-coordinator
-target/release/zisk-worker
-```
-
-These are the same binaries used in every later deployment.
-
 ### Start the coordinator
 
 ```bash
-cargo run --release --bin zisk-coordinator
+zisk-coordinator
 ```
 
 The coordinator binds three default ports on startup:
@@ -200,8 +185,7 @@ If the coordinator exits with `Address already in use`, override the
 offending port:
 
 ```bash
-cargo run --release --bin zisk-coordinator -- \
-    --api-port 8000 --cluster-port 60000 --metrics-port 5245
+zisk-coordinator --api-port 8000 --cluster-port 60000 --metrics-port 5245
 ```
 
 ### Start a worker
@@ -209,8 +193,7 @@ cargo run --release --bin zisk-coordinator -- \
 In a second terminal:
 
 ```bash
-cargo run --release --bin zisk-worker -- \
-    --config distributed/deploy/config/worker.toml
+zisk-worker --config distributed/deploy/config/worker.toml --gpu
 ```
 
 `worker.toml` points the worker at `http://127.0.0.1:50051`, advertises
@@ -265,18 +248,15 @@ systemd, the canonical path for a ZisK cluster.
 
 ### Prerequisites
 
-- One Linux host with `sudo` for the coordinator
-- One or more Linux hosts with `sudo` for workers, each with 64 GB
-  RAM (Assembly emulator) or 32 GB (Rust emulator)
-- Every worker must reach the coordinator; keep all hosts on the
-  same private network for low coordinator/worker latency
+- Linux x86_64
+- ~32 GB free RAM (Assembly emulator preallocates large shared regions)
+- Zisk installed in each machine. Follow installation guide.
 
-Clone and build the repo on every host:
+Clone the repo:
 
 ```bash
 git clone https://github.com/0xPolygonHermez/zisk.git
 cd zisk
-cargo build --release --bin cargo-zisk
 ```
 
 ### Install the coordinator
@@ -364,15 +344,13 @@ sudo systemctl restart zisk-coordinator
 ### Install workers
 
 Workers need the proving keys on local disk before they can start.
-On each worker host, download and extract them first. Remember to replace `X.X.X` 
-with the current version of zisk you are using.
-
+On each worker host, download and extract them first. Alternatively, use `mv` instead of `cp` to 
+relocate the proving key without duplicating it. Be aware that other tools (such as `cargo-zisk`) relying on the 
+original location will no longer find it.
 
 ```bash
-wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-X.X.X.tar.gz
-tar -xzf zisk-provingkey-X.X.X.tar.gz
-cargo run --release --bin cargo-zisk -- check-setup --proving-key provingKey --gpu
-sudo mv provingKey /var/lib/zisk-worker/
+cargo-zisk check-setup --gpu
+sudo cp $HOME/.zisk/provingKey /var/lib/zisk-worker/
 sudo chown zisk-worker:zisk-worker -R /var/lib/zisk-worker/provingKey
 ```
 
