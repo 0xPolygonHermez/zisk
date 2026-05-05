@@ -104,6 +104,22 @@ impl Coordinator {
         Ok(())
     }
 
+    pub(crate) async fn handle_stream_recovery_complete(
+        &self,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<()> {
+        if self.workers_pool.worker_state(worker_id).await == Some(WorkerState::SettingUp) {
+            let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
+            info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
+        } else {
+            warn!(
+                "[Recovery] Worker {} sent RecoveryComplete but is not in SettingUp; ignoring",
+                worker_id
+            );
+        }
+        Ok(())
+    }
+
     /// Sends cancellation messages to all workers assigned to a job.
     /// Best-effort: logs warnings on failure but continues.
     pub(crate) async fn cancel_job_workers(
@@ -126,6 +142,21 @@ impl Coordinator {
     /// Marks all Computing workers in the list as Ready.
     pub(super) async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
         self.workers_pool.mark_computing_workers_ready(worker_ids).await;
+    }
+
+    pub(super) async fn ensure_workers_ready_except(
+        &self,
+        worker_ids: &[WorkerId],
+        recovering: &WorkerId,
+    ) {
+        let others: Vec<WorkerId> =
+            worker_ids.iter().filter(|w| *w != recovering).cloned().collect();
+        self.workers_pool.mark_computing_workers_ready(&others).await;
+        if self.workers_pool.worker_state(recovering).await.is_some() {
+            let _ =
+                self.workers_pool.mark_worker_with_state(recovering, WorkerState::SettingUp).await;
+            info!("[Recovery] Worker {} entered SettingUp pending recovery completion", recovering);
+        }
     }
 
     /// Handles new worker registration. Returns `(accepted, message)`.
@@ -527,7 +558,8 @@ impl Coordinator {
     ///
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
-        self.fail_job(&message.job_id, "Task execution failed").await?;
+        let recovering = if message.worker_in_recovery { Some(&message.worker_id) } else { None };
+        self.fail_job_with_recovery(&message.job_id, "Task execution failed", recovering).await?;
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed to execute task for {}: {}",

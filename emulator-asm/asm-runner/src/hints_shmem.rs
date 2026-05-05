@@ -5,33 +5,37 @@
 
 use crate::{
     sem_available_name, sem_read_name, shmem_control_reader_name, shmem_precompile_name,
-    AsmService, AsmServices, ControlShmem, SharedMemoryReader, SharedMemoryWriter,
+    AsmService, AsmServices, ControlShmem, SharedMemoryWriter,
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
-use std::{
-    cell::RefCell,
-    sync::{
-        atomic::{fence, AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{fence, AtomicUsize, Ordering},
+    Arc, Mutex,
 };
 use tracing::debug;
 use zisk_common::io::StreamSink;
 
-/// Per-service shmem resources
+/// Per-service control-output shmem (the C side's
+/// `precompile_read_address`). Read by the parent for flow control in
+/// `submit` (slowest-consumer wait); the C side resets it to 0 itself
+/// in `server_reset_fast()` after every emulation.
 struct SeparateShm {
-    /// Consumer's read-position control shmem.
-    control_reader: SharedMemoryReader,
+    control_output: SharedMemoryWriter,
 }
 
+// SAFETY: serialised by the enclosing `Mutex<Vec<SeparateShm>>`.
+unsafe impl Send for SeparateShm {}
+unsafe impl Sync for SeparateShm {}
+
 impl SeparateShm {
-    pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool, service: AsmService) -> Result<Self> {
         let name = shmem_control_reader_name(shm_prefix, service);
         Ok(Self {
-            control_reader: SharedMemoryReader::new(
+            control_output: SharedMemoryWriter::new(
                 &name,
                 HintsShmem::CONTROL_PRECOMPILE_SIZE as usize,
+                unlock_mapped_memory,
             )?,
         })
     }
@@ -45,6 +49,10 @@ struct SeparateSem {
     sem_read: NamedSemaphore,
 }
 
+// SAFETY: POSIX named semaphores are thread- and process-safe by spec.
+unsafe impl Send for SeparateSem {}
+unsafe impl Sync for SeparateSem {}
+
 /// Unified resources shared across all asm services.
 struct UnifiedResources {
     /// Control shared memory writer (single write_pos)
@@ -54,20 +62,21 @@ struct UnifiedResources {
     data_writers: Vec<SharedMemoryWriter>,
 }
 
+// SAFETY: writes are serialized by the enclosing `Mutex<UnifiedResources>`.
+unsafe impl Send for UnifiedResources {}
+unsafe impl Sync for UnifiedResources {}
+
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
     /// Number of active ASM services to notify on submit.
     active_count: AtomicUsize,
     /// Unified resources (single data buffer and control writer)
-    unified: RefCell<UnifiedResources>,
+    unified: Mutex<UnifiedResources>,
     /// Per-service shmem.
-    separate_shm: RefCell<Vec<SeparateShm>>,
+    separate_shm: Mutex<Vec<SeparateShm>>,
     /// Per-program semaphores.
-    separate_sem: RefCell<Option<Vec<SeparateSem>>>,
+    separate_sem: Mutex<Option<Vec<SeparateSem>>>,
 }
-
-unsafe impl Send for HintsShmem {}
-unsafe impl Sync for HintsShmem {}
 
 impl HintsShmem {
     const CONTROL_PRECOMPILE_SIZE: u64 = 0x1000; // 4KB
@@ -88,13 +97,13 @@ impl HintsShmem {
         // Create separate resources
         let separate_shm = AsmServices::SERVICES
             .iter()
-            .map(|service| SeparateShm::new(shm_prefix, *service))
+            .map(|service| SeparateShm::new(shm_prefix, unlock_mapped_memory, *service))
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
-            unified: RefCell::new(unified),
-            separate_shm: RefCell::new(separate_shm),
-            separate_sem: RefCell::new(None),
+            unified: Mutex::new(unified),
+            separate_shm: Mutex::new(separate_shm),
+            separate_sem: Mutex::new(None),
             active_count: AtomicUsize::new(active_services.len()),
         })
     }
@@ -117,13 +126,31 @@ impl HintsShmem {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        *self.separate_sem.borrow_mut() = Some(sems);
+        *self.separate_sem.lock().expect("separate_sem mutex poisoned") = Some(sems);
+        Ok(())
+    }
+
+    /// Soft-reset signal: write `1` to the `ResetFlag` slot and post
+    /// `sem_prec_avail` to wake any child sleeping in `_wait_for_prec_avail`.
+    /// The C side returns non-zero from the wait function, the assembly
+    /// unwinds cleanly out of `emulator_start()`, and the child stays alive
+    /// for the next request — no respawn.
+    pub fn signal_children_reset(&self) -> Result<()> {
+        self.unified.lock().expect("unified mutex poisoned").control_writer.set_reset_flag();
+        if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
+        {
+            for sem in sems.iter_mut() {
+                if let Err(e) = sem.sem_available.post() {
+                    tracing::warn!("signal_children_reset: sem_available.post failed: {e}");
+                }
+            }
+        }
         Ok(())
     }
 
     /// Drop the semaphore handles (does not unlink — the binary owns the names).
     pub fn unbind_semaphores(&self) {
-        *self.separate_sem.borrow_mut() = None;
+        *self.separate_sem.lock().expect("separate_sem mutex poisoned") = None;
     }
 
     /// Update the number of active ASM services notified on each submit.
@@ -190,9 +217,9 @@ impl StreamSink for HintsShmem {
             ));
         }
 
-        let mut unified = self.unified.borrow_mut();
-        let separate_shm = self.separate_shm.borrow();
-        let mut separate_sem_guard = self.separate_sem.borrow_mut();
+        let mut unified = self.unified.lock().expect("unified mutex poisoned");
+        let separate_shm = self.separate_shm.lock().expect("separate_shm mutex poisoned");
+        let mut separate_sem_guard = self.separate_sem.lock().expect("separate_sem mutex poisoned");
         debug_assert!(separate_sem_guard.is_some(), "submit called before bind_semaphores");
 
         let active = self.active_count.load(Ordering::SeqCst);
@@ -214,7 +241,7 @@ impl StreamSink for HintsShmem {
             let (slowest_idx, min_read_pos) = separate_shm[0..active]
                 .iter()
                 .enumerate()
-                .map(|(i, res)| (i, res.control_reader.read_u64_at(0)))
+                .map(|(i, res)| (i, res.control_output.read_u64_at(0)))
                 .min_by_key(|(_, pos)| *pos)
                 .unwrap();
 
@@ -267,30 +294,18 @@ impl StreamSink for HintsShmem {
     }
 
     fn reset(&self) {
-        // Reset control writer and all data writers to initial state for next stream
-        let mut unified = self.unified.borrow_mut();
+        let mut unified = self.unified.lock().expect("unified mutex poisoned");
         unified.control_writer.reset();
         for writer in &mut unified.data_writers {
             writer.reset();
         }
 
-        // Drain stale semaphore signals from previous execution
-        if let Some(separate_sem) = self.separate_sem.borrow_mut().as_mut() {
-            for res in separate_sem.iter_mut() {
+        // Drain any leftover semaphore counts from the previous run.
+        if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
+        {
+            for res in sems.iter_mut() {
                 while res.sem_available.try_wait().is_ok() {}
                 while res.sem_read.try_wait().is_ok() {}
-            }
-        }
-
-        for (idx, res) in self.separate_shm.borrow().iter().enumerate() {
-            let read_pos = res.control_reader.read_u64_at(0);
-            if read_pos != 0 {
-                tracing::warn!(
-                    "HintsShmem::reset: control_reader[{}] read position is {} (expected 0). \
-                     Previous emulation may not have completed cleanly.",
-                    idx,
-                    read_pos
-                );
             }
         }
     }

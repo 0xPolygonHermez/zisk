@@ -268,6 +268,7 @@ pub struct ExecuteTaskResponseDto {
     pub success: bool,
     pub error_message: Option<String>,
     pub result_data: ExecuteTaskResponseResultDataDto,
+    pub worker_in_recovery: bool,
 }
 
 pub struct ContributionsResultDataDto {

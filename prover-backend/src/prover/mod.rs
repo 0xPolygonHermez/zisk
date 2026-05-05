@@ -395,6 +395,10 @@ pub trait ProverEngine {
         Ok(())
     }
 
+    fn restart_asm_resources(&self, _elf: &GuestProgram, _with_hints: bool) -> Result<()> {
+        Ok(())
+    }
+
     fn cancel(&self);
 }
 
@@ -621,6 +625,10 @@ impl<C: ZiskBackend> ZiskProver<C> {
 
     pub fn reset_resources(&self) -> Result<()> {
         self.prover.reset_resources()
+    }
+
+    pub fn restart_asm_resources(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
+        self.prover.restart_asm_resources(elf, with_hints)
     }
 
     pub fn cancel(&self) {

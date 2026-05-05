@@ -88,7 +88,7 @@ impl InputsShmemWriter {
         Ok(())
     }
 
-    fn notify_all_services(&self) -> Result<()> {
+    pub fn notify_all_services(&self) -> Result<()> {
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
             for sem in sems.iter_mut() {
                 sem.post()?;

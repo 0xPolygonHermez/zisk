@@ -381,6 +381,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                 Some(response.error_message)
             },
             result_data: result_data.unwrap(),
+            worker_in_recovery: response.worker_in_recovery,
         }
     }
 }
