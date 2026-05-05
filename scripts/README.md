@@ -12,7 +12,7 @@ Dev-side helpers for generating, packaging, and publishing the Zisk proving key.
 | Node.js + npm | `compile-pil` shells out to the JS pil2-compiler |
 | `circom` | required by `setup --recursive` (recursive circuit compilation) |
 | `jq` | `build-setup.sh` parses Cargo / package.json metadata |
-| `gcloud` SDK (provides `gsutil`) | required by the default `build-setup.sh` mode (cache lookup) and by `package-proving-key.sh` (uploads) |
+| `gsutil` (from `gcloud` SDK) | bucket access. `build-setup.sh` reads from a public bucket — no auth needed. `package-proving-key.sh` uploads — auth required. |
 | Standard Unix utils | `tar`, `sha256sum`, `md5sum`, `find`, `awk` |
 
 ### System packages (Ubuntu / Debian)
@@ -39,23 +39,23 @@ git clone https://github.com/iden3/circom /tmp/circom && \
   (cd /tmp/circom && cargo install --path circom)
 ```
 
-### GCS auth (cache lookup + uploads)
+### GCS auth (publishing only)
+
+`gs://zisk-setup` is public-read, so `build-setup.sh` cache lookups and downloads need `gsutil` on PATH but **no auth**. Auth is only required when you intend to publish via `package-proving-key.sh`:
 
 ```bash
 gcloud auth login
 # or: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
-Read-only access on `gs://zisk-setup` is enough for `build-setup.sh` cache lookups. Write access is required to run `package-proving-key.sh`.
-
 ## Publishing locally — the short version
 
 ```bash
 # 1. one-time prereqs above
-# 2. authenticate to GCS
-gcloud auth login
-# 3. build (cache miss → runs full setup, drops build/.input-hash)
+# 2. build (cache miss → runs full setup, drops build/.input-hash). No auth needed.
 ./scripts/build-setup.sh
+# 3. authenticate to GCS (only required for the publish step)
+gcloud auth login
 # 4. publish (uploads tarballs + the hash sidecar)
 ./scripts/package-proving-key.sh --build-dir build
 ```
@@ -209,7 +209,7 @@ zisk-provingkey-<VERSION>.tar.gz       # provingKey/
 zisk-provingkey-<VERSION>.tar.gz.md5
 zisk-provingkey-<VERSION>.input-hash   # cache key sidecar
 zisk-circuits-<VERSION>.tar.gz         # circom/
-zisk-provingkey-snark-<VERSION>.tar.gz # provingKeySnark/  (only after setup-snark)
+zisk-provingkey-plonk-<VERSION>.tar.gz # provingKeySnark/  (only after setup-snark)
 ```
 
 `<VERSION>` = workspace `[workspace.package].version` from `Cargo.toml`.
