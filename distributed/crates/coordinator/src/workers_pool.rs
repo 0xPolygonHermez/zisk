@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-use zisk_distributed_common::{
-    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, WorkerId, WorkerInfoDto, WorkerState,
-    WorkersListDto,
+use zisk_cluster_common::{
+    ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, JobId, JobPhase, WorkerId,
+    WorkerState,
 };
 
 use crate::{
-    coordinator::MessageSender,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
+    worker_handlers::MessageSender,
 };
 
 /// Information about a connected worker
@@ -25,6 +25,7 @@ pub struct WorkerInfo {
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
+    pub connection_generation: u64,
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
 }
 
@@ -33,14 +34,16 @@ impl WorkerInfo {
         worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
+        initial_state: WorkerState,
     ) -> Self {
         let now = Utc::now();
         Self {
             worker_id,
-            state: WorkerState::Idle,
+            state: initial_state,
             compute_capacity,
             connected_at: now,
             last_heartbeat: now,
+            connection_generation: 0,
             msg_sender,
         }
     }
@@ -69,10 +72,25 @@ pub struct WorkersPool {
     workers: RwLock<HashMap<WorkerId, WorkerInfo>>,
 }
 
+impl Default for WorkersPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkersPool {
     /// Creates a new empty workers pool.
     pub fn new() -> Self {
         Self { workers: RwLock::new(HashMap::new()) }
+    }
+
+    /// Returns the worker's state and connection generation if present.
+    pub async fn worker_state_and_generation(
+        &self,
+        worker_id: &WorkerId,
+    ) -> Option<(WorkerState, u64)> {
+        let workers = self.workers.read().await;
+        workers.get(worker_id).map(|w| (w.state.clone(), w.connection_generation))
     }
 
     /// Returns the total number of registered workers.
@@ -80,9 +98,19 @@ impl WorkersPool {
         self.workers.read().await.len()
     }
 
-    /// Returns the number of workers currently available for new jobs.
+    /// Returns the IDs of all currently connected workers.
+    pub async fn connected_worker_ids(&self) -> Vec<WorkerId> {
+        self.workers.read().await.keys().cloned().collect()
+    }
+
+    /// Returns the number of workers connected but without setup (Idle state).
     pub async fn idle_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()
+    }
+
+    /// Returns the number of workers currently running setup (not yet eligible for jobs).
+    pub async fn setting_up_workers(&self) -> usize {
+        self.workers.read().await.values().filter(|p| p.state == WorkerState::SettingUp).count()
     }
 
     /// Returns the number of workers currently executing tasks.
@@ -121,30 +149,29 @@ impl WorkersPool {
             .read()
             .await
             .values()
-            .filter(|p| p.state == WorkerState::Idle)
+            .filter(|p| p.state == WorkerState::Ready)
             .map(|p| p.compute_capacity.compute_units)
             .sum();
 
         ComputeCapacity::from(total_capacity)
     }
 
-    /// Returns detailed information about all registered workers.
-    pub async fn workers_list(&self) -> WorkersListDto {
-        let workers = self
-            .workers
-            .read()
-            .await
-            .values()
-            .map(|worker_info| WorkerInfoDto {
-                worker_id: worker_info.worker_id.clone(),
-                state: worker_info.state.clone(),
-                compute_capacity: worker_info.compute_capacity,
-                connected_at: worker_info.connected_at,
-                last_heartbeat: worker_info.last_heartbeat,
-            })
-            .collect();
-
-        WorkersListDto { workers }
+    /// Returns (num_workers, compute_capacity, available_compute_capacity) under a single read lock.
+    pub async fn pool_stats(&self) -> (usize, ComputeCapacity, ComputeCapacity) {
+        let workers = self.workers.read().await;
+        let mut total = 0;
+        let mut cc: u32 = 0;
+        let mut acc: u32 = 0;
+        for w in workers.values() {
+            if w.state != WorkerState::Disconnected {
+                total += 1;
+                cc += w.compute_capacity.compute_units;
+            }
+            if w.state == WorkerState::Ready {
+                acc += w.compute_capacity.compute_units;
+            }
+        }
+        (total, ComputeCapacity::from(cc), ComputeCapacity::from(acc))
     }
 
     /// Registers a new worker with the pool.
@@ -163,19 +190,33 @@ impl WorkersPool {
         worker_id: WorkerId,
         compute_capacity: impl Into<ComputeCapacity>,
         msg_sender: Box<dyn MessageSender + Send + Sync>,
+        initial_state: WorkerState,
     ) -> CoordinatorResult<()> {
-        let connection = WorkerInfo::new(worker_id.clone(), compute_capacity.into(), msg_sender);
+        let connection = WorkerInfo::new(
+            worker_id.clone(),
+            compute_capacity.into(),
+            msg_sender,
+            initial_state.clone(),
+        );
         let mut workers = self.workers.write().await;
 
         let is_new_worker = if let Some(worker) = workers.get_mut(&worker_id) {
-            if worker.state != WorkerState::Disconnected {
-                let msg = format!("Worker {} is already connected", worker_id);
+            if !matches!(
+                worker.state,
+                WorkerState::Disconnected
+                    | WorkerState::Idle
+                    | WorkerState::Ready
+                    | WorkerState::Computing(_)
+            ) {
+                let msg =
+                    format!("Worker {} is already connected (state: {})", worker_id, worker.state);
                 warn!("{}", msg);
                 return Err(CoordinatorError::InvalidRequest(msg));
             } else {
-                worker.state = WorkerState::Idle;
+                worker.state = initial_state;
                 worker.compute_capacity = connection.compute_capacity;
                 worker.msg_sender = connection.msg_sender;
+                worker.connection_generation += 1;
                 worker.update_last_heartbeat();
 
                 false
@@ -189,14 +230,8 @@ impl WorkersPool {
         drop(workers);
 
         let action = if is_new_worker { "Registered" } else { "Reconnected" };
-        info!(
-            "{} worker: {} (total: {} CC: {} ACC: {})",
-            action,
-            worker_id,
-            self.num_workers().await,
-            self.compute_capacity().await,
-            self.available_compute_capacity().await
-        );
+        let (total, cc, acc) = self.pool_stats().await;
+        info!("{} worker: {} (total: {} CC: {} ACC: {})", action, worker_id, total, cc, acc);
 
         Ok(())
     }
@@ -293,20 +328,50 @@ impl WorkersPool {
 
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let mut workers = self.workers.write().await;
+        let result = Self::do_disconnect(&mut workers, worker_id, None);
+        drop(workers);
+        if result? {
+            let (total, cc, acc) = self.pool_stats().await;
+            info!("Disconnected worker: {} (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+        }
+        Ok(())
+    }
+
+    /// Disconnects a worker only if its connection generation matches.
+    /// Returns Ok(()) silently if generation doesn't match (stale guard)
+    /// or if the worker is already disconnected (idempotent).
+    pub async fn disconnect_worker_if_generation(
+        &self,
+        worker_id: &WorkerId,
+        expected_generation: u64,
+    ) -> CoordinatorResult<()> {
+        let mut workers = self.workers.write().await;
+        let result = Self::do_disconnect(&mut workers, worker_id, Some(expected_generation));
+        drop(workers);
+        if result? {
+            let (total, cc, acc) = self.pool_stats().await;
+            info!("Disconnected worker: {} (total: {} CC: {} ACC: {})", worker_id, total, cc, acc);
+        }
+        Ok(())
+    }
+
+    /// Core disconnect logic. Returns `Ok(true)` if the worker was disconnected,
+    /// `Ok(false)` if it was a no-op (stale generation or already disconnected).
+    fn do_disconnect(
+        workers: &mut HashMap<WorkerId, WorkerInfo>,
+        worker_id: &WorkerId,
+        expected_generation: Option<u64>,
+    ) -> CoordinatorResult<bool> {
         match workers.get_mut(worker_id) {
-            Some(existing_worker) => {
-                existing_worker.state = WorkerState::Disconnected;
-
-                drop(workers);
-
-                info!(
-                    "Disconnected worker: {} (total: {} CC: {} ACC: {})",
-                    worker_id,
-                    self.num_workers().await,
-                    self.compute_capacity().await,
-                    self.available_compute_capacity().await
-                );
-                Ok(())
+            Some(worker)
+                if expected_generation.is_some_and(|g| g != worker.connection_generation) =>
+            {
+                Ok(false)
+            }
+            Some(worker) if worker.state == WorkerState::Disconnected => Ok(false),
+            Some(worker) => {
+                worker.state = WorkerState::Disconnected;
+                Ok(true)
             }
             None => {
                 let msg =
@@ -314,6 +379,42 @@ impl WorkersPool {
                 warn!("{}", msg);
                 Err(CoordinatorError::InvalidRequest(msg))
             }
+        }
+    }
+
+    /// Returns the connection generation for a worker.
+    pub async fn connection_generation(&self, worker_id: &WorkerId) -> Option<u64> {
+        self.workers.read().await.get(worker_id).map(|w| w.connection_generation)
+    }
+
+    /// Removes worker entries that have been Disconnected for longer than a threshold.
+    /// Prevents unbounded growth of the workers HashMap.
+    pub async fn remove_stale_disconnected(&self, threshold: chrono::Duration) {
+        let now = Utc::now();
+        let mut workers = self.workers.write().await;
+        workers.retain(|id, w| {
+            if w.state == WorkerState::Disconnected {
+                let elapsed = now.signed_duration_since(w.last_heartbeat);
+                if elapsed >= threshold {
+                    info!("Removing stale disconnected worker: {}", id);
+                    return false;
+                }
+            }
+            true
+        });
+    }
+
+    /// Sets a worker's last heartbeat to a specific time. Used for testing only.
+    pub async fn set_last_heartbeat(
+        &self,
+        worker_id: &WorkerId,
+        time: DateTime<Utc>,
+    ) -> CoordinatorResult<()> {
+        if let Some(worker) = self.workers.write().await.get_mut(worker_id) {
+            worker.last_heartbeat = time;
+            Ok(())
+        } else {
+            Err(CoordinatorError::NotFoundOrInaccessible)
         }
     }
 
@@ -343,6 +444,28 @@ impl WorkersPool {
         Ok(())
     }
 
+    /// Marks any `Computing` workers in the given list as `Idle` under a single lock.
+    /// Workers that are not `Computing` or not found are silently skipped.
+    pub async fn mark_computing_workers_ready(&self, worker_ids: &[WorkerId]) {
+        let mut workers = self.workers.write().await;
+        let mut transitioned = Vec::new();
+        for wid in worker_ids {
+            if let Some(worker) = workers.get_mut(wid) {
+                if matches!(worker.state, WorkerState::Computing(_)) {
+                    worker.state = WorkerState::Ready;
+                    transitioned.push(wid.clone());
+                }
+            }
+        }
+        drop(workers);
+        if !transitioned.is_empty() {
+            let (total, cc, acc) = self.pool_stats().await;
+            for wid in &transitioned {
+                info!("Worker {} ready (total: {} CC: {} ACC: {})", wid, total, cc, acc);
+            }
+        }
+    }
+
     /// Updates the state of a single worker.
     ///
     /// # Parameters
@@ -360,16 +483,33 @@ impl WorkersPool {
             return Err(CoordinatorError::NotFoundOrInaccessible);
         }
 
-        if state == WorkerState::Idle {
-            info!(
-                "Worker {} available (total: {} CC: {} ACC: {})",
-                worker_id,
-                self.num_workers().await,
-                self.compute_capacity().await,
-                self.available_compute_capacity().await
-            );
+        if matches!(state, WorkerState::Ready | WorkerState::Idle) {
+            let (total, cc, acc) = self.pool_stats().await;
+            info!("Worker {} {} (total: {} CC: {} ACC: {})", worker_id, state, total, cc, acc);
         }
         Ok(())
+    }
+
+    /// Returns computing workers whose last heartbeat is older than the given threshold.
+    pub async fn get_stale_computing_workers(
+        &self,
+        threshold: chrono::Duration,
+    ) -> Vec<(WorkerId, JobId, JobPhase)> {
+        let now = Utc::now();
+        let workers = self.workers.read().await;
+
+        workers
+            .values()
+            .filter_map(|w| {
+                if let WorkerState::Computing((job_id, phase)) = &w.state {
+                    let elapsed = now.signed_duration_since(w.last_heartbeat);
+                    if elapsed >= threshold {
+                        return Some((w.worker_id.clone(), job_id.clone(), phase.clone()));
+                    }
+                }
+                None
+            })
+            .collect()
     }
 
     /// Sends a message to a specific worker.
@@ -458,7 +598,7 @@ impl WorkersPool {
         let available_workers: Vec<(&WorkerId, &WorkerInfo)> = if execution_mode.is_simulating() {
             // Copy the only available idle worker 'times' times
             if let Some((worker_id, worker_info)) =
-                workers.iter().find(|(_, p)| matches!(p.state, WorkerState::Idle))
+                workers.iter().find(|(_, p)| matches!(p.state, WorkerState::Ready))
             {
                 let times = (required_compute_capacity.compute_units as f32
                     / worker_info.compute_capacity.compute_units as f32)
@@ -470,7 +610,7 @@ impl WorkersPool {
             }
         } else {
             // Standard mode: use all idle workers
-            workers.iter().filter(|(_, p)| matches!(p.state, WorkerState::Idle)).collect()
+            workers.iter().filter(|(_, p)| matches!(p.state, WorkerState::Ready)).collect()
         };
 
         let available_capacity: u32 =
@@ -487,7 +627,7 @@ impl WorkersPool {
 
         // Step 1: Select workers that can cover the required compute capacity
         for (worker_id, worker_info) in available_workers {
-            if matches!(worker_info.state, WorkerState::Idle) {
+            if matches!(worker_info.state, WorkerState::Ready) {
                 selected_workers.push(worker_id.clone());
                 worker_capacities.push(worker_info.compute_capacity.compute_units);
                 total_capacity += worker_info.compute_capacity.compute_units;
@@ -532,5 +672,145 @@ impl WorkersPool {
         }
 
         Ok((selected_workers, worker_allocations))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::*;
+    use zisk_cluster_common::WorkerState;
+
+    #[tokio::test]
+    async fn test_disconnect_idempotent() {
+        let pool = WorkersPool::new();
+        let (worker_id, _msgs) = register_test_worker(&pool, "w1").await;
+
+        // First disconnect succeeds
+        pool.disconnect_worker(&worker_id).await.unwrap();
+        assert_eq!(pool.worker_state(&worker_id).await, Some(WorkerState::Disconnected));
+
+        // Second disconnect also succeeds (idempotent)
+        pool.disconnect_worker(&worker_id).await.unwrap();
+        assert_eq!(pool.worker_state(&worker_id).await, Some(WorkerState::Disconnected));
+    }
+
+    #[tokio::test]
+    async fn test_get_stale_computing_workers() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+        let (w2, _) = register_test_worker(&pool, "w2").await;
+        let (w3, _) = register_test_worker(&pool, "w3").await;
+
+        let job_id = JobId::from("job-1".to_string());
+
+        // Mark all three as Computing
+        pool.mark_worker_with_state(
+            &w1,
+            WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
+        )
+        .await
+        .unwrap();
+        pool.mark_worker_with_state(
+            &w2,
+            WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
+        )
+        .await
+        .unwrap();
+        pool.mark_worker_with_state(
+            &w3,
+            WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
+        )
+        .await
+        .unwrap();
+
+        // Set w1 and w2 heartbeats to 100 seconds ago (stale with 30s interval × 3 missed = 90s)
+        {
+            let mut workers = pool.workers.write().await;
+            let old_time = Utc::now() - chrono::Duration::seconds(100);
+            workers.get_mut(&w1).unwrap().last_heartbeat = old_time;
+            workers.get_mut(&w2).unwrap().last_heartbeat = old_time;
+            // w3 heartbeat stays fresh
+        }
+
+        let stale = pool.get_stale_computing_workers(chrono::Duration::seconds(90)).await;
+        let stale_ids: Vec<&WorkerId> = stale.iter().map(|(id, _, _)| id).collect();
+
+        assert_eq!(stale.len(), 2);
+        assert!(stale_ids.contains(&&w1));
+        assert!(stale_ids.contains(&&w2));
+    }
+
+    #[tokio::test]
+    async fn test_get_stale_workers_ignores_idle() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+
+        // w1 is Idle with an old heartbeat — should NOT be returned
+        {
+            let mut workers = pool.workers.write().await;
+            workers.get_mut(&w1).unwrap().last_heartbeat =
+                Utc::now() - chrono::Duration::seconds(200);
+        }
+
+        let stale = pool.get_stale_computing_workers(chrono::Duration::seconds(90)).await;
+        assert!(stale.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_if_generation_stale() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+        assert_eq!(pool.connection_generation(&w1).await, Some(0));
+
+        // Disconnect then re-register (simulates reconnection → gen becomes 1)
+        pool.disconnect_worker(&w1).await.unwrap();
+        let (sender, _) = MockMessageSender::new();
+        pool.register_worker(w1.clone(), 1u32, Box::new(sender), WorkerState::Idle).await.unwrap();
+        assert_eq!(pool.connection_generation(&w1).await, Some(1));
+
+        // Stale guard with gen 0 should be a no-op
+        pool.disconnect_worker_if_generation(&w1, 0).await.unwrap();
+        assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Idle));
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_if_generation_current() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+        assert_eq!(pool.connection_generation(&w1).await, Some(0));
+
+        // Current generation matches → should disconnect
+        pool.disconnect_worker_if_generation(&w1, 0).await.unwrap();
+        assert_eq!(pool.worker_state(&w1).await, Some(WorkerState::Disconnected));
+    }
+
+    #[tokio::test]
+    async fn test_remove_stale_disconnected() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+
+        pool.disconnect_worker(&w1).await.unwrap();
+
+        // Set heartbeat to 10 minutes ago
+        {
+            let mut workers = pool.workers.write().await;
+            workers.get_mut(&w1).unwrap().last_heartbeat =
+                Utc::now() - chrono::Duration::seconds(600);
+        }
+
+        pool.remove_stale_disconnected(chrono::Duration::seconds(300)).await;
+        assert_eq!(pool.num_workers().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_remove_stale_keeps_recent() {
+        let pool = WorkersPool::new();
+        let (w1, _) = register_test_worker(&pool, "w1").await;
+
+        pool.disconnect_worker(&w1).await.unwrap();
+        // Heartbeat is fresh (just disconnected) — should be retained
+        pool.remove_stale_disconnected(chrono::Duration::seconds(300)).await;
+        assert_eq!(pool.num_workers().await, 1);
     }
 }

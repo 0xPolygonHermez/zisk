@@ -5,16 +5,9 @@ use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 fn main() {
-    if cfg!(target_os = "macos") {
-        println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
+    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
         return;
     }
-
-    // // **Check if the `no_lib_link` feature is enabled**
-    // if env::var("CARGO_FEATURE_NO_LIB_LINK").is_ok() {
-    //     println!("Skipping linking because `no_lib_link` feature is enabled.");
-    //     return;
-    // }
 
     // Paths
     let c_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("c");

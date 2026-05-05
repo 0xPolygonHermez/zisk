@@ -6,6 +6,9 @@ use crate::zisklib::fcalls_impl::utils::{
 
 use super::constants::{E_A, G, IDENTITY, N, P};
 
+/// Given a public key, message hash, and signature `(r, s)`, computes the recovered
+/// curve point p = u1·G + u2·PK where u1 = z·s⁻¹ mod n and u2 = r·s⁻¹ mod n.
+/// Assumes s != 0.
 pub fn fcall_secp256r1_ecdsa_verify(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let pk: &[u64; 8] = &params[0..8].try_into().unwrap();
@@ -208,6 +211,60 @@ fn secp256r1_curve_dbl_scalar_mul(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // P = [z·s⁻¹]·G + [r·s⁻¹]·PK
+    #[test]
+    fn test_ecdsa_verify() {
+        // PK identity
+        let pk = IDENTITY;
+        let z = [1, 0, 0, 0];
+        let r = [1, 0, 0, 0];
+        let s = [1, 0, 0, 0];
+        let result = secp256r1_ecdsa_verify(&pk, &z, &r, &s);
+        let expected = G;
+
+        assert_eq!(result, expected);
+
+        // PK not in the curve works
+        let pk = [1, 2, 3, 4, 5, 6, 7, 8];
+        let z = [1, 0, 0, 0];
+        let r = [1, 0, 0, 0];
+        let s = [1, 0, 0, 0];
+        let result = secp256r1_ecdsa_verify(&pk, &z, &r, &s);
+        let expected = secp256r1_curve_add(&G, &pk);
+
+        assert_eq!(result, expected);
+
+        // z is 0
+        let pk = [1, 2, 3, 4, 5, 6, 7, 8];
+        let z = [0, 0, 0, 0];
+        let r = [1, 0, 0, 0];
+        let s = [1, 0, 0, 0];
+        let result = secp256r1_ecdsa_verify(&pk, &z, &r, &s);
+        let expected = pk;
+
+        assert_eq!(result, expected);
+
+        // r is 0
+        let pk = [1, 2, 3, 4, 5, 6, 7, 8];
+        let z = [1, 0, 0, 0];
+        let r = [0, 0, 0, 0];
+        let s = [1, 0, 0, 0];
+        let result = secp256r1_ecdsa_verify(&pk, &z, &r, &s);
+        let expected = G;
+
+        assert_eq!(result, expected);
+
+        // z and r are 0
+        let pk = [1, 2, 3, 4, 5, 6, 7, 8];
+        let z = [0, 0, 0, 0];
+        let r = [0, 0, 0, 0];
+        let s = [1, 0, 0, 0];
+        let result = secp256r1_ecdsa_verify(&pk, &z, &r, &s);
+        let expected = IDENTITY;
+
+        assert_eq!(result, expected);
+    }
 
     #[test]
     fn test_dbl_scalar_mul() {

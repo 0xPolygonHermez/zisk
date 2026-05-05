@@ -23,9 +23,3 @@ clap = "4.0"
 rayon = { workspace = true }
 num-bigint = { workspace = true }
 static_assertions = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []
-generate_code_arith_range_table = []

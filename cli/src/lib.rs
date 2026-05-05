@@ -1,5 +1,5 @@
 pub mod commands;
-pub mod toolchain;
+pub mod common;
 pub mod ux;
 
 use anyhow::{Context, Result};

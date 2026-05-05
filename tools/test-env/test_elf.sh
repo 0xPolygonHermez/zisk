@@ -18,15 +18,15 @@ print_proofs_result() {
     local files=("$@")
 
     # Header
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
-    printf "| %-30s | %-10s | %-15s |\n" "File"                           "Time (s)"   "Cycles"
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "File"                           "Time (s)"   "Cycles"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
 
     for f in "${files[@]}"; do
         local fullpath="${base_path}/${f}.json"
 
         if [[ ! -f "$fullpath" ]]; then
-            printf "| %-30s | %-10s | %-15s |\n" "$f" "N/A" "N/A"
+            printf "| %-35s | %-10s | %-15s |\n" "$f" "N/A" "N/A"
             continue
         fi
 
@@ -41,10 +41,10 @@ print_proofs_result() {
         cycles=$(sed -nE 's/.*"cycles"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$fullpath")
 
 
-        printf "| %-30s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
+        printf "| %-35s | %-10s | %-15s |\n" "$f" "$time_int" "$cycles"
     done
 
-    printf "| %-30s | %-10s | %-15s |\n" "------------------------------" "----------" "---------------"
+    printf "| %-35s | %-10s | %-15s |\n" "-----------------------------------" "----------" "---------------"
 
     echo
 }
@@ -332,9 +332,9 @@ test_elf() {
         warn "Skipping ROM setup as DISABLE_ROM_SETUP is set to 1"
     else
         rm -rf $HOME/.zisk/cache
-        ensure cargo-zisk rom-setup -e "${ELF_FILE}" \
-        2>&1 | tee "${LOGS_DIR}/romsetup_output.log" || return 1
-        if ! grep -qF "ROM setup successfully completed" "${LOGS_DIR}/romsetup_output.log"; then
+        ensure cargo-zisk program-setup -e "${ELF_FILE}" \
+        2>&1 | tee romsetup_output.log || return 1
+        if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
         err "program setup failed"
         return 1
         fi
@@ -352,20 +352,14 @@ test_elf() {
             fi
 
             step "Verifying constraints for ${input_file}..."
-            if [[ "${BUILD_GPU}" == "1" ]]; then
-                warn "Skipping verify constraints for GPU mode"
-            else
-
-                ensure cargo-zisk verify-constraints \
-                    -e "${ELF_FILE}" \
-                    ${input_flag} \
-                    -p 6100 \
-                    2>&1 | tee "${LOGS_DIR}/single/constraints_${input_file}.log" || return 1
-                if ! grep -qF "All global constraints were successfully verified" \
-                         "${LOGS_DIR}/single/constraints_${input_file}.log"; then
-                    err "Verify constraints failed for ${input_file}"
-                    return 1
-                fi
+            ensure cargo-zisk verify-constraints \
+                -e "${ELF_FILE}" \
+                ${input_flag} \
+                2>&1 | tee "constraints_${input_file}.log" || return 1
+            if ! grep -F "All global constraints were successfully verified" \
+                        "constraints_${input_file}.log"; then
+                err "verify constraints failed for ${input_file}"
+                return 1
             fi
 
             if [[ "${DISABLE_PROVE}" != "1" ]]; then
@@ -375,34 +369,27 @@ test_elf() {
                 ensure cargo-zisk prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -o ${PROOF_DIR} $PROVE_FLAGS \
-                    2>&1 | tee "${LOGS_DIR}/single/prove_${input_file}.log" || return 1
-                if ! grep -qF "Vadcop Final proof was verified" "${LOGS_DIR}/single/prove_${input_file}.log"; then
+                    -o proof.bin $PROVE_FLAGS \
+                    2>&1 | tee "prove_${input_file}.log" || return 1
+                if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
                     err "prove failed for ${input_file}"
                     return 1
                 fi
 
-                # move result.json into PROOF_RESULTS_DIR (if present)
-                if [[ -f "${PROOF_DIR}/result.json" ]]; then
-                    mv "${PROOF_DIR}/result.json" "${PROOF_RESULTS_DIR}/single/${input_file}.json"
-                    result_files+=("${input_file}")
-                fi
+                # Extract time and cycles from prove log and save to result JSON
+                local prove_time
+                prove_time=$(sed -nE 's/.*Execution completed in ([0-9.]+)s,.*/\1/p' "prove_${input_file}.log")
+                local prove_cycles
+                prove_cycles=$(sed -nE 's/.*steps:[[:space:]]*([0-9]+).*/\1/p' "prove_${input_file}.log")
+                echo "{\"time\": ${prove_time:-0}, \"cycles\": ${prove_cycles:-0}}" > "${PROOF_RESULTS_DIR}/non-distributed/${input_file}.json"
+                result_files+=("${input_file}")
 
                 step "Verifying proof for ${input_file}..."
-                local verify_proof_file
-                verify_proof_file=$(resolve_verify_proof_file) || {
-                    err "Verify proof failed for ${input_file}: no proof_*.bin or vadcop_final_proof.bin found in ./proof"
-                    return 1
-                }
-
-                if ! ensure cargo-zisk verify \
-                    -p "${verify_proof_file}" \
-                    2>&1 | tee "${LOGS_DIR}/single/verify_${input_file}.log"; then
-                    return 1
-                fi
-
-                if ! grep -qF "Stark proof was verified" "${LOGS_DIR}/single/verify_${input_file}.log"; then
-                    err "Verify proof failed for ${input_file}"
+                ensure cargo-zisk verify \
+                    -p ./proof.bin \
+                    2>&1 | tee "verify_${input_file}.log" || return 1
+                if ! grep -F "STARK proof was verified" "verify_${input_file}.log"; then
+                    err "verify proof failed for ${input_file}"
                     return 1
                 fi
             fi

@@ -1,16 +1,7 @@
 use std::sync::Arc;
 use zisk_common::SegmentId;
-use zisk_pil::MemAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::MemTrace;
-#[cfg(feature = "packed")]
-use zisk_pil::MemTracePacked;
+use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
-#[cfg(feature = "packed")]
-type MemTraceType<F> = MemTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type MemTraceType<F> = MemTrace<F>;
 #[cfg(feature = "debug_mem")]
 use std::{
     env,
@@ -60,28 +51,27 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &MemTrace<F>, file_name: &str) {
+    pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = MemTrace::<F>::NUM_ROWS;
+        let num_rows = MemTrace::<R>::NUM_ROWS;
 
         for i in 0..num_rows {
-            let addr = trace[i].addr.as_canonical_u64() * 8;
-            let step = trace[i].step.as_canonical_u64();
+            let addr = trace[i].get_addr() as u64 * 8;
+            let step = trace[i].get_step();
             let main_step = MemHelpers::mem_step_to_main_step(step);
-            let op = if trace[i].wr.is_zero() { 'R' } else { 'W' };
-            let values =
-                [trace[i].value[0].as_canonical_u64(), trace[i].value[1].as_canonical_u64()];
+            let op = if trace[i].get_wr() { 'W' } else { 'R' };
+            let values = [trace[i].get_value(0) as u64, trace[i].get_value(1) as u64];
             let value = values[0] | (values[1] << 32);
             writeln!(
                 writer,
                 "{i:<8} {addr:#010X} {step:>13} {main_step:>12} {op} {values:?} 0x{value:016X}"
             )
             .unwrap();
-            let dual = !trace[i].sel_dual.is_zero();
+            let dual = trace[i].get_sel_dual();
             if dual {
-                let step = trace[i].step_dual.as_canonical_u64();
+                let step = trace[i].get_step_dual();
                 writeln!(writer, "{i:<8} {addr:#010X} {step:>13} {main_step:>12} R {values:?} 0x{value:016X} DUAL")
                     .unwrap();
             }
@@ -111,8 +101,38 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemTraceType::<F>::new_from_vec(trace_buffer)?;
+        if packed {
+            self.compute_witness_inner::<MemTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<MemTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        }
+    }
+}
+
+impl<F: PrimeField64> MemSM<F> {
+    fn compute_witness_inner<R: MemTraceRowOps<F>>(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = MemTrace::<R>::new_from_vec(trace_buffer)?;
 
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];

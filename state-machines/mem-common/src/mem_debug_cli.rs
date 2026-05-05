@@ -34,10 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut debug = MemDebug::new(0xA000_0000, 0xFFFF_FFFF, true);
     let mut chunk_id = 0;
-    loop {
-        let Ok(bus) = MemCounters::load_from_file(ChunkId(chunk_id as usize)) else {
-            break;
-        };
+    while let Ok(bus) = MemCounters::load_from_file(ChunkId(chunk_id as usize)) {
         println!("Loading chunk {chunk_id} ..... *");
         for data in &bus {
             total += 1;

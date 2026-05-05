@@ -1,3 +1,5 @@
+//! RIPEMD-160 hash function.
+
 /// Compute RIPEMD-160 hash
 #[inline]
 pub fn ripemd160(input: &[u8], #[cfg(feature = "hints")] _hints: &mut Vec<u64>) -> [u8; 32] {
@@ -15,6 +17,7 @@ pub fn ripemd160(input: &[u8], #[cfg(feature = "hints")] _hints: &mut Vec<u64>) 
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn ripemd160_c(
     input: *const u8,

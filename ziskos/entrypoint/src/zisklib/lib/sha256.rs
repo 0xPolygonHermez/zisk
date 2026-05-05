@@ -1,3 +1,5 @@
+//! SHA2-256 hash function (FIPS 180-4).
+
 use crate::syscalls::{syscall_sha256_f, SyscallSha256Params};
 
 use super::is_aligned_8;
@@ -110,11 +112,60 @@ fn compress_block(
     );
 }
 
+// ==================== C FFI Functions ====================
+
+/// SHA-256 compression function: applies `num_blocks` 512-bit blocks to the 256-bit state in-place.
+///
+/// # Safety
+/// - `state_ptr` must point to a writable `[u32; 8]`
+/// - `blocks_ptr` must point to `num_blocks * 64` readable bytes, 8-byte aligned
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_sha256f_compress_c")]
+pub unsafe extern "C" fn sha256f_compress_c(
+    state_ptr: *mut u32,
+    blocks_ptr: *const u8,
+    num_blocks: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let state: &mut [u32; 8] = &mut *(state_ptr as *mut [u32; 8]);
+    let mut state_64 = convert_u32_to_u64(state);
+
+    for i in 0..num_blocks {
+        let block: &[u8; 64] = &*(blocks_ptr.add(i * 64) as *const [u8; 64]);
+        let input_u64 = convert_bytes_to_u64(block);
+
+        let mut sha256_params = SyscallSha256Params { state: &mut state_64, input: &input_u64 };
+        syscall_sha256_f(
+            &mut sha256_params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    }
+
+    *state = convert_u64_to_u32(&state_64);
+}
+
+#[inline]
+fn convert_u32_to_u64(state: &[u32; 8]) -> [u64; 4] {
+    unsafe { *(state.as_ptr() as *const [u64; 4]) }
+}
+
+#[inline]
+fn convert_u64_to_u32(state: &[u64; 4]) -> [u32; 8] {
+    unsafe { *(state.as_ptr() as *const [u32; 8]) }
+}
+
+#[inline]
+fn convert_bytes_to_u64(block: &[u8; 64]) -> [u64; 8] {
+    unsafe { *(block.as_ptr() as *const [u64; 8]) }
+}
+
 /// C-compatible wrapper for full SHA-256 hash
 ///
 /// # Safety
 /// - `input` must point to at least `input_len` bytes
 /// - `output` must point to a writable buffer of at least 32 bytes
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn sha256_c(
     input: *const u8,

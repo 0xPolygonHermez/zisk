@@ -7,13 +7,12 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-build = "build.rs"
-
 [dependencies]
 zisk-core = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
+proofman-verifier = { workspace = true }
 proofman = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true }
@@ -22,7 +21,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+sha2 = { workspace = true }
 libc = "0.2"
+alloy-sol-types = { version = "1.5.7" }
 
 # QUIC networking
 tokio = { workspace = true }
@@ -32,14 +33,6 @@ rcgen = "0.14"
 
 bincode = { workspace = true }
 
-# Distributed mode (mpi) is only supported on Linux x86_64
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { workspace = true }
-
 [features]
 default = []
-disable_distributed = []
 stats = []
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

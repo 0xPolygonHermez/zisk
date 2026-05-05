@@ -32,8 +32,6 @@ num-traits = "0.2"
 
 [features]
 default = []
-gpu = ["packed"]
-packed = []
 debug_mem = []
 debug_mem_align = []
 save_mem_bus_data = []

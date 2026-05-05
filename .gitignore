@@ -2,6 +2,7 @@
 **/target
 
 /*.tar.gz
+/*.json.gz
 /riscof
 /build*
 /proofs*

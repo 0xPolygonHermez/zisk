@@ -1,7 +1,9 @@
+//! Keccak-256 hash function.
+
 use crate::syscalls::syscall_keccak_f;
 
 #[cfg(zisk_hints_debug)]
-use std::os::raw::c_char;
+use core::ffi::c_char;
 
 #[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
 extern "C" {
@@ -18,7 +20,8 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
     // On native we call external C function to log hints, since it controls if hints are paused or not
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
-        use std::ffi::CString;
+        extern crate alloc;
+        use alloc::ffi::CString;
 
         if let Ok(c) = CString::new(msg.as_ref()) {
             unsafe { hint_log_c(c.as_ptr()) };
@@ -81,6 +84,9 @@ pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
 
     // Squeeze phase: extract first 32 bytes (256 bits) from state
     let mut result = [0u8; 32];
+    // SAFETY: [u64; 25] and [u8; 200] have the same size (200 bytes) and [u8] has
+    // alignment 1, which is compatible with any alignment. The pointer cast is valid
+    // because we're reinterpreting the same memory region.
     let state_bytes: &[u8; 200] = unsafe { &*(&state as *const [u64; 25] as *const [u8; 200]) };
     result.copy_from_slice(&state_bytes[..32]);
 

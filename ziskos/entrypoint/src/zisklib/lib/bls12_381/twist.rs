@@ -754,7 +754,6 @@ pub fn scalar_mul_twist_bls12_381(
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
         k,
-        &[0, 0, 0, 0],
         #[cfg(feature = "hints")]
         hints,
     );
@@ -1030,6 +1029,7 @@ pub fn utf_endomorphism_twist_bls12_381(
 /// - [G2_ADD_SUCCESS_INFINITY] = success (point at infinity)
 /// - [G2_ADD_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
 /// - [G2_ADD_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bls12_381_g2_add_c(
     ret: *mut u8,
@@ -1080,6 +1080,7 @@ pub(crate) unsafe fn bls12_381_g2_add_c(
 /// - [G2_MSM_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
 /// - [G2_MSM_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
 /// - [G2_MSM_ERR_NOT_IN_SUBGROUP] = error (at least one point not in subgroup)
+#[allow(dead_code)]
 #[inline]
 pub(crate) unsafe fn bls12_381_g2_msm_c(
     ret: *mut u8,
@@ -1122,6 +1123,142 @@ pub(crate) unsafe fn bls12_381_g2_msm_c(
     } else {
         g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
         G2_MSM_SUCCESS
+    }
+}
+
+// ==================== C FFI Functions ====================
+
+/// Decompresses a compressed BLS12-381 G2 point (96 bytes) to affine coordinates.
+/// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
+///
+/// # Safety
+/// - `input_ptr` must point to a valid `[u8; 96]` compressed G2 point
+/// - `result_ptr` must point to a writable `[u64; 24]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_decompress_twist_bls12_381_c")]
+pub unsafe extern "C" fn decompress_twist_bls12_381_c(
+    input_ptr: *const u8,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let input = &*(input_ptr as *const [u8; 96]);
+    match decompress_twist_bls12_381(
+        input,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok((p, _)) => {
+            let result = &mut *(result_ptr as *mut [u64; 24]);
+            *result = p;
+            if eq(&p, &G2_IDENTITY) {
+                1
+            } else {
+                0
+            }
+        }
+        Err(_) => 2,
+    }
+}
+
+/// Curve membership check for a BLS12-381 G2 (twist) point.
+/// Returns 1 if the point is on the twist curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_twist_bls12_381_c")]
+pub unsafe extern "C" fn is_on_curve_twist_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 24]);
+    is_on_curve_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Subgroup membership check for a BLS12-381 G2 (twist) point.
+/// Returns 1 if the point is in the G2 subgroup, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_twist_bls12_381_c")]
+pub unsafe extern "C" fn is_on_subgroup_twist_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 24]);
+    is_on_subgroup_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Addition of two BLS12-381 G2 points with validation and identity handling.
+/// Returns 0 on success (result written to `result_ptr`), 1 if result is the point at infinity,
+/// or an error code if either point is invalid.
+///
+/// # Safety
+/// - `p1_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+/// - `p2_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 24]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_twist_bls12_381_c")]
+pub unsafe extern "C" fn add_twist_bls12_381_c(
+    p1_ptr: *const u64,
+    p2_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p1 = &*(p1_ptr as *const [u64; 24]);
+    let p2 = &*(p2_ptr as *const [u64; 24]);
+    let result = &mut *(result_ptr as *mut [u64; 24]);
+    *result = add_twist_bls12_381(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G2_IDENTITY) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Scalar multiplication of a non-zero BLS12-381 G2 point by a scalar.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 24]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_twist_bls12_381_c")]
+pub unsafe extern "C" fn scalar_mul_twist_bls12_381_c(
+    p_ptr: *const u64,
+    k_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 24]);
+    let k = &*(k_ptr as *const [u64; 4]);
+    let result = &mut *(result_ptr as *mut [u64; 24]);
+    *result = scalar_mul_twist_bls12_381(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G2_IDENTITY) {
+        1
+    } else {
+        0
     }
 }
 

@@ -1,6 +1,7 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::shm_unlink;
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
-    S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR, S_IWUSR,
 };
 use proofman_common::format_bytes;
 use std::{
@@ -38,6 +39,9 @@ pub trait AsmShmemHeader: Debug {
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     fn drop(&mut self) {
+        if let Ok(c_name) = std::ffi::CString::new(self.shmem_name.clone()) {
+            unsafe { shm_unlink(c_name.as_ptr()) };
+        }
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
@@ -60,17 +64,6 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
-            }
-
-            // Unlink the shared memory object to ensure it is removed after use
-            // This is necessary to avoid leaving stale shared memory objects
-            // in the system, especially if the program crashes or exits unexpectedly.
-            // Note: This does not affect the current mapping, it just ensures that
-            // the shared memory object is removed from the filesystem namespace.
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                let err = io::Error::last_os_error();
-                close(fd);
-                return Err(anyhow::anyhow!("shm_unlink('{name}') failed: {err}"));
             }
 
             #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]

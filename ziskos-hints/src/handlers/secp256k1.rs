@@ -18,7 +18,7 @@ pub fn secp256k1_ecdsa_verify_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     let mut hints = Vec::new();
     unsafe {
-        zisklib::secp256k1_ecdsa_verify_c(
+        zisklib::secp256k1_ecdsa_verify_bytes_c(
             sig.as_ptr() as *const u8,
             msg.as_ptr() as *const u8,
             pk.as_ptr() as *const u8,

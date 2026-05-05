@@ -7,17 +7,17 @@ use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
-use tracing::{error, info};
-use zisk_common::ZiskExecutorTime;
-use zisk_distributed_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, StreamDataDto,
-    WorkerState,
+use tracing::{error, info, warn};
+use zisk_cluster_api::contribution_params::InputSource;
+use zisk_cluster_api::execute_task_response::ResultData;
+use zisk_cluster_api::*;
+use zisk_cluster_common::{elf_cache_path, DataId, JobId};
+use zisk_cluster_common::{
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
+    StreamDataDto, WorkerState,
 };
-use zisk_distributed_common::{DataId, JobId};
-use zisk_distributed_grpc_api::contribution_params::InputSource;
-use zisk_distributed_grpc_api::execute_task_response::ResultData;
-use zisk_distributed_grpc_api::*;
-use zisk_sdk::{Asm, Emu, ZiskBackend};
+use zisk_common::{ProgramVK, Proof, ZiskExecutorTime};
+use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
 
@@ -40,11 +40,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Emu>> {
-        let worker = Worker::<Emu>::new_emu(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Emu>::new_emu(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Emu>::new(worker_config, worker).await?))
@@ -57,11 +53,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
     ) -> Result<WorkerNode<Asm>> {
-        let worker = Worker::<Asm>::new_asm(
-            worker_config.worker.worker_id.clone(),
-            worker_config.worker.compute_capacity,
-            prover_config,
-        )?;
+        let worker = Worker::<Asm>::new_asm(prover_config)?;
 
         if worker.local_rank() == 0 {
             Ok(WorkerNode::WorkerGrpc(WorkerNodeGrpc::<Asm>::new(worker_config, worker).await?))
@@ -118,10 +110,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     pub async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() == 0, "WorkerNodeGrpc should only be run by rank 0");
 
+        // Channel lives for the entire process lifetime so that a spawn_blocking task
+        // running through a transient disconnect can still deliver its result after
+        // the worker reconnects and a new event loop starts draining computation_rx.
+        let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
+
         loop {
             match self.worker.state() {
                 WorkerState::Disconnected => {
-                    if let Err(e) = self.connect_and_run().await {
+                    if let Err(e) = self.connect_and_run(&computation_tx, &mut computation_rx).await
+                    {
                         error!("Connection failed: {}", e);
                         tokio::time::sleep(Duration::from_secs(
                             self.worker_config.connection.reconnect_interval_seconds,
@@ -147,7 +145,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
-    async fn connect_and_run(&mut self) -> Result<()> {
+    async fn connect_and_run(
+        &mut self,
+        computation_tx: &mpsc::UnboundedSender<ComputationResult>,
+        computation_rx: &mut mpsc::UnboundedReceiver<ComputationResult>,
+    ) -> Result<()> {
         info!("Connecting to coordinator at {}", self.worker_config.coordinator.url);
 
         let channel =
@@ -170,7 +172,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 payload: Some(worker_message::Payload::Reconnect(WorkerReconnectRequest {
                     worker_id: self.worker_config.worker.worker_id.as_string(),
                     compute_capacity: Some(self.worker_config.worker.compute_capacity.into()),
-                    last_known_job_id: job.lock().await.job_id.as_string(),
+                    last_known_job_id: Some(job.lock().await.job_id.as_string()),
                 })),
             }
         } else {
@@ -185,19 +187,46 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(connect_message)?;
         self.worker.set_state(WorkerState::Connecting);
 
-        // Create channels for computation results
-        let (computation_tx, mut computation_rx) = mpsc::unbounded_channel::<ComputationResult>();
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
 
         // Main non-blocking event loop
         loop {
+            // Take the computation handle out so select! can poll it independently.
+            // On the happy path (task sends ComputationResult through the channel),
+            // the channel branch fires first and the handle is put back.
+            // On panic/cancel, the handle branch fires and we report the error.
+            let mut computation_handle = self.worker.take_current_computation();
+
+            // biased: computation_rx must be checked before the JoinHandle branch.
+            // When a task completes normally, both become ready simultaneously.
+            // Without biased, select! picks non-deterministically and the JoinHandle
+            // branch could win, discarding the actual result.
             tokio::select! {
-                // Handle incoming coordinator messages
+                biased;
+
+                // Highest priority: task results from spawn_blocking via channel
+                Some(result) = computation_rx.recv() => {
+                    // Happy path: task completed and sent its result through the channel.
+                    // Drop the handle — no need to await it, the task already finished.
+                    drop(computation_handle.take());
+                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
+                        error!("Error handling computation result: {}", e);
+                        self.report_computation_error(&message_sender, &e.to_string()).await;
+                        break;
+                    }
+                }
+                // Coordinator messages (task dispatch, cancellation, heartbeat, etc.)
                 Some(result) = response_stream.next() => {
+                    // Put the handle back before processing (coordinator message handler
+                    // may need it, e.g. cancel_current_computation).
+                    if let Some(h) = computation_handle.take() {
+                        self.worker.set_current_computation(h);
+                    }
                     match result {
                         Ok(message) => {
-                            if let Err(e) = self.handle_coordinator_message(message, &message_sender, &computation_tx).await {
+                            if let Err(e) = self.handle_coordinator_message(message, &message_sender, computation_tx).await {
                                 error!("Error handling coordinator message: {}", e);
+                                self.report_computation_error(&message_sender, &e.to_string()).await;
                                 break;
                             }
                         }
@@ -207,13 +236,33 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
                 }
-                Some(result) = computation_rx.recv() => {
-                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
-                        error!("Error handling computation result: {}", e);
-                        break;
+                // Monitor the computation task handle directly. This branch only
+                // fires when the task finishes WITHOUT sending a ComputationResult
+                // (panic, cancellation, or unexpected silent exit).
+                // Because of biased, computation_rx is checked first — so this only
+                // fires when the channel is empty (i.e., the task truly didn't send).
+                join_result = async { computation_handle.as_mut().unwrap().await }, if computation_handle.is_some() => {
+                    match join_result {
+                        Err(join_error) => {
+                            error!("Computation task failed unexpectedly: {}", join_error);
+                            self.report_computation_error(&message_sender, &join_error.to_string()).await;
+                            self.worker.set_current_job(None);
+                            self.worker.set_state(WorkerState::Ready);
+                        }
+                        Ok(()) => {
+                            // Task completed without sending a ComputationResult — shouldn't
+                            // happen in normal operation, but handle it defensively.
+                            warn!("Computation task exited without sending a result");
+                            self.worker.set_current_job(None);
+                            self.worker.set_state(WorkerState::Ready);
+                        }
                     }
                 }
                 _ = heartbeat_interval.tick() => {
+                    // Put the handle back before processing.
+                    if let Some(h) = computation_handle.take() {
+                        self.worker.set_current_computation(h);
+                    }
                     if let Err(e) = self.send_heartbeat_ack(&message_sender).await {
                         error!("Error sending heartbeat: {}", e);
                         break;
@@ -225,9 +274,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
         }
-
-        // Cancel any running computation
-        self.worker.cancel_current_computation();
 
         self.worker.set_state(WorkerState::Disconnected);
         Ok(())
@@ -256,17 +302,59 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ComputationResult::Proofs { job_id, success, result } => {
                 self.send_proof(job_id, success, result, message_sender).await
             }
-            ComputationResult::AggProof { job_id, success, result, executed_steps, instances } => {
+            ComputationResult::AggProof {
+                job_id,
+                success,
+                result,
+                executed_steps,
+                proof_type,
+                instances,
+            } => {
                 self.send_aggregation(
                     job_id,
                     success,
                     result,
                     message_sender,
                     executed_steps,
+                    proof_type,
                     instances,
                 )
                 .await
             }
+        }
+    }
+
+    /// Sends a [`WorkerError`] message to the coordinator when a computation task
+    /// fails unexpectedly (e.g. panic inside `spawn_blocking`). This ensures the
+    /// coordinator learns about the failure immediately instead of waiting for a
+    /// heartbeat timeout.
+    async fn report_computation_error(
+        &self,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+        error_message: &str,
+    ) {
+        let job_id = match self.worker.current_job() {
+            Some(job) => job.lock().await.job_id.as_string(),
+            None => {
+                // No current job — nothing useful to report to coordinator
+                warn!(
+                    "Computation error without active job (not reported to coordinator): {}",
+                    error_message
+                );
+                return;
+            }
+        };
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::Error(WorkerError {
+                worker_id: self.worker_config.worker.worker_id.as_string(),
+                job_id,
+                error_message: error_message.to_string(),
+            })),
+        };
+
+        if let Err(e) = message_sender.send(message) {
+            error!("Failed to send WorkerError to coordinator: {}", e);
         }
     }
 
@@ -320,15 +408,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let zisk_execution_time = ZiskExecuteTime {
-            total_duration: result_data.1.total_duration.as_millis() as f32,
-            execution_duration: result_data.1.execution_duration.as_millis() as f32,
-            count_and_plan_duration: result_data.1.count_and_plan_duration.as_millis() as f32,
-            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration.as_millis() as f32,
+            total_duration: result_data.1.total_duration as f32,
+            execution_duration: result_data.1.execution_duration as f32,
+            count_and_plan_duration: result_data.1.count_and_plan_duration as f32,
+            count_and_plan_mo_duration: result_data.1.count_and_plan_mo_duration as f32,
             asm_execution_duration: result_data
                 .1
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
-            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+            task_received_time: task_received_time
+                .unwrap_or_else(chrono::Utc::now)
+                .timestamp_millis() as f64,
         };
 
         let task_type = TaskType::PartialContribution as i32;
@@ -385,18 +475,27 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
         };
 
-        let (_, zisk_exec_time, instances, executed_steps) = result_data;
+        let (witness_info, zisk_exec_time, instances, executed_steps) = result_data;
+
+        let witness_info_msg = WitnessExecInfo {
+            witness_time: witness_info.witness_time,
+            publics: witness_info.publics,
+            proof_values: witness_info.proof_values,
+            summary_info: witness_info.summary_info,
+            total_instances: instances,
+        };
 
         let zisk_execution_time = ZiskExecuteTime {
-            total_duration: zisk_exec_time.total_duration.as_millis() as f32,
-            execution_duration: zisk_exec_time.execution_duration.as_millis() as f32,
-            count_and_plan_duration: zisk_exec_time.count_and_plan_duration.as_millis() as f32,
-            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration.as_millis()
-                as f32,
+            total_duration: zisk_exec_time.total_duration as f32,
+            execution_duration: zisk_exec_time.execution_duration as f32,
+            count_and_plan_duration: zisk_exec_time.count_and_plan_duration as f32,
+            count_and_plan_mo_duration: zisk_exec_time.count_and_plan_mo_duration as f32,
             asm_execution_duration: zisk_exec_time
                 .asm_execution_duration
                 .map(|asm_info| AsmExecuteInfo { time: asm_info.time, mhz: asm_info.mhz }),
-            task_received_time: task_received_time.unwrap().timestamp_millis() as f64,
+            task_received_time: task_received_time
+                .unwrap_or_else(chrono::Utc::now)
+                .timestamp_millis() as f64,
         };
 
         let task_type = TaskType::Execution as i32;
@@ -404,6 +503,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             instances,
             executed_steps,
             zisk_execution_time: Some(zisk_execution_time),
+            witness_info: Some(witness_info_msg),
         }));
 
         let message = WorkerMessage {
@@ -435,10 +535,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let (result_data, error_message) = match result {
             Ok(data) => {
-                assert!(success);
+                if !success {
+                    return Err(anyhow!(
+                        "Inconsistent state: Prove reported failure but returned Ok result"
+                    ));
+                }
                 (
                     data.into_iter()
-                        .map(|v| Proof {
+                        .map(|v| ProofStark {
                             airgroup_id: v.airgroup_id,
                             values: v.proof,
                             // NOTE: in this context we take always the first worker index
@@ -451,7 +555,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 )
             }
             Err(e) => {
-                assert!(!success);
+                if success {
+                    return Err(anyhow!(
+                        "Inconsistent state: Prove reported success but returned Err result"
+                    ));
+                }
                 (vec![], e.to_string())
             }
         };
@@ -472,6 +580,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_aggregation(
         &mut self,
         job_id: JobId,
@@ -479,6 +588,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         result: Result<Option<Vec<Vec<u64>>>>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         executed_steps: u64,
+        proof_type: ProofKind,
         instances: u64,
     ) -> Result<()> {
         if let Some(handle) = self.worker.take_current_computation() {
@@ -496,14 +606,55 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
                 if let Some(final_proof) = data {
                     reset_current_job = !final_proof.is_empty();
+
+                    let proof_data = if !final_proof.is_empty() {
+                        let is_plonk = proof_type == ProofKind::Plonk;
+                        let flat_proof: Vec<u64> = final_proof.into_iter().flatten().collect();
+                        let minimal = proof_type == ProofKind::VadcopFinalMinimal;
+                        let verkey = self.worker.get_vadcop_vk(minimal).unwrap_or_else(|e| {
+                            error!("Failed to get vadcop verification key: {}", e);
+                            vec![]
+                        });
+                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey) {
+                            Ok(zisk_proof) => {
+                                let final_proof: Proof = if is_plonk {
+                                    match self
+                                        .worker
+                                        .prover_arc()
+                                        .wrap_proof(&zisk_proof, ProofKind::Plonk)
+                                        .run()
+                                    {
+                                        Ok(wrapped) => wrapped.get_proof().clone(),
+                                        Err(e) => {
+                                            error!(
+                                                "Failed to wrap Plonk proof for {}: {}",
+                                                job_id, e
+                                            );
+                                            zisk_proof
+                                        }
+                                    }
+                                } else {
+                                    zisk_proof
+                                };
+                                bincode::serialize(&final_proof).unwrap_or_default()
+                            }
+                            Err(e) => {
+                                error!("Failed to build Proof: {}", e);
+                                vec![]
+                            }
+                        }
+                    } else {
+                        vec![]
+                    };
+
                     Some(ResultData::FinalProof(FinalProof {
-                        values: final_proof.into_iter().flatten().collect(),
+                        proof_data,
                         executed_steps,
                         instances,
                     }))
                 } else {
                     Some(ResultData::FinalProof(FinalProof {
-                        values: vec![],
+                        proof_data: vec![],
                         executed_steps,
                         instances,
                     }))
@@ -515,7 +666,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 error_message = e.to_string();
                 Some(ResultData::FinalProof(FinalProof {
-                    values: vec![],
+                    proof_data: vec![],
                     executed_steps,
                     instances,
                 }))
@@ -539,7 +690,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         if reset_current_job {
             info!("Aggregation task completed for {}", job_id);
             self.worker.set_current_job(None);
-            self.worker.set_state(WorkerState::Idle);
+            self.worker.set_state(WorkerState::Ready);
         }
 
         Ok(())
@@ -574,7 +725,66 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             coordinator_message::Payload::RegisterResponse(response) => {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
-                    self.worker.set_state(WorkerState::Idle);
+
+                    // Process reconciliation directive from coordinator
+                    match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
+                        Some(Ok(ReconnectionAction::CancelStaleJob)) => {
+                            info!("Coordinator directed cancellation of stale job");
+                            self.worker.clear_current_job().await;
+                        }
+                        Some(Ok(ReconnectionAction::KeepComputing)) => {
+                            info!("Coordinator confirmed active job; keep computing");
+                        }
+                        Some(Ok(ReconnectionAction::Idle)) | None => {
+                            if self.worker.current_job().is_some() {
+                                warn!("No cancel directive but worker has stale job; clearing");
+                                self.worker.clear_current_job().await;
+                            }
+                        }
+                        Some(Err(_)) => {
+                            warn!(
+                                "Unknown reconciliation action; clearing stale state defensively"
+                            );
+                            self.worker.clear_current_job().await;
+                        }
+                    }
+
+                    // If the coordinator attached setup info, run setup now — before entering
+                    // the main event loop so no compute task can be processed without a guest program.
+                    if let Some(setup) = response.setup_program {
+                        let worker_id = self.worker_config.worker.worker_id.as_string();
+                        let job_id = setup.job_id.clone();
+                        let hash_id = setup.hash_id.clone();
+
+                        let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                            Ok(vk) => (true, String::new(), vk.vk),
+                            Err(e) => {
+                                error!(
+                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                    job_id, hash_id, e
+                                );
+                                (false, e.to_string(), Vec::new())
+                            }
+                        };
+
+                        let ack = WorkerMessage {
+                            payload: Some(worker_message::Payload::SetupProgramAck(
+                                SetupProgramAck {
+                                    vk,
+                                    job_id,
+                                    worker_id,
+                                    hash_id,
+                                    success,
+                                    error_message,
+                                },
+                            )),
+                        };
+                        if let Err(e) = message_sender.send(ack) {
+                            warn!("Failed to send SetupProgramAck after reconnection: {}", e);
+                        }
+                    }
+
+                    self.worker.set_state(WorkerState::Ready);
                 } else {
                     self.worker.set_state(WorkerState::Error);
                     error!("Registration rejected: {}", response.message);
@@ -595,6 +805,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     Ok(TaskType::Aggregate) => {
                         self.aggregate(request, computation_tx).await?;
                     }
+                    Ok(TaskType::Wrap) => {
+                        self.handle_wrap_task(request, message_sender).await?;
+                    }
                     Err(_) => {
                         error!("Unknown task type: {}", request.task_type);
                         return Err(anyhow!("Unknown task type: {}", request.task_type));
@@ -604,6 +817,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             coordinator_message::Payload::StreamData(stream_data) => {
                 self.handle_stream_data(stream_data).await?;
             }
+            coordinator_message::Payload::InputStreamData(input_data) => {
+                self.handle_input_stream_data(input_data).await?;
+            }
             coordinator_message::Payload::JobCancelled(cancelled) => {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
@@ -611,14 +827,55 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        self.worker.cancel_current_computation();
-                        self.worker.set_state(WorkerState::Idle);
+                        self.worker.clear_current_job().await;
+                        self.worker.set_state(WorkerState::Ready);
                     }
+                }
+
+                // Acknowledge cancellation so the coordinator knows we stopped
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::JobCancelledAck(JobCancelledAck {
+                        worker_id: self.worker_config.worker.worker_id.as_string(),
+                        job_id: cancelled.job_id,
+                    })),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send JobCancelledAck: {}", e);
                 }
             }
             coordinator_message::Payload::Heartbeat(_) => {
                 // Send heartbeat ack
                 self.send_heartbeat_ack(message_sender).await?;
+            }
+            coordinator_message::Payload::SetupProgram(setup) => {
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id = setup.job_id.clone();
+                let hash_id = setup.hash_id.clone();
+
+                let (success, error_message, vk) = match self.handle_setup_program(setup) {
+                    Ok(vk) => (true, String::new(), vk.vk),
+                    Err(e) => {
+                        error!(
+                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
+                            job_id, hash_id, e
+                        );
+                        (false, e.to_string(), Vec::new())
+                    }
+                };
+
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
+                        job_id,
+                        worker_id,
+                        hash_id,
+                        success,
+                        error_message,
+                        vk,
+                    })),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send SetupProgramAck: {}", e);
+                }
             }
             coordinator_message::Payload::Shutdown(shutdown) => {
                 info!(
@@ -633,6 +890,42 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Handles a `SetupProgram` message from the coordinator.
+    ///
+    /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
+    /// setup (generates ROM binary files on disk).
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
+        use std::sync::Arc;
+        use zisk_prover_backend::GuestProgram;
+
+        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
+
+        let elf_path = elf_cache_path(&setup.hash_id);
+
+        // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
+        // exists it is identical to what we received — skip write and re-setup.
+        if !elf_path.exists() {
+            if let Some(parent) = elf_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&elf_path, &setup.elf_bytes)?;
+        }
+
+        let guest_program =
+            Arc::new(GuestProgram::from_bytes(setup.program_name, setup.elf_bytes.clone()));
+
+        // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
+        let vk = self.worker.run_setup(
+            &setup.hash_id,
+            &setup.elf_bytes,
+            setup.with_hints,
+            guest_program,
+        )?;
+
+        info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
+        Ok(vk)
+    }
+
     pub async fn partial_contribution(
         &mut self,
         request: ExecuteTaskRequest,
@@ -642,7 +935,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Partial Contribution for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        self.worker.cancel_current_computation().await;
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -650,27 +943,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref inputs_uris)) => {
-                // Validate and get the full path
-                let inputs_uri = Self::validate_subdir(
-                    &self.worker_config.worker.inputs_folder,
-                    &PathBuf::from(&inputs_uris),
-                )
-                .await?;
+        let input_source = Self::resolve_input_source(
+            &self.worker_config.worker.inputs_folder,
+            params.input_source,
+        )
+        .await?;
 
-                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
-            }
-            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => InputSourceDto::InputNull,
-        };
-
-        let hints_source = if let Some(hints_path) = &params.hints_path {
+        let hints_source = if let Some(hints_data) = params.hints_data {
+            HintsSourceDto::HintsData(hints_data)
+        } else if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
-                // Hints will be streamed - use placeholder, will be updated when stream completes
                 HintsSourceDto::HintsStream(hints_path.clone())
             } else {
-                // Validate and get the full path
                 let hints_uri = Self::validate_subdir(
                     &self.worker_config.worker.inputs_folder,
                     &PathBuf::from(hints_path),
@@ -683,11 +967,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             HintsSourceDto::HintsNull
         };
 
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
+        let is_first_partition = params.worker_allocation.contains(&0);
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
         let job = self.worker.new_job(
             job_id.clone(),
+            params.hash_id,
             data_ctx,
             params.rank_id,
             params.total_workers,
@@ -698,7 +987,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Start computation in background task
         self.worker.set_current_computation(
-            self.worker.handle_partial_contribution(job.clone(), computation_tx.clone()).await?,
+            self.worker.handle_partial_contribution(job, computation_tx.clone()).await?,
         );
 
         Ok(())
@@ -713,7 +1002,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         info!("Starting Execution-only for {}", request.job_id);
 
         // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        self.worker.cancel_current_computation().await;
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -721,27 +1010,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let job_id = JobId::from(request.job_id);
-        let input_source = match params.input_source {
-            Some(InputSource::InputPath(ref inputs_uris)) => {
-                // Validate and get the full path
-                let inputs_uri = Self::validate_subdir(
-                    &self.worker_config.worker.inputs_folder,
-                    &PathBuf::from(&inputs_uris),
-                )
-                .await?;
+        let input_source = Self::resolve_input_source(
+            &self.worker_config.worker.inputs_folder,
+            params.input_source,
+        )
+        .await?;
 
-                InputSourceDto::InputPath(inputs_uri.to_string_lossy().to_string())
-            }
-            Some(InputSource::InputData(data)) => InputSourceDto::InputData(data),
-            None => InputSourceDto::InputNull,
-        };
-
-        let hints_source = if let Some(hints_path) = &params.hints_path {
+        let hints_source = if let Some(hints_data) = params.hints_data {
+            HintsSourceDto::HintsData(hints_data)
+        } else if let Some(hints_path) = &params.hints_path {
             if params.hints_stream {
-                // Hints will be streamed - use placeholder, will be updated when stream completes
                 HintsSourceDto::HintsStream(hints_path.clone())
             } else {
-                // Validate and get the full path
                 let hints_uri = Self::validate_subdir(
                     &self.worker_config.worker.inputs_folder,
                     &PathBuf::from(hints_path),
@@ -754,11 +1034,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             HintsSourceDto::HintsNull
         };
 
+        let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
+        let is_first_partition = params.worker_allocation.contains(&0);
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
 
         let job = self.worker.new_job(
             job_id.clone(),
+            params.hash_id,
             data_ctx,
             params.rank_id,
             params.total_workers,
@@ -769,7 +1054,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Start execution-only computation in background task
         self.worker.set_current_computation(
-            self.worker.handle_execution_only(job.clone(), computation_tx.clone()).await?,
+            self.worker.handle_execution_only(job, computation_tx.clone()).await?,
         );
 
         Ok(())
@@ -791,6 +1076,24 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// # Arguments
     /// * `base_dir` - The base directory that must contain the subpath
     /// * `subpath` - The relative path within base_dir (can include subdirectories)
+    ///
+    /// Resolve `InputSource` from a gRPC request into `InputSourceDto`.
+    ///
+    /// File paths are validated under `inputs_folder` with a 60 s timeout.
+    async fn resolve_input_source(
+        inputs_folder: &Path,
+        source: Option<InputSource>,
+    ) -> Result<InputSourceDto> {
+        match source {
+            Some(InputSource::InputPath(ref path)) => {
+                let validated = Self::validate_subdir(inputs_folder, &PathBuf::from(path)).await?;
+                Ok(InputSourceDto::InputPath(validated.to_string_lossy().to_string()))
+            }
+            Some(InputSource::InputData(data)) => Ok(InputSourceDto::InputData(data)),
+            None => Ok(InputSourceDto::InputNull),
+        }
+    }
+
     ///
     /// # Returns
     /// * `Ok(PathBuf)` - The validated, canonicalized full path
@@ -909,7 +1212,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             return Err(anyhow!("Expected AggParams params for Aggregate task"));
         };
 
-        let agg_proofs = agg_params.agg_proofs.unwrap().proofs;
+        let agg_proofs =
+            agg_params.agg_proofs.ok_or_else(|| anyhow!("Missing agg_proofs in AggParams"))?.proofs;
         let agg_proofs: Vec<_> = agg_proofs
             .into_iter()
             .map(|p| AggProofData {
@@ -923,7 +1227,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             agg_proofs,
             last_proof: agg_params.last_proof,
             final_proof: agg_params.final_proof,
-            compressed: agg_params.compressed,
+            proof_type: ProofKind::from(agg_params.proof_type),
         };
         self.worker.set_current_computation(self.worker.handle_aggregate(
             job,
@@ -940,9 +1244,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         let job = self.worker.current_job().unwrap();
-        let (current_job_id, is_first_partition) = {
+        let current_job_id = {
             let job_guard = job.lock().await;
-            (job_guard.job_id.clone(), job_guard.allocation.contains(&0))
+            job_guard.job_id.clone()
         };
 
         let stream_data_dto: StreamDataDto = stream_data.into();
@@ -955,6 +1259,79 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
-        self.worker.route_stream_data(stream_data_dto, is_first_partition).await
+        self.worker.route_stream_data(stream_data_dto).await
+    }
+
+    async fn handle_input_stream_data(
+        &mut self,
+        input_data: zisk_cluster_api::InputStreamData,
+    ) -> Result<()> {
+        let job = self
+            .worker
+            .current_job()
+            .ok_or_else(|| anyhow!("InputStreamData received without current job context"))?;
+
+        let current_job_id = job.lock().await.job_id.clone();
+        let incoming_job_id = JobId::from(input_data.job_id.clone());
+
+        if current_job_id != incoming_job_id {
+            return Err(anyhow!(
+                "Job ID mismatch in InputStreamData: expected {}, got {}",
+                current_job_id.as_string(),
+                incoming_job_id
+            ));
+        }
+
+        self.worker.append_raw_input(&input_data.payload)
+    }
+
+    async fn handle_wrap_task(
+        &mut self,
+        request: ExecuteTaskRequest,
+        message_sender: &mpsc::UnboundedSender<WorkerMessage>,
+    ) -> Result<()> {
+        let job_id = JobId::from(request.job_id.clone());
+
+        let Some(execute_task_request::Params::WrapParams(wrap_params)) = request.params else {
+            return Err(anyhow!("Expected WrapParams for Wrap task"));
+        };
+
+        let proof_data = wrap_params.proof_data;
+        let proof_dest = wrap_params.proof_dest;
+
+        let prover = self.worker.prover_arc();
+        let worker_id_str = self.worker_config.worker.worker_id.as_string();
+        let job_id_str = job_id.as_string();
+
+        let (success, result_data, error_message) = tokio::task::spawn_blocking(move || {
+            match Worker::<T>::execute_wrap_task(&prover, proof_data, proof_dest) {
+                Ok(wrapped_bytes) => (
+                    true,
+                    Some(ResultData::WrapResult(zisk_cluster_api::WrapResult {
+                        proof_data: wrapped_bytes,
+                    })),
+                    String::new(),
+                ),
+                Err(e) => {
+                    error!("Wrap task failed for {}: {}", job_id_str, e);
+                    (false, None, e.to_string())
+                }
+            }
+        })
+        .await?;
+
+        let message = WorkerMessage {
+            payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
+                worker_id: worker_id_str,
+                job_id: job_id.as_string(),
+                task_type: TaskType::Wrap as i32,
+                success,
+                result_data,
+                error_message,
+            })),
+        };
+
+        message_sender.send(message)?;
+        Ok(())
     }
 }

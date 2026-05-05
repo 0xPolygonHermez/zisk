@@ -121,7 +121,7 @@ In this case, the `guest` ELF file will be generated in the `./target/elf/riscv6
 
 ## Execute
 
-You can test your compiled program using the ZisK emulator (`ziskemu`) before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
+You can test your compiled program using the ZisK emulator before generating a proof. Use the `-e` (`--elf`) flag to specify the location of the ELF file and the `-i` (`--inputs`) flag to specify the location of the input file:
 
 ```bash
 cargo-zisk build --release
@@ -201,7 +201,7 @@ Opcodes:
 Before generating a proof (or verifying the constraints), you need to generate the program setup files. This must be done the first time after building the program ELF file, or any time it changes:
 
 ```bash
-cargo-zisk rom-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -k $HOME/.zisk/provingKey
+cargo-zisk program-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -k $HOME/.zisk/provingKey
 ```
 In this command:
 
@@ -212,7 +212,7 @@ The program setup files will be generated in the `cache` directory located at `$
 
 To clean the `cache` directory content, use the following command:
 ```bash
-cargo-zisk clean
+cargo-zisk utils clean-cache --all
 ```
 
 ### Verify Constraints
@@ -241,7 +241,7 @@ If everything is correct, you will see an output similar to:
 To generate a proof, run the following command:
 
 ```bash
-cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof -a -y
+cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof
 ```
 In this command:
 
@@ -249,8 +249,6 @@ In this command:
 * `-i` (`--input`) specifies the input file location.
 * `-k` (`--proving-key`) specifies the directory containing the proving key. This is optional and defaults to `$HOME/.zisk/provingKey`.
 * `-o` (`--output`) determines the output directory (in this example `proof`).
-* `-a` (`--aggregation`) indicates that a final aggregated proof (containing all generated sub-proofs) should be produced.
-* `-y` (`--verify-proofs`) instructs the tool to verify the proof immediately after it is generated (verification can also be performed later using the `cargo-zisk verify` command).
 
 If the process is successful, you should see a message similar to:
 
@@ -282,21 +280,25 @@ The total memory requirement increases proportionally with the number of process
 
 ### GPU Proof Generation
 
-Zisk proofs can also be generated using GPUs to significantly improve performance and scalability.
-Follow these steps to enable GPU support:
+Zisk proofs can also be generated on GPUs to significantly improve performance and scalability. GPU support is only available for NVIDIA GPUs.
 
-1. GPU support is only available for NVIDIA GPUs.
+To enable GPU support:
 
-2. Make sure the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) is installed.
+1. Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads).
 
-3. Build Zisk with GPU support enabled.
+2. Confirm that Zisk was built with GPU support by checking whether the version string ends in `[gpu]` rather than `[cpu]`:
 
-    **Note:** It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
+   ```bash
+   cargo-zisk --version
+   ```
 
-    GPU support must be enabled at compile time. Follow the instructions in the **Build ZisK** section under **Option 2: Building from source** in the [Installation](./installation.md) guide, but replace the build command with:
-    ```bash
-    cargo build --release --features gpu
-    ```
+3. Once GPU support is enabled, add the `--gpu` flag to your `prove` commands:
+
+   ```bash
+   cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -k $HOME/.zisk/provingKey -o proof --gpu
+   ```
+
+> **Note:** It is recommended to compile Zisk directly on the server where it will be executed. The binary will be optimized for the local GPU architecture, which can lead to better runtime performance.
 
 You can combine GPU-based execution with concurrent proof generation using multiple processes, as described in the **Concurrent Proof Generation** section.
 

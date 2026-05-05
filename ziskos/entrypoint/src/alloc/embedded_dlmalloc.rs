@@ -5,14 +5,14 @@ use dlmalloc::{Allocator as DlAllocator, Dlmalloc};
 
 use super::kernel_heap::*;
 
-// Implementar el backend que le da memoria a dlmalloc
+// Implement the backend that provides memory to dlmalloc
 struct ZiskSystem;
 
 unsafe impl DlAllocator for ZiskSystem {
-    // Equivalente a sbrk — dlmalloc pide más memoria aquí
+    // Equivalent to sbrk — dlmalloc requests more memory here
     fn alloc(&self, size: usize) -> (*mut u8, usize, u32) {
         unsafe {
-            // Devuelves un bloque de tu heap reservado
+            // Return a block from your reserved heap
             let ptr = BUMP_PTR;
             let aligned = (ptr + 7) & !7;
             BUMP_PTR = aligned + size;

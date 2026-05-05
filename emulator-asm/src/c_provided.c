@@ -118,7 +118,6 @@ struct timeval print_pc_tv;
 // Used for debugging purposes
 extern int _print_pc (uint64_t pc, uint64_t c)
 {
-    print_pc_counter++;
 
 #ifdef PRINT_PC_DURATION
     {
@@ -135,7 +134,7 @@ extern int _print_pc (uint64_t pc, uint64_t c)
     }
 #endif
 
-    asm_printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
+    asm_raw_printf("s=%lu pc=%lx c=%lx\n", print_pc_counter, pc, c);
 
 //#define PRINT_PC_REGS
 #ifdef PRINT_PC_REGS
@@ -175,6 +174,8 @@ extern int _print_pc (uint64_t pc, uint64_t c)
     asm_raw_printf("\n");
     fflush(stdout);
 #endif
+
+    print_pc_counter++;
 
     return 0;
 }

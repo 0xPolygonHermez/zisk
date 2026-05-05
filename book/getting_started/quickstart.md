@@ -31,9 +31,9 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 
 ## Create a Project
 
-The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
+The first step is to generate a new example project using the `cargo-zisk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
 ```bash
-cargo-zisk sdk new sha_hasher
+cargo-zisk new sha_hasher
 cd sha_hasher
 ```
 
