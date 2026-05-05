@@ -5,15 +5,20 @@
 # Layout (relative to --build-dir):
 #   provingKey/        -> zisk-provingkey-<VERSION>.tar.gz  (+ .md5 sidecar)
 #   circom/            -> zisk-circuits-<VERSION>.tar.gz
-#   provingKeySnark/   -> zisk-provingkey-snark-<VERSION>.tar.gz
+#   provingKeySnark/   -> zisk-provingkey-plonk-<VERSION>.tar.gz
+#
+# In default and --all modes, if <build-dir>/.input-hash exists (written by
+# build-setup.sh on a fresh cache-miss build), it is also uploaded as
+# zisk-provingkey-<VERSION>.input-hash so the next build-setup.sh run can hit
+# cache. If the file is missing, the sidecar upload is skipped — no error.
 #
 # <VERSION> is read from the workspace `[workspace.package].version` in the
 # repo's root Cargo.toml.
 #
 # Modes:
-#   (default)   package provingKey + circuits
+#   (default)   package provingKey + circuits (and hash sidecar if present)
 #   --snark     package provingKeySnark only (run after `proofman-setup setup-snark`)
-#   --all       package provingKey + circuits + snark
+#   --all       package provingKey + circuits + snark (and hash sidecar if present)
 #
 # All produced files are pushed to gs://zisk-setup/ via `gsutil`.
 
@@ -75,7 +80,7 @@ pack() {
   fi
   local tarball="$OUT_DIR/$tarname"
   echo "packing $BUILD_DIR/$src -> $tarball"
-  tar -czf "$tarball" -C "$BUILD_DIR" "$src"
+  tar -cvzf "$tarball" -C "$BUILD_DIR" "$src"
   ARTIFACTS+=("$tarball")
   if [ "$with_md5" = "yes" ]; then
     (cd "$OUT_DIR" && md5sum "$tarname" > "$tarname.md5")
@@ -85,13 +90,29 @@ pack() {
 
 case "$MODE" in
   standard|all)
-    pack provingKey       "zisk-provingkey-${VERSION}.tar.gz"        yes
-    pack circom           "zisk-circuits-${VERSION}.tar.gz"          no
+    pack provingKey       "zisk-provingkey-pre-${VERSION}.tar.gz"        yes
+    pack circom           "zisk-circuits-pre-${VERSION}.tar.gz"          no
     ;;
 esac
 case "$MODE" in
   snark|all)
-    pack provingKeySnark  "zisk-provingkey-snark-${VERSION}.tar.gz"  no
+    pack provingKeySnark  "zisk-provingkey-plonk-pre-${VERSION}.tar.gz"  no
+    ;;
+esac
+
+# Hash sidecar — only meaningful for the (recursive) provingKey publish.
+# build-setup.sh drops it on cache-miss runs; absence is normal for --snark or
+# --skip-compile-pil paths and just means the cache won't get refreshed.
+case "$MODE" in
+  standard|all)
+    if [ -f "$BUILD_DIR/.input-hash" ]; then
+      hash_copy="$OUT_DIR/zisk-provingkey-${VERSION}.input-hash"
+      cp "$BUILD_DIR/.input-hash" "$hash_copy"
+      ARTIFACTS+=("$hash_copy")
+      echo "including hash sidecar: $hash_copy"
+    else
+      echo "no $BUILD_DIR/.input-hash — skipping hash sidecar (cache will not be refreshed)" >&2
+    fi
     ;;
 esac
 
