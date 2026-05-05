@@ -61,7 +61,7 @@ pub extern "C" fn zkvm_init() {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
         read_input_reset();
-        crate::io::write_output_reset();
+        crate::zisklib::zkvm_io::reset();
     }
 
     #[cfg(all(
