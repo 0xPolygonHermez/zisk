@@ -157,22 +157,22 @@ grep -q "<!-- zisk-coordinator:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"
 
-# ── 7b. ziskup install receipt ───────────────────────────────────────────────
-info "ziskup receipt at $BUNDLE/.zisk-receipt"
-RECEIPT="$BUNDLE/.zisk-receipt"
-[[ -f "$RECEIPT" ]] && ok "$RECEIPT exists" || { fail "$RECEIPT missing"; exit 1; }
-grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$RECEIPT" \
-    && ok "receipt has version field" \
-    || fail "receipt missing/invalid version"
-grep -qE '^manifest=.*\bbin\b' "$RECEIPT" \
-    && ok "receipt manifest includes 'bin'" \
-    || fail "receipt manifest missing 'bin'"
-grep -q '^created_user=zisk$' "$RECEIPT" \
-    && ok "receipt records created_user=zisk" \
-    || fail "receipt missing created_user"
-grep -q '^created_group=zisk$' "$RECEIPT" \
-    && ok "receipt records created_group=zisk" \
-    || fail "receipt missing created_group"
+# ── 7b. ziskup bundle metadata ───────────────────────────────────────────────
+info "ziskup bundle metadata at $BUNDLE/.zisk-bundle"
+BUNDLE_META="$BUNDLE/.zisk-bundle"
+[[ -f "$BUNDLE_META" ]] && ok "$BUNDLE_META exists" || { fail "$BUNDLE_META missing"; exit 1; }
+grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$BUNDLE_META" \
+    && ok "bundle metadata has version field" \
+    || fail "bundle metadata missing/invalid version"
+grep -qE '^manifest=.*\bbin\b' "$BUNDLE_META" \
+    && ok "bundle metadata manifest includes 'bin'" \
+    || fail "bundle metadata manifest missing 'bin'"
+grep -q '^created_user=zisk$' "$BUNDLE_META" \
+    && ok "bundle metadata records created_user=zisk" \
+    || fail "bundle metadata missing created_user"
+grep -q '^created_group=zisk$' "$BUNDLE_META" \
+    && ok "bundle metadata records created_group=zisk" \
+    || fail "bundle metadata missing created_group"
 
 # ── 8. newsyslog rotation ─────────────────────────────────────────────────────
 info "newsyslog config"

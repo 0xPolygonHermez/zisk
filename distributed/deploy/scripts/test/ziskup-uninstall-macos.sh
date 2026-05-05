@@ -76,8 +76,8 @@ info "Installing zisk-coordinator (--no-start -y)"
     && ok "coordinator install.sh succeeded" \
     || { fail "coordinator install.sh failed"; exit 1; }
 
-[[ -f "$BUNDLE/.zisk-receipt" ]] && ok "ziskup receipt present" \
-    || { fail "ziskup receipt missing"; exit 1; }
+[[ -f "$BUNDLE/.zisk-bundle" ]] && ok "ziskup bundle metadata present" \
+    || { fail "ziskup bundle metadata missing"; exit 1; }
 
 # ── 2. sibling-safety guard ───────────────────────────────────────────────────
 info "Sibling-safety: ziskup --uninstall --system should refuse"
@@ -121,12 +121,12 @@ echo "$out" | sed 's/^/    /'
 if dscl . -read /Users/zisk >/dev/null 2>&1; then
     fail "'zisk' user still present after ziskup --uninstall"
 else
-    ok "'zisk' user removed (receipt-driven)"
+    ok "'zisk' user removed (.zisk-bundle-driven)"
 fi
 if dscl . -read /Groups/zisk >/dev/null 2>&1; then
     fail "'zisk' group still present"
 else
-    ok "'zisk' group removed (receipt-driven)"
+    ok "'zisk' group removed (.zisk-bundle-driven)"
 fi
 
 # ── 5. full pre/post restore ──────────────────────────────────────────────────

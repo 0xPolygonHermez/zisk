@@ -14,7 +14,7 @@
 #   5. Uninstalls both services.
 #   6. Runs `ziskup --uninstall --system -y` and asserts:
 #      - manifest entries removed (bin/, zisk/);
-#      - 'zisk' user/group removed (because ziskup created them — receipt
+#      - 'zisk' user/group removed (because ziskup created them — .zisk-bundle
 #        recorded created_user/created_group);
 #      - empty $BUNDLE rmdir'd.
 #   7. Snapshots post state and asserts byte-identical match with pre.
@@ -79,9 +79,9 @@ info "Installing zisk-coordinator (--no-enable -y)"
     && ok "coordinator install.sh succeeded" \
     || { fail "coordinator install.sh failed"; exit 1; }
 
-# Sanity: receipt was written.
-[[ -f "$BUNDLE/.zisk-receipt" ]] && ok "ziskup receipt present at $BUNDLE/.zisk-receipt" \
-    || { fail "ziskup receipt missing — uninstall would fall back to default subdir list"; exit 1; }
+# Sanity: bundle metadata was written.
+[[ -f "$BUNDLE/.zisk-bundle" ]] && ok "ziskup bundle metadata present at $BUNDLE/.zisk-bundle" \
+    || { fail "ziskup bundle metadata missing — uninstall would fall back to default subdir list"; exit 1; }
 
 # ── 2. ziskup --uninstall must REFUSE while services are installed ────────────
 info "Sibling-safety: ziskup --uninstall --system should refuse"
@@ -123,16 +123,16 @@ echo "$out" | sed 's/^/    /'
 # Bundle root gone (it was empty after subdirs removed).
 [[ ! -d "$BUNDLE" ]] && ok "$BUNDLE removed (rmdir succeeded)" \
     || fail "$BUNDLE still present — rmdir didn't succeed"
-# zisk user/group gone (because receipt had created_user=zisk, created_group=zisk).
+# zisk user/group gone (because .zisk-bundle had created_user=zisk, created_group=zisk).
 if id zisk >/dev/null 2>&1; then
-    fail "'zisk' user still present (receipt should have triggered removal)"
+    fail "'zisk' user still present (.zisk-bundle should have triggered removal)"
 else
-    ok "'zisk' user removed (receipt-driven)"
+    ok "'zisk' user removed (.zisk-bundle-driven)"
 fi
 if getent group zisk >/dev/null 2>&1; then
     fail "'zisk' group still present"
 else
-    ok "'zisk' group removed (receipt-driven)"
+    ok "'zisk' group removed (.zisk-bundle-driven)"
 fi
 
 # ── 5. full pre/post restore ──────────────────────────────────────────────────

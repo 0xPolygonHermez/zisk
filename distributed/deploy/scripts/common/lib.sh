@@ -179,23 +179,41 @@ resolve_service_binary() {
 
 # resolve_ziskup_bin
 # Locates the ziskup script via a 3-level fallback:
-#   1. ziskup on PATH                  — operator's explicit choice (also lets
-#                                        tests inject a stub via PATH)
-#   2. ${WORKSPACE_ROOT}/ziskup/ziskup — workspace clone (dev case)
+#   1. ${WORKSPACE_ROOT}/ziskup/ziskup — workspace clone (dev case). Wins over
+#                                        PATH so a stale ~/.zisk/bin/ziskup
+#                                        from a prior user-mode install never
+#                                        overrides edits made in the workspace.
+#                                        install.sh self-bootstraps from
+#                                        GitHub when there's no workspace, so
+#                                        seeing one means "you're developing".
+#   2. ziskup on PATH                  — operator-installed ziskup on a server
+#                                        with no workspace clone (also lets
+#                                        tests inject a stub via PATH).
 #   3. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (last resort;
 #                                        may lag this branch if the latest
 #                                        release predates new ziskup features)
 # Echoes the resolved path; dies if none found.
 resolve_ziskup_bin() {
-    if command -v ziskup >/dev/null 2>&1; then
-        command -v ziskup
-    elif [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
+    if [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
         echo "${WORKSPACE_ROOT}/ziskup/ziskup"
+    elif command -v ziskup >/dev/null 2>&1; then
+        command -v ziskup
     elif [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
         echo "${BUNDLE_DIR}/bin/ziskup"
     else
-        die "ziskup not found on PATH, at ${WORKSPACE_ROOT}/ziskup/ziskup, or in ${BUNDLE_DIR}/bin/"
+        die "ziskup not found at ${WORKSPACE_ROOT}/ziskup/ziskup, on PATH, or in ${BUNDLE_DIR}/bin/"
     fi
+}
+
+# bundle_meta_get KEY [BUNDLE_DIR]
+# Read a single key=value field from ${BUNDLE_DIR}/.zisk-bundle. Echoes the
+# value (empty if file or key is absent). The bundle file is the public
+# metadata contract written by ziskup — see schema header in ziskup/ziskup.
+bundle_meta_get() {
+    local key="$1" bundle_dir="${2:-${BUNDLE_DIR}}"
+    local file="${bundle_dir}/.zisk-bundle"
+    [[ -f "$file" ]] || return 0
+    awk -F= -v k="$key" '$1 == k { sub(/^[^=]+=/, ""); print; exit }' "$file"
 }
 
 # install_config_or_sample CONFIG_SRC CONFIG_DST GROUP SAMPLE_PATH

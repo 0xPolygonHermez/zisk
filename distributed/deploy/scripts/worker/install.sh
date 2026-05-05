@@ -19,7 +19,11 @@
 #   --compute-capacity N   Compute units to advertise (overrides TOML)
 #   --emulator             Use prebuilt emulator (mutex with --asm)
 #   --asm PATH             ASM file path (mutex with --emulator)
-#   --gpu                  Run with GPU (only meaningful in non-cpu-only builds)
+#   --gpu                  Install the GPU build and run worker with --gpu.
+#   --cpu                  Install the CPU-only build and run worker without --gpu.
+#                          Pass neither to let ziskup auto-detect CUDA on the
+#                          host; the worker's runtime --gpu flag is then aligned
+#                          to whichever variant ziskup picked.
 #   --log-level LEVEL      trace | debug | info | warn | error (optional; RUST_LOG)
 #   --mpi                  Force-enable MPI (default true on Linux, false on macOS)
 #   --no-mpi               Run the worker as a single process, no mpirun
@@ -43,7 +47,7 @@
 # ZISK_WORKER_PROVING_KEY, ZISK_WORKER_PROVING_KEY_SNARK,
 # ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
 # ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
-# ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
+# ZISK_WORKER_GPU (true|false; unset = auto-detect via ziskup), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
 # ZISK_WORKER_WITH_SNARK (true|false), RUST_LOG.
 #
@@ -168,7 +172,10 @@ WORKER_ID="${ZISK_WORKER_ID:-}"
 COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-}"
 EMULATOR="${ZISK_WORKER_EMULATOR:-false}"
 ASM_PATH="${ZISK_WORKER_ASM:-}"
-GPU="${ZISK_WORKER_GPU:-false}"
+# GPU is tristate: empty = let ziskup auto-detect CUDA, "true"/"false" = explicit.
+# Resolved to true/false after ziskup runs (either from operator intent or by
+# reading .zisk-bundle's `variant` field).
+GPU="${ZISK_WORKER_GPU:-}"
 LOG_LEVEL="${RUST_LOG:-}"
 MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
@@ -182,7 +189,7 @@ ASSUME_YES=false
 
 case "$MPI_ENABLED" in true|false) ;; *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;; esac
 case "$EMULATOR"    in true|false) ;; *) die "ZISK_WORKER_EMULATOR must be 'true' or 'false', got: ${EMULATOR}" ;; esac
-case "$GPU"         in true|false) ;; *) die "ZISK_WORKER_GPU must be 'true' or 'false', got: ${GPU}" ;; esac
+case "$GPU"         in true|false|"") ;; *) die "ZISK_WORKER_GPU must be 'true', 'false', or unset, got: ${GPU}" ;; esac
 case "$WITH_SNARK"  in true|false) ;; *) die "ZISK_WORKER_WITH_SNARK must be 'true' or 'false', got: ${WITH_SNARK}" ;; esac
 
 while [[ $# -gt 0 ]]; do
@@ -197,7 +204,8 @@ while [[ $# -gt 0 ]]; do
         --compute-capacity)  COMPUTE_CAPACITY="$2"; shift 2 ;;
         --emulator)          EMULATOR=true;         shift ;;
         --asm)               ASM_PATH="$2";         shift 2 ;;
-        --gpu)               GPU=true;              shift ;;
+        --gpu)               GPU=true;  shift ;;
+        --cpu)               GPU=false; shift ;;
         --log-level)         LOG_LEVEL="$2";        shift 2 ;;
         --mpi)               MPI_ENABLED=true;      shift ;;
         --no-mpi)            MPI_ENABLED=false;     shift ;;
@@ -239,13 +247,35 @@ fi
 # 2. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. ziskup --system
 # creates the 'zisk' system user/group, downloads the release tarball, extracts
 # to ${BUNDLE_DIR}, applies 0750 perms. Idempotent — safe to re-run.
-# --nokey skips the inline proving-key download (operator passes --proving-key).
-# --with-snark adds the SNARK proving key (only valid with --system).
+# Downloads the STARK proving key into ${BUNDLE_DIR}/provingKey (the default
+# --proving-key location); pass --proving-key <path> to point the worker at a
+# pre-staged key elsewhere (the bundle copy is still downloaded).
+# --with-snark additionally downloads the SNARK proving key (only valid with --system).
 ZISKUP_BIN="$(resolve_ziskup_bin)"
-ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey)
+ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes)
+# Pin ziskup's binary selection only when the operator was explicit. Without
+# a flag, let ziskup auto-detect CUDA and read its choice back from
+# .zisk-bundle below to align the worker's runtime --gpu flag.
+case "$GPU" in
+    true)  ZISKUP_ARGS+=(--gpu) ;;
+    false) ZISKUP_ARGS+=(--cpu) ;;
+esac
 $WITH_SNARK && ZISKUP_ARGS+=(--with-snark)
 info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
 "${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
+
+# Resolve the variant from .zisk-bundle when the operator didn't pin it
+# explicitly. The bundle metadata file is a documented contract — see the
+# schema header in ziskup/ziskup.
+if [[ -z "$GPU" ]]; then
+    variant=$(bundle_meta_get variant)
+    case "$variant" in
+        gpu) GPU=true ;;
+        cpu) GPU=false ;;
+        *) die "Could not determine variant from ${BUNDLE_DIR}/.zisk-bundle (got '${variant:-empty}'). Pass --gpu or --cpu explicitly." ;;
+    esac
+    info "Worker variant resolved from ziskup: ${variant}"
+fi
 
 # Default --proving-key-snark to the bundle's location when --with-snark was
 # passed (operator can still override with --proving-key-snark <path>).
@@ -442,6 +472,18 @@ else
     [[ -n "$PROVING_KEY_SNARK" && "$PROVING_KEY_SNARK" != "${BUNDLE_DIR}"/* ]] \
         && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
 
+    # ReadWritePaths punch holes in ReadOnlyPaths for key dirs. The worker
+    # writes generated artefacts (const tree files, intermediates) into
+    # these at runtime; ziskup's apply_ownership_and_perms makes them 0770
+    # so the supplementary 'zisk' group has filesystem write, and these
+    # entries lift the systemd namespace-level RO mount over them. Use the
+    # `-` prefix so missing dirs (e.g. verifyKey when not installed) are
+    # silently ignored instead of failing service start.
+    READ_WRITE_PATHS="${WORK_DIR}"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKey"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKeySnark"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/verifyKey"
+
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
 [Unit]
@@ -486,7 +528,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${WORK_DIR}
+ReadWritePaths=${READ_WRITE_PATHS}
 ReadOnlyPaths=${READ_ONLY_PATHS}
 
 [Install]
