@@ -36,7 +36,8 @@
 #                   (~/.cargo/git/checkouts/pil2-proofman-*/<rev>/).
 #   OUT_DIR         where to extract on cache hit (default: $HOME/.zisk)
 #
-# Auth (when bucket is used): `gcloud auth login` or GOOGLE_APPLICATION_CREDENTIALS.
+# gs://zisk-setup/ is public-read — no auth needed for cache lookups/downloads.
+# Uploads (publishing) are done from package-proving-key.sh, which does require auth.
 
 set -euo pipefail
 
@@ -101,9 +102,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Bucket is only relevant in build (cache+publish) and snark (cache check) modes.
-# For --snark with an existing local provingKey/, we won't touch the bucket at all,
-# so skip the upfront gsutil ls that triggers gcloud reauth prompts unnecessarily.
+# Bucket is only relevant in build (cache lookup) and snark (cache check) modes.
+# Reads are anonymous (zisk-setup is public-read), so no auth check needed —
+# uploads happen in package-proving-key.sh, which has its own auth check.
 USE_BUCKET=0
 case "$MODE" in
   build) USE_BUCKET=1 ;;
@@ -175,8 +176,6 @@ export SNARKJS_PATH="$SNARKJS_PATH_DIR"
 
 if [ $USE_BUCKET -eq 1 ]; then
   command -v gsutil >/dev/null || { echo "gsutil not on PATH" >&2; exit 1; }
-  # Fail fast on missing GCS auth — better than running cargo for half an hour first.
-  gsutil ls "${BUCKET}/" >/dev/null
 fi
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
@@ -198,6 +197,7 @@ generate_frops() {
 compute_input_hash() {
   local pil_list
   pil_list=$(mktemp)
+  trap 'rm -f "$pil_list"' RETURN
   find pil state-machines precompiles -type f -name '*.pil' >> "$pil_list"
   find "$PROOFMAN_DIR/pil2-components/lib/std/pil" -type f -name '*.pil' >> "$pil_list"
   sort -o "$pil_list" "$pil_list"
@@ -209,13 +209,13 @@ compute_input_hash() {
   )
   local f
   for f in "${fixed_bins[@]}"; do
-    [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; rm -f "$pil_list"; return 1; }
+    [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; return 1; }
   done
 
   local pil2_compiler_version pil2_stark_setup_source
   pil2_compiler_version="$(jq -r '.dependencies."pil2-compiler"' "$PROOFMAN_DIR/package.json")"
   [ -n "$pil2_compiler_version" ] && [ "$pil2_compiler_version" != "null" ] || \
-    { echo "could not read .dependencies.pil2-compiler from $PROOFMAN_DIR/package.json" >&2; rm -f "$pil_list"; return 1; }
+    { echo "could not read .dependencies.pil2-compiler from $PROOFMAN_DIR/package.json" >&2; return 1; }
   pil2_stark_setup_source="$(cargo metadata --format-version 1 --no-deps \
     | jq -r '.packages[]|select(.name=="pil2-stark-setup")|.source // .manifest_path')"
 
@@ -227,7 +227,6 @@ compute_input_hash() {
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
   } | sha256sum | awk '{print $1}'
-  rm -f "$pil_list"
 }
 
 run_compile_pil() {
@@ -315,6 +314,8 @@ case "$MODE" in
     echo "==> proofman-setup setup-compressed-final"
     cargo run --release -p cargo-zisk -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
     echo "done. vadcop_final_compressed/ regenerated under $BUILD_DIR/provingKey/"
+    echo "to republish the updated provingKey/: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR"
+    echo "(this re-uploads the full provingKey tarball, not just vadcop_final_compressed/)"
     exit 0
     ;;
 
@@ -387,4 +388,8 @@ if [ "$MODE" = "build" ] && [ $SKIP_COMPILE_PIL -eq 0 ]; then
   echo "wrote $BUILD_DIR/.input-hash ($LOCAL_HASH)"
 fi
 
-echo "done. to publish: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR"
+if [ "$MODE" = "build" ]; then
+  echo "done. to publish: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR"
+else
+  echo "done."
+fi

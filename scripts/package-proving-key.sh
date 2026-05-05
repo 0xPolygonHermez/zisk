@@ -58,6 +58,8 @@ done
 [ -n "$BUILD_DIR" ] || usage
 [ -d "$BUILD_DIR" ] || { echo "build dir not found: $BUILD_DIR" >&2; exit 1; }
 command -v gsutil >/dev/null || { echo "gsutil not found in PATH" >&2; exit 1; }
+# Fail fast on missing GCS auth before we spend time tarring multi-GB artifacts.
+gsutil ls "${BUCKET}/" >/dev/null
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -80,7 +82,7 @@ pack() {
   fi
   local tarball="$OUT_DIR/$tarname"
   echo "packing $BUILD_DIR/$src -> $tarball"
-  tar -cvzf "$tarball" -C "$BUILD_DIR" "$src"
+  tar -czf "$tarball" -C "$BUILD_DIR" "$src"
   ARTIFACTS+=("$tarball")
   if [ "$with_md5" = "yes" ]; then
     (cd "$OUT_DIR" && md5sum "$tarname" > "$tarname.md5")
@@ -90,13 +92,13 @@ pack() {
 
 case "$MODE" in
   standard|all)
-    pack provingKey       "zisk-provingkey-pre-${VERSION}.tar.gz"        yes
-    pack circom           "zisk-circuits-pre-${VERSION}.tar.gz"          no
+    pack provingKey       "zisk-provingkey-${VERSION}.tar.gz"        yes
+    pack circom           "zisk-circuits-${VERSION}.tar.gz"          no
     ;;
 esac
 case "$MODE" in
   snark|all)
-    pack provingKeySnark  "zisk-provingkey-plonk-pre-${VERSION}.tar.gz"  no
+    pack provingKeySnark  "zisk-provingkey-plonk-${VERSION}.tar.gz"  no
     ;;
 esac
 
