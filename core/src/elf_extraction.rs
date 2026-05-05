@@ -149,12 +149,21 @@ pub fn merge_adjacent_ro_sections(sections: &[DataSection]) -> Vec<DataSection> 
     let mut current = sections[0].clone();
 
     for section in sections.into_iter().skip(1) {
-        // Check if this section is adjacent to the current one
-        if current.addr + current.data.len() as u64 == section.addr {
-            // Merge by extending the data
+        // Calculate the end of the current data section
+        let current_end = current.addr + current.data.len() as u64;
+        // Check if the next section is adjacent (no gap) or overlapping
+        if current_end == section.addr {
             current.data.extend(section.data);
+        } else if current_end > section.addr {
+            let overlap = (current_end - section.addr) as usize;
+            let new_len = current.data.len().saturating_sub(overlap);
+            current.data.truncate(new_len);
+            if !current.data.is_empty() {
+                merged.push(current);
+            }
+            current = section;
         } else {
-            // Not adjacent, save current and start a new one
+            // Not adjacent nor overlapping, so save current and start a new one
             merged.push(current);
             current = section;
         }
