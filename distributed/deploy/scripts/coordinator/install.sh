@@ -25,11 +25,13 @@
 # ZISK_COORDINATOR_CLUSTER_PORT, ZISK_COORDINATOR_METRICS_PORT, RUST_LOG.
 #
 # ── file layout (where install.sh puts things) ───────────────────────────────
-# Coordinator does NOT access the ZisK bundle at runtime (no proving key, no
-# rom-setup, no ELF cache), so it does not export ZISK_HOME / ZISK_CACHE_DIR
-# in its unit/plist. The bundle is still populated via ziskup --system at
-# install time so the 'zisk' system group exists and a co-located worker can
-# share it without re-bootstrapping.
+# Coordinator caches registered guest ELFs under WORK_DIR/cache/ (content-
+# addressed by blake3 hash); ZISK_CACHE_DIR is exported in the unit/plist so
+# ZiskPaths resolves the cache there instead of falling back to $HOME/.zisk
+# (which lands in /var/empty for the system user). It does not touch the
+# proving key or rom-setup, so ZISK_HOME is left unset. The bundle is still
+# populated via ziskup --system at install time so the 'zisk' system group
+# exists and a co-located worker can share it without re-bootstrapping.
 #
 # Linux service mode:
 #   Binary               /usr/local/bin/zisk-coordinator
@@ -37,8 +39,8 @@
 #   Systemd unit         /etc/systemd/system/zisk-coordinator.service
 #   Logs                 journald (no on-disk log dir)
 #   Service user         zisk-coordinator:zisk-coordinator (+ supplementary 'zisk')
-#   State (writable)     /var/lib/zisk-coordinator/    (no cache/ — none needed)
-#   Bundle (read-only)   /opt/zisk/                    (populated for parity; unused at runtime)
+#   State (writable)     /var/lib/zisk-coordinator/         (cache/ for registered ELFs)
+#   Bundle (read-only)   /opt/zisk/                         (populated for parity; unused at runtime)
 #
 # macOS service mode (bundle root differs — FHS doesn't apply on macOS):
 #   Binary               /usr/local/bin/zisk-coordinator
@@ -46,7 +48,7 @@
 #   launchd plist        /Library/LaunchDaemons/com.zisk.coordinator.plist
 #   Log file             /var/log/zisk-coordinator/zisk-coordinator.log  (rotated by newsyslog)
 #   newsyslog config     /etc/newsyslog.d/zisk-coordinator.conf
-#   State (writable)     /usr/local/var/zisk-coordinator/   (mac /var/lib trips SIP)
+#   State (writable)     /usr/local/var/zisk-coordinator/   (cache/ for registered ELFs; mac /var/lib trips SIP)
 #   Bundle (read-only)   /Library/Application Support/ZisK/
 
 # ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
@@ -183,14 +185,13 @@ mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
     "${WORKSPACE_ROOT}/distributed/crates/coordinator-server/config/coordinator.example.toml"
 
-# 6. Create working (and log on macOS) directories. Coordinator does not run
-# rom-setup so it doesn't need a cache/ dir; only WORK_DIR is created so
-# WorkingDirectory= in the unit/plist resolves.
+# 6. Create working (and log on macOS) directories. cache/ holds the ELF
+# registry written by register_guest_program.
 if [[ "$OS_NAME" == "Darwin" ]]; then
-    mkdir -p "${WORK_DIR}" "${LOG_DIR}"
+    mkdir -p "${WORK_DIR}" "${WORK_DIR}/cache" "${LOG_DIR}"
     chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
 else
-    mkdir -p "${WORK_DIR}"
+    mkdir -p "${WORK_DIR}" "${WORK_DIR}/cache"
     chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
 fi
 
@@ -239,6 +240,12 @@ $(build_program_args)    </array>
 
     <key>WorkingDirectory</key>
     <string>${WORK_DIR}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ZISK_CACHE_DIR</key>
+        <string>${WORK_DIR}/cache</string>
+    </dict>
 
     <key>KeepAlive</key>
     <true/>
@@ -299,6 +306,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 WorkingDirectory=${WORK_DIR}
+Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache
 
 ${EXEC_START}
 Restart=on-failure
