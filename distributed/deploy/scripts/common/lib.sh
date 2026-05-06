@@ -372,8 +372,11 @@ read_unit_metadata() {
             'index($0,m) { s=index($0,m)+length(m); print substr($0,s,index($0,e)-s); exit }' \
             "$file"
     else
-        awk -v m="^# ${marker}" \
-            '$0 ~ m { sub(m,""); print; exit }' \
+        # Literal index() rather than `$0 ~ m`: BINARY_NAME is interpolated into
+        # the marker, so a future name with regex metachars (`. + * ( [`) would
+        # otherwise silently misparse this file at uninstall time.
+        awk -v m="# ${marker}" \
+            'index($0,m) == 1 { print substr($0, length(m) + 1); exit }' \
             "$file"
     fi
 }
