@@ -36,6 +36,18 @@ pub enum EmulatorAsmSource {
 }
 
 pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
+    if std::env::var_os("ZISK_USE_INSTALLED").is_some_and(|v| !v.is_empty()) {
+        let installed_asm_path = crate::get_default_zisk_path().join("zisk/emulator-asm");
+        tracing::debug!(
+            "ZISK_USE_INSTALLED set, using installed emulator-asm at: {}",
+            installed_asm_path.display()
+        );
+        if !installed_asm_path.exists() {
+            anyhow::bail!("emulator-asm directory not found at: {}", installed_asm_path.display());
+        }
+        return Ok((installed_asm_path, EmulatorAsmSource::Installed));
+    }
+
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root =
         if manifest_dir.exists() { find_workspace_root(&manifest_dir) } else { None };
