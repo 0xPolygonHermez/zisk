@@ -348,17 +348,32 @@ if $NO_SERVICE; then
     $GPU && WORKER_ARGS+=(--gpu)
     [[ -n "${LOG_LEVEL}" ]] && WORKER_ARGS+=(--log-level "${LOG_LEVEL}")
 
+    # Build the printed run-command as an array, then `printf %q` each token so
+    # paths with spaces (e.g. macOS bundle at "/Library/Application Support/ZisK")
+    # round-trip safely through copy-paste.
+    if $MPI_ENABLED; then
+        RUN_CMD=(
+            "${MPIRUN_BIN}" --report-bindings --allow-run-as-root
+            -np "${MPI_NP}"
+            -map-by "ppr:${MPI_PPR}:numa"
+            --bind-to numa --rank-by slot
+            -x "RAYON_NUM_THREADS=${MPI_THREADS}"
+            -x ZISK_HOME -x ZISK_CACHE_DIR -x HOME
+            "${BINARY_DST}" "${WORKER_ARGS[@]}"
+        )
+    else
+        RUN_CMD=("${BINARY_DST}" "${WORKER_ARGS[@]}")
+    fi
+
     echo
     info "✓ ${BINARY_NAME} installed in --no-service mode."
     info "Run it directly in this container:"
-    echo "  export ZISK_HOME=${BUNDLE_DIR}"
-    echo "  export ZISK_CACHE_DIR=${WORK_DIR}/cache"
-    if $MPI_ENABLED; then
-        echo "  export RAYON_NUM_THREADS=${MPI_THREADS}"
-        echo "  ${MPIRUN_BIN} --report-bindings --allow-run-as-root -np ${MPI_NP} -map-by ppr:${MPI_PPR}:numa --bind-to numa --rank-by slot -x RAYON_NUM_THREADS=${MPI_THREADS} -x ZISK_HOME -x ZISK_CACHE_DIR -x HOME ${BINARY_DST} ${WORKER_ARGS[*]}"
-    else
-        echo "  ${BINARY_DST} ${WORKER_ARGS[*]}"
-    fi
+    printf '  export ZISK_HOME=%q\n' "${BUNDLE_DIR}"
+    printf '  export ZISK_CACHE_DIR=%q\n' "${WORK_DIR}/cache"
+    $MPI_ENABLED && printf '  export RAYON_NUM_THREADS=%q\n' "${MPI_THREADS}"
+    printf '  '
+    printf '%q ' "${RUN_CMD[@]}"
+    printf '\n'
     exit 0
 fi
 
