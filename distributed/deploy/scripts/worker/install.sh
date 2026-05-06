@@ -9,8 +9,8 @@
 #   --env PATH             Load env vars from PATH (default: ./.env if present)
 #   --binary PATH          Use a pre-built binary instead of building from source
 #   --config PATH          Install an existing worker.toml instead of the sample
-#   --proving-key PATH     Path to the proving key directory (optional;
-#                          binary falls back to $ZISK_HOME/provingKey)
+#   --proving-key PATH     Path to the proving key directory
+#                          (default: ${BUNDLE_DIR}/provingKey)
 #   --with-snark           Download also the SNARK proving key into the bundle.
 #                          Without this flag, only the STARK key is installed.
 #   --proving-key-snark PATH  Path to the SNARK proving key directory (optional)
@@ -171,7 +171,7 @@ load_env_file "$@"
 
 BINARY_SRC="${ZISK_WORKER_BINARY:-}"
 CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
-PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-}"
+PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
 PROVING_KEY_SNARK="${ZISK_WORKER_PROVING_KEY_SNARK:-}"
 COORDINATOR_URL="${ZISK_WORKER_COORDINATOR_URL:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
