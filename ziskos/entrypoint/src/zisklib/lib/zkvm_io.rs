@@ -132,7 +132,11 @@ unsafe fn write_pending_word() {
 
 unsafe fn write_padded_pending_word() {
     let mut bytes = [0u8; OUTPUT_WORD_SIZE];
-    ptr::copy_nonoverlapping(addr_of!(OUTPUT_PENDING) as *const u8, bytes.as_mut_ptr(), OUTPUT_PENDING_LEN);
+    ptr::copy_nonoverlapping(
+        addr_of!(OUTPUT_PENDING) as *const u8,
+        bytes.as_mut_ptr(),
+        OUTPUT_PENDING_LEN,
+    );
     crate::set_output(OUTPUT_WORD_SLOT, u32::from_le_bytes(bytes));
 }
 
