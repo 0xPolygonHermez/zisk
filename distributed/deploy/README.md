@@ -44,6 +44,26 @@ curl -fsL https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/distribute
     | sudo bash -s -- --gpu --coordinator-url <URL>
 ```
 
+### Install in RunPod/container (no systemd)
+Containers (including RunPod) usually run as root already and do not provide
+`systemd`/`systemctl`. Use `--no-service` to install binary/config/state only,
+then run the process in the foreground.
+
+```bash
+# Coordinator (container mode)
+bash distributed/deploy/scripts/coordinator/install.sh --no-service --api-port 7000
+
+# Worker (container mode)
+bash distributed/deploy/scripts/worker/install.sh --no-service --gpu --coordinator-url <URL>
+```
+
+Each script prints the exact foreground run command at the end. Typical env:
+
+```bash
+export ZISK_HOME=/opt/zisk
+export ZISK_CACHE_DIR=/var/lib/zisk-worker/cache
+```
+
 ### Apply the worker role across an inventory (Ansible)
 ```bash
 ansible-playbook -i inventory.ini distributed/deploy/ansible/playbooks/install-worker.yml \

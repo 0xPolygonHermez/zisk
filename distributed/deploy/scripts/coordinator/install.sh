@@ -13,6 +13,8 @@
 #   --cluster-port N   Worker-facing gRPC port (optional; TOML default if unset)
 #   --metrics-port N   Prometheus metrics port (optional; TOML default if unset)
 #   --log-level LEVEL  trace | debug | info | warn | error (optional; RUST_LOG)
+#   --no-service       Container mode: install binary/config/state only;
+#                      skip service user creation and service manager setup.
 #   --no-start         Linux: enable but don't start.
 #                      macOS: write plist but don't load (same as --no-enable).
 #   --no-enable        Linux: install unit but don't enable or start.
@@ -133,6 +135,7 @@ API_PORT="${ZISK_COORDINATOR_API_PORT:-$DEFAULT_API_PORT}"
 CLUSTER_PORT="${ZISK_COORDINATOR_CLUSTER_PORT:-}"
 METRICS_PORT="${ZISK_COORDINATOR_METRICS_PORT:-}"
 LOG_LEVEL="${RUST_LOG:-}"
+NO_SERVICE=false
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
@@ -147,6 +150,7 @@ while [[ $# -gt 0 ]]; do
         --cluster-port)  CLUSTER_PORT="$2";  shift 2 ;;
         --metrics-port)  METRICS_PORT="$2";  shift 2 ;;
         --log-level)     LOG_LEVEL="$2";     shift 2 ;;
+        --no-service)    NO_SERVICE=true;      shift ;;
         --no-start)      NO_START=true;      shift ;;
         --no-enable)     NO_ENABLE=true;     shift ;;
         --uninstall)     UNINSTALL=true;     shift ;;
@@ -158,6 +162,7 @@ done
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
 if $UNINSTALL; then
+    $NO_SERVICE && die "--uninstall is not supported with --no-service (no service unit/plist is installed)."
     uninstall_service
     exit 0
 fi
@@ -166,10 +171,24 @@ fi
 
 need_root
 
+if $NO_SERVICE; then
+    CURRENT_USER="$(id -un)"
+    CURRENT_GROUP="$(id -gn)"
+    INSTALL_CONFIG_GROUP="${CURRENT_GROUP}"
+    INSTALL_OWNER="${CURRENT_USER}:${CURRENT_GROUP}"
+else
+    INSTALL_CONFIG_GROUP="${SERVICE_GROUP}"
+    INSTALL_OWNER="${SERVICE_USER}:${SERVICE_GROUP}"
+fi
+
 # 1. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. Idempotent —
 # if worker install.sh ran first on this host, this is a near-no-op.
 ZISKUP_BIN="$(resolve_ziskup_bin)"
-ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey)
+if $NO_SERVICE; then
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner "${INSTALL_OWNER}" --yes --nokey)
+else
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes --nokey)
+fi
 info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
 "${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
 
@@ -178,25 +197,41 @@ resolve_service_binary
 
 # 3. Create system group + user (with 'zisk' supplementary so it can read the
 # bundle, in case future coordinator versions need toolchain payload).
-create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Coordinator" "/var/empty"
-add_user_to_group "${SERVICE_USER}" zisk
+if ! $NO_SERVICE; then
+    create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Coordinator" "/var/empty"
+    add_user_to_group "${SERVICE_USER}" zisk
+fi
 
 # 4. Install binary
 install_binary "${BINARY_SRC}" "${BINARY_DST}"
 
 # 5. Install config
 mkdir -p "${CONFIG_DIR}"
-install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
+install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${INSTALL_CONFIG_GROUP}" \
     "${DEPLOY_ROOT}/crates/coordinator-server/config/coordinator.example.toml"
 
 # 6. Create working (and log on macOS) directories. cache/ holds the ELF
 # registry written by register_guest_program.
 if [[ "$OS_NAME" == "Darwin" ]]; then
     mkdir -p "${WORK_DIR}" "${WORK_DIR}/cache" "${LOG_DIR}"
-    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
+    chown -R "${INSTALL_OWNER}" "${WORK_DIR}" "${LOG_DIR}"
 else
     mkdir -p "${WORK_DIR}" "${WORK_DIR}/cache"
-    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
+    chown -R "${INSTALL_OWNER}" "${WORK_DIR}"
+fi
+
+if $NO_SERVICE; then
+    RUN_CMD=("${BINARY_DST}" --config "${CONFIG_DST}" --api-port "${API_PORT}")
+    [[ -n "${CLUSTER_PORT}" ]] && RUN_CMD+=(--cluster-port "${CLUSTER_PORT}")
+    [[ -n "${METRICS_PORT}" ]] && RUN_CMD+=(--metrics-port "${METRICS_PORT}")
+    [[ -n "${LOG_LEVEL}" ]] && RUN_CMD+=(--log-level "${LOG_LEVEL}")
+
+    echo
+    info "✓ ${BINARY_NAME} installed in --no-service mode."
+    info "Run it directly in this container:"
+    echo "  export ZISK_CACHE_DIR=${WORK_DIR}/cache"
+    echo "  ${RUN_CMD[*]}"
+    exit 0
 fi
 
 # 7. Write service unit

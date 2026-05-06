@@ -25,6 +25,8 @@
 #                          host; the worker's runtime --gpu flag is then aligned
 #                          to whichever variant ziskup picked.
 #   --log-level LEVEL      trace | debug | info | warn | error (optional; RUST_LOG)
+#   --no-service           Container mode: install binary/config/state only;
+#                          skip service user creation and service manager setup.
 #   --mpi                  Force-enable MPI (default true on Linux, false on macOS)
 #   --no-mpi               Run the worker as a single process, no mpirun
 #   --mpi-processes N      Manual override for -np
@@ -186,6 +188,7 @@ MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
 WITH_SNARK="${ZISK_WORKER_WITH_SNARK:-false}"
+NO_SERVICE=false
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
@@ -211,6 +214,7 @@ while [[ $# -gt 0 ]]; do
         --gpu)               GPU=true;  shift ;;
         --cpu)               GPU=false; shift ;;
         --log-level)         LOG_LEVEL="$2";        shift 2 ;;
+        --no-service)        NO_SERVICE=true;        shift ;;
         --mpi)               MPI_ENABLED=true;      shift ;;
         --no-mpi)            MPI_ENABLED=false;     shift ;;
         --mpi-processes)     MPI_NP="$2";           shift 2 ;;
@@ -233,6 +237,7 @@ fi
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
 if $UNINSTALL; then
+    $NO_SERVICE && die "--uninstall is not supported with --no-service (no service unit/plist is installed)."
     uninstall_service
     exit 0
 fi
@@ -240,6 +245,16 @@ fi
 # ── install ───────────────────────────────────────────────────────────────────
 
 need_root
+
+if $NO_SERVICE; then
+    CURRENT_USER="$(id -un)"
+    CURRENT_GROUP="$(id -gn)"
+    INSTALL_CONFIG_GROUP="${CURRENT_GROUP}"
+    INSTALL_OWNER="${CURRENT_USER}:${CURRENT_GROUP}"
+else
+    INSTALL_CONFIG_GROUP="${SERVICE_GROUP}"
+    INSTALL_OWNER="${SERVICE_USER}:${SERVICE_GROUP}"
+fi
 
 # 1. Resolve MPI configuration
 if [[ "$OS_NAME" == "Darwin" ]]; then
@@ -256,7 +271,11 @@ fi
 # pre-staged key elsewhere (the bundle copy is still downloaded).
 # --with-snark additionally downloads the SNARK proving key (only valid with --system).
 ZISKUP_BIN="$(resolve_ziskup_bin)"
-ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes)
+if $NO_SERVICE; then
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner "${INSTALL_OWNER}" --yes)
+else
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes)
+fi
 # Pin ziskup's binary selection only when the operator was explicit. Without
 # a flag, let ziskup auto-detect CUDA and read its choice back from
 # .zisk-bundle below to align the worker's runtime --gpu flag.
@@ -293,15 +312,17 @@ resolve_service_binary
 # read the bundle). Home is /var/empty (matches coordinator + sshd convention);
 # pointing it at WORK_DIR triggers macOS dscl-managed-home ACLs that block
 # rm -rf during uninstall.
-create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "/var/empty"
-add_user_to_group "${SERVICE_USER}" zisk
+if ! $NO_SERVICE; then
+    create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "/var/empty"
+    add_user_to_group "${SERVICE_USER}" zisk
+fi
 
 # 5. Install binary
 install_binary "${BINARY_SRC}" "${BINARY_DST}"
 
 # 6. Install config
 mkdir -p "${CONFIG_DIR}"
-install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
+install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${INSTALL_CONFIG_GROUP}" \
     "${DEPLOY_ROOT}/crates/worker/config/prod.toml"
 
 # 7. Create per-service working dirs (mutable runtime state only). LOG_DIR is
@@ -309,10 +330,35 @@ install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
 # needed (and creating it leaves a dangling empty dir that --uninstall would
 # prompt about).
 mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache"
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}"
+chown -R "${INSTALL_OWNER}" "${WORK_DIR}"
 if [[ "$OS_NAME" == "Darwin" ]]; then
     mkdir -p "${LOG_DIR}"
-    chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${LOG_DIR}"
+    chown -R "${INSTALL_OWNER}" "${LOG_DIR}"
+fi
+
+if $NO_SERVICE; then
+    WORKER_ARGS=(--config "${CONFIG_DST}" --proving-key "${PROVING_KEY}")
+    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--proving-key-snark "${PROVING_KEY_SNARK}")
+    [[ -n "${COORDINATOR_URL}" ]] && WORKER_ARGS+=(--coordinator-url "${COORDINATOR_URL}")
+    [[ -n "${WORKER_ID}" ]] && WORKER_ARGS+=(--worker-id "${WORKER_ID}")
+    [[ -n "${COMPUTE_CAPACITY}" ]] && WORKER_ARGS+=(--compute-capacity "${COMPUTE_CAPACITY}")
+    $EMULATOR && WORKER_ARGS+=(--emulator)
+    [[ -n "${ASM_PATH}" ]] && WORKER_ARGS+=(--asm "${ASM_PATH}")
+    $GPU && WORKER_ARGS+=(--gpu)
+    [[ -n "${LOG_LEVEL}" ]] && WORKER_ARGS+=(--log-level "${LOG_LEVEL}")
+
+    echo
+    info "✓ ${BINARY_NAME} installed in --no-service mode."
+    info "Run it directly in this container:"
+    echo "  export ZISK_HOME=${BUNDLE_DIR}"
+    echo "  export ZISK_CACHE_DIR=${WORK_DIR}/cache"
+    if $MPI_ENABLED; then
+        echo "  export RAYON_NUM_THREADS=${MPI_THREADS}"
+        echo "  ${MPIRUN_BIN} --report-bindings --allow-run-as-root -np ${MPI_NP} -map-by ppr:${MPI_PPR}:numa --bind-to numa --rank-by slot -x RAYON_NUM_THREADS=${MPI_THREADS} -x ZISK_HOME -x ZISK_CACHE_DIR -x HOME ${BINARY_DST} ${WORKER_ARGS[*]}"
+    else
+        echo "  ${BINARY_DST} ${WORKER_ARGS[*]}"
+    fi
+    exit 0
 fi
 
 # 8. Write service unit
