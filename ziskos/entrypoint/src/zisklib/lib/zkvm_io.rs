@@ -5,7 +5,7 @@
 //! either this standard IO interface or ZisK's streaming input APIs for a given
 //! input, not both: standard reads do not advance ZisK's streaming input cursor.
 
-use core::ptr;
+use core::ptr::{self, addr_of, addr_of_mut};
 
 // Public outputs are written as u32 slots via set_output.
 const OUTPUT_WORD_SIZE: usize = core::mem::size_of::<u32>();
@@ -113,9 +113,7 @@ pub unsafe extern "C" fn write_output(output: *const u8, size: usize) {
     }
 
     if remaining != 0 {
-        for i in 0..remaining {
-            OUTPUT_PENDING[i] = ptr::read(ptr.add(i));
-        }
+        ptr::copy_nonoverlapping(ptr, addr_of_mut!(OUTPUT_PENDING) as *mut u8, remaining);
         OUTPUT_PENDING_LEN = remaining;
     }
 
@@ -134,9 +132,7 @@ unsafe fn write_pending_word() {
 
 unsafe fn write_padded_pending_word() {
     let mut bytes = [0u8; OUTPUT_WORD_SIZE];
-    for i in 0..OUTPUT_PENDING_LEN {
-        bytes[i] = OUTPUT_PENDING[i];
-    }
+    ptr::copy_nonoverlapping(addr_of!(OUTPUT_PENDING) as *const u8, bytes.as_mut_ptr(), OUTPUT_PENDING_LEN);
     crate::set_output(OUTPUT_WORD_SLOT, u32::from_le_bytes(bytes));
 }
 
