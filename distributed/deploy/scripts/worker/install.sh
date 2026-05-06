@@ -95,7 +95,7 @@
 #       | sudo bash -s -- --gpu --config /etc/zisk/worker.toml --coordinator-url <URL>
 #
 #   # Pin a non-default branch (e.g., a PR under review):
-#   ZISK_DEPLOY_BRANCH=feature/foo curl -fsL .../install.sh | sudo bash -s -- ...
+#   curl -fsL .../install.sh | sudo ZISK_DEPLOY_BRANCH=feature/foo bash -s -- ...
 _self="${BASH_SOURCE[0]:-}"
 SELF_DIR=""
 if [[ -n "$_self" && -f "$_self" ]]; then
@@ -146,6 +146,8 @@ set -euo pipefail
 SCRIPT_DIR="${SELF_DIR}"
 COMMON_DIR="${SCRIPT_DIR}/../common"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# Bootstrap-safe root for deploy assets (works in repo clone and temp fetch).
+DEPLOY_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # shellcheck source=../common/lib.sh
 source "${COMMON_DIR}/lib.sh"
@@ -300,7 +302,7 @@ install_binary "${BINARY_SRC}" "${BINARY_DST}"
 # 6. Install config
 mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
-    "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
+    "${DEPLOY_ROOT}/crates/worker/config/prod.toml"
 
 # 7. Create per-service working dirs (mutable runtime state only). LOG_DIR is
 # only created on macOS — Linux pipes logs to journald, no on-disk log dir

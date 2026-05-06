@@ -62,7 +62,7 @@
 #       | sudo bash -s -- --api-port 7000
 #
 #   # Pin a non-default branch (e.g., a PR under review):
-#   ZISK_DEPLOY_BRANCH=feature/foo curl -fsL .../install.sh | sudo bash -s -- ...
+#   curl -fsL .../install.sh | sudo ZISK_DEPLOY_BRANCH=feature/foo bash -s -- ...
 _self="${BASH_SOURCE[0]:-}"
 SELF_DIR=""
 if [[ -n "$_self" && -f "$_self" ]]; then
@@ -113,6 +113,8 @@ set -euo pipefail
 SCRIPT_DIR="${SELF_DIR}"
 COMMON_DIR="${SCRIPT_DIR}/../common"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# Bootstrap-safe root for deploy assets (works in repo clone and temp fetch).
+DEPLOY_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # shellcheck source=../common/lib.sh
 source "${COMMON_DIR}/lib.sh"
@@ -185,7 +187,7 @@ install_binary "${BINARY_SRC}" "${BINARY_DST}"
 # 5. Install config
 mkdir -p "${CONFIG_DIR}"
 install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
-    "${WORKSPACE_ROOT}/distributed/crates/coordinator-server/config/coordinator.example.toml"
+    "${DEPLOY_ROOT}/crates/coordinator-server/config/coordinator.example.toml"
 
 # 6. Create working (and log on macOS) directories. cache/ holds the ELF
 # registry written by register_guest_program.
