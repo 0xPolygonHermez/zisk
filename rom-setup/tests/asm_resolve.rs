@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "macos"))]
 use rom_setup::{ensure_ziskclib, resolve_emulator_asm, EmulatorAsmSource};
 
 #[test]
