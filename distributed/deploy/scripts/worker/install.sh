@@ -9,8 +9,8 @@
 #   --env PATH             Load env vars from PATH (default: ./.env if present)
 #   --binary PATH          Use a pre-built binary instead of building from source
 #   --config PATH          Install an existing worker.toml instead of the sample
-#   --proving-key PATH     Path to the proving key directory
-#                          default: ${BUNDLE_DIR}/provingKey.
+#   --proving-key PATH     Path to the proving key directory (optional;
+#                          binary falls back to $ZISK_HOME/provingKey)
 #   --with-snark           Download also the SNARK proving key into the bundle.
 #                          Without this flag, only the STARK key is installed.
 #   --proving-key-snark PATH  Path to the SNARK proving key directory (optional)
@@ -171,7 +171,7 @@ load_env_file "$@"
 
 BINARY_SRC="${ZISK_WORKER_BINARY:-}"
 CONFIG_SRC="${ZISK_WORKER_CONFIG:-}"
-PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-$PROVING_KEY_DEFAULT}"
+PROVING_KEY="${ZISK_WORKER_PROVING_KEY:-}"
 PROVING_KEY_SNARK="${ZISK_WORKER_PROVING_KEY_SNARK:-}"
 COORDINATOR_URL="${ZISK_WORKER_COORDINATOR_URL:-}"
 WORKER_ID="${ZISK_WORKER_ID:-}"
@@ -337,7 +337,8 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
 fi
 
 if $NO_SERVICE; then
-    WORKER_ARGS=(--config "${CONFIG_DST}" --proving-key "${PROVING_KEY}")
+    WORKER_ARGS=(--config "${CONFIG_DST}")
+    [[ -n "${PROVING_KEY}" ]] && WORKER_ARGS+=(--proving-key "${PROVING_KEY}")
     [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--proving-key-snark "${PROVING_KEY_SNARK}")
     [[ -n "${COORDINATOR_URL}" ]] && WORKER_ARGS+=(--coordinator-url "${COORDINATOR_URL}")
     [[ -n "${WORKER_ID}" ]] && WORKER_ARGS+=(--worker-id "${WORKER_ID}")
@@ -393,8 +394,10 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
         printf '        <string>%s</string>\n' "${BINARY_DST}"
         printf '        <string>--config</string>\n'
         printf '        <string>%s</string>\n' "${CONFIG_DST}"
-        printf '        <string>--proving-key</string>\n'
-        printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        if [[ -n "$PROVING_KEY" ]]; then
+            printf '        <string>--proving-key</string>\n'
+            printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        fi
         if [[ -n "$PROVING_KEY_SNARK" ]]; then
             printf '        <string>--proving-key-snark</string>\n'
             printf '        <string>%s</string>\n' "${PROVING_KEY_SNARK}"
@@ -502,15 +505,16 @@ NEWSYSLOG
 else
     # Build worker args (everything after the binary path); appended to mpirun
     # wrapper or to bare ExecStart depending on MPI_ENABLED.
-    WORKER_ARGS="--config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    WORKER_ARGS="--config ${CONFIG_DST}"
+    [[ -n "$PROVING_KEY" ]]       && WORKER_ARGS+=" --proving-key ${PROVING_KEY}"
     [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --proving-key-snark ${PROVING_KEY_SNARK}"
-    [[ -n "$COORDINATOR_URL" ]]  && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
-    [[ -n "$WORKER_ID" ]]        && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
-    [[ -n "$COMPUTE_CAPACITY" ]] && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
-    $EMULATOR                    && WORKER_ARGS+=" --emulator"
-    [[ -n "$ASM_PATH" ]]         && WORKER_ARGS+=" --asm ${ASM_PATH}"
-    $GPU                         && WORKER_ARGS+=" --gpu"
-    [[ -n "$LOG_LEVEL" ]]        && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
+    [[ -n "$COORDINATOR_URL" ]]   && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
+    [[ -n "$WORKER_ID" ]]         && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
+    [[ -n "$COMPUTE_CAPACITY" ]]  && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
+    $EMULATOR                     && WORKER_ARGS+=" --emulator"
+    [[ -n "$ASM_PATH" ]]          && WORKER_ARGS+=" --asm ${ASM_PATH}"
+    $GPU                          && WORKER_ARGS+=" --gpu"
+    [[ -n "$LOG_LEVEL" ]]         && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
 
     if $MPI_ENABLED; then
         # `-x VAR` (no value) propagates the unit's Environment= entries to

@@ -9,7 +9,7 @@
 #   --env PATH         Load env vars from PATH (default: ./.env if present)
 #   --binary PATH      Use a pre-built binary instead of building from source
 #   --config PATH      Install an existing coordinator.toml instead of the sample
-#   --api-port N       Client-facing gRPC API port (default: 7000)
+#   --api-port N       Client-facing gRPC API port (optional; TOML default if unset)
 #   --cluster-port N   Worker-facing gRPC port (optional; TOML default if unset)
 #   --metrics-port N   Prometheus metrics port (optional; TOML default if unset)
 #   --log-level LEVEL  trace | debug | info | warn | error (optional; RUST_LOG)
@@ -131,7 +131,7 @@ load_env_file "$@"
 
 BINARY_SRC="${ZISK_COORDINATOR_BINARY:-}"
 CONFIG_SRC="${ZISK_COORDINATOR_CONFIG:-}"
-API_PORT="${ZISK_COORDINATOR_API_PORT:-$DEFAULT_API_PORT}"
+API_PORT="${ZISK_COORDINATOR_API_PORT:-}"
 CLUSTER_PORT="${ZISK_COORDINATOR_CLUSTER_PORT:-}"
 METRICS_PORT="${ZISK_COORDINATOR_METRICS_PORT:-}"
 LOG_LEVEL="${RUST_LOG:-}"
@@ -221,7 +221,8 @@ else
 fi
 
 if $NO_SERVICE; then
-    RUN_CMD=("${BINARY_DST}" --config "${CONFIG_DST}" --api-port "${API_PORT}")
+    RUN_CMD=("${BINARY_DST}" --config "${CONFIG_DST}")
+    [[ -n "${API_PORT}" ]] && RUN_CMD+=(--api-port "${API_PORT}")
     [[ -n "${CLUSTER_PORT}" ]] && RUN_CMD+=(--cluster-port "${CLUSTER_PORT}")
     [[ -n "${METRICS_PORT}" ]] && RUN_CMD+=(--metrics-port "${METRICS_PORT}")
     [[ -n "${LOG_LEVEL}" ]] && RUN_CMD+=(--log-level "${LOG_LEVEL}")
@@ -242,8 +243,10 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
         printf '        <string>%s</string>\n' "${BINARY_DST}"
         printf '        <string>--config</string>\n'
         printf '        <string>%s</string>\n' "${CONFIG_DST}"
-        printf '        <string>--api-port</string>\n'
-        printf '        <string>%s</string>\n' "${API_PORT}"
+        if [[ -n "$API_PORT" ]]; then
+            printf '        <string>--api-port</string>\n'
+            printf '        <string>%s</string>\n' "${API_PORT}"
+        fi
         if [[ -n "$CLUSTER_PORT" ]]; then
             printf '        <string>--cluster-port</string>\n'
             printf '        <string>%s</string>\n' "${CLUSTER_PORT}"
@@ -327,7 +330,8 @@ NEWSYSLOG
     chmod 0644 "${NEWSYSLOG_CONF}"
 else
     # Build ExecStart line — required flags first, optional appended only when set
-    EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST} --api-port ${API_PORT}"
+    EXEC_START="ExecStart=${BINARY_DST} --config ${CONFIG_DST}"
+    [[ -n "$API_PORT" ]]     && EXEC_START+=" --api-port ${API_PORT}"
     [[ -n "$CLUSTER_PORT" ]] && EXEC_START+=" --cluster-port ${CLUSTER_PORT}"
     [[ -n "$METRICS_PORT" ]] && EXEC_START+=" --metrics-port ${METRICS_PORT}"
     [[ -n "$LOG_LEVEL" ]]    && EXEC_START+=" --log-level ${LOG_LEVEL}"
