@@ -135,10 +135,10 @@ jobs:
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-            tmp_log=$(mktemp)
-            cargo build --release --target "${{ matrix.target }}" -vv 2>&1 | tee "${tmp_log}"
-            if ! grep -qi "STARKS compiled with GPU support" "${tmp_log}"; then
-              echo "Error: Zisk built without GPU support, aborting."
+            CUDA_ARCHS="major" cargo build --release --target "${{ matrix.target }}"
+            version_output=$(./target/${{ matrix.target }}/release/cargo-zisk --version)
+            if ! echo "${version_output}" | grep -qi "\[gpu\]"; then
+              echo "Error: Zisk built without GPU support, aborting. Version: ${version_output}"
               exit 1
             fi
 
