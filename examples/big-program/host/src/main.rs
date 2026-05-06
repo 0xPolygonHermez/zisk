@@ -1,6 +1,7 @@
 use anyhow::Result;
+use examples_common::{build_client, ClientConfig};
 use std::path::PathBuf;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("big-program-guest");
 
@@ -20,12 +21,10 @@ async fn main() -> Result<()> {
     let stdin = ZiskStdin::from_file(&input_path)?;
     println!("Input loaded successfully");
 
-    // Create a `ProverClient` method.
-    let builder = ProverClient::embedded();
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    println!("Building prover client...");
+    let client = build_client(ClientConfig::default())?;
 
+    client.upload(&PROGRAM).run()?;
     client.setup(&PROGRAM).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.

@@ -9,10 +9,13 @@ anyhow = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 sha2 = "0.10.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+examples-common = { path = "../../common" }
 
 [build-dependencies]
 zisk-sdk = { workspace = true }
 
 [features]
 default = []
-gpu = []
+gpu = ["examples-common/gpu"]
+asm = ["examples-common/asm"]
+remote = ["examples-common/remote"]

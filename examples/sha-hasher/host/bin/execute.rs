@@ -1,6 +1,7 @@
 use anyhow::Result;
+use examples_common::{build_client, ClientConfig};
 use sha_hasher_common::Output;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -14,14 +15,11 @@ async fn main() -> Result<()> {
     stdin.write(&n);
     println!("Input prepared: {} iterations", n);
 
-    // Create a `ProverClient` method.
     println!("Building prover client...");
-    let builder = ProverClient::embedded();
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    let client = build_client(ClientConfig::default())?;
 
     println!("Setting up program...");
+    client.upload(&PROGRAM).run()?;
     client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 

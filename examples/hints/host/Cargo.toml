@@ -16,3 +16,5 @@ zisk-sdk = { workspace = true }
 [features]
 default = []
 gpu = []
+asm = []
+remote = []

@@ -1,6 +1,7 @@
 use anyhow::Result;
 
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+use examples_common::{build_client, ClientConfig};
+use zisk_sdk::{load_program, GuestProgram, ZiskStdin};
 
 static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
 static PROGRAM2: GuestProgram = load_program!("multiple-program-guest-2");
@@ -14,14 +15,8 @@ async fn main() -> Result<()> {
     let stdin = ZiskStdin::new();
     stdin.write(&n);
 
-    // Create a `ProverClient` method.
-    // let client = ProverClient::embedded().build()?;
-
-    let embedded_opts = EmbeddedOpts::default().minimal_memory();
-    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    println!("Building prover client...");
+    let client = build_client(ClientConfig { minimal_memory: true, ..Default::default() })?;
 
     println!("Setting up first program...");
     client.upload(&PROGRAM1).run()?;

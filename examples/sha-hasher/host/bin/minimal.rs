@@ -1,5 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProofKind, ProverClient, ZiskStdin};
+use examples_common::{build_client, ClientConfig};
+use zisk_sdk::{load_program, GuestProgram, ProofKind, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -13,24 +14,16 @@ async fn main() -> Result<()> {
     stdin.write(&n);
     println!("Input prepared: {} iterations", n);
 
-    // Create a `ProverClient` method.
     println!("Building prover client...");
-    let builder = ProverClient::embedded().executor(ExecutorKind::Assembly);
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    let client = build_client(ClientConfig::default())?;
 
     println!("Setting up program...");
+    client.upload(&PROGRAM).run()?;
     client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating minimal proof (this may take a while)...");
-    let result = client
-        .prove(&PROGRAM, stdin)
-        .executor(ExecutorKind::Assembly)
-        .wrap(ProofKind::VadcopFinalMinimal)
-        .run()?
-        .await?;
+    let result = client.prove(&PROGRAM, stdin).wrap(ProofKind::VadcopFinalMinimal).run()?.await?;
     println!("Minimal proof generated in {} ms", result.get_proving_time());
 
     println!("Verifying minimal proof...");

@@ -1,5 +1,12 @@
+#[cfg(feature = "remote")]
+compile_error!(
+    "the `hints` example does not support the `remote` feature — \
+     hints require the Assembly executor, which on remote depends on coordinator \
+     configuration and cannot be selected by the client. Run without `--features remote`."
+);
+
 use anyhow::Result;
-use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints, ZiskStdin};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskHints, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -11,7 +18,9 @@ async fn main() -> Result<()> {
     let hints_path = "hints/example/24654300_hints.bin";
     let hints = ZiskHints::from_file(hints_path)?;
 
-    let builder = ProverClient::embedded().executor(ExecutorKind::Assembly);
+    let builder = ProverClient::embedded();
+    #[cfg(feature = "asm")]
+    let builder = builder.assembly();
     #[cfg(feature = "gpu")]
     let builder = builder.gpu();
     let client = builder.build()?;
@@ -21,12 +30,7 @@ async fn main() -> Result<()> {
     client.setup(&program).with_hints().run()?.await?;
 
     println!("Executing program...");
-    let result = client
-        .execute(&program, ZiskStdin::new())
-        .hints(hints)
-        .executor(ExecutorKind::Assembly)
-        .run()?
-        .await?;
+    let result = client.execute(&program, ZiskStdin::new()).hints(hints).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",
