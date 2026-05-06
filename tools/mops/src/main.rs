@@ -353,6 +353,8 @@ struct Args {
 enum Command {
     /// Expand mops trace files into aligned addresses
     Expand(ExpandArgs),
+    /// Count expanded aligned addresses per chunk without writing output files
+    Count(CountArgs),
     /// Extract per-chunk mem align counts (full_5, full_3, full_2, read_byte, write_byte) as CSV
     #[command(name = "mem_align_count")]
     MemAlignCount(MemAlignCountArgs),
@@ -375,6 +377,17 @@ struct ExpandArgs {
     /// Output filename prefix (default: mem_aligned_)
     #[arg(long, default_value = "mem_aligned_")]
     out_prefix: String,
+}
+
+#[derive(Parser, Debug)]
+struct CountArgs {
+    /// Input directory containing mem_count_data_*.bin files
+    #[arg(short, long)]
+    input: PathBuf,
+
+    /// Input filename prefix (default: mem_count_data_)
+    #[arg(long, default_value = "mem_count_data_")]
+    prefix: String,
 }
 
 #[derive(Parser, Debug)]
@@ -458,6 +471,58 @@ fn cmd_mem_align_count(args: &MemAlignCountArgs) -> Result<()> {
     Ok(())
 }
 
+fn cmd_count(args: &CountArgs) -> Result<()> {
+    if !args.input.is_dir() {
+        bail!("Input path {} is not a directory", args.input.display());
+    }
+
+    let mut expander = MopsExpander::new();
+    let mut chunk_id: u32 = 0;
+    let mut total_input_entries: usize = 0;
+    let mut total_output_entries: usize = 0;
+
+    loop {
+        let input_file = args.input.join(format!("{}{}.bin", args.prefix, chunk_id));
+        if !input_file.exists() {
+            break;
+        }
+
+        let entries = read_chunk_file(&input_file)?;
+        let expanded = expander.expand_chunk(&entries);
+
+        println!(
+            "chunk {:>6}: {:>8} mops -> {:>8} aligned addresses",
+            chunk_id,
+            entries.len(),
+            expanded.len(),
+        );
+        total_input_entries += entries.len();
+        total_output_entries += expanded.len();
+        chunk_id += 1;
+    }
+
+    if chunk_id == 0 {
+        bail!("No chunk files found in {} with prefix '{}'", args.input.display(), args.prefix);
+    }
+
+    println!(
+        "\nTotal: {} chunks, {} mops -> {} aligned addresses",
+        chunk_id, total_input_entries, total_output_entries
+    );
+    println!(
+        "[RAM] Total:{} Read:{} Write:{} Dual:{} Duals {:.2}% reads, {:.2}% total",
+        expander.ram_read_count + expander.ram_write_count,
+        expander.ram_read_count,
+        expander.ram_write_count,
+        expander.dual_count,
+        (expander.dual_count as f64 / expander.ram_read_count as f64) * 100.0,
+        (expander.dual_count as f64 / (expander.ram_read_count + expander.ram_write_count) as f64)
+            * 100.0
+    );
+
+    Ok(())
+}
+
 fn cmd_expand(args: &ExpandArgs) -> Result<()> {
     if !args.input.is_dir() {
         bail!("Input path {} is not a directory", args.input.display());
@@ -521,6 +586,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     match &args.command {
         Command::Expand(expand_args) => cmd_expand(expand_args),
+        Command::Count(count_args) => cmd_count(count_args),
         Command::MemAlignCount(mac_args) => cmd_mem_align_count(mac_args),
     }
 }

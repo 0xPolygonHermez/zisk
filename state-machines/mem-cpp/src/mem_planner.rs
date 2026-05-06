@@ -174,6 +174,25 @@ impl MemPlanner {
                         },
                     );
                 }
+
+                // Collect offsets for this segment
+                let mut offsets_base_addr: u32 = 0;
+                let mut offsets_count: u32 = 0;
+                let offsets_ptr = unsafe {
+                    bindings::get_mem_segment_offsets(
+                        self.inner,
+                        mem_id as u32,
+                        segment_id,
+                        &mut offsets_base_addr as *mut u32,
+                        &mut offsets_count as *mut u32,
+                    )
+                };
+                if !offsets_ptr.is_null() && offsets_count > 0 {
+                    segment.offsets_base_addr = offsets_base_addr;
+                    segment.offsets =
+                        unsafe { std::slice::from_raw_parts(offsets_ptr, offsets_count as usize) }
+                            .to_vec();
+                }
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,
                     *air_id,

@@ -254,12 +254,11 @@ impl ArithOperation {
     fn calculate_div(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
-        if abs_b == 0 {
-            0xFFFF_FFFF_FFFF_FFFF
-        } else {
-            let abs_c = abs_a / abs_b;
+        if let Some(abs_c) = abs_a.checked_div(abs_b) {
             let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
             Self::sign64(abs_c, nc == 1)
+        } else {
+            0xFFFF_FFFF_FFFF_FFFF
         }
     }
 
@@ -267,31 +266,22 @@ impl ArithOperation {
     fn calculate_div_w(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs32(a);
         let [abs_b, nb] = Self::abs32(b);
-        if abs_b == 0 {
-            0xFFFF_FFFF
-        } else {
-            let abs_c = abs_a / abs_b;
+        if let Some(abs_c) = abs_a.checked_div(abs_b) {
             let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
             Self::sign32(abs_c, nc == 1)
+        } else {
+            0xFFFF_FFFF
         }
     }
 
     /// Computes the unsigned division of two 64-bit values.
     fn calculate_divu(a: u64, b: u64) -> u64 {
-        if b == 0 {
-            0xFFFF_FFFF_FFFF_FFFF
-        } else {
-            a / b
-        }
+        a.checked_div(b).unwrap_or(0xFFFF_FFFF_FFFF_FFFF)
     }
 
     /// Computes the unsigned division of two 32-bit values.
     fn calculate_divu_w(a: u64, b: u64) -> u64 {
-        if b == 0 {
-            0xFFFF_FFFF
-        } else {
-            a / b
-        }
+        a.checked_div(b).unwrap_or(0xFFFF_FFFF)
     }
 
     /// Computes the unsigned remainder of two 64-bit values.

@@ -1,10 +1,10 @@
 # Makefile to build static library for Rust FFI
 
 CXX := g++
-CXXFLAGS := -O3 -std=c++17 -mavx2 -march=native -Wall -Wextra -pthread -Iinclude -no-pie -fPIC $(EXTRA_CXXFLAGS)
-# CXXFLAGS := -O3 -g -std=c++17 -mavx2 -march=native -Wall -Wextra -pthread
+CXXFLAGS := -O3 -std=c++20 -mavx2 -march=native -Wall -Wextra -pthread -Iinclude -no-pie -fPIC $(EXTRA_CXXFLAGS)
+# CXXFLAGS := -O3 -g -std=c++20 -mavx2 -march=native -Wall -Wextra -pthread
 # valgrind flags
-# CXXFLAGS := -O1 -g -std=c++17 -Wall -Wextra -pthread
+# CXXFLAGS := -O1 -g -std=c++20 -Wall -Wextra -pthread
 
 TARGET := libmemcpp.a
 

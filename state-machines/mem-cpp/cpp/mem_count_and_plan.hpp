@@ -65,6 +65,7 @@ public:
 public:
     MemSegments segments[MEM_TYPES];
     std::unique_ptr<MemAlignCounter> mem_align_counter;
+    std::once_flag wait_once;
 
     MemCountAndPlan();
     ~MemCountAndPlan();

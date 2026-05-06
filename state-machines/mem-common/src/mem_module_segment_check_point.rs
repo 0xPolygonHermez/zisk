@@ -6,6 +6,8 @@ use zisk_common::ChunkId;
 #[derive(Debug, Default, Clone)]
 pub struct MemModuleSegmentCheckPoint {
     pub chunks: HashMap<ChunkId, MemModuleCheckPoint>,
+    pub offsets_base_addr: u32,
+    pub offsets: Vec<u32>,
     pub first_chunk_id: Option<ChunkId>,
     pub is_last_segment: bool,
 }
@@ -13,7 +15,13 @@ pub struct MemModuleSegmentCheckPoint {
 impl MemModuleSegmentCheckPoint {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self { chunks: HashMap::new(), first_chunk_id: None, is_last_segment: false }
+        Self {
+            chunks: HashMap::new(),
+            offsets_base_addr: 0,
+            offsets: Vec::new(),
+            first_chunk_id: None,
+            is_last_segment: false,
+        }
     }
     pub fn to_string(&self, segment_id: usize) -> String {
         let mut result = String::new();
