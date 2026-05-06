@@ -645,9 +645,9 @@ void server_setup (void)
         bios_size = ((max_bios_pc - 0x1000) >> 2) + 1;
         program_size = max_program_pc - 0x80000000 + 1;
         histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
-        if (histogram_size > TRACE_INITIAL_SIZE)
+        if (histogram_size > TRACE_INITIAL_SIZE_RH)
         {
-            asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size %lu\n", histogram_size, TRACE_INITIAL_SIZE);
+            asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size RH %lu\n", histogram_size, TRACE_INITIAL_SIZE_RH);
             exit(-1);
         }
     }
