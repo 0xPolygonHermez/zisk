@@ -71,7 +71,7 @@ unsafe impl Sync for HintsShmem {}
 
 impl HintsShmem {
     const CONTROL_PRECOMPILE_SIZE: u64 = 0x1000; // 4KB
-    const MAX_PRECOMPILE_SIZE: u64 = 0x400000; // 4MB
+    const MAX_PRECOMPILE_SIZE: u64 = 0x8000000; // 128MB
     const BUFFER_CAPACITY_U64: u64 = Self::MAX_PRECOMPILE_SIZE >> 3;
 
     /// Map shmem segments. Semaphores are NOT opened here; call `bind_semaphores` before use.
