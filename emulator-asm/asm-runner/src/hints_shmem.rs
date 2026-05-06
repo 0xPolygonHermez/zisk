@@ -5,7 +5,7 @@
 
 use crate::{
     sem_available_name, sem_read_name, shmem_control_reader_name, shmem_precompile_name,
-    AsmService, AsmServices, ControlShmem, SharedMemoryWriter,
+    AsmService, AsmServices, ControlShmem, SharedMemoryReader, SharedMemoryWriter,
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
@@ -21,7 +21,7 @@ use zisk_common::io::StreamSink;
 /// `submit` (slowest-consumer wait); the C side resets it to 0 itself
 /// in `server_reset_fast()` after every emulation.
 struct SeparateShm {
-    control_output: SharedMemoryWriter,
+    control_reader: SharedMemoryReader,
 }
 
 // SAFETY: serialised by the enclosing `Mutex<Vec<SeparateShm>>`.
@@ -29,13 +29,12 @@ unsafe impl Send for SeparateShm {}
 unsafe impl Sync for SeparateShm {}
 
 impl SeparateShm {
-    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool, service: AsmService) -> Result<Self> {
+    pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
         let name = shmem_control_reader_name(shm_prefix, service);
         Ok(Self {
-            control_output: SharedMemoryWriter::new(
+            control_reader: SharedMemoryReader::new(
                 &name,
                 HintsShmem::CONTROL_PRECOMPILE_SIZE as usize,
-                unlock_mapped_memory,
             )?,
         })
     }
@@ -97,7 +96,7 @@ impl HintsShmem {
         // Create separate resources
         let separate_shm = AsmServices::SERVICES
             .iter()
-            .map(|service| SeparateShm::new(shm_prefix, unlock_mapped_memory, *service))
+            .map(|service| SeparateShm::new(shm_prefix, *service))
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
@@ -241,7 +240,7 @@ impl StreamSink for HintsShmem {
             let (slowest_idx, min_read_pos) = separate_shm[0..active]
                 .iter()
                 .enumerate()
-                .map(|(i, res)| (i, res.control_output.read_u64_at(0)))
+                .map(|(i, res)| (i, res.control_reader.read_u64_at(0)))
                 .min_by_key(|(_, pos)| *pos)
                 .unwrap();
 
