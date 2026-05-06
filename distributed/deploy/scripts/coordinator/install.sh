@@ -55,8 +55,8 @@
 
 # ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
 # When this script runs without its sibling files (curl | bash, or copied
-# without lib.sh/defaults.env/mpi_params.sh/ziskup nearby), download the
-# deploy tree from GitHub and re-exec from the temp copy.
+# without lib.sh/defaults.env/ziskup nearby), download the deploy tree from
+# GitHub and re-exec from the temp copy.
 #
 # Usage from a fresh server (no clone needed):
 #
@@ -90,7 +90,6 @@ if [[ -z "${SELF_DIR}" \
         "${BOOTSTRAP_TMP}/ziskup"
     for f in \
         distributed/deploy/scripts/common/lib.sh \
-        distributed/deploy/scripts/common/mpi_params.sh \
         distributed/deploy/scripts/coordinator/install.sh \
         distributed/deploy/scripts/coordinator/defaults.env \
         distributed/crates/coordinator-server/config/coordinator.example.toml \
@@ -101,8 +100,7 @@ if [[ -z "${SELF_DIR}" \
             exit 1
         fi
     done
-    chmod +x "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common/mpi_params.sh" \
-             "${BOOTSTRAP_TMP}/distributed/deploy/scripts/coordinator/install.sh" \
+    chmod +x "${BOOTSTRAP_TMP}/distributed/deploy/scripts/coordinator/install.sh" \
              "${BOOTSTRAP_TMP}/ziskup/ziskup"
     # Clean up the bootstrap dir on exit (success, failure, or interrupt).
     trap 'rm -rf "${BOOTSTRAP_TMP}"' EXIT
