@@ -448,7 +448,7 @@ install_setup() {
 
 # Install the SNARK proving key
 install_setup_snark() {
-    local KEY_FILE="zisk-provingkey-plonk-inputs-${SETUP_VERSION}.tar.gz"
+    local KEY_FILE="zisk-provingkey-plonk-${SETUP_VERSION}.tar.gz"
 
     step "Downloading SNARK proving key version ${SETUP_VERSION}. This may take a while..."
     ensure download "${BUCKET_URL}/${KEY_FILE}" "${KEY_FILE}"
