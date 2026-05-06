@@ -412,6 +412,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.clone()
     }
 
+    /// Returns a clone of the cached `Arc<GuestProgram>` for `hash_id`,
+    /// or `None` if the program isn't set up on this worker.
+    pub fn guest_program(&self, hash_id: &str) -> Option<Arc<GuestProgram>> {
+        self.guest_programs.get(hash_id).cloned()
+    }
+
     pub async fn cancel_current_computation(&mut self) {
         self.prover.cancel();
 
@@ -842,7 +848,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
             Err(err) => {
                 error!("Failed to generate proof for {job_id}: {:?}", err);
-                return Err(anyhow::anyhow!("Failed to generate proof"));
+                return Err(err.context("Failed to generate proof"));
             }
         };
 
@@ -1239,6 +1245,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);
+                let world_rank = self.world_rank();
+                let hash_id = message.hash_id.clone();
                 tokio::task::spawn_blocking(move || {
                     let run = || -> Result<()> {
                         if is_execution {
@@ -1274,6 +1282,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                     if let Err(e) = run() {
                         error!("MPI broadcast task failed: {}. Waiting for new job...", e);
+                        // Soft-reset on peer ranks: rank 0 signals reset off the
+                        // dispatch path via worker_node, but peer ranks have no
+                        // coordinator channel, so they signal here. The next collective
+                        // broadcast acts as the synchronization point with rank 0.
+                        match guest_programs.get(&hash_id).cloned() {
+                            Some(elf) => {
+                                warn!("[Recovery] rank {world_rank}: signalling ASM soft reset");
+                                if let Err(e) = prover.restart_asm_resources(&elf, with_hints) {
+                                    error!(
+                                        "[Recovery] rank {world_rank}: soft reset failed: {e:#}"
+                                    );
+                                }
+                            }
+                            None => error!(
+                                "[Recovery] rank {world_rank}: guest program missing for hash_id={hash_id}"
+                            ),
+                        }
                     }
                 });
             }

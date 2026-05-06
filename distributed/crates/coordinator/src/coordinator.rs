@@ -738,6 +738,19 @@ impl Coordinator {
     /// * `job_id` - Identifier of the failing job
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+        self.fail_job_with_recovery(job_id, reason, None).await
+    }
+
+    /// Same as [`Self::fail_job`] but parks `recovering_worker` in
+    /// `SettingUp` instead of `Ready` so the dispatcher won't pick it
+    /// while it does post-failure maintenance. The worker becomes
+    /// `Ready` again on the next `WorkerRecoveryComplete`.
+    pub async fn fail_job_with_recovery(
+        &self,
+        job_id: &JobId,
+        reason: impl AsRef<str>,
+        recovering_worker: Option<&WorkerId>,
+    ) -> CoordinatorResult<()> {
         let jobs_map = self.jobs.read().await;
         let job_entry =
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
@@ -758,7 +771,10 @@ impl Coordinator {
 
         // These operations only need the worker IDs, not the job lock.
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
-        self.ensure_workers_ready(&worker_ids).await;
+        match recovering_worker {
+            Some(rec) => self.ensure_workers_ready_except(&worker_ids, rec).await,
+            None => self.ensure_workers_ready(&worker_ids).await,
+        }
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
 
@@ -1272,6 +1288,7 @@ mod tests {
                 },
                 publics: vec![],
             }),
+            worker_in_recovery: false,
         };
 
         // Should succeed (not error) — the late response is silently discarded

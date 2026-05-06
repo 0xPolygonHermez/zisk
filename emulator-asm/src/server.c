@@ -395,6 +395,7 @@ void server_setup (void)
     precompile_written_address = &shmem_control_input_address[0];
     precompile_exit_address = &shmem_control_input_address[1];
     input_written_address = &shmem_control_input_address[2];
+    precompile_reset_address = &shmem_control_input_address[3];
 
     // Report duration
     if (verbose)
