@@ -40,6 +40,28 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=stdc++");
 
     watch_dir_recursive("cpp");
+
+    // Optional GPU build, gated by the `gpu` cargo feature.
+    if cfg!(feature = "gpu") {
+        let gpu_build_dir = Path::new(&out_dir).join("memcpp_cu");
+        std::fs::create_dir_all(&gpu_build_dir).unwrap();
+
+        let path = format!("/usr/local/cuda/bin:{}", env::var("PATH").unwrap_or_default());
+        let status = Command::new("make")
+            .arg("all")
+            .env("OUT_DIR", &gpu_build_dir)
+            .env("PATH", &path)
+            .current_dir("cu")
+            .status()
+            .expect("Failed to run make");
+
+        assert!(status.success(), "GPU Makefile build failed");
+
+        println!("cargo:rustc-link-search=native={}", gpu_build_dir.display());
+        println!("cargo:rustc-link-lib=static=memcpp_cu");
+        println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+        println!("cargo:rustc-link-lib=dylib=cudart");
+    }
 }
 
 fn watch_dir_recursive<P: AsRef<Path>>(dir: P) {

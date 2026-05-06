@@ -1,10 +1,21 @@
-GPU_ARCH := sm_120
+NVCC      ?= nvcc
+GPU_ARCH  ?= sm_80
+NVCCFLAGS := -O3 -std=c++20 -arch=$(GPU_ARCH) -Xcompiler -fPIC
 
+TARGET := libmemcpp_cu.a
+SRCS   := count_and_plan.cu count_and_plan_c.cu
+OBJS   := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
 
-count_and_plan: count_and_plan.cu
-	nvcc -O3 -arch=$(GPU_ARCH) -std=c++20 -Xcompiler -fopenmp -lgomp -o $@ $<
+all: $(OUT_DIR)/$(TARGET)
+
+$(OUT_DIR)/$(TARGET): $(OBJS)
+	ar rcs $@ $^
+
+$(OUT_DIR)/%.o: %.cu
+	mkdir -p $(OUT_DIR)
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 clean:
-	rm -f cout_and_plan
+	rm -f $(OUT_DIR)/*.o $(OUT_DIR)/$(TARGET)
 
-.PHONY: clean
+.PHONY: all clean
