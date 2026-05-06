@@ -1,0 +1,14 @@
+{
+  "name": "zisk-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Solidity verifier contracts for the Zisk zkVM, with a Hardhat test that submits a wrapped PLONK proof on-chain.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.0"
+  }
+}

@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
-    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskNew, ZiskProgramSetup,
-    ZiskProofmanSetup, ZiskProve, ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils, ZiskVerify,
-    ZiskVerifyConstraints, ZiskWrap,
+    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskExportSolidityCalldata, ZiskNew,
+    ZiskProgramSetup, ZiskProofmanSetup, ZiskProve, ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils,
+    ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -22,6 +22,7 @@ pub enum Cargo {
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
     Execute(ZiskExecute),
+    ExportSolidityCalldata(ZiskExportSolidityCalldata),
     New(ZiskNew),
     WrapProof(ZiskWrap),
     Prove(ZiskProve),
@@ -80,6 +81,9 @@ fn main() -> Result<()> {
         }
         Cargo::Execute(mut cmd) => {
             cmd.run().context("Error executing Execute command")?;
+        }
+        Cargo::ExportSolidityCalldata(cmd) => {
+            cmd.run().context("Error executing ExportSolidityCalldata command")?;
         }
         Cargo::Verify(cmd) => {
             cmd.run().map_err(|e| anyhow!("Error executing Verify command: {}", e))?;
