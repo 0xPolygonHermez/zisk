@@ -36,8 +36,8 @@
 #                          macOS: write plist but don't load (same as --no-enable).
 #   --no-enable            Linux: install unit but don't enable or start.
 #                          macOS: write plist but don't load.
-#   --uninstall            Stop, disable, and remove the service (prompts for cleanup)
-#   -y, --yes              Skip every uninstall prompt (assume yes)
+#   --uninstall            Stop, disable, and remove the service
+#   -y, --yes              Skip uninstall confirmation
 #
 # Notes:
 #   On macOS, MPI defaults off — Apple Silicon has no NUMA, no CUDA. MPI on
@@ -110,6 +110,8 @@ if [[ -z "${SELF_DIR}" \
     # /tmp (often mounted noexec on hardened or container environments).
     BOOTSTRAP_TMP=$(mktemp -d /var/tmp/zisk-deploy.XXXXXX 2>/dev/null) \
                 || BOOTSTRAP_TMP=$(mktemp -d /tmp/zisk-deploy.XXXXXX)
+    # Override with ZISK_DEPLOY_BRANCH=<branch|tag> to pin a non-default ref
+    # (a feature branch under review, or a release tag for reproducible installs).
     BRANCH="${ZISK_DEPLOY_BRANCH:-main}"
     BASE="https://raw.githubusercontent.com/0xPolygonHermez/zisk/${BRANCH}"
     mkdir -p \
@@ -283,7 +285,7 @@ $WITH_SNARK && : "${PROVING_KEY_SNARK:=${BUNDLE_DIR}/provingKeySnark}"
 
 # 3. Resolve the zisk-worker binary (from --binary if given, else from the
 # bundle ziskup just populated). NO local cargo build.
-resolve_service_binary "zisk-worker"
+resolve_service_binary
 
 # 4. Create system group + user (with 'zisk' as supplementary group so it can
 # read the bundle). Home is /var/empty (matches coordinator + sshd convention);
@@ -330,6 +332,15 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
             printf '        <string>slot</string>\n'
             printf '        <string>-x</string>\n'
             printf '        <string>RAYON_NUM_THREADS=%s</string>\n' "${MPI_THREADS}"
+            # See the systemd ExecStart above for why ZISK_HOME, ZISK_CACHE_DIR,
+            # and HOME are forwarded to ranks explicitly via `-x VAR` rather
+            # than relying on OpenMPI's default env propagation.
+            printf '        <string>-x</string>\n'
+            printf '        <string>ZISK_HOME</string>\n'
+            printf '        <string>-x</string>\n'
+            printf '        <string>ZISK_CACHE_DIR</string>\n'
+            printf '        <string>-x</string>\n'
+            printf '        <string>HOME</string>\n'
         fi
         printf '        <string>%s</string>\n' "${BINARY_DST}"
         printf '        <string>--config</string>\n'
@@ -454,12 +465,22 @@ else
     [[ -n "$LOG_LEVEL" ]]        && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
 
     if $MPI_ENABLED; then
+        # `-x VAR` (no value) propagates the unit's Environment= entries to
+        # MPI ranks. Without these explicit entries, ranks inherit OpenMPI's
+        # default-env-propagation behaviour, which various OMPI builds and
+        # tight-integration launchers (PBS, SLURM, etc.) filter differently
+        # — so the worker's ZiskPaths::from_env() falls back to $HOME/.zisk
+        # in the rank's process. Forward HOME alongside as a safety net for
+        # the same fallback path.
         EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
     -np ${MPI_NP} \\
     -map-by ppr:${MPI_PPR}:numa \\
     --bind-to numa \\
     --rank-by slot \\
     -x RAYON_NUM_THREADS=${MPI_THREADS} \\
+    -x ZISK_HOME \\
+    -x ZISK_CACHE_DIR \\
+    -x HOME \\
     ${BINARY_DST} ${WORKER_ARGS}"
     else
         EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
@@ -483,6 +504,9 @@ else
     READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKey"
     READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKeySnark"
     READ_WRITE_PATHS+=" -${BUNDLE_DIR}/verifyKey"
+    # Worker setup invokes `make` in zisk/emulator-asm with current_dir there;
+    # the Makefile mkdir's build/ inside the source dir.
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/zisk/emulator-asm"
 
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF

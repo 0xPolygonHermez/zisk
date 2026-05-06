@@ -17,8 +17,8 @@
 #                      macOS: write plist but don't load (same as --no-enable).
 #   --no-enable        Linux: install unit but don't enable or start.
 #                      macOS: write plist but don't load.
-#   --uninstall        Stop, disable, and remove the service (prompts for cleanup)
-#   -y, --yes          Skip every uninstall prompt (assume yes)
+#   --uninstall        Stop, disable, and remove the service
+#   -y, --yes          Skip uninstall confirmation
 #
 # Env-var equivalents (CLI flags win): ZISK_COORDINATOR_BINARY,
 # ZISK_COORDINATOR_CONFIG, ZISK_COORDINATOR_API_PORT,
@@ -77,6 +77,8 @@ if [[ -z "${SELF_DIR}" \
     # /tmp (often mounted noexec on hardened or container environments).
     BOOTSTRAP_TMP=$(mktemp -d /var/tmp/zisk-deploy.XXXXXX 2>/dev/null) \
                 || BOOTSTRAP_TMP=$(mktemp -d /tmp/zisk-deploy.XXXXXX)
+    # Override with ZISK_DEPLOY_BRANCH=<branch|tag> to pin a non-default ref
+    # (a feature branch under review, or a release tag for reproducible installs).
     BRANCH="${ZISK_DEPLOY_BRANCH:-main}"
     BASE="https://raw.githubusercontent.com/0xPolygonHermez/zisk/${BRANCH}"
     mkdir -p \
@@ -170,7 +172,7 @@ info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
 "${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
 
 # 2. Resolve the zisk-coordinator binary (from --binary or from the bundle).
-resolve_service_binary "zisk-coordinator-server"
+resolve_service_binary
 
 # 3. Create system group + user (with 'zisk' supplementary so it can read the
 # bundle, in case future coordinator versions need toolchain payload).

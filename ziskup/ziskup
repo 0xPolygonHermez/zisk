@@ -384,13 +384,22 @@ main() {
   # Download and extract the binaries archive. Skipped when BUNDLE_PRESENT —
   # only the missing key (handled later via install_setup) still needs to run.
   if ! $BUNDLE_PRESENT; then
-    # Compute the URL of the release tarball in the zisk repository
+    # Resolve "latest" to a concrete tag once, before downloading. Lets us
+    # stamp the bundle with the actual version without re-reading it from a
+    # binary post-extract (the old approach pulled in cargo-zisk's full
+    # dynamic-link surface just to learn the version we already chose).
     if [ "${ZISK_VERSION}" = "latest" ]; then
-      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
-    else
-      RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
+      resolved=$(resolve_latest_tag "${ZISKUP_REPO}")
+      if [[ -n "$resolved" ]]; then
+        ZISK_VERSION="$resolved"
+        say "Resolved 'latest' to ${ZISK_VERSION}"
+      else
+        err "Could not resolve 'latest' release tag from GitHub. Pass --version <X> explicitly or check network connectivity."
+        exit 1
+      fi
     fi
 
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
     BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.${EXT}"
 
     if [ "${PLATFORM}" = "linux" ] || [ "${PLATFORM}" = "darwin" ]; then
@@ -431,12 +440,12 @@ main() {
     fi
   fi
 
-  # Print installed version message
-  ZISK_VERSION=$(echo "$(ensure "${CARGO_ZISK}" --version)" | awk '{print $2}')
-  say "Installed ZisK version ${ZISK_VERSION}"
-
-  # Stamp the bundle so subsequent --system runs can short-circuit.
-  bundle_set version "${ZISK_VERSION}"
+  # Stamp the bundle so subsequent --system runs can short-circuit. Strip the
+  # leading 'v' so the file holds the bare semver — bundle_get's consumers
+  # compare against `${ZISK_VERSION#v}` (see install_bundle's BUNDLE_PRESENT
+  # check above).
+  say "Installed ZisK version ${ZISK_VERSION#v}"
+  bundle_set version "${ZISK_VERSION#v}"
 
   manifest_reset
   manifest_add bin
@@ -706,6 +715,10 @@ ensure_owner_user_group() {
 #                                  worker writes generated artefacts (const
 #                                  tree files, intermediates) here at runtime
 #                                  via its supplementary 'zisk' membership.
+#   zisk/emulator-asm:             0770 dir only — worker setup runs `make`
+#                                  here (rom-setup/src/asm_setup.rs) and
+#                                  needs to mkdir/rm-rf build/. Source files
+#                                  stay 0640 since make never modifies them.
 apply_ownership_and_perms() {
   chown -R "$OWNER" "$ZISK_DIR"
   find "$ZISK_DIR" -type d -exec chmod 0750 {} \;
@@ -718,6 +731,9 @@ apply_ownership_and_perms() {
       find "${ZISK_DIR}/${keydir}" -type f -exec chmod 0660 {} \;
     fi
   done
+  if [[ -d "${ZISK_DIR}/zisk/emulator-asm" ]]; then
+    chmod 0770 "${ZISK_DIR}/zisk/emulator-asm"
+  fi
 }
 
 # Path to the bundle metadata file (.zisk-bundle).
@@ -805,6 +821,25 @@ download() {
   else
     wget --header="Accept: application/octet-stream" --show-progress -qO "$2" "$1"
   fi
+}
+
+# resolve_latest_tag REPO
+# Resolves "latest" to a tag like "v0.17.0" by following GitHub's redirect
+# from /releases/latest → /releases/tag/<tag>. Echoes the tag on stdout
+# (empty on failure). Avoids depending on cargo-zisk for version detection
+# and on the GitHub API (which is rate-limited unauthenticated).
+resolve_latest_tag() {
+  local repo="$1" final_url=""
+  if check_cmd curl; then
+    final_url=$(curl -fsL -o /dev/null -w '%{url_effective}' \
+                    "https://github.com/${repo}/releases/latest" 2>/dev/null) || true
+  elif check_cmd wget; then
+    final_url=$(wget --max-redirect=10 -q --server-response -O /dev/null \
+                     "https://github.com/${repo}/releases/latest" 2>&1 \
+                | awk 'tolower($1)=="location:"{loc=$2} END{print loc}' \
+                | tr -d '\r') || true
+  fi
+  echo "${final_url}" | sed -nE 's|.*/tag/(v[^/?#]+).*|\1|p'
 }
 
 # Install the proving or verify key

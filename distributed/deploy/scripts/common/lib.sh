@@ -340,7 +340,7 @@ resolve_mpi_config() {
 #   systemd: trailing "# zisk-coordinator:DATA_DIR=/var/lib/zisk-coordinator" lines
 #   launchd: trailing "<!-- zisk-coordinator:DATA_DIR=... -->" lines
 #
-# Set ASSUME_YES=true (e.g. via --yes / -y) to skip every prompt below.
+# Pass --yes / -y to skip that prompt and uninstall immediately.
 
 # confirm PROMPT [DEFAULT]
 # Y/N prompt. DEFAULT is "y" or "n" (default "n"). Returns 0 on yes, 1 on no.
@@ -378,39 +378,34 @@ read_unit_metadata() {
     fi
 }
 
-# prompt_remove_dir DIR LABEL
-# Prompts to remove DIR (default no). No-op if DIR doesn't exist.
-prompt_remove_dir() {
+# remove_dir DIR LABEL
+# Removes DIR. No-op if DIR doesn't exist.
+remove_dir() {
     local dir="$1" label="$2"
     [[ -n "$dir" && -d "$dir" ]] || return 0
-    if confirm "Remove ${label} '${dir}'?"; then
-        rm -rf "$dir"
-        info "Removed ${dir}."
-    fi
+    rm -rf "$dir"
+    info "Removed ${label} ${dir}."
 }
 
-# prompt_remove_config_file FILE DIR
-# Prompts to remove a service's config file, then rmdirs DIR if it's now
+# remove_config_file FILE DIR
+# Removes a service's config file, then rmdirs DIR if it's now
 # empty (silent on non-empty — leaves sibling services' configs intact).
 # No-ops if FILE doesn't exist.
-prompt_remove_config_file() {
+remove_config_file() {
     local file="$1" dir="$2"
     [[ -n "$file" && -f "$file" ]] || return 0
-    if confirm "Remove config file '${file}'?"; then
-        rm -f "$file"
-        info "Removed ${file}."
-        if [[ -n "$dir" && -d "$dir" ]] && rmdir "$dir" 2>/dev/null; then
-            info "Removed empty ${dir}."
-        fi
+    rm -f "$file"
+    info "Removed ${file}."
+    if [[ -n "$dir" && -d "$dir" ]] && rmdir "$dir" 2>/dev/null; then
+        info "Removed empty ${dir}."
     fi
 }
 
-# prompt_remove_user_group USER GROUP
-# Prompts to remove a system user + group (default no). Branches on OS.
-prompt_remove_user_group() {
+# remove_user_group USER GROUP
+# Removes a system user + group. Branches on OS.
+remove_user_group() {
     local user="$1" group="$2"
     [[ -n "$user" && -n "$group" ]] || return 0
-    confirm "Remove system user '${user}' and group '${group}'?" || return 0
     if [[ "$OS_NAME" == "Darwin" ]]; then
         if dscl . -read "/Users/${user}" &>/dev/null; then
             dscl . -delete "/Users/${user}" && info "Removed user '${user}'."
@@ -487,14 +482,14 @@ uninstall_service() {
     # Drop the service user/group FIRST, then dirs. On macOS, dirs registered
     # as a user's home (NFSHomeDirectory) acquire ACLs that block rm -rf until
     # the dscl record is gone. Linux is order-insensitive.
-    prompt_remove_user_group "${svc_user}" "${svc_group}"
-    prompt_remove_dir "${log_dir}" "log directory"
-    prompt_remove_dir "${data_dir}" "data directory"
+    remove_user_group "${svc_user}" "${svc_group}"
+    remove_dir "${log_dir}" "log directory"
+    remove_dir "${data_dir}" "data directory"
     # config_dir is shared between services (worker + coordinator both keep
     # their .toml under /etc/zisk). Remove only this service's own config
     # file, then rmdir the parent — succeeds silently iff the dir is empty
     # so a sibling service's config is never collateral damage.
-    prompt_remove_config_file "${config_file}" "${config_dir}"
+    remove_config_file "${config_file}" "${config_dir}"
 
     info "${BINARY_NAME} uninstalled."
 
@@ -536,7 +531,14 @@ activate_service() {
             info "Service enabled but not started (--no-start)."
             info "To start: sudo systemctl start ${BINARY_NAME}"
         else
-            systemctl enable --now "${BINARY_NAME}"
+            # `enable + restart` (not `enable --now`): on a re-install the unit
+            # is already active and `--now`'s implicit `start` is a no-op, so
+            # the running process keeps the old text segment from the prior
+            # /usr/local/bin/<binary>. `restart` reloads the just-installed
+            # binary unconditionally; on a fresh install it's equivalent to
+            # `start`.
+            systemctl enable "${BINARY_NAME}"
+            systemctl restart "${BINARY_NAME}"
             SHOW_HINTS=true
         fi
     fi
