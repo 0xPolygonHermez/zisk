@@ -1018,6 +1018,7 @@ dependencies = [
  "executor",
  "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fsetup)",
  "futures",
+ "hex",
  "indicatif",
  "pil2-stark-setup",
  "proofman",
