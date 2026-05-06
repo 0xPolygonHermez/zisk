@@ -1,9 +1,10 @@
 [workspace]
 members = [
-    "sha-hasher/host", 
-    "sha-hasher/guest", 
-    "multiple-programs/host", 
-    "multiple-programs/guest", 
+    "common",
+    "sha-hasher/host",
+    "sha-hasher/guest",
+    "multiple-programs/host",
+    "multiple-programs/guest",
     "multiple-programs/guest_2",
     "aggregation/host",
     "aggregation/guest",

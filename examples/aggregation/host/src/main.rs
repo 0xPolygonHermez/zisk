@@ -1,6 +1,7 @@
 use anyhow::Result;
+use examples_common::{build_client, ClientConfig};
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, GuestProgram, ZiskStdin};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {
@@ -21,17 +22,15 @@ async fn main() -> Result<()> {
     let stdin = ZiskStdin::new();
     stdin.write(&n);
 
-    // Create a `ProverClient` method.
-    let embedded_opts = EmbeddedOpts::default().minimal_memory();
-    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    println!("Building prover client...");
+    let client = build_client(ClientConfig { minimal_memory: true, ..Default::default() })?;
 
     println!("Setting up first program...");
+    client.upload(&PROGRAM1).run()?;
     client.setup(&PROGRAM1).run()?.await?;
 
     println!("Setting up second program...");
+    client.upload(&PROGRAM2).run()?;
     client.setup(&PROGRAM2).run()?.await?;
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.

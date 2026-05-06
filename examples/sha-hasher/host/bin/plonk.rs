@@ -1,5 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, Proof, ProofKind, ProverClient, ZiskStdin};
+use examples_common::{build_client, ClientConfig};
+use zisk_sdk::{load_program, GuestProgram, Proof, ProofKind, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -13,14 +14,11 @@ async fn main() -> Result<()> {
     stdin.write(&n);
     println!("Input prepared: {} iterations", n);
 
-    // Create a `ProverClient` method.
     println!("Building prover client with SNARK support...");
-    let builder = ProverClient::embedded().plonk();
-    #[cfg(feature = "gpu")]
-    let builder = builder.gpu();
-    let client = builder.build()?;
+    let client = build_client(ClientConfig { plonk: true, ..Default::default() })?;
 
     println!("Setting up program and generating verification key...");
+    client.upload(&PROGRAM).run()?;
     client.setup(&PROGRAM).run()?.await?;
     println!("Setup completed successfully");
 

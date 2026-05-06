@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProverClient, ZiskStream};
+use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStream};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
 
     let input = ZiskStream::unix();
 
-    let handle = client.execute(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    let handle = client.execute(&PROGRAM, input.clone()).run()?;
     input.write(&1000u32);
     input.flush()?;
     let result = handle.await?;
@@ -26,8 +26,7 @@ async fn main() -> Result<()> {
     );
 
     input.write(&2000u32);
-    let prove_handle =
-        client.prove(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    let prove_handle = client.prove(&PROGRAM, input.clone()).run()?;
     input.flush()?;
     let vadcop_result = prove_handle.await?;
 
@@ -38,8 +37,7 @@ async fn main() -> Result<()> {
     println!("Running second proof generation with new input...");
 
     input.write(&3000u32);
-    let prove_handle2 =
-        client.prove(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    let prove_handle2 = client.prove(&PROGRAM, input.clone()).run()?;
     input.flush()?;
     let vadcop_result2 = prove_handle2.await?;
 

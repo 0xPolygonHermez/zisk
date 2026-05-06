@@ -13,6 +13,7 @@ name = "aggregation-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "examples-common",
  "serde",
  "sha2",
  "tokio",
@@ -750,6 +751,7 @@ name = "big-program-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "examples-common",
  "serde",
  "sha2",
  "tokio",
@@ -1837,6 +1839,14 @@ dependencies = [
  "hashbag",
  "left-right",
  "smallvec",
+]
+
+[[package]]
+name = "examples-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "zisk-sdk",
 ]
 
 [[package]]
@@ -3212,6 +3222,7 @@ name = "multiple-programs-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "examples-common",
  "serde",
  "sha2",
  "tokio",
@@ -5061,6 +5072,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
+ "examples-common",
  "serde",
  "sha-hasher-common",
  "sha2",

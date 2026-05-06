@@ -1,9 +1,8 @@
 use anyhow::Result;
+use examples_common::{build_client, ClientConfig};
 use sha2::{Digest, Sha256};
 use sha_hasher_common::Output;
-use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, Proof, ProverClient, PublicValues, ZiskStdin,
-};
+use zisk_sdk::{load_program, GuestProgram, Proof, PublicValues, ZiskStdin};
 
 static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
 
@@ -17,9 +16,8 @@ async fn main() -> Result<()> {
     stdin.write(&n);
     println!("Input prepared: {} iterations", n);
 
-    // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let client = build_client(ClientConfig::default())?;
 
     println!("Setting up program...");
     client.upload(&PROGRAM).run()?;
@@ -27,7 +25,7 @@ async fn main() -> Result<()> {
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Emulator).run()?.await?;
+    let result = client.prove(&PROGRAM, stdin).run()?.await?;
     println!("Proof generated successfully in {} ms", result.get_proving_time());
     println!("Execution steps: {}", result.get_execution_steps());
 
