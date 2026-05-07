@@ -8,8 +8,13 @@ endif
 
 INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64-GCC -I ./SoftFloat-3e/source/8086
 ZISK_INC = -I ./SoftFloat-3e/source/include -I ./SoftFloat-3e/build/Linux-x86_64-GCC -I ./SoftFloat-3e/source/8086
-ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany
-ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64
+
+# Reproducibility: remap absolute paths gcc/as bake into the output so the ELF bytes do
+# not depend on where this tree lives on the build host.
+REPRO_FLAGS = -ffile-prefix-map=$(CURDIR)=. -fdebug-prefix-map=$(CURDIR)=.
+
+ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany $(REPRO_FLAGS)
+ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64 --debug-prefix-map=$(CURDIR)=.
 
 all:
 	mkdir -p build
@@ -106,7 +111,7 @@ all:
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f64_to_f32.c $(ZISK_INC) -o build/f64_to_f32.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c SoftFloat-3e/source/f32_to_f64.c $(ZISK_INC) -o build/f32_to_f64.o
 
-	riscv64-unknown-elf-ar rcs build/libziskfloat.a\
+	riscv64-unknown-elf-ar Drcs build/libziskfloat.a\
 		build/float.o\
 		build/f64_add.o\
 		build/f32_add.o\
@@ -195,8 +200,9 @@ all:
 
 	riscv64-unknown-elf-as $(ZISK_ASM_CFLAGS) src/start.S -o build/start.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c src/main.cpp $(ZISK_INC) -o build/main.o
-	riscv64-unknown-elf-ld -T scripts/link_main.ld build/start.o build/main.o build/libziskfloat.a -o build/ziskfloatmain.elf
-	riscv64-unknown-elf-ld -T scripts/link.ld build/libziskfloat.a -o build/ziskfloat.elf
+	riscv64-unknown-elf-ld --build-id=none -T scripts/link_main.ld build/start.o build/main.o build/libziskfloat.a -o build/ziskfloatmain.elf
+	riscv64-unknown-elf-ld --build-id=none -T scripts/link.ld build/libziskfloat.a -o build/ziskfloat.elf
+	riscv64-unknown-elf-strip --strip-unneeded build/ziskfloat.elf
 	cp build/ziskfloat.elf lib/
 
 ziskdump:
