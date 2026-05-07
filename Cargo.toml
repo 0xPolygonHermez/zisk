@@ -78,7 +78,6 @@ opt-level = 3
 
 [workspace.dependencies]
 # Internal crates
-cargo-zisk = { path = "cli" }
 zisk-common = { path = "common" }
 zisk-core = { path = "core" }
 data-bus = { path = "data-bus" }
