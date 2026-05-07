@@ -65,12 +65,12 @@ impl ZiskInstallToolchain {
                     }
                 }
             }
-            Err(_) => println!("No existing ~/.zisk directory to remove."),
+            Err(_) => println!("No existing {} directory to remove.", root_dir.display()),
         }
-        println!("Successfully cleaned up ~/.zisk directory.");
+        println!("Successfully cleaned up {} directory.", root_dir.display());
         match fs::create_dir_all(&root_dir) {
-            Ok(_) => println!("Successfully created ~/.zisk directory."),
-            Err(err) => println!("Failed to create ~/.zisk directory: {err}"),
+            Ok(_) => println!("Successfully created {} directory.", root_dir.display()),
+            Err(err) => println!("Failed to create {} directory: {err}", root_dir.display()),
         };
 
         assert!(

@@ -975,6 +975,19 @@ uninstall_command() {
     fi
   fi
 
+  # Confirm before any destructive action, unless --yes was passed. Read from
+  # /dev/tty so the prompt still works under `curl … | bash -s -- --uninstall`.
+  # Mirrors the lib.sh::uninstall_service / confirm() flow used by the
+  # service installers.
+  if ! $ASSUME_YES; then
+    warn "About to remove $ZISK_DIR (and any user/group ziskup created)."
+    read -r -p "Continue? [y/N] " reply </dev/tty
+    case "$(echo "${reply:-n}" | tr '[:upper:]' '[:lower:]')" in
+      y|yes) ;;
+      *) step "Uninstall cancelled."; return 0 ;;
+    esac
+  fi
+
   step "Removing ZisK bundle at $ZISK_DIR..."
 
   # Read manifest from state file. Fall back to ZISK_KNOWN_SUBDIRS for

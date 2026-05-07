@@ -38,12 +38,21 @@ Environment=ZISK_HOME={{ zisk_worker_bundle_dir }}
 Environment=ZISK_CACHE_DIR={{ zisk_worker_work_dir }}/cache
 
 {% if zisk_worker_mpi_enabled %}
+# `-x VAR` (no value) propagates the unit's Environment= entries to MPI ranks.
+# Without these, OpenMPI's default-env-propagation gets filtered by various
+# OMPI builds + tight-integration launchers (PBS, SLURM, etc.), so the worker's
+# ZiskPaths::from_env() falls back to $HOME/.zisk in the rank process. Forward
+# HOME alongside as a safety net for the same fallback path. Mirrors the bash
+# installer at distributed/deploy/scripts/worker/install.sh.
 ExecStart={{ zisk_worker_mpirun_bin }} --report-bindings --allow-run-as-root \
     -np {{ zisk_worker_mpi_processes }} \
     -map-by ppr:{{ zisk_worker_mpi_numa_ppr }}:numa \
     --bind-to numa \
     --rank-by slot \
     -x RAYON_NUM_THREADS={{ zisk_worker_mpi_threads }} \
+    -x ZISK_HOME \
+    -x ZISK_CACHE_DIR \
+    -x HOME \
     {{ zisk_worker_binary_dst }} {{ worker_args }}
 {% else %}
 ExecStart={{ zisk_worker_binary_dst }} {{ worker_args }}

@@ -21,13 +21,15 @@ done
 
 if $SYSTEM_MODE; then
   BIN_PATH=$(mktemp /tmp/ziskup-bootstrap.XXXXXX)
-  CLEANUP_BOOTSTRAP=true
+  # EXIT trap (not a manual rm after the run) so the temp bootstrap is cleaned
+  # up regardless of how the script exits — including curl/chmod failure,
+  # non-zero ziskup exit (terminates immediately under set -e), or SIGINT.
+  trap 'rm -f "$BIN_PATH"' EXIT
 else
   BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
   ZISK_DIR=${ZISK_DIR-"$BASE_DIR/.zisk"}
   ZISK_BIN_DIR="$ZISK_DIR/bin"
   BIN_PATH="$ZISK_BIN_DIR/ziskup"
-  CLEANUP_BOOTSTRAP=false
   mkdir -p "$ZISK_BIN_DIR"
 fi
 
@@ -36,10 +38,3 @@ chmod +x "$BIN_PATH"
 
 echo && echo "Running ziskup..."
 "$BIN_PATH" "$@"
-RUN_STATUS=$?
-
-if $CLEANUP_BOOTSTRAP; then
-  rm -f "$BIN_PATH"
-fi
-
-exit $RUN_STATUS

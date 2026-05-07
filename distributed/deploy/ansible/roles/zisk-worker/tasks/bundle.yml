@@ -1,7 +1,8 @@
 ---
 # Populate the shared ZisK bundle (toolchain + proving key) at
 # {{ zisk_worker_bundle_dir }} via ziskup --system. Idempotent — ziskup
-# short-circuits via .zisk-version marker when already at the requested version.
+# short-circuits when the `version=` field in {{ zisk_worker_bundle_dir }}/.zisk-bundle
+# already matches the requested version (override with --force).
 
 - name: Refresh apt cache if stale (Debian/Ubuntu)
   ansible.builtin.apt:
@@ -39,6 +40,11 @@
   changed_when: false
 
 - name: Run ziskup --system to populate bundle
+  # No --nokey: the worker requires the STARK proving key at runtime, and the
+  # service unit unconditionally bakes --proving-key {{ zisk_worker_proving_key }}
+  # (= {{ zisk_worker_bundle_dir }}/provingKey by default). Mirrors the shell
+  # installer at distributed/deploy/scripts/worker/install.sh, which also omits
+  # --nokey for the worker (only the coordinator role passes --nokey).
   ansible.builtin.command:
     cmd: >-
       {{ _zisk_ziskup_tmp.path }}/ziskup
@@ -46,7 +52,6 @@
       --prefix {{ zisk_worker_bundle_dir }}
       --owner {{ zisk_worker_zisk_group }}:{{ zisk_worker_zisk_group }}
       --yes
-      --nokey
       {% if zisk_worker_with_snark %}--with-snark{% endif %}
       {% if zisk_worker_ziskup_version | length > 0 %}--version {{ zisk_worker_ziskup_version }}{% endif %}
   changed_when: "'already installed' not in _zisk_ziskup_run.stdout"

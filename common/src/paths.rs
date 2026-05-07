@@ -43,7 +43,7 @@ pub const LIBZISKCLIB_FILE: &str = "libziskclib.a";
 /// |---------------------|---------------------------------------|--------------------------------------------|-------------------------------------------------------------|
 /// | `home`              | `$HOME/.zisk`                         | `/opt/zisk`                                | `/Library/Application Support/ZisK`                         |
 /// | `bin`               | `$HOME/.zisk/bin`                     | `/opt/zisk/bin`                            | `/Library/Application Support/ZisK/bin`                     |
-/// | `cache`             | `$HOME/.zisk/cache`                   | `/var/lib/zisk-{coordinator,worker}/cache` | `/Library/Application Support/ZisK/cache`                   |
+/// | `cache`             | `$HOME/.zisk/cache`                   | `/var/lib/zisk-{coordinator,worker}/cache` | `/usr/local/var/zisk-{coordinator,worker}/cache`            |
 /// | `proving_key`       | `$HOME/.zisk/provingKey`              | `/opt/zisk/provingKey`                     | `/Library/Application Support/ZisK/provingKey`              |
 /// | `proving_key_snark` | `$HOME/.zisk/provingKeySnark`         | `/opt/zisk/provingKeySnark`                | `/Library/Application Support/ZisK/provingKeySnark`         |
 /// | `toolchains`        | `$HOME/.zisk/toolchains`              | `/opt/zisk/toolchains`                     | `/Library/Application Support/ZisK/toolchains`              |

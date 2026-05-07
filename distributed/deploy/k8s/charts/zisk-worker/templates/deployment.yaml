@@ -94,7 +94,14 @@ spec:
           image: {{ include "zisk-worker.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
+            {{- if .Values.config.workerToml }}
+            # Mounted from the chart-managed ConfigMap below. Skipped when
+            # config.workerToml is empty so the worker runs with CLI args only
+            # (matches the comment in values.yaml). Without this guard, the
+            # binary would error: it opens --config unconditionally and the
+            # path wouldn't exist (no volume mounted).
             - "--config=/etc/zisk/worker.toml"
+            {{- end }}
             - "--proving-key=/opt/zisk/provingKey"
             - "--coordinator-url={{ $coordinatorUrl }}"
             {{- if .Values.provingKey.snark.enabled }}
