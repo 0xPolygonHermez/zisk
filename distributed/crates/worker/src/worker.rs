@@ -1194,6 +1194,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn handle_mpi_broadcast_request(&mut self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
+        let world_rank = self.world_rank();
+        tracing::info!(
+            "[MPI-TRACE] rank={world_rank} main-loop: probing for next broadcast"
+        );
         self.prover.mpi_broadcast(&mut bytes)?;
 
         if bytes.is_empty() {
@@ -1203,15 +1207,33 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let tag: WorkerMpiTag = borsh::from_slice(&bytes[0..1])
             .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast tag: {}", e))?;
 
+        tracing::info!(
+            "[MPI-TRACE] rank={world_rank} main-loop: received tag_byte={} bytes={}",
+            bytes[0],
+            bytes.len()
+        );
+
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
 
         match tag {
             WorkerMpiTag::ContributionsHintsStream => {
+                tracing::info!(
+                    "[MPI-TRACE] rank={world_rank} main-loop: dispatching HintsStream to submit_hint"
+                );
                 prover.submit_hint(&bytes)?;
+                tracing::info!(
+                    "[MPI-TRACE] rank={world_rank} main-loop: submit_hint returned"
+                );
             }
             WorkerMpiTag::ContributionsInputsStream => {
+                tracing::info!(
+                    "[MPI-TRACE] rank={world_rank} main-loop: dispatching InputsStream to submit_input"
+                );
                 prover.submit_input(&bytes)?;
+                tracing::info!(
+                    "[MPI-TRACE] rank={world_rank} main-loop: submit_input returned"
+                );
             }
             WorkerMpiTag::Setup => {
                 let message: SetupMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {

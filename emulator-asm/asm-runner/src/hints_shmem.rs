@@ -203,6 +203,11 @@ impl StreamSink for HintsShmem {
     fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
         let data_size = processed.len() as u64;
 
+        tracing::info!(
+            "[MPI-TRACE] HintsShmem::submit u64s={data_size} active={}",
+            self.active_count.load(Ordering::SeqCst)
+        );
+
         if data_size == 0 {
             return Ok(());
         }

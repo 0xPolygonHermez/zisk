@@ -385,7 +385,13 @@ impl<S: StreamSink> HintsProcessor<S> {
                     ))
                     .unwrap();
 
+                    tracing::info!(
+                        "[MPI-TRACE] process_hints: about to broadcast InputsStream payload_u64s={} serialized_bytes={}",
+                        hint.data.len(),
+                        serialized.len()
+                    );
                     broadcast_fn(&mut serialized).expect("MPI broadcast failed for input hint");
+                    tracing::info!("[MPI-TRACE] process_hints: broadcast InputsStream returned");
                 }
 
                 self.inputs_sink
@@ -596,8 +602,16 @@ impl<S: StreamSink> HintsProcessor<S> {
                                 StreamMessage { data: data_to_submit.clone() },
                             ))
                             .unwrap();
+                            tracing::info!(
+                                "[MPI-TRACE] drainer: about to broadcast HintsStream payload_u64s={} serialized_bytes={}",
+                                data_to_submit.len(),
+                                serialized.len()
+                            );
                             broadcast_fn(&mut serialized)
                                 .expect("MPI broadcast failed in drainer thread");
+                            tracing::info!(
+                                "[MPI-TRACE] drainer: broadcast HintsStream returned"
+                            );
                         }
 
                         queue = state.queue.lock().unwrap();

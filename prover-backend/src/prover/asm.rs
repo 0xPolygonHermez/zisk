@@ -155,8 +155,22 @@ impl AsmProver {
 
         let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
             let pctx = pctx.clone();
+            let rank = world_rank;
+            let counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
             Arc::new(move |data: &mut Vec<u8>| {
+                let seq = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let dir = if rank == 0 { "SEND" } else { "RECV" };
+                let in_size = data.len();
+                let tid = std::thread::current().id();
+                tracing::info!(
+                    "[MPI-TRACE] rank={rank} {dir} seq={seq} tid={tid:?} pre_size={in_size}"
+                );
                 pctx.mpi_ctx.broadcast(data);
+                let tag = data.first().copied().unwrap_or(255);
+                tracing::info!(
+                    "[MPI-TRACE] rank={rank} {dir} seq={seq} tid={tid:?} done size={size} tag={tag}",
+                    size = data.len(),
+                );
                 Ok(())
             }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
         });
