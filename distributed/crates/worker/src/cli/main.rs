@@ -1,5 +1,4 @@
 use anyhow::Result;
-use cargo_zisk::ux::print_banner;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -109,7 +108,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    print_banner();
+    println!("ZisK Worker v{}", env!("CARGO_PKG_VERSION"));
 
     #[cfg(not(feature = "cpu-only"))]
     let gpu = cli.gpu;

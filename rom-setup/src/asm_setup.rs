@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::get_elf_data_hash;
@@ -37,7 +38,7 @@ pub enum EmulatorAsmSource {
 
 pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
     if std::env::var_os("ZISK_USE_INSTALLED").is_some_and(|v| !v.is_empty()) {
-        let installed_asm_path = crate::get_default_zisk_path().join("zisk/emulator-asm");
+        let installed_asm_path = ZiskPaths::global().emulator_asm.clone();
         tracing::debug!(
             "ZISK_USE_INSTALLED set, using installed emulator-asm at: {}",
             installed_asm_path.display()
@@ -70,7 +71,7 @@ pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
         tracing::debug!("Using emulator-asm from workspace: {}", path.display());
         (path, EmulatorAsmSource::Workspace)
     } else {
-        let installed_asm_path = crate::get_default_zisk_path().join("zisk/emulator-asm");
+        let installed_asm_path = ZiskPaths::global().emulator_asm.clone();
         let reason = if !cargo_available {
             "cargo not available"
         } else if workspace_root.is_none() {
@@ -97,9 +98,7 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
         emu_dir.parent().context("Failed to get parent directory of emulator-asm")?;
 
     let target_lib_path = match source {
-        EmulatorAsmSource::Installed => {
-            crate::get_default_zisk_path().join("bin").join("libziskclib.a")
-        }
+        EmulatorAsmSource::Installed => ZiskPaths::global().libziskclib.clone(),
         EmulatorAsmSource::Workspace => emulator_parent.join("target/release/libziskclib.a"),
     };
 

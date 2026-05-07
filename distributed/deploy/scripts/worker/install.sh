@@ -10,15 +10,23 @@
 #   --binary PATH          Use a pre-built binary instead of building from source
 #   --config PATH          Install an existing worker.toml instead of the sample
 #   --proving-key PATH     Path to the proving key directory
-#                          (default: /var/lib/zisk-worker/provingKey)
+#                          (default: ${BUNDLE_DIR}/provingKey)
+#   --with-snark           Download also the SNARK proving key into the bundle.
+#                          Without this flag, only the STARK key is installed.
 #   --proving-key-snark PATH  Path to the SNARK proving key directory (optional)
 #   --coordinator-url URL  Distributed coordinator URL (overrides TOML)
 #   --worker-id ID         Worker identifier (overrides TOML; auto-UUID if unset)
 #   --compute-capacity N   Compute units to advertise (overrides TOML)
 #   --emulator             Use prebuilt emulator (mutex with --asm)
 #   --asm PATH             ASM file path (mutex with --emulator)
-#   --gpu                  Run with GPU (only meaningful in non-cpu-only builds)
+#   --gpu                  Install the GPU build and run worker with --gpu.
+#   --cpu                  Install the CPU-only build and run worker without --gpu.
+#                          Pass neither to let ziskup auto-detect CUDA on the
+#                          host; the worker's runtime --gpu flag is then aligned
+#                          to whichever variant ziskup picked.
 #   --log-level LEVEL      trace | debug | info | warn | error (optional; RUST_LOG)
+#   --no-service           Container mode: install binary/config/state only;
+#                          skip service user creation and service manager setup.
 #   --mpi                  Force-enable MPI (default true on Linux, false on macOS)
 #   --no-mpi               Run the worker as a single process, no mpirun
 #   --mpi-processes N      Manual override for -np
@@ -30,8 +38,8 @@
 #                          macOS: write plist but don't load (same as --no-enable).
 #   --no-enable            Linux: install unit but don't enable or start.
 #                          macOS: write plist but don't load.
-#   --uninstall            Stop, disable, and remove the service (prompts for cleanup)
-#   -y, --yes              Skip every uninstall prompt (assume yes)
+#   --uninstall            Stop, disable, and remove the service
+#   -y, --yes              Skip uninstall confirmation
 #
 # Notes:
 #   On macOS, MPI defaults off — Apple Silicon has no NUMA, no CUDA. MPI on
@@ -41,15 +49,107 @@
 # ZISK_WORKER_PROVING_KEY, ZISK_WORKER_PROVING_KEY_SNARK,
 # ZISK_WORKER_COORDINATOR_URL, ZISK_WORKER_ID,
 # ZISK_WORKER_COMPUTE_CAPACITY, ZISK_WORKER_EMULATOR (true|false), ZISK_WORKER_ASM,
-# ZISK_WORKER_GPU (true|false), ZISK_WORKER_MPI (true|false),
+# ZISK_WORKER_GPU (true|false; unset = auto-detect via ziskup), ZISK_WORKER_MPI (true|false),
 # ZISK_WORKER_MPI_PROCESSES, ZISK_WORKER_MPI_NUMA_PPR, ZISK_WORKER_MPI_THREADS,
-# RUST_LOG.
+# ZISK_WORKER_WITH_SNARK (true|false), RUST_LOG.
+#
+# ── file layout (where install.sh puts things) ───────────────────────────────
+# Runtime paths are resolved by common/src/paths.rs::ZiskPaths via ZISK_HOME
+# (the shared bundle) and ZISK_CACHE_DIR (per-service writable cache). Both
+# env vars are baked into the systemd unit / launchd plist below.
+#
+# Linux service mode:
+#   Binary               /usr/local/bin/zisk-worker
+#   Config               /etc/zisk/worker.toml
+#   Systemd unit         /etc/systemd/system/zisk-worker.service
+#   Logs                 journald (no on-disk log dir)
+#   Service user         zisk-worker:zisk-worker (+ supplementary 'zisk')
+#   State (writable)     /var/lib/zisk-worker/
+#     ZISK_CACHE_DIR       /var/lib/zisk-worker/cache/   (ELF cache, ROM histograms)
+#     inputs               /var/lib/zisk-worker/inputs/
+#   Bundle (read-only)   /opt/zisk/                     ← ZISK_HOME (shared with coordinator)
+#     binaries             /opt/zisk/bin/                (zisk-worker, libziskclib.a, ziskemu, …)
+#     emulator-asm         /opt/zisk/zisk/emulator-asm/  (asm runners)
+#     rust toolchains      /opt/zisk/toolchains/         (rustup-managed; guest compilation)
+#     proving key          /opt/zisk/provingKey/         (default; --proving-key overrides)
+#     SNARK key            /opt/zisk/provingKeySnark/    (only when --with-snark)
+#     verify key           /opt/zisk/verifyKey/          (optional; populated by `ziskup --system --verifykey`)
+#
+# macOS service mode (bundle root differs — FHS doesn't apply on macOS):
+#   Binary               /usr/local/bin/zisk-worker
+#   Config               /etc/zisk/worker.toml
+#   launchd plist        /Library/LaunchDaemons/com.zisk.worker.plist
+#   Log file             /var/log/zisk-worker/zisk-worker.log  (rotated by newsyslog)
+#   newsyslog config     /etc/newsyslog.d/zisk-worker.conf
+#   State (writable)     /usr/local/var/zisk-worker/    (mac /var/lib trips SIP)
+#     ZISK_CACHE_DIR       /usr/local/var/zisk-worker/cache/
+#     inputs               /usr/local/var/zisk-worker/inputs/
+#   Bundle (read-only)   /Library/Application Support/ZisK/  ← ZISK_HOME
+
+# ── self-bootstrap (curl-pipe-able install) ──────────────────────────────────
+# When this script runs without its sibling files (curl | bash, or copied
+# without lib.sh/defaults.env/mpi_params.sh/ziskup nearby), download the
+# deploy tree from GitHub and re-exec from the temp copy.
+#
+# Usage from a fresh server (no clone needed):
+#
+#   curl -fsL https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/distributed/deploy/scripts/worker/install.sh \
+#       | sudo bash -s -- --gpu --config /etc/zisk/worker.toml --coordinator-url <URL>
+#
+#   # Pin a non-default branch (e.g., a PR under review):
+#   curl -fsL .../install.sh | sudo ZISK_DEPLOY_BRANCH=feature/foo bash -s -- ...
+_self="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
+if [[ -n "$_self" && -f "$_self" ]]; then
+    SELF_DIR="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)" || SELF_DIR=""
+fi
+unset _self
+if [[ -z "${SELF_DIR}" \
+   || ! -f "${SELF_DIR}/../common/lib.sh" \
+   || ! -f "${SELF_DIR}/defaults.env" ]]; then
+    echo "[bootstrap] no sibling deploy scripts found; fetching from GitHub..."
+    # Prefer /var/tmp (FHS non-volatile temp; almost always exec-allowed) over
+    # /tmp (often mounted noexec on hardened or container environments).
+    BOOTSTRAP_TMP=$(mktemp -d /var/tmp/zisk-deploy.XXXXXX 2>/dev/null) \
+                || BOOTSTRAP_TMP=$(mktemp -d /tmp/zisk-deploy.XXXXXX)
+    # Override with ZISK_DEPLOY_BRANCH=<branch|tag> to pin a non-default ref
+    # (a feature branch under review, or a release tag for reproducible installs).
+    BRANCH="${ZISK_DEPLOY_BRANCH:-main}"
+    BASE="https://raw.githubusercontent.com/0xPolygonHermez/zisk/${BRANCH}"
+    mkdir -p \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common" \
+        "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker" \
+        "${BOOTSTRAP_TMP}/distributed/crates/worker/config" \
+        "${BOOTSTRAP_TMP}/ziskup"
+    for f in \
+        distributed/deploy/scripts/common/lib.sh \
+        distributed/deploy/scripts/common/mpi_params.sh \
+        distributed/deploy/scripts/worker/install.sh \
+        distributed/deploy/scripts/worker/defaults.env \
+        distributed/crates/worker/config/prod.toml \
+        ziskup/ziskup ; do
+        if ! curl -fsL --retry 3 --max-time 30 "${BASE}/${f}" -o "${BOOTSTRAP_TMP}/${f}"; then
+            echo "[bootstrap] failed to download ${f} from ${BRANCH}" >&2
+            rm -rf "${BOOTSTRAP_TMP}"
+            exit 1
+        fi
+    done
+    chmod +x "${BOOTSTRAP_TMP}/distributed/deploy/scripts/common/mpi_params.sh" \
+             "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker/install.sh" \
+             "${BOOTSTRAP_TMP}/ziskup/ziskup"
+    # Clean up the bootstrap dir on exit (success, failure, or interrupt).
+    trap 'rm -rf "${BOOTSTRAP_TMP}"' EXIT
+    bash "${BOOTSTRAP_TMP}/distributed/deploy/scripts/worker/install.sh" "$@"
+    exit $?
+fi
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SELF_DIR}"
 COMMON_DIR="${SCRIPT_DIR}/../common"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+# Bootstrap-safe root for deploy assets (works in repo clone and temp fetch).
+DEPLOY_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # shellcheck source=../common/lib.sh
 source "${COMMON_DIR}/lib.sh"
@@ -78,12 +178,17 @@ WORKER_ID="${ZISK_WORKER_ID:-}"
 COMPUTE_CAPACITY="${ZISK_WORKER_COMPUTE_CAPACITY:-}"
 EMULATOR="${ZISK_WORKER_EMULATOR:-false}"
 ASM_PATH="${ZISK_WORKER_ASM:-}"
-GPU="${ZISK_WORKER_GPU:-false}"
+# GPU is tristate: empty = let ziskup auto-detect CUDA, "true"/"false" = explicit.
+# Resolved to true/false after ziskup runs (either from operator intent or by
+# reading .zisk-bundle's `variant` field).
+GPU="${ZISK_WORKER_GPU:-}"
 LOG_LEVEL="${RUST_LOG:-}"
 MPI_ENABLED="${ZISK_WORKER_MPI:-$MPI_DEFAULT}"
 MPI_NP="${ZISK_WORKER_MPI_PROCESSES:-}"
 MPI_PPR="${ZISK_WORKER_MPI_NUMA_PPR:-}"
 MPI_THREADS="${ZISK_WORKER_MPI_THREADS:-}"
+WITH_SNARK="${ZISK_WORKER_WITH_SNARK:-false}"
+NO_SERVICE=false
 NO_START=false
 NO_ENABLE=false
 UNINSTALL=false
@@ -91,7 +196,8 @@ ASSUME_YES=false
 
 case "$MPI_ENABLED" in true|false) ;; *) die "ZISK_WORKER_MPI must be 'true' or 'false', got: ${MPI_ENABLED}" ;; esac
 case "$EMULATOR"    in true|false) ;; *) die "ZISK_WORKER_EMULATOR must be 'true' or 'false', got: ${EMULATOR}" ;; esac
-case "$GPU"         in true|false) ;; *) die "ZISK_WORKER_GPU must be 'true' or 'false', got: ${GPU}" ;; esac
+case "$GPU"         in true|false|"") ;; *) die "ZISK_WORKER_GPU must be 'true', 'false', or unset, got: ${GPU}" ;; esac
+case "$WITH_SNARK"  in true|false) ;; *) die "ZISK_WORKER_WITH_SNARK must be 'true' or 'false', got: ${WITH_SNARK}" ;; esac
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,13 +211,16 @@ while [[ $# -gt 0 ]]; do
         --compute-capacity)  COMPUTE_CAPACITY="$2"; shift 2 ;;
         --emulator)          EMULATOR=true;         shift ;;
         --asm)               ASM_PATH="$2";         shift 2 ;;
-        --gpu)               GPU=true;              shift ;;
+        --gpu)               GPU=true;  shift ;;
+        --cpu)               GPU=false; shift ;;
         --log-level)         LOG_LEVEL="$2";        shift 2 ;;
+        --no-service)        NO_SERVICE=true;        shift ;;
         --mpi)               MPI_ENABLED=true;      shift ;;
         --no-mpi)            MPI_ENABLED=false;     shift ;;
         --mpi-processes)     MPI_NP="$2";           shift 2 ;;
         --mpi-numa-ppr)      MPI_PPR="$2";          shift 2 ;;
         --mpi-threads)       MPI_THREADS="$2";      shift 2 ;;
+        --with-snark)        WITH_SNARK=true;       shift ;;
         --no-start)          NO_START=true;         shift ;;
         --no-enable)         NO_ENABLE=true;        shift ;;
         --uninstall)         UNINSTALL=true;        shift ;;
@@ -128,6 +237,7 @@ fi
 # ── uninstall ─────────────────────────────────────────────────────────────────
 
 if $UNINSTALL; then
+    $NO_SERVICE && die "--uninstall is not supported with --no-service (no service unit/plist is installed)."
     uninstall_service
     exit 0
 fi
@@ -136,6 +246,16 @@ fi
 
 need_root
 
+if $NO_SERVICE; then
+    CURRENT_USER="$(id -un)"
+    CURRENT_GROUP="$(id -gn)"
+    INSTALL_CONFIG_GROUP="${CURRENT_GROUP}"
+    INSTALL_OWNER="${CURRENT_USER}:${CURRENT_GROUP}"
+else
+    INSTALL_CONFIG_GROUP="${SERVICE_GROUP}"
+    INSTALL_OWNER="${SERVICE_USER}:${SERVICE_GROUP}"
+fi
+
 # 1. Resolve MPI configuration
 if [[ "$OS_NAME" == "Darwin" ]]; then
     resolve_mpi_config "Install OpenMPI (brew install open-mpi), or pass --no-mpi."
@@ -143,65 +263,119 @@ else
     resolve_mpi_config "Install OpenMPI, load the module, or pass --no-mpi."
 fi
 
-# 2. Build or use pre-built binary
-build_or_use_binary "zisk-worker"
+# 2. Populate the shared ZisK bundle at ${BUNDLE_DIR} via ziskup. ziskup --system
+# creates the 'zisk' system user/group, downloads the release tarball, extracts
+# to ${BUNDLE_DIR}, applies 0750 perms. Idempotent — safe to re-run.
+# Downloads the STARK proving key into ${BUNDLE_DIR}/provingKey (the default
+# --proving-key location); pass --proving-key <path> to point the worker at a
+# pre-staged key elsewhere (the bundle copy is still downloaded).
+# --with-snark additionally downloads the SNARK proving key (only valid with --system).
+ZISKUP_BIN="$(resolve_ziskup_bin)"
+if $NO_SERVICE; then
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner "${INSTALL_OWNER}" --yes)
+else
+    ZISKUP_ARGS=(--system --prefix "${BUNDLE_DIR}" --owner zisk:zisk --yes)
+fi
+# Pin ziskup's binary selection only when the operator was explicit. Without
+# a flag, let ziskup auto-detect CUDA and read its choice back from
+# .zisk-bundle below to align the worker's runtime --gpu flag.
+case "$GPU" in
+    true)  ZISKUP_ARGS+=(--gpu) ;;
+    false) ZISKUP_ARGS+=(--cpu) ;;
+esac
+$WITH_SNARK && ZISKUP_ARGS+=(--with-snark)
+info "Populating ${BUNDLE_DIR} via ${ZISKUP_BIN} ${ZISKUP_ARGS[*]}..."
+"${ZISKUP_BIN}" "${ZISKUP_ARGS[@]}"
 
-# 3. Create system group + user
-create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "${WORK_DIR}"
+# Resolve the variant from .zisk-bundle when the operator didn't pin it
+# explicitly. The bundle metadata file is a documented contract — see the
+# schema header in ziskup/ziskup.
+if [[ -z "$GPU" ]]; then
+    variant=$(bundle_meta_get variant)
+    case "$variant" in
+        gpu) GPU=true ;;
+        cpu) GPU=false ;;
+        *) die "Could not determine variant from ${BUNDLE_DIR}/.zisk-bundle (got '${variant:-empty}'). Pass --gpu or --cpu explicitly." ;;
+    esac
+    info "Worker variant resolved from ziskup: ${variant}"
+fi
 
-# 4. Install binary
+# Default --proving-key-snark to the bundle's location when --with-snark was
+# passed (operator can still override with --proving-key-snark <path>).
+$WITH_SNARK && : "${PROVING_KEY_SNARK:=${BUNDLE_DIR}/provingKeySnark}"
+
+# 3. Resolve the zisk-worker binary (from --binary if given, else from the
+# bundle ziskup just populated). NO local cargo build.
+resolve_service_binary
+
+# 4. Create system group + user (with 'zisk' as supplementary group so it can
+# read the bundle). Home is /var/empty (matches coordinator + sshd convention);
+# pointing it at WORK_DIR triggers macOS dscl-managed-home ACLs that block
+# rm -rf during uninstall.
+if ! $NO_SERVICE; then
+    create_service_user "${SERVICE_USER}" "${SERVICE_GROUP}" "ZisK Worker" "/var/empty"
+    add_user_to_group "${SERVICE_USER}" zisk
+fi
+
+# 5. Install binary
 install_binary "${BINARY_SRC}" "${BINARY_DST}"
 
-# 5. Install config
+# 6. Install config
 mkdir -p "${CONFIG_DIR}"
-install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${SERVICE_GROUP}" \
-    "${WORKSPACE_ROOT}/distributed/crates/worker/config/prod.toml"
+install_config_or_sample "${CONFIG_SRC}" "${CONFIG_DST}" "${INSTALL_CONFIG_GROUP}" \
+    "${DEPLOY_ROOT}/crates/worker/config/prod.toml"
 
-# 6. Create working and log directories. Pre-create ~/.zisk/cache for HOME-resolution.
-mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/.zisk/cache" "${LOG_DIR}"
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}" "${LOG_DIR}"
-
-# 7. Install ZisK companion tools + asm rom-setup sources into the worker's
-# $HOME (= WORK_DIR). Mirrors the manual setup:
-#   $HOME/.zisk/bin/{cargo-zisk,ziskemu,riscv2zisk,zisk-coordinator,zisk-worker,libziskclib.a}
-# and on Linux x86_64:
-#   $HOME/.zisk/zisk/emulator-asm/{src,Makefile}
-#   $HOME/.zisk/zisk/lib-c
-ZISK_BIN_DIR="${WORK_DIR}/.zisk/bin"
-ZISK_ZISK_DIR="${WORK_DIR}/.zisk/zisk"
-RELEASE_DIR="${WORKSPACE_ROOT}/target/release"
-
-# Workspace-wide build — produces every binary listed below in target/release/
-# regardless of which crate owns each one (binary names and package names
-# don't always align). Run as the invoking user when via sudo so target/
-# ownership stays correct (matches build_or_use_binary).
-info "Building ZisK workspace for companion tools..."
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-    sudo -u "$SUDO_USER" -H cargo build --release \
-        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
-else
-    cargo build --release \
-        --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
+# 7. Create per-service working dirs (mutable runtime state only). LOG_DIR is
+# only created on macOS — Linux pipes logs to journald, no on-disk log dir
+# needed (and creating it leaves a dangling empty dir that --uninstall would
+# prompt about).
+mkdir -p "${WORK_DIR}" "${WORK_DIR}/inputs" "${WORK_DIR}/cache"
+chown -R "${INSTALL_OWNER}" "${WORK_DIR}"
+if [[ "$OS_NAME" == "Darwin" ]]; then
+    mkdir -p "${LOG_DIR}"
+    chown -R "${INSTALL_OWNER}" "${LOG_DIR}"
 fi
 
-mkdir -p "${ZISK_BIN_DIR}"
-for tool in cargo-zisk ziskemu riscv2zisk zisk-coordinator zisk-worker libziskclib.a; do
-    src="${RELEASE_DIR}/${tool}"
-    [[ -f "${src}" ]] || die "expected build artifact missing: ${src}"
-    cp "${src}" "${ZISK_BIN_DIR}/${tool}"
-done
-info "Installed ZisK tools to ${ZISK_BIN_DIR}/"
+if $NO_SERVICE; then
+    WORKER_ARGS=(--config "${CONFIG_DST}")
+    [[ -n "${PROVING_KEY}" ]] && WORKER_ARGS+=(--proving-key "${PROVING_KEY}")
+    [[ -n "${PROVING_KEY_SNARK}" ]] && WORKER_ARGS+=(--proving-key-snark "${PROVING_KEY_SNARK}")
+    [[ -n "${COORDINATOR_URL}" ]] && WORKER_ARGS+=(--coordinator-url "${COORDINATOR_URL}")
+    [[ -n "${WORKER_ID}" ]] && WORKER_ARGS+=(--worker-id "${WORKER_ID}")
+    [[ -n "${COMPUTE_CAPACITY}" ]] && WORKER_ARGS+=(--compute-capacity "${COMPUTE_CAPACITY}")
+    $EMULATOR && WORKER_ARGS+=(--emulator)
+    [[ -n "${ASM_PATH}" ]] && WORKER_ARGS+=(--asm "${ASM_PATH}")
+    $GPU && WORKER_ARGS+=(--gpu)
+    [[ -n "${LOG_LEVEL}" ]] && WORKER_ARGS+=(--log-level "${LOG_LEVEL}")
 
-# Linux x86_64 only: assembly rom-setup sources (asm execution unsupported on macOS).
-if [[ "${OS_NAME}" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
-    info "Installing emulator-asm sources for rom setup..."
-    mkdir -p "${ZISK_ZISK_DIR}/emulator-asm"
-    cp -r "${WORKSPACE_ROOT}/emulator-asm/src" "${ZISK_ZISK_DIR}/emulator-asm/"
-    cp    "${WORKSPACE_ROOT}/emulator-asm/Makefile" "${ZISK_ZISK_DIR}/emulator-asm/"
-    cp -r "${WORKSPACE_ROOT}/lib-c" "${ZISK_ZISK_DIR}/lib-c"
+    # Build the printed run-command as an array, then `printf %q` each token so
+    # paths with spaces (e.g. macOS bundle at "/Library/Application Support/ZisK")
+    # round-trip safely through copy-paste.
+    if $MPI_ENABLED; then
+        RUN_CMD=(
+            "${MPIRUN_BIN}" --report-bindings --allow-run-as-root
+            -np "${MPI_NP}"
+            -map-by "ppr:${MPI_PPR}:numa"
+            --bind-to numa --rank-by slot
+            -x "RAYON_NUM_THREADS=${MPI_THREADS}"
+            -x ZISK_HOME -x ZISK_CACHE_DIR -x HOME
+            "${BINARY_DST}" "${WORKER_ARGS[@]}"
+        )
+    else
+        RUN_CMD=("${BINARY_DST}" "${WORKER_ARGS[@]}")
+    fi
+
+    echo
+    info "✓ ${BINARY_NAME} installed in --no-service mode."
+    info "Run it directly in this container:"
+    printf '  export ZISK_HOME=%q\n' "${BUNDLE_DIR}"
+    printf '  export ZISK_CACHE_DIR=%q\n' "${WORK_DIR}/cache"
+    $MPI_ENABLED && printf '  export RAYON_NUM_THREADS=%q\n' "${MPI_THREADS}"
+    printf '  '
+    printf '%q ' "${RUN_CMD[@]}"
+    printf '\n'
+    exit 0
 fi
-
-chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${WORK_DIR}/.zisk"
 
 # 8. Write service unit
 if [[ "$OS_NAME" == "Darwin" ]]; then
@@ -222,12 +396,23 @@ if [[ "$OS_NAME" == "Darwin" ]]; then
             printf '        <string>slot</string>\n'
             printf '        <string>-x</string>\n'
             printf '        <string>RAYON_NUM_THREADS=%s</string>\n' "${MPI_THREADS}"
+            # See the systemd ExecStart above for why ZISK_HOME, ZISK_CACHE_DIR,
+            # and HOME are forwarded to ranks explicitly via `-x VAR` rather
+            # than relying on OpenMPI's default env propagation.
+            printf '        <string>-x</string>\n'
+            printf '        <string>ZISK_HOME</string>\n'
+            printf '        <string>-x</string>\n'
+            printf '        <string>ZISK_CACHE_DIR</string>\n'
+            printf '        <string>-x</string>\n'
+            printf '        <string>HOME</string>\n'
         fi
         printf '        <string>%s</string>\n' "${BINARY_DST}"
         printf '        <string>--config</string>\n'
         printf '        <string>%s</string>\n' "${CONFIG_DST}"
-        printf '        <string>--proving-key</string>\n'
-        printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        if [[ -n "$PROVING_KEY" ]]; then
+            printf '        <string>--proving-key</string>\n'
+            printf '        <string>%s</string>\n' "${PROVING_KEY}"
+        fi
         if [[ -n "$PROVING_KEY_SNARK" ]]; then
             printf '        <string>--proving-key-snark</string>\n'
             printf '        <string>%s</string>\n' "${PROVING_KEY_SNARK}"
@@ -284,8 +469,10 @@ $(build_program_args)    </array>
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>HOME</key>
-        <string>${WORK_DIR}</string>
+        <key>ZISK_HOME</key>
+        <string>${BUNDLE_DIR}</string>
+        <key>ZISK_CACHE_DIR</key>
+        <string>${WORK_DIR}/cache</string>
     </dict>
 
     <key>KeepAlive</key>
@@ -311,10 +498,11 @@ $(build_program_args)    </array>
 </dict>
 </plist>
 
-<!-- Install metadata (read by --uninstall; do not edit) -->
+<!-- Install metadata (read at uninstall time; do not edit) -->
 <!-- ${BINARY_NAME}:DATA_DIR=${WORK_DIR} -->
 <!-- ${BINARY_NAME}:LOG_DIR=${LOG_DIR} -->
 <!-- ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR} -->
+<!-- ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST} -->
 <!-- ${BINARY_NAME}:SVC_USER=${SERVICE_USER} -->
 <!-- ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP} -->
 PLIST
@@ -332,32 +520,60 @@ NEWSYSLOG
 else
     # Build worker args (everything after the binary path); appended to mpirun
     # wrapper or to bare ExecStart depending on MPI_ENABLED.
-    WORKER_ARGS="--config ${CONFIG_DST} --proving-key ${PROVING_KEY}"
+    WORKER_ARGS="--config ${CONFIG_DST}"
+    [[ -n "$PROVING_KEY" ]]       && WORKER_ARGS+=" --proving-key ${PROVING_KEY}"
     [[ -n "$PROVING_KEY_SNARK" ]] && WORKER_ARGS+=" --proving-key-snark ${PROVING_KEY_SNARK}"
-    [[ -n "$COORDINATOR_URL" ]]  && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
-    [[ -n "$WORKER_ID" ]]        && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
-    [[ -n "$COMPUTE_CAPACITY" ]] && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
-    $EMULATOR                    && WORKER_ARGS+=" --emulator"
-    [[ -n "$ASM_PATH" ]]         && WORKER_ARGS+=" --asm ${ASM_PATH}"
-    $GPU                         && WORKER_ARGS+=" --gpu"
-    [[ -n "$LOG_LEVEL" ]]        && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
+    [[ -n "$COORDINATOR_URL" ]]   && WORKER_ARGS+=" --coordinator-url ${COORDINATOR_URL}"
+    [[ -n "$WORKER_ID" ]]         && WORKER_ARGS+=" --worker-id ${WORKER_ID}"
+    [[ -n "$COMPUTE_CAPACITY" ]]  && WORKER_ARGS+=" --compute-capacity ${COMPUTE_CAPACITY}"
+    $EMULATOR                     && WORKER_ARGS+=" --emulator"
+    [[ -n "$ASM_PATH" ]]          && WORKER_ARGS+=" --asm ${ASM_PATH}"
+    $GPU                          && WORKER_ARGS+=" --gpu"
+    [[ -n "$LOG_LEVEL" ]]         && WORKER_ARGS+=" --log-level ${LOG_LEVEL}"
 
     if $MPI_ENABLED; then
+        # `-x VAR` (no value) propagates the unit's Environment= entries to
+        # MPI ranks. Without these explicit entries, ranks inherit OpenMPI's
+        # default-env-propagation behaviour, which various OMPI builds and
+        # tight-integration launchers (PBS, SLURM, etc.) filter differently
+        # — so the worker's ZiskPaths::from_env() falls back to $HOME/.zisk
+        # in the rank's process. Forward HOME alongside as a safety net for
+        # the same fallback path.
         EXEC_START="ExecStart=${MPIRUN_BIN} --report-bindings --allow-run-as-root \\
     -np ${MPI_NP} \\
     -map-by ppr:${MPI_PPR}:numa \\
     --bind-to numa \\
     --rank-by slot \\
     -x RAYON_NUM_THREADS=${MPI_THREADS} \\
+    -x ZISK_HOME \\
+    -x ZISK_CACHE_DIR \\
+    -x HOME \\
     ${BINARY_DST} ${WORKER_ARGS}"
     else
         EXEC_START="ExecStart=${BINARY_DST} ${WORKER_ARGS}"
     fi
 
-    # ReadOnlyPaths: include ASM_PATH and PROVING_KEY_SNARK so the sandbox can read them
-    READ_ONLY_PATHS="${CONFIG_DIR} ${PROVING_KEY}"
+    # ReadOnlyPaths: bundle is the toolchain payload + proving key; optional
+    # ASM and SNARK key are appended only when explicitly set.
+    READ_ONLY_PATHS="${CONFIG_DIR} ${BUNDLE_DIR}"
     [[ -n "$ASM_PATH" ]]          && READ_ONLY_PATHS+=" ${ASM_PATH}"
-    [[ -n "$PROVING_KEY_SNARK" ]] && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
+    [[ -n "$PROVING_KEY_SNARK" && "$PROVING_KEY_SNARK" != "${BUNDLE_DIR}"/* ]] \
+        && READ_ONLY_PATHS+=" ${PROVING_KEY_SNARK}"
+
+    # ReadWritePaths punch holes in ReadOnlyPaths for key dirs. The worker
+    # writes generated artefacts (const tree files, intermediates) into
+    # these at runtime; ziskup's apply_ownership_and_perms makes them 0770
+    # so the supplementary 'zisk' group has filesystem write, and these
+    # entries lift the systemd namespace-level RO mount over them. Use the
+    # `-` prefix so missing dirs (e.g. verifyKey when not installed) are
+    # silently ignored instead of failing service start.
+    READ_WRITE_PATHS="${WORK_DIR}"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKey"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/provingKeySnark"
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/verifyKey"
+    # Worker setup invokes `make` in zisk/emulator-asm with current_dir there;
+    # the Makefile mkdir's build/ inside the source dir.
+    READ_WRITE_PATHS+=" -${BUNDLE_DIR}/zisk/emulator-asm"
 
     info "Writing unit file to ${UNIT_FILE}..."
     cat > "${UNIT_FILE}" <<EOF
@@ -371,10 +587,12 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
+SupplementaryGroups=zisk
 WorkingDirectory=${WORK_DIR}
 
-# HOME is needed so the worker resolves ~/.zisk/cache correctly.
-Environment=HOME=${WORK_DIR}
+# Resolver paths (see common/src/paths.rs::ZiskPaths).
+Environment=ZISK_HOME=${BUNDLE_DIR}
+Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache
 
 ${EXEC_START}
 Restart=on-failure
@@ -401,7 +619,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${WORK_DIR} ${LOG_DIR}
+ReadWritePaths=${READ_WRITE_PATHS}
 ReadOnlyPaths=${READ_ONLY_PATHS}
 
 [Install]
@@ -411,6 +629,7 @@ WantedBy=multi-user.target
 # ${BINARY_NAME}:DATA_DIR=${WORK_DIR}
 # ${BINARY_NAME}:LOG_DIR=${LOG_DIR}
 # ${BINARY_NAME}:CONFIG_DIR=${CONFIG_DIR}
+# ${BINARY_NAME}:CONFIG_FILE=${CONFIG_DST}
 # ${BINARY_NAME}:SVC_USER=${SERVICE_USER}
 # ${BINARY_NAME}:SVC_GROUP=${SERVICE_GROUP}
 EOF
@@ -418,4 +637,6 @@ fi
 
 # 10. Activate service and (if started) print management hints
 activate_service
-$SHOW_HINTS && print_post_install_hints "${BASH_SOURCE[0]}"
+if $SHOW_HINTS; then
+    print_post_install_hints "${BASH_SOURCE[0]}"
+fi

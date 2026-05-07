@@ -5,19 +5,52 @@
 set -eo pipefail
 
 BASE_DIR=${XDG_CONFIG_HOME:-${HOME}}
-ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
-ZISK_BIN_DIR="${ZISK_DIR}/bin"
-CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+DEFAULT_USER_ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
 BINS=(cargo-zisk ziskemu)
 BUCKET_URL="https://storage.googleapis.com/zisk-setup"
 
-mkdir -p "${ZISK_BIN_DIR}"
+# Filled in by main() after arg parsing.
+ZISK_DIR=""
+ZISK_BIN_DIR=""
+CARGO_ZISK=""
+SYSTEM_MODE=false
+PREFIX=""
+OWNER=""
+ASSUME_YES=false
+FORCE=false
+WITH_SNARK=false
+UNINSTALL=false
+
+# Bundle metadata file written into ${ZISK_DIR}. Single file, key=value
+# format, bash-parseable (no jq/yq dependency). Public contract for sibling
+# installers (e.g., distributed/deploy/scripts/worker/install.sh reads
+# `variant` to align the worker's runtime --gpu flag with whichever build
+# ziskup actually installed). Schema:
+#   version       — bare version string ("0.17.0"). --system short-circuits on
+#                   match unless --force.
+#   variant       — "gpu" or "cpu". Which build of cargo-zisk/zisk-worker is
+#                   installed in ${ZISK_BIN_DIR}. Read by sibling installers.
+#   manifest      — space-separated list of subdirs ziskup created (bin, zisk,
+#                   provingKey, provingKeySnark, toolchains, ...). --uninstall
+#                   only removes what's listed, so operator-supplied files in
+#                   the prefix survive.
+#   created_user  — set only if ziskup CREATED the system user (vs. operator
+#                   pre-created it). Empty/missing means do-not-touch.
+#                   --uninstall keys off this — ziskup undoes only what it did.
+#   created_group — same as created_user but for the group.
+ZISK_BUNDLE_FILE=".zisk-bundle"
+
+# Bundle subdirs ziskup populates. Used by `--uninstall` as the fallback when
+# the state file is missing (older installs). The install path adds the
+# matching entries to the manifest as artifacts land. When you add a new
+# subdir, append it here AND emit a manifest_add call at the install site.
+ZISK_KNOWN_SUBDIRS=(bin zisk provingKey provingKeySnark verifyKey cache toolchains)
 
 main() {
   need_cmd curl
 
   # Check if this is a setup_snark command
-  if [[ "$1" == "setup_snark" ]]; then
+  if [[ "${1:-}" == "setup_snark" ]]; then
     setup_snark_command
     exit 0
   fi
@@ -63,6 +96,29 @@ main() {
       fi
       USE_GPU=false
       ;;
+    --system)
+      SYSTEM_MODE=true
+      ;;
+    --prefix)
+      shift
+      PREFIX=$1
+      ;;
+    --owner)
+      shift
+      OWNER=$1
+      ;;
+    -y | --yes)
+      ASSUME_YES=true
+      ;;
+    --force)
+      FORCE=true
+      ;;
+    --with-snark)
+      WITH_SNARK=true
+      ;;
+    --uninstall)
+      UNINSTALL=true
+      ;;
     -h | --help)
       usage
       exit 0
@@ -76,6 +132,55 @@ main() {
     esac
     shift
   done
+
+  # --uninstall is its own flow — runs and exits before the install path below.
+  if $UNINSTALL; then
+    uninstall_command
+    exit 0
+  fi
+
+  # Resolve install root and identity now that flags are parsed.
+  if $SYSTEM_MODE; then
+    if [[ "$(id -u)" -ne 0 ]]; then
+      err "ziskup --system requires root"
+      exit 1
+    fi
+    if [[ -z "$PREFIX" ]]; then
+      case "$(uname -s)" in
+        Linux)  PREFIX="/opt/zisk" ;;
+        Darwin) PREFIX="/Library/Application Support/ZisK" ;;
+        *) err "unsupported platform for --system: $(uname -s)"; exit 1 ;;
+      esac
+    fi
+    if [[ -z "$OWNER" ]]; then
+      OWNER="zisk:zisk"
+    fi
+  fi
+
+  # --with-snark only makes sense for --system installs (services co-locate the
+  # SNARK key inside the shared bundle). User-mode installs use `ziskup setup_snark`.
+  if $WITH_SNARK && ! $SYSTEM_MODE; then
+    err "--with-snark requires --system (use 'ziskup setup_snark' for user-mode SNARK key)"
+    exit 1
+  fi
+  if [[ -n "$PREFIX" ]]; then
+    ZISK_DIR="$PREFIX"
+  else
+    ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  fi
+  ZISK_BIN_DIR="${ZISK_DIR}/bin"
+  CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+
+  # Pin path resolution for any cargo-zisk subprocess we spawn. Without this,
+  # cargo-zisk's ZiskPaths::global() falls back to $HOME/.zisk — which is
+  # /root/.zisk under sudo, not the bundle we just installed.
+  export ZISK_HOME="$ZISK_DIR"
+
+  mkdir -p "${ZISK_BIN_DIR}"
+
+  if $SYSTEM_MODE; then
+    ensure_owner_user_group "$OWNER" "$ZISK_DIR"
+  fi
 
   uname_s=$(uname -s)
   PLATFORM=$(tolower "${ZISKUP_PLATFORM:-${uname_s}}")
@@ -109,6 +214,45 @@ main() {
     ZISK_VERSION="v${ZISK_VERSION}"
   fi
 
+  # In --system mode, short-circuit if the bundle is already installed at the
+  # requested version. Avoids re-downloading the tarball when both worker and
+  # coordinator install on the same host. Pass --force to refresh anyway.
+  # State file stores bare version (e.g. "0.17.0"); requested version may be
+  # "latest" or "vX.Y.Z" — strip the leading 'v' before comparing.
+  #
+  # If the bundle is present but the requested key directory is missing (e.g.
+  # a previous run was --nokey), fall through with BUNDLE_PRESENT=true so the
+  # tarball download is skipped but the key install still runs.
+  BUNDLE_PRESENT=false
+  if $SYSTEM_MODE && ! $FORCE; then
+    installed=$(bundle_get version)
+    requested="${ZISK_VERSION#v}"
+    if [[ -n "$installed" ]] && \
+       { [[ "$requested" == "latest" ]] || [[ "$requested" == "$installed" ]]; }; then
+      # Which key dir does the requested SETUP_KEY need? Empty SETUP_KEY
+      # resolves to "proving" later (line ~286 / interactive default), so
+      # treat it as proving for the presence check.
+      required_key_dir=""
+      case "${SETUP_KEY}" in
+        proving|proving-no-consttree|"") required_key_dir="${ZISK_DIR}/provingKey" ;;
+        verify)                          required_key_dir="${ZISK_DIR}/verifyKey" ;;
+        none)                            ;;
+      esac
+      if [[ -n "$required_key_dir" && ! -d "$required_key_dir" ]]; then
+        step "Bundle present at ${installed}, but $(basename "$required_key_dir") missing — installing key only."
+        BUNDLE_PRESENT=true
+        ZISK_VERSION="${installed}"
+      else
+        step "Bundle already installed at ${installed} (in ${ZISK_DIR})."
+        say "Use --force to refresh, or --version <X> to install a different version."
+        # Re-assert ownership/perms so re-running the installer corrects any
+        # drift left by a prior run (key tarball UID/GID, aborted install).
+        apply_ownership_and_perms
+        return 0
+      fi
+    fi
+  fi
+
   ZISKUP_REPO="0xPolygonHermez/zisk"
   EXT="tar.gz"
 
@@ -136,11 +280,26 @@ main() {
     USE_GPU=false
   fi
 
-  # Determine whether to use GPU or CPU binaries (linux only), if USE_GPU is not set
+  # On BUNDLE_PRESENT with no explicit flag, the variant on disk is the source
+  # of truth — read it from .zisk-bundle so we don't fight the binaries that
+  # are already there. Falls through to auto-detect below if a legacy bundle
+  # was installed before variant tracking landed.
+  if $BUNDLE_PRESENT && [[ -z "${USE_GPU}" ]]; then
+    case "$(bundle_get variant)" in
+      gpu) USE_GPU=true ;;
+      cpu) USE_GPU=false ;;
+    esac
+  fi
+
+  # Determine whether to use GPU or CPU binaries (linux only), if USE_GPU is
+  # not yet set. Runs on fresh installs and as a fallback for legacy bundles
+  # whose .zisk-bundle didn't track the variant.
   if [[ -z "${USE_GPU}" ]]; then
     if [ "${PLATFORM}" = "linux" ]; then
       if [ "${HAS_CUDA}" = "true" ]; then
         USE_GPU=true
+      elif $ASSUME_YES; then
+        USE_GPU=false
       else
         warn "CUDA was not detected on this system"
         say "The version with only CPU support will be installed by default"
@@ -168,82 +327,129 @@ main() {
 
   # Ask user about key installation if SETUP_KEY is not set
   if [[ -z "${SETUP_KEY}" ]]; then
-    step "Setup installation options:"
-    say "1) Install proving key (default - just press enter)"
-    say "2) Install proving key (no constant tree files)"
-    say "3) Install verify key"
-    say "4) None"
-
-    # Read user input with default option set to 1
-    read -p ">" user_choice < /dev/tty
-    user_choice=${user_choice:-1}
-
-    case "${user_choice}" in
-        1)
-          SETUP_KEY="proving"
-          ;;
-        2)
-          SETUP_KEY="proving-no-consttree"
-          ;;
-        3)
-          SETUP_KEY="verify"
-          ;;
-        4)
-          SETUP_KEY="none"
-          ;;
-        *)
-          err "invalid option, aborting installation"
-          exit 1
-          ;;
-    esac
-  fi
-
-  # Compute the URL of the release tarball in the zisk repository
-  if [ "${ZISK_VERSION}" = "latest" ]; then
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/latest/download/"
-  else
-    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
-  fi
-
-  BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.${EXT}"
-
-  # Download and extract the binaries archive
-  if [ "${PLATFORM}" = "linux" ] || [ "${PLATFORM}" = "darwin" ]; then
-    tmp="$(mktemp -d)/cargo_zisk.tar.gz"
-
-    step "Downloading ZisK ${ZISK_VERSION} version..."
-    ensure download "${BIN_ARCHIVE_URL}" "${tmp}"
-
-    step "Installing ZisK ${ZISK_VERSION} version..."
-    if [ "${PLATFORM}" = "linux" ]; then
-      ensure tar --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
+    if $ASSUME_YES; then
+      SETUP_KEY="proving"
     else
-      ensure tar -xzf "${tmp}" -C "${ZISK_DIR}"
+      step "Setup installation options:"
+      say "1) Install proving key (default - just press enter)"
+      say "2) Install proving key (no constant tree files)"
+      say "3) Install verify key"
+      say "4) None"
+
+      # Read user input with default option set to 1
+      read -p ">" user_choice < /dev/tty
+      user_choice=${user_choice:-1}
+
+      case "${user_choice}" in
+          1)
+            SETUP_KEY="proving"
+            ;;
+          2)
+            SETUP_KEY="proving-no-consttree"
+            ;;
+          3)
+            SETUP_KEY="verify"
+            ;;
+          4)
+            SETUP_KEY="none"
+            ;;
+          *)
+            err "invalid option, aborting installation"
+            exit 1
+            ;;
+      esac
+    fi
+  fi
+
+  # Announce the selected variant. Prints whether the choice came from
+  # --gpu/--cpu, CUDA auto-detection, the interactive prompt, or the --yes
+  # default — operator always sees which build is in play. Worded as
+  # "Selected" rather than "Installing" so it reads correctly on the
+  # BUNDLE_PRESENT path (binaries already on disk; the variant still
+  # determines which check-setup code path runs below).
+  if [[ "${USE_GPU}" == "true" ]]; then
+    step "Selected: GPU build (CUDA)."
+  elif [[ "${USE_GPU}" == "false" ]]; then
+    step "Selected: CPU build."
+  fi
+
+  # Stamp the resolved variant into .zisk-bundle so subsequent runs (and the
+  # worker installer, which reads it back to align its runtime --gpu flag)
+  # have an authoritative record of what's on disk.
+  case "${USE_GPU}" in
+    true)  bundle_set variant gpu ;;
+    false) bundle_set variant cpu ;;
+  esac
+
+  # Download and extract the binaries archive. Skipped when BUNDLE_PRESENT —
+  # only the missing key (handled later via install_setup) still needs to run.
+  if ! $BUNDLE_PRESENT; then
+    # Resolve "latest" to a concrete tag once, before downloading. Lets us
+    # stamp the bundle with the actual version without re-reading it from a
+    # binary post-extract (the old approach pulled in cargo-zisk's full
+    # dynamic-link surface just to learn the version we already chose).
+    if [ "${ZISK_VERSION}" = "latest" ]; then
+      resolved=$(resolve_latest_tag "${ZISKUP_REPO}")
+      if [[ -n "$resolved" ]]; then
+        ZISK_VERSION="$resolved"
+        say "Resolved 'latest' to ${ZISK_VERSION}"
+      else
+        err "Could not resolve 'latest' release tag from GitHub. Pass --version <X> explicitly or check network connectivity."
+        exit 1
+      fi
     fi
 
-    rm -f "${tmp}"
+    RELEASE_URL="https://github.com/${ZISKUP_REPO}/releases/download/${ZISK_VERSION}/"
+    BIN_ARCHIVE_URL="${RELEASE_URL}cargo_zisk_${PLATFORM}_${ARCHITECTURE}.${EXT}"
 
-    if [ "${PLATFORM}" = "linux" ]; then
-      # Set up binaries based on GPU/CPU selection (linux only)
-      if [ "${USE_GPU}" = "true" ]; then
-        step "Configuring GPU binaries..."
-        rm -f "${ZISK_BIN_DIR}/cargo-zisk-cpu"
-        rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
-        mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
-        mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
+    if [ "${PLATFORM}" = "linux" ] || [ "${PLATFORM}" = "darwin" ]; then
+      tmp="$(mktemp -d)/cargo_zisk.tar.gz"
+
+      step "Downloading ZisK ${ZISK_VERSION} version..."
+      ensure download "${BIN_ARCHIVE_URL}" "${tmp}"
+
+      step "Installing ZisK ${ZISK_VERSION} version..."
+      # --no-same-owner: tar(1) honors the archive's UID/GID when extractor is
+      # root, which leaks the packager's identity into /opt/zisk if the tarball
+      # was built on a dev machine. Force root-as-extractor; apply_ownership_and_perms
+      # below sets the final owner.
+      if [ "${PLATFORM}" = "linux" ]; then
+        ensure tar --no-same-owner --overwrite -xzf "${tmp}" -C "${ZISK_DIR}"
       else
-        step "Configuring CPU binaries..."
-        rm -f "${ZISK_BIN_DIR}/cargo-zisk-gpu"
-        rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
-        mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
-        mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
+        ensure tar --no-same-owner -xzf "${tmp}" -C "${ZISK_DIR}"
+      fi
+
+      rm -f "${tmp}"
+
+      if [ "${PLATFORM}" = "linux" ]; then
+        # Set up binaries based on GPU/CPU selection (linux only)
+        if [ "${USE_GPU}" = "true" ]; then
+          step "Configuring GPU binaries..."
+          rm -f "${ZISK_BIN_DIR}/cargo-zisk-cpu"
+          rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
+          mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
+          mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
+        else
+          step "Configuring CPU binaries..."
+          rm -f "${ZISK_BIN_DIR}/cargo-zisk-gpu"
+          rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
+          mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
+          mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
+        fi
       fi
     fi
   fi
 
-  # Print installed version message
-  ZISK_VERSION=$(echo "$(ensure "${CARGO_ZISK}" --version)" | awk '{print $2}')
-  say "Installed ZisK version ${ZISK_VERSION}"
+  # Stamp the bundle so subsequent --system runs can short-circuit. Strip the
+  # leading 'v' so the file holds the bare semver — bundle_get's consumers
+  # compare against `${ZISK_VERSION#v}` (see install_bundle's BUNDLE_PRESENT
+  # check above).
+  say "Installed ZisK version ${ZISK_VERSION#v}"
+  bundle_set version "${ZISK_VERSION#v}"
+
+  manifest_reset
+  manifest_add bin
+  [[ -d "${ZISK_DIR}/zisk" ]] && manifest_add zisk
 
   for bin in "${BINS[@]}"; do
     bin_path="$ZISK_BIN_DIR/$bin"
@@ -263,21 +469,29 @@ EOF
     fi
   done
 
-  step "Installing ZisK Rust toolchain..."
-  ensure "${CARGO_ZISK}" toolchain install
+  if ! $SYSTEM_MODE; then
+    step "Installing ZisK Rust toolchain..."
+    ensure "${CARGO_ZISK}" toolchain install
+    manifest_add toolchains
+  fi
 
-  # Install the proving/verify key setup
-  IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
+  # Install the proving/verify key setup. Strip any leading 'v' — ZISK_VERSION
+  # carries the tag form (e.g. "v0.17.0") but key tarballs are named with the
+  # bare semver ("zisk-provingkey-0.17.0.tar.gz").
+  IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
   SETUP_VERSION="${major}.${minor}.0"
   case "${SETUP_KEY}" in
     proving)
       install_setup "proving" 1
+      manifest_add provingKey
       ;;
     proving-no-consttree)
       install_setup "proving" 0
+      manifest_add provingKey
       ;;
     verify)
       install_setup "verify" 0
+      manifest_add verifyKey
       ;;
     none)
       # Do nothing
@@ -287,6 +501,27 @@ EOF
       exit 1
       ;;
   esac
+
+  # SNARK proving key (system mode only — gated by --with-snark validation above).
+  # Skipped if already present unless --force was passed.
+  if $WITH_SNARK; then
+    if ! $FORCE && [[ -d "${ZISK_DIR}/provingKeySnark" ]]; then
+      step "SNARK proving key already installed at ${ZISK_DIR}/provingKeySnark."
+      say "Use --force to refresh."
+    else
+      install_setup_snark
+    fi
+    manifest_add provingKeySnark
+  fi
+
+  if $SYSTEM_MODE; then
+    apply_ownership_and_perms
+
+    step "Done! ZisK version ${ZISK_VERSION} has been installed at ${ZISK_DIR}."
+    say "Set ZISK_HOME=${ZISK_DIR} in your service unit (Environment=) so the worker resolves bundle paths."
+    echo
+    return
+  fi
 
   # Determine the profile file and preferred shell based on the current shell
   case "${SHELL}" in
@@ -337,12 +572,33 @@ OPTIONS:
     -h, --help      Print help information
     -v, --version   Install a specific version
     --arch          Install a specific architecture (supports amd64 and arm64)
-    --platform      Install a specific platform (supports linux and darwin)
-    --provingkey    Install the proving key
-    --verifykey     Install the verify key
-    --gpu           Install the GPU version (linux only)
-    --cpu           Install the CPU version (linux only)
-    --nokey         No proving/verify key installation
+    --platform     Install a specific platform (supports linux and darwin)
+    --provingkey   Install the proving key
+    --verifykey    Install the verify key
+    --gpu          Install the GPU version (linux only)
+    --cpu          Install the CPU version (linux only)
+    --nokey        No proving/verify key installation
+    --system       System-wide install (root required). Defaults --prefix to
+                   /opt/zisk on Linux or /Library/Application Support/ZisK on macOS,
+                   defaults --owner to zisk:zisk (created if missing). Skips toolchain
+                   install and PATH/profile mutation.
+    --prefix DIR   Install to DIR instead of \$HOME/.zisk (or the system default
+                   when used with --system).
+    --owner U:G    chown the install tree to U:G after extraction. With --system,
+                   missing user or group are created in the system uid/gid range.
+    -y, --yes      Non-interactive: accept defaults for prompts.
+    --force        With --system: re-install even if the version marker shows the
+                   bundle is already at the requested version. Default is to
+                   short-circuit (avoids re-download when worker + coordinator
+                   install on the same host).
+    --with-snark   Only works with --system. Download and install the SNARK proving key.
+                   Skipped if already present unless --force is also given.
+    --uninstall    Remove the ZisK bundle. Only the subdirs ziskup tracked at install
+                   time are deleted (operator-supplied files in the prefix survive).
+                   Combine with --system for the system bundle. With --system also
+                   removes the zisk system user/group iff ziskup itself created them
+                   (operator-managed users are never touched). Refuses to run while
+                   a ZisK service is still installed unless --force is given.
 
 COMMANDS:
     setup_snark     Install SNARK proving key (provingKeySnark)
@@ -380,6 +636,165 @@ check_cmd() {
   command -v "$1" &>/dev/null
 }
 
+# Create the user:group from "$1" if missing, with $2 as the user's home dir.
+# Behavior is platform-aware: useradd/groupadd on Linux, dscl on macOS.
+# Records created_user / created_group in the state file ONLY when the
+# user/group was actually created (not when it pre-existed). --uninstall
+# keys off these fields, so operator-managed users are never removed by
+# ziskup — it undoes only what it did.
+ensure_owner_user_group() {
+  local owner="$1"
+  local home_dir="$2"
+  local user_name="${owner%%:*}"
+  local group_name="${owner##*:}"
+  if [[ -z "$user_name" || -z "$group_name" || "$user_name" == "$owner" ]]; then
+    err "--owner expected user:group, got: $owner"
+    exit 1
+  fi
+  local created_user=false created_group=false
+  case "$(uname -s)" in
+    Linux)
+      if ! getent group "$group_name" >/dev/null 2>&1; then
+        ensure groupadd --system "$group_name"
+        created_group=true
+      fi
+      if ! id "$user_name" >/dev/null 2>&1; then
+        ensure useradd --system -g "$group_name" -d "$home_dir" -s /usr/sbin/nologin "$user_name"
+        created_user=true
+      fi
+      ;;
+    Darwin)
+      # Find a free GID/UID below 500 (system range on macOS).
+      if ! dscl . -read "/Groups/$group_name" >/dev/null 2>&1; then
+        local gid=300
+        while dscl . -read "/Groups/_g$gid" >/dev/null 2>&1 || \
+              dscl . -list /Groups gid 2>/dev/null | awk '{print $2}' | grep -q "^${gid}$"; do
+          gid=$((gid + 1))
+        done
+        ensure dscl . -create "/Groups/$group_name"
+        ensure dscl . -create "/Groups/$group_name" PrimaryGroupID "$gid"
+        created_group=true
+      fi
+      if ! dscl . -read "/Users/$user_name" >/dev/null 2>&1; then
+        local uid=300
+        while dscl . -list /Users UniqueID 2>/dev/null | awk '{print $2}' | grep -q "^${uid}$"; do
+          uid=$((uid + 1))
+        done
+        local gid
+        gid=$(dscl . -read "/Groups/$group_name" PrimaryGroupID | awk '{print $2}')
+        ensure dscl . -create "/Users/$user_name"
+        ensure dscl . -create "/Users/$user_name" UniqueID "$uid"
+        ensure dscl . -create "/Users/$user_name" PrimaryGroupID "$gid"
+        ensure dscl . -create "/Users/$user_name" UserShell /usr/bin/false
+        ensure dscl . -create "/Users/$user_name" NFSHomeDirectory "$home_dir"
+        created_user=true
+      fi
+      ;;
+    *)
+      err "ensure_owner_user_group: unsupported platform $(uname -s)"
+      exit 1
+      ;;
+  esac
+  # Record in state file ONLY when WE actually created them. Empty/missing
+  # entries tell --uninstall to leave operator-managed users alone.
+  if $created_user;  then bundle_set created_user  "$user_name";  fi
+  if $created_group; then bundle_set created_group "$group_name"; fi
+}
+
+# Re-apply $OWNER and bundle perms. Idempotent — called on every --system
+# run (install path AND short-circuit) so the installer self-heals ownership
+# drift. Drift sources include: key tarballs packaged on a dev machine that
+# embed the packager's UID/GID, root-owned files (.zisk-bundle, const-tree
+# output) created mid-install before this step, and prior buggy runs that
+# aborted before reaching the chown.
+#
+# Perm policy:
+#   bundle root + most subdirs:    0750 (group r-x; supplementary 'zisk' can
+#                                  traverse and read, but not write)
+#   bin/ files:                    0750 (executable for owner+group)
+#   provingKey, provingKeySnark,
+#   verifyKey:                     0770 dirs / 0660 files (group rwx) — the
+#                                  worker writes generated artefacts (const
+#                                  tree files, intermediates) here at runtime
+#                                  via its supplementary 'zisk' membership.
+#   zisk/emulator-asm:             0770 dir only — worker setup runs `make`
+#                                  here (rom-setup/src/asm_setup.rs) and
+#                                  needs to mkdir/rm-rf build/. Source files
+#                                  stay 0640 since make never modifies them.
+apply_ownership_and_perms() {
+  chown -R "$OWNER" "$ZISK_DIR"
+  find "$ZISK_DIR" -type d -exec chmod 0750 {} \;
+  if [[ -d "$ZISK_BIN_DIR" ]]; then
+    find "$ZISK_BIN_DIR" -type f -exec chmod 0750 {} \;
+  fi
+  for keydir in provingKey provingKeySnark verifyKey; do
+    if [[ -d "${ZISK_DIR}/${keydir}" ]]; then
+      find "${ZISK_DIR}/${keydir}" -type d -exec chmod 0770 {} \;
+      find "${ZISK_DIR}/${keydir}" -type f -exec chmod 0660 {} \;
+    fi
+  done
+  if [[ -d "${ZISK_DIR}/zisk/emulator-asm" ]]; then
+    chmod 0770 "${ZISK_DIR}/zisk/emulator-asm"
+  fi
+}
+
+# Path to the bundle metadata file (.zisk-bundle).
+bundle_path() { echo "${ZISK_DIR}/${ZISK_BUNDLE_FILE}"; }
+
+# Read a single value by key from the bundle file. Empty if key/file missing.
+bundle_get() {
+  local key="$1"
+  local file; file=$(bundle_path)
+  [[ -f "$file" ]] || return 0
+  awk -F= -v k="$key" '$1 == k { sub(/^[^=]+=/, ""); print; exit }' "$file"
+}
+
+# Set key=value in the bundle file. Replaces existing line if present, else
+# appends. Portable (no `sed -i`, which differs between GNU and BSD). Skips
+# the rewrite if the key already holds the requested value — common on
+# BUNDLE_PRESENT re-runs that re-stamp the same `variant`.
+bundle_set() {
+  local key="$1" value="$2"
+  local file; file=$(bundle_path)
+  mkdir -p "$(dirname "$file")"
+  if [[ ! -f "$file" ]]; then
+    {
+      echo "# ZisK bundle metadata. Written by ziskup; readable by sibling installers."
+      echo "${key}=${value}"
+    } > "$file"
+    return 0
+  fi
+  [[ "$(bundle_get "$key")" == "$value" ]] && return 0
+  awk -v k="$key" -v v="$value" -F= '
+    $1 == k { print k "=" v; found=1; next }
+    { print }
+    END { if (!found) print k "=" v }
+  ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+}
+
+# Append a value to a space-separated list field (idempotent).
+bundle_append_list() {
+  local key="$1" value="$2"
+  local current item
+  current=$(bundle_get "$key")
+  for item in $current; do
+    [[ "$item" == "$value" ]] && return 0
+  done
+  if [[ -n "$current" ]]; then
+    bundle_set "$key" "$current $value"
+  else
+    bundle_set "$key" "$value"
+  fi
+}
+
+# Reset only the manifest field (other state — version, created_user — must
+# survive). Called at install start so a re-install with different flags
+# (e.g. --nokey vs --provingkey) doesn't accumulate stale subdirs.
+manifest_reset() { bundle_set manifest ""; }
+
+# Append a subdir to the manifest list (idempotent).
+manifest_add()   { bundle_append_list manifest "$1"; }
+
 # Run a command that should never fail. If the command fails execution
 # will immediately terminate with an error showing the failing command.
 ensure() {
@@ -389,10 +804,12 @@ ensure() {
   fi
 }
 
-# Run a command that should never fail and suppress the output. If the command fails execution
-# will immediately terminate with an error showing the failing command.
+# Run a command that should never fail. Suppresses stdout (for chatty tools)
+# but keeps stderr visible so failures surface a real diagnostic instead of
+# just "command failed". If the command fails execution will immediately
+# terminate with an error showing the failing command.
 ensure_silent() {
-  if ! "$@" >/dev/null 2>&1; then
+  if ! "$@" >/dev/null; then
     err "command failed: $*"
     exit 1
   fi
@@ -406,6 +823,25 @@ download() {
   else
     wget --header="Accept: application/octet-stream" --show-progress -qO "$2" "$1"
   fi
+}
+
+# resolve_latest_tag REPO
+# Resolves "latest" to a tag like "v0.17.0" by following GitHub's redirect
+# from /releases/latest → /releases/tag/<tag>. Echoes the tag on stdout
+# (empty on failure). Avoids depending on cargo-zisk for version detection
+# and on the GitHub API (which is rate-limited unauthenticated).
+resolve_latest_tag() {
+  local repo="$1" final_url=""
+  if check_cmd curl; then
+    final_url=$(curl -fsL -o /dev/null -w '%{url_effective}' \
+                    "https://github.com/${repo}/releases/latest" 2>/dev/null) || true
+  elif check_cmd wget; then
+    final_url=$(wget --max-redirect=10 -q --server-response -O /dev/null \
+                     "https://github.com/${repo}/releases/latest" 2>&1 \
+                | awk 'tolower($1)=="location:"{loc=$2} END{print loc}' \
+                | tr -d '\r') || true
+  fi
+  echo "${final_url}" | sed -nE 's|.*/tag/(v[^/?#]+).*|\1|p'
 }
 
 # Install the proving or verify key
@@ -422,26 +858,34 @@ install_setup() {
     ensure md5sum -c "${KEY_FILE}.md5"
 
     # Delete old provingKey, verifyKey and cache folders
-    rm -rf "${HOME}/.zisk/provingKey"
-    rm -rf "${HOME}/.zisk/verifyKey"
-    rm -rf "${HOME}/.zisk/cache"
+    rm -rf "${ZISK_DIR}/provingKey"
+    rm -rf "${ZISK_DIR}/verifyKey"
+    rm -rf "${ZISK_DIR}/cache"
 
-    # Extract the key
+    # Extract the key. --no-same-owner: see binary-tarball comment in main().
     step "Installing ${KEY_TYPE} key version ${SETUP_VERSION}..."
     if [ "${PLATFORM}" = "linux" ]; then
-      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --no-same-owner --overwrite -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     else
-      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --no-same-owner -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     fi
 
     rm -f "${KEY_FILE}"
     rm -f "${KEY_FILE}.md5"
     say "Installed ${KEY_TYPE} key version ${SETUP_VERSION}"
 
-    # Generate constant tree files for proving key
+    # Generate constant tree files for proving key. Pass --proving-key
+    # explicitly so we don't rely on cargo-zisk's ZiskPaths default ($HOME/.zisk,
+    # which is /root/.zisk under sudo) — the key we just installed is at
+    # ${ZISK_DIR}/provingKey regardless of the invoking user's HOME. When
+    # USE_GPU is true we have the GPU build of cargo-zisk, so propagate --gpu
+    # to check-setup — verification then exercises the same code path the
+    # worker will use at runtime.
     if [[ "${KEY_TYPE}" == "proving" && "${CONST_TREE}" -eq 1 ]]; then
       step "Generating constant tree files. This may take a while..."
-      ensure_silent "${CARGO_ZISK}" check-setup -a
+      local check_args=(--proving-key "${ZISK_DIR}/provingKey" -a)
+      [[ "${USE_GPU}" == "true" ]] && check_args+=(--gpu)
+      ensure_silent "${CARGO_ZISK}" check-setup "${check_args[@]}"
       say "Constant tree files generated successfully."
     fi
 }
@@ -458,14 +902,14 @@ install_setup_snark() {
     ensure md5sum -c "${KEY_FILE}.md5"
 
     # Delete old provingKey, verifyKey and cache folders
-    rm -rf "${HOME}/.zisk/provingKeySnark"
+    rm -rf "${ZISK_DIR}/provingKeySnark"
 
-    # Extract the key
+    # Extract the key. --no-same-owner: see binary-tarball comment in main().
     step "Installing SNARK proving key version ${SETUP_VERSION}..."
     if [ "${PLATFORM}" = "linux" ]; then
-      ensure tar --overwrite -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --no-same-owner --overwrite -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     else
-      ensure tar -xf "${KEY_FILE}" -C "${HOME}/.zisk"
+      ensure tar --no-same-owner -xf "${KEY_FILE}" -C "${ZISK_DIR}"
     fi
 
     rm -f "${KEY_FILE}"
@@ -473,10 +917,148 @@ install_setup_snark() {
     say "Installed SNARK proving key version ${SETUP_VERSION}"
 }
 
+# Uninstall handler — invoked from main() when --uninstall is passed. Removes
+# the ZisK bundle. Manifest-aware: only subdirs ziskup tracked at install time
+# are removed, so operator-supplied files in the prefix survive. Uninstall
+# refuses to run while a service unit/plist that references the bundle is
+# still installed (override with --force).
+uninstall_command() {
+  banner
+
+  # Resolve prefix using the same flag logic as install — operators get
+  # consistent behavior whether they're installing or removing.
+  if $SYSTEM_MODE; then
+    if [[ "$(id -u)" -ne 0 ]]; then
+      err "ziskup --uninstall --system requires root"
+      exit 1
+    fi
+    if [[ -z "$PREFIX" ]]; then
+      case "$(uname -s)" in
+        Linux)  PREFIX="/opt/zisk" ;;
+        Darwin) PREFIX="/Library/Application Support/ZisK" ;;
+        *) err "unsupported platform for --system: $(uname -s)"; exit 1 ;;
+      esac
+    fi
+  fi
+  if [[ -n "$PREFIX" ]]; then
+    ZISK_DIR="$PREFIX"
+  else
+    ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  fi
+
+  if [[ ! -d "$ZISK_DIR" ]]; then
+    warn "Nothing to uninstall: $ZISK_DIR does not exist"
+    return 0
+  fi
+
+  # Sanity check: refuse to nuke the bundle while a ZisK service that
+  # depends on it is still installed. --force overrides for emergency
+  # cleanup. Only meaningful in --system mode (services live in /etc/...).
+  if $SYSTEM_MODE && ! $FORCE; then
+    local active_services=()
+    case "$(uname -s)" in
+      Linux)
+        for s in /etc/systemd/system/zisk-*.service; do
+          [[ -e "$s" ]] && active_services+=("$(basename "$s" .service)")
+        done
+        ;;
+      Darwin)
+        for p in /Library/LaunchDaemons/com.zisk.*.plist; do
+          [[ -e "$p" ]] && active_services+=("$(basename "$p" .plist)")
+        done
+        ;;
+    esac
+    if [[ ${#active_services[@]} -gt 0 ]]; then
+      err "Refusing to uninstall: service(s) still installed: ${active_services[*]}"
+      err "Run their --uninstall first, or pass --force to proceed anyway."
+      exit 1
+    fi
+  fi
+
+  # Confirm before any destructive action, unless --yes was passed. Read from
+  # /dev/tty so the prompt still works under `curl … | bash -s -- --uninstall`.
+  # Mirrors the lib.sh::uninstall_service / confirm() flow used by the
+  # service installers.
+  if ! $ASSUME_YES; then
+    warn "About to remove $ZISK_DIR (and any user/group ziskup created)."
+    read -r -p "Continue? [y/N] " reply </dev/tty
+    case "$(echo "${reply:-n}" | tr '[:upper:]' '[:lower:]')" in
+      y|yes) ;;
+      *) step "Uninstall cancelled."; return 0 ;;
+    esac
+  fi
+
+  step "Removing ZisK bundle at $ZISK_DIR..."
+
+  # Read manifest from state file. Fall back to ZISK_KNOWN_SUBDIRS for
+  # bundles installed by older ziskups that didn't yet write state.
+  local subdirs=() manifest_value
+  manifest_value=$(bundle_get manifest)
+  if [[ -n "$manifest_value" ]]; then
+    read -r -a subdirs <<< "$manifest_value"
+  else
+    subdirs=("${ZISK_KNOWN_SUBDIRS[@]}")
+  fi
+
+  for sub in "${subdirs[@]}"; do
+    if [[ -d "$ZISK_DIR/$sub" ]]; then
+      rm -rf "$ZISK_DIR/$sub"
+      say "  Removed $sub/"
+    fi
+  done
+
+  # User/group cleanup — only when state recorded that ziskup itself created
+  # them. Operator-managed users (no marker) are silently left alone:
+  # ziskup undoes only what ziskup did.
+  if $SYSTEM_MODE; then
+    local u g
+    u=$(bundle_get created_user)
+    g=$(bundle_get created_group)
+    case "$(uname -s)" in
+      Linux)
+        if [[ -n "$u" ]] && id "$u" >/dev/null 2>&1; then
+          userdel "$u" 2>/dev/null && say "  Removed user '$u'" \
+                                   || warn "  Could not remove user '$u'"
+        fi
+        if [[ -n "$g" ]] && getent group "$g" >/dev/null 2>&1; then
+          groupdel "$g" 2>/dev/null && say "  Removed group '$g'" \
+                                    || warn "  Could not remove group '$g'"
+        fi
+        ;;
+      Darwin)
+        if [[ -n "$u" ]] && dscl . -read "/Users/$u" >/dev/null 2>&1; then
+          dscl . -delete "/Users/$u" && say "  Removed user '$u'"
+        fi
+        if [[ -n "$g" ]] && dscl . -read "/Groups/$g" >/dev/null 2>&1; then
+          dscl . -delete "/Groups/$g" && say "  Removed group '$g'"
+        fi
+        ;;
+    esac
+  fi
+
+  rm -f "$(bundle_path)"
+
+  # Try rmdir — succeeds only if dir is empty. If operator put extra files
+  # inside the prefix, they survive and the dir is left intact.
+  if rmdir "$ZISK_DIR" 2>/dev/null; then
+    say "  Removed empty $ZISK_DIR"
+  else
+    warn "  $ZISK_DIR not empty — operator-supplied files preserved"
+  fi
+
+  step "Done. ZisK uninstalled from $ZISK_DIR."
+  echo
+}
+
 # Setup SNARK command handler
 setup_snark_command() {
   # Print banner
   banner
+
+  # Resolve install root (setup_snark uses the user-mode default).
+  ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
+  ZISK_BIN_DIR="${ZISK_DIR}/bin"
+  CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
 
   # Detect platform
   uname_s=$(uname -s)
@@ -514,7 +1096,8 @@ setup_snark_command() {
 
 # Banner Function for ZisK
 banner() {
-  printf "
+  cat <<'EOF'
+
 ########################################################################################
  ______     _  __
 |__  (_)___| |/ /
@@ -525,7 +1108,7 @@ banner() {
 Ziskup - The ZisK Installer
 
 ########################################################################################
-"
+EOF
 }
 
 main "$@"
