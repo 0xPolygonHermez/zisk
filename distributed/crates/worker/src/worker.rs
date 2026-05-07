@@ -810,18 +810,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        match hints_source {
-            HintsSourceDto::HintsPath(hints_uri) => {
-                let hints_stream = StreamSource::from_uri(hints_uri)?;
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsData(hints_data) => {
-                let hints_stream = StreamSource::from_vec(hints_data);
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
-                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
-                // HintsNull: nothing to register.
+        if prover.world_rank() == 0 {
+            match hints_source {
+                HintsSourceDto::HintsPath(hints_uri) => {
+                    let hints_stream = StreamSource::from_uri(hints_uri)?;
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsData(hints_data) => {
+                    let hints_stream = StreamSource::from_vec(hints_data);
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                    // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                    // HintsNull: nothing to register.
+                }
             }
         }
 
@@ -869,18 +871,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        match hints_source {
-            HintsSourceDto::HintsPath(hints_uri) => {
-                let hints_stream = StreamSource::from_uri(hints_uri)?;
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsData(hints_data) => {
-                let hints_stream = StreamSource::from_vec(hints_data);
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
-                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
-                // HintsNull: nothing to register.
+        if prover.world_rank() == 0 {
+            match hints_source {
+                HintsSourceDto::HintsPath(hints_uri) => {
+                    let hints_stream = StreamSource::from_uri(hints_uri)?;
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsData(hints_data) => {
+                    let hints_stream = StreamSource::from_vec(hints_data);
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                    // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                    // HintsNull: nothing to register.
+                }
             }
         }
 
