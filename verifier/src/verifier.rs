@@ -3,18 +3,12 @@ use proofman_verifier::{verify_vadcop_final_bytes, verify_vadcop_final_compresse
 pub fn verify_vadcop_final_proof(zisk_proof: &[u8], vadcop_final_vk: &[u8]) -> bool {
     // Format: [compressed(8)][pubs_len(8)][pubs][proof_bytes]
 
-    // Read minimal flag (8 bytes, u64 little-endian)
-    let minimal = u64::from_le_bytes([
-        zisk_proof[0],
-        zisk_proof[1],
-        zisk_proof[2],
-        zisk_proof[3],
-        zisk_proof[4],
-        zisk_proof[5],
-        zisk_proof[6],
-        zisk_proof[7],
-    ]) == 1;
+    if zisk_proof.len() < 8 {
+        return false;
+    }
 
+    // Read minimal flag (8 bytes, u64 little-endian)
+    let minimal = u64::from_le_bytes(zisk_proof[..8].try_into().unwrap()) == 1;
     let vadcop_proof = &zisk_proof[8..];
 
     if minimal {
