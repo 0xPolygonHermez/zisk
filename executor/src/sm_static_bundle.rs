@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::AsmRunnerRH;
 use crate::{NestedDeviceMetricsList, StaticDataBusCollect};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -51,6 +52,8 @@ use zisk_pil::{
 use crate::{StaticDataBus, ZiskRom};
 use rayon::prelude::*;
 
+use anyhow::Result;
+
 type SMAirType = Vec<(usize, usize)>;
 pub type SMType<F> = (SMAirType, StateMachines<F>);
 
@@ -87,11 +90,11 @@ impl<F: PrimeField64> StateMachines<F> {
         }
     }
 
-    fn build_planner(&self, process_only_operation_bus: bool) -> Box<dyn zisk_common::Planner> {
+    fn build_planner(&self, is_asm_emulator: bool) -> Box<dyn zisk_common::Planner> {
         match self {
             StateMachines::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
             StateMachines::MemSM(sm) => {
-                if process_only_operation_bus {
+                if is_asm_emulator {
                     (**sm).build_dummy_planner()
                 } else {
                     (**sm).build_planner()
@@ -148,20 +151,14 @@ impl<F: PrimeField64> StateMachines<F> {
 }
 
 pub struct StaticSMBundle<F: PrimeField64> {
-    process_only_operation_bus: bool,
     sm: BTreeMap<usize, SMType<F>>,
     std: Arc<Std<F>>,
 }
 
 impl<F: PrimeField64> StaticSMBundle<F> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        std: Arc<Std<F>>,
-        sm: Vec<(SMAirType, StateMachines<F>)>,
-    ) -> Self {
+    pub fn new(std: Arc<Std<F>>, sm: Vec<(SMAirType, StateMachines<F>)>) -> Self {
         Self {
-            process_only_operation_bus,
             sm: BTreeMap::from_iter(
                 sm.into_iter().map(|(air_ids, sm)| (sm.type_id(), (air_ids, sm))),
             ),
@@ -169,12 +166,24 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
         for (_, sm) in self.sm.values() {
             if let StateMachines::RomSM(rom_sm) = sm {
-                rom_sm.set_rom(zisk_rom.clone());
+                rom_sm.set_rom(zisk_rom.clone())?;
             }
         }
+        Ok(())
+    }
+
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+        for (_, sm) in self.sm.values() {
+            if let StateMachines::RomSM(rom_sm) = sm {
+                rom_sm.set_rh_data(rh_data)?;
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_std(&self) -> Arc<Std<F>> {
@@ -188,13 +197,14 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut NestedDeviceMetricsList,
+        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();
 
         // Iterate over vec_counters BTreeMap
         for (id, (_, sm)) in self.sm.iter() {
             if let Some(counters) = vec_counters.remove(id) {
-                plans.insert(*id, sm.build_planner(self.process_only_operation_bus).plan(counters));
+                plans.insert(*id, sm.build_planner(is_asm_emulator).plan(counters));
             }
         }
 
@@ -209,28 +219,31 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
-    pub fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+    pub fn build_instance(&self, ictx: InstanceCtx) -> Result<Box<dyn Instance<F>>> {
         let airgroup_id = ictx.plan.airgroup_id;
         let air_id = ictx.plan.air_id;
 
         if airgroup_id != ZISK_AIRGROUP_ID {
-            panic!("Unsupported AIR group ID: {}", airgroup_id);
+            anyhow::bail!("State machine not found: airgroup_id={airgroup_id}, air_id={air_id}");
         }
 
         let (_, sm) = self
             .sm
             .values()
             .find(|(air_ids, _)| air_ids.contains(&(airgroup_id, air_id)))
-            .unwrap_or_else(|| {
-                panic!("State machine not found for pair ({}, {})", airgroup_id, air_id)
-            });
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "State machine not found: airgroup_id={airgroup_id}, air_id={air_id}"
+                )
+            })?;
 
-        sm.build_instance(ictx)
+        Ok(sm.build_instance(ictx))
     }
 
     pub fn build_data_bus_counters(
         &self,
-    ) -> impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static {
+        is_asm_emulator: bool,
+    ) -> Result<impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static> {
         // Extract counters from each state machine type
         let mut mem_counter = None;
         let mut binary_counter = None;
@@ -247,7 +260,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         for (_, sm) in self.sm.values() {
             match sm {
                 StateMachines::MemSM(mem_sm) => {
-                    if !self.process_only_operation_bus {
+                    if !is_asm_emulator {
                         mem_counter = Some((sm.type_id(), Some(mem_sm.build_mem_counter())));
                     } else {
                         mem_counter = Some((sm.type_id(), None));
@@ -260,72 +273,59 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_counter = Some((sm.type_id(), arith_sm.build_arith_counter()));
                 }
                 StateMachines::KeccakfManager(keccak_sm) => {
-                    keccakf_counter = Some((
-                        sm.type_id(),
-                        keccak_sm.build_keccakf_counter(self.process_only_operation_bus),
-                    ));
+                    keccakf_counter =
+                        Some((sm.type_id(), keccak_sm.build_keccakf_counter(is_asm_emulator)));
                 }
                 StateMachines::Sha256fManager(sha256_sm) => {
-                    sha256f_counter = Some((
-                        sm.type_id(),
-                        sha256_sm.build_sha256f_counter(self.process_only_operation_bus),
-                    ));
+                    sha256f_counter =
+                        Some((sm.type_id(), sha256_sm.build_sha256f_counter(is_asm_emulator)));
                 }
                 StateMachines::Poseidon2Manager(poseidon2_sm) => {
-                    poseidon2_counter = Some((
-                        sm.type_id(),
-                        poseidon2_sm.build_poseidon2_counter(self.process_only_operation_bus),
-                    ));
+                    poseidon2_counter =
+                        Some((sm.type_id(), poseidon2_sm.build_poseidon2_counter(is_asm_emulator)));
                 }
                 StateMachines::Blake2Manager(blake2_sm) => {
-                    blake2_counter = Some((
-                        sm.type_id(),
-                        blake2_sm.build_blake2_counter(self.process_only_operation_bus),
-                    ));
+                    blake2_counter =
+                        Some((sm.type_id(), blake2_sm.build_blake2_counter(is_asm_emulator)));
                 }
                 StateMachines::ArithEqManager(arith_eq_sm) => {
-                    arith_eq_counter = Some((
-                        sm.type_id(),
-                        arith_eq_sm.build_arith_eq_counter(self.process_only_operation_bus),
-                    ));
+                    arith_eq_counter =
+                        Some((sm.type_id(), arith_eq_sm.build_arith_eq_counter(is_asm_emulator)));
                 }
                 StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
                     arith_eq_384_counter = Some((
                         sm.type_id(),
-                        arith_eq_384_sm.build_arith_eq_384_counter(self.process_only_operation_bus),
+                        arith_eq_384_sm.build_arith_eq_384_counter(is_asm_emulator),
                     ));
                 }
                 StateMachines::Add256Manager(add256_sm) => {
-                    add256_counter = Some((
-                        sm.type_id(),
-                        add256_sm.build_add256_counter(self.process_only_operation_bus),
-                    ));
+                    add256_counter =
+                        Some((sm.type_id(), add256_sm.build_add256_counter(is_asm_emulator)));
                 }
                 StateMachines::DmaManager(dma_sm) => {
-                    dma_counter = Some((
-                        sm.type_id(),
-                        dma_sm.build_dma_counter(self.process_only_operation_bus),
-                    ));
+                    dma_counter = Some((sm.type_id(), dma_sm.build_dma_counter(is_asm_emulator)));
                 }
                 StateMachines::RomSM(_) => {}
             }
         }
 
-        StaticDataBus::new(
-            self.process_only_operation_bus,
-            mem_counter.expect("Mem counter not found"),
-            binary_counter.expect("Binary counter not found"),
-            arith_counter.expect("Arith counter not found"),
-            keccakf_counter.expect("Keccakf counter not found"),
-            sha256f_counter.expect("Sha256f counter not found"),
-            poseidon2_counter.expect("Poseidon2 counter not found"),
-            blake2_counter.expect("Blake2 counter not found"),
-            arith_eq_counter.expect("ArithEq counter not found"),
-            arith_eq_384_counter.expect("ArithEq384 counter not found"),
-            add256_counter.expect("Add256 counter not found"),
-            dma_counter.expect("Dma counter not found"),
+        Ok(StaticDataBus::new(
+            is_asm_emulator,
+            mem_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Mem"))?,
+            binary_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Binary"))?,
+            arith_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Arith"))?,
+            keccakf_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Keccakf"))?,
+            sha256f_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Sha256f"))?,
+            poseidon2_counter
+                .ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Poseidon2"))?,
+            blake2_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Blake2"))?,
+            arith_eq_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "ArithEq"))?,
+            arith_eq_384_counter
+                .ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "ArithEq384"))?,
+            add256_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Add256"))?,
+            dma_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Dma"))?,
             Some(0),
-        )
+        ))
     }
 
     #[allow(clippy::borrowed_box)]
@@ -334,13 +334,13 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         pctx: &ProofCtx<F>,
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunks_to_execute: &[Vec<usize>],
-    ) -> Vec<Option<StaticDataBusCollect<u64, F>>> {
+    ) -> Result<Vec<Option<StaticDataBusCollect<u64, F>>>> {
         chunks_to_execute
             .par_iter()
             .enumerate()
             .map(|(chunk_id, global_idxs)| {
                 if global_idxs.is_empty() {
-                    return None;
+                    return Ok(None);
                 }
 
                 let mut binary_basic_collectors = Vec::new();
@@ -362,17 +362,24 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut dma_64_aligned_collectors = Vec::new();
                 let mut dma_unaligned_collectors = Vec::new();
                 for global_idx in global_idxs {
-                    let secn_instance = secn_instances.get(global_idx).unwrap();
+                    let secn_instance = secn_instances.get(global_idx).ok_or_else(|| {
+                        anyhow::anyhow!("Instance not found: global_id={}", global_idx)
+                    })?;
 
                     let (_, air_id) = pctx
                         .dctx_get_instance_info(*global_idx)
-                        .expect("Failed to get instance info");
+                        .map_err(|e| anyhow::anyhow!("Execution failed: {e}"))?;
                     match air_id {
                         air_id if air_id == BINARY_AIR_IDS[0] => {
                             let binary_basic_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<BinaryBasicInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "BinaryBasicInstance"
+                                    )
+                                })?;
                             let binary_basic_collector = binary_basic_instance
                                 .build_binary_basic_collector(ChunkId(chunk_id));
                             binary_basic_collectors.push((*global_idx, binary_basic_collector));
@@ -381,7 +388,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let binary_add_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<BinaryAddInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "BinaryAddInstance"
+                                    )
+                                })?;
                             let binary_add_collector =
                                 binary_add_instance.build_binary_add_collector(ChunkId(chunk_id));
                             binary_add_collectors.push((*global_idx, binary_add_collector));
@@ -390,7 +402,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let binary_extension_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<BinaryExtensionInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "BinaryExtensionInstance"
+                                    )
+                                })?;
                             let binary_extension_collector = binary_extension_instance
                                 .build_binary_extension_collector(ChunkId(chunk_id));
                             binary_extension_collectors
@@ -404,7 +421,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let mem_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<MemModuleInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "MemModuleInstance"
+                                    )
+                                })?;
                             let mem_collector = mem_instance.build_mem_collector(ChunkId(chunk_id));
                             mem_collectors.push((*global_idx, mem_collector));
                         }
@@ -412,7 +434,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let mem_align_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<MemAlignInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "MemAlignInstance"
+                                    )
+                                })?;
                             let mem_align_collector =
                                 mem_align_instance.build_mem_align_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
@@ -421,7 +448,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let mem_align_byte_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<MemAlignByteInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "MemAlignByteInstance"
+                                    )
+                                })?;
                             let mem_align_collector = mem_align_byte_instance
                                 .build_mem_align_byte_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
@@ -430,7 +462,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let mem_align_read_byte_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<MemAlignReadByteInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "MemAlignReadByteInstance"
+                                    )
+                                })?;
                             let mem_align_collector = mem_align_read_byte_instance
                                 .build_mem_align_read_byte_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
@@ -439,7 +476,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let mem_align_write_byte_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<MemAlignWriteByteInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "MemAlignWriteByteInstance"
+                                    )
+                                })?;
                             let mem_align_collector = mem_align_write_byte_instance
                                 .build_mem_align_write_byte_collector(ChunkId(chunk_id));
                             mem_align_collectors.push((*global_idx, mem_align_collector));
@@ -448,7 +490,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let arith_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<ArithFullInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "ArithFullInstance"
+                                    )
+                                })?;
                             let arith_collector =
                                 arith_instance.build_arith_collector(ChunkId(chunk_id));
                             arith_collectors.push((*global_idx, arith_collector));
@@ -457,7 +504,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let keccakf_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<KeccakfInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "KeccakfInstance"
+                                    )
+                                })?;
                             let keccakf_collector =
                                 keccakf_instance.build_keccakf_collector(ChunkId(chunk_id));
                             keccakf_collectors.push((*global_idx, keccakf_collector));
@@ -466,7 +518,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let sha256f_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<Sha256fInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "Sha256fInstance"
+                                    )
+                                })?;
                             let sha256f_collector =
                                 sha256f_instance.build_sha256f_collector(ChunkId(chunk_id));
                             sha256f_collectors.push((*global_idx, sha256f_collector));
@@ -475,14 +532,26 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let poseidon2_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<Poseidon2Instance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "Poseidon2Instance"
+                                    )
+                                })?;
                             let poseidon2_collector =
                                 poseidon2_instance.build_poseidon2_collector(ChunkId(chunk_id));
                             poseidon2_collectors.push((*global_idx, poseidon2_collector));
                         }
                         air_id if air_id == BLAKE_2_BR_AIR_IDS[0] => {
-                            let blake2_instance =
-                                secn_instance.as_any().downcast_ref::<Blake2Instance<F>>().unwrap();
+                            let blake2_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<Blake2Instance<F>>()
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "Blake2Instance"
+                                    )
+                                })?;
                             let blake2_collector =
                                 blake2_instance.build_blake2_collector(ChunkId(chunk_id));
                             blake2_collectors.push((*global_idx, blake2_collector));
@@ -491,7 +560,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let arith_eq_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<ArithEqInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "ArithEqInstance"
+                                    )
+                                })?;
                             let arith_eq_collector =
                                 arith_eq_instance.build_arith_eq_collector(ChunkId(chunk_id));
                             arith_eq_collectors.push((*global_idx, arith_eq_collector));
@@ -500,14 +574,26 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let arith_eq_384_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<ArithEq384Instance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "ArithEq384Instance"
+                                    )
+                                })?;
                             let arith_eq_384_collector = arith_eq_384_instance
                                 .build_arith_eq_384_collector(ChunkId(chunk_id));
                             arith_eq_384_collectors.push((*global_idx, arith_eq_384_collector));
                         }
                         air_id if air_id == ADD_256_AIR_IDS[0] => {
-                            let add256_instance =
-                                secn_instance.as_any().downcast_ref::<Add256Instance<F>>().unwrap();
+                            let add256_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<Add256Instance<F>>()
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "Add256Instance"
+                                    )
+                                })?;
                             let add256_collector =
                                 add256_instance.build_add256_collector(ChunkId(chunk_id));
                             add256_collectors.push((*global_idx, add256_collector));
@@ -518,8 +604,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                                 || air_id == DMA_MEM_CPY_AIR_IDS[0]
                                 || air_id == DMA_INPUT_CPY_AIR_IDS[0] =>
                         {
-                            let dma_instance =
-                                secn_instance.as_any().downcast_ref::<DmaInstance<F>>().unwrap();
+                            let dma_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<DmaInstance<F>>()
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("Downcast failed: expected {}", "DmaInstance")
+                                })?;
                             let dma_collector = dma_instance.build_dma_collector(ChunkId(chunk_id));
                             dma_collectors.push((*global_idx, dma_collector));
                         }
@@ -531,7 +621,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let dma_pre_post_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<DmaPrePostInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "DmaPrePostInstance"
+                                    )
+                                })?;
                             let dma_pre_post_collector =
                                 dma_pre_post_instance.build_dma_collector(ChunkId(chunk_id));
                             dma_pre_post_collectors.push((*global_idx, dma_pre_post_collector));
@@ -546,7 +641,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let dma_64_aligned_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<Dma64AlignedInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "Dma64AlignedInstance"
+                                    )
+                                })?;
                             let dma_64_aligned_collector =
                                 dma_64_aligned_instance.build_dma_collector(ChunkId(chunk_id));
                             dma_64_aligned_collectors.push((*global_idx, dma_64_aligned_collector));
@@ -555,21 +655,33 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             let dma_unaligned_instance = secn_instance
                                 .as_any()
                                 .downcast_ref::<DmaUnalignedInstance<F>>()
-                                .unwrap();
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "DmaUnalignedInstance"
+                                    )
+                                })?;
                             let dma_unaligned_collector =
                                 dma_unaligned_instance.build_dma_collector(ChunkId(chunk_id));
                             dma_unaligned_collectors.push((*global_idx, dma_unaligned_collector));
                         }
                         air_id if air_id == ROM_AIR_IDS[0] => {
-                            let rom_instance =
-                                secn_instance.as_any().downcast_ref::<RomInstance>().unwrap();
+                            let rom_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<RomInstance>()
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("Downcast failed: expected {}", "RomInstance")
+                                })?;
                             let rom_collector = rom_instance.build_rom_collector(ChunkId(chunk_id));
                             if let Some(collector) = rom_collector {
                                 rom_collectors.push((*global_idx, collector));
                             }
                         }
                         _ => {
-                            panic!("Unsupported AIR ID: {}", air_id);
+                            anyhow::bail!(
+                                "State machine not found: airgroup_id={}, air_id={air_id}",
+                                ZISK_AIRGROUP_ID
+                            );
                         }
                     }
                 }
@@ -642,18 +754,36 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     dma_64_aligned_collectors,
                     dma_unaligned_collectors,
                     rom_collectors,
-                    arith_eq_inputs_generator.expect("ArithEq input generator not found"),
-                    arith_eq_384_inputs_generator.expect("ArithEq384 input generator not found"),
-                    keccakf_inputs_generator.expect("KeccakF input generator not found"),
-                    sha256f_inputs_generator.expect("SHA256F input generator not found"),
-                    poseidon2_inputs_generator.expect("Poseidon2 input generator not found"),
-                    blake2_inputs_generator.expect("Blake2 input generator not found"),
-                    arith_inputs_generator.expect("Arith input generator not found"),
-                    add256_inputs_generator.expect("Add256 input generator not found"),
-                    dma_inputs_generator.expect("Dma input generator not found"),
+                    arith_eq_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "ArithEq input generator")
+                    })?,
+                    arith_eq_384_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "ArithEq384 input generator")
+                    })?,
+                    keccakf_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "KeccakF input generator")
+                    })?,
+                    sha256f_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "SHA256F input generator")
+                    })?,
+                    poseidon2_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "Poseidon2 input generator")
+                    })?,
+                    blake2_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "Blake2 input generator")
+                    })?,
+                    arith_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "Arith input generator")
+                    })?,
+                    add256_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "Add256 input generator")
+                    })?,
+                    dma_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "Dma input generator")
+                    })?,
                 );
 
-                Some(data_bus)
+                Ok(Some(data_bus))
             })
             .collect()
     }

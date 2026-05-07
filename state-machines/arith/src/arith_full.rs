@@ -17,20 +17,7 @@ use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{ArithTrace, ArithTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{ArithTracePacked, ArithTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type ArithTraceRowType<F> = ArithTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type ArithTraceType<F> = ArithTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type ArithTraceRowType<F> = ArithTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type ArithTraceType<F> = ArithTrace<F>;
+use zisk_pil::{ArithTrace, ArithTraceRowOps};
 
 const CHUNK_SIZE: u64 = 0x10000;
 const EXTENSION: u64 = 0xFFFFFFFF;
@@ -78,12 +65,12 @@ impl<F: PrimeField64> ArithFullSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness(
+    pub fn compute_witness<R: ArithTraceRowOps<F>>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut arith_trace = ArithTraceType::new_from_vec(trace_buffer)?;
+        let mut arith_trace = ArithTrace::<R>::new_from_vec(trace_buffer)?;
 
         let num_rows = arith_trace.num_rows();
 
@@ -112,7 +99,8 @@ impl<F: PrimeField64> ArithFullSM<F> {
                 let mut table = ArithTableInputs::new();
 
                 trace_slice.iter_mut().zip(input_slice.iter()).for_each(|(trace_row, input)| {
-                    *trace_row = Self::process_slice(&mut range_table, &mut table, &mut aop, input);
+                    *trace_row =
+                        Self::process_slice::<R>(&mut range_table, &mut table, &mut aop, input);
                 });
 
                 for (row, multiplicity) in &table {
@@ -129,7 +117,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
 
         if padding_rows > 0 {
-            let mut row = ArithTraceRowType::<F>::default();
+            let mut row = R::default();
             let padding_opcode = ZiskOp::Muluh.code();
             row.set_op(padding_opcode);
             row.set_fab(1);
@@ -220,12 +208,12 @@ impl<F: PrimeField64> ArithFullSM<F> {
         }
     }
 
-    fn process_slice(
+    fn process_slice<R: ArithTraceRowOps<F>>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,
         input: &[u64; 4],
-    ) -> ArithTraceRowType<F> {
+    ) -> R {
         let input_data = ExtOperationData::OperationData(*input);
 
         let opcode = OperationBusData::get_op(&input_data);
@@ -233,7 +221,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let b = OperationBusData::get_b(&input_data);
 
         aop.calculate(opcode, a, b);
-        let mut row = ArithTraceRowType::<F>::default();
+        let mut row = R::default();
         for i in [0, 2] {
             row.set_a(i, aop.a[i] as u16);
             row.set_b(i, aop.b[i] as u16);

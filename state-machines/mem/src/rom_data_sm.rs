@@ -14,17 +14,9 @@ use std::{
 };
 use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
-use zisk_pil::RomDataAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::RomDataTrace;
-#[cfg(feature = "packed")]
-use zisk_pil::RomDataTracePacked;
-
-#[cfg(feature = "packed")]
-type RomDataTraceType<F> = RomDataTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type RomDataTraceType<F> = RomDataTrace<F>;
+use zisk_pil::{
+    RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
+};
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
 pub const ROM_DATA_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
@@ -83,9 +75,36 @@ impl<F: PrimeField64> RomDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = RomDataTraceType::<F>::new_from_vec(trace_buffer)?;
-        let num_rows = RomDataTraceType::<F>::NUM_ROWS;
+        if packed {
+            self.legacy_compute_witness_inner::<RomDataTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        } else {
+            self.legacy_compute_witness_inner::<RomDataTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        }
+    }
+    fn legacy_compute_witness_inner<R: RomDataTraceRowOps<F>>(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = RomDataTrace::<R>::new_from_vec(trace_buffer)?;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "RomDataSM: mem_ops.len()={} out of range {}",
@@ -223,7 +242,7 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         #[cfg(feature = "debug_mem")]
         {
-            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
             Self::save_to_file(&trace, &filename);
         }
@@ -235,6 +254,39 @@ impl<F: PrimeField64> RomDataSM<F> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
+    fn compute_witness_with_offsets(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+        packed: bool,
+        offset_base_addr: u32,
+        offsets: &[u32],
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_with_offsets_inner::<RomDataTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+                offset_base_addr,
+                offsets,
+            )
+        } else {
+            self.compute_witness_with_offsets_inner::<RomDataTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+                offset_base_addr,
+                offsets,
+            )
+        }
+    }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
@@ -259,7 +311,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets_inner<R: RomDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -269,8 +321,8 @@ impl<F: PrimeField64> RomDataSM<F> {
         offset_base_addr: u32,
         offsets: &[u32],
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = RomDataTraceType::<F>::new_from_vec(trace_buffer)?;
-        let num_rows = RomDataTraceType::<F>::NUM_ROWS;
+        let mut trace = RomDataTrace::<R>::new_from_vec(trace_buffer)?;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "RomDataSM: mem_ops.len()={} out of range {}",
@@ -404,23 +456,23 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         #[cfg(feature = "debug_mem")]
         {
-            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
             Self::save_to_file(&trace, &filename);
         }
 
-        // Self::dump_trace_to_file(
-        //     &trace,
-        //     &format!("tmp/rom_data_trace_gpu_{segment_id:04}_dump.txt"),
-        // );
+        Self::dump_trace_to_file(
+            &trace,
+            &format!("tmp/rom_data_trace_gpu_{segment_id:04}_dump.txt"),
+        );
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
-    pub fn dump_trace_to_file(trace: &RomDataTraceType<F>, file_name: &str) {
+    pub fn dump_trace_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
         println!("[RomDataDebug] dumping trace to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTraceType::<F>::NUM_ROWS;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
 
         writeln!(writer, "row addr wr step chunk step_dual chunk_dual value sel_dual increment")
             .unwrap();
@@ -438,10 +490,10 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
+    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::<F>::NUM_ROWS;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].get_addr() * 8;
@@ -453,7 +505,7 @@ impl<F: PrimeField64> RomDataSM<F> {
                 "{:#010X} {} {:?} S:{sel} @{}",
                 addr,
                 step,
-                trace[i].value,
+                trace[i].get_value(0) as u64 + ((trace[i].get_value(1) as u64) << 32),
                 (step - 1) >> 20
             )
             .unwrap();
@@ -487,6 +539,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
         offset_base_addr: u32,
         offsets: &[u32],
     ) -> ProofmanResult<AirInstance<F>> {
@@ -498,6 +551,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
+                packed,
                 offset_base_addr,
                 offsets,
             )
@@ -510,6 +564,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
+                packed,
             )
         }
     }

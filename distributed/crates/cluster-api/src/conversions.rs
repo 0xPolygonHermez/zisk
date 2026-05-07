@@ -1,0 +1,457 @@
+//! Type Conversions for Distributed Proving System gRPC API
+//!
+//! This module provides bidirectional type conversions between the domain types used in the
+//! distributed proving system (`distributed-common`) and the generated gRPC protobuf types.
+//!
+//! ## Purpose
+//!
+//! The gRPC protobuf compiler generates Rust types that don't always match our internal domain
+//! model. All conversions implement the `From` and/or `Into` traits for idiomatic Rust usage.
+
+use crate::{
+    contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
+    execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
+    ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
+    HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
+    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
+    StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
+    WorkerRegisterResponse,
+};
+use zisk_cluster_common::*;
+
+impl From<ComputeCapacity> for GrpcComputeCapacity {
+    fn from(capacity: ComputeCapacity) -> Self {
+        GrpcComputeCapacity { compute_units: capacity.compute_units }
+    }
+}
+
+impl From<GrpcComputeCapacity> for ComputeCapacity {
+    fn from(grpc_capacity: GrpcComputeCapacity) -> Self {
+        ComputeCapacity::from(grpc_capacity.compute_units)
+    }
+}
+
+impl From<AggProofData> for ProofStark {
+    fn from(row_data: AggProofData) -> Self {
+        ProofStark {
+            airgroup_id: row_data.airgroup_id,
+            values: row_data.values,
+            worker_idx: row_data.worker_idx,
+        }
+    }
+}
+
+impl From<ProofStark> for AggProofData {
+    fn from(grpc_row_data: ProofStark) -> Self {
+        AggProofData {
+            airgroup_id: grpc_row_data.airgroup_id,
+            values: grpc_row_data.values,
+            worker_idx: grpc_row_data.worker_idx,
+        }
+    }
+}
+
+impl From<WorkerRegisterRequest> for WorkerRegisterRequestDto {
+    fn from(req: WorkerRegisterRequest) -> Self {
+        WorkerRegisterRequestDto {
+            worker_id: req.worker_id.into(),
+            compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
+        }
+    }
+}
+
+impl From<WorkerReconnectRequest> for WorkerReconnectRequestDto {
+    fn from(req: WorkerReconnectRequest) -> Self {
+        WorkerReconnectRequestDto {
+            worker_id: req.worker_id.into(),
+            compute_capacity: ComputeCapacity::from(req.compute_capacity.unwrap()),
+            last_known_job_id: req.last_known_job_id.map(JobId::from),
+        }
+    }
+}
+
+impl From<CoordinatorMessageDto> for CoordinatorMessage {
+    fn from(dto: CoordinatorMessageDto) -> Self {
+        match dto {
+            CoordinatorMessageDto::Heartbeat(hb) => {
+                CoordinatorMessage { payload: Some(Payload::Heartbeat(hb.into())) }
+            }
+            CoordinatorMessageDto::Shutdown(shutdown) => {
+                CoordinatorMessage { payload: Some(Payload::Shutdown(shutdown.into())) }
+            }
+            CoordinatorMessageDto::WorkerRegisterResponse(resp) => {
+                CoordinatorMessage { payload: Some(Payload::RegisterResponse(resp.into())) }
+            }
+            CoordinatorMessageDto::ExecuteTaskRequest(req) => {
+                CoordinatorMessage { payload: Some(Payload::ExecuteTask(req.into())) }
+            }
+            CoordinatorMessageDto::JobCancelled(cancel) => {
+                CoordinatorMessage { payload: Some(Payload::JobCancelled(cancel.into())) }
+            }
+            CoordinatorMessageDto::StreamData(data) => {
+                CoordinatorMessage { payload: Some(Payload::StreamData(data.into())) }
+            }
+            CoordinatorMessageDto::SetupProgram(dto) => CoordinatorMessage {
+                payload: Some(Payload::SetupProgram(SetupProgram {
+                    job_id: dto.job_id,
+                    elf_bytes: dto.elf_bytes,
+                    hash_id: dto.hash_id,
+                    program_name: dto.program_name,
+                    with_hints: dto.with_hints,
+                })),
+            },
+            CoordinatorMessageDto::InputStreamData(dto) => {
+                CoordinatorMessage { payload: Some(Payload::InputStreamData(dto.into())) }
+            }
+        }
+    }
+}
+
+impl From<InputStreamDataDto> for InputStreamData {
+    fn from(dto: InputStreamDataDto) -> Self {
+        InputStreamData { job_id: dto.job_id.as_string(), payload: dto.payload }
+    }
+}
+
+impl From<HeartbeatDto> for Heartbeat {
+    fn from(dto: HeartbeatDto) -> Self {
+        Heartbeat {
+            timestamp: Some(prost_types::Timestamp {
+                seconds: dto.timestamp.timestamp(),
+                nanos: dto.timestamp.timestamp_subsec_nanos() as i32,
+            }),
+        }
+    }
+}
+
+impl From<ShutdownDto> for Shutdown {
+    fn from(dto: ShutdownDto) -> Self {
+        Shutdown { reason: dto.reason, grace_period_seconds: dto.grace_period_seconds }
+    }
+}
+
+impl From<WorkerRegisterResponseDto> for WorkerRegisterResponse {
+    fn from(dto: WorkerRegisterResponseDto) -> Self {
+        WorkerRegisterResponse {
+            worker_id: dto.worker_id.as_string(),
+            accepted: dto.accepted,
+            message: dto.message,
+            registered_at: Some(prost_types::Timestamp {
+                seconds: dto.registered_at.timestamp(),
+                nanos: dto.registered_at.timestamp_subsec_nanos() as i32,
+            }),
+            directive: None,
+            setup_program: None,
+        }
+    }
+}
+
+impl From<SetupProgramDto> for SetupProgram {
+    fn from(dto: SetupProgramDto) -> Self {
+        SetupProgram {
+            job_id: dto.job_id,
+            elf_bytes: dto.elf_bytes,
+            hash_id: dto.hash_id,
+            program_name: dto.program_name,
+            with_hints: dto.with_hints,
+        }
+    }
+}
+
+impl From<ReconnectionDirectiveDto> for ReconnectionDirective {
+    fn from(dto: ReconnectionDirectiveDto) -> Self {
+        match dto {
+            ReconnectionDirectiveDto::Idle => {
+                ReconnectionDirective { action: ReconnectionAction::Idle as i32 }
+            }
+            ReconnectionDirectiveDto::CancelStaleJob => {
+                ReconnectionDirective { action: ReconnectionAction::CancelStaleJob as i32 }
+            }
+            ReconnectionDirectiveDto::KeepComputing => {
+                ReconnectionDirective { action: ReconnectionAction::KeepComputing as i32 }
+            }
+        }
+    }
+}
+
+impl From<JobCancelledDto> for JobCancelled {
+    fn from(dto: JobCancelledDto) -> Self {
+        JobCancelled { job_id: dto.job_id.as_string(), reason: dto.reason }
+    }
+}
+
+impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
+    fn from(dto: ExecuteTaskRequestDto) -> Self {
+        let (params, task_type) = match dto.params {
+            ExecuteTaskRequestTypeDto::ContributionParams(cp) => (
+                execute_task_request::Params::ContributionParams(cp.into()),
+                TaskType::PartialContribution,
+            ),
+            ExecuteTaskRequestTypeDto::ProveParams(pp) => {
+                (execute_task_request::Params::ProveParams(pp.into()), TaskType::Prove)
+            }
+            ExecuteTaskRequestTypeDto::AggParams(ap) => {
+                (execute_task_request::Params::AggParams(ap.into()), TaskType::Aggregate)
+            }
+            ExecuteTaskRequestTypeDto::ExecutionParams(ep) => {
+                (execute_task_request::Params::ExecutionParams(ep.into()), TaskType::Execution)
+            }
+            ExecuteTaskRequestTypeDto::WrapParams(wp) => (
+                execute_task_request::Params::WrapParams(crate::WrapParams {
+                    proof_data: wp.proof_data,
+                    proof_dest: wp.proof_dest,
+                }),
+                TaskType::Wrap,
+            ),
+        };
+
+        ExecuteTaskRequest {
+            worker_id: dto.worker_id.into(),
+            job_id: dto.job_id.into(),
+            task_type: task_type as i32,
+            params: Some(params),
+        }
+    }
+}
+
+impl From<ContributionParamsDto> for ContributionParams {
+    fn from(dto: ContributionParamsDto) -> Self {
+        let input_source = match dto.input_source {
+            InputSourceDto::InputPath(inputs_path) => Some(InputSource::InputPath(inputs_path)),
+            InputSourceDto::InputData(data) => Some(InputSource::InputData(data)),
+            InputSourceDto::InputNull => None,
+        };
+
+        let (hints_path, hints_stream, hints_data) = match dto.hints_source {
+            HintsSourceDto::HintsPath(hints_path) => (Some(hints_path), false, None),
+            HintsSourceDto::HintsData(data) => (None, false, Some(data)),
+            HintsSourceDto::HintsStream(hints_path) => (Some(hints_path), true, None),
+            HintsSourceDto::HintsNull => (None, false, None),
+        };
+
+        ContributionParams {
+            data_id: dto.data_id.as_string(),
+            hash_id: dto.hash_id,
+            input_source,
+            hints_path,
+            hints_stream,
+            hints_data,
+            rank_id: dto.rank_id,
+            total_workers: dto.total_workers,
+            worker_allocation: dto.worker_allocation,
+            job_compute_units: dto.job_compute_units.compute_units,
+        }
+    }
+}
+
+impl From<ProveParamsDto> for ProveParams {
+    fn from(dto: ProveParamsDto) -> Self {
+        let challenges: Vec<Challenges> = dto.challenges.into_iter().map(|c| c.into()).collect();
+
+        ProveParams { challenges }
+    }
+}
+
+impl From<ChallengesDto> for Challenges {
+    fn from(dto: ChallengesDto) -> Self {
+        Challenges {
+            worker_index: dto.worker_index,
+            airgroup_id: dto.airgroup_id,
+            challenge: dto.challenge,
+        }
+    }
+}
+
+impl From<AggParamsDto> for AggParams {
+    fn from(dto: AggParamsDto) -> Self {
+        let agg_proofs: Vec<ProofStark> =
+            dto.agg_proofs.into_iter().map(|proof| proof.into()).collect();
+
+        AggParams {
+            agg_proofs: Some(ProofList { proofs: agg_proofs }),
+            last_proof: dto.last_proof,
+            final_proof: dto.final_proof,
+            proof_type: i32::from(dto.proof_type),
+        }
+    }
+}
+
+impl From<ProofStarkDto> for ProofStark {
+    fn from(dto: ProofStarkDto) -> Self {
+        ProofStark { worker_idx: dto.worker_idx, airgroup_id: dto.airgroup_id, values: dto.values }
+    }
+}
+
+impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
+    fn from(response: ExecuteTaskResponse) -> Self {
+        let result_data = match response.result_data {
+            Some(execute_task_response::ResultData::Challenges(challenges_list)) => {
+                let challenges: Vec<ChallengesDto> = challenges_list
+                    .challenges
+                    .into_iter()
+                    .map(|c| ChallengesDto {
+                        worker_index: c.worker_index,
+                        airgroup_id: c.airgroup_id,
+                        challenge: c.challenge,
+                    })
+                    .collect();
+                let witness_info = challenges_list.witness_info.unwrap();
+                let witness_info = WitnessInfoDto {
+                    witness_time: witness_info.witness_time,
+                    publics: witness_info.publics,
+                    proof_values: witness_info.proof_values,
+                    summary_info: witness_info.summary_info,
+                    total_instances: witness_info.total_instances,
+                };
+                let exec_time = challenges_list.zisk_execution_time.unwrap();
+                let zisk_executor_time = ZiskExecutorTimeDto {
+                    task_received_time: exec_time.task_received_time,
+                    total_duration: exec_time.total_duration,
+                    execution_duration: exec_time.execution_duration,
+                    count_and_plan_duration: exec_time.count_and_plan_duration,
+                    count_and_plan_mo_duration: exec_time.count_and_plan_mo_duration,
+                    asm_execution_duration: exec_time.asm_execution_duration.map(|asm_info| {
+                        AsmExecutionInfoDto { time: asm_info.time, mhz: asm_info.mhz }
+                    }),
+                };
+
+                Some(ExecuteTaskResponseResultDataDto::Challenges(ContributionsResultDataDto {
+                    witness_info,
+                    challenges,
+                    zisk_executor_time,
+                }))
+            }
+            Some(execute_task_response::ResultData::Execution(exec_data)) => {
+                let zisk_execution_time = exec_data.zisk_execution_time.unwrap();
+                let publics = exec_data.witness_info.map(|wi| wi.publics).unwrap_or_default();
+
+                Some(ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
+                    instances: exec_data.instances,
+                    executed_steps: exec_data.executed_steps,
+                    publics,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        task_received_time: zisk_execution_time.task_received_time,
+                        total_duration: zisk_execution_time.total_duration,
+                        execution_duration: zisk_execution_time.execution_duration,
+                        count_and_plan_duration: zisk_execution_time.count_and_plan_duration,
+                        count_and_plan_mo_duration: zisk_execution_time.count_and_plan_mo_duration,
+                        asm_execution_duration: zisk_execution_time.asm_execution_duration.map(
+                            |asm_info| AsmExecutionInfoDto {
+                                time: asm_info.time,
+                                mhz: asm_info.mhz,
+                            },
+                        ),
+                    },
+                }))
+            }
+            Some(execute_task_response::ResultData::Proofs(proof_list)) => {
+                let proofs: Vec<ProofStarkDto> = proof_list
+                    .proofs
+                    .into_iter()
+                    .map(|p| ProofStarkDto {
+                        worker_idx: p.worker_idx,
+                        airgroup_id: p.airgroup_id,
+                        values: p.values,
+                    })
+                    .collect();
+                Some(ExecuteTaskResponseResultDataDto::Proofs(proofs))
+            }
+            Some(execute_task_response::ResultData::FinalProof(final_proof)) => {
+                Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
+                    proof_data: final_proof.proof_data,
+                    executed_steps: final_proof.executed_steps,
+                    instances: final_proof.instances,
+                }))
+            }
+            Some(execute_task_response::ResultData::WrapResult(wrap_result)) => {
+                Some(ExecuteTaskResponseResultDataDto::WrapResult(WrapResultDto {
+                    proof_data: wrap_result.proof_data,
+                }))
+            }
+            None => None,
+        };
+
+        ExecuteTaskResponseDto {
+            job_id: JobId::from(response.job_id),
+            worker_id: WorkerId::from(response.worker_id),
+            success: response.success,
+            error_message: if response.error_message.is_empty() {
+                None
+            } else {
+                Some(response.error_message)
+            },
+            result_data: result_data.unwrap(),
+            worker_in_recovery: response.worker_in_recovery,
+        }
+    }
+}
+
+impl From<HeartbeatAck> for HeartbeatAckDto {
+    fn from(message: HeartbeatAck) -> Self {
+        HeartbeatAckDto { worker_id: WorkerId::from(message.worker_id) }
+    }
+}
+
+impl From<StreamMessageKind> for StreamType {
+    fn from(dto: StreamMessageKind) -> StreamType {
+        match dto {
+            StreamMessageKind::Start => StreamType::Start,
+            StreamMessageKind::Data => StreamType::Data,
+            StreamMessageKind::End => StreamType::End,
+        }
+    }
+}
+
+impl From<StreamType> for StreamMessageKind {
+    fn from(stream_type: StreamType) -> StreamMessageKind {
+        match stream_type {
+            StreamType::Start => StreamMessageKind::Start,
+            StreamType::Data => StreamMessageKind::Data,
+            StreamType::End => StreamMessageKind::End,
+        }
+    }
+}
+
+impl From<StreamDataDto> for StreamData {
+    fn from(dto: StreamDataDto) -> Self {
+        StreamData {
+            job_id: dto.job_id.as_string(),
+            stream_type: StreamType::from(dto.stream_type) as i32,
+            payload: dto.stream_payload.map(Into::into),
+        }
+    }
+}
+
+impl From<StreamData> for StreamDataDto {
+    fn from(data: StreamData) -> Self {
+        StreamDataDto {
+            job_id: JobId::from(data.job_id),
+            stream_type: StreamType::try_from(data.stream_type)
+                .map(StreamMessageKind::from)
+                .unwrap_or(StreamMessageKind::Data),
+            stream_payload: data.payload.map(Into::into),
+        }
+    }
+}
+
+impl From<StreamPayloadDto> for StreamPayload {
+    fn from(dto: StreamPayloadDto) -> Self {
+        StreamPayload { sequence_number: dto.sequence_number, payload: dto.payload }
+    }
+}
+
+impl From<StreamPayload> for StreamPayloadDto {
+    fn from(payload: StreamPayload) -> Self {
+        StreamPayloadDto { sequence_number: payload.sequence_number, payload: payload.payload }
+    }
+}
+
+impl From<WorkerError> for WorkerErrorDto {
+    fn from(error: WorkerError) -> Self {
+        WorkerErrorDto {
+            worker_id: WorkerId::from(error.worker_id),
+            job_id: JobId::from(error.job_id),
+            error_message: error.error_message,
+        }
+    }
+}

@@ -280,3 +280,36 @@ impl EmuOptions {
             && !self.log_output_riscof
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum ProfilingMode {
+    /// Tag-level inline profiling (`--sdk --profile-tags`).
+    Inline,
+    /// Per-opcode + top-functions summary (`--sdk --opcodes --top-functions`).
+    Summary,
+    /// Full profiler output written to disk (`--sdk --profiler-output`).
+    Complete,
+}
+
+impl ProfilingMode {
+    pub fn apply(self, options: &mut EmuOptions) {
+        match self {
+            ProfilingMode::Inline => {
+                options.sdk = true;
+                options.stats = true;
+                options.profile_tags = true;
+            }
+            ProfilingMode::Summary => {
+                options.sdk = true;
+                options.stats = true;
+                options.opcodes = true;
+                options.top_functions = true;
+            }
+            ProfilingMode::Complete => {
+                options.sdk = true;
+                options.stats = true;
+                options.profiler_output = Some("profile.json.gz".to_string());
+            }
+        }
+    }
+}

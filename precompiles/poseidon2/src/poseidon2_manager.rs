@@ -48,8 +48,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Poseidon2Manager<F> {
         let num_available_poseidon2s = self.poseidon2_sm.num_available_poseidon2s;
 
         Box::new(Poseidon2Planner::new().add_instance(InstanceInfo::new(
-            Poseidon2Trace::<F>::AIRGROUP_ID,
-            Poseidon2Trace::<F>::AIR_ID,
+            Poseidon2Trace::<()>::AIRGROUP_ID,
+            Poseidon2Trace::<()>::AIR_ID,
             num_available_poseidon2s,
             ZiskOperationType::Poseidon2,
         )))
@@ -68,7 +68,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for Poseidon2Manager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == Poseidon2Trace::<F>::AIR_ID => {
+            id if id == Poseidon2Trace::<()>::AIR_ID => {
                 Box::new(Poseidon2Instance::new(self.poseidon2_sm.clone(), ictx))
             }
             _ => {

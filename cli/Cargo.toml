@@ -17,6 +17,7 @@ vergen-git2.workspace = true
 [dependencies]
 zisk-common = { workspace = true }
 zisk-build = { workspace = true }
+zisk-prover-backend = { workspace = true }
 executor = { workspace = true }
 rom-setup = { workspace = true }
 zisk-core = { workspace = true }
@@ -33,7 +34,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-zisk-sdk = { workspace = true }
 
 clap = { workspace = true }
 dirs = "6"
@@ -45,19 +45,10 @@ indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
 
-# Distributed mode (mpi) is only supported on Linux x86_64
-[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-mpi = { workspace = true }
-
 [features]
 default = []
-disable_distributed = ["zisk-sdk/disable_distributed"]
-diagnostic = ["zisk-sdk/diagnostic"]
+cpu-only = ["zisk-build/cpu-only"]
+diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
-gpu = ["zisk-sdk/gpu"]
-packed = ["zisk-sdk/packed"]
 stats = []
 verify = ["fields/verify"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }

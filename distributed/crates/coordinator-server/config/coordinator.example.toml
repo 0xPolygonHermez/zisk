@@ -1,0 +1,72 @@
+# coordinator.toml — ZisK Coordinator configuration
+#
+# Copy this file to /etc/zisk/coordinator.toml and edit to match your environment.
+# All fields are optional — defaults are used when omitted.
+#
+# Override order (later entries win):
+#   1. Defaults built into the binary
+#   2. This file
+#   3. Environment variables (see env column in README)
+#   4. CLI flags (--api-port, --cluster-port, --metrics-port, --log-level)
+
+# ── Service identity ──────────────────────────────────────────────────────────────
+
+[service]
+# Human-readable name shown in logs and status output.
+name = "ZisK Coordinator"
+
+# environment: development | staging | production
+environment = "development"
+
+# ── Client-facing API gRPC server ──────────────────────────────────
+
+[server]
+# Address to listen on. Use 0.0.0.0 to accept connections on all interfaces.
+host = "0.0.0.0"
+
+# CClient-facing gRPC API port.
+port = 7000
+
+# Seconds to drain in-flight requests after a shutdown signal before forcing exit.
+shutdown_timeout_seconds = 30
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+
+[metrics]
+# Set to false to disable the /metrics endpoint entirely.
+enabled = true
+
+# Address and port for the Prometheus scrape endpoint.
+host = "0.0.0.0"
+port = 9090
+
+# Endpoints:
+#   GET /metrics  → Prometheus text format
+#   GET /health   → 200 OK (liveness probe)
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+
+[logging]
+# Minimum log level: trace | debug | info | warn | error
+# RUST_LOG environment variable takes precedence and supports per-module filters.
+# Example: RUST_LOG=zisk_coordinator_server=debug,info
+level = "info"
+
+# Output format:
+#   pretty  — human-readable, coloured (recommended for development)
+#   json    — one JSON object per line (recommended for production / log aggregators)
+#   compact — compact single-line format
+format = "pretty"
+
+# Optional: write logs to a rotating daily file in addition to stdout.
+# file_path = "zisk-coordinator.log"
+
+# ── Coordinator ───────────────────────────────────────────────────────────────
+
+[coordinator]
+# Cluster-facing gRPC port.
+port = 50051
+
+# Optional: path to a coordinator core config file.
+# If omitted, the embedded coordinator uses its own built-in defaults.
+# config_file = "/etc/zisk/coordinator-core.toml"

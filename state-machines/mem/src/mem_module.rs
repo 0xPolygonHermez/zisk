@@ -25,6 +25,7 @@ pub trait MemModule<F: Clone>: Send + Sync {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
         offset_base_addr: u32,
         offsets: &[u32],
     ) -> ProofmanResult<AirInstance<F>>;

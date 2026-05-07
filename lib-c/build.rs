@@ -2,8 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    if cfg!(target_os = "macos") {
-        println!("cargo:rustc-cfg=feature=\"no_lib_link\"");
+    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
         return;
     }
 

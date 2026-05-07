@@ -55,6 +55,44 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
     }
 }
 
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_zkvm_init")]
+pub extern "C" fn zkvm_init() {
+    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    {
+        read_input_reset();
+        crate::zisklib::zkvm_io::reset();
+    }
+
+    #[cfg(all(
+        not(all(target_os = "zkvm", target_vendor = "zisk")),
+        zisk_hints,
+        feature = "user-hints"
+    ))]
+    {
+        let path =
+            std::env::var("ZISK_HINTS_OUTPUT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
+                let dir = std::path::PathBuf::from("./tmp");
+                std::fs::create_dir_all(&dir).expect("failed to create tmp dir");
+                dir.join("hints.bin")
+            });
+        crate::hints::init_hints_file(path, None).expect("hints init failed");
+    }
+}
+
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_zkvm_deinit")]
+pub extern "C" fn zkvm_deinit() {
+    #[cfg(all(
+        not(all(target_os = "zkvm", target_vendor = "zisk")),
+        zisk_hints,
+        feature = "user-hints"
+    ))]
+    {
+        crate::hints::close_hints().expect("hints close failed");
+    }
+}
+
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
@@ -63,7 +101,9 @@ macro_rules! entrypoint {
         mod zkvm_generated_main {
             #[no_mangle]
             fn main() {
-                super::ZISK_ENTRY()
+                $crate::zkvm_init();
+                super::ZISK_ENTRY();
+                $crate::zkvm_deinit();
             }
         }
     };
@@ -83,16 +123,24 @@ use crate::ziskos_definitions::ziskos_config::*;
 /// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
 /// native: 0 bytes offset (file starts at position 0)
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-const INPUT_INITIAL_OFFSET: usize = 8;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 8;
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-const INPUT_INITIAL_OFFSET: usize = 0;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 0;
 
 /// Pointer to the current position in the input buffer/file.
-static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
+pub(crate) static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 
 /// Reset the input position to the beginning.
-pub fn read_reset() {
+pub fn read_input_reset() {
     unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
+}
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+static NATIVE_INPUT: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+pub fn set_native_input(data: Vec<u8>) {
+    *NATIVE_INPUT.lock().unwrap() = Some(data);
 }
 
 /// Read a slice directly from INPUT_ADDR without copying (zero-copy).
@@ -138,40 +186,54 @@ pub(crate) fn read_slice_zerocopy<'a>() -> &'a [u8] {
     data_slice
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub(crate) fn read_input() -> Vec<u8> {
-    read_slice_zerocopy().to_vec()
-}
-
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub(crate) fn read_input() -> Vec<u8> {
-    use std::{
-        fs::File,
-        io::{Read, Seek, SeekFrom},
-    };
-
     let input_pos = unsafe { INPUT_POS };
 
-    let mut file =
-        File::open("build/input.bin").expect("Error opening input file at: build/input.bin");
+    let data = if let Some(buf) = NATIVE_INPUT.lock().unwrap().as_ref() {
+        let len_bytes: [u8; 8] = buf
+            .get(input_pos..input_pos + 8)
+            .expect("Failed to read length prefix from native input")
+            .try_into()
+            .unwrap();
+        let len = u64::from_le_bytes(len_bytes) as usize;
+        let data = buf
+            .get(input_pos + 8..input_pos + 8 + len)
+            .expect("Failed to read data from native input")
+            .to_vec();
+        let aligned_len = (len + 7) & !0x7;
+        unsafe { INPUT_POS = input_pos + 8 + aligned_len };
+        data
+    } else {
+        use std::{
+            fs::File,
+            io::{Read, Seek, SeekFrom},
+        };
 
-    // Seek to the current position
-    file.seek(SeekFrom::Start(input_pos as u64)).expect("Failed to seek in input file");
+        let path =
+            std::env::var("ZISK_INPUT_FILE").unwrap_or_else(|_| "build/input.bin".to_string());
 
-    // Read the 8-byte length prefix
-    let mut len_bytes = [0u8; 8];
-    file.read_exact(&mut len_bytes).expect("Failed to read length prefix from input file");
-    let len = u64::from_le_bytes(len_bytes) as usize;
+        let mut file = File::open(&path)
+            .unwrap_or_else(|e| panic!("Error opening input file at {}: {}", path, e));
 
-    // Read the actual data
-    let mut data = vec![0u8; len];
-    file.read_exact(&mut data).expect("Failed to read data from input file");
+        // Seek to the current position
+        file.seek(SeekFrom::Start(input_pos as u64)).expect("Failed to seek in input file");
 
-    // Advance INPUT_POS: 8 bytes for length + 8-byte aligned data
-    let aligned_len = (len + 7) & !0x7;
-    unsafe {
-        INPUT_POS = input_pos + 8 + aligned_len;
-    }
+        // Read the 8-byte length prefix
+        let mut len_bytes = [0u8; 8];
+        file.read_exact(&mut len_bytes).expect("Failed to read length prefix from input file");
+        let len = u64::from_le_bytes(len_bytes) as usize;
+
+        // Read the actual data
+        let mut data = vec![0u8; len];
+        file.read_exact(&mut data).expect("Failed to read data from input file");
+
+        // Advance INPUT_POS: 8 bytes for length + 8-byte aligned data
+        let aligned_len = (len + 7) & !0x7;
+        unsafe { INPUT_POS = input_pos + 8 + aligned_len };
+
+        data
+    };
 
     #[cfg(zisk_hints)]
     unsafe {

@@ -6,24 +6,10 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{KeccakfTrace, KeccakfTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{KeccakfTracePacked, KeccakfTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type KeccakfTraceType<F> = KeccakfTracePacked<F>;
-#[cfg(feature = "packed")]
-type KeccakfTraceRowType<F> = KeccakfTraceRowPacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type KeccakfTraceType<F> = KeccakfTrace<F>;
-#[cfg(not(feature = "packed"))]
-type KeccakfTraceRowType<F> = KeccakfTraceRow<F>;
-
 use precompiles_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
 };
+use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
 
 use crate::KeccakfInput;
 
@@ -53,12 +39,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = KeccakfTraceType::<F>::NUM_ROWS % CLOCKS;
+        let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
         let num_available_keccakfs = if num_non_usable_rows == 0 {
-            KeccakfTraceType::<F>::NUM_ROWS / CLOCKS
+            KeccakfTrace::<()>::NUM_ROWS / CLOCKS
         } else {
             // Subtract 1 because we can't fit a complete cycle in the remaining rows
-            (KeccakfTraceType::<F>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
+            (KeccakfTrace::<()>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
         };
 
         // Get the table ID
@@ -76,9 +62,9 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// * `input` - The operation data to process.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
-    fn process_trace(
+    fn process_trace<R: KeccakfTraceRowOps<F>>(
         &self,
-        trace: &mut [KeccakfTraceRowType<F>],
+        trace: &mut [R],
         input: &[u64; 25],
         addr: u32,
         step: u64,
@@ -152,12 +138,12 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: KeccakfTraceRowOps<F>>(
         &self,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = KeccakfTraceType::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = KeccakfTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
@@ -202,7 +188,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             .map(|(index, trace)| {
                 let input_index = inputs_indexes[index];
                 let input = &inputs[input_index.0][input_index.1];
-                self.process_trace(trace, &input.state, input.addr_main, input.step_main)
+                self.process_trace::<R>(trace, &input.state, input.addr_main, input.step_main)
             })
             .collect();
 

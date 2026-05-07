@@ -1,19 +1,13 @@
-use super::{
-    FromResponsePayload, MemoryOperationsRequest, MemoryOperationsResponse, MinimalTraceRequest,
-    MinimalTraceResponse, PingRequest, PingResponse, ResponseData, ShutdownRequest,
-    ShutdownResponse, ToRequestPayload,
+use super::stdio::StdioService;
+use super::{RequestData, ResponseData};
+use crate::{
+    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
 };
-use crate::{AsmRunnerOptions, RomHistogramRequest, RomHistogramResponse};
 use anyhow::{Context, Result};
-use std::{
-    fmt,
-    io::{Read, Write},
-    net::TcpStream,
-    path::Path,
-    process::Command,
-    time::{Duration, Instant},
-};
-use tracing::debug;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::time::Duration;
+use std::{fmt, path::Path, process::Command};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
@@ -30,6 +24,100 @@ impl AsmService {
             AsmService::RH => "RH",
         }
     }
+
+    /// Returns the `--gen=N` index expected by the ASM C binary.
+    pub fn gen_index(&self) -> u8 {
+        match self {
+            AsmService::MT => 1,
+            AsmService::RH => 2,
+            AsmService::MO => 7,
+        }
+    }
+
+    /// Array index for per-service slots (MO=0, MT=1, RH=2).
+    pub const fn as_index(&self) -> usize {
+        match self {
+            AsmService::MO => 0,
+            AsmService::MT => 1,
+            AsmService::RH => 2,
+        }
+    }
+
+    /// Returns the command path for a given service based on the trimmed base path.
+    pub fn command_path_for(&self, trimmed_path: &str) -> String {
+        format!("{}-{}.bin", trimmed_path, self)
+    }
+
+    pub(super) fn build_service_command(
+        &self,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+        sem_prefix: &str,
+    ) -> Command {
+        let binary_path = self.command_path_for(trimmed_path);
+        tracing::debug!("Spawning ASM service {self} binary: {binary_path}");
+        let mut command = Command::new(binary_path);
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            use std::os::unix::process::CommandExt;
+            unsafe {
+                command.pre_exec(|| {
+                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                    Ok(())
+                });
+            }
+        }
+        options.apply_to_command(&mut command, self, shm_prefix, sem_prefix);
+        command
+    }
+
+    /// Build a command that creates shared memory segments and exits.
+    fn build_create_shmem_command(
+        &self,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+    ) -> Command {
+        let mut command = Command::new(self.command_path_for(trimmed_path));
+
+        command
+            .arg("-s")
+            .arg(format!("--gen={}", self.gen_index()))
+            .arg("--just_create_all_shm")
+            .arg("--shm_prefix")
+            .arg(shm_prefix);
+
+        if options.verbose {
+            command.arg("-v");
+        }
+
+        command.stderr(if options.verbose {
+            std::process::Stdio::inherit()
+        } else {
+            std::process::Stdio::null()
+        });
+
+        command
+    }
+
+    /// Clean up a specific service's shared memory entries for a given prefix.
+    fn cleanup_shmem_for_prefix(&self, shm_prefix: &str) -> Result<()> {
+        let pattern = format!("{}_{}_", shm_prefix, self);
+        let exact = format!("{}_{}", shm_prefix, self);
+        let dev_shm = std::path::Path::new("/dev/shm");
+        if let Ok(entries) = std::fs::read_dir(dev_shm) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&pattern) || name == exact {
+                        shm_unlink_by_name(name)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for AsmService {
@@ -43,227 +131,194 @@ impl fmt::Display for AsmService {
     }
 }
 
-const ASM_SERVICE_BASE_PORT: u16 = 23115;
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AsmServices {
-    world_rank: i32,
-    local_rank: i32,
-    base_port: u16,
+    service: StdioService,
+    shm_prefix: String,
+    sem_prefix: String,
 }
 
 impl AsmServices {
-    const MO_SERVICE_OFFSET: u64 = 0; // Relative offset to base port. Should correspond to the order in SERVICES
-    const MT_SERVICE_OFFSET: u64 = 1; // Relative offset to base port. Should correspond to the order in SERVICES
-    const RH_SERVICE_OFFSET: u64 = 2; // Relative offset to base port. Should correspond to the order in SERVICES
-
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
-    pub fn new(world_rank: i32, local_rank: i32, base_port: Option<u16>) -> Self {
-        Self { world_rank, local_rank, base_port: base_port.unwrap_or(ASM_SERVICE_BASE_PORT) }
+    /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
+    pub fn shm_prefix(&self) -> &str {
+        &self.shm_prefix
     }
 
-    pub fn shmem_prefix(port: u16, local_rank: i32) -> String {
-        format!("ZISK_{port}_{local_rank}")
+    /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}`.
+    pub fn sem_prefix(&self) -> &str {
+        &self.sem_prefix
     }
 
-    pub fn start_asm_services(
-        &self,
+    pub fn local_rank(&self) -> i32 {
+        self.service.local_rank
+    }
+
+    pub fn world_rank(&self) -> i32 {
+        self.service.world_rank
+    }
+
+    /// Wrapper used by the CLI and the first worker setup.
+    pub fn new(
+        world_rank: i32,
+        local_rank: i32,
+        hash_id: String,
         ziskemuasm_path: &Path,
-        mut options: AsmRunnerOptions,
-    ) -> Result<()> {
-        let path_str = ziskemuasm_path.to_string_lossy();
-        let trimmed_path = &path_str[..path_str.len().saturating_sub(7)];
+        with_hints: bool,
+        options: AsmRunnerOptions,
+    ) -> Result<AsmServices> {
+        let pid = std::process::id();
+        let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        // Check if a service is already running
-        for service in &Self::SERVICES {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{port}");
-
-            if TcpStream::connect(&addr).is_ok() {
-                tracing::info!(
-                    "Service {} is already running on {}. Shutting it down.",
-                    service,
-                    addr
-                );
-
-                let _ = self.send_shutdown_and_wait(service);
-            }
-        }
-
-        let shm_prefix = Self::shmem_prefix(
-            Self::port_for(&AsmService::MO, self.base_port, self.local_rank),
-            self.local_rank,
+        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let sem_prefix = format!(
+            "ZISK_{pid}_{hash8}_{local_rank}{hints}",
+            hints = if with_hints { "_h" } else { "" }
         );
 
-        let mut pending_wait = Vec::new();
-
-        options.share_input_shmem = true;
-
-        for (i, service) in Self::SERVICES.iter().enumerate() {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let wr = self.world_rank;
-
-            debug!(">>> [{}] Starting ASM service: {} on port {}", wr, service, port);
-
-            options.open_input_shmem = i != 0;
-
-            self.start_asm_service(service, trimmed_path, &options, &shm_prefix);
-
-            if i == 0 {
-                // For the first service, wait until it is ready before starting the others,
-                // since it may initialize the shared memory used by the rest.
-                Self::wait_for_service_ready(self.world_rank, service, port)?;
+        // Strip it to get the base path.
+        // `ziskemuasm_path` expected format: "<base>-??.bin".
+        // where "??" is a 2-character service identifier.
+        // Total suffix length = 7 ("-??.bin").
+        // We validate: is at least 7 chars long, ends with ".bin" and has "-"" before the service
+        let path = ziskemuasm_path.to_string_lossy();
+        let stripped_path =
+            if path.len() >= 7 && path.ends_with(".bin") && path.as_bytes()[path.len() - 7] == b'-'
+            {
+                &path[..path.len() - 7]
             } else {
-                // For the other services, we can start them in parallel and wait for them after
-                pending_wait.push((service, port));
+                return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
+            };
+        // Phase 1: create shmem segments for this process.
+        Self::create_shmem(world_rank, &shm_prefix, stripped_path, &options)?;
+
+        // Phase 2: start services and wait for them to be ready.
+        let stdio_service = StdioService::start_services(
+            world_rank,
+            local_rank,
+            stripped_path,
+            &options,
+            &shm_prefix,
+            &sem_prefix,
+        )?;
+
+        for service in &Self::SERVICES {
+            stdio_service
+                .send_status_request(service)
+                .with_context(|| format!("Service {service} failed to respond to ping"))?;
+        }
+
+        Ok(AsmServices { service: stdio_service, shm_prefix, sem_prefix })
+    }
+
+    /// Clean up all shared memory and semaphores for currently running services.
+    /// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
+    /// left by dead processes and unlink them.
+    pub fn cleanup_stale_shmem() {
+        tracing::info!("Cleaning up stale shared memory and semaphores");
+        let dev_shm = std::path::Path::new("/dev/shm");
+        let entries = match std::fs::read_dir(dev_shm) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let name = match entry.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+
+            // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
+            // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
+            let is_sem = name.starts_with("sem.ZISK_");
+            let is_shm = name.starts_with("ZISK_");
+            if !is_shm && !is_sem {
+                continue;
+            }
+
+            let parts: Vec<&str> = name.splitn(3, '_').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let Ok(pid) = parts[1].parse::<u32>() else { continue };
+
+            // Check if the process is still alive.
+            let alive = unsafe { libc::kill(pid as i32, 0) };
+            if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
+                continue; // process alive or owned by another user
+            }
+
+            // Process is dead (ESRCH) — unlink the stale entry.
+            if is_sem {
+                // sem file "sem.FOO" → POSIX name "/FOO"
+                let sem_name = format!("/{}", &name["sem.".len()..]);
+                tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
+                if let Ok(cstr) = std::ffi::CString::new(sem_name) {
+                    unsafe { libc::sem_unlink(cstr.as_ptr()) };
+                }
+            } else {
+                tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
+                let _ = shm_unlink_by_name(&name);
+            }
+        }
+    }
+
+    /// Create segments via `--just_create_all_shm`. Call once at worker startup.
+    fn create_shmem(
+        world_rank: i32,
+        shm_prefix: &str,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+    ) -> Result<()> {
+        let children: Vec<(AsmService, std::process::Child)> = Self::SERVICES
+            .iter()
+            .map(|service| {
+                tracing::debug!(
+                    ">>> [{}] Creating shmem for service (stdio): {}",
+                    world_rank,
+                    service
+                );
+                let child = service
+                    .build_create_shmem_command(trimmed_path, options, shm_prefix)
+                    .spawn()
+                    .with_context(|| {
+                        format!("Failed to spawn shmem creation for service {service}")
+                    })?;
+                Ok((*service, child))
+            })
+            .collect::<Result<_>>()?;
+
+        let mut any_failed = false;
+        for (service, mut child) in children {
+            let status = child
+                .wait()
+                .with_context(|| format!("Failed to wait on shmem creation for {service}"))?;
+            if !status.success() {
+                tracing::error!("Shmem creation for {service} failed with {status}");
+                any_failed = true;
             }
         }
 
-        // Wait for the remaining services to be ready
-        for (service, port) in pending_wait {
-            Self::wait_for_service_ready(self.world_rank, service, port)?;
-        }
-
-        // Ping status for all services
-        for service in &Self::SERVICES {
-            self.send_status_request(service)
-                .with_context(|| format!("Service {service} failed to respond to ping"))?;
+        if any_failed {
+            for service in &Self::SERVICES {
+                let _ = service.cleanup_shmem_for_prefix(shm_prefix);
+            }
+            return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
 
         Ok(())
     }
 
     pub fn stop_asm_services(&self) -> Result<()> {
-        // Check if a service is already running
-        for service in &Self::SERVICES {
-            let port = Self::port_for(service, self.base_port, self.local_rank);
-            let addr = format!("127.0.0.1:{port}");
+        let running = self.service.running_services();
 
-            if TcpStream::connect(&addr).is_ok() {
-                tracing::info!("Shutting down service {} running on {}.", service, addr);
-
-                let _ = self.send_shutdown_and_wait(service);
-            }
+        for service in running {
+            tracing::info!("Shutting down stdio service {}.", service);
+            self.send_shutdown_and_wait(&service)?;
         }
 
         Ok(())
-    }
-
-    fn wait_for_service_ready(world_rank: i32, service: &AsmService, port: u16) -> Result<()> {
-        const TIMEOUT: Duration = Duration::from_secs(60);
-        const CONNECT_TIMEOUT: Duration = Duration::from_millis(100);
-        const LOG_INTERVAL: Duration = Duration::from_secs(5);
-
-        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-
-        let start = Instant::now();
-        let mut last_log = start;
-        while start.elapsed() < TIMEOUT {
-            match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
-                Ok(_) => {
-                    debug!(
-                        ">>> [{}] ASM service {} is ready on port {}",
-                        world_rank, service, port
-                    );
-                    return Ok(());
-                }
-                Err(_) => {
-                    if last_log.elapsed() >= LOG_INTERVAL {
-                        debug!(
-                            ">>> [{}] Waiting for ASM service {} on port {} ({:.0}s elapsed), retrying...",
-                            world_rank,
-                            service,
-                            port,
-                            start.elapsed().as_secs_f32()
-                        );
-                        last_log = Instant::now();
-                    }
-                }
-            }
-        }
-
-        tracing::error!(
-            ">>> [{}] Timeout waiting for ASM service {} to be ready on port {} after {:?}",
-            world_rank,
-            service,
-            port,
-            start.elapsed()
-        );
-        Err(anyhow::anyhow!("Timeout: service `{service}` not ready on {addr}"))
-    }
-
-    fn start_asm_service(
-        &self,
-        asm_service: &AsmService,
-        trimmed_path: &str,
-        options: &AsmRunnerOptions,
-        shm_prefix: &str,
-    ) {
-        // Prepare command
-        let command_path = trimmed_path.to_string() + &format!("-{asm_service}.bin");
-
-        let mut command = Command::new(command_path);
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            use std::os::unix::process::CommandExt;
-
-            unsafe {
-                command.pre_exec(|| {
-                    // Ignore failure silently
-                    libc::setpriority(libc::PRIO_PROCESS, 0, -5);
-                    Ok(())
-                });
-            }
-        }
-
-        options.apply_to_command(&mut command, asm_service, shm_prefix);
-
-        if let Err(e) = command.spawn() {
-            tracing::error!("Child process failed: {:?}", e);
-        }
-    }
-
-    pub const fn default_port(asm_service: &AsmService, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
-        let service_offset = match asm_service {
-            AsmService::MT => Self::MT_SERVICE_OFFSET,
-            AsmService::RH => Self::RH_SERVICE_OFFSET,
-            AsmService::MO => Self::MO_SERVICE_OFFSET,
-        };
-        ASM_SERVICE_BASE_PORT + service_offset as u16 + rank_offset
-    }
-
-    pub const fn port_for(asm_service: &AsmService, base_port: u16, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
-        let service_offset = match asm_service {
-            AsmService::MT => Self::MT_SERVICE_OFFSET,
-            AsmService::RH => Self::RH_SERVICE_OFFSET,
-            AsmService::MO => Self::MO_SERVICE_OFFSET,
-        };
-
-        base_port + service_offset as u16 + rank_offset
-    }
-
-    pub fn port_base_for(base_port: Option<u16>, local_rank: i32) -> u16 {
-        let rank_offset = local_rank as u16 * Self::SERVICES.len() as u16;
-
-        base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + rank_offset
-    }
-
-    pub fn port_base_offset(base_port: Option<u16>, n_processes: i32, n_setups: u64) -> u16 {
-        let setups_offset = n_setups as u16 * (n_processes as u16 * Self::SERVICES.len() as u16);
-        base_port.unwrap_or(ASM_SERVICE_BASE_PORT) + setups_offset
-    }
-
-    pub fn send_status_request(&self, service: &AsmService) -> Result<PingResponse> {
-        self.send_request(service, &PingRequest {})
-    }
-
-    pub fn send_shutdown_request(&self, service: &AsmService) -> Result<ShutdownResponse> {
-        self.send_request(service, &ShutdownRequest {})
     }
 
     pub fn send_minimal_trace_request(
@@ -271,11 +326,11 @@ impl AsmServices {
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MinimalTraceResponse> {
-        self.send_request(&AsmService::MT, &MinimalTraceRequest { max_steps, chunk_len })
+        self.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
     pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
-        self.send_request(&AsmService::RH, &RomHistogramRequest { max_steps })
+        self.service.send_rom_histogram_request(max_steps)
     }
 
     pub fn send_memory_ops_request(
@@ -283,99 +338,22 @@ impl AsmServices {
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MemoryOperationsResponse> {
-        self.send_request(&AsmService::MO, &MemoryOperationsRequest { max_steps, chunk_len })
-    }
-
-    fn send_request<Req, Res>(&self, service: &AsmService, req: &Req) -> Result<Res>
-    where
-        Req: ToRequestPayload,
-        Res: FromResponsePayload,
-    {
-        let port = Self::port_for(service, self.base_port, self.local_rank);
-        let addr = format!("127.0.0.1:{port}");
-
-        let request = req.to_request_payload();
-
-        // Encode RequestData as bytes
-        let mut out_buffer = Vec::with_capacity(40);
-        for word in request {
-            out_buffer.extend_from_slice(&word.to_le_bytes());
-        }
-
-        let mut stream =
-            TcpStream::connect(&addr).with_context(|| format!("Failed to connect to {addr}"))?;
-
-        // Set a read timeout to avoid indefinite blocking
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .context("Failed to set read timeout")?;
-
-        // Send request payload
-        if let Err(e) = stream.write_all(&out_buffer) {
-            return Err(anyhow::anyhow!(
-                "Failed to write request payload to service {} on {}: {}",
-                service,
-                addr,
-                e
-            ));
-        }
-
-        let total_timeout = Duration::from_secs(120);
-        let start = Instant::now();
-
-        // Read exactly 40 bytes
-        let mut in_buffer = [0u8; 40];
-        loop {
-            if start.elapsed() >= total_timeout {
-                return Err(anyhow::anyhow!("Total timeout exceeded"));
-            }
-
-            match stream.read_exact(&mut in_buffer) {
-                Ok(_) => break,
-                Err(e)
-                    if e.kind() == std::io::ErrorKind::TimedOut
-                        || e.kind() == std::io::ErrorKind::WouldBlock =>
-                {
-                    tracing::debug!("Read timeout after {:?}, retrying...", start.elapsed());
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-
-        // Decode bytes into ResponseData
-        let mut response = ResponseData::default();
-        for (i, chunk) in in_buffer.chunks_exact(8).enumerate() {
-            response[i] = u64::from_le_bytes(chunk.try_into()?);
-        }
-
-        Ok(Res::from_response_payload(response))
+        self.service.send_memory_ops_request(max_steps, chunk_len)
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
-        let port = AsmServices::port_base_for(Some(self.base_port), self.local_rank);
-
-        let sem_name = format!(
-            "/{}_{}_shutdown_done",
-            Self::shmem_prefix(port, self.local_rank),
-            service.as_str()
-        );
+        let sem_name = format!("/{}_{}_shutdown_done", self.sem_prefix, service.as_str());
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
             .map_err(|e| crate::AsmRunError::SemaphoreError(sem_name.clone(), e))?;
 
-        // Try to clean up stale state
         let _ = sem.try_wait();
 
-        // Send shutdown request
-        self.send_shutdown_request(service).with_context(|| {
+        self.service.send_shutdown_request(service).with_context(|| {
             format!("Service '{service}' failed to respond to shutdown request.")
         })?;
 
-        // Wait for the shutdown signal (up to 30s)
         loop {
             match sem.timed_wait(Duration::from_secs(60)) {
                 Ok(_) => break,
@@ -387,29 +365,27 @@ impl AsmServices {
                 Err(e) => {
                     tracing::error!(
                         "[{}] Timeout or error waiting on semaphore {}: {}",
-                        self.world_rank,
+                        self.world_rank(),
                         sem_name,
                         e
                     );
-
                     return Err(crate::AsmRunError::SemaphoreError(sem_name.clone(), e).into());
                 }
             }
         }
 
-        // Manually drop and unlink the semaphore to clean up
-        // This is necessary to ensure the semaphore is properly cleaned up
         drop(sem);
 
-        // Manually unlink the semaphore
         let cstr = std::ffi::CString::new(sem_name.clone())?;
-
         unsafe {
             if libc::sem_unlink(cstr.as_ptr()) != 0 {
                 let errno = std::io::Error::last_os_error();
                 return Err(anyhow::anyhow!("Failed to unlink semaphore {}: {}", sem_name, errno));
             }
         }
+
+        // Close pipes and reap the child process.
+        self.service.close(service);
 
         Ok(())
     }
@@ -418,4 +394,57 @@ impl AsmServices {
     pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
+
+    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
+    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
+    /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
+    /// set — which the long-running ASM service children don't have — so
+    /// the parent has to do it. Call after `stop_asm_services` so the
+    /// children are already detached from the segments.
+    pub fn cleanup_my_shmem(&self) {
+        let dev_shm = std::path::Path::new("/dev/shm");
+        let entries = match std::fs::read_dir(dev_shm) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
+                return;
+            }
+        };
+        let sem_marker = format!("sem.{}", self.sem_prefix);
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
+            if name.starts_with(&self.shm_prefix) {
+                let _ = shm_unlink_by_name(&name);
+            } else if let Some(rest) = name.strip_prefix("sem.") {
+                if name.starts_with(&sem_marker) {
+                    let sem_name = format!("/{rest}");
+                    if let Ok(cstr) = std::ffi::CString::new(sem_name) {
+                        unsafe { libc::sem_unlink(cstr.as_ptr()) };
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
+        let mut buf = [0u8; 40];
+        for (i, word) in request.iter().enumerate() {
+            buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+        }
+        buf
+    }
+
+    pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
+        let mut response = ResponseData::default();
+        for (i, chunk) in buf.chunks_exact(8).enumerate() {
+            response[i] = u64::from_le_bytes(chunk.try_into()?);
+        }
+        Ok(response)
+    }
+}
+
+fn shm_unlink_by_name(name: &str) -> Result<()> {
+    let cstr = std::ffi::CString::new(name)?;
+    unsafe { libc::shm_unlink(cstr.as_ptr()) };
+    Ok(())
 }

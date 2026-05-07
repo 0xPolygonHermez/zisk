@@ -47,7 +47,7 @@ impl<F: PrimeField64> DmaInstance<F> {
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaCollector {
         debug_assert!(
-            [DmaTrace::<F>::AIR_ID, DmaMemCpyTrace::<F>::AIR_ID, DmaInputCpyTrace::<F>::AIR_ID,]
+            [DmaTrace::<()>::AIR_ID, DmaMemCpyTrace::<()>::AIR_ID, DmaInputCpyTrace::<()>::AIR_ID,]
                 .contains(&self.ictx.plan.air_id),
             "DmaInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
@@ -77,6 +77,7 @@ impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
@@ -108,7 +109,7 @@ impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
             &format!("{}_inputs_{air_instance_id:04}.txt", self.module.get_name()),
         )?;
 
-        Ok(Some(self.module.compute_witness(&inputs, trace_buffer)?))
+        Ok(Some(self.module.compute_witness(&inputs, trace_buffer, packed)?))
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -134,7 +135,7 @@ impl<F: PrimeField64> Instance<F> for DmaInstance<F> {
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         assert_eq!(
             self.ictx.plan.air_id,
-            DmaTrace::<F>::AIR_ID,
+            DmaTrace::<()>::AIR_ID,
             "DmaInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );

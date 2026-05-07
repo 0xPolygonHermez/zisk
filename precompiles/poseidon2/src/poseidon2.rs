@@ -8,20 +8,7 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{Poseidon2Trace, Poseidon2TraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{Poseidon2TracePacked, Poseidon2TraceRowPacked};
-
-#[cfg(feature = "packed")]
-type Poseidon2TraceRowType<F> = Poseidon2TraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type Poseidon2TraceType<F> = Poseidon2TracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type Poseidon2TraceRowType<F> = Poseidon2TraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type Poseidon2TraceType<F> = Poseidon2Trace<F>;
+use zisk_pil::{Poseidon2Trace, Poseidon2TraceRow, Poseidon2TraceRowOps};
 
 use super::Poseidon2Input;
 
@@ -41,7 +28,8 @@ impl<F: PrimeField64> Poseidon2SM<F> {
     /// A new `Poseidon2SM` instance.
     pub fn new() -> Arc<Self> {
         // Compute some useful values
-        let num_available_poseidon2s = Poseidon2TraceType::<F>::NUM_ROWS / CLOCKS - 1;
+        let num_available_poseidon2s =
+            Poseidon2Trace::<Poseidon2TraceRow<F>>::NUM_ROWS / CLOCKS - 1;
 
         Arc::new(Self { num_available_poseidon2s, _phantom: std::marker::PhantomData })
     }
@@ -54,9 +42,9 @@ impl<F: PrimeField64> Poseidon2SM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Poseidon2TraceRowOps<F>>(
         &self,
-        trace: &mut [Poseidon2TraceRowType<F>],
+        trace: &mut [R],
         input: &Poseidon2Input,
         is_active: bool,
     ) {
@@ -142,12 +130,12 @@ impl<F: PrimeField64> Poseidon2SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: Poseidon2TraceRowOps<F>>(
         &self,
         inputs: &[Vec<Poseidon2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut poseidon2_trace = Poseidon2TraceType::new_from_vec_zeroes(trace_buffer)?;
+        let mut poseidon2_trace = Poseidon2Trace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = poseidon2_trace.num_rows();
         let num_available_poseidon2s = self.num_available_poseidon2s;
 
@@ -188,7 +176,7 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
             let input_index = inputs_indexes[index];
             let input = &inputs[input_index.0][input_index.1];
-            self.process_input(trace, input, true);
+            self.process_input::<R>(trace, input, true);
         });
 
         timer_stop_and_log_trace!(POSEIDON2_TRACE);
@@ -206,7 +194,7 @@ impl<F: PrimeField64> Poseidon2SM<F> {
 
         // Process padding in parallel
         if let Some((first, rest)) = padding_chunks.split_first_mut() {
-            self.process_input(
+            self.process_input::<R>(
                 first,
                 &Poseidon2Input { state: [0; 16], step_main: 0, addr_main: 0 },
                 false,

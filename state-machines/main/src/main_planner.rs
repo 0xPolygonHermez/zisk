@@ -37,7 +37,7 @@ impl MainPlanner {
         main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
         min_traces_size: u64,
     ) -> (Vec<Plan>, Vec<(u64, u32)>) {
-        let num_rows = MainTrace::<F>::NUM_ROWS as u64;
+        let num_rows = MainTrace::<()>::NUM_ROWS as u64;
 
         let mut publics = Vec::new();
 

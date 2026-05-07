@@ -6,9 +6,9 @@ ziskos::entrypoint!(main);
 
 fn main() {
     // Read the input data
-    let n: u32 = ziskos::io::read();
+    let n: u16 = ziskos::io::read();
 
-    let module = 233;
+    let module: u8 = 233;
 
     ziskos::io::commit(&n);
     ziskos::io::commit(&module);
@@ -17,7 +17,7 @@ fn main() {
     let mut b = 1;
     for _ in 0..n {
         let mut c = a + b;
-        c %= module;
+        c %= module as u32;
         a = b;
         b = c;
     }

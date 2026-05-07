@@ -140,3 +140,26 @@ pub fn final_exp_bls12_381(
 
     f
 }
+
+// ==================== C FFI Functions ====================
+
+/// Final exponentiation for BLS12-381: raises an Fp12 element to the power (p¹²-1)/r.
+///
+/// # Safety
+/// - `f_ptr` must point to a valid `[u64; 72]` array (Fp12 element, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 72]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_final_exp_bls12_381_c")]
+pub unsafe extern "C" fn final_exp_bls12_381_c(
+    f_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let f = &*(f_ptr as *const [u64; 72]);
+    let result = &mut *(result_ptr as *mut [u64; 72]);
+    *result = final_exp_bls12_381(
+        f,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}

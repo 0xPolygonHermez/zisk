@@ -109,7 +109,6 @@ main() {
             info  "Building recursive setup..."
             # Add flags for recursive setup command
             setup_flags="-t ${WORKSPACE_DIR}/pil2-proofman/pil2-components/lib/std/pil -r"
-            # Add -a flag  (aggregation) for check-setup command
         fi
 
         rm -rf build/provingKey
