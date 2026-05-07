@@ -1128,7 +1128,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_n_emits_all_, (size_t)MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_result_nops_, (size_t)max_active_ * MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
-    h_offsets_buf_size_ = 1ull << 28;
+    h_offsets_buf_size_ = 1ull << 30;
     CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
@@ -1504,15 +1504,15 @@ void CountAndPlan::pick_active_instances_() {
         gid_base += num_inst_[r];
     }
     num_active_ = num_active_per_[0] + num_active_per_[1] + num_active_per_[2];
-    cudaMemcpy(d_active_ids_, h_active_local_ids_,
-               num_active_ * 4, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_active_ids_, h_active_local_ids_,
+                          num_active_ * 4, cudaMemcpyHostToDevice));
 }
 
 void CountAndPlan::process_worker_() {
     set_active_worker_();
     pick_active_instances_();
 
-    cudaMemset(d_fml_, 0, (size_t)num_active_ * n_chunks_ * 3 * 4);
+    CUDA_CHECK(cudaMemset(d_fml_, 0, (size_t)num_active_ * n_chunks_ * 3 * 4));
 
     for (uint8_t r = 0; r < 3; r++) {
         if (num_active_per_[r] == 0) continue;
@@ -1533,15 +1533,26 @@ void CountAndPlan::process_worker_() {
         d_active_first_, d_active_last_,
         d_fml_, num_active_, n_chunks_, num_ops_);
 
-    cudaDeviceSynchronize();
-    cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost));
 
     std::vector<uint32_t> h_offset_starts(num_active_);
     uint32_t total_addrs = 0;
     for (uint32_t i = 0; i < num_active_; i++) {
         h_offset_starts[i] = total_addrs;
         total_addrs += h_active_last_[i] - h_active_first_[i] + 1;
+    }
+
+    // h_offsets_buf_ is the pinned destination for the addr_offsets D2H copy.
+    // Its size must cover total_addrs * sizeof(uint32_t); otherwise the async
+    // copy fails (destination not fully pinned) and metas point at stale zero
+    // memory. Grow it on demand with a small headroom to avoid re-alloc churn.
+    size_t needed_offsets_bytes = (size_t)total_addrs * sizeof(uint32_t);
+    if (needed_offsets_bytes > h_offsets_buf_size_) {
+        if (h_offsets_buf_) CUDA_CHECK(cudaFreeHost(h_offsets_buf_));
+        h_offsets_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
+        CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     }
 
     // instance_boundaries_kernel writes d_offset_starts_ per-region (each region
@@ -1551,8 +1562,8 @@ void CountAndPlan::process_worker_() {
     // instances overwrite the start of d_addr_offsets_ that ROM already filled,
     // and downstream addr_offsets values are garbage. Sync d_offset_starts_ with
     // the host's cross-region layout before launching compute_addr_offsets_kernel.
-    cudaMemcpy(d_offset_starts_, h_offset_starts.data(),
-               num_active_ * 4, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_offset_starts_, h_offset_starts.data(),
+                          num_active_ * 4, cudaMemcpyHostToDevice));
 
     for (uint8_t r = 0; r < 3; r++) {
         if (num_active_per_[r] == 0) continue;
@@ -1572,15 +1583,15 @@ void CountAndPlan::process_worker_() {
             d_addr_offsets_, d_offset_starts_ + off, na);
     }
 
-    cudaMemcpyAsync(h_meta_scalars_, d_meta_scalars_,
-                    num_active_ * 4 * 4, cudaMemcpyDeviceToHost, meta_stream_);
-    cudaMemcpyAsync(h_result_nops_, d_result_nops_,
-                    (size_t)num_active_ * n_chunks_ * 4, cudaMemcpyDeviceToHost, meta_stream_);
-    cudaMemcpyAsync(h_offsets_buf_, d_addr_offsets_,
-                    (size_t)total_addrs * 4, cudaMemcpyDeviceToHost, d2h_stream_);
+    CUDA_CHECK(cudaMemcpyAsync(h_meta_scalars_, d_meta_scalars_,
+                               num_active_ * 4 * 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(h_result_nops_, d_result_nops_,
+                               (size_t)num_active_ * n_chunks_ * 4, cudaMemcpyDeviceToHost, meta_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(h_offsets_buf_, d_addr_offsets_,
+                               (size_t)total_addrs * 4, cudaMemcpyDeviceToHost, d2h_stream_));
 
-    cudaStreamSynchronize(meta_stream_);
-    cudaStreamSynchronize(d2h_stream_);
+    CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
+    CUDA_CHECK(cudaStreamSynchronize(d2h_stream_));
 
     uint32_t ai = 0;
     for (uint8_t r = 0; r < 3; r++) {
