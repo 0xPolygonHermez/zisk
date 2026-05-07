@@ -8,12 +8,15 @@
 #   sudo bash distributed/deploy/scripts/test/coordinator-install-macos.sh --load    # also launchctl load
 #
 # Differences from worker:
-#   - Coordinator unit/plist sets NO env vars (Stage 1 dropped the HOME=
-#     workaround; coordinator code doesn't read $HOME/.zisk paths).
-#   - No cache/ or inputs/ subdirs under WORK_DIR (coordinator doesn't run
-#     rom-setup).
+#   - Coordinator plist sets ZISK_CACHE_DIR (so ZiskPaths writes the registered-
+#     ELF cache under WORK_DIR/cache instead of /var/empty/.zisk for the system
+#     user) but does NOT set ZISK_HOME (coordinator doesn't touch the bundle
+#     at runtime) and does NOT set HOME.
+#   - WORK_DIR/cache/ is pre-created; inputs/ is not (no rom-setup).
 #   - Bundle population is a near-no-op if the worker installed first (idempotent).
-#   - --api-port flag is required-ish (default 7000); we pass the default.
+#   - --api-port flag is NOT injected into the plist by install.sh; the
+#     /etc/zisk/coordinator.toml value (port = 7000 by default) governs.
+#     Override order: built-in default (7000) < TOML < env < CLI flag.
 
 set -euo pipefail
 
@@ -98,9 +101,9 @@ fi
 # ── 5. per-service state ──────────────────────────────────────────────────────
 info "Per-service state under $WORK_DIR"
 [[ -d "$WORK_DIR" ]] && ok "$WORK_DIR exists" || fail "$WORK_DIR missing"
-# Coordinator does NOT need cache/ or inputs/.
-[[ ! -d "$WORK_DIR/cache"  ]] && ok "$WORK_DIR/cache absent (correct)"  \
-    || warn "$WORK_DIR/cache present — unexpected"
+# Coordinator pre-creates cache/ for registered guest ELFs; inputs/ is worker-only.
+[[ -d "$WORK_DIR/cache" ]] && ok "$WORK_DIR/cache present (registered-ELF cache)" \
+    || fail "$WORK_DIR/cache missing"
 [[ ! -d "$WORK_DIR/inputs" ]] && ok "$WORK_DIR/inputs absent (correct)" \
     || warn "$WORK_DIR/inputs present — unexpected"
 # No legacy .zisk/ wrapper.
@@ -130,16 +133,27 @@ else
     plutil -lint "$PLIST" || true
 fi
 
-# Coordinator unit/plist must NOT set any env vars (Stage 1 cleanup).
+# Coordinator plist must export ZISK_CACHE_DIR (pointing at WORK_DIR/cache),
+# and must NOT set HOME or ZISK_HOME (coordinator doesn't read the bundle).
 if grep -q '<key>EnvironmentVariables</key>' "$PLIST"; then
-    fail "plist still has EnvironmentVariables (Stage 1 should have removed it)"
+    ok "plist has EnvironmentVariables block"
 else
-    ok "plist has NO EnvironmentVariables block (correct)"
+    fail "plist missing EnvironmentVariables block"
 fi
+# ZISK_CACHE_DIR key/value must point at WORK_DIR/cache.
+grep -A1 '<key>ZISK_CACHE_DIR</key>' "$PLIST" \
+    | grep -q "<string>${WORK_DIR}/cache</string>" \
+    && ok "plist exports ZISK_CACHE_DIR=${WORK_DIR}/cache" \
+    || fail "plist missing or wrong ZISK_CACHE_DIR value"
 if grep -E '<key>\s*HOME\s*</key>' "$PLIST" >/dev/null; then
     fail "plist still sets HOME"
 else
     ok "plist does NOT set HOME"
+fi
+if grep -E '<key>\s*ZISK_HOME\s*</key>' "$PLIST" >/dev/null; then
+    fail "plist unexpectedly exports ZISK_HOME (should be unset)"
+else
+    ok "plist does NOT export ZISK_HOME (correct)"
 fi
 
 # WorkingDirectory should still point at WORK_DIR.
@@ -148,11 +162,16 @@ grep -A1 '<key>WorkingDirectory</key>' "$PLIST" \
     && ok "plist WorkingDirectory = $WORK_DIR" \
     || fail "plist WorkingDirectory wrong"
 
-# --api-port should default to 7000 in the plist.
-grep -A1 '<string>--api-port</string>' "$PLIST" | grep -q '<string>7000</string>' \
-    && ok "plist --api-port = 7000 (default)" \
-    || fail "plist --api-port not 7000"
+# install.sh does not inject --api-port; the TOML supplies the port instead.
+grep -q '<string>--api-port</string>' "$PLIST" \
+    && fail "plist should not carry --api-port (TOML governs)" \
+    || ok "plist has no --api-port flag (TOML governs)"
 [[ -f "$CONFIG" ]] && ok "$CONFIG exists" || fail "$CONFIG missing"
+# Verify the shipped TOML carries the default port = 7000 under [server].
+awk '/^\[server\]/{f=1;next} /^\[/{f=0} f' "$CONFIG" \
+    | grep -qE '^port[[:space:]]*=[[:space:]]*7000([[:space:]]|#|$)' \
+    && ok "$CONFIG [server] port = 7000 (default)" \
+    || fail "$CONFIG [server] port != 7000"
 grep -q "<!-- zisk-coordinator:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"

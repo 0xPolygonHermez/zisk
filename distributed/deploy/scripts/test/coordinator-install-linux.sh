@@ -8,9 +8,14 @@
 #   sudo bash distributed/deploy/scripts/test/coordinator-install-linux.sh --start   # also systemctl start
 #
 # Differences from worker:
-#   - Coordinator unit sets NO ZISK_HOME / ZISK_CACHE_DIR (Stage 1 dropped the
-#     HOME= workaround; coordinator code doesn't read $HOME-based paths).
-#   - No cache/ or inputs/ subdirs under WORK_DIR.
+#   - Coordinator unit sets ZISK_CACHE_DIR (so ZiskPaths writes the registered-
+#     ELF cache under WORK_DIR/cache instead of /var/empty/.zisk for the system
+#     user) but leaves ZISK_HOME unset (coordinator doesn't touch the bundle
+#     at runtime).
+#   - WORK_DIR/cache/ is pre-created; inputs/ is not (no rom-setup).
+#   - --api-port flag is NOT injected into ExecStart by install.sh; the
+#     /etc/zisk/coordinator.toml value (port = 7000 by default) governs.
+#     Override order: built-in default (7000) < TOML < env < CLI flag.
 
 set -euo pipefail
 
@@ -90,9 +95,9 @@ fi
 # ── 5. per-service state ──────────────────────────────────────────────────────
 info "Per-service state under $WORK_DIR"
 [[ -d "$WORK_DIR" ]] && ok "$WORK_DIR exists" || fail "$WORK_DIR missing"
-# Coordinator does NOT need cache/ or inputs/.
-[[ ! -d "$WORK_DIR/cache"  ]] && ok "$WORK_DIR/cache absent (correct)"  \
-    || warn "$WORK_DIR/cache present — unexpected"
+# Coordinator pre-creates cache/ for registered guest ELFs; inputs/ is worker-only.
+[[ -d "$WORK_DIR/cache" ]] && ok "$WORK_DIR/cache present (registered-ELF cache)" \
+    || fail "$WORK_DIR/cache missing"
 [[ ! -d "$WORK_DIR/inputs" ]] && ok "$WORK_DIR/inputs absent (correct)" \
     || warn "$WORK_DIR/inputs present — unexpected"
 [[ ! -d "$WORK_DIR/.zisk" ]] && ok "$WORK_DIR/.zisk absent (no legacy wrapper)" \
@@ -106,18 +111,26 @@ info "Per-service state under $WORK_DIR"
 info "systemd unit at $UNIT"
 [[ -f "$UNIT" ]] && ok "unit exists" || { fail "unit missing"; exit 1; }
 
-# Coordinator unit must NOT set any env vars (Stage 1 cleanup).
-if grep -qE '^Environment=' "$UNIT"; then
-    fail "unit still has Environment= lines (Stage 1 should have removed them)"
-else
-    ok "unit has NO Environment= lines (correct)"
-fi
+# Coordinator unit must export ZISK_CACHE_DIR pointing at WORK_DIR/cache,
+# and must NOT export ZISK_HOME (coordinator doesn't read the bundle at runtime).
+grep -qE "^Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache$" "$UNIT" \
+    && ok "unit exports ZISK_CACHE_DIR=${WORK_DIR}/cache" \
+    || fail "unit missing Environment=ZISK_CACHE_DIR=${WORK_DIR}/cache"
+grep -qE '^Environment=ZISK_HOME=' "$UNIT" \
+    && fail "unit unexpectedly exports ZISK_HOME (should be unset)" \
+    || ok "unit does NOT export ZISK_HOME (correct)"
 grep -qE '^WorkingDirectory=/var/lib/zisk-coordinator$' "$UNIT" \
     && ok "WorkingDirectory = /var/lib/zisk-coordinator" \
     || fail "WorkingDirectory wrong"
-grep -E '^ExecStart=' "$UNIT" | grep -q -- '--api-port 7000' \
-    && ok "ExecStart --api-port = 7000 (default)" \
-    || fail "ExecStart --api-port not 7000"
+# install.sh does not inject --api-port; the TOML supplies the port instead.
+grep -E '^ExecStart=' "$UNIT" | grep -q -- '--api-port' \
+    && fail "ExecStart should not carry --api-port (TOML governs)" \
+    || ok "ExecStart has no --api-port flag (TOML governs)"
+# Verify the shipped TOML carries the default port = 7000 under [server].
+awk '/^\[server\]/{f=1;next} /^\[/{f=0} f' "$CONFIG" \
+    | grep -qE '^port[[:space:]]*=[[:space:]]*7000([[:space:]]|#|$)' \
+    && ok "$CONFIG [server] port = 7000 (default)" \
+    || fail "$CONFIG [server] port != 7000"
 grep -q '^# zisk-coordinator:CONFIG_FILE=/etc/zisk/coordinator.toml$' "$UNIT" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"
