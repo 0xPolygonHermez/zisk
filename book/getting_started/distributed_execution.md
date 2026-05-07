@@ -3,7 +3,7 @@
 Generating a ZisK proof means proving the full execution trace of a
 program. For real workloads, that trace is too large and too slow to
 prove on a single machine. A ZisK cluster splits the trace into
-**segments**, proves each segment in parallel on separate machines,
+pieces, proves each in parallel on separate machines,
 and aggregates the results into a single final proof. Throughput and
 latency scale with the number of machines you give it.
 
@@ -79,7 +79,7 @@ jobs for the same program skip the expensive setup step.
 ### Workers
 
 Workers are the proving processes. Each worker connects outbound to
-the coordinator and waits for segment assignments. Workers are
+the coordinator and waits for proof assignments. Workers are
 stateless across jobs, holding only the segments they are currently
 proving. You can add, remove, or restart them without touching the
 coordinator or losing cluster state.
@@ -100,10 +100,10 @@ available pool and runs three phases:
 2. **Prove.** The coordinator broadcasts the global challenge to all
    workers. Each worker computes its partial proofs and returns
    them.
-3. **Aggregation.** As partial proofs arrive, the coordinator builds
-   an opportunistic binary aggregation tree, folding proofs in as
-   they land. The first worker to deliver its partial proof is
-   promoted to aggregator and assembles the final proof.
+3. **Aggregation.** The first worker to deliver its partial proof is
+   promoted to aggregator and builds a binary aggregation tree,
+   folding the remaining partial proofs in as they land and
+   returning the final proof to the coordinator.
 
 ```
 Client            Coordinator            Workers
@@ -156,7 +156,6 @@ exercises the production binaries end-to-end.
 
 ### Prerequisites
 
-- Linux x86_64
 - Rust toolchain (`cargo --version` should work)
 - ~32 GB free RAM (Assembly emulator preallocates large shared regions)
 - Zisk installed. Follow installation guide.
@@ -193,17 +192,18 @@ zisk-coordinator --api-port 8000 --cluster-port 60000 --metrics-port 5245
 In a second terminal:
 
 ```bash
-zisk-worker --config distributed/deploy/config/worker.toml --gpu
+zisk-worker --config distributed/deploy/config/worker.toml
 ```
 
+If you built ZisK with CUDA support and want the worker to use the
+GPU, append `--gpu`.
+
 `worker.toml` points the worker at `http://127.0.0.1:50051`, advertises
-ten compute units, and sets the log level to debug. On a successful
+ten compute units, and sets the log level to info. On a successful
 handshake:
 
 ```
-INFO connecting to coordinator http://127.0.0.1:50051
 INFO registered as worker <random-uuid> (capacity 10)
-INFO heartbeat ok
 ```
 
 The coordinator logs the matching side:
@@ -235,57 +235,77 @@ cargo run --release --bin prove-remote
 The `prove-remote` binary builds a `ProverClient::remote("http://127.0.0.1:7000")`,
 uploads the guest ELF, and waits for the final proof. End-to-end:
 the coordinator splits the trace into segments and hands them to the
-worker, the worker produces STARK proofs, and the coordinator
-aggregates them into the final proof. Terminals 1 and 2 show the
+worker, the worker produces the STARK proofs. Terminals 1 and 2 show the
 matching coordinator and worker activity.
+
+### CLI references
+
+A handful of operational knobs are CLI-only and not exposed in the
+TOML:
+
+| Flag                            | Default               | Description                              |
+| ---                             | ---                   | ---                                      |
+| `--proving-key`                 | `~/.zisk/provingKey`  | Path to the proving-key folder           |
+| `--elf`                         | (none)                | Path to the ELF file                     |
+| `--shared-tables`               | `false`               | Share tables when running in a cluster   |
+| `--verify-constraints`          | `false`               | Verify constraints after witness gen     |
+| `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
+| `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
+| `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
+
+CLI flags override the config file for one-off testing:
+
+```bash
+zisk-coordinator --api-port 8000 --cluster-port 60000 --log-level debug
+zisk-worker --coordinator-url http://prod-coord:50051 --compute-capacity 32
+```
 
 ---
 
 ## Deployment with scripts
 
-This section deploys the same two binaries on bare Linux hosts under
+This section deploys the same two binaries on bare hosts under
 systemd, the canonical path for a ZisK cluster.
 
 ### Prerequisites
 
-- Linux x86_64
-- ~32 GB free RAM (Assembly emulator preallocates large shared regions)
-- Zisk installed in each machine. Follow installation guide.
-
-Clone the repo:
-
-```bash
-git clone https://github.com/0xPolygonHermez/zisk.git
-cd zisk
-```
+- ~32 GB free RAM (for Assembly emulator to preallocate large shared regions)
 
 ### Install the coordinator
 
-On the coordinator host:
+On the coordinator host run:
 
 ```bash
-sudo distributed/deploy/scripts/coordinator/install.sh
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/coordinator/install.sh | sudo bash
 ```
 
 The script:
 
-- Creates the `zisk-coordinator` system user
-- Drops the binary at `/usr/local/bin/zisk-coordinator`
-- Writes the config at `/etc/zisk/coordinator.toml` (mode `640`)
-- Creates the working directory at `/var/lib/zisk`
-- Installs the systemd unit and runs `systemctl enable --now`
+- Creates the zisk system user and group (home /var/empty, no login)
+- Drops the zisk-coordinator-server binary at /usr/local/bin/
+- Writes the config to /etc/zisk/coordinator.toml (or installs the example if none provided)
+- Creates the working directory at /var/lib/zisk with a pre-made .zisk/cache subdir, owned by the service user
+- Writes a hardened systemd unit at /etc/systemd/system/zisk-coordinator.service (Linux) or a launchd plist at /Library/LaunchDaemons/ plus a newsyslog rotation rule (macOS)
+- Runs systemctl enable --now (or launchctl load) unless --no-start / --no-enable is passed
 
 Verify the service:
+
+* In Linux: 
 
 ```bash
 sudo systemctl status zisk-coordinator
 sudo journalctl -u zisk-coordinator -f
 ```
 
-You should see the same two "listening on" lines from the
-quickstart. If the service is `failed`, shows the
-underlying error (most often a port conflict or missing config
-field).
+* In macOS:
+
+```bash
+sudo launchctl print system/com.zisk.coordinator
+sudo tail -f /var/log/zisk/zisk-coordinator-server.log
+```
+
+If the service is `failed`, the logs above show the underlying
+error (most often a port conflict or a missing config field).
 
 #### Configure the coordinator
 
@@ -337,64 +357,79 @@ Edit `/etc/zisk/coordinator.toml`:
 
 After editing:
 
+* In Linux:
+
 ```bash
 sudo systemctl restart zisk-coordinator
 ```
 
+* In macOS:
+
+```bash
+sudo launchctl kickstart -k system/com.zisk.coordinator
+```
+
 ### Install workers
 
-Workers need the proving keys on local disk before they can start.
-On each worker host, download and extract them first. Alternatively, use `mv` instead of `cp` to 
-relocate the proving key without duplicating it. Be aware that other tools (such as `cargo-zisk`) relying on the 
-original location will no longer find it.
+Run the installer, with the following command:
+
+* In Linux:
 
 ```bash
-cargo-zisk check-setup --gpu
-sudo cp $HOME/.zisk/provingKey /var/lib/zisk-worker/
-sudo chown zisk-worker:zisk-worker -R /var/lib/zisk-worker/provingKey
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/worker/install.sh | sudo bash
 ```
 
-Then run the installer, pointing it at the extracted directory:
+* In macOS:
 
 ```bash
-sudo distributed/deploy/scripts/worker/install.sh \
-    --proving-key /var/lib/zisk-worker/provingKey --gpu
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/worker/install.sh | sudo bash -s -- --no-mpi
 ```
 
-If you skip `--proving-key`, the installer falls back to
-`/var/lib/zisk-worker/provingKey`; place (or symlink) the extracted
-keys there if you prefer the default. The --gpu flag can be ommited 
-if want to work with cpu.
+This script: 
 
-The worker starts immediately, but its default coordinator URL
-(`http://127.0.0.1:50051`) points at localhost — it will keep retrying
-this address until you redirect it to your real coordinator.
+- Creates the zisk system user and group (home /var/empty, no login)
+- Drops the zisk-worker binary at /usr/local/bin/
+- Writes the config to /etc/zisk/worker.toml (or installs the example if none provided)
+- Creates the working directory at /var/lib/zisk with a pre-made .zisk/cache subdir, owned by the service user
+- Writes a hardened systemd unit at /etc/systemd/system/zisk-worker.service (Linux) or a launchd plist at /Library/LaunchDaemons/ plus a newsyslog rotation rule (macOS)
+- Runs systemctl enable --now (or launchctl load) unless --no-start / --no-enable is passed
 
-#### Point the worker at the coordinator
+Verify the service:
 
-Edit `/etc/zisk/worker.toml` and set the coordinator URL:
-
-```toml
-[coordinator]
-url = "http://<coordinator-host>:50051"
-```
+* In Linux: 
 
 ```bash
-sudo systemctl restart zisk-worker
+sudo systemctl status zisk-worker
 sudo journalctl -u zisk-worker -f
 ```
 
-Workers retry the connection every `reconnect_interval_seconds`
-(default 5) until the coordinator answers. Start order does not
-matter.
+* In macOS:
+
+```bash
+sudo launchctl print system/com.zisk.worker
+sudo tail -f /var/log/zisk/zisk-worker-server.log
+```
+
+The worker starts immediately and uses its default coordinator URL
+(`http://127.0.0.1:50051`).
+
+> **Note:** the default URL only works when the worker runs on the
+> same host as the coordinator. When deploying workers on separate
+> hosts, edit `[coordinator].url` in `/etc/zisk/worker.toml` to point
+> at the coordinator's worker-facing port (`50051` by default), then
+> restart the service. Confirm registration in the coordinator log:
+>
+> ```
+> INFO worker registered: <random-uuid> capacity=10
+> ```
 
 #### Configure the worker
 
-Annotated example: `distributed/crates/worker/config/prod.toml`.
+Every setting is optional; the binary falls back to a built-in
+default for anything you leave out.
 
-Override precedence: built-in defaults → config file →
-`ZISK_WORKER__*` environment variables (double underscore as table
-separator) → CLI flags.
+Override precedence (later wins): built-in defaults → config file →
+`ZISK_WORKER_*` environment variables → CLI flags.
 
 Edit `/etc/zisk/worker.toml`:
 
@@ -429,6 +464,12 @@ After editing:
 
 ```bash
 sudo systemctl restart zisk-worker
+```
+
+* In macOS:
+
+```bash
+sudo launchctl kickstart -k system/com.zisk.worker
 ```
 
 ### Add more workers
@@ -468,26 +509,4 @@ to their advertised capacity.
    ││worker ││││worker ││││worker ││
    │└───────┘││└───────┘││└───────┘│
    └─────────┘└─────────┘└─────────┘
-```
-
-### CLI references
-
-A handful of operational knobs are CLI-only and not exposed in the
-TOML:
-
-| Flag                            | Default               | Description                              |
-| ---                             | ---                   | ---                                      |
-| `--proving-key`                 | `~/.zisk/provingKey`  | Path to the proving-key folder           |
-| `--elf`                         | (none)                | Path to the ELF file                     |
-| `--shared-tables`               | `false`               | Share tables when running in a cluster   |
-| `--verify-constraints`          | `false`               | Verify constraints after witness gen     |
-| `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
-| `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
-| `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
-
-CLI flags override the config file for one-off testing:
-
-```bash
-zisk-coordinator --api-port 8000 --cluster-port 60000 --log-level debug
-zisk-worker --coordinator-url http://prod-coord:50051 --compute-capacity 32
 ```
