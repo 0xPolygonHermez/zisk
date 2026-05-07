@@ -475,8 +475,10 @@ EOF
     manifest_add toolchains
   fi
 
-  # Install the proving/verify key setup
-  IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
+  # Install the proving/verify key setup. Strip any leading 'v' — ZISK_VERSION
+  # carries the tag form (e.g. "v0.17.0") but key tarballs are named with the
+  # bare semver ("zisk-provingkey-0.17.0.tar.gz").
+  IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
   SETUP_VERSION="${major}.${minor}.0"
   case "${SETUP_KEY}" in
     proving)
