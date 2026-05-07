@@ -140,6 +140,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch 
 # fields = { path = "../pil2-proofman/fields" }
 
 # External dependencies
+arc-swap = "1"
 rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"

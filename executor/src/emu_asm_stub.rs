@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread::JoinHandle,
-};
+use std::{sync::Arc, thread::JoinHandle};
 
 use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
 use anyhow::Result;
@@ -30,7 +27,7 @@ impl EmulatorAsm {
     pub fn execute<F: PrimeField64>(
         &self,
         _zisk_rom: &ZiskRom,
-        _stdin: &Mutex<ZiskStdin>,
+        _stdin: &ZiskStdin,
         _pctx: &ProofCtx<F>,
         _sm_bundle: &StaticSMBundle<F>,
         _use_hints: bool,
