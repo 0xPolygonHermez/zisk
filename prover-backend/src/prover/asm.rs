@@ -153,13 +153,14 @@ impl AsmProver {
             .with_unlock_mapped_memory(unlock_mapped_memory)
             .with_asm_out_file(asm_out_file);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints && world_rank == 0)
+            .then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
         let init_rom = !is_distributed && world_rank == 0;
 
