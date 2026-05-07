@@ -60,6 +60,9 @@ pub fn write_output_reset() {
 }
 
 pub fn verify_zisk_proof(zisk_proof: &[u8]) -> bool {
+    if zisk_proof.len() < 32 {
+        return false;
+    }
     let (proof, vk) = zisk_proof.split_at(zisk_proof.len() - 32);
     zisk_verifier::verify_vadcop_final_proof(proof, vk)
 }
