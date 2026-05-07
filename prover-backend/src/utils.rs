@@ -2,7 +2,7 @@ use fields::PrimeField64;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use zisk_common::{ProgramVK, ZiskPaths};
+use zisk_common::ProgramVK;
 
 use crate::{GuestProgram, ProgramId};
 use proofman_common::{
@@ -10,18 +10,6 @@ use proofman_common::{
     VerboseMode,
 };
 use rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup};
-
-/// Gets the proving key file location.
-/// Uses the default one if not specified by user.
-pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
-    proving_key.cloned().unwrap_or_else(|| ZiskPaths::global().proving_key.clone())
-}
-
-/// Gets the proving key file location.
-/// Uses the default one if not specified by user.
-pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
-    proving_key_snark.cloned().unwrap_or_else(|| ZiskPaths::global().proving_key_snark.clone())
-}
 
 pub fn ensure_program_vk<F: PrimeField64>(
     pctx: &ProofCtx<F>,

@@ -3,7 +3,6 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use zisk_build::ZISK_TARGET;
-use zisk_common::ZiskPaths;
 
 /// If the target_os is macOS returns an error indicating that the command is not supported.
 pub fn cli_fail_if_macos() -> Result<()> {
@@ -12,18 +11,6 @@ pub fn cli_fail_if_macos() -> Result<()> {
     } else {
         Ok(())
     }
-}
-
-/// Gets the proving key file location.
-/// Uses the default one if not specified by user.
-pub fn get_proving_key(proving_key: Option<&PathBuf>) -> Result<PathBuf> {
-    Ok(proving_key.cloned().unwrap_or_else(|| ZiskPaths::global().proving_key.clone()))
-}
-
-/// Gets the proving key snark file location.
-/// Uses the default one if not specified by user.
-pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> Result<PathBuf> {
-    Ok(proving_key_snark.cloned().unwrap_or_else(|| ZiskPaths::global().proving_key_snark.clone()))
 }
 
 pub fn resolve_elf_path(elf: &Option<PathBuf>) -> Result<&PathBuf> {

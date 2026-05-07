@@ -76,7 +76,7 @@ pub struct ZiskPaths {
 
 impl ZiskPaths {
     pub fn from_env() -> Self {
-        let home = env::var_os("ZISK_HOME").map(PathBuf::from).unwrap_or_else(default_home);
+        let home = env::var_os("ZISK_HOME").map(PathBuf::from).unwrap_or_else(Self::default_home);
         let bin = home.join(BIN_DIR);
         let cache = env::var_os("ZISK_CACHE_DIR")
             .map(PathBuf::from)
@@ -108,18 +108,30 @@ impl ZiskPaths {
         INSTANCE.get_or_init(Self::from_env)
     }
 
+    /// Returns the default home path
+    fn default_home() -> PathBuf {
+        dirs::home_dir()
+            .expect("HOME directory not resolvable; set ZISK_HOME explicitly")
+            .join(USER_HOME_SUBDIR)
+    }
+
     /// Content-addressed ELF cache path for a given hash.
     ///
     /// Layout: `${cache}/{hash_id}.elf`.
     pub fn elf_cache(&self, hash_id: &str) -> PathBuf {
         self.cache.join(format!("{}.elf", hash_id))
     }
-}
 
-fn default_home() -> PathBuf {
-    dirs::home_dir()
-        .expect("HOME directory not resolvable; set ZISK_HOME explicitly")
-        .join(USER_HOME_SUBDIR)
+    /// Returns the operator-supplied proving-key path if `Some`, otherwise the
+    /// default from [`ZiskPaths::global`] (driven by `ZISK_HOME`). Infallible.
+    pub fn get_proving_key(proving_key: Option<&PathBuf>) -> PathBuf {
+        proving_key.cloned().unwrap_or_else(|| Self::global().proving_key.clone())
+    }
+
+    /// SNARK counterpart of [`Self::get_proving_key`].
+    pub fn get_proving_key_snark(proving_key_snark: Option<&PathBuf>) -> PathBuf {
+        proving_key_snark.cloned().unwrap_or_else(|| Self::global().proving_key_snark.clone())
+    }
 }
 
 #[cfg(test)]

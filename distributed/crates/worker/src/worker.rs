@@ -1,6 +1,5 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use cargo_zisk::common::{get_proving_key, get_proving_key_snark};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,7 +11,7 @@ use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
@@ -146,9 +145,9 @@ pub struct ProverConfig {
 
 impl ProverConfig {
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
-        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
+        let proving_key = ZiskPaths::get_proving_key(prover_service_config.proving_key.as_ref());
         let proving_key_snark = if prover_service_config.plonk {
-            Some(get_proving_key_snark(prover_service_config.proving_key_snark.as_ref())?)
+            Some(ZiskPaths::get_proving_key_snark(prover_service_config.proving_key_snark.as_ref()))
         } else {
             None
         };
