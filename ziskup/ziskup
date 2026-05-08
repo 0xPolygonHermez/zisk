@@ -8,6 +8,7 @@ BASE_DIR=${XDG_CONFIG_HOME:-${HOME}}
 DEFAULT_USER_ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
 BINS=(cargo-zisk ziskemu)
 BUCKET_URL="https://storage.googleapis.com/zisk-setup"
+NVIDIA_MIN_VERSION="525.60.13"
 
 # Filled in by main() after arg parsing.
 ZISK_DIR=""
@@ -196,12 +197,18 @@ main() {
       ;;
   esac
 
-  # Detect CUDA toolkit availability.
-  HAS_CUDA=false
-  if [ "${PLATFORM}" = "linux" ] && {
-    [ -d "/usr/local/cuda" ] || [ -n "${CUDA_HOME+x}" ] || (check_cmd nvcc && nvcc --version >/dev/null 2>&1)
-  }; then
-    HAS_CUDA=true
+  # Detect supported NVIDIA Driver
+  HAS_NVIDIA=false
+  if [ "${PLATFORM}" = "linux" ]; then
+      if check_cmd nvidia-smi; then
+          INSTALLED_NVIDIA_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)
+
+          if [ -n "$INSTALLED_NVIDIA_VERSION" ] && \
+            [ "$(printf '%s\n' "$NVIDIA_MIN_VERSION" "$INSTALLED_NVIDIA_VERSION" | sort -V | head -n1)" = "$NVIDIA_MIN_VERSION" ]; then
+              say "Compatible NVIDIA driver detected: $INSTALLED_NVIDIA_VERSION"
+              HAS_NVIDIA=true
+          fi
+      fi
   fi
 
   # Print the banner after successfully parsing args
@@ -296,21 +303,21 @@ main() {
   # whose .zisk-bundle didn't track the variant.
   if [[ -z "${USE_GPU}" ]]; then
     if [ "${PLATFORM}" = "linux" ]; then
-      if [ "${HAS_CUDA}" = "true" ]; then
+      if [ "${HAS_NVIDIA}" = "true" ]; then
         USE_GPU=true
       elif $ASSUME_YES; then
         USE_GPU=false
       else
-        warn "CUDA was not detected on this system"
+        warn "No NVIDIA driver compatible with ZisK was detected, or no NVIDIA driver is installed. Minimum supported NVIDIA driver version: ${NVIDIA_MIN_VERSION}"
         say "The version with only CPU support will be installed by default"
         say ""
         say "Do you want to:"
         say "  1) Install CPU version (default - just press enter)"
         say "  2) Install GPU version"
-        read -p ">" cuda_choice < /dev/tty
-        cuda_choice=${cuda_choice:-1}
+        read -p ">" bin_choice < /dev/tty
+        bin_choice=${bin_choice:-1}
 
-        case "${cuda_choice}" in
+        case "${bin_choice}" in
           1) USE_GPU=false ;;
           2) USE_GPU=true ;;
           *)
@@ -362,13 +369,13 @@ main() {
   fi
 
   # Announce the selected variant. Prints whether the choice came from
-  # --gpu/--cpu, CUDA auto-detection, the interactive prompt, or the --yes
+  # --gpu/--cpu, NVIDIA auto-detection, the interactive prompt, or the --yes
   # default — operator always sees which build is in play. Worded as
   # "Selected" rather than "Installing" so it reads correctly on the
   # BUNDLE_PRESENT path (binaries already on disk; the variant still
   # determines which check-setup code path runs below).
   if [[ "${USE_GPU}" == "true" ]]; then
-    step "Selected: GPU build (CUDA)."
+    step "Selected: GPU build (NVIDIA)."
   elif [[ "${USE_GPU}" == "false" ]]; then
     step "Selected: CPU build."
   fi

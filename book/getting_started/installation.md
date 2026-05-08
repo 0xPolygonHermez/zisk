@@ -114,6 +114,21 @@ To install the PLONK proving key (provingKeySnark), run:
 
     **Note**: The build process will automatically detect whether CUDA is available on your machine. If so, it will build the GPU-enabled binaries; otherwise, it will build the CPU version. To force the CPU version, use the `--features cpu-only` flag.
 
+    **Note**: By default, the build process auto-detects the GPU architecture of the host machine. Use the `CUDA_ARCHS` environment variable to control which architectures are compiled:
+
+    ```bash
+    # Single architecture (faster build — e.g. Ada Lovelace sm_89 / RTX 4090)
+    CUDA_ARCHS="89" cargo build --release
+
+    # Multiple architectures (e.g. Ada + Hopper)
+    CUDA_ARCHS="89,90" cargo build --release
+
+    # All major architectures — portable binary for distribution
+    # (sm_80, sm_86, sm_89, sm_90, sm_100, sm_120 + PTX forward compatibility)
+    # Note: this takes significantly longer to compile
+    CUDA_ARCHS="major" cargo build --release
+    ```
+
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
