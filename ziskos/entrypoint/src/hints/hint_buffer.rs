@@ -174,8 +174,9 @@ impl HintBuffer {
                     Ok(()) => return Ok(()),
 
                     Err(e)
-                        if e.raw_os_error() == Some(105)
-                            || e.kind() == io::ErrorKind::WouldBlock =>
+                        if e.raw_os_error() == Some(105) // ENOBUFS
+                            || e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::Interrupted =>
                     {
                         if attempt == retries {
                             return Err(e);
