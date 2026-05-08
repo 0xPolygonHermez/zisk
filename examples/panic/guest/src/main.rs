@@ -1,16 +1,23 @@
-// This example program processes large u64 input data (250MB - 1GB+)
-// Input size is controlled by INPUT_SIZE_MB environment variable in host build.rs
+// This example program tests different failure modes in a guest program.
+// Input value controls behavior:
+//   0 -> panic!
+//   1 -> assert! failure
+//   2 -> segfault
+//   _ -> normal exit
 
 #![no_main]
 ziskos::entrypoint!(main);
 
 fn main() {
-    let panic: u64 = ziskos::io::read();
+    let input: u64 = ziskos::io::read();
 
-    if panic == 0 {
-        panic!("Intentional panic triggered by guest program");
-    } else {
-        println!("Panic not triggered triggered with input value: {}", panic);
-        
+    match input {
+        0 => panic!("Intentional panic triggered by guest program"),
+        1 => assert!(false, "Intentional assert failure triggered by guest program"),
+        2 => unsafe {
+            let ptr = core::ptr::null_mut::<u64>();
+            core::ptr::write_volatile(ptr, 0xDEAD);
+        },
+        _ => println!("No failure triggered with input value: {}", input),
     }
 }
