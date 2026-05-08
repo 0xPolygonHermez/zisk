@@ -200,12 +200,12 @@ main() {
   # Detect supported NVIDIA Driver
   HAS_NVIDIA=false
   if [ "${PLATFORM}" = "linux" ]; then
-      if command -v nvidia-smi >/dev/null 2>&1; then
+      if check_cmd nvidia-smi; then
           INSTALLED_NVIDIA_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)
 
           if [ -n "$INSTALLED_NVIDIA_VERSION" ] && \
             [ "$(printf '%s\n' "$NVIDIA_MIN_VERSION" "$INSTALLED_NVIDIA_VERSION" | sort -V | head -n1)" = "$NVIDIA_MIN_VERSION" ]; then
-              echo "Compatible NVIDIA driver detected: $INSTALLED_NVIDIA_VERSION"
+              say "Compatible NVIDIA driver detected: $INSTALLED_NVIDIA_VERSION"
               HAS_NVIDIA=true
           fi
       fi
@@ -308,7 +308,7 @@ main() {
       elif $ASSUME_YES; then
         USE_GPU=false
       else
-        warn "No NVIDIA driver compatible with ZisK was detected, or no NVIDIA driver is installed"
+        warn "No NVIDIA driver compatible with ZisK was detected, or no NVIDIA driver is installed. Minimum supported NVIDIA driver version: ${NVIDIA_MIN_VERSION}"
         say "The version with only CPU support will be installed by default"
         say ""
         say "Do you want to:"
