@@ -13,6 +13,8 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
+#include <signal.h>
+#include <setjmp.h>
 #include "server.hpp"
 #include "globals.hpp"
 #include "asm_provided.hpp"
@@ -21,6 +23,80 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+
+/****************************/
+/* EMULATION FAULT RECOVERY */
+/****************************/
+// Catch synchronous signals raised while running the JIT-translated assembly
+// (a guest panic ends in `unimp`/OOB access) and longjmp back to a safe point
+// in `server_run` instead of letting the kernel kill the long-running service.
+// `sigsetjmp(env, 1)` saves the signal mask so the caught signal isn't left
+// blocked after recovery; the handler runs on `sigaltstack` because the
+// emulator swaps `rsp` to a guest stack via `MEM_RSP` mid-run.
+
+static sigjmp_buf emulation_jmp_buf;
+static volatile sig_atomic_t in_emulation = 0;
+static volatile sig_atomic_t caught_signal = 0;
+static char emulation_alt_stack[1 << 17]; // 128 KB
+
+static void on_emulation_signal(int sig)
+{
+    if (in_emulation)
+    {
+        in_emulation = 0;
+        caught_signal = (sig_atomic_t)sig;
+        siglongjmp(emulation_jmp_buf, 1);
+    }
+    // Faulted outside emulation — no recovery point; restore default and re-raise.
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+// Write a minimal "end" chunk at MEM_CHUNK_ADDRESS so the parent's reader
+// sees `end=1` and exits its chunk loop cleanly. Used on signal recovery to
+// avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
+// / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
+//   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
+//   MT-style: pc,sp,c,step, regs[33], last_c,end,steps,mem_reads_size — 41 u64s, end @ 38
+static void write_abort_chunk(void)
+{
+    bool is_mo = (gen_method == MemOp);
+    size_t n_words = is_mo ? 2 : 41;
+    size_t end_idx = is_mo ? 0 : 38;
+
+    uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
+    memset(chunk, 0, n_words * sizeof(uint64_t));
+    chunk[end_idx] = 1;
+    MEM_CHUNK_ADDRESS += n_words * sizeof(uint64_t);
+}
+
+void server_signal_handler(void)
+{
+    stack_t alt_stack = {
+        .ss_sp   = emulation_alt_stack,
+        .ss_size = sizeof(emulation_alt_stack),
+    };
+    if (sigaltstack(&alt_stack, NULL) != 0)
+    {
+        asm_printf("WARNING: sigaltstack failed errno=%d=%s\n", errno, strerror(errno));
+    }
+
+    struct sigaction sa = {
+        .sa_handler = on_emulation_signal,
+        .sa_flags   = SA_ONSTACK | SA_NODEFER,
+    };
+    sigemptyset(&sa.sa_mask);
+
+    int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT };
+    for (size_t i = 0; i < sizeof(signals) / sizeof(signals[0]); ++i)
+    {
+        if (sigaction(signals[i], &sa, NULL) != 0)
+        {
+            asm_printf("WARNING: sigaction(sig=%d) failed errno=%d=%s\n",
+                       signals[i], errno, strerror(errno));
+        }
+    }
+}
 
 /**********/
 /* SERVER */
@@ -827,10 +903,30 @@ void server_run (void)
     /* ASM */
     /*******/
 
-    // Call emulator assembly code
+    // Run the emulator under a sigsetjmp guard — see signal handler block above.
+    // On fault we set MEM_ERROR, write a sentinel "end" chunk so the parent's
+    // chunk-wait wakes immediately (instead of timing out), and fall through.
+    // The post-emulation code publishes MEM_ERROR in the trace header; the
+    // response then carries result=1 back to the parent, which reports the
+    // error.
     gettimeofday(&start_time,NULL);
     if (verbose) asm_printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
-    emulator_start();
+    caught_signal = 0;
+    bool emulation_aborted = false;
+    if (sigsetjmp(emulation_jmp_buf, 1) == 0)
+    {
+        in_emulation = 1;
+        emulator_start();
+        in_emulation = 0;
+    }
+    else
+    {
+        in_emulation = 0;
+        MEM_ERROR = (uint64_t)caught_signal;
+        emulation_aborted = true;
+        asm_printf("WARNING: caught signal %d during emulation, aborting run\n",
+                   (int)caught_signal);
+    }
     if (verbose) asm_printf("After calling emulator_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
@@ -956,7 +1052,12 @@ void server_run (void)
     // Notify client
     if (gen_method == RomHistogram)
     {
-        _chunk_done();   
+        _chunk_done();
+    }
+    else if (emulation_aborted && call_chunk_done)
+    {
+        write_abort_chunk();
+        _chunk_done();
     }
 
 
