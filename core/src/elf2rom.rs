@@ -7,7 +7,8 @@ use crate::{
         merge_adjacent_ro_sections, ElfPayload,
     },
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    transpiler_reset, AsmGenerationMethod, RoData, ZiskInst, ZiskRom, ZiskRom2Asm, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY,
 };
 use rayon::prelude::*;
 use std::{error::Error, path::Path};
@@ -25,6 +26,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
+
+    // Reset the transpiler state
+    transpiler_reset();
 
     // Add the end instruction, jumping over it
     add_end_and_lib(&mut rom);

@@ -32,7 +32,7 @@
     #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
 #endif
 
-#define TRACE_INITIAL_SIZE_RH (uint64_t)0x040000000 /* 1GB */
+#define TRACE_INITIAL_SIZE_RH (uint64_t)0x02000000 /* 32MB */
 
 #define TRACE_ADDR         (uint64_t)0xd0000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB

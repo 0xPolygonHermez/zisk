@@ -2643,3 +2643,9 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
         );
     }
 }
+
+/// Resets the transpiler state, including the instruction build counter, to allow for a new
+/// transpilation process without interference from previous state.
+pub fn transpiler_reset() {
+    ZiskInstBuilder::reset_build_counter();
+}

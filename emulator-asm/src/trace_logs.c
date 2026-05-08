@@ -135,47 +135,26 @@ void log_histogram(void)
     asm_printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
     asm_printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
 
-    asm_printf("BIOS histogram:\n");
     uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
 
-    // BIOS
-    uint64_t bios_size = trace[0];
-    asm_printf("BIOS size=%lu\n", bios_size);
-    if (bios_size > 100000000)
+    // ROM length
+    uint64_t rom_length = trace[0];
+    asm_printf("ROM length=%lu\n", rom_length);
+    if (rom_length > 100000000)
     {
-        asm_printf("ERROR: Bios size is too high=%lu\n", bios_size);
+        asm_printf("ERROR: ROM length is too high=%lu\n", rom_length);
         exit(-1);
     }
     if (trace_trace)
     {
-        uint64_t * bios = trace + 1;
-        for (uint64_t i=0; i<bios_size; i++)
+        uint64_t * rom = trace + 1;
+        for (uint64_t i=0; i<rom_length; i++)
         {
-            asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), bios[i] );
+            asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), rom[i] );
         }
     }
 
-    // Program
-    uint64_t program_size = trace[bios_size + 1];
-    asm_printf("Program size=%lu\n", program_size);
-    if (program_size > 100000000)
-    {
-        asm_printf("ERROR: Program size is too high=%lu\n", program_size);
-        exit(-1);
-    }
-    if (trace_trace)
-    {
-        uint64_t * program = trace + 1 + bios_size + 1;
-        for (uint64_t i=0; i<program_size; i++)
-        {
-            if (program[i] != 0)
-            {
-                asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x80000000 + i, program[i]);
-            }
-        }
-    }
-
-    asm_printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
+    asm_printf("Histogram ROM length=%lu\n", rom_length);
 }
 
 /* Trace data structure
