@@ -7,9 +7,8 @@ use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR,
-    FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
-    SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE,
-    STORE_REG,
+    FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C,
+    SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -728,6 +727,12 @@ impl ZiskRom2Asm {
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_program_pc);
         *code += "\tret\n\n";
 
+        // get_rom_length() returns the length of the ROM
+        *code += ".global get_rom_length\n";
+        *code += "get_rom_length:\n";
+        *code += &format!("\tmov rax, 0x{:08x}\n", rom.insts.len());
+        *code += "\tret\n\n";
+
         // get_gen_method() returns the generation method used to generate the assembly
         // It must match the one used to call the assembly emulator
         *code += ".global get_gen_method\n";
@@ -1036,10 +1041,17 @@ impl ZiskRom2Asm {
 
             // Update the rom histogram
             if ctx.rom_histogram() {
-                let address = Self::get_rom_histogram_trace_address(rom, ctx.pc);
-                *code += &ctx.full_line_comment("rom histogram".to_string());
-                *code += &format!("\tmov {REG_ADDRESS}, 0x{address:08x}\n");
-                *code += &format!("\tinc qword {}[{}]\n", ctx.ptr, REG_ADDRESS);
+                let address = Self::get_rom_histogram_trace_address(instruction.index);
+                *code += &format!(
+                    "\tmov {REG_ADDRESS}, 0x{address:08x} {}\n",
+                    ctx.comment_str("address = &rom_histogram[index]")
+                );
+                *code += &format!(
+                    "\tinc qword {}[{}] {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    ctx.comment_str("increment rom histogram counter")
+                );
             }
 
             // Set special storage destinations for a and b registers, based on operations, in order
@@ -9660,30 +9672,14 @@ impl ZiskRom2Asm {
     ///     [8B] exit_code (0=success, 1=not completed)
     ///     [8B] allocated_size = xxx (bytes)
     ///     [8B] used_size = xxx (bytes)
-    /// BIOS histogram: (TRACE_ADDR_NUMBER)
-    ///     [8B] multiplicity_size = B
-    ///     [8B] multiplicity[0] → 4096
-    ///     [8B] multiplicity[1] → 4096 + 4
+    /// Instruction histogram: (TRACE_ADDR_NUMBER)
+    ///     [8B] multiplicity_size = S
+    ///     [8B] multiplicity[0]
+    ///     [8B] multiplicity[1]
     ///     …
-    ///     [8B] multiplicity[B-1] → 4096 + 4*(B-1)
-    /// Program histogram:
-    ///     [8B] multiplicity_size = P
-    ///     [8B] multiplicity[0] → 0x80000000
-    ///     [8B] multiplicity[1] → 0x80000000 + 1
-    ///     …
-    ///     [8B] multiplicity[P-1] → 0x80000000 + (P-1)
-    ///
-    fn get_rom_histogram_trace_address(rom: &ZiskRom, pc: u64) -> u64 {
-        assert!(rom.max_bios_pc >= ROM_ENTRY);
-        assert!(rom.max_bios_pc < ROM_ADDR);
-        assert!(rom.max_program_pc >= ROM_ADDR);
-        assert!(rom.max_program_pc <= ROM_ADDR_MAX);
-        if pc < ROM_ADDR {
-            TRACE_ADDR_NUMBER + (1 + ((pc - ROM_ENTRY) >> 2)) * 8
-        } else {
-            TRACE_ADDR_NUMBER
-                + (1 + ((rom.max_bios_pc - ROM_ENTRY) >> 2) + 1 + 1 + pc - ROM_ADDR) * 8
-        }
+    ///     [8B] multiplicity[S-1]
+    fn get_rom_histogram_trace_address(index: u64) -> u64 {
+        TRACE_ADDR_NUMBER + (1 + index) * 8
     }
 
     fn chunk_player_start(ctx: &mut ZiskAsmContext, code: &mut String) {

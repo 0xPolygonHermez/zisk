@@ -19,7 +19,7 @@ use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
 use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM,
 };
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
@@ -47,9 +47,9 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(is_asm_emulator: bool) -> Arc<Self> {
+    pub fn new<F: PrimeField64>(is_asm_emulator: bool) -> Arc<Self> {
         let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (vec![], vec![])
+            (create_atomic_vec(RomTrace::<F>::NUM_ROWS as usize), vec![])
         } else {
             (
                 create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
@@ -142,47 +142,17 @@ impl RomSM {
     }
 
     pub fn compute_witness_from_asm<F: PrimeField64>(
-        rom: &ZiskRom,
+        _rom: &ZiskRom,
         asm_romh: &AsmRHData,
         mut trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
-
-        for (i, key) in rom.insts.keys().enumerate() {
-            // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
-
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this
-            // execution
-            let mut multiplicity: u64;
-            if inst.paddr < ROM_ADDR {
-                if asm_romh.bios_inst_count.is_empty() {
-                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-                } else {
-                    let idx = ((inst.paddr - ROM_ENTRY) as usize) >> 2;
-
-                    multiplicity = asm_romh.bios_inst_count[idx];
-
-                    if multiplicity == 0 {
-                        continue;
-                    }
-
-                    if inst.paddr == ROM_EXIT {
-                        multiplicity += main_trace_len - asm_romh.steps % main_trace_len;
-                    }
-                }
-            } else {
-                let idx = (inst.paddr - ROM_ADDR) as usize;
-                multiplicity = asm_romh.prog_inst_count[idx];
-
-                if multiplicity == 0 {
-                    continue;
-                }
+        for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
+            if *multiplicity == 0 {
+                continue;
             }
-
-            trace_buffer[i] = F::from_u64(multiplicity);
+            trace_buffer[i] = F::from_u64(*multiplicity);
         }
 
         Ok(AirInstance::new(TraceInfo::new(
@@ -203,9 +173,12 @@ impl RomSM {
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
     fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().sorted().enumerate() {
-            // Get the Zisk instruction
+        for (_i, key) in rom.insts.keys().sorted().enumerate() {
+            // Get the ZisK instruction
             let inst = &rom.insts[key].i;
+
+            // Get the ZisK instruction index
+            let index = inst.index as usize;
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
@@ -235,17 +208,17 @@ impl RomSM {
             };
 
             // Fill the rom trace row fields
-            rom_custom_trace[i].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-            rom_custom_trace[i].a_offset_imm0 = a_offset_imm0;
-            rom_custom_trace[i].a_imm1 =
+            rom_custom_trace[index].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_custom_trace[index].a_offset_imm0 = a_offset_imm0;
+            rom_custom_trace[index].a_imm1 =
                 F::from_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-            rom_custom_trace[i].b_offset_imm0 = b_offset_imm0;
-            rom_custom_trace[i].b_imm1 =
+            rom_custom_trace[index].b_offset_imm0 = b_offset_imm0;
+            rom_custom_trace[index].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_custom_trace[i].ind_width = F::from_u64(inst.ind_width);
+            rom_custom_trace[index].ind_width = F::from_u64(inst.ind_width);
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
-            rom_custom_trace[i].op = if inst.op == ZiskOp::Fcall.code()
+            rom_custom_trace[index].op = if inst.op == ZiskOp::Fcall.code()
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
@@ -253,10 +226,10 @@ impl RomSM {
             } else {
                 F::from_u8(inst.op)
             };
-            rom_custom_trace[i].store_offset = store_offset;
-            rom_custom_trace[i].jmp_offset1 = jmp_offset1;
-            rom_custom_trace[i].jmp_offset2 = jmp_offset2;
-            rom_custom_trace[i].flags = F::from_u64(inst.get_flags());
+            rom_custom_trace[index].store_offset = store_offset;
+            rom_custom_trace[index].jmp_offset1 = jmp_offset1;
+            rom_custom_trace[index].jmp_offset2 = jmp_offset2;
+            rom_custom_trace[index].flags = F::from_u64(inst.get_flags());
         }
 
         // Padd with zeroes

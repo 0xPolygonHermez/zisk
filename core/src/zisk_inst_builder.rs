@@ -7,6 +7,10 @@ use crate::{
     ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
     SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Global singleton counter for tracking build() calls
+static BUILD_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -244,8 +248,30 @@ impl ZiskInstBuilder {
         self.i.verbose = s.to_owned();
     }
 
+    /// Resets the global build counter to 0
+    #[inline(always)]
+    pub fn reset_build_counter() {
+        BUILD_COUNTER.store(0, Ordering::SeqCst);
+    }
+
+    /// Gets the current value of the global build counter
+    #[inline(always)]
+    pub fn get_build_counter() -> u64 {
+        BUILD_COUNTER.load(Ordering::SeqCst)
+    }
+
+    /// Increments the current value of the global build counter
+    #[inline(always)]
+    pub fn increment_build_counter() -> u64 {
+        BUILD_COUNTER.fetch_add(1, Ordering::SeqCst)
+    }
+
     /// Called when the instruction has been built
     pub fn build(&mut self) {
+        let build_counter = Self::get_build_counter();
+        self.i.index = build_counter;
+        Self::increment_build_counter();
+
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
 }

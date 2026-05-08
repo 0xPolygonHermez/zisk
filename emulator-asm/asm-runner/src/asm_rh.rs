@@ -21,13 +21,12 @@ impl AsmShmemHeader for AsmRHHeader {
 #[derive(Debug, Default)]
 pub struct AsmRHData {
     pub steps: u64,
-    pub bios_inst_count: Vec<u64>,
-    pub prog_inst_count: Vec<u64>,
+    pub inst_count: Vec<u64>,
 }
 
 impl AsmRHData {
-    pub fn new(steps: u64, bios_inst_count: Vec<u64>, prog_inst_count: Vec<u64>) -> Self {
-        AsmRHData { steps, bios_inst_count, prog_inst_count }
+    pub fn new(steps: u64, inst_count: Vec<u64>) -> Self {
+        AsmRHData { steps, inst_count }
     }
 }
 
@@ -39,25 +38,12 @@ impl AsmRHData {
     pub fn from_shared_memory(asm_shared_memory: &AsmSharedMemory<AsmRHHeader>) -> AsmRHData {
         unsafe {
             let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
-            // BIOS chunk data
-            let bios_data_ptr = data_ptr;
-            let bios_len = std::ptr::read(bios_data_ptr) as usize;
-            let bios_data_ptr = bios_data_ptr.add(1);
-            let bios_inst_count = Vec::from_raw_parts(bios_data_ptr, bios_len, bios_len);
+            // chunk data
+            let len = std::ptr::read(data_ptr) as usize;
+            let data_ptr = data_ptr.add(1);
+            let inst_count = Vec::from_raw_parts(data_ptr, len, len);
 
-            // Advance pointer after BIOS
-            let prog_data_ptr = bios_data_ptr.add(bios_len);
-
-            // Program chunk data
-            let prog_len = std::ptr::read(prog_data_ptr) as usize;
-            let prog_data_ptr = prog_data_ptr.add(1);
-            let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
-
-            AsmRHData {
-                steps: asm_shared_memory.map_header().steps,
-                bios_inst_count,
-                prog_inst_count,
-            }
+            AsmRHData { steps: asm_shared_memory.map_header().steps, inst_count }
         }
     }
 }
