@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRowOps};
 
@@ -375,7 +375,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: ArithEq384TraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

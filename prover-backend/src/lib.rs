@@ -2,6 +2,7 @@ mod builder;
 mod guest;
 mod output;
 mod prover;
+pub mod testing;
 mod utils;
 
 pub use executor::get_packed_info;

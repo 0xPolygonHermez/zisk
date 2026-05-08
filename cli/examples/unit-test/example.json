@@ -1,0 +1,117 @@
+{
+  "Binary": [
+    { "op": 15, "a": 5, "b": 5 }
+  ],
+  "BinaryAdd": [
+    [1, 2]
+  ],
+  "BinaryExtension": [
+    { "op": 33, "a": 4, "b": 1 }
+  ],
+  "Arith": [
+    [176, 2, 6, 7]
+  ],
+  "Keccakf": [
+    {
+      "step_main": 0,
+      "addr_main": 0,
+      "state": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "Sha256f": [
+    {
+      "step_main": 0,
+      "addr_main": 0,
+      "state_addr": 0,
+      "input_addr": 0,
+      "state": [0, 0, 0, 0],
+      "input": [0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "Poseidon2": [
+    {
+      "step_main": 0,
+      "addr_main": 0,
+      "state": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "Blake2": [
+    {
+      "addr_main": 0,
+      "step_main": 0,
+      "index": 0,
+      "state_addr": 0,
+      "input_addr": 0,
+      "state": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "input": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "ArithEq": [
+    {
+      "Arith256": {
+        "addr": 0,
+        "a_addr": 0,
+        "b_addr": 0,
+        "c_addr": 0,
+        "dh_addr": 0,
+        "dl_addr": 0,
+        "step": 0,
+        "a": [0, 0, 0, 0],
+        "b": [0, 0, 0, 0],
+        "c": [0, 0, 0, 0]
+      }
+    }
+  ],
+  "ArithEq384": [
+    {
+      "Arith384Mod": {
+        "addr": 0,
+        "a_addr": 0,
+        "b_addr": 0,
+        "c_addr": 0,
+        "module_addr": 0,
+        "d_addr": 0,
+        "step": 0,
+        "a": [0, 0, 0, 0, 0, 0],
+        "b": [0, 0, 0, 0, 0, 0],
+        "c": [0, 0, 0, 0, 0, 0],
+        "module": [1, 0, 0, 0, 0, 0]
+      }
+    }
+  ],
+  "Add256": [
+    {
+      "step_main": 0,
+      "addr_main": 0,
+      "addr_a": 0,
+      "addr_b": 0,
+      "addr_c": 0,
+      "cin": 0,
+      "a": [1, 0, 0, 0],
+      "b": [2, 0, 0, 0]
+    }
+  ],
+  "MemAlign": [
+    {
+      "addr": 0,
+      "is_write": false,
+      "width": 1,
+      "step": 0,
+      "value": 0,
+      "mem_values": [0, 0]
+    }
+  ],
+  "Mem": [
+    { "addr": 335544321, "is_write": true,  "step": 1, "value": 3735928559 },
+    { "addr": 335544321, "is_write": false, "step": 2, "value": 3735928559 }
+  ],
+  "RomData": [
+    { "addr": 268435456, "is_write": false, "step": 1, "value": 0 }
+  ],
+  "InputData": [
+    { "addr": 134217728, "is_write": false, "step": 1, "value": 0 }
+  ],
+  "Dma": [
+    { "src": 0, "dst": 0, "op": 208, "encoded": 0, "count_bus": 0, "step": 0 }
+  ]
+}

@@ -55,6 +55,18 @@ impl<F: PrimeField64> BinarySM<F> {
     pub fn build_binary_counter(&self) -> BinaryCounter {
         BinaryCounter::new()
     }
+
+    pub fn binary_basic_sm(&self) -> &Arc<BinaryBasicSM<F>> {
+        &self.binary_basic_sm
+    }
+
+    pub fn binary_extension_sm(&self) -> &Arc<BinaryExtensionSM<F>> {
+        &self.binary_extension_sm
+    }
+
+    pub fn binary_add_sm(&self) -> &Arc<BinaryAddSM<F>> {
+        &self.binary_add_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {

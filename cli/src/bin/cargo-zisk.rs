@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskNew, ZiskProgramSetup, ZiskProve,
-    ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils, ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
+    ZiskRun, ZiskStats, ZiskToolchain, ZiskUnitTest, ZiskUtils, ZiskVerify, ZiskVerifyConstraints,
+    ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -29,6 +30,8 @@ pub enum Cargo {
     #[command(hide = true)]
     Stats(ZiskStats),
     Toolchain(ZiskToolchain),
+    #[command(hide = true)]
+    UnitTest(ZiskUnitTest),
     Utils(ZiskUtils),
     Verify(ZiskVerify),
     #[command(hide = true)]
@@ -69,6 +72,9 @@ fn main() -> Result<()> {
         }
         Cargo::Toolchain(mut cmd) => {
             cmd.run().context("Error executing Toolchain command")?;
+        }
+        Cargo::UnitTest(mut cmd) => {
+            cmd.run().context("Error executing UnitTest command")?;
         }
         Cargo::Utils(mut cmd) => {
             cmd.run().context("Error executing Utils command")?;

@@ -31,6 +31,8 @@ pil-std-lib = { workspace = true }
 precompiles-hints = { workspace = true }
 anyhow = { workspace = true }
 crossbeam = "0.8.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 precompiles-common = { workspace = true }
 precomp-keccakf = { workspace = true }

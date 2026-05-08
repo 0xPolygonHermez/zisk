@@ -27,6 +27,7 @@ fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
+serde = { workspace = true }
 
 num-traits = "0.2"
 

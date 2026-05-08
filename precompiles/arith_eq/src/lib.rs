@@ -20,3 +20,23 @@ pub use arith_eq_instance::*;
 pub use arith_eq_lt_table::*;
 pub use arith_eq_manager::*;
 pub use arith_eq_planner::*;
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow, ArithEqTraceRowPacked, ARITH_EQ_AIR_IDS};
+
+unit_test_sm! {
+    ArithEqSm => {
+        name: "ArithEq",
+        air: ARITH_EQ_AIR_IDS[0],
+        input: ArithEqInput,
+        manager: ArithEqSM<F>,
+        row: ArithEqTraceRow<F>,
+        row_packed: ArithEqTraceRowPacked<F>,
+        rows_per_input: ARITH_EQ_ROWS_BY_OP,
+        chunk_size: |_| ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP,
+    }
+}

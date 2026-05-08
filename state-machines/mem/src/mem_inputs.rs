@@ -9,7 +9,8 @@ fn format_u64_hex(value: u64) -> String {
         .join("_")
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct MemAlignInput {
     pub addr: u32,
     pub is_write: bool,
@@ -19,7 +20,8 @@ pub struct MemAlignInput {
     pub mem_values: [u64; 2], // values read from memory
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct MemInput {
     pub addr: u32,      // address in word native format means byte_address / MEM_BYTES
     pub is_write: bool, // it's a write operation

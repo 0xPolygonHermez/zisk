@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
 use zisk_common::{ExtOperationData, OperationBusData};
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BinaryInput {
     pub op: u8,
     pub a: u64,

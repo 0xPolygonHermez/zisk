@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use zisk_common::OperationBlake2Data;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Blake2Input {
     pub addr_main: u32,
     pub step_main: u64,

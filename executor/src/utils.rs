@@ -1,4 +1,4 @@
-use crate::{StateMachines, StaticSMBundle, ZiskExecutor};
+use crate::{StateMachines, StaticSMBundle, ZiskExecutor, ZiskExecutorTest};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqManager;
@@ -68,15 +68,29 @@ pub fn initialize_executor<F: PrimeField64>(
 
     proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
 
-    // Step 3: Initialize the secondary state machines
     let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
     register_std(wcm, &std);
 
+    let sm_bundle = build_sm_bundle(std, is_asm_emulator);
+
+    let executor = Arc::new(ZiskExecutor::new(sm_bundle));
+    wcm.register_component(executor.clone());
+    wcm.set_witness_initialized();
+
+    Ok(executor)
+}
+
+/// Constructs the production [`StaticSMBundle`] used by both the live executor
+/// and [`initialize_executor_test`]. Centralized here so that adding/removing a
+/// state machine touches one place.
+pub fn build_sm_bundle<F: PrimeField64>(
+    std: Arc<Std<F>>,
+    is_asm_emulator: bool,
+) -> StaticSMBundle<F> {
     let rom_sm = RomSM::new(is_asm_emulator);
     let binary_sm = BinarySM::new(std.clone());
     let arith_sm = ArithSM::new(std.clone());
     let mem_sm = Mem::new(std.clone());
-    // Step 4: Initialize the precompiles state machines
     let keccakf_sm = KeccakfManager::new(std.clone());
     let sha256f_sm = Sha256fManager::new(std.clone());
     let poseidon2_sm = Poseidon2Manager::new();
@@ -95,13 +109,11 @@ pub fn initialize_executor<F: PrimeField64>(
         (ZISK_AIRGROUP_ID, MEM_ALIGN_WRITE_BYTE_AIR_IDS[0]),
         (ZISK_AIRGROUP_ID, MEM_ALIGN_READ_BYTE_AIR_IDS[0]),
     ];
-
     let binary_instances = vec![
         (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
         (ZISK_AIRGROUP_ID, BINARY_ADD_AIR_IDS[0]),
         (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
     ];
-
     let dma_instances = vec![
         (ZISK_AIRGROUP_ID, DMA_AIR_IDS[0]),
         (ZISK_AIRGROUP_ID, DMA_PRE_POST_AIR_IDS[0]),
@@ -117,51 +129,65 @@ pub fn initialize_executor<F: PrimeField64>(
         (ZISK_AIRGROUP_ID, DMA_64_ALIGNED_MEM_AIR_IDS[0]),
     ];
 
-    let sm_bundle = StaticSMBundle::new(
+    StaticSMBundle::new(
         std.clone(),
         vec![
-            (vec![(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])], StateMachines::RomSM(rom_sm.clone())),
-            (mem_instances, StateMachines::MemSM(mem_sm.clone())),
-            (binary_instances, StateMachines::BinarySM(binary_sm.clone())),
-            (vec![(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])], StateMachines::ArithSM(arith_sm.clone())),
-            // The precompiles state machines
+            (vec![(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])], StateMachines::RomSM(rom_sm)),
+            (mem_instances, StateMachines::MemSM(mem_sm)),
+            (binary_instances, StateMachines::BinarySM(binary_sm)),
+            (vec![(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])], StateMachines::ArithSM(arith_sm)),
             (
                 vec![(ZISK_AIRGROUP_ID, KECCAKF_AIR_IDS[0])],
-                StateMachines::KeccakfManager(keccakf_sm.clone()),
+                StateMachines::KeccakfManager(keccakf_sm),
             ),
             (
                 vec![(ZISK_AIRGROUP_ID, SHA_256_F_AIR_IDS[0])],
-                StateMachines::Sha256fManager(sha256f_sm.clone()),
+                StateMachines::Sha256fManager(sha256f_sm),
             ),
             (
                 vec![(ZISK_AIRGROUP_ID, POSEIDON_2_AIR_IDS[0])],
-                StateMachines::Poseidon2Manager(poseidon2_sm.clone()),
+                StateMachines::Poseidon2Manager(poseidon2_sm),
             ),
             (
                 vec![(ZISK_AIRGROUP_ID, BLAKE_2_BR_AIR_IDS[0])],
-                StateMachines::Blake2Manager(blake2_sm.clone()),
+                StateMachines::Blake2Manager(blake2_sm),
             ),
             (
                 vec![(ZISK_AIRGROUP_ID, ARITH_EQ_AIR_IDS[0])],
-                StateMachines::ArithEqManager(arith_eq_sm.clone()),
+                StateMachines::ArithEqManager(arith_eq_sm),
             ),
             (
                 vec![(ZISK_AIRGROUP_ID, ARITH_EQ_384_AIR_IDS[0])],
-                StateMachines::ArithEq384Manager(arith_eq_384_sm.clone()),
+                StateMachines::ArithEq384Manager(arith_eq_384_sm),
             ),
-            (
-                vec![(ZISK_AIRGROUP_ID, ADD_256_AIR_IDS[0])],
-                StateMachines::Add256Manager(add256_sm.clone()),
-            ),
-            (dma_instances, StateMachines::DmaManager(dma_sm.clone())),
+            (vec![(ZISK_AIRGROUP_ID, ADD_256_AIR_IDS[0])], StateMachines::Add256Manager(add256_sm)),
+            (dma_instances, StateMachines::DmaManager(dma_sm)),
         ],
-    );
+    )
+}
 
-    let executor = Arc::new(ZiskExecutor::new(sm_bundle));
+/// Sibling of [`initialize_executor`] that registers a [`ZiskExecutorTest`] instead of the
+/// production [`ZiskExecutor`]. Reuses [`build_sm_bundle`] so adding/removing a state machine
+/// stays in lockstep with the production path. The test executor reads typed state-machine
+/// inputs (from JSON or programmatically via the session API) and skips ROM execution.
+///
+/// Concrete to `Goldilocks` because the unit-test trait registry is `Goldilocks`-only.
+pub fn initialize_executor_test(
+    verbose_mode: proofman_common::VerboseMode,
+    shared_tables: bool,
+    wcm: &WitnessManager<fields::Goldilocks>,
+) -> Result<Arc<ZiskExecutorTest>> {
+    let rank_info = wcm.get_rank_info();
 
-    // Step 7: Register the executor as a component in the Witness Manager
+    proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
+
+    let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
+    register_std(wcm, &std);
+
+    let sm_bundle = build_sm_bundle(std, false);
+
+    let executor = Arc::new(ZiskExecutorTest::new(sm_bundle));
     wcm.register_component(executor.clone());
-
     wcm.set_witness_initialized();
 
     Ok(executor)

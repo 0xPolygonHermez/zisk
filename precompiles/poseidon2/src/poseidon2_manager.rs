@@ -36,6 +36,10 @@ impl<F: PrimeField64> Poseidon2Manager<F> {
     pub fn build_poseidon2_input_generator(&self) -> Poseidon2CounterInputGen {
         Poseidon2CounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn poseidon2_sm(&self) -> &Arc<Poseidon2SM<F>> {
+        &self.poseidon2_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Poseidon2Manager<F> {

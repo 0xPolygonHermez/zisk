@@ -37,6 +37,10 @@ impl<F: PrimeField64> Add256Manager<F> {
     pub fn build_add256_input_generator(&self) -> Add256CounterInputGen {
         Add256CounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn add256_sm(&self) -> &Arc<Add256SM<F>> {
+        &self.add256_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Add256Manager<F> {

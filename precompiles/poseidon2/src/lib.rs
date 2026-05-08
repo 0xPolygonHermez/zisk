@@ -13,3 +13,23 @@ pub use poseidon2_input::*;
 pub use poseidon2_instance::*;
 pub use poseidon2_manager::*;
 pub use poseidon2_planner::*;
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{Poseidon2TraceRow, Poseidon2TraceRowPacked, POSEIDON_2_AIR_IDS};
+
+unit_test_sm! {
+    Poseidon2Sm => {
+        name: "Poseidon2",
+        air: POSEIDON_2_AIR_IDS[0],
+        input: Poseidon2Input,
+        manager: Poseidon2SM<F>,
+        row: Poseidon2TraceRow<F>,
+        row_packed: Poseidon2TraceRowPacked<F>,
+        rows_per_input: CLOCKS,
+        chunk_size: |sm| sm.num_available_poseidon2s,
+    }
+}

@@ -2,7 +2,7 @@ use fields::PrimeField64;
 use std::sync::Arc;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEqTrace, ArithEqTraceRowOps};
 
@@ -527,7 +527,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: ArithEqTraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEqInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

@@ -2,7 +2,8 @@ use precompiles_helpers::DmaInfo;
 use zisk_common::{A, B, DMA_MEMCMP_COUNT_BUS, STEP};
 use zisk_core::zisk_ops::ZiskOp;
 
-#[derive(Debug)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct DmaInput {
     pub src: u32,
     pub dst: u32,

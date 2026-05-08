@@ -208,3 +208,18 @@ reqwest = { version = "0.12", features = [
     "rustls-tls",
 ], default-features = false }
 vergen-git2 = { version = "9", default-features = false, features = ["build"] }
+
+
+# Local proofman override — points all proofman-* crates at the local
+# pil2-proofman checkout so we can test in-progress fixes without pushing
+# to the upstream branch. Remove this section before merging.
+[patch."https://github.com/0xPolygonHermez/pil2-proofman.git"]
+proofman = { path = "/home/roger/pil2-proofman/proofman" }
+proofman-common = { path = "/home/roger/pil2-proofman/common" }
+proofman-macros = { path = "/home/roger/pil2-proofman/macros" }
+proofman-verifier = { path = "/home/roger/pil2-proofman/verifier" }
+proofman-util = { path = "/home/roger/pil2-proofman/util" }
+proofman-starks-lib-c = { path = "/home/roger/pil2-proofman/provers/starks-lib-c" }
+pil-std-lib = { path = "/home/roger/pil2-proofman/pil2-components/lib/std/rs" }
+witness = { path = "/home/roger/pil2-proofman/witness" }
+fields = { path = "/home/roger/pil2-proofman/fields" }

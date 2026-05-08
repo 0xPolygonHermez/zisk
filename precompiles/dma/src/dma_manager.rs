@@ -82,6 +82,54 @@ impl<F: PrimeField64> DmaManager<F> {
     pub fn build_dma_input_generator(&self) -> DmaCounterInputGen {
         DmaCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn dma_sm(&self) -> &Arc<DmaSM<F>> {
+        &self.dma_sm
+    }
+
+    pub fn dma_memcpy_sm(&self) -> &Arc<DmaMemCpySM<F>> {
+        &self.dma_memcpy_sm
+    }
+
+    pub fn dma_inputcpy_sm(&self) -> &Arc<DmaInputCpySM<F>> {
+        &self.dma_inputcpy_sm
+    }
+
+    pub fn dma_pre_post_sm(&self) -> &Arc<DmaPrePostSM<F>> {
+        &self.dma_pre_post_sm
+    }
+
+    pub fn dma_pre_post_memcpy_sm(&self) -> &Arc<DmaPrePostMemCpySM<F>> {
+        &self.dma_pre_post_memcpy_sm
+    }
+
+    pub fn dma_pre_post_inputcpy_sm(&self) -> &Arc<DmaPrePostInputCpySM<F>> {
+        &self.dma_pre_post_inputcpy_sm
+    }
+
+    pub fn dma_64_aligned_sm(&self) -> &Arc<Dma64AlignedSM<F>> {
+        &self.dma_64_aligned_sm
+    }
+
+    pub fn dma_64_aligned_mem_sm(&self) -> &Arc<Dma64AlignedMemSM<F>> {
+        &self.dma_64_aligned_mem_sm
+    }
+
+    pub fn dma_64_aligned_memcpy_sm(&self) -> &Arc<Dma64AlignedMemCpySM<F>> {
+        &self.dma_64_aligned_memcpy_sm
+    }
+
+    pub fn dma_64_aligned_memset_sm(&self) -> &Arc<Dma64AlignedMemSetSM<F>> {
+        &self.dma_64_aligned_memset_sm
+    }
+
+    pub fn dma_64_aligned_inputcpy_sm(&self) -> &Arc<Dma64AlignedInputCpySM<F>> {
+        &self.dma_64_aligned_inputcpy_sm
+    }
+
+    pub fn dma_unaligned_sm(&self) -> &Arc<DmaUnalignedSM<F>> {
+        &self.dma_unaligned_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {

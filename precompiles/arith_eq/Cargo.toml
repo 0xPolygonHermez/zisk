@@ -70,6 +70,10 @@ typenum = "1.16"
 lazy_static = "1.4"
 path-clean = "1.0"
 
+[dev-dependencies]
+# Used by the per-AIR unit-test suite at tests/unit_test.rs.
+zisk-prover-backend = { workspace = true }
+
 [features]
 default = []
 test_data = []

@@ -76,6 +76,19 @@ impl<F: PrimeField64> MemAlignSM<F> {
         })
     }
 
+    /// Returns the number of trace rows that a single `MemAlignInput` consumes when proven.
+    /// Mirrors the per-input row count used inside `compute_witness`.
+    pub fn rows_per_input(input: &MemAlignInput) -> usize {
+        let width = input.width as usize;
+        let offset = (input.addr & OFFSET_MASK) as usize;
+        match (input.is_write, offset + width > CHUNK_NUM) {
+            (false, false) => 2,
+            (true, false) => 3,
+            (false, true) => 3,
+            (true, true) => 5,
+        }
+    }
+
     pub fn prove_mem_align_op<R: MemAlignTraceRowOps<F>>(
         &self,
         input: &MemAlignInput,

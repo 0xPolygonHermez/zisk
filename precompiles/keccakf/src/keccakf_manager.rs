@@ -38,6 +38,10 @@ impl<F: PrimeField64> KeccakfManager<F> {
     pub fn build_keccakf_input_generator(&self) -> KeccakfCounterInputGen {
         KeccakfCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn keccakf_sm(&self) -> &Arc<KeccakfSM<F>> {
+        &self.keccakf_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for KeccakfManager<F> {

@@ -44,6 +44,10 @@ impl<F: PrimeField64> ArithSM<F> {
     pub fn build_arith_input_generator(&self) -> ArithCounterInputGen {
         ArithCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn arith_full_sm(&self) -> &Arc<ArithFullSM<F>> {
+        &self.arith_full_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {

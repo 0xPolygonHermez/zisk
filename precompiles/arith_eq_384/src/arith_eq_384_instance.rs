@@ -91,7 +91,7 @@ impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
+        _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
         packed: bool,
@@ -104,17 +104,15 @@ impl<F: PrimeField64> Instance<F> for ArithEq384Instance<F> {
             .collect();
 
         if packed {
-            Ok(Some(self.arith_eq_384_sm.compute_witness::<ArithEq384TraceRowPacked<F>>(
-                sctx,
-                &inputs,
-                trace_buffer,
-            )?))
+            Ok(Some(
+                self.arith_eq_384_sm
+                    .compute_witness::<ArithEq384TraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
         } else {
-            Ok(Some(self.arith_eq_384_sm.compute_witness::<ArithEq384TraceRow<F>>(
-                sctx,
-                &inputs,
-                trace_buffer,
-            )?))
+            Ok(Some(
+                self.arith_eq_384_sm
+                    .compute_witness::<ArithEq384TraceRow<F>>(&inputs, trace_buffer)?,
+            ))
         }
     }
 

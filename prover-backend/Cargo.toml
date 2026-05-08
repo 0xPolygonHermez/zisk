@@ -18,10 +18,23 @@ proofman-verifier = { workspace = true }
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-cluster-common = { workspace = true }
+zisk-pil = { workspace = true }
 executor = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
+# Input/row type re-exports — keep tests on a single import surface.
+sm-arith = { workspace = true }
+sm-binary = { workspace = true }
+sm-mem = { workspace = true }
+precomp-keccakf = { workspace = true }
+precomp-sha256f = { workspace = true }
+precomp-poseidon2 = { workspace = true }
+precomp-blake2 = { workspace = true }
+precomp-arith-eq = { workspace = true }
+precomp-arith-eq-384 = { workspace = true }
+precomp-big-int = { workspace = true }
+precomp-dma = { workspace = true }
 fields = { workspace = true }
 borsh = { workspace = true }
 
@@ -34,6 +47,7 @@ colored = { workspace = true }
 tracing = { workspace = true }
 bincode = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 blake3 = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }

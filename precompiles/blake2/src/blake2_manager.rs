@@ -37,6 +37,10 @@ impl<F: PrimeField64> Blake2Manager<F> {
     pub fn build_blake2_input_generator(&self) -> Blake2CounterInputGen {
         Blake2CounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn blake2_sm(&self) -> &Arc<Blake2SM<F>> {
+        &self.blake2_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Blake2Manager<F> {

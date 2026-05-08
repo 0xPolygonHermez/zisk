@@ -1,8 +1,10 @@
 use crate::add256_constants::*;
+use serde::{Deserialize, Serialize};
 use zisk_common::OperationAdd256Data;
 use zisk_common::{B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
 
-#[derive(Debug)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Add256Input {
     pub step_main: u64,
     pub addr_main: u32,

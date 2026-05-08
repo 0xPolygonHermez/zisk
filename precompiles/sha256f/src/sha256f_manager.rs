@@ -37,6 +37,10 @@ impl<F: PrimeField64> Sha256fManager<F> {
     pub fn build_sha256f_input_generator(&self) -> Sha256fCounterInputGen {
         Sha256fCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn sha256f_sm(&self) -> &Arc<Sha256fSM<F>> {
+        &self.sha256f_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Sha256fManager<F> {

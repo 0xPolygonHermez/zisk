@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use zisk_common::OperationPoseidon2Data;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Poseidon2Input {
     pub step_main: u64,
     pub addr_main: u32,

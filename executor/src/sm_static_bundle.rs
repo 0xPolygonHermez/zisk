@@ -194,6 +194,83 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         1
     }
 
+    pub fn binary_sm(&self) -> Option<Arc<BinarySM<F>>> {
+        match &self.sm.get(&2)?.1 {
+            StateMachines::BinarySM(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn arith_sm(&self) -> Option<Arc<ArithSM<F>>> {
+        match &self.sm.get(&3)?.1 {
+            StateMachines::ArithSM(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn mem_sm(&self) -> Option<Arc<Mem<F>>> {
+        match &self.sm.get(&1)?.1 {
+            StateMachines::MemSM(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn keccakf_sm(&self) -> Option<Arc<KeccakfManager<F>>> {
+        match &self.sm.get(&4)?.1 {
+            StateMachines::KeccakfManager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn sha256f_sm(&self) -> Option<Arc<Sha256fManager<F>>> {
+        match &self.sm.get(&5)?.1 {
+            StateMachines::Sha256fManager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn poseidon2_sm(&self) -> Option<Arc<Poseidon2Manager<F>>> {
+        match &self.sm.get(&6)?.1 {
+            StateMachines::Poseidon2Manager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn blake2_sm(&self) -> Option<Arc<Blake2Manager<F>>> {
+        match &self.sm.get(&7)?.1 {
+            StateMachines::Blake2Manager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn arith_eq_sm(&self) -> Option<Arc<ArithEqManager<F>>> {
+        match &self.sm.get(&8)?.1 {
+            StateMachines::ArithEqManager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn arith_eq_384_sm(&self) -> Option<Arc<ArithEq384Manager<F>>> {
+        match &self.sm.get(&9)?.1 {
+            StateMachines::ArithEq384Manager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn add256_sm(&self) -> Option<Arc<Add256Manager<F>>> {
+        match &self.sm.get(&10)?.1 {
+            StateMachines::Add256Manager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn dma_sm(&self) -> Option<Arc<DmaManager<F>>> {
+        match &self.sm.get(&11)?.1 {
+            StateMachines::DmaManager(sm) => Some(sm.clone()),
+            _ => None,
+        }
+    }
+
     pub fn plan_sec(
         &self,
         vec_counters: &mut NestedDeviceMetricsList,

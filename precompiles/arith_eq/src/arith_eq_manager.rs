@@ -38,6 +38,10 @@ impl<F: PrimeField64> ArithEqManager<F> {
     pub fn build_arith_eq_input_generator(&self) -> ArithEqCounterInputGen {
         ArithEqCounterInputGen::new(BusDeviceMode::InputGenerator)
     }
+
+    pub fn arith_eq_sm(&self) -> &Arc<ArithEqSM<F>> {
+        &self.arith_eq_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {

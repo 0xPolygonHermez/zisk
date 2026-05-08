@@ -12,6 +12,7 @@ mod proof_log;
 mod regular_counters;
 mod regular_planner;
 mod types;
+pub mod unit_test_sm;
 mod utils;
 
 pub use bus::*;
@@ -27,4 +28,5 @@ pub use proof_log::*;
 pub use regular_counters::*;
 pub use regular_planner::*;
 pub use types::*;
+pub use unit_test_sm::{DynUnitTestSm, UnitTestSm};
 pub use utils::*;
