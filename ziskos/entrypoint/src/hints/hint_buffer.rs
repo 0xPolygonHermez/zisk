@@ -1,8 +1,8 @@
 use bytes::{Bytes, BytesMut};
 use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
