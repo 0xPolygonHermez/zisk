@@ -1,6 +1,8 @@
 use bytes::{Bytes, BytesMut};
 use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::thread;
+use std::time::Duration;
 use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
@@ -162,6 +164,35 @@ impl HintBuffer {
             Ok(())
         }
 
+        fn flush_with_retries<W: Write + ?Sized>(
+            writer: &mut W,
+            retries: usize,
+            base_delay: Duration,
+        ) -> io::Result<()> {
+            for attempt in 0..=retries {
+                match writer.flush() {
+                    Ok(()) => return Ok(()),
+
+                    Err(e)
+                        if e.raw_os_error() == Some(105) // ENOBUFS
+                            || e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::Interrupted =>
+                    {
+                        if attempt == retries {
+                            return Err(e);
+                        }
+
+                        let delay = base_delay * (attempt as u32 + 1);
+                        thread::sleep(delay);
+                    }
+
+                    Err(e) => return Err(e),
+                }
+            }
+
+            unreachable!()
+        }
+
         let mut flush_threshold = std::cmp::min(write_flush_threshold, MAX_WRITER_LEN);
         flush_threshold = flush_threshold.max(1);
 
@@ -265,9 +296,9 @@ impl HintBuffer {
         flush_write_buf(&mut write_all, &mut write_buf)?;
 
         // Flush the writer and debug writer at the end
-        writer.flush()?;
+        flush_with_retries(writer, 10, Duration::from_millis(50))?;
         if let Some(debug_writer) = debug_writer.as_deref_mut() {
-            debug_writer.flush()?;
+            flush_with_retries(debug_writer, 10, Duration::from_millis(50))?;
         }
 
         Ok(())
