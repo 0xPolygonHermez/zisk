@@ -11,7 +11,7 @@ environment = "production"
 
 [coordinator]
 # "zisk-coordinator" resolves to the coordinator container via Docker's internal DNS.
-url = "http://127.0.0.1:50051"
+url = "http://127.0.0.1:50052"
 
 [connection]
 reconnect_interval_seconds = 5
