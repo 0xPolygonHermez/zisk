@@ -7464,6 +7464,7 @@ dependencies = [
  "dirs",
  "fields",
  "libc",
+ "paste",
  "proofman",
  "proofman-common",
  "proofman-util",

@@ -295,7 +295,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
                     arith_eq_384_counter = Some((
                         sm.type_id(),
-                        arith_eq_384_sm.build_arith_eq_384_counter(is_asm_emulator),
+                        arith_eq_384_sm.build_arith_eq384_counter(is_asm_emulator),
                     ));
                 }
                 StateMachines::Add256Manager(add256_sm) => {
@@ -581,7 +581,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                                     )
                                 })?;
                             let arith_eq_384_collector = arith_eq_384_instance
-                                .build_arith_eq_384_collector(ChunkId(chunk_id));
+                                .build_arith_eq384_collector(ChunkId(chunk_id));
                             arith_eq_384_collectors.push((*global_idx, arith_eq_384_collector));
                         }
                         air_id if air_id == ADD_256_AIR_IDS[0] => {
@@ -722,7 +722,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                         }
                         StateMachines::ArithEq384Manager(arith_eq_384_sm) => {
                             arith_eq_384_inputs_generator =
-                                Some(arith_eq_384_sm.build_arith_eq_384_input_generator());
+                                Some(arith_eq_384_sm.build_arith_eq384_input_generator());
                         }
                         StateMachines::Add256Manager(add256_sm) => {
                             add256_inputs_generator =

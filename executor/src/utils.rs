@@ -79,7 +79,7 @@ pub fn initialize_executor<F: PrimeField64>(
     // Step 4: Initialize the precompiles state machines
     let keccakf_sm = KeccakfManager::new(std.clone());
     let sha256f_sm = Sha256fManager::new(std.clone());
-    let poseidon2_sm = Poseidon2Manager::new();
+    let poseidon2_sm = Poseidon2Manager::new(std.clone());
     let blake2_sm = Blake2Manager::new(std.clone());
     let arith_eq_sm = ArithEqManager::new(std.clone());
     let arith_eq_384_sm = ArithEq384Manager::new(std.clone());

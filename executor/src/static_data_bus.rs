@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 
 use crate::DummyCounter;
 use data_bus::DataBusTrait;
+use fields::PrimeField64;
 use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
@@ -35,7 +36,7 @@ use zisk_core::{
 /// * `D` - The type of data payloads handled by the bus.
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
-pub struct StaticDataBus<D> {
+pub struct StaticDataBus<D, F: PrimeField64> {
     /// Flag indicating whether the bus should only process operation bus related data.
     process_only_operation_bus: bool,
 
@@ -44,20 +45,20 @@ pub struct StaticDataBus<D> {
     pub mem_counter: (usize, Option<MemCounters>),
     pub binary_counter: (usize, BinaryCounter),
     pub arith_counter: (usize, ArithCounterInputGen),
-    pub keccakf_counter: (usize, KeccakfCounterInputGen),
-    pub sha256f_counter: (usize, Sha256fCounterInputGen),
-    pub poseidon2_counter: (usize, Poseidon2CounterInputGen),
-    pub blake2_counter: (usize, Blake2CounterInputGen),
-    pub arith_eq_counter: (usize, ArithEqCounterInputGen),
-    pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
-    pub add_256_counter: (usize, Add256CounterInputGen),
+    pub keccakf_counter: (usize, KeccakfCounterInputGen<F>),
+    pub sha256f_counter: (usize, Sha256fCounterInputGen<F>),
+    pub poseidon2_counter: (usize, Poseidon2CounterInputGen<F>),
+    pub blake2_counter: (usize, Blake2CounterInputGen<F>),
+    pub arith_eq_counter: (usize, ArithEqCounterInputGen<F>),
+    pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen<F>),
+    pub add_256_counter: (usize, Add256CounterInputGen<F>),
     pub dma_counter: (usize, DmaCounterInputGen),
     pub rom_counter_id: Option<usize>,
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 }
 
-impl StaticDataBus<PayloadType> {
+impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     /// Creates a new `DataBus` instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -65,13 +66,13 @@ impl StaticDataBus<PayloadType> {
         mem_counter: (usize, Option<MemCounters>),
         binary_counter: (usize, BinaryCounter),
         arith_counter: (usize, ArithCounterInputGen),
-        keccakf_counter: (usize, KeccakfCounterInputGen),
-        sha256f_counter: (usize, Sha256fCounterInputGen),
-        poseidon2_counter: (usize, Poseidon2CounterInputGen),
-        blake2_counter: (usize, Blake2CounterInputGen),
-        arith_eq_counter: (usize, ArithEqCounterInputGen),
-        arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
-        add_256_counter: (usize, Add256CounterInputGen),
+        keccakf_counter: (usize, KeccakfCounterInputGen<F>),
+        sha256f_counter: (usize, Sha256fCounterInputGen<F>),
+        poseidon2_counter: (usize, Poseidon2CounterInputGen<F>),
+        blake2_counter: (usize, Blake2CounterInputGen<F>),
+        arith_eq_counter: (usize, ArithEqCounterInputGen<F>),
+        arith_eq_384_counter: (usize, ArithEq384CounterInputGen<F>),
+        add_256_counter: (usize, Add256CounterInputGen<F>),
         dma_counter: (usize, DmaCounterInputGen),
         rom_counter_id: Option<usize>,
     ) -> Self {
@@ -178,7 +179,9 @@ impl StaticDataBus<PayloadType> {
     }
 }
 
-impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<PayloadType> {
+impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
+    for StaticDataBus<PayloadType, F>
+{
     #[inline(always)]
     fn write_to_bus(
         &mut self,

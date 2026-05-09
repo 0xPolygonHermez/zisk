@@ -5,14 +5,38 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::OperationBlake2Data;
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
 
-use super::{
-    blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA},
-    Blake2Input,
-};
+use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
+
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct Blake2Input {
+    pub addr_main: u32,
+    pub step_main: u64,
+    pub index: u64,
+    pub state_addr: u32,
+    pub input_addr: u32,
+    pub state: [u64; 16],
+    pub input: [u64; 16],
+}
+
+impl Blake2Input {
+    pub fn from(values: &OperationBlake2Data<u64>) -> Self {
+        Self {
+            addr_main: values[3] as u32,
+            step_main: values[4],
+            index: values[5],
+            state_addr: values[6] as u32,
+            input_addr: values[7] as u32,
+            state: values[8..24].try_into().unwrap(),
+            input: values[24..40].try_into().unwrap(),
+        }
+    }
+}
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
 pub struct Blake2SM<F: PrimeField64> {
@@ -291,6 +315,7 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Blake2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

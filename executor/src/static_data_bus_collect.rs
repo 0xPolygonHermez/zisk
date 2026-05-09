@@ -61,25 +61,25 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
 
     /// Cryptographic hash collectors (grouped for cache locality)
     pub keccakf_collector: Vec<(usize, KeccakfCollector)>,
-    pub keccakf_inputs_generator: KeccakfCounterInputGen,
+    pub keccakf_inputs_generator: KeccakfCounterInputGen<F>,
     pub sha256f_collector: Vec<(usize, Sha256fCollector)>,
-    pub sha256f_inputs_generator: Sha256fCounterInputGen,
+    pub sha256f_inputs_generator: Sha256fCounterInputGen<F>,
     pub poseidon2_collector: Vec<(usize, Poseidon2Collector)>,
-    pub poseidon2_inputs_generator: Poseidon2CounterInputGen,
+    pub poseidon2_inputs_generator: Poseidon2CounterInputGen<F>,
     pub blake2_collector: Vec<(usize, Blake2Collector)>,
-    pub blake2_inputs_generator: Blake2CounterInputGen,
+    pub blake2_inputs_generator: Blake2CounterInputGen<F>,
 
     /// Arithmetic equality collectors
     pub arith_eq_collector: Vec<(usize, ArithEqCollector)>,
-    pub arith_eq_inputs_generator: ArithEqCounterInputGen,
+    pub arith_eq_inputs_generator: ArithEqCounterInputGen<F>,
 
     /// ArithEq384 collectors
     pub arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
-    pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
+    pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen<F>,
 
     /// Add256 collectors
     pub add256_collector: Vec<(usize, Add256Collector)>,
-    pub add256_inputs_generator: Add256CounterInputGen,
+    pub add256_inputs_generator: Add256CounterInputGen<F>,
 
     /// Dma collectors
     pub dma_collector: Vec<(usize, DmaCollector)>,
@@ -129,14 +129,14 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
         dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
         rom_collector: Vec<(usize, RomCollector)>,
-        arith_eq_inputs_generator: ArithEqCounterInputGen,
-        arith_eq_384_inputs_generator: ArithEq384CounterInputGen,
-        keccakf_inputs_generator: KeccakfCounterInputGen,
-        sha256f_inputs_generator: Sha256fCounterInputGen,
-        poseidon2_inputs_generator: Poseidon2CounterInputGen,
-        blake2_inputs_generator: Blake2CounterInputGen,
+        arith_eq_inputs_generator: ArithEqCounterInputGen<F>,
+        arith_eq_384_inputs_generator: ArithEq384CounterInputGen<F>,
+        keccakf_inputs_generator: KeccakfCounterInputGen<F>,
+        sha256f_inputs_generator: Sha256fCounterInputGen<F>,
+        poseidon2_inputs_generator: Poseidon2CounterInputGen<F>,
+        blake2_inputs_generator: Blake2CounterInputGen<F>,
         arith_inputs_generator: ArithCounterInputGen,
-        add256_inputs_generator: Add256CounterInputGen,
+        add256_inputs_generator: Add256CounterInputGen<F>,
         dma_inputs_generator: DmaCounterInputGen,
     ) -> Self {
         Self {
