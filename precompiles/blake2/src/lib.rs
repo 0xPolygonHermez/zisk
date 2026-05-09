@@ -1,17 +1,16 @@
 mod blake2;
-mod blake2_bus_device;
 mod blake2_constants;
-mod blake2_gen_mem_inputs;
-mod blake2_input;
-mod blake2_instance;
-mod blake2_manager;
-mod blake2_planner;
+mod blake2_mem_inputs;
 
 pub use blake2::*;
-pub use blake2_bus_device::*;
 pub use blake2_constants::*;
-pub use blake2_gen_mem_inputs::*;
-pub use blake2_input::*;
-pub use blake2_instance::*;
-pub use blake2_manager::*;
-pub use blake2_planner::*;
+
+zisk_common::zisk_precompile! {
+    name = Blake2,
+    op_type = Blake2,
+    trace = Blake2brTrace,
+    num_available_field = num_available_blake2s,
+    ops = [
+        (OperationBlake2Data, Blake2Input),
+    ],
+}

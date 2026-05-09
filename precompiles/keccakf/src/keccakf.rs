@@ -3,19 +3,36 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use precompiles_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
 };
+use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
-
-use crate::KeccakfInput;
 
 use super::{keccakf_constants::*, KeccakfTableSM};
 
 use rayon::prelude::*;
+
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct KeccakfInput {
+    pub step_main: u64,
+    pub addr_main: u32,
+    pub state: [u64; 25],
+}
+
+impl KeccakfInput {
+    pub fn from(values: &OperationKeccakData<u64>) -> Self {
+        Self {
+            step_main: values[4],
+            addr_main: values[3] as u32,
+            state: values[5..30].try_into().unwrap(),
+        }
+    }
+}
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
 pub struct KeccakfSM<F: PrimeField64> {
@@ -140,6 +157,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: KeccakfTraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

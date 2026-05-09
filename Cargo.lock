@@ -7367,6 +7367,7 @@ dependencies = [
  "dirs",
  "fields 1.0.0-beta",
  "libc",
+ "paste",
  "proofman",
  "proofman-common",
  "proofman-verifier 1.0.0-beta",
