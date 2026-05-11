@@ -86,6 +86,7 @@ jobs:
           ./build_setup.sh
           echo "Proving key should be available at: /github/home/.zisk/provingKey"
           ls -lha /github/home/.zisk/provingKey
+          ls -lha /github/home/.zisk/provingKey/zisk/Zisk
 
       # - name: Test sha_hasher (CPU)
       #   env:

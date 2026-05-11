@@ -135,7 +135,10 @@ main() {
     local gpu_flag=""
     [[ "${ONLY_CPU:-}" != "1" ]] && gpu_flag="--gpu"
     step "Generate constant tree files..."
-    # ensure cargo-zisk check-setup ${gpu_flag} || return 1
+    echo "Proving key should be available at: /github/home/.zisk/provingKey"
+    ls -lha /github/home/.zisk/provingKey
+    ls -lha /github/home/.zisk/provingKey/zisk/Zisk
+    ensure cargo-zisk check-setup ${gpu_flag} || return 1
 
     success "ZisK setup completed successfully!"
 }
