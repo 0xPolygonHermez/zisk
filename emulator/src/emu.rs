@@ -1278,7 +1278,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             2,
-                            instruction.ind_width as u8,
+                            8,
                             value,
                             [raw_data_1, raw_data_2],
                         );
