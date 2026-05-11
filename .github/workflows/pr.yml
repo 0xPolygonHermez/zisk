@@ -72,13 +72,6 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh --cuda
 
-      - name: Install NVIDIA drivers
-        run: |
-          wget -q "https://us.download.nvidia.com/XFree86/Linux-x86_64/580.142/NVIDIA-Linux-x86_64-580.142.run" -O /tmp/nvidia-driver.run
-          chmod +x /tmp/nvidia-driver.run
-          /tmp/nvidia-driver.run --no-kernel-modules --silent
-          rm -f /tmp/nvidia-driver.run
-          
       - name: Build ZisK
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
@@ -162,7 +155,7 @@ jobs:
 
       - name: Test sha_hasher
         env:
-          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.0"
+          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
