@@ -181,6 +181,24 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
     }
 }
 
+/// Converts a coordinator event into the `(status, result)` pair used by
+/// `wait_job_result`. Returns `(Running, None)` for non-terminal events.
+fn wait_result_from_event(
+    event: CoordinatorJobEvent,
+    hash_id: &str,
+) -> (DomainJobStatus, Option<DomainJobKindResponse>) {
+    match event {
+        CoordinatorJobEvent::Completed(r) => {
+            (DomainJobStatus::Completed, Some(coord_result_to_domain(r, hash_id)))
+        }
+        CoordinatorJobEvent::Failed(reason) => {
+            (DomainJobStatus::Failed(DomainJobFailure::Execution { reason }), None)
+        }
+        CoordinatorJobEvent::Cancelled => (DomainJobStatus::Cancelled, None),
+        _ => (DomainJobStatus::Running(None), None),
+    }
+}
+
 fn is_terminal(event: &CoordinatorJobEvent) -> bool {
     matches!(
         event,
@@ -195,7 +213,9 @@ fn is_terminal(event: &CoordinatorJobEvent) -> bool {
 /// Queued and Started fire atomically at job creation, before `submit_job`
 /// returns. Any client calling `watch_job` after submission has always missed
 /// them. For jobs already past Contributions, the phase-transition Progress
-/// events are also synthesized.
+/// events are also synthesized. The terminal event itself is NOT synthesized
+/// here — callers should fetch the stashed real event via
+/// `Coordinator::get_terminal_event` and append it separately.
 fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
     let ts = Utc::now();
     let queued = DomainJobEvent::Queued(DomainJobEventQueued { job_id, timestamp: ts });
@@ -219,9 +239,9 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
             }
             events
         }
-        // Terminal: broadcast channel is already closed; subscribe_job_events
-        // returns None so watch_job returns an error before we reach this.
-        JobState::Completed | JobState::Failed | JobState::Cancelled => vec![],
+        // Terminal: emit only the queued/started pre-roll. The real terminal
+        // event is fetched from the Coordinator's stash and appended by the caller.
+        JobState::Completed | JobState::Failed | JobState::Cancelled => vec![queued, started],
     }
 }
 
@@ -320,11 +340,26 @@ impl BackendService for CoordinatorBackend {
 
     async fn wait_job_result(&self, job_id: Uuid, timeout_dur: Duration) -> ApiResult<WaitResult> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
-        let mut rx = self
-            .coordinator
-            .subscribe_job_events(&job_id_internal)
-            .await
-            .ok_or(ApiError::JobNotFound(job_id))?;
+
+        let job_id_str = job_id.to_string();
+        let hash_id = self.job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
+
+        // Existence is sourced from the event channel, not the `jobs` map:
+        // setup jobs live in `setup_pending` (not `jobs`) but DO have event
+        // channels — sourcing from `jobs` would falsely 404 them.
+        //
+        // Subscribe BEFORE checking the stash so a terminal event that fires
+        // between our two reads is captured by the receiver.
+        let rx_opt = self.coordinator.subscribe_job_events(&job_id_internal).await;
+
+        if let Some(terminal) = self.coordinator.get_terminal_event(&job_id_internal).await {
+            let (status, kind_result) = wait_result_from_event(terminal, &hash_id);
+            self.job_hash.write().await.remove(&job_id_str);
+            return Ok(WaitResult { job_id, job_status: status, result: kind_result });
+        }
+
+        // Neither stash nor live channel → job does not exist (or already evicted).
+        let mut rx = rx_opt.ok_or(ApiError::JobNotFound(job_id))?;
 
         let result = timeout(timeout_dur, async {
             loop {
@@ -343,18 +378,8 @@ impl BackendService for CoordinatorBackend {
         })
         .await;
 
-        let job_id_str = job_id.to_string();
-        let hash_id = self.job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
-
         let (job_status, kind_result) = match result {
-            Ok(Some(CoordinatorJobEvent::Completed(r))) => {
-                let kr = coord_result_to_domain(r, &hash_id);
-                (DomainJobStatus::Completed, Some(kr))
-            }
-            Ok(Some(CoordinatorJobEvent::Failed(reason))) => {
-                (DomainJobStatus::Failed(DomainJobFailure::Execution { reason }), None)
-            }
-            Ok(Some(CoordinatorJobEvent::Cancelled)) => (DomainJobStatus::Cancelled, None),
+            Ok(Some(event)) => wait_result_from_event(event, &hash_id),
             _ => (DomainJobStatus::Running(None), None),
         };
 
@@ -368,34 +393,61 @@ impl BackendService for CoordinatorBackend {
     async fn watch_job(&self, job_id: Uuid) -> ApiResult<JobEventStream> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
 
-        // Subscribe before reading state so we don't miss events that fire in the gap.
-        let rx = self
-            .coordinator
-            .subscribe_job_events(&job_id_internal)
-            .await
-            .ok_or(ApiError::JobNotFound(job_id))?;
+        // Existence is sourced from the event channel, not the `jobs` map:
+        // setup jobs live in `setup_pending` (not `jobs`) but DO have event
+        // channels — sourcing from `jobs` would falsely 404 them.
+        //
+        // Subscribe BEFORE checking the stash so we don't miss a terminal event
+        // that fires between our two reads.
+        let rx_opt = self.coordinator.subscribe_job_events(&job_id_internal).await;
+        let stashed_terminal = self.coordinator.get_terminal_event(&job_id_internal).await;
 
-        // Synthesize events the client missed between job submission and now.
-        // Clone the Arc first so we can drop the jobs map lock before awaiting the job lock.
-        let catchup = {
-            let job_arc = self.coordinator.jobs().read().await.get(&job_id_internal).cloned();
-            if let Some(arc) = job_arc {
-                catchup_events(&arc.read().await.state, job_id)
-            } else {
-                vec![]
-            }
+        // Both None → job is unknown (or already evicted by retention sweep).
+        if rx_opt.is_none() && stashed_terminal.is_none() {
+            return Err(ApiError::JobNotFound(job_id));
+        }
+
+        // Best-effort catchup from the Job snapshot. Setup jobs aren't in
+        // `jobs` (they use `setup_pending`) — degrade to a Created-state
+        // catchup (just Queued) in that case.
+        let job_state = self
+            .coordinator
+            .jobs()
+            .read()
+            .await
+            .get(&job_id_internal)
+            .cloned();
+        let state = match job_state {
+            Some(arc) => arc.read().await.state.clone(),
+            None => JobState::Created,
         };
+        let catchup = catchup_events(&state, job_id);
+
+        // If the job is already terminal we won't drain the receiver — drop it.
+        let rx = if stashed_terminal.is_some() { None } else { rx_opt };
 
         let job_id_str = job_id.to_string();
         let job_hash = self.job_hash.clone();
 
         let output = stream! {
-            let mut rx = rx;
             let hash_id = job_hash.read().await.get(&job_id_str).cloned().unwrap_or_default();
 
             for event in catchup {
                 yield Ok(event);
             }
+
+            // Already terminal: emit the stashed terminal event and close.
+            if let Some(event) = stashed_terminal {
+                if let Some(domain) = coord_event_to_domain(event, job_id, &hash_id) {
+                    yield Ok(domain);
+                }
+                job_hash.write().await.remove(&job_id_str);
+                return;
+            }
+
+            let Some(mut rx) = rx else {
+                return;
+            };
 
             loop {
                 match rx.recv().await {
