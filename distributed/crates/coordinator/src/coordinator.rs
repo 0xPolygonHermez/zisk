@@ -989,6 +989,7 @@ impl Coordinator {
         self.check_phase_timeouts().await;
         self.check_stale_heartbeats().await;
         self.cleanup_stale_disconnected_workers().await;
+        self.cleanup_expired_jobs().await;
     }
 
     /// Checks all running jobs for phase timeouts and fails them if exceeded.
@@ -1073,6 +1074,65 @@ impl Coordinator {
         self.workers_pool
             .remove_stale_disconnected(chrono::Duration::seconds(threshold_secs as i64))
             .await;
+    }
+
+    /// Evicts jobs that have been in a terminal state longer than the retention threshold.
+    ///
+    /// A job becomes eligible once `terminated_at + completed_job_retention_seconds <= now`.
+    /// Removes the job from `jobs`, and defensively from `job_events` and `grpc_hints_senders`
+    pub async fn cleanup_expired_jobs(&self) {
+        let retention_secs = self.config.coordinator.completed_job_retention_seconds;
+        let cutoff = Utc::now() - chrono::Duration::seconds(retention_secs as i64);
+
+        // Phase 1: collect expired IDs under a read lock to avoid holding a write lock during iteration.
+        let expired: Vec<JobId> = {
+            let jobs_map = self.jobs.read().await;
+            let mut out = Vec::new();
+            for (job_id, job_lock) in jobs_map.iter() {
+                let job = job_lock.read().await;
+                if !job.state().is_resolved() {
+                    continue;
+                }
+                if let Some(terminated_at) = job.terminated_at {
+                    if terminated_at <= cutoff {
+                        out.push(job_id.clone());
+                    }
+                }
+            }
+            out
+        };
+
+        if expired.is_empty() {
+            return;
+        }
+
+        // Phase 2: remove in batches under each map's write lock.
+        // Order matches `fire_job_event`: drop auxiliary state first so the canonical
+        // `jobs` entry is the last thing to disappear for any racing observer.
+        {
+            let mut events = self.job_events.write().await;
+            for id in &expired {
+                events.remove(id);
+            }
+        }
+        {
+            let mut senders = self.grpc_hints_senders.write().await;
+            for id in &expired {
+                senders.remove(id);
+            }
+        }
+        {
+            let mut jobs_map = self.jobs.write().await;
+            for id in &expired {
+                jobs_map.remove(id);
+            }
+        }
+
+        debug!(
+            "[Monitor] Evicted {} job(s) past retention window ({}s)",
+            expired.len(),
+            retention_secs
+        );
     }
 }
 

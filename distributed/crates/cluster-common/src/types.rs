@@ -275,6 +275,8 @@ pub struct Job {
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
     pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
+    /// Time at which the job entered a terminal state (`Completed`, `Failed`, or `Cancelled`).
+    pub terminated_at: Option<DateTime<Utc>>,
     pub state: JobState,
     pub data_id: DataId,
     pub inputs_mode: InputsModeDto,
@@ -321,6 +323,7 @@ impl Job {
             hash_id,
             phase_timings: HashMap::new(),
             duration_ms: None,
+            terminated_at: None,
             state: JobState::Created,
             data_id,
             inputs_mode,
@@ -388,10 +391,12 @@ impl Job {
                 }
             }
             JobState::Completed | JobState::Failed | JobState::Cancelled => {
+                let now = Utc::now();
                 if let Some(start_time) = self.phase_start_time(&JobPhase::Contributions) {
-                    let duration = Utc::now().signed_duration_since(start_time);
+                    let duration = now.signed_duration_since(start_time);
                     self.duration_ms = Some(duration.num_milliseconds() as u64);
                 }
+                self.terminated_at = Some(now);
             }
             _ => {}
         }
