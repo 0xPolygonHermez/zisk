@@ -51,6 +51,7 @@ jobs:
     container:
       image: ziskvm/zisk-gpu-runner:latest
       options:
+        --user 0:0
         --gpus all
         --shm-size=48g
         -v /home/gha/cache-setup:/github/home/output:rw
