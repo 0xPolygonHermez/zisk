@@ -15,7 +15,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
+use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
@@ -25,7 +25,8 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
+    ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -116,10 +117,7 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
-            .join(DEFAULT_CACHE_PATH);
+        let default_cache_path = &ZiskPaths::global().cache;
         let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
@@ -153,13 +151,14 @@ impl AsmProver {
             .with_unlock_mapped_memory(unlock_mapped_memory)
             .with_asm_out_file(asm_out_file);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints && world_rank == 0)
+            .then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
         let init_rom = !is_distributed && world_rank == 0;
 
@@ -497,6 +496,36 @@ impl ProverEngine for AsmProver {
 
     fn reset_resources(&self) -> Result<()> {
         self.core_prover.backend.reset_resources()
+    }
+
+    fn restart_asm_resources(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
+        let key = SetupKey::new(&*elf.program_id.hash_id, with_hints);
+        let world_rank = self.core_prover.rank_info.world_rank;
+
+        tracing::warn!(
+            ">>> [{world_rank}] Soft-resetting ASM children for program {} (with_hints={with_hints})",
+            elf.name(),
+        );
+
+        let resources = {
+            let cache = self.program_cache.read().unwrap();
+            cache
+                .get(&key)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "restart_asm_resources: program '{}' (with_hints={with_hints}) not in cache",
+                        elf.name()
+                    )
+                })?
+                .resources
+                .clone()
+        };
+
+        self.core_prover.backend.cancel();
+        resources.signal_children_reset()?;
+
+        tracing::info!(">>> [{world_rank}] Soft-reset signal sent for program {}", elf.name());
+        Ok(())
     }
 
     fn cancel(&self) {

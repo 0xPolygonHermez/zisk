@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::collections::HashMap;
 
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -52,12 +52,10 @@ impl EmulatorRust {
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         sm_bundle: &StaticSMBundle<F>,
     ) -> Result<EmulatorResult> {
-        let stdin_guard = stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))?;
-        let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, &stdin_guard)?;
-        drop(stdin_guard);
+        let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin)?;
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
@@ -164,7 +162,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
     fn execute(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         _pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         _use_hints: bool,

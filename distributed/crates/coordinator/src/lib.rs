@@ -5,6 +5,7 @@ mod coordinator_grpc;
 mod hints_relay;
 mod hooks;
 pub mod job_events;
+mod metrics;
 mod shutdown;
 mod workers_pool;
 

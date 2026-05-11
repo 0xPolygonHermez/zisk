@@ -55,11 +55,11 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    elf_cache_path, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto,
-    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
+    ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
+    PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
 };
-use zisk_common::SetupKey;
+use zisk_common::{SetupKey, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -221,19 +221,25 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(false);
             }
             job.change_state(JobState::Cancelled);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
         };
 
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
         self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_CANCELLED,
+            &worker_ids,
+            phase1_start,
+        );
 
         info!("Cancelled job {}", job_id);
 
@@ -247,7 +253,7 @@ impl Coordinator {
         hasher.update(&elf_bytes);
         let hash_id = hasher.finalize().to_hex().to_string();
 
-        let path = elf_cache_path(&hash_id);
+        let path = ZiskPaths::global().elf_cache(&hash_id);
         if !path.exists() {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)
@@ -255,6 +261,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
+            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
         }
 
         Ok(hash_id)
@@ -268,7 +275,7 @@ impl Coordinator {
         program_name: String,
         with_hints: bool,
     ) -> CoordinatorResult<JobId> {
-        let path = elf_cache_path(hash_id);
+        let path = ZiskPaths::global().elf_cache(hash_id);
         let elf_bytes =
             fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
@@ -347,7 +354,7 @@ impl Coordinator {
         let mut result = Vec::with_capacity(setups.len());
         for (key, program_name) in setups {
             let (hash_id, with_hints) = (key.hash_id, key.with_hints);
-            let path = elf_cache_path(&hash_id);
+            let path = ZiskPaths::global().elf_cache(&hash_id);
             match fs::read(&path) {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
                     job_id: JobId::new().as_string(),
@@ -449,6 +456,8 @@ impl Coordinator {
         self.dispatch_contributions_messages(&job, &active_workers).await?;
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
+
+        crate::metrics::record_job_started();
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -738,12 +747,25 @@ impl Coordinator {
     /// * `job_id` - Identifier of the failing job
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+        self.fail_job_with_recovery(job_id, reason, None).await
+    }
+
+    /// Same as [`Self::fail_job`] but parks `recovering_worker` in
+    /// `SettingUp` instead of `Ready` so the dispatcher won't pick it
+    /// while it does post-failure maintenance. The worker becomes
+    /// `Ready` again on the next `WorkerRecoveryComplete`.
+    pub async fn fail_job_with_recovery(
+        &self,
+        job_id: &JobId,
+        reason: impl AsRef<str>,
+        recovering_worker: Option<&WorkerId>,
+    ) -> CoordinatorResult<()> {
         let jobs_map = self.jobs.read().await;
         let job_entry =
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
 
             // Prevent double-fail races (monitor + worker error racing)
@@ -752,15 +774,24 @@ impl Coordinator {
             }
 
             job.change_state(JobState::Failed);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
             // job write lock released here
         };
 
         // These operations only need the worker IDs, not the job lock.
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
-        self.ensure_workers_ready(&worker_ids).await;
+        match recovering_worker {
+            Some(rec) => self.ensure_workers_ready_except(&worker_ids, rec).await,
+            None => self.ensure_workers_ready(&worker_ids).await,
+        }
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_FAILURE,
+            &worker_ids,
+            phase1_start,
+        );
 
         error!("Failed job {} (reason: {})", job_id, reason.as_ref());
 
@@ -1272,6 +1303,7 @@ mod tests {
                 },
                 publics: vec![],
             }),
+            worker_in_recovery: false,
         };
 
         // Should succeed (not error) — the late response is silently discarded

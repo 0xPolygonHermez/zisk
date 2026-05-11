@@ -11,8 +11,9 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
 
-use crate::common::{detect_current_project_elf, get_proving_key};
+use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_field};
+use zisk_common::ZiskPaths;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -65,7 +66,7 @@ impl ZiskProgramSetup {
             print_banner_field("Hints", "Enabled".yellow());
         }
 
-        let proving_key = get_proving_key(self.proving_key.as_ref())?;
+        let proving_key = ZiskPaths::get_proving_key(self.proving_key.as_ref());
 
         print_banner_field("Proving Key", proving_key.display());
 

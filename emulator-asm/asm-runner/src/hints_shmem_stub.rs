@@ -34,6 +34,12 @@ impl HintsShmem {
             "HintsShmem::set_active_services() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
+
+    pub fn signal_children_reset(&self) -> Result<()> {
+        unreachable!(
+            "HintsShmem::signal_children_reset() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
 }
 
 impl StreamSink for HintsShmem {

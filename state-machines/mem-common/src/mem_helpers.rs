@@ -143,7 +143,7 @@ impl MemHelpers {
         let offset = Self::get_byte_offset(addr) * 8;
         let mut value = read_values[0] >> offset;
         if is_double {
-            value |= (read_values[1] >> offset) << (64 - offset);
+            value |= read_values[1] << (64 - offset);
         }
         match bytes {
             1 => value & 0xFF,

@@ -61,7 +61,7 @@ pub extern "C" fn zkvm_init() {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
         read_input_reset();
-        crate::io::write_output_reset();
+        crate::zisklib::zkvm_io::reset();
     }
 
     #[cfg(all(
@@ -123,12 +123,12 @@ use crate::ziskos_definitions::ziskos_config::*;
 /// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
 /// native: 0 bytes offset (file starts at position 0)
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-const INPUT_INITIAL_OFFSET: usize = 8;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 8;
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-const INPUT_INITIAL_OFFSET: usize = 0;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 0;
 
 /// Pointer to the current position in the input buffer/file.
-static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
+pub(crate) static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 
 /// Reset the input position to the beginning.
 pub fn read_input_reset() {

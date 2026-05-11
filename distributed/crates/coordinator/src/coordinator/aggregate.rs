@@ -87,6 +87,12 @@ impl Coordinator {
 
         job.change_state(JobState::Completed);
 
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_SUCCESS,
+            &job.workers,
+            job.phase_start_time(&JobPhase::Contributions),
+        );
+
         let end_time = Utc::now();
 
         let phase1_time = job.phase_start_time(&JobPhase::Contributions).unwrap_or_else(|| {

@@ -78,6 +78,12 @@ pub enum ExecutorKind {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) trait Client: Clone + Send + Sync + 'static {
+    /// Default executor configured on the client builder. Used when a
+    /// per-call request does not explicitly override it.
+    fn default_executor(&self) -> ExecutorKind {
+        ExecutorKind::default()
+    }
+
     fn run_upload(&self, program: &GuestProgram) -> Result<UploadResult>;
 
     fn run_setup(

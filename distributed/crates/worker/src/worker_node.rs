@@ -11,12 +11,12 @@ use tracing::{error, info, warn};
 use zisk_cluster_api::contribution_params::InputSource;
 use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
-use zisk_cluster_common::{elf_cache_path, DataId, JobId};
 use zisk_cluster_common::{
     AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
     StreamDataDto, WorkerState,
 };
-use zisk_common::{ProgramVK, Proof, ZiskExecutorTime};
+use zisk_cluster_common::{DataId, JobId};
+use zisk_common::{ProgramVK, Proof, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, ZiskBackend};
 
 use crate::config::WorkerServiceConfig;
@@ -197,10 +197,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             // On panic/cancel, the handle branch fires and we report the error.
             let mut computation_handle = self.worker.take_current_computation();
 
-            // biased: computation_rx must be checked before the JoinHandle branch.
-            // When a task completes normally, both become ready simultaneously.
-            // Without biased, select! picks non-deterministically and the JoinHandle
-            // branch could win, discarding the actual result.
+            // Branches are polled in declaration order. This is a soft preference,
+            // not a correctness guarantee — a cross-thread wakeup race can still let
+            // the JoinHandle resolve before the channel poll observes a just-sent
+            // message, so the JoinHandle Ok(()) arm re-drains the channel via try_recv.
+            // The ordering still matters for branch priority: compute results >
+            // coordinator messages > task health > heartbeat.
             tokio::select! {
                 biased;
 
@@ -227,7 +229,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             if let Err(e) = self.handle_coordinator_message(message, &message_sender, computation_tx).await {
                                 error!("Error handling coordinator message: {}", e);
                                 self.report_computation_error(&message_sender, &e.to_string()).await;
-                                break;
+                                // Only truly fatal errors (e.g. registration rejected) set state
+                                // to Error inside the handler — those break the loop and trigger
+                                // reconnect. Recoverable errors (task dispatch failures, unknown
+                                // task types, etc.) just reset the worker to Ready and keep the
+                                // stream alive.
+                                if matches!(self.worker.state(), WorkerState::Error) {
+                                    break;
+                                }
+                                self.worker.set_current_job(None);
+                                self.worker.set_state(WorkerState::Ready);
                             }
                         }
                         Err(e) => {
@@ -236,11 +247,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         }
                     }
                 }
-                // Monitor the computation task handle directly. This branch only
-                // fires when the task finishes WITHOUT sending a ComputationResult
-                // (panic, cancellation, or unexpected silent exit).
-                // Because of biased, computation_rx is checked first — so this only
-                // fires when the channel is empty (i.e., the task truly didn't send).
+                // Monitor the computation task handle directly. Fires on panic,
+                // cancellation, or silent exit. `biased` checks computation_rx first,
+                // but a cross-thread wakeup race can let the JoinHandle resolve before
+                // the channel poll observes a just-sent message — so on `Ok(())` we
+                // re-drain the channel before declaring a silent exit.
                 join_result = async { computation_handle.as_mut().unwrap().await }, if computation_handle.is_some() => {
                     match join_result {
                         Err(join_error) => {
@@ -250,11 +261,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             self.worker.set_state(WorkerState::Ready);
                         }
                         Ok(()) => {
-                            // Task completed without sending a ComputationResult — shouldn't
-                            // happen in normal operation, but handle it defensively.
-                            warn!("Computation task exited without sending a result");
-                            self.worker.set_current_job(None);
-                            self.worker.set_state(WorkerState::Ready);
+                            match computation_rx.try_recv() {
+                                Ok(result) => {
+                                    if let Err(e) = self.handle_computation_result(result, &message_sender).await {
+                                        error!("Error handling computation result: {}", e);
+                                        self.report_computation_error(&message_sender, &e.to_string()).await;
+                                        break;
+                                    }
+                                }
+                                Err(_) => {
+                                    warn!("Computation task exited without sending a result");
+                                    self.worker.set_current_job(None);
+                                    self.worker.set_state(WorkerState::Ready);
+                                }
+                            }
                         }
                     }
                 }
@@ -428,6 +448,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_execution_time: Some(zisk_execution_time),
         }));
 
+        // On failure with poisoned ASM: park ourselves in `SettingUp` via
+        // the response flag, then run the respawn off-task.
+        let recovery_ctx = if success { None } else { self.collect_recovery_context().await };
+        let worker_in_recovery = recovery_ctx.is_some();
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -436,10 +461,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data: result_data_msg,
                 error_message,
+                worker_in_recovery,
             })),
         };
 
         message_sender.send(message)?;
+
+        if let Some((guest_program, with_hints)) = recovery_ctx {
+            self.spawn_post_failure_recovery(guest_program, with_hints, message_sender.clone());
+        }
 
         Ok(())
     }
@@ -506,6 +536,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             witness_info: Some(witness_info_msg),
         }));
 
+        // Same recovery handshake as the contribution path.
+        let recovery_ctx = if success { None } else { self.collect_recovery_context().await };
+        let worker_in_recovery = recovery_ctx.is_some();
+
         let message = WorkerMessage {
             payload: Some(worker_message::Payload::ExecuteTaskResponse(ExecuteTaskResponse {
                 worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -514,10 +548,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data: result_data_msg,
                 error_message,
+                worker_in_recovery,
             })),
         };
 
         message_sender.send(message)?;
+
+        if let Some((guest_program, with_hints)) = recovery_ctx {
+            self.spawn_post_failure_recovery(guest_program, with_hints, message_sender.clone());
+        }
 
         Ok(())
     }
@@ -572,6 +611,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data: Some(ResultData::Proofs(ProofList { proofs: result_data })),
                 error_message,
+                worker_in_recovery: false,
             })),
         };
 
@@ -681,6 +721,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data,
                 error_message,
+                worker_in_recovery: false,
             })),
         };
 
@@ -694,6 +735,56 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         Ok(())
+    }
+
+    /// Returns `(elf, with_hints)` for the failed job, used to drive the
+    /// soft-reset signal in `spawn_post_failure_recovery`.
+    async fn collect_recovery_context(
+        &self,
+    ) -> Option<(std::sync::Arc<zisk_prover_backend::GuestProgram>, bool)> {
+        let job = self.worker.current_job()?;
+        let (hash_id, with_hints) = {
+            let g = job.lock().await;
+            let with_hints = !matches!(g.data_ctx.hints_source, HintsSourceDto::HintsNull);
+            (g.hash_id.clone(), with_hints)
+        };
+        Some((self.worker.guest_program(&hash_id)?, with_hints))
+    }
+
+    /// Soft-reset the ASM children off-task, then send `WorkerRecoveryComplete`
+    /// so the coordinator flips us from `SettingUp` back to `Ready`.
+    fn spawn_post_failure_recovery(
+        &self,
+        guest_program: std::sync::Arc<zisk_prover_backend::GuestProgram>,
+        with_hints: bool,
+        message_sender: mpsc::UnboundedSender<WorkerMessage>,
+    ) {
+        let prover = self.worker.prover_arc();
+        let worker_id = self.worker_config.worker.worker_id.as_string();
+        tokio::spawn(async move {
+            warn!("[Recovery] {worker_id}: signalling ASM soft reset");
+            let join = tokio::task::spawn_blocking(move || {
+                prover.restart_asm_resources(&guest_program, with_hints)
+            })
+            .await;
+            match join {
+                Ok(Ok(())) => {
+                    info!("[Recovery] {worker_id}: soft reset done; signalling Ready");
+                    let msg = WorkerMessage {
+                        payload: Some(worker_message::Payload::RecoveryComplete(
+                            WorkerRecoveryComplete { worker_id: worker_id.clone() },
+                        )),
+                    };
+                    if let Err(e) = message_sender.send(msg) {
+                        error!("[Recovery] {worker_id}: send RecoveryComplete failed: {e}");
+                    }
+                }
+                Ok(Err(e)) => error!(
+                    "[Recovery] {worker_id}: soft reset failed: {e:#}; worker stays in SettingUp"
+                ),
+                Err(e) => error!("[Recovery] {worker_id}: recovery task panicked: {e}"),
+            }
+        });
     }
 
     async fn send_heartbeat_ack(
@@ -788,30 +879,49 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 } else {
                     self.worker.set_state(WorkerState::Error);
                     error!("Registration rejected: {}", response.message);
-                    std::process::exit(1);
+                    return Err(anyhow!("Registration rejected: {}", response.message));
                 }
             }
             coordinator_message::Payload::ExecuteTask(request) => {
-                match TaskType::try_from(request.task_type) {
-                    Ok(TaskType::Execution) => {
-                        self.execute_only(request, computation_tx).await?;
-                    }
+                let job_id = request.job_id.clone();
+                let task_type_int = request.task_type;
+                let dispatch = match TaskType::try_from(task_type_int) {
+                    Ok(TaskType::Execution) => self.execute_only(request, computation_tx).await,
                     Ok(TaskType::PartialContribution) => {
-                        self.partial_contribution(request, computation_tx).await?;
+                        self.partial_contribution(request, computation_tx).await
                     }
-                    Ok(TaskType::Prove) => {
-                        self.prove(request, computation_tx).await?;
+                    Ok(TaskType::Prove) => self.prove(request, computation_tx).await,
+                    Ok(TaskType::Aggregate) => self.aggregate(request, computation_tx).await,
+                    Ok(TaskType::Wrap) => self.handle_wrap_task(request, message_sender).await,
+                    Err(_) => Err(anyhow!("Unknown task type: {task_type_int}")),
+                };
+
+                // Dispatch failures (cache miss, unknown task type, etc.) happen
+                // before any computation starts, so `current_job` may not be set
+                // and `report_computation_error` would silently drop the report.
+                // Send a proper `ExecuteTaskResponse` failure here using the
+                // request's `job_id` so the coordinator can fail the job and
+                // route work elsewhere instead of waiting on a phantom worker.
+                if let Err(e) = dispatch {
+                    error!("Failed to dispatch task {job_id}: {e:#}");
+                    let response = WorkerMessage {
+                        payload: Some(worker_message::Payload::ExecuteTaskResponse(
+                            ExecuteTaskResponse {
+                                worker_id: self.worker_config.worker.worker_id.as_string(),
+                                job_id,
+                                task_type: task_type_int,
+                                success: false,
+                                result_data: None,
+                                error_message: e.to_string(),
+                                worker_in_recovery: false,
+                            },
+                        )),
+                    };
+                    if let Err(send_err) = message_sender.send(response) {
+                        warn!("Failed to send dispatch-failure response: {send_err}");
                     }
-                    Ok(TaskType::Aggregate) => {
-                        self.aggregate(request, computation_tx).await?;
-                    }
-                    Ok(TaskType::Wrap) => {
-                        self.handle_wrap_task(request, message_sender).await?;
-                    }
-                    Err(_) => {
-                        error!("Unknown task type: {}", request.task_type);
-                        return Err(anyhow!("Unknown task type: {}", request.task_type));
-                    }
+                    self.worker.set_current_job(None);
+                    self.worker.set_state(WorkerState::Ready);
                 }
             }
             coordinator_message::Payload::StreamData(stream_data) => {
@@ -900,7 +1010,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
 
-        let elf_path = elf_cache_path(&setup.hash_id);
+        let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
 
         // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
         // exists it is identical to what we received — skip write and re-setup.
@@ -1328,6 +1438,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 success,
                 result_data,
                 error_message,
+                worker_in_recovery: false,
             })),
         };
 

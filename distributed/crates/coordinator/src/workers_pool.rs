@@ -229,6 +229,10 @@ impl WorkersPool {
 
         drop(workers);
 
+        if is_new_worker {
+            metrics::gauge!("coordinator_workers_connected").increment(1.0);
+        }
+
         let action = if is_new_worker { "Registered" } else { "Reconnected" };
         let (total, cc, acc) = self.pool_stats().await;
         info!("{} worker: {} (total: {} CC: {} ACC: {})", action, worker_id, total, cc, acc);
@@ -308,6 +312,7 @@ impl WorkersPool {
             Some(_) => {
                 let total = workers.len(); // Get count from the current HashMap
                 drop(workers); // Release the lock before logging
+                metrics::gauge!("coordinator_workers_connected").decrement(1.0);
                 info!(
                     "Unregistered worker: {} (total: {} CC: {} ACC: {})",
                     worker_id,

@@ -9,6 +9,9 @@
 //! | `coordinator_active_jobs` | Gauge | — | Currently active (non-terminal) jobs |
 //! | `coordinator_jobs_total` | Counter | `kind`, `outcome` | Jobs by kind and final outcome |
 //! | `coordinator_registered_programs_total` | Gauge | — | Registered guest programs |
+//! | `coordinator_workers_connected` | Gauge | — | Workers currently registered in the pool |
+//! | `coordinator_worker_jobs_total` | Counter | `worker_id`, `outcome` | Per-worker participation count by job outcome |
+//! | `coordinator_job_duration_seconds` | Histogram | `outcome` | End-to-end job duration (Contributions start → terminal state) |
 //!
 //! ## Scrape endpoint
 //!
@@ -33,7 +36,17 @@ static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 /// Install the Prometheus global recorder and stash the handle for `/metrics`
 /// rendering. Must be called once at startup before any metric is recorded.
 pub fn install_prometheus() -> Result<()> {
-    let handle = PrometheusBuilder::new().install_recorder()?;
+    // Buckets sized for ~10s jobs (extra headroom for slow outliers).
+    const JOB_DURATION_BUCKETS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 20.0, 60.0, 300.0];
+
+    let handle = PrometheusBuilder::new()
+        .set_buckets_for_metric(
+            metrics_exporter_prometheus::Matcher::Full(
+                "coordinator_job_duration_seconds".to_owned(),
+            ),
+            JOB_DURATION_BUCKETS,
+        )?
+        .install_recorder()?;
     PROMETHEUS_HANDLE.set(handle).ok(); // ignore if already set (e.g. in tests)
     register_descriptions();
     Ok(())
@@ -59,6 +72,18 @@ fn register_descriptions() {
     metrics::describe_gauge!(
         "coordinator_registered_programs_total",
         "Number of registered guest programs"
+    );
+    metrics::describe_gauge!(
+        "coordinator_workers_connected",
+        "Number of workers currently registered in the coordinator's pool"
+    );
+    metrics::describe_counter!(
+        "coordinator_worker_jobs_total",
+        "Per-worker participation count, labelled by worker_id and final outcome"
+    );
+    metrics::describe_histogram!(
+        "coordinator_job_duration_seconds",
+        "End-to-end job duration (Contributions phase start → terminal state) in seconds"
     );
 }
 

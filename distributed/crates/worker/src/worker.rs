@@ -1,6 +1,5 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use cargo_zisk::common::{get_proving_key, get_proving_key_snark};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,7 +11,7 @@ use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime};
+use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
@@ -146,9 +145,9 @@ pub struct ProverConfig {
 
 impl ProverConfig {
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
-        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
+        let proving_key = ZiskPaths::get_proving_key(prover_service_config.proving_key.as_ref());
         let proving_key_snark = if prover_service_config.plonk {
-            Some(get_proving_key_snark(prover_service_config.proving_key_snark.as_ref())?)
+            Some(ZiskPaths::get_proving_key_snark(prover_service_config.proving_key_snark.as_ref()))
         } else {
             None
         };
@@ -410,6 +409,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
+    }
+
+    /// Returns a clone of the cached `Arc<GuestProgram>` for `hash_id`,
+    /// or `None` if the program isn't set up on this worker.
+    pub fn guest_program(&self, hash_id: &str) -> Option<Arc<GuestProgram>> {
+        self.guest_programs.get(hash_id).cloned()
     }
 
     pub async fn cancel_current_computation(&mut self) {
@@ -804,18 +809,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        match hints_source {
-            HintsSourceDto::HintsPath(hints_uri) => {
-                let hints_stream = StreamSource::from_uri(hints_uri)?;
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsData(hints_data) => {
-                let hints_stream = StreamSource::from_vec(hints_data);
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
-                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
-                // HintsNull: nothing to register.
+        if prover.world_rank() == 0 {
+            match hints_source {
+                HintsSourceDto::HintsPath(hints_uri) => {
+                    let hints_stream = StreamSource::from_uri(hints_uri)?;
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsData(hints_data) => {
+                    let hints_stream = StreamSource::from_vec(hints_data);
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                    // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                    // HintsNull: nothing to register.
+                }
             }
         }
 
@@ -842,7 +849,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
             Err(err) => {
                 error!("Failed to generate proof for {job_id}: {:?}", err);
-                return Err(anyhow::anyhow!("Failed to generate proof"));
+                return Err(err.context("Failed to generate proof"));
             }
         };
 
@@ -863,18 +870,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
-        match hints_source {
-            HintsSourceDto::HintsPath(hints_uri) => {
-                let hints_stream = StreamSource::from_uri(hints_uri)?;
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsData(hints_data) => {
-                let hints_stream = StreamSource::from_vec(hints_data);
-                prover.register_hints_stream(hints_stream)?;
-            }
-            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
-                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
-                // HintsNull: nothing to register.
+        if prover.world_rank() == 0 {
+            match hints_source {
+                HintsSourceDto::HintsPath(hints_uri) => {
+                    let hints_stream = StreamSource::from_uri(hints_uri)?;
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsData(hints_data) => {
+                    let hints_stream = StreamSource::from_vec(hints_data);
+                    prover.register_hints_stream(hints_stream)?;
+                }
+                HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                    // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                    // HintsNull: nothing to register.
+                }
             }
         }
 
@@ -1239,6 +1248,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);
+                let world_rank = self.world_rank();
+                let hash_id = message.hash_id.clone();
                 tokio::task::spawn_blocking(move || {
                     let run = || -> Result<()> {
                         if is_execution {
@@ -1274,6 +1285,23 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
                     if let Err(e) = run() {
                         error!("MPI broadcast task failed: {}. Waiting for new job...", e);
+                        // Soft-reset on peer ranks: rank 0 signals reset off the
+                        // dispatch path via worker_node, but peer ranks have no
+                        // coordinator channel, so they signal here. The next collective
+                        // broadcast acts as the synchronization point with rank 0.
+                        match guest_programs.get(&hash_id).cloned() {
+                            Some(elf) => {
+                                warn!("[Recovery] rank {world_rank}: signalling ASM soft reset");
+                                if let Err(e) = prover.restart_asm_resources(&elf, with_hints) {
+                                    error!(
+                                        "[Recovery] rank {world_rank}: soft reset failed: {e:#}"
+                                    );
+                                }
+                            }
+                            None => error!(
+                                "[Recovery] rank {world_rank}: guest program missing for hash_id={hash_id}"
+                            ),
+                        }
                     }
                 });
             }

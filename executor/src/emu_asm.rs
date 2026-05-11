@@ -161,7 +161,7 @@ impl EmulatorAsm {
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
@@ -198,9 +198,7 @@ impl EmulatorAsm {
 
         let config = asm_resources.config();
 
-        let stdin_guard = stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))?;
-        asm_resources.write_input(&stdin_guard)?;
-        drop(stdin_guard);
+        asm_resources.write_input(stdin)?;
 
         stats_end!(stats, &_write_scope);
 
@@ -410,7 +408,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,

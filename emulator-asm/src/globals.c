@@ -113,6 +113,7 @@ uint64_t * shmem_control_input_address = NULL;
 volatile uint64_t * precompile_written_address = NULL;
 volatile uint64_t * precompile_exit_address = NULL;
 volatile uint64_t * input_written_address = NULL;
+volatile uint64_t * precompile_reset_address = NULL;
 
 // Control output shared memory
 int shmem_control_output_fd = -1;

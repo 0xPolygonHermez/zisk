@@ -5,10 +5,11 @@ use colored::Colorize;
 use proofman_common::VerboseMode;
 use rom_setup::get_elf_data_hash;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::ZiskPaths;
 use zisk_prover_backend::setup_logger;
 
 use crate::{
-    common::{detect_current_project_elf, get_home_zisk_path},
+    common::detect_current_project_elf,
     ux::{print_banner, print_banner_command},
 };
 
@@ -32,8 +33,7 @@ impl ZiskCleanCache {
         print_banner();
         print_banner_command("Clean");
 
-        let home_zisk_path = get_home_zisk_path()?;
-        let cache_zisk_path = home_zisk_path.join("cache");
+        let cache_zisk_path = ZiskPaths::global().cache.clone();
 
         if cache_zisk_path.exists() {
             if self.all {

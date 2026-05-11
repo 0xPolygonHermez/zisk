@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
 use proofman_util::VadcopFinalProof;
-use proofman_verifier::{verify_vadcop_final, verify_vadcop_final_compressed};
+use proofman_verifier::{
+    expected_vadcop_final_compressed_proof_bytes, expected_vadcop_final_proof_bytes,
+    verify_vadcop_final, verify_vadcop_final_compressed,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -435,6 +438,21 @@ impl<'a> ZiskVerifyBuilder<'a> {
             ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
                 let minimal = self.proof_with_values.proof_kind != ProofKind::VadcopFinal;
                 let proof_bytes = &self.proof_with_values.proof_bytes;
+
+                let expected_len = if minimal {
+                    expected_vadcop_final_compressed_proof_bytes()
+                } else {
+                    expected_vadcop_final_proof_bytes()
+                };
+                if proof_bytes.len() != expected_len {
+                    return Err(anyhow!(
+                        "Malformed proof: expected {} bytes for {:?}, got {}",
+                        expected_len,
+                        self.proof_with_values.proof_kind,
+                        proof_bytes.len()
+                    ));
+                }
+
                 let mut pubs = program_vk.vk.clone();
                 pubs.extend(publics.public_bytes());
                 let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
@@ -607,5 +625,38 @@ impl Proof {
     /// ```
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
         ZiskVerifyBuilder::new(self).with_program_vk(program_vk)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_returns_err_for_malformed_vadcop_final_minimal() {
+        let result = Proof::new(
+            ProofKind::VadcopFinalMinimal,
+            vec![],
+            PublicValues::new_empty(),
+            ProgramVK::new_empty(),
+            vec![0; 32],
+        )
+        .verify();
+
+        assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
+    }
+
+    #[test]
+    fn verify_returns_err_for_malformed_vadcop_final() {
+        let result = Proof::new(
+            ProofKind::VadcopFinal,
+            vec![],
+            PublicValues::new_empty(),
+            ProgramVK::new_empty(),
+            vec![0; 32],
+        )
+        .verify();
+
+        assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
     }
 }

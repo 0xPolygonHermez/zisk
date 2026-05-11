@@ -1,0 +1,51 @@
+name: Test ZisK Installation (services)
+
+# End-to-end smoke for the worker + coordinator install/uninstall flow on
+# both Linux and macOS runners. Runs on PRs that touch the deploy/install
+# code paths; can also be triggered manually.
+#
+# Sibling of test_install_bin.yml — that one tests user-mode ziskup E2E
+# (cargo-zisk → prove → verify) on release. This one tests the system-mode
+# install lifecycle on PR.
+
+on:
+  pull_request:
+    paths:
+      - 'distributed/deploy/scripts/**'
+      - 'ziskup/**'
+      - 'common/src/paths.rs'
+      - 'common/src/lib.rs'
+      - '.github/workflows/test_install_service.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux deploy smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+              libsodium23 libomp5 libgomp1 libopenmpi3 openmpi-bin
+      - name: Worker install smoke (safe default)
+        run: sudo bash distributed/deploy/scripts/test/worker-install-linux.sh
+      - name: Coordinator install smoke (safe default)
+        run: sudo bash distributed/deploy/scripts/test/coordinator-install-linux.sh
+
+  macos:
+    name: macOS deploy smoke
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime deps
+        run: |
+          brew install libsodium libomp open-mpi
+      - name: Worker install smoke (safe default)
+        run: sudo bash distributed/deploy/scripts/test/worker-install-macos.sh
+      - name: Coordinator install smoke (safe default)
+        run: sudo bash distributed/deploy/scripts/test/coordinator-install-macos.sh

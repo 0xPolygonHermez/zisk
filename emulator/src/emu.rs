@@ -844,7 +844,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            8,
+                            instruction.ind_width as u8,
                             [raw_data_1, raw_data_2],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
