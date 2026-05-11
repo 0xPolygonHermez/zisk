@@ -923,14 +923,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
         };
 
-        let proof: Proof = bincode::deserialize(&proof_data)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+        let proof: Proof =
+            bincode::serde::decode_from_slice(&proof_data, bincode::config::standard())
+                .map(|(v, _)| v)
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
 
         let result = prover.wrap_proof(&proof, proof_kind).run()?;
 
         let wrapped = result.get_proof();
 
-        let result_bytes = bincode::serialize(&wrapped)
+        let result_bytes = bincode::serde::encode_to_vec(wrapped, bincode::config::standard())
             .map_err(|e| anyhow::anyhow!("Failed to serialize wrapped proof: {}", e))?;
 
         Ok(result_bytes)

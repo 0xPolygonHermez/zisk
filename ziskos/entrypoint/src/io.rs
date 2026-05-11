@@ -4,6 +4,7 @@
 
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 use crate::read_input;
+
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Read a deserializable object from the input stream.
@@ -24,7 +25,10 @@ use serde::{de::DeserializeOwned, Serialize};
 /// Note: This uses zero-copy deserialization on zkvm to avoid unnecessary data copies.
 pub fn read<T: DeserializeOwned>() -> T {
     let bytes = read_input_slice();
-    bincode::deserialize(&bytes).expect("Deserialization failed")
+    let (val, _): (T, usize) =
+        bincode::serde::decode_from_slice(bytes.as_ref(), bincode::config::standard())
+            .expect("Deserialization failed");
+    val
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
@@ -41,7 +45,8 @@ pub fn read_input_slice() -> Box<[u8]> {
 /// Commit a serializable value to public outputs.
 /// The value is serialized with bincode and written as 32-bit chunks.
 pub fn commit<T: Serialize>(value: &T) {
-    let bytes = bincode::serialize(value).expect("Serialization failed");
+    let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+        .expect("Serialization failed");
     commit_slice(&bytes);
 }
 
@@ -59,6 +64,7 @@ pub fn write_output_reset() {
     crate::zisklib::zkvm_io::reset_output();
 }
 
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub fn verify_zisk_proof(zisk_proof: &[u8]) -> bool {
     if zisk_proof.len() < 32 {
         return false;

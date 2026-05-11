@@ -1,3 +1,8 @@
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
+
 use cfg_if::cfg_if;
 
 cfg_if! {

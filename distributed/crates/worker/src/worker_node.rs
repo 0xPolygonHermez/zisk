@@ -676,7 +676,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 } else {
                                     zisk_proof
                                 };
-                                bincode::serialize(&final_proof).unwrap_or_default()
+                                bincode::serde::encode_to_vec(
+                                    &final_proof,
+                                    bincode::config::standard(),
+                                )
+                                .unwrap_or_default()
                             }
                             Err(e) => {
                                 error!("Failed to build Proof: {}", e);

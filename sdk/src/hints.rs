@@ -46,7 +46,8 @@ impl ZiskHints {
     pub fn from<T: Serialize>(data: &T) -> Self {
         Self {
             source: StreamSource::from_vec(
-                bincode::serialize(data).expect("Failed to serialize hints data"),
+                bincode::serde::encode_to_vec(data, bincode::config::standard())
+                    .expect("Failed to serialize hints data"),
             ),
         }
     }
