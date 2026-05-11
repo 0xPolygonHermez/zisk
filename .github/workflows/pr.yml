@@ -105,21 +105,21 @@ jobs:
 
       - name: Prove Ethereum block
         env:
-          BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin"
+          BLOCK_INPUTS_SINGLE: "mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_eth_block.sh
 
       - name: Ethproofs test (no hints)
         env:
-          BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin"
+          BLOCK_INPUTS_ETHPROOFS: "mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_ethproofs.sh
 
       - name: Ethproofs test (hints)
         env:
-          BLOCK_INPUTS_ETHPROOFS_HINTS="mainnet_24628611_627_58_zec_reth.bin,mainnet_24628590_478_49_zec_reth.bin"
+          BLOCK_INPUTS_ETHPROOFS_HINTS: "mainnet_24628611_627_58_zec_reth.bin,mainnet_24628590_478_49_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_ethproofs.sh
