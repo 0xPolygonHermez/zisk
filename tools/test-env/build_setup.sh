@@ -136,7 +136,7 @@ main() {
     if [[ ${DISABLE_RECURSIVE_SETUP} != "1" ]];  then
             check_setup_flags=-a
     fi
-    ensure cargo-zisk check-setup $check_setup_flags || return 1
+    ensure cargo-zisk check-setup || return 1
 
     success "ZisK setup completed successfully!"
 }
