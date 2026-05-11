@@ -1144,10 +1144,10 @@ impl Coordinator {
 
     /// Evicts jobs that have been in a terminal state longer than the retention threshold.
     ///
-    /// A job becomes eligible once `terminated_at + completed_job_retention_seconds <= now`.
+    /// A job becomes eligible once `terminated_at + job_ttl_seconds <= now`.
     /// Removes the job from `jobs`, and defensively from `job_events` and `grpc_hints_senders`
     pub async fn cleanup_expired_jobs(&self) {
-        let retention_secs = self.config.coordinator.completed_job_retention_seconds;
+        let retention_secs = self.config.coordinator.job_ttl_seconds;
         let cutoff = Utc::now() - chrono::Duration::seconds(retention_secs as i64);
 
         // Phase 1: collect expired IDs under a read lock to avoid holding a write lock during iteration.

@@ -61,7 +61,7 @@ pub struct ServiceConfig {
 /// ## Completed job retention
 ///
 /// Jobs in a terminal state (`Completed`, `Failed`, `Cancelled`) are kept in memory
-/// for `completed_job_retention_seconds` after termination so clients can still query
+/// for `job_ttl_seconds` after termination so clients can still query
 /// their final state, then evicted by the monitor sweep. Set to `0` to disable
 /// retention (jobs are removed on the next sweep after they terminate).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,7 +91,7 @@ pub struct CoordinatorConfig {
     /// Seconds a job in a terminal state (`Completed`, `Failed`, `Cancelled`) is kept
     /// in memory before being evicted by the monitor sweep. Default: 3600s (60 min).
     /// `0` disables retention.
-    pub completed_job_retention_seconds: u64,
+    pub job_ttl_seconds: u64,
     /// Optional webhook URL to POST job completion/failure notifications.
     pub webhook_url: Option<String>,
     /// Default compute units for a job when the caller does not specify.
@@ -150,7 +150,7 @@ impl Config {
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
-            .set_default("coordinator.completed_job_retention_seconds", 3600)?
+            .set_default("coordinator.job_ttl_seconds", 3600)?
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 1)?
             .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?;
