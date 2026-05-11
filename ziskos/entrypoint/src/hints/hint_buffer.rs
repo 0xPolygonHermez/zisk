@@ -156,7 +156,10 @@ impl HintBuffer {
                         if attempt == retries {
                             return Err(io::Error::new(
                                 e.kind(),
-                                format!("write_with_retries: max retries ({}) reached: {}", retries, e),
+                                format!(
+                                    "write_with_retries: max retries ({}) reached: {}",
+                                    retries, e
+                                ),
                             ));
                         }
 
@@ -214,7 +217,10 @@ impl HintBuffer {
                         if attempt == retries {
                             return Err(io::Error::new(
                                 e.kind(),
-                                format!("flush_with_retries: max retries ({}) reached, error: {}", retries, e),
+                                format!(
+                                    "flush_with_retries: max retries ({}) reached, error: {}",
+                                    retries, e
+                                ),
                             ));
                         }
 
