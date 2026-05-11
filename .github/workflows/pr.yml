@@ -105,6 +105,9 @@ jobs:
       - name: Test ELF diagnostic
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
+          echo "Proving key should be available at: /github/home/.zisk/provingKey"
+          ls -lha /github/home/.zisk/provingKey
+          ls -lha /github/home/.zisk/provingKey/zisk
           ./test_diagnostic.sh
 
       - name: Prove Ethereum block
