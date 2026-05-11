@@ -17,9 +17,9 @@ main() {
     else
         rm -rf zisk-eth-client
         if [[ -n "$ZISK_ETH_CLIENT_BRANCH" ]]; then
-            ensure git clone --branch $ZISK_ETH_CLIENT_BRANCH --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
+            ensure git clone --branch "$ZISK_ETH_CLIENT_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
         else
-            ensure git clone https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
+            ensure git clone --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
         fi
     fi
 

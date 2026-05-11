@@ -9,6 +9,9 @@ main() {
     # Load environment variables from .env file
     load_env || return 1
 
+    ZISK_GHA=1
+    export ZISK_GHA
+
     cd "${WORKSPACE_DIR}"
 
     step "Cloning zisk-eth-client repository..."
@@ -43,16 +46,17 @@ main() {
 
     step "Building zisk-ethproofs..."
     ensure cd zisk-ethproofs
-    ensure cargo build --release || return 1
+    local cfg_hints=""
+    [[ "${ENABLE_HINTS:-}" == "1" ]] && cfg_hints="RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread'"
+    ensure eval "$cfg_hints cargo build --release" || return 1
     cd ..
 
     step "Deploying ZisK coordinator and worker services..."
-    whereis zisk-worker
     deploy_distributed
 
-    step "Executing zisk-ethproofs tests..."
-    RPC_URL=http://144.76.59.84:8545
-    RPC_WS_URL=ws://144.76.59.84:8546
+    step "Executing ethproofs-client tests..."
+    #RPC_URL=http://144.76.59.84:8545
+    #RPC_WS_URL=ws://144.76.59.84:8546
     BLOCK_MODULUS=1
     COORDINATOR_URL=http://localhost:7010
     INPUTS_FOLDER="${WORKSPACE_DIR}/zisk-ethproofs/inputs"
@@ -60,11 +64,20 @@ main() {
     ensure export RPC_URL RPC_WS_URL BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
 
     ensure cd zisk-ethproofs
-    ensure cargo run --release --bin ethproofs-client -- \
+    local input_files_arg=""
+    if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
+        [[ -n "${BLOCK_INPUTS_ETHPROOFS_HINTS:-}" ]] && input_files_arg="--input-files ${BLOCK_INPUTS_ETHPROOFS_HINTS}"
+    else
+        [[ -n "${BLOCK_INPUTS_ETHPROOFS:-}" ]] && input_files_arg="--input-files ${BLOCK_INPUTS_ETHPROOFS}"
+    fi
+    ensure ./target/release/ethproofs-client \
         -n folder \
         -g ../zisk-eth-client/bin/guests/stateless-validator-reth/elf/zec-reth.elf \
         --inputs-queue ../zisk-eth-client/bin/guests/stateless-validator-reth/inputs \
-        --interval-secs 30 || return 1
+        ${input_files_arg:+$input_files_arg} \
+        --exit-on-error \
+        || return 1
 }
 
+trap uninstall_distributed EXIT
 main

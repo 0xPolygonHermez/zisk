@@ -37,18 +37,6 @@ DEFAULT_WORKER_GPU_ENABLED="false"
 DEFAULT_WORKER_PROVINGKEY_DIR=""
 DEFAULT_WORKER_EXTRA_ARGS=""
 
-# Active service context (set before invoking shared helpers)
-SERVICE_NAME=""
-SERVICE_LABEL=""
-SERVICE_DESC=""
-SERVICE_REALNAME=""
-SERVICE_BIN_PATH=""
-SERVICE_BIN_NAME=""
-SERVICE_DATA_DIR=""
-SERVICE_LOG_DIR=""
-SERVICE_EXEC_START=""
-SERVICE_PROGRAM_ARGS=""
-SERVICE_NICE=""
 
 # =============================================================================
 # Generic helpers
@@ -75,20 +63,22 @@ create_group_if_missing() {
 
 		local gid
 		gid=$(( $(dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | sort -n | tail -1) + 1 ))
-		sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}"
-		sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}" PrimaryGroupID "$gid"
-		sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}" RecordName "$DEFAULT_SERVICE_GROUP"
+		ensure sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}"
+		ensure sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}" PrimaryGroupID "$gid"
+		ensure sudo dscl . -create "/Groups/${DEFAULT_SERVICE_GROUP}" RecordName "$DEFAULT_SERVICE_GROUP"
 	else
 		if getent group "$DEFAULT_SERVICE_GROUP" &>/dev/null; then
 			info "Group '${DEFAULT_SERVICE_GROUP}' already exists, skipping."
 			return 0
 		fi
 
-		sudo groupadd --system "$DEFAULT_SERVICE_GROUP"
+		ensure sudo groupadd --system "$DEFAULT_SERVICE_GROUP"
 	fi
 }
 
 create_user_if_missing() {
+	local service_realname="$1"
+
 	info "Ensuring user '${DEFAULT_SERVICE_USER}' exists..."
 
 	if [[ "$OS" == "Darwin" ]]; then
@@ -101,67 +91,83 @@ create_user_if_missing() {
 		uid=$(( $(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1) + 1 ))
 		gid=$(dscl . -read "/Groups/${DEFAULT_SERVICE_GROUP}" PrimaryGroupID | awk '{print $2}')
 
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}"
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" UniqueID "$uid"
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" PrimaryGroupID "$gid"
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" UserShell /usr/bin/false
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" RealName "$SERVICE_REALNAME"
-		sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" NFSHomeDirectory /var/empty
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}"
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" UniqueID "$uid"
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" PrimaryGroupID "$gid"
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" UserShell /usr/bin/false
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" RealName "$service_realname"
+		ensure sudo dscl . -create "/Users/${DEFAULT_SERVICE_USER}" NFSHomeDirectory /var/empty
 	else
 		if id "$DEFAULT_SERVICE_USER" &>/dev/null; then
 			info "User '${DEFAULT_SERVICE_USER}' already exists, skipping."
 			return 0
 		fi
 
-		sudo useradd --system --gid "$DEFAULT_SERVICE_GROUP" --no-create-home --shell /usr/sbin/nologin "$DEFAULT_SERVICE_USER"
+		ensure sudo useradd --system --gid "$DEFAULT_SERVICE_GROUP" --no-create-home --shell /usr/sbin/nologin "$DEFAULT_SERVICE_USER"
 	fi
 }
 
 create_service_directories() {
+	local data_dir="$1"
+	local log_dir="$2"
+
 	info "Creating service directories..."
-	for dir in "$SERVICE_DATA_DIR" "$SERVICE_LOG_DIR"; do
+	for dir in "$data_dir" "$log_dir"; do
 		[[ -z "$dir" ]] && continue
-		sudo mkdir -p "$dir"
-		sudo chown "${DEFAULT_SERVICE_USER}:${DEFAULT_SERVICE_GROUP}" "$dir"
-		sudo chmod 0755 "$dir"
+		ensure sudo mkdir -p "$dir"
+		ensure sudo chown "${DEFAULT_SERVICE_USER}:${DEFAULT_SERVICE_GROUP}" "$dir"
+		ensure sudo chmod 0755 "$dir"
 	done
 }
 
 install_binary_to_data_dir() {
-	[[ -x "$SERVICE_BIN_PATH" ]] || {
-		err "Binary not found or not executable: ${SERVICE_BIN_PATH}"
+	local bin_path="$1"
+	local data_dir="$2"
+	local bin_name="$3"
+
+	[[ -x "$bin_path" ]] || {
+		err "Binary not found or not executable: ${bin_path}"
 		exit 1
 	}
 
-	local dest="${SERVICE_DATA_DIR}/${SERVICE_BIN_NAME}"
-	info "Installing binary '${SERVICE_BIN_PATH}' to '${dest}'..."
+	local dest="${data_dir}/${bin_name}"
+	info "Installing binary '${bin_path}' to '${dest}'..."
 	if [[ "$OS" == "Darwin" ]]; then
-		sudo install -m 0755 -o root -g wheel "$SERVICE_BIN_PATH" "$dest"
+		ensure sudo install -m 0755 -o root -g wheel "$bin_path" "$dest"
 	else
-		sudo install -m 0755 -o root -g root "$SERVICE_BIN_PATH" "$dest"
+		ensure sudo install -m 0755 -o root -g root "$bin_path" "$dest"
 	fi
 }
 
 deploy_newsyslog_config() {
-	local conf="/etc/newsyslog.d/${SERVICE_BIN_NAME}.conf"
+	local bin_name="$1"
+	local log_dir="$2"
+
+	local conf="/etc/newsyslog.d/${bin_name}.conf"
 
 	info "Deploying newsyslog rotation config at ${conf}..."
-	sudo tee "$conf" > /dev/null <<NEWSYSLOG
-# ${SERVICE_BIN_NAME} log rotation
-${SERVICE_LOG_DIR}/${SERVICE_BIN_NAME}.log  ${DEFAULT_SERVICE_USER}:${DEFAULT_SERVICE_GROUP}  640  ${DEFAULT_LOG_ROTATIONS}  $(( DEFAULT_LOG_MAX_SIZE_MB * 1024 ))  *  JG
+	ensure sudo tee "$conf" > /dev/null <<NEWSYSLOG
+# ${bin_name} log rotation
+${log_dir}/${bin_name}.log  ${DEFAULT_SERVICE_USER}:${DEFAULT_SERVICE_GROUP}  640  ${DEFAULT_LOG_ROTATIONS}  $(( DEFAULT_LOG_MAX_SIZE_MB * 1024 ))  *  JG
 NEWSYSLOG
-	sudo chmod 0644 "$conf"
+	ensure sudo chmod 0644 "$conf"
 }
 
 deploy_systemd_unit() {
-	local unit_file="/etc/systemd/system/${SERVICE_NAME}.service"
+	local service_name="$1"
+	local service_desc="$2"
+	local data_dir="$3"
+	local exec_start="$4"
+	local service_nice="$5"
+
+	local unit_file="/etc/systemd/system/${service_name}.service"
 	local nice_line=""
-	[[ -n "$SERVICE_NICE" ]] && nice_line="Nice=${SERVICE_NICE}"
+	[[ -n "$service_nice" ]] && nice_line="Nice=${service_nice}"
 
 	info "Deploying ${unit_file}..."
-	sudo tee "$unit_file" > /dev/null <<UNIT
+	ensure sudo tee "$unit_file" > /dev/null <<UNIT
 [Unit]
-Description=${SERVICE_DESC}
+Description=${service_desc}
 After=network-online.target
 Wants=network-online.target
 
@@ -173,8 +179,8 @@ Group=${DEFAULT_SERVICE_GROUP}
 Restart=no
 LimitNOFILE=65535
 ${nice_line}
-WorkingDirectory=${SERVICE_DATA_DIR}
-${SERVICE_EXEC_START}
+WorkingDirectory=${data_dir}
+${exec_start}
 StandardOutput=journal
 StandardError=journal
 
@@ -182,33 +188,40 @@ StandardError=journal
 WantedBy=multi-user.target
 UNIT
 
-	sudo systemctl daemon-reload
-	sudo systemctl enable "$SERVICE_NAME"
-	sudo systemctl restart "$SERVICE_NAME"
+	ensure sudo systemctl daemon-reload
+	ensure sudo systemctl enable "$service_name"
+	ensure sudo systemctl restart "$service_name"
 }
 
 deploy_launchd_plist() {
-	local plist="/Library/LaunchDaemons/${SERVICE_LABEL}.plist"
+	local service_label="$1"
+	local program_args="$2"
+	local data_dir="$3"
+	local bin_name="$4"
+	local log_dir="$5"
+	local service_nice="$6"
+
+	local plist="/Library/LaunchDaemons/${service_label}.plist"
 
 	local nice_block=""
-	if [[ -n "$SERVICE_NICE" ]]; then
+	if [[ -n "$service_nice" ]]; then
 		nice_block="    <key>Nice</key>
-		<integer>${SERVICE_NICE}</integer>
+		<integer>${service_nice}</integer>
 "
 	fi
 
 	info "Deploying ${plist}..."
-	sudo tee "$plist" > /dev/null <<PLIST
+	ensure sudo tee "$plist" > /dev/null <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
 	"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 		<key>Label</key>
-		<string>${SERVICE_LABEL}</string>
+		<string>${service_label}</string>
 
 		<key>ProgramArguments</key>
-${SERVICE_PROGRAM_ARGS}
+${program_args}
 
 		<key>UserName</key>
 		<string>${DEFAULT_SERVICE_USER}</string>
@@ -217,16 +230,16 @@ ${SERVICE_PROGRAM_ARGS}
 		<string>${DEFAULT_SERVICE_GROUP}</string>
 
 		<key>WorkingDirectory</key>
-		<string>${SERVICE_DATA_DIR}</string>
+		<string>${data_dir}</string>
 
 		<key>KeepAlive</key>
 		<false/>
 
 		<key>StandardOutPath</key>
-		<string>${SERVICE_LOG_DIR}/${SERVICE_BIN_NAME}.log</string>
+		<string>${log_dir}/${bin_name}.log</string>
 
 		<key>StandardErrorPath</key>
-		<string>${SERVICE_LOG_DIR}/${SERVICE_BIN_NAME}.log</string>
+		<string>${log_dir}/${bin_name}.log</string>
 
 		<key>ProcessType</key>
 		<string>Interactive</string>
@@ -240,10 +253,10 @@ ${nice_block}    <key>SoftResourceLimits</key>
 </plist>
 PLIST
 
-	sudo chown root:wheel "$plist"
-	sudo chmod 0644 "$plist"
+	ensure sudo chown root:wheel "$plist"
+	ensure sudo chmod 0644 "$plist"
 	sudo launchctl unload "$plist" 2>/dev/null || true
-	sudo launchctl load -w "$plist"
+	ensure sudo launchctl load -w "$plist"
 }
 
 remove_service_dir_if_present() {
@@ -252,7 +265,7 @@ remove_service_dir_if_present() {
 
 	[[ -z "$dir" ]] && return 0
 	if [[ -d "$dir" ]]; then
-		sudo rm -rf "$dir"
+		ensure sudo rm -rf "$dir"
 		info "Removed ${label} '${dir}'."
 	fi
 }
@@ -266,18 +279,22 @@ cleanup_existing_service() {
 	local plist="/Library/LaunchDaemons/${service_label}.plist"
 	local unit="/etc/systemd/system/${service_name}.service"
 
+	# kill all journalctl processes
+	info "Killing existing journalctl processes..."
+	pkill -f journalctl || true
+
 	if [[ "$OS" == "Darwin" ]]; then
 		if [[ ! -f "$plist" ]]; then
 			warn "${service_name} is not installed (${plist} not found). Skipping uninstall."
 		else
 			info "Uninstalling ${service_name}..."
 			sudo launchctl unload "$plist" 2>/dev/null || true
-			sudo rm -f "$plist"
+			ensure sudo rm -f "$plist"
 			info "Removed ${plist}."
 
 			local newsyslog_conf="/etc/newsyslog.d/${service_name}.conf"
 			if [[ -f "$newsyslog_conf" ]]; then
-				sudo rm -f "$newsyslog_conf"
+				ensure sudo rm -f "$newsyslog_conf"
 				info "Removed ${newsyslog_conf}."
 			fi
 		fi
@@ -291,8 +308,8 @@ cleanup_existing_service() {
 				sudo systemctl stop "$service_name" 2>/dev/null || true
 				sudo systemctl disable "$service_name" 2>/dev/null || true
 			fi
-			sudo rm -f "$unit"
-			sudo systemctl daemon-reload
+			ensure sudo rm -f "$unit"
+			ensure sudo systemctl daemon-reload
 			info "Removed ${unit}."
 		fi
 	fi
@@ -324,29 +341,30 @@ build_coordinator_program_args_plist() {
 }
 
 deploy_coordinator_service() {
-	SERVICE_NAME="$DEFAULT_COORDINATOR_BIN_NAME"
-	SERVICE_LABEL="com.zisk.coordinator"
-	SERVICE_DESC="Zisk Coordinator"
-	SERVICE_REALNAME="Zisk Coordinator"
-	SERVICE_BIN_PATH="$DEFAULT_COORDINATOR_BIN_PATH"
-	SERVICE_BIN_NAME="$DEFAULT_COORDINATOR_BIN_NAME"
-	SERVICE_DATA_DIR="$DEFAULT_COORDINATOR_DATA_DIR"
-	SERVICE_LOG_DIR="$DEFAULT_COORDINATOR_LOG_DIR"
-	SERVICE_EXEC_START="$(build_coordinator_exec_start)"
-	SERVICE_PROGRAM_ARGS="$(build_coordinator_program_args_plist)"
-	SERVICE_NICE="-10"
+	local service_name="$DEFAULT_COORDINATOR_BIN_NAME"
+	local service_label="com.zisk.coordinator"
+	local service_desc="Zisk Coordinator"
+	local service_realname="Zisk Coordinator"
+	local bin_path="$DEFAULT_COORDINATOR_BIN_PATH"
+	local bin_name="$DEFAULT_COORDINATOR_BIN_NAME"
+	local data_dir="$DEFAULT_COORDINATOR_DATA_DIR"
+	local log_dir="$DEFAULT_COORDINATOR_LOG_DIR"
+	local exec_start
+	exec_start="$(build_coordinator_exec_start)"
+	local program_args
+	program_args="$(build_coordinator_program_args_plist)"
+	local service_nice="-10"
 
 	create_group_if_missing
-	create_user_if_missing
-	create_service_directories
-	install_binary_to_data_dir
+	create_user_if_missing "$service_realname"
+	create_service_directories "$data_dir" "$log_dir"
+	install_binary_to_data_dir "$bin_path" "$data_dir" "$bin_name"
 
 	if [[ "$OS" == "Darwin" ]]; then
-		deploy_launchd_plist
-		deploy_newsyslog_config
+		deploy_launchd_plist "$service_label" "$program_args" "$data_dir" "$bin_name" "$log_dir" "$service_nice"
+		deploy_newsyslog_config "$bin_name" "$log_dir"
 	else
-		SERVICE_NICE=""
-		deploy_systemd_unit
+		deploy_systemd_unit "$service_name" "$service_desc" "$data_dir" "$exec_start" ""
 	fi
 }
 
@@ -356,10 +374,9 @@ deploy_coordinator_service() {
 build_worker_exec_start() {
 	local hints_arg=""
 	local gpu_arg=""
-	[[ "$DEFAULT_WORKER_HINTS_ENABLED" == "true" ]] && hints_arg=" --hints"
 	[[ "$DEFAULT_WORKER_GPU_ENABLED" == "true" ]] && gpu_arg=" --gpu"
 
-	local common_args="--coordinator-url ${DEFAULT_WORKER_COORDINATOR_URL}"
+	local common_args="--coordinator-url ${DEFAULT_WORKER_COORDINATOR_URL} -m"
 	[[ -n "$DEFAULT_WORKER_PROVINGKEY_DIR" ]] && common_args+=" -k ${DEFAULT_WORKER_PROVINGKEY_DIR}"
 	common_args+=" --worker-id ${DEFAULT_WORKER_ID}${hints_arg}${gpu_arg}"
 	[[ "${ONLY_CPU:-}" != "1" ]] && common_args+=" --gpu"
@@ -387,7 +404,6 @@ build_worker_program_args_plist() {
 
 	args+=(--coordinator-url "${DEFAULT_WORKER_COORDINATOR_URL}" --worker-id "${DEFAULT_WORKER_ID}")
 	[[ -n "$DEFAULT_WORKER_PROVINGKEY_DIR" ]] && args+=(-k "$DEFAULT_WORKER_PROVINGKEY_DIR")
-	[[ "$DEFAULT_WORKER_HINTS_ENABLED" == "true" ]] && args+=(--hints)
 	[[ "$DEFAULT_WORKER_GPU_ENABLED" == "true" ]] && args+=(--gpu)
 
 	if [[ -n "$DEFAULT_WORKER_EXTRA_ARGS" ]]; then
@@ -403,28 +419,30 @@ build_worker_program_args_plist() {
 }
 
 deploy_worker_service() {
-	SERVICE_NAME="$DEFAULT_WORKER_BIN_NAME"
-	SERVICE_LABEL="com.zisk.worker"
-	SERVICE_DESC="Zisk Worker"
-	SERVICE_REALNAME="Zisk Worker"
-	SERVICE_BIN_PATH="$DEFAULT_WORKER_BIN_PATH"
-	SERVICE_BIN_NAME="$DEFAULT_WORKER_BIN_NAME"
-	SERVICE_DATA_DIR="$DEFAULT_WORKER_DATA_DIR"
-	SERVICE_LOG_DIR="$DEFAULT_WORKER_LOG_DIR"
-	SERVICE_EXEC_START="$(build_worker_exec_start)"
-	SERVICE_PROGRAM_ARGS="$(build_worker_program_args_plist)"
-	SERVICE_NICE="-10"
+	local service_name="$DEFAULT_WORKER_BIN_NAME"
+	local service_label="com.zisk.worker"
+	local service_desc="Zisk Worker"
+	local service_realname="Zisk Worker"
+	local bin_path="$DEFAULT_WORKER_BIN_PATH"
+	local bin_name="$DEFAULT_WORKER_BIN_NAME"
+	local data_dir="$DEFAULT_WORKER_DATA_DIR"
+	local log_dir="$DEFAULT_WORKER_LOG_DIR"
+	local exec_start
+	exec_start="$(build_worker_exec_start)"
+	local program_args
+	program_args="$(build_worker_program_args_plist)"
+	local service_nice="-10"
 
 	create_group_if_missing
-	create_user_if_missing
-	create_service_directories
-	install_binary_to_data_dir
+	create_user_if_missing "$service_realname"
+	create_service_directories "$data_dir" "$log_dir"
+	install_binary_to_data_dir "$bin_path" "$data_dir" "$bin_name"
 
 	if [[ "$OS" == "Darwin" ]]; then
-		deploy_launchd_plist
-		deploy_newsyslog_config
+		deploy_launchd_plist "$service_label" "$program_args" "$data_dir" "$bin_name" "$log_dir" "$service_nice"
+		deploy_newsyslog_config "$bin_name" "$log_dir"
 	else
-		deploy_systemd_unit
+		deploy_systemd_unit "$service_name" "$service_desc" "$data_dir" "$exec_start" ""
 	fi
 }
 
@@ -449,10 +467,6 @@ deploy_distributed() {
 
 	info "Deploying zisk-worker service..."
 	deploy_worker_service
-
-	# kill all journalctl processes
-	info "Killing existing journalctl processes..."
-	pkill -f journalctl || true
 
     # Stream service logs to stdout in background
     journalctl -fu zisk-coordinator 2>/dev/null | prefix_log_output "coordinator" &
@@ -490,4 +504,10 @@ deploy_distributed() {
     fi
 
 	success "zisk-coordinator and zisk-worker services have been deployed."
+}
+
+uninstall_distributed() {
+	cleanup_existing_services
+	sleep 3 # Wait a moment to ensure all processes have been stopped
+	info "zisk-coordinator and zisk-worker services have been uninstalled."
 }
