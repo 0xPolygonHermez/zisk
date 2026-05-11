@@ -3,9 +3,6 @@
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 use crate::alloc_extern::vec::Vec;
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-use num_traits::ops::bytes;
-
 use crate::{
     syscalls::{
         syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
