@@ -32,6 +32,7 @@ pub fn fcall_uint256_inv(
                 hints.push(4);
                 hints.extend_from_slice(inv);
             } else {
+                hints.push(1);
                 hints.push(0);
             }
         }

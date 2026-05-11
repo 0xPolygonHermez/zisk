@@ -7,20 +7,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{Add256Trace, Add256TraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{Add256TracePacked, Add256TraceRowPacked};
-
-#[cfg(not(feature = "packed"))]
-type Add256TraceRowType<F> = Add256TraceRow<F>;
-#[cfg(feature = "packed")]
-type Add256TraceRowType<F> = Add256TraceRowPacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type Add256TraceType<F> = Add256Trace<F>;
-#[cfg(feature = "packed")]
-type Add256TraceType<F> = Add256TracePacked<F>;
+use zisk_pil::{Add256Trace, Add256TraceRowOps};
 
 use super::Add256Input;
 
@@ -43,7 +30,7 @@ impl<F: PrimeField64> Add256SM<F> {
     /// A new `Add256SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_availables = Add256TraceType::<F>::NUM_ROWS;
+        let num_availables = Add256Trace::<()>::NUM_ROWS;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
 
@@ -56,10 +43,10 @@ impl<F: PrimeField64> Add256SM<F> {
     /// * `trace` - A mutable reference to the Add256 trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<R: Add256TraceRowOps<F>>(
         &self,
         input: &Add256Input,
-        trace: &mut Add256TraceRowType<F>,
+        trace: &mut R,
         multiplicities: &mut [u32],
     ) {
         debug_assert!(input.cin < 2);
@@ -115,12 +102,12 @@ impl<F: PrimeField64> Add256SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: Add256TraceRowOps<F>>(
         &self,
         inputs: &[Vec<Add256Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Add256TraceType::<F>::new_from_vec(trace_buffer)?;
+        let mut trace = Add256Trace::<R>::new_from_vec(trace_buffer)?;
 
         let num_rows = trace.num_rows();
 
@@ -174,7 +161,7 @@ impl<F: PrimeField64> Add256SM<F> {
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 
-        let padding_row = Add256TraceRowType::<F>::default();
+        let padding_row: R = Default::default();
         trace.buffer[total_inputs..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         Ok(AirInstance::<F>::new_from_trace(FromTrace::new(&mut trace)))

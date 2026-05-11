@@ -1,4 +1,4 @@
-//! Common 256-bit constants in little-endian `[u64; 4]` representation.
+//! Common constants.
 
 /// Zero in 256-bit representation
 pub const ZERO_256: [u64; 4] = [0, 0, 0, 0];

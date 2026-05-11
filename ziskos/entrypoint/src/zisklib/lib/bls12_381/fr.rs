@@ -7,6 +7,7 @@ use crate::{
 
 use super::constants::{R, R_MINUS_ONE};
 
+/// Reduces a 256-bit value modulo the BLS12-381 scalar field order R
 pub fn reduce_fr_bls12_381(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -32,7 +33,7 @@ pub fn reduce_fr_bls12_381(
     *params.d
 }
 
-/// Addition in Fr
+/// Addition in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn add_fr_bls12_381(
     x: &[u64; 4],
@@ -50,7 +51,7 @@ pub fn add_fr_bls12_381(
     *params.d
 }
 
-/// Doubling in Fr
+/// Doubling in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn dbl_fr_bls12_381(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 4] {
     // 2·x + 0 or x·1 + x
@@ -69,7 +70,7 @@ pub fn dbl_fr_bls12_381(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
     *params.d
 }
 
-/// Subtraction in Fr
+/// Subtraction in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn sub_fr_bls12_381(
     x: &[u64; 4],
@@ -87,7 +88,7 @@ pub fn sub_fr_bls12_381(
     *params.d
 }
 
-/// Negation in Fr
+/// Negation in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn neg_fr_bls12_381(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 4] {
     // x·(-1) + 0
@@ -106,7 +107,7 @@ pub fn neg_fr_bls12_381(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
     *params.d
 }
 
-/// Multiplication in Fr
+/// Multiplication in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn mul_fr_bls12_381(
     x: &[u64; 4],
@@ -124,7 +125,7 @@ pub fn mul_fr_bls12_381(
     *params.d
 }
 
-/// Squaring in Fr
+/// Squaring in the scalar field of the BLS12-381 curve
 #[inline]
 pub fn square_fr_bls12_381(
     x: &[u64; 4],

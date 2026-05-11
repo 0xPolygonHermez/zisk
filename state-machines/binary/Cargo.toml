@@ -31,8 +31,3 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 num-bigint = { workspace = true }
 static_assertions = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []

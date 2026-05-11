@@ -1,50 +1,24 @@
-use std::fs;
-
-use clap::Parser;
-use colored::Colorize;
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result};
-use proofman_common::VerboseMode;
-use zisk_sdk::setup_logger;
+use zisk_build::ZISK_VERSION_MESSAGE;
 
-use crate::{
-    commands::get_home_zisk_path,
-    ux::{print_banner, print_banner_command},
-};
-
-/// Deletes the default zisk setup folder
-#[derive(Parser, Debug)]
-#[command(version, about = "Remove the cache directory", long_about = None)]
+#[derive(clap::Args, Debug)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Run cargo clean in the current project
 pub struct ZiskClean;
 
 impl ZiskClean {
     pub fn run(&self) -> Result<()> {
-        setup_logger(VerboseMode::Info);
+        let status = Command::new("cargo")
+            .arg("clean")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .context("Failed to execute cargo clean command")?;
 
-        print_banner();
-        print_banner_command("Clean");
-
-        let home_zisk_path = get_home_zisk_path();
-        let cache_zisk_path = home_zisk_path.join("cache");
-
-        if home_zisk_path.exists() {
-            tracing::info!("Removing default zisk path at: {}", cache_zisk_path.display());
-
-            fs::remove_dir_all(&cache_zisk_path).with_context(|| {
-                format!("Failed to remove directory {}", cache_zisk_path.display())
-            })?;
-
-            tracing::info!(
-                "{} Successfully removed {}",
-                "[OK]".green().bold(),
-                cache_zisk_path.display()
-            );
-        } else {
-            tracing::info!(
-                "{} No zisk setup directory found at {}",
-                "[WARN]".yellow(),
-                cache_zisk_path.display()
-            );
+        if !status.success() {
+            anyhow::bail!("Cargo clean command failed with status {}", status);
         }
 
         Ok(())

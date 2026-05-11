@@ -14,6 +14,8 @@ use anyhow::{Context, Result};
 use super::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
+const MAX_MESSAGE_SIZE: usize = 128 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
     #[error("No client connected yet")]
@@ -21,6 +23,9 @@ pub enum UnixSocketError {
 
     #[error("Socket not connected")]
     NotConnected,
+
+    #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
+    MessageTooLarge(usize),
 
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
@@ -400,7 +405,6 @@ impl StreamWrite for UnixSocketStreamWriter {
                         if err.kind() == std::io::ErrorKind::Interrupted {
                             continue; // Retry on EINTR
                         }
-                        eprintln!("Accept failed: {}", err);
                         return;
                     }
 
@@ -428,6 +432,10 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Returns `NoClientConnected` error if no client has connected yet.
     /// The caller can retry the write until a client connects.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
+        if item.len() > MAX_MESSAGE_SIZE {
+            return Err(UnixSocketError::MessageTooLarge(item.len()).into());
+        }
+
         self.open()?;
 
         // Receive socket from channel if we don't have it yet
@@ -468,11 +476,19 @@ impl StreamWrite for UnixSocketStreamWriter {
     fn close(&mut self) -> Result<()> {
         self.flush()?;
 
-        // Clear the socket
+        // Clear the connected socket
         self.socket = None;
 
+        // Close the listener fd first — this unblocks the accept thread
+        // (accept() returns EBADF), allowing it to exit.
         if let Some(fd) = self.listener_fd.take() {
             unsafe { libc::close(fd) };
+        }
+
+        // Now join the accept thread and clear the channel
+        self.socket_receiver = None;
+        if let Some(handle) = self.accept_thread.take() {
+            let _ = handle.join();
         }
 
         // Clean up socket file
@@ -486,6 +502,32 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.socket.is_some()
+    }
+
+    /// Block until a client has connected to the listening socket.
+    ///
+    /// Unix socket `open()` is non-blocking (spawns accept thread), so the first
+    /// `write()` can fail with `NoClientConnected` before the peer connects.
+    /// This method polls with a 5 ms sleep, timing out after 60 seconds.
+    fn wait_for_connection(&mut self) -> Result<()> {
+        let start = std::time::Instant::now();
+        let deadline = start + std::time::Duration::from_secs(60);
+        let mut last_log = start;
+        while !self.is_client_connected() {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                anyhow::bail!("Timed out waiting for a client to connect to Unix socket");
+            }
+            if now.duration_since(last_log) >= std::time::Duration::from_secs(5) {
+                last_log = now;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        Ok(())
+    }
+
+    fn max_message_size(&self) -> usize {
+        MAX_MESSAGE_SIZE
     }
 }
 

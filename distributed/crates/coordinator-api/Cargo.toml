@@ -1,0 +1,21 @@
+[package]
+name = "zisk-coordinator-api"
+description = "ZisK Coordinator gRPC types (generated from proto)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zisk-common = { workspace = true }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }

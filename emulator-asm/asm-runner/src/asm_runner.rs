@@ -1,7 +1,7 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use thiserror::Error;
 
-use crate::{AsmService, AsmServices};
+use crate::AsmService;
 
 #[derive(Debug, Error)]
 pub enum AsmRunError {
@@ -36,9 +36,7 @@ pub struct AsmRunnerOptions {
     pub verbose: bool,
     pub trace_level: AsmRunnerTraceLevel,
     pub keccak_trace: bool,
-    pub world_rank: i32,
     pub local_rank: i32,
-    pub base_port: Option<u16>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub share_input_shmem: bool,
@@ -60,9 +58,7 @@ impl AsmRunnerOptions {
             verbose: false,
             trace_level: AsmRunnerTraceLevel::None,
             keccak_trace: false,
-            world_rank: 0,
             local_rank: 0,
-            base_port: None,
             unlock_mapped_memory: false,
             asm_out_file: false,
             share_input_shmem: false,
@@ -100,18 +96,8 @@ impl AsmRunnerOptions {
         self
     }
 
-    pub fn with_world_rank(mut self, rank: i32) -> Self {
-        self.world_rank = rank;
-        self
-    }
-
     pub fn with_local_rank(mut self, rank: i32) -> Self {
         self.local_rank = rank;
-        self
-    }
-
-    pub fn with_base_port(mut self, port: Option<u16>) -> Self {
-        self.base_port = port;
         self
     }
 
@@ -144,15 +130,15 @@ impl AsmRunnerOptions {
         command: &mut Command,
         asm_service: &AsmService,
         shm_prefix: &str,
+        sem_prefix: &str,
     ) {
-        let port = if let Some(base_port) = self.base_port {
-            AsmServices::port_for(asm_service, base_port, self.local_rank)
-        } else {
-            AsmServices::default_port(asm_service, self.local_rank)
-        };
-
         // Execute in server mode
         command.arg("-s");
+
+        command.arg(format!("--gen={}", asm_service.gen_index()));
+
+        command.arg("--stdio");
+        command.arg("--open_all_shm");
 
         if self.unlock_mapped_memory {
             command.arg("-u");
@@ -163,18 +149,7 @@ impl AsmRunnerOptions {
         }
 
         command.arg("--shm_prefix").arg(shm_prefix);
-
-        match asm_service {
-            AsmService::MT => {
-                command.arg("--generate_minimal_trace");
-            }
-            AsmService::RH => {
-                command.arg("--generate_rom_histogram");
-            }
-            AsmService::MO => {
-                command.arg("--generate_mem_op");
-            }
-        }
+        command.arg("--sem_prefix").arg(sem_prefix);
 
         if !self.log_output {
             command.arg("-o");
@@ -184,22 +159,11 @@ impl AsmRunnerOptions {
             command.arg("-m");
         }
 
-        if self.share_input_shmem {
-            command.arg("--share_input_shm");
-        }
-
-        if self.open_input_shmem {
-            command.arg("--open_input_shm");
-        }
-
         if self.verbose {
             command.arg("-v");
-            command.stdout(std::process::Stdio::inherit());
-        } else {
-            command.stdout(std::process::Stdio::null());
         }
 
-        command.stderr(std::process::Stdio::inherit());
+        command.stderr(if self.verbose { Stdio::inherit() } else { Stdio::null() });
 
         match self.trace_level {
             AsmRunnerTraceLevel::None => {}
@@ -214,7 +178,5 @@ impl AsmRunnerOptions {
         if self.keccak_trace {
             command.arg("-k");
         }
-
-        command.arg("-p").arg(port.to_string());
     }
 }

@@ -21,8 +21,4 @@ proofman-util = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 itertools = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []
+anyhow = { workspace = true }

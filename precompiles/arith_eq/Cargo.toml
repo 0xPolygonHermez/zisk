@@ -72,8 +72,6 @@ path-clean = "1.0"
 
 [features]
 default = []
-gpu = ["packed"]
-packed = []
 test_data = []
 test_data_secp256k1 = []
 test_data_secp256r1 = []

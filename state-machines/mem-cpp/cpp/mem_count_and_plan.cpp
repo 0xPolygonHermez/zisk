@@ -395,9 +395,15 @@ void load_mem_metas_and_generate_segments(MemCountAndPlan *mcp)
         std::sort(metas.metas.begin(), metas.metas.end(),
                   [](const InstanceMeta &a, const InstanceMeta &b) { return a.type < b.type || (a.type == b.type && a.inst_id < b.inst_id); });
         for (const auto &meta : metas.metas) {
-            printf("Instance %d: type=%d first_addr=0x%08X last_addr=0x%08X first_chunk=%d first_skip=%d last_chunk=%d last_include=%d count_per_chunk_len=%zu addr_offsets_len=%zu\n",
+            uint32_t count_zeros = 0;
+            for (size_t i = 0; i < meta.addr_offsets.size(); ++i) {
+                if (meta.addr_offsets[i] == 0) {
+                    count_zeros++;
+                }
+            }
+            printf("Instance %d: type=%d first_addr=0x%08X last_addr=0x%08X first_chunk=%d first_skip=%d last_chunk=%d last_include=%d count_per_chunk_len=%zu addr_offsets_len=%zu zeros=%d/%d\n",
                 meta.inst_id, meta.type, meta.first_addr, meta.last_addr, meta.first_addr_chunk, meta.first_addr_skip,
-                meta.last_addr_chunk, meta.last_addr_include, meta.count_per_chunk.size(), meta.addr_offsets.size());
+                meta.last_addr_chunk, meta.last_addr_include, meta.count_per_chunk.size(), meta.addr_offsets.size(), count_zeros, meta.addr_offsets.size());
         }
         printf("Metas loaded (%zu).\n", metas.metas.size());
         generate_mem_segments_from_gpu_plan(mcp, metas.metas);

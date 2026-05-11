@@ -1,31 +1,69 @@
 use anyhow::Result;
-use cargo_zisk::commands::get_proving_key;
+use borsh::{BorshDeserialize, BorshSerialize};
+use cargo_zisk::common::{get_proving_key, get_proving_key_snark};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use rom_setup::{get_elf_data_hash, DEFAULT_CACHE_PATH};
-use std::fs;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
+use zisk_cluster_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
+use zisk_cluster_common::{ContributionsMessage, ProveMessage};
+use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
+use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::ElfBinaryFromFile;
-use zisk_common::ZiskExecutorTime;
-use zisk_distributed_common::{AggregationParams, DataCtx, InputSourceDto, JobPhase, WorkerState};
-use zisk_distributed_common::{ComputeCapacity, JobId, PartitionInfo, WorkerId};
-use zisk_distributed_common::{ContributionsMessage, ProveMessage, StreamMessage};
-use zisk_distributed_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
-use zisk_sdk::{Asm, Emu, ProverClient, ZiskBackend, ZiskProgramPK, ZiskProver};
+use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime};
+use zisk_prover_backend::GuestProgram;
+use zisk_prover_backend::{
+    Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
+    ZiskProver,
+};
 
 use crate::stream_ordering::StreamOrderingActor;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
-use proofman_common::ParamsGPU;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::ProverServiceConfigDto;
+
+#[derive(BorshSerialize, BorshDeserialize)]
+struct SetupMessage {
+    hash_id: String,
+    program_name: String,
+    elf_bytes: Vec<u8>,
+    with_hints: bool,
+}
+
+/// Tag byte used as the first byte of every MPI broadcast message.
+///
+/// Variants must stay in this order (Borsh encodes variant index, not the repr value).
+/// The first six entries intentionally mirror `JobPhase` so that existing messages
+/// remain wire-compatible; `Setup` is only used for the worker-internal setup broadcast
+/// and has no meaning in the coordinator's `JobPhase`.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq)]
+enum WorkerMpiTag {
+    Execution,
+    Contributions,
+    Prove,
+    Aggregate,
+    ContributionsInputsStream,
+    ContributionsHintsStream,
+    Setup,
+}
+
+/// Timeout for awaiting cancellation of blocking computation tasks.
+/// If a spawn_blocking task doesn't promptly observe the cancel signal,
+/// we'll detach it after this duration to keep the worker event loop responsive.
+const CANCELLATION_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Timeout for waiting for the stream-ordering actor to finish its current
+/// `process_hints` call when shutting it down between proves.
+const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Result from computation tasks
 #[derive(Debug)]
@@ -54,25 +92,20 @@ pub enum ComputationResult {
         success: bool,
         result: Result<Option<Vec<Vec<u64>>>>,
         executed_steps: u64,
+        proof_type: ProofKind,
         instances: u64,
     },
 }
 
 pub struct ProverConfig {
-    /// Path to the ELF file
-    pub elf: PathBuf,
-
-    /// Path to the ASM file (optional)
-    pub asm: Option<PathBuf>,
-
-    /// Path to the ASM ROM file (optional)
-    pub asm_rom: Option<PathBuf>,
-
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
 
     /// Path to the proving key
     pub proving_key: PathBuf,
+
+    /// Path to the PLONK proving key
+    pub proving_key_snark: Option<PathBuf>,
 
     /// Verbosity level for logging
     pub verbose: u8,
@@ -83,46 +116,42 @@ pub struct ProverConfig {
     /// Additional options for the ASM runner
     // pub asm_runner_options: AsmRunnerOptions,
 
-    /// Base port for ASM services
-    pub asm_port: Option<u16>,
-
     /// Flag to unlock mapped memory
     pub unlock_mapped_memory: bool,
 
     /// Flag to redirect ASM emulator output to file
     pub asm_out_file: bool,
 
-    /// Flag to verify constraints
-    pub verify_constraints: bool,
-
-    /// Flag to enable aggregation
-    pub aggregation: bool,
-
-    /// Preallocate resources
-    pub gpu_params: Option<ParamsGPU>,
-
-    /// Whether to use shared tables in the witness library
-    pub shared_tables: bool,
-
-    /// Whether to use RMA for communication
-    pub rma: bool,
-
     /// Whether to use minimal memory mode
     pub minimal_memory: bool,
 
-    /// Whether to include precompile hints in the assembly generation
-    pub hints: bool,
+    /// Enable GPU acceleration
+    pub gpu: bool,
+
+    /// Enable PLONK proofs
+    pub plonk: bool,
+
+    /// Whether to preload PLONK proving key and verification key into the prover service on startup (only applies if `plonk` is true)
+    pub preload_plonk: bool,
+
+    /// Maximum number of GPU streams
+    pub max_streams: Option<usize>,
+
+    /// Number of threads for witness computation
+    pub number_threads_witness: Option<usize>,
+
+    /// Maximum witness buffers stored in memory
+    pub max_witness_stored: Option<usize>,
 }
 
 impl ProverConfig {
-    pub fn load(mut prover_service_config: ProverServiceConfigDto) -> Result<Self> {
-        if !prover_service_config.elf.exists() {
-            return Err(anyhow::anyhow!(
-                "ELF file '{}' not found.",
-                prover_service_config.elf.display()
-            ));
-        }
-        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref());
+    pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
+        let proving_key = get_proving_key(prover_service_config.proving_key.as_ref())?;
+        let proving_key_snark = if prover_service_config.plonk {
+            Some(get_proving_key_snark(prover_service_config.proving_key_snark.as_ref())?)
+        } else {
+            None
+        };
         let debug_info = match &prover_service_config.debug {
             None => DebugInfo::default(),
             Some(None) => DebugInfo::new_debug(),
@@ -131,106 +160,26 @@ impl ProverConfig {
             }
         };
 
-        let home = std::env::var("HOME").map(PathBuf::from).map_err(|_| {
-            anyhow::anyhow!(
-                "HOME environment variable not set, cannot determine default cache path"
-            )
-        })?;
-
-        let default_cache_path = home.join(DEFAULT_CACHE_PATH);
-        if !default_cache_path.exists() {
-            if let Err(e) = fs::create_dir_all(default_cache_path.clone()) {
-                if e.kind() != std::io::ErrorKind::AlreadyExists {
-                    return Err(anyhow::anyhow!("Failed to create the cache directory: {e:?}"));
-                }
-            }
-        }
+        let preload_plonk = prover_service_config.plonk && prover_service_config.preload_plonk;
 
         let emulator =
             if cfg!(target_os = "macos") { true } else { prover_service_config.emulator };
-        let mut asm_rom = None;
-        if emulator {
-            prover_service_config.asm = None;
-        } else if prover_service_config.asm.is_none() {
-            let stem = prover_service_config
-                .elf
-                .file_stem()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF path '{}' does not have a file stem.",
-                        prover_service_config.elf.display()
-                    )
-                })?
-                .to_str()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "ELF file stem for '{}' is not valid UTF-8.",
-                        prover_service_config.elf.display()
-                    )
-                })?;
-            let elf =
-                ElfBinaryFromFile::new(&prover_service_config.elf, prover_service_config.hints)?;
-
-            let hash = get_elf_data_hash(&elf)
-                .map_err(|e| anyhow::anyhow!("Error computing ELF hash: {}", e))?;
-            let stem = if prover_service_config.hints {
-                format!("{stem}-hints")
-            } else {
-                stem.to_string()
-            };
-            let new_filename = format!("{stem}-{hash}-mt.bin");
-            let asm_rom_filename = format!("{stem}-{hash}-rh.bin");
-            asm_rom = Some(default_cache_path.join(asm_rom_filename));
-            prover_service_config.asm = Some(default_cache_path.join(new_filename));
-        }
-        if let Some(asm_path) = &prover_service_config.asm {
-            if !asm_path.exists() {
-                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_path.display()));
-            }
-        }
-
-        if let Some(asm_rom) = &asm_rom {
-            if !asm_rom.exists() {
-                return Err(anyhow::anyhow!("ASM file not found at {:?}", asm_rom.display()));
-            }
-        }
-        let mut gpu_params = None;
-        if prover_service_config.preallocate
-            || prover_service_config.max_streams.is_some()
-            || prover_service_config.number_threads_witness.is_some()
-            || prover_service_config.max_witness_stored.is_some()
-        {
-            let mut gpu_params_new = ParamsGPU::new(prover_service_config.preallocate);
-            if let Some(max_streams) = prover_service_config.max_streams {
-                gpu_params_new.with_max_number_streams(max_streams);
-            }
-            if let Some(number_threads_witness) = prover_service_config.number_threads_witness {
-                gpu_params_new.with_number_threads_pools_witness(number_threads_witness);
-            }
-            if let Some(max_witness_stored) = prover_service_config.max_witness_stored {
-                gpu_params_new.with_max_witness_stored(max_witness_stored);
-            }
-            gpu_params = Some(gpu_params_new);
-        }
 
         Ok(ProverConfig {
-            elf: prover_service_config.elf.clone(),
-            asm: prover_service_config.asm.clone(),
-            asm_rom,
             emulator,
             proving_key,
+            proving_key_snark,
             verbose: prover_service_config.verbose,
             debug_info,
-            asm_port: prover_service_config.asm_port,
             unlock_mapped_memory: prover_service_config.unlock_mapped_memory,
             asm_out_file: prover_service_config.asm_out_file,
-            verify_constraints: prover_service_config.verify_constraints,
-            aggregation: prover_service_config.aggregation,
-            gpu_params,
-            shared_tables: prover_service_config.shared_tables,
-            rma: prover_service_config.rma,
             minimal_memory: prover_service_config.minimal_memory,
-            hints: prover_service_config.hints,
+            gpu: prover_service_config.gpu,
+            max_streams: prover_service_config.max_streams,
+            number_threads_witness: prover_service_config.number_threads_witness,
+            max_witness_stored: prover_service_config.max_witness_stored,
+            plonk: prover_service_config.plonk,
+            preload_plonk,
         })
     }
 }
@@ -239,6 +188,7 @@ impl ProverConfig {
 #[derive(Debug, Clone)]
 pub struct JobContext {
     pub job_id: JobId,
+    pub hash_id: String,
     pub data_ctx: DataCtx,
     pub rank_id: u32,
     pub total_workers: u32,
@@ -251,8 +201,6 @@ pub struct JobContext {
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
-    _worker_id: WorkerId,
-    _compute_capacity: ComputeCapacity,
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
     current_computation: Option<JoinHandle<()>>,
@@ -261,78 +209,119 @@ pub struct Worker<T: ZiskBackend + 'static> {
     prover_config: ProverConfig,
 
     stream_actor: Option<StreamOrderingActor>,
-    pk: Arc<ZiskProgramPK>,
+    /// All set-up programs, keyed by hash_id. Supports multiple concurrent programs.
+    guest_programs: HashMap<String, Arc<GuestProgram>>,
+    /// Two setups for the same program (one with hints, one without) coexist independently.
+    program_vks: HashMap<SetupKey, ProgramVK>,
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
-    pub fn new_emu(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Emu>> {
+    pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
+        let mut prover_options = BackendProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .aggregation(true);
+
+        if prover_config.plonk {
+            if prover_config.proving_key_snark.is_none() {
+                return Err(anyhow::anyhow!(
+                    "PLONK proving key must be provided when PLONK is enabled"
+                ));
+            }
+            prover_options = prover_options
+                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
+                .plonk(prover_config.preload_plonk);
+        }
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+        if prover_config.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(max_streams) = prover_config.max_streams {
+            prover_options = prover_options.max_streams(max_streams);
+        }
+        if let Some(threads) = prover_config.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = prover_config.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+
         let prover = Arc::new(
-            ProverClient::builder()
-                .emu()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .gpu(prover_config.gpu_params.clone())
-                .build()?,
+            ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
         );
 
-        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
-        let (pk, _) = prover.setup(&elf)?;
-
         Ok(Worker::<Emu> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
+            guest_programs: HashMap::new(),
+            program_vks: HashMap::new(),
             prover,
             prover_config,
-            pk: Arc::new(pk),
             stream_actor: None,
         })
     }
 
-    pub fn new_asm(
-        worker_id: WorkerId,
-        compute_capacity: ComputeCapacity,
-        prover_config: ProverConfig,
-    ) -> Result<Worker<Asm>> {
+    pub fn new_asm(prover_config: ProverConfig) -> Result<Worker<Asm>> {
+        let mut prover_options = BackendProverOpts::default()
+            .proving_key(prover_config.proving_key.clone())
+            .verbose(prover_config.verbose)
+            .aggregation(true);
+
+        if prover_config.plonk {
+            if prover_config.proving_key_snark.is_none() {
+                return Err(anyhow::anyhow!(
+                    "PLONK proving key must be provided when PLONK is enabled"
+                ));
+            }
+            prover_options = prover_options
+                .proving_key_plonk(prover_config.proving_key_snark.clone().unwrap())
+                .plonk(prover_config.preload_plonk);
+        }
+
+        if prover_config.minimal_memory {
+            prover_options = prover_options.minimal_memory();
+        }
+        if prover_config.gpu {
+            prover_options = prover_options.gpu();
+        }
+        if let Some(max_streams) = prover_config.max_streams {
+            prover_options = prover_options.max_streams(max_streams);
+        }
+        if let Some(threads) = prover_config.number_threads_witness {
+            prover_options = prover_options.number_threads_witness(threads);
+        }
+        if let Some(max) = prover_config.max_witness_stored {
+            prover_options = prover_options.max_witness_stored(max);
+        }
+
+        // ASM-specific options for distributed worker
+        let mut asm_options = AsmOptions::default();
+        if prover_config.unlock_mapped_memory {
+            asm_options = asm_options.unlock_mapped_memory();
+        }
+        if prover_config.asm_out_file {
+            asm_options = asm_options.asm_out_file();
+        }
+        asm_options = asm_options.is_distributed();
+        prover_options = prover_options.with_asm_options(asm_options);
+
         let prover = Arc::new(
-            ProverClient::builder()
-                .asm()
-                .prove()
-                .aggregation(true)
-                .proving_key_path(prover_config.proving_key.clone())
-                .verbose(prover_config.verbose)
-                .shared_tables(prover_config.shared_tables)
-                .asm_path_opt(prover_config.asm.clone())
-                .base_port_opt(prover_config.asm_port)
-                .unlock_mapped_memory(prover_config.unlock_mapped_memory)
-                .asm_out_file(prover_config.asm_out_file)
-                .gpu(prover_config.gpu_params.clone())
-                .is_distributed(true)
-                .build()?,
+            ProverClientBuilder::new().asm().prove().with_prover_options(prover_options).build()?,
         );
 
-        let elf = ElfBinaryFromFile::new(&prover_config.elf, prover_config.hints)?;
-        let (pk, _) = prover.setup(&elf)?;
-
         Ok(Worker::<Asm> {
-            _worker_id: worker_id,
-            _compute_capacity: compute_capacity,
             state: WorkerState::Disconnected,
             current_job: None,
             current_computation: None,
             prover,
             prover_config,
-            pk: Arc::new(pk),
             stream_actor: None,
+            guest_programs: HashMap::new(),
+            program_vks: HashMap::new(),
         })
     }
 
@@ -342,6 +331,41 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Run setup for a guest program, storing it in the multi-program map.
+    /// Skips setup if this hash_id was already set up.
+    pub fn run_setup(
+        &mut self,
+        hash_id: &str,
+        elf_bytes: &[u8],
+        with_hints: bool,
+        new_guest_program: Arc<GuestProgram>,
+    ) -> Result<ProgramVK> {
+        // Skip if already set up for this (hash_id, with_hints) combination.
+        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints)) {
+            info!(
+                "Received same guest program for setup (hash_id={}, with_hints={}). Skipping setup",
+                hash_id, with_hints
+            );
+            return Ok(vk.clone());
+        }
+
+        // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
+        let message = SetupMessage {
+            hash_id: hash_id.to_string(),
+            program_name: new_guest_program.name().to_string(),
+            elf_bytes: elf_bytes.to_vec(),
+            with_hints,
+        };
+        let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
+            .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
+        self.prover.mpi_broadcast(&mut serialized)?;
+
+        let vk = self.prover.prover.setup_internal(&new_guest_program, with_hints)?;
+        self.guest_programs.insert(hash_id.to_string(), new_guest_program);
+        self.program_vks.insert(SetupKey::new(hash_id, with_hints), vk.clone());
+        Ok(vk)
     }
 
     pub fn get_executed_steps(&self) -> u64 {
@@ -380,18 +404,71 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.current_computation = Some(handle);
     }
 
-    pub fn cancel_current_computation(&mut self) {
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u8>> {
+        self.prover.get_vadcop_vk(minimal)
+    }
+
+    pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
+        self.prover.clone()
+    }
+
+    /// Returns a clone of the cached `Arc<GuestProgram>` for `hash_id`,
+    /// or `None` if the program isn't set up on this worker.
+    pub fn guest_program(&self, hash_id: &str) -> Option<Arc<GuestProgram>> {
+        self.guest_programs.get(hash_id).cloned()
+    }
+
+    pub async fn cancel_current_computation(&mut self) {
+        self.prover.cancel();
+
         if let Some(handle) = self.current_computation.take() {
-            handle.abort();
+            match tokio::time::timeout(CANCELLATION_TIMEOUT, handle).await {
+                Ok(_) => {}
+                Err(_) => {
+                    warn!(
+                        "Cancellation timeout ({:?}) expired; detaching computation task (it may complete in background)",
+                        CANCELLATION_TIMEOUT
+                    );
+                }
+            }
         }
 
-        // Drop the actor on a blocking thread: closes the channel, which signals the ordering
-        // thread to exit, without blocking the Tokio runtime worker thread.
+        // Shut down the stream actor on a blocking thread, waiting for its worker
+        // thread to exit. This avoids racing the next prove's reset against an
+        // in-flight `process_hints` call from the previous job.
         if let Some(stream_actor) = self.stream_actor.take() {
-            tokio::task::spawn_blocking(move || {
-                drop(stream_actor);
-            });
+            let _ = tokio::task::spawn_blocking(move || {
+                stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
+            })
+            .await;
         }
+    }
+
+    /// Cancels any in-flight computation and clears the current job context.
+    /// Use this when the worker should become fully idle (e.g., job cancelled,
+    /// stale job cleared on reconnection).
+    pub async fn clear_current_job(&mut self) {
+        self.cancel_current_computation().await;
+        self.current_job = None;
+    }
+
+    pub fn prepare_for_new_job(
+        &self,
+        hash_id: &str,
+        with_hints: bool,
+        is_first_partition: bool,
+    ) -> Result<()> {
+        let program_id = self
+            .guest_programs
+            .get(hash_id)
+            .ok_or_else(|| anyhow::anyhow!("Guest program not found for hash_id={hash_id}"))?
+            .program_id
+            .clone();
+
+        self.prover.register_program(&program_id, with_hints)?;
+        self.prover.reset_resources()?;
+        self.prover.set_active_services(is_first_partition)?;
+        Ok(())
     }
 
     #[allow(clippy::type_complexity)]
@@ -399,6 +476,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn new_job(
         &mut self,
         job_id: JobId,
+        hash_id: String,
         data_ctx: DataCtx,
         rank_id: u32,
         total_workers: u32,
@@ -408,6 +486,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
+            hash_id,
             data_ctx,
             rank_id,
             total_workers,
@@ -440,10 +519,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = ProvePhaseInputs::Contributions();
 
-            let options = self.get_proof_options(false);
+            let options = self.get_prove_options(false);
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
+                hash_id: job.hash_id.clone(),
                 phase_inputs,
                 options,
                 input_source: job.data_ctx.input_source.clone(),
@@ -455,7 +535,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Contributions, message)).unwrap()
+            borsh::to_vec(&(WorkerMpiTag::Contributions, message)).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize Contributions MPI broadcast: {}", e)
+            })?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -468,7 +550,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> Result<JoinHandle<()>> {
         self.execution_only_mpi_broadcast(&job).await?;
-        Ok(self.execution_only(job, tx))
+        let hash_id = job.lock().await.hash_id.clone();
+        Ok(self.execution_only(job, hash_id, tx))
     }
 
     pub async fn execution_only_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
@@ -477,10 +560,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = ProvePhaseInputs::Contributions();
 
-            let options = self.get_proof_options(false);
+            let options = self.get_execution_options();
 
             let message = ContributionsMessage {
                 job_id: job.job_id.clone(),
+                hash_id: job.hash_id.clone(),
                 phase_inputs,
                 options,
                 input_source: job.data_ctx.input_source.clone(),
@@ -492,7 +576,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 },
             };
 
-            borsh::to_vec(&(JobPhase::Execution, message)).unwrap()
+            borsh::to_vec(&(WorkerMpiTag::Execution, message)).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize Execution MPI broadcast: {}", e)
+            })?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -519,11 +605,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
 
-            let options = self.get_proof_options(false);
+            let options = self.get_prove_options(false);
 
             let message = ProveMessage { job_id: job.job_id.clone(), phase_inputs, options };
 
-            borsh::to_vec(&(JobPhase::Prove, message)).unwrap()
+            borsh::to_vec(&(WorkerMpiTag::Prove, message))
+                .map_err(|e| anyhow::anyhow!("Failed to serialize Prove MPI broadcast: {}", e))?
         };
 
         self.prover.mpi_broadcast(&mut serialized)?;
@@ -545,8 +632,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let pk = self.pk.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
@@ -570,7 +656,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 inputs_source,
                 hints_source,
                 partition_info,
-                &pk,
                 options,
             );
 
@@ -588,21 +673,31 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Contribution {
-                        job_id,
-                        success: true,
-                        result: Ok((witness_info, zisk_execution_time, data, instances)),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Contribution {
+                            job_id,
+                            success: true,
+                            result: Ok((witness_info, zisk_execution_time, data, instances)),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send contribution result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Contribution computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Contribution {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Contribution {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send contribution error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -611,10 +706,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
+        hash_id: String,
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let pk = self.pk.clone();
+        let guest_program = self
+            .guest_programs
+            .get(&hash_id)
+            .unwrap_or_else(|| panic!("Guest program not found for hash_id={hash_id}"))
+            .clone();
 
         tokio::task::spawn_blocking(move || {
             let guard = job.blocking_lock();
@@ -637,7 +737,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 inputs_source,
                 hints_source,
                 partition_info,
-                &pk,
+                &guest_program,
             );
 
             let mut guard = job.blocking_lock();
@@ -650,28 +750,43 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
             match result {
-                Ok(num_instances) => {
+                Ok((num_instances, publics)) => {
                     let instances = num_instances as u64;
                     let executed_steps = prover.executed_steps();
                     guard = job.blocking_lock();
                     guard.instances = instances;
                     drop(guard);
 
-                    let _ = tx.send(ComputationResult::Execution {
-                        job_id,
-                        success: true,
-                        result: Ok((witness_info, zisk_execution_time, instances, executed_steps)),
-                        task_received_time,
-                    });
+                    // witness_info.publics is empty in execution-only mode (no witness phase),
+                    // so override with the publics from ExecuteOutput.
+                    let mut wi = witness_info;
+                    wi.publics = publics;
+
+                    if tx
+                        .send(ComputationResult::Execution {
+                            job_id,
+                            success: true,
+                            result: Ok((wi, zisk_execution_time, instances, executed_steps)),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send execution result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Execution-only computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Execution {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        task_received_time,
-                    });
+                    if tx
+                        .send(ComputationResult::Execution {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            task_received_time,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send execution error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -685,7 +800,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
-        pk: &ZiskProgramPK,
         options: ProofOptions,
     ) -> Result<Vec<ContributionsInfo>> {
         let phase = proofman::ProvePhase::Contributions;
@@ -693,27 +807,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
             InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
-            InputSourceDto::InputNull => ZiskStdin::null(),
+            InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
-                pk.register_hints_stream(hints_stream)?;
+                prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+            HintsSourceDto::HintsData(hints_data) => {
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsNull => {
-                // No hints to set
+            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                // HintsNull: nothing to register.
             }
         }
 
         prover.set_stdin(stdin)?;
-
-        prover.register_program(pk)?;
 
         if matches!(phase_inputs, ProvePhaseInputs::Contributions()) {
             prover.set_partition(
@@ -736,7 +848,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             }
             Err(err) => {
                 error!("Failed to generate proof for {job_id}: {:?}", err);
-                return Err(anyhow::anyhow!("Failed to generate proof"));
+                return Err(err.context("Failed to generate proof"));
             }
         };
 
@@ -749,32 +861,30 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         input_source: InputSourceDto,
         hints_source: HintsSourceDto,
         partition_info: PartitionInfo,
-        pk: &ZiskProgramPK,
-    ) -> Result<usize> {
+        guest_program: &GuestProgram,
+    ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
             InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
-            InputSourceDto::InputNull => ZiskStdin::null(),
+            InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
         match hints_source {
             HintsSourceDto::HintsPath(hints_uri) => {
                 let hints_stream = StreamSource::from_uri(hints_uri)?;
-                pk.register_hints_stream(hints_stream)?;
+                prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsStream(_hints_uri) => {
-                // For HintsStream, the worker will receive hint data via StreamData gRPC messages
-                // routed through the stream ordering actor into the hints processor.
-                // No need to set hints_stream on prover for this case
+            HintsSourceDto::HintsData(hints_data) => {
+                let hints_stream = StreamSource::from_vec(hints_data);
+                prover.register_hints_stream(hints_stream)?;
             }
-            HintsSourceDto::HintsNull => {
-                // No hints to set
+            HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
+                // HintsStream: data is delivered via route_stream_data → actor → process_hints.
+                // HintsNull: nothing to register.
             }
         }
 
         prover.set_stdin(stdin.clone())?;
-
-        prover.register_program(pk)?;
 
         prover.set_partition(
             partition_info.total_compute_units,
@@ -782,39 +892,71 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             partition_info.worker_idx,
         )?;
 
-        let result = prover.execute(pk, stdin)?;
+        let result = prover.execute(guest_program, stdin)?;
 
-        let num_instances = result.planning_info.num_instances;
+        let num_instances = prover.get_execution_info()?.0.total_instances;
 
-        Ok(num_instances)
+        let publics_u64: Vec<u64> = result
+            .get_publics()
+            .public_bytes()
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .collect();
+
+        Ok((num_instances, publics_u64))
+    }
+
+    /// Wrap an existing vadcop proof into a minimal or SNARK proof.
+    /// `proof_data` is a bincode-encoded `Proof`.
+    /// Returns the bincode-encoded wrapped `Proof`.
+    pub fn execute_wrap_task(
+        prover: &ZiskProver<T>,
+        proof_data: Vec<u8>,
+        proof_dest: i32,
+    ) -> Result<Vec<u8>> {
+        let proof_kind = match proof_dest {
+            1 => ProofKind::VadcopFinalMinimal,
+            2 => ProofKind::Plonk,
+            _ => anyhow::bail!("Unsupported proof_dest for wrap: {}", proof_dest),
+        };
+
+        let proof: Proof = bincode::deserialize(&proof_data)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize proof for wrap: {}", e))?;
+
+        let result = prover.wrap_proof(&proof, proof_kind).run()?;
+
+        let wrapped = result.get_proof();
+
+        let result_bytes = bincode::serialize(&wrapped)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize wrapped proof: {}", e))?;
+
+        Ok(result_bytes)
     }
 
     /// Routes an incoming `StreamData` message to the per-job ordering actor.
+    pub fn append_raw_input(&self, data: &[u8]) -> Result<()> {
+        self.prover.append_raw_input(data)
+    }
+
     ///
-    /// - `Start`: initialises the `HintsProcessor` (if needed), resets it, and spawns the actor.
+    /// - `Start`: spawns a new `StreamOrderingActor`. Resetting shmem and setting
+    ///   active services are NOT done here — they are handled synchronously by
+    ///   `prepare_for_new_job` before the contribution task is spawned, so reset
+    ///   is guaranteed to happen before the C services start reading and before
+    ///   any data is written via `process_hints`.
     /// - `Data` / `End`: enqueues the message into the actor's channel — O(1), non-blocking.
     ///
     /// The actor thread owns the reorder buffer and calls `process_hints` in sequence order.
-    pub async fn route_stream_data(
-        &mut self,
-        stream_data: StreamDataDto,
-        is_first_partition: bool,
-    ) -> Result<()> {
+    pub async fn route_stream_data(&mut self, stream_data: StreamDataDto) -> Result<()> {
         match &stream_data.stream_type {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
 
-                self.pk.reset();
+                let processor = self.prover.get_hints_processor()?;
 
-                let processor = self.pk.get_hints_processor().ok_or_else(|| {
-                    anyhow::anyhow!("HintsProcessor not found for job {}", job_id)
-                })?;
-
-                if let Some(r) = self.pk.asm_resources.as_ref() {
-                    r.set_active_services(is_first_partition)?;
-                }
-
-                // Replace any existing actor (handles reconnect / job restart)
+                // Replace any existing actor — `prepare_for_new_job` already ran
+                // `cancel_current_computation`, which joined the previous actor's
+                // worker thread, so this assignment can't race a stale process_hints.
                 self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
             }
             StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
@@ -847,7 +989,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
 
         tokio::task::spawn_blocking(move || {
             let job_id = job.blocking_lock().job_id.clone();
@@ -859,19 +1001,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let _ = tx.send(ComputationResult::Proofs {
-                        job_id,
-                        success: true,
-                        result: Ok(data),
-                    });
+                    if tx
+                        .send(ComputationResult::Proofs { job_id, success: true, result: Ok(data) })
+                        .is_err()
+                    {
+                        warn!("Failed to send prove result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     error!("Prove computation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::Proofs {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                    });
+                    if tx
+                        .send(ComputationResult::Proofs {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send prove error: event loop channel closed");
+                    }
                 }
             }
         })
@@ -913,7 +1061,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         tx: mpsc::UnboundedSender<ComputationResult>,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
-        let options = self.get_proof_options(agg_params.compressed);
+        let options =
+            self.get_prove_options(agg_params.proof_type == ProofKind::VadcopFinalMinimal);
 
         let agg_proofs_register: Vec<AggProofsRegister> = agg_params
             .agg_proofs
@@ -930,13 +1079,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let executed_steps = job_guard.executed_steps;
             let instances = job_guard.instances;
 
-            let _ = tx.send(ComputationResult::AggProof {
-                job_id,
-                success: false,
-                result: Err(error),
-                executed_steps,
-                instances,
-            });
+            if tx
+                .send(ComputationResult::AggProof {
+                    job_id,
+                    success: false,
+                    result: Err(error),
+                    executed_steps,
+                    proof_type: agg_params.proof_type,
+                    instances,
+                })
+                .is_err()
+            {
+                warn!("Failed to send aggregation register error: event loop channel closed");
+            }
 
             return tokio::spawn(async {});
         }
@@ -968,42 +1123,67 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
             match result {
                 Ok(data) => {
-                    let proof = data
+                    let proof: Vec<Vec<u64>> = data
                         .map(|proof| proof.agg_proofs.into_iter().map(|p| p.proof).collect())
                         .unwrap_or_default();
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: true,
-                        result: Ok(Some(proof)),
-                        executed_steps,
-                        instances,
-                    });
+
+                    if tx
+                        .send(ComputationResult::AggProof {
+                            job_id,
+                            success: true,
+                            result: Ok(Some(proof)),
+                            executed_steps,
+                            proof_type: agg_params.proof_type,
+                            instances,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send aggregation result: event loop channel closed");
+                    }
                 }
                 Err(error) => {
                     tracing::error!("Aggregation failed for {}: {}", job_id, error);
-                    let _ = tx.send(ComputationResult::AggProof {
-                        job_id,
-                        success: false,
-                        result: Err(error),
-                        executed_steps,
-                        instances,
-                    });
+                    if tx
+                        .send(ComputationResult::AggProof {
+                            job_id,
+                            success: false,
+                            result: Err(error),
+                            executed_steps,
+                            proof_type: agg_params.proof_type,
+                            instances,
+                        })
+                        .is_err()
+                    {
+                        warn!("Failed to send aggregation error: event loop channel closed");
+                    }
                 }
             }
         })
     }
 
-    fn get_proof_options(&self, compressed: bool) -> ProofOptions {
+    /// Proof options for the prove/contribution/aggregation phases.
+    /// Aggregation must always be enabled so proofman returns partial proof data.
+    fn get_prove_options(&self, minimal: bool) -> ProofOptions {
         ProofOptions {
-            verify_constraints: self.prover_config.verify_constraints,
-            aggregation: self.prover_config.aggregation,
+            verify_constraints: false,
+            aggregation: true,
             verify_proofs: false,
-            save_proofs: false,
-            test_mode: false,
-            output_dir_path: None,
-            rma: self.prover_config.rma,
+            rma: true,
             minimal_memory: self.prover_config.minimal_memory,
-            compressed,
+            compressed: minimal,
+        }
+    }
+
+    /// Proof options for execution-only phase.
+    /// No aggregation needed; verify_constraints follows worker config.
+    fn get_execution_options(&self) -> ProofOptions {
+        ProofOptions {
+            verify_constraints: true,
+            aggregation: false,
+            verify_proofs: false,
+            rma: true,
+            minimal_memory: self.prover_config.minimal_memory,
+            compressed: false,
         }
     }
 
@@ -1011,109 +1191,136 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // MPI Broadcast handlers for receiving and executing tasks
     // --------------------------------------------------------------------------
 
-    pub async fn handle_mpi_broadcast_request(&self) -> Result<()> {
+    pub async fn handle_mpi_broadcast_request(&mut self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
         self.prover.mpi_broadcast(&mut bytes)?;
 
-        // extract byte 0 to decide the option
-        let phase: JobPhase = borsh::from_slice(&bytes[0..1]).unwrap();
+        if bytes.is_empty() {
+            return Err(anyhow::anyhow!("Empty MPI broadcast received"));
+        }
+
+        let tag: WorkerMpiTag = borsh::from_slice(&bytes[0..1])
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize MPI broadcast tag: {}", e))?;
 
         let prover = self.prover.clone();
-        let pk = self.pk.clone();
-        let options = self.get_proof_options(false);
+        let options = self.get_prove_options(false);
 
-        if phase == JobPhase::ContributionsHintsStream {
-            if let Some(r) = pk.asm_resources.as_ref() {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                if let Err(e) = r.submit_hint_direct(&message.data) {
-                    tracing::error!("Failed to submit hints: {}", e);
-                }
-            } else {
-                tracing::error!("Hints sink is not configured for ContributionsHintsStream");
+        match tag {
+            WorkerMpiTag::ContributionsHintsStream => {
+                prover.submit_hint(&bytes)?;
             }
-        } else if phase == JobPhase::ContributionsInputsStream {
-            if let Some(inputs_shmem_writer) =
-                pk.asm_resources.as_ref().map(|r| r.inputs_shmem_writer.clone())
-            {
-                let message: StreamMessage = borsh::from_slice(&bytes[1..]).unwrap();
-                let reinterpreted_data = unsafe {
-                    std::slice::from_raw_parts(
-                        message.data.as_ptr() as *const u8,
-                        message.data.len() * std::mem::size_of::<u64>(),
-                    )
-                };
-                if let Err(e) = inputs_shmem_writer.append_input(reinterpreted_data) {
-                    tracing::error!("Failed to submit inputs: {}", e);
-                }
-            } else {
-                tracing::error!("Inputs sink is not configured for ContributionsInputsStream");
+            WorkerMpiTag::ContributionsInputsStream => {
+                prover.submit_input(&bytes)?;
             }
-        } else {
-            tokio::task::spawn_blocking(move || match phase {
-                JobPhase::Execution => {
-                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+            WorkerMpiTag::Setup => {
+                let message: SetupMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Setup MPI broadcast: {}", e)
+                })?;
 
-                    let result = Self::execute_execution_task(
-                        &prover,
-                        message.input_source,
-                        message.hints_source,
-                        message.partition_info,
-                        &pk,
-                    );
-                    if let Err(e) = result {
-                        tracing::error!(
-                                "Error during Execution MPI broadcast execution: {}. Waiting for new job...",
-                                e
-                            );
+                let guest_program =
+                    Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
+                let gp_clone = guest_program.clone();
+                let with_hints = message.with_hints;
+                tokio::task::spawn_blocking(move || {
+                    prover.prover.setup_internal(&gp_clone, with_hints)
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
+
+                self.guest_programs.insert(message.hash_id.clone(), guest_program);
+            }
+            WorkerMpiTag::Execution | WorkerMpiTag::Contributions => {
+                let message: ContributionsMessage =
+                    borsh::from_slice(&bytes[1..]).map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to deserialize Contributions/Execution MPI broadcast: {}",
+                            e
+                        )
+                    })?;
+
+                let with_hints = !matches!(message.hints_source, HintsSourceDto::HintsNull);
+                let is_first_partition = message.partition_info.allocation.contains(&0);
+                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_partition)?;
+
+                let guest_programs = self.guest_programs.clone();
+                let is_execution = matches!(tag, WorkerMpiTag::Execution);
+                let world_rank = self.world_rank();
+                let hash_id = message.hash_id.clone();
+                tokio::task::spawn_blocking(move || {
+                    let run = || -> Result<()> {
+                        if is_execution {
+                            let guest_program = guest_programs
+                                .get(&message.hash_id)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Guest program not found for hash_id={}",
+                                        message.hash_id
+                                    )
+                                })?
+                                .clone();
+                            Self::execute_execution_task(
+                                &prover,
+                                message.input_source,
+                                message.hints_source,
+                                message.partition_info,
+                                &guest_program,
+                            )?;
+                        } else {
+                            Self::execute_contribution_task(
+                                message.job_id,
+                                &prover,
+                                message.phase_inputs,
+                                message.input_source,
+                                message.hints_source,
+                                message.partition_info,
+                                message.options,
+                            )?;
+                        }
+                        Ok(())
+                    };
+
+                    if let Err(e) = run() {
+                        error!("MPI broadcast task failed: {}. Waiting for new job...", e);
+                        // Soft-reset on peer ranks: rank 0 signals reset off the
+                        // dispatch path via worker_node, but peer ranks have no
+                        // coordinator channel, so they signal here. The next collective
+                        // broadcast acts as the synchronization point with rank 0.
+                        match guest_programs.get(&hash_id).cloned() {
+                            Some(elf) => {
+                                warn!("[Recovery] rank {world_rank}: signalling ASM soft reset");
+                                if let Err(e) = prover.restart_asm_resources(&elf, with_hints) {
+                                    error!(
+                                        "[Recovery] rank {world_rank}: soft reset failed: {e:#}"
+                                    );
+                                }
+                            }
+                            None => error!(
+                                "[Recovery] rank {world_rank}: guest program missing for hash_id={hash_id}"
+                            ),
+                        }
                     }
-                }
-                JobPhase::Contributions => {
-                    let message: ContributionsMessage = borsh::from_slice(&bytes[1..]).unwrap();
+                });
+            }
+            WorkerMpiTag::Prove => {
+                let message: ProveMessage = borsh::from_slice(&bytes[1..]).map_err(|e| {
+                    anyhow::anyhow!("Failed to deserialize Prove MPI broadcast: {}", e)
+                })?;
 
-                    let result = Self::execute_contribution_task(
-                        message.job_id,
-                        &prover,
-                        message.phase_inputs,
-                        message.input_source,
-                        message.hints_source,
-                        message.partition_info,
-                        &pk,
-                        message.options,
-                    );
-                    if let Err(e) = result {
-                        tracing::error!(
-                                "Error during Contributions MPI broadcast execution: {}. Waiting for new job...",
-                                e
-                            );
-                    }
-                }
-                JobPhase::Prove => {
-                    let message: ProveMessage = borsh::from_slice(&bytes[1..]).unwrap();
-
-                    let result = Self::execute_prove_task(
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = Self::execute_prove_task(
                         message.job_id,
                         &prover,
                         message.phase_inputs,
                         options,
-                    );
-                    if let Err(e) = result {
-                        error!(
-                            "Error during Prove MPI broadcast execution: {}. Waiting for new job...",
-                            e
-                        );
+                    ) {
+                        error!("MPI Prove task failed: {}. Waiting for new job...", e);
                     }
-                }
-
-                JobPhase::Aggregate => {
-                    unreachable!("Aggregate phase is not supported in MPI broadcast");
-                }
-                JobPhase::ContributionsHintsStream | JobPhase::ContributionsInputsStream => {
-                    unreachable!(
-                        "Stream phases should be handled separately and not reach this point"
-                    );
-                }
-            });
+                });
+            }
+            WorkerMpiTag::Aggregate => {
+                return Err(anyhow::anyhow!("Aggregate phase is not supported in MPI broadcast"));
+            }
         }
         Ok(())
     }

@@ -22,8 +22,3 @@ pil-std-lib = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []

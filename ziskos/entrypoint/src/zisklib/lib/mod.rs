@@ -3,8 +3,6 @@
 //! ## Arithmetic
 //! - [`bigint`] — Arbitrary-precision integer arithmetic.
 //! - [`uint256`] — Low-level 256-bit add, subtract, multiply, divide, and power.
-//! - [`constants`] — Common 256-bit constants (`ZERO_256`, `ONE_256`, etc.).
-//! - [`utils`] — Comparison helpers and alignment checks.
 //!
 //! ## Hashing
 //! - [`blake2b`], [`keccak256`], [`sha256`], [`ripemd160`]
@@ -22,9 +20,11 @@ mod ripemd160;
 mod secp256k1;
 mod secp256r1;
 mod sha256;
+mod sw_impl;
 mod uint256;
 mod utils;
 pub mod zkvm_accelerators;
+pub mod zkvm_io;
 
 // For public consumption
 pub use bigint::*;

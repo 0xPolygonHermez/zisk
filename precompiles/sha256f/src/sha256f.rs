@@ -7,20 +7,7 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{Sha256fTrace, Sha256fTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{Sha256fTracePacked, Sha256fTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type Sha256fTraceRowType<F> = Sha256fTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type Sha256fTraceType<F> = Sha256fTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type Sha256fTraceRowType<F> = Sha256fTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type Sha256fTraceType<F> = Sha256fTrace<F>;
+use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
 
 use super::{sha256f_constants::*, Sha256fInput};
 
@@ -46,8 +33,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// A new `Sha256fSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fTraceType::<F>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fTraceType::<F>::NUM_ROWS % CLOCKS;
+        let num_available_sha256fs = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
         let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
@@ -63,10 +50,10 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Sha256fTraceRowOps<F>>(
         &self,
         input: &Sha256fInput,
-        trace: &mut [Sha256fTraceRowType<F>],
+        trace: &mut [R],
     ) -> ([u32; 8], [u32; 8]) {
         let mut a_range_checks = [0u32; 8];
         let mut e_range_checks = [0u32; 8];
@@ -343,12 +330,12 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
         &self,
         inputs: &[Vec<Sha256fInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut sha256f_trace = Sha256fTraceType::new_from_vec_zeroes(trace_buffer)?;
+        let mut sha256f_trace = Sha256fTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = sha256f_trace.num_rows();
         let num_available_sha256fs = self.num_available_sha256fs;
 
@@ -396,7 +383,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
             .map(|(index, trace)| {
                 let input_index = inputs_indexes[index];
                 let input = &inputs[input_index.0][input_index.1];
-                self.process_input(input, trace)
+                self.process_input::<R>(input, trace)
             })
             .collect();
 
@@ -411,11 +398,11 @@ impl<F: PrimeField64> Sha256fSM<F> {
 
         timer_start_trace!(SHA256F_PADDING);
         // Set a = e = w = 0 for the state and input rows
-        let zero_row = Sha256fTraceRowType::<F>::default();
+        let zero_row = R::default();
 
         // precompute compute_ae() with initial a = e = 0 (PC_A and PC_E)
         // compute_w() with w = 0 is equal to 0, nothing to do
-        let mut mid_rows = [Sha256fTraceRowType::<F>::default(); 64];
+        let mut mid_rows = [R::default(); 64];
         for i in 0..64 {
             let a = PC_A[i];
             let e = PC_E[i];
@@ -435,7 +422,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
         }
 
         // At the end, we should have that a === 4'and e === 4'e
-        let mut final_rows = [Sha256fTraceRowType::<F>::default(); 4];
+        let mut final_rows = [R::default(); 4];
         for i in 0..4 {
             let a = (PC_A[60 + i] & 0xFFFF_FFFF) as u32;
             let e = (PC_E[60 + i] & 0xFFFF_FFFF) as u32;

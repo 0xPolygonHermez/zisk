@@ -11,62 +11,51 @@ ensure_sudo() {
     fi
 }
 
-# install_cuda: Add NVIDIA repo and install only CUDA & cuDNN dev packages
+# install_cuda: Install NVIDIA CUDA toolkit on Linux
 # Parameters:
 #   $1 (optional) — CUDA version "X-Y" (e.g. "12-1"). Defaults to "12-1".
 install_cuda() {
     local CUDA_VER="${1:-12-1}"
-    # Build distribution string for the repo (ubuntu + version without dot)
+
+    # Derive distro string from /etc/os-release (e.g. ubuntu2204, ubuntu2404, debian12)
     local distro
     distro="$(. /etc/os-release && echo "${ID}${VERSION_ID//./}")"
-    local keyring="/usr/share/keyrings/nvidia-cuda-keyring.gpg"
 
     echo "🔧 Installing NVIDIA CUDA toolkit ${CUDA_VER} for ${distro}..."
 
-    ensure_sudo apt-get update
+    ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y --no-install-recommends gnupg2 curl ca-certificates software-properties-common || return 1
 
-    # Import NVIDIA GPG key into a keyring
-    curl -fsSL \
-        "https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/3bf863cc.pub" \
-      | gpg --dearmor --yes \
-      | ( [[ "$(id -u)" -ne 0 ]] && sudo tee "${keyring}" || tee "${keyring}" )
+    ensure wget "https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/cuda-keyring_1.1-1_all.deb" || return 1
 
-    # Add CUDA repo signed by our keyring
-    echo \
-      "deb [signed-by=${keyring}] https://developer.download.nvidia.com/compute/cuda/repos/${distro}/x86_64/ /" \
-      | ( [[ "$(id -u)" -ne 0 ]] && sudo tee /etc/apt/sources.list.d/cuda.list || tee /etc/apt/sources.list.d/cuda.list )
+    ensure_sudo dpkg -i cuda-keyring_1.1-1_all.deb || return 1
+    ensure_sudo apt-get update || return 1
 
-    ensure_sudo apt-get update
-    ensure_sudo apt-get install -y --no-install-recommends cuda-toolkit-${CUDA_VER} libcudnn8-dev || return 1
-
-    # Clean up
-    ensure_sudo apt-get clean
-    ensure_sudo rm -rf /var/lib/apt/lists/*
+    ensure_sudo apt-get install -y cuda-toolkit-${CUDA_VER} || return 1
 }
 
 # install_dependencies_linux: Install package dependencies for Linux
 install_dependencies_linux() {
     current_step=1
 
-    # Check if --gpu argument was passed
-    INSTALL_GPU=false
+    # Check if --cuda argument was passed
+    INSTALL_CUDA=false
     for arg in "$@"; do
-        if [[ "$arg" == "--gpu" ]]; then
-            INSTALL_GPU=true
+        if [[ "$arg" == "--cuda" ]]; then
+            INSTALL_CUDA=true
             break
         fi
     done
 
-    if [[ "$INSTALL_GPU" == true ]]; then
-        total_steps=4
+    if [[ "$INSTALL_CUDA" == true ]]; then
+        total_steps=5
     else
-        total_steps=3
+        total_steps=4
     fi
 
     step "Installing package dependencies for linux x86_64..."
 
-    ensure_sudo apt-get update
+    ensure_sudo apt-get update || return 1
     ensure_sudo apt-get install -y apt-utils dialog libterm-readline-perl-perl || return 1
 
     ensure_sudo apt-get install -y curl git xz-utils jq build-essential qemu-system libomp-dev libgmp-dev \
@@ -85,11 +74,9 @@ install_dependencies_linux() {
     export PATH="${HOME}/.cargo/bin:$PATH"
     source "${HOME}/.cargo/env"
 
-    if [[ "$INSTALL_GPU" == true ]]; then
+    if [[ "$INSTALL_CUDA" == true ]]; then
         step "Installing CUDA..."
-        install_cuda 12-1 || return 1
-    else
-        warn "skipping CUDA installation (no --gpu flag passed)"
+        install_cuda 12-9 || return 1
     fi
 
     step "Installing nano editor..."
@@ -110,7 +97,7 @@ main() {
 
     # Check the system type and call the respective function
     if [[ "${PLATFORM}" == "linux" ]]; then
-        install_dependencies_linux || return 1
+        install_dependencies_linux "$@" || return 1
     elif [[ "${PLATFORM}" == "darwin" ]]; then
         install_dependencies_darwin "$@" || return 1
     else

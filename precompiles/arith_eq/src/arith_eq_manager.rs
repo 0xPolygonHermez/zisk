@@ -50,8 +50,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
         let num_available_ops = self.arith_eq_sm.num_available_ops;
 
         Box::new(ArithEqPlanner::new().add_instance(InstanceInfo::new(
-            ArithEqTrace::<F>::AIRGROUP_ID,
-            ArithEqTrace::<F>::AIR_ID,
+            ArithEqTrace::<()>::AIRGROUP_ID,
+            ArithEqTrace::<()>::AIR_ID,
             num_available_ops,
             ZiskOperationType::ArithEq,
         )))
@@ -70,7 +70,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
     /// Panics if the provided `air_id` is not supported.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            id if id == ArithEqTrace::<F>::AIR_ID => {
+            id if id == ArithEqTrace::<()>::AIR_ID => {
                 Box::new(ArithEqInstance::new(self.arith_eq_sm.clone(), ictx))
             }
             _ => {

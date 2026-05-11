@@ -5,8 +5,8 @@
 ziskos::entrypoint!(main);
 
 fn main() {
-    let proof1 = ziskos::io::read_proof();
-    let proof2 = ziskos::io::read_proof();
+    let proof1: Vec<u8> = ziskos::io::read();
+    let proof2: Vec<u8> = ziskos::io::read();
 
     // Verify the first proof
     let valid_proof1 = ziskos::io::verify_zisk_proof(&proof1);

@@ -8,17 +8,10 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_common::SegmentId;
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
-use zisk_pil::InputDataAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::InputDataTrace;
-#[cfg(feature = "packed")]
-use zisk_pil::InputDataTracePacked;
-
-#[cfg(feature = "packed")]
-type InputDataTraceType<F> = InputDataTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type InputDataTraceType<F> = InputDataTrace<F>;
+use zisk_pil::{
+    InputDataAirValues, InputDataTrace, InputDataTraceRow, InputDataTraceRowOps,
+    InputDataTraceRowPacked,
+};
 
 pub const INPUT_DATA_W_ADDR_INIT: u32 = INPUT_ADDR as u32 >> MEM_BYTES_BITS;
 pub const INPUT_DATA_W_ADDR_END: u32 = (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32 >> MEM_BYTES_BITS;
@@ -87,10 +80,37 @@ impl<F: PrimeField64> InputDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = InputDataTraceType::<F>::new_from_vec(trace_buffer)?;
+        if packed {
+            self.legacy_compute_witness_inner::<InputDataTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        } else {
+            self.legacy_compute_witness_inner::<InputDataTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        }
+    }
+    fn legacy_compute_witness_inner<R: InputDataTraceRowOps<F>>(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let num_rows = InputDataTraceType::<F>::NUM_ROWS;
+        let num_rows = InputDataTrace::<R>::NUM_ROWS;
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "InputDataSM: mem_ops.len()={} out of range {}",
@@ -253,6 +273,39 @@ impl<F: PrimeField64> InputDataSM<F> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
+    fn compute_witness_with_offsets(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+        packed: bool,
+        offset_base_addr: u32,
+        offsets: &[u32],
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+                offset_base_addr,
+                offsets,
+            )
+        } else {
+            self.compute_witness_with_offsets_inner::<InputDataTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+                offset_base_addr,
+                offsets,
+            )
+        }
+    }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
@@ -277,7 +330,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -287,9 +340,9 @@ impl<F: PrimeField64> InputDataSM<F> {
         offset_base_addr: u32,
         offsets: &[u32],
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = InputDataTraceType::<F>::new_from_vec(trace_buffer)?;
+        let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let num_rows = InputDataTraceType::<F>::NUM_ROWS;
+        let num_rows = InputDataTrace::<R>::NUM_ROWS;
         debug_assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "InputDataSM: mem_ops.len()={} out of range {}",
@@ -472,6 +525,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
         offset_base_addr: u32,
         offsets: &[u32],
     ) -> ProofmanResult<AirInstance<F>> {
@@ -483,6 +537,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
+                packed,
                 offset_base_addr,
                 offsets,
             )
@@ -495,6 +550,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
+                packed,
             )
         }
     }

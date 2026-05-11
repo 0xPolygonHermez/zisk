@@ -97,7 +97,7 @@ const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
 const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
-const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x400000; // 4MB
+const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
 const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
 const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
 
@@ -7415,7 +7415,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall dma_memcpy_fast\n";
                     }
@@ -7475,7 +7475,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcmp_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memcmp\n";
                     }
@@ -7523,7 +7523,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_inputcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_inputcpy\n";
                     }
@@ -7571,7 +7571,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_xmemset_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memset\n";
                     }
