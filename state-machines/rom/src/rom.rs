@@ -19,7 +19,7 @@ use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
 use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM,
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
 };
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
@@ -142,7 +142,7 @@ impl RomSM {
     }
 
     pub fn compute_witness_from_asm<F: PrimeField64>(
-        _rom: &ZiskRom,
+        rom: &ZiskRom,
         asm_romh: &AsmRHData,
         mut trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
@@ -154,6 +154,18 @@ impl RomSM {
             }
             trace_buffer[i] = F::from_u64(*multiplicity);
         }
+
+        // Search for end instruction index
+        let index = rom.get_instruction(ROM_EXIT).index as usize;
+        assert!(
+            F::is_one(&trace_buffer[index]),
+            "The exit instruction should have been executed once in the assembly execution"
+        );
+
+        // Increment it as if it was executed the number of times needed to reach the end of the
+        // main trace instance, i.e. we repeat the last instruction until the end of the instance
+        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
 
         Ok(AirInstance::new(TraceInfo::new(
             RomTrace::<F>::AIRGROUP_ID,
