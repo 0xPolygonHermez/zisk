@@ -18,13 +18,11 @@ main() {
         # Remove existing directory if it exists
         rm -rf zisk-eth-client
         # Clone zisk-eth-client repository
-        ensure git clone https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-
         if [[ -n "${ZISK_ETH_CLIENT_BRANCH:-}" ]]; then
-            info "Checking out branch '$ZISK_ETH_CLIENT_BRANCH' for zisk-eth-client..."
-            cd zisk-eth-client
-            ensure git checkout "$ZISK_ETH_CLIENT_BRANCH" || return 1
-            cd ..
+            info "Cloning branch '$ZISK_ETH_CLIENT_BRANCH' of zisk-eth-client..."
+            ensure git clone --branch "$ZISK_ETH_CLIENT_BRANCH" --single-branch --depth 1 https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
+        else
+            ensure git clone --depth 1 https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
         fi
     fi
 
@@ -35,13 +33,11 @@ main() {
         # Remove existing directory if it exists
         rm -rf zisk-ethproofs
         # Clone zisk-ethproofs repository
-        ensure git clone https://github.com/0xPolygonHermez/zisk-ethproofs.git || return 1
-
         if [[ -n "${ZISK_ETHPROOFS_BRANCH:-}" ]]; then
-            info "Checking out branch '$ZISK_ETHPROOFS_BRANCH' for zisk-ethproofs..."
-            cd zisk-ethproofs
-            ensure git checkout "$ZISK_ETHPROOFS_BRANCH" || return 1
-            cd ..
+            info "Cloning branch '$ZISK_ETHPROOFS_BRANCH' of zisk-ethproofs..."
+            ensure git clone --branch "$ZISK_ETHPROOFS_BRANCH" --single-branch --depth 1 https://github.com/0xPolygonHermez/zisk-ethproofs.git || return 1
+        else
+            ensure git clone --depth 1 https://github.com/0xPolygonHermez/zisk-ethproofs.git || return 1
         fi
     fi
 
