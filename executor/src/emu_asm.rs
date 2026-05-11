@@ -216,7 +216,7 @@ impl EmulatorAsm {
     fn execute_inner<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,

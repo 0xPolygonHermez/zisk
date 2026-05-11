@@ -239,6 +239,7 @@ impl AsmResources {
     /// unconditionally — without it, a child stuck in `_wait_for_input_avail`
     /// wakes from the sem post, sees flag=0, and goes back to sleep forever.
     pub fn signal_children_reset(&self) -> Result<()> {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         self.shared.inputs_shmem_writer.set_reset_flag();
 
         if let Some(s) = &self.shared.hints_stream {
