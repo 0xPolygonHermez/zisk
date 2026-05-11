@@ -814,6 +814,8 @@ int main(int argc, char *argv[])
     // Setup the server
     server_setup();
 
+    server_signal_handler();
+
     // Reset the server, i.e. reset memory
     server_reset_fast();
     server_reset_slow();

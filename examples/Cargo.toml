@@ -11,6 +11,8 @@ members = [
     "big-program/host",
     "big-program/guest",
     "hints/host",
+    "panic/host",
+    "panic/guest",
 ]
 
 resolver = "2"

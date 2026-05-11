@@ -7,12 +7,13 @@ use crate::{
     AsmResources, DeviceMetricsList, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList,
     StaticSMBundle,
 };
+use arc_swap::ArcSwap;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::{sync::Mutex, thread::JoinHandle};
+use std::thread::JoinHandle;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
@@ -44,7 +45,7 @@ pub struct RomExecutor {
     is_asm_execution: AtomicBool,
 
     /// Standard input for the ZisK program execution.
-    stdin: Mutex<ZiskStdin>,
+    stdin: ArcSwap<ZiskStdin>,
 }
 
 impl RomExecutor {
@@ -57,7 +58,7 @@ impl RomExecutor {
             emulator_asm: EmulatorAsm::new(chunk_size),
             emulator_rust: EmulatorRust::new(chunk_size),
             is_asm_execution: AtomicBool::new(false),
-            stdin: Mutex::new(ZiskStdin::new()),
+            stdin: ArcSwap::from_pointee(ZiskStdin::new()),
         }
     }
 
@@ -67,7 +68,7 @@ impl RomExecutor {
 
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        *self.stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))? = stdin;
+        self.stdin.store(Arc::new(stdin));
         Ok(())
     }
 
@@ -118,18 +119,19 @@ impl RomExecutor {
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> Result<RomExecutionOutput> {
+        let stdin = self.stdin.load_full();
         let (min_traces, main_count, secn_count, handle_mo, handle_rh, steps) =
             match self.is_asm_execution.load(Ordering::SeqCst) {
                 true => self.emulator_asm.execute(
                     zisk_rom,
-                    &self.stdin,
+                    &stdin,
                     pctx,
                     sm_bundle,
                     use_hints,
                     stats,
                     caller_stats_scope,
                 )?,
-                false => self.emulator_rust.execute(zisk_rom, &self.stdin, sm_bundle)?,
+                false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle)?,
             };
 
         Ok(RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, handle_rh, steps })
