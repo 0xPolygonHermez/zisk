@@ -129,24 +129,6 @@ impl HintsShmem {
         Ok(())
     }
 
-    /// Post `sem_prec_avail` for every bound service to wake any child
-    /// sleeping in `_wait_for_prec_avail` as part of the soft-reset
-    /// choreography. The caller (`AsmResources::signal_children_reset`)
-    /// owns flipping the shared `ResetFlag` — `ControlShmem` is shared with
-    /// `InputsShmemWriter`, so setting it from both sides would just write
-    /// the same byte twice.
-    pub fn signal_children_reset(&self) -> Result<()> {
-        if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
-        {
-            for sem in sems.iter_mut() {
-                if let Err(e) = sem.sem_available.post() {
-                    tracing::warn!("signal_children_reset: sem_available.post failed: {e}");
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Drop the semaphore handles (does not unlink — the binary owns the names).
     pub fn unbind_semaphores(&self) {
         *self.separate_sem.lock().expect("separate_sem mutex poisoned") = None;

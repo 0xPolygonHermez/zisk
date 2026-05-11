@@ -502,16 +502,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_active_services(is_first_partition)
     }
 
-    fn reset_resources(&self) -> Result<()> {
-        self.core_prover.backend.reset_resources()
+    fn reset(&self) -> Result<()> {
+        self.core_prover.backend.reset()
     }
 
-    fn cancel(&self) {
+    fn cancel(&self) -> Result<()> {
+        // Order matters: set proofman's cancel flag first so when the executor
+        // unwinds (after the ASM children wake), proofman already knows to bail.
         self.core_prover.backend.cancel();
-    }
-
-    fn signal_children_reset(&self) -> Result<()> {
-        self.core_prover.backend.signal_children_reset()
+        self.core_prover.backend.signal_cancellation()
     }
 
     fn wait_until_proofman_ready(&self) {

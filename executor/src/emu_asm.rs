@@ -77,14 +77,14 @@ impl EmulatorAsm {
     /// so any child currently blocked in `_wait_for_input_avail` /
     /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
     /// cancel time so a stuck `execute` returns Err promptly.
-    pub fn signal_children_reset(&self) -> Result<()> {
+    pub fn signal_cancellation(&self) -> Result<()> {
         if let Some(resources) = self
             .asm_resources
             .read()
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
             .as_ref()
         {
-            resources.signal_children_reset()?;
+            resources.signal_cancellation()?;
         }
         Ok(())
     }
@@ -303,8 +303,8 @@ impl EmulatorAsm {
                 // thread). Wake MO/RH in case they're still parked, then join
                 // so their detached threads release the shmem-reader locks
                 // before the next job begins.
-                if let Err(reset_err) = asm_resources.signal_children_reset() {
-                    tracing::error!("execute_inner: signal_children_reset failed: {reset_err:#}");
+                if let Err(reset_err) = asm_resources.signal_cancellation() {
+                    tracing::error!("execute_inner: signal_cancellation failed: {reset_err:#}");
                 }
                 let _ = handle_mo.join();
                 if let Some(h) = handle_rh {
@@ -395,7 +395,7 @@ impl EmulatorAsm {
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
-                move || asm_resources_for_failure.signal_children_reset(),
+                move || asm_resources_for_failure.signal_cancellation(),
                 asm_resources.asm_services().clone(),
                 stats.clone(),
             )?;

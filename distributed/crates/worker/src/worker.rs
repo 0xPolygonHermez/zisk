@@ -430,9 +430,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// here would block the event loop. Stream-actor shutdown runs in
     /// background.
     pub fn cancel_current_computation(&mut self) {
-        self.prover.cancel();
-        if let Err(e) = self.prover.signal_children_reset() {
-            tracing::warn!("cancel_current_computation: signal_children_reset failed: {e:#}");
+        if let Err(e) = self.prover.cancel() {
+            tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
         }
 
         if self.current_computation.take().is_some() {
@@ -469,7 +468,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .clone();
 
         self.prover.register_program(&program_id, with_hints)?;
-        self.prover.reset_resources()?;
+        self.prover.reset()?;
         self.prover.set_active_services(is_first_partition)?;
         Ok(())
     }

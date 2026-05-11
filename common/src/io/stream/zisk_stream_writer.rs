@@ -106,6 +106,11 @@ struct LiveState {
     /// `transport.lock()` for the full `wait_for_connection()` deadline,
     /// so a second `start()` would otherwise block 60 s on that mutex.
     starting: bool,
+    /// Set when the bg thread's start handshake (connect-poll or initial
+    /// drain) failed. `flush()` returns this so waiters don't block forever
+    /// after a connection timeout. Cleared by the next successful `start()`
+    /// or `finish()`.
+    last_start_error: Option<String>,
     /// Active push sender for the current job. Set/cleared in tandem with
     /// `ready` for [`TransportKind::Push`]; always `None` for other kinds.
     push_sender: Option<Box<dyn BytesPushSender>>,
@@ -148,6 +153,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: false,
                     starting: false,
+                    last_start_error: None,
                     push_sender: None,
                 }),
                 live_cond: Condvar::new(),
@@ -168,6 +174,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: true,
                     starting: false,
+                    last_start_error: None,
                     push_sender: None,
                 }),
                 live_cond: Condvar::new(),
@@ -207,6 +214,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: false,
                     starting: false,
+                    last_start_error: None,
                     push_sender: None,
                 }),
                 live_cond: Condvar::new(),
@@ -278,9 +286,13 @@ impl ZiskStreamWriter {
         }
 
         // Wait until the background `start()` thread reports the peer connected
-        // and pre-buffered bytes (if any) have been drained.
+        // and pre-buffered bytes (if any) have been drained. If the bg thread
+        // recorded a startup failure, surface it instead of looping forever.
         let mut guard = self.inner.live_state.lock().unwrap();
         while !guard.ready {
+            if let Some(err) = &guard.last_start_error {
+                return Err(anyhow::anyhow!("ZiskStreamWriter start failed: {}", err));
+            }
             let (g, _) = self
                 .inner
                 .live_cond
@@ -326,6 +338,9 @@ impl ZiskStreamWriter {
     fn flush_push(&self) -> Result<()> {
         let mut guard = self.inner.live_state.lock().unwrap();
         while !guard.ready {
+            if let Some(err) = &guard.last_start_error {
+                return Err(anyhow::anyhow!("ZiskStreamWriter start failed: {}", err));
+            }
             guard = self.inner.live_cond.wait(guard).unwrap();
         }
 
@@ -390,13 +405,19 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        // See `LiveState::starting` — repeated start()s share one bg thread.
+        // See `LiveState::starting` — repeated concurrent start()s share one
+        // bg thread. But if the stream is already `ready`, we still tear down
+        // and rebind: per the doc above, `start()` on an active stream is the
+        // "reuse" entry point.
         {
             let mut guard = self.inner.live_state.lock().unwrap();
-            if guard.starting || guard.ready {
+            if guard.starting {
                 return Ok(());
             }
             guard.starting = true;
+            // Starting fresh: flushers must wait for the new bg thread to drain.
+            guard.ready = false;
+            guard.last_start_error = None;
         }
 
         // Open (or reopen) the transport synchronously so the path is bindable
@@ -464,7 +485,12 @@ impl ZiskStreamWriter {
             };
 
             let mut guard = inner.live_state.lock().unwrap();
+            let still_ours = guard.starting;
             guard.starting = false;
+            if !still_ours {
+                inner.live_cond.notify_all();
+                return;
+            }
             match result {
                 Ok(()) => {
                     guard.ready = true;
@@ -472,6 +498,7 @@ impl ZiskStreamWriter {
                 }
                 Err(e) => {
                     tracing::error!("ZiskStreamWriter start failed: {}", e);
+                    guard.last_start_error = Some(e.to_string());
                     inner.live_cond.notify_all();
                 }
             }
@@ -501,7 +528,13 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        self.inner.live_state.lock().unwrap().ready = false;
+        {
+            let mut guard = self.inner.live_state.lock().unwrap();
+            guard.ready = false;
+            guard.starting = false;
+            guard.last_start_error = None;
+            self.inner.live_cond.notify_all();
+        }
 
         let mut transport = self.inner.transport.lock().unwrap();
         if let TransportKind::Direct(writer) = &mut *transport {

@@ -269,12 +269,9 @@ impl ProverEngine for EmuProver {
         Err(anyhow::anyhow!("EmuProver does not support hints"))
     }
 
-    fn cancel(&self) {
+    fn cancel(&self) -> Result<()> {
         self.core_prover.backend.cancel();
-    }
-
-    fn signal_children_reset(&self) -> Result<()> {
-        self.core_prover.backend.signal_children_reset()
+        Ok(())
     }
 
     fn wait_until_proofman_ready(&self) {

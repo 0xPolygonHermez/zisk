@@ -127,7 +127,7 @@ impl ProverBackend {
         Ok(())
     }
 
-    pub(crate) fn reset_resources(&self) -> Result<()> {
+    pub(crate) fn reset(&self) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
             asm.reset()?;
         }
@@ -138,9 +138,9 @@ impl ProverBackend {
         self.proofman.cancel();
     }
 
-    pub(crate) fn signal_children_reset(&self) -> Result<()> {
+    pub(crate) fn signal_cancellation(&self) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
-            asm.signal_children_reset()?;
+            asm.signal_cancellation()?;
         }
         Ok(())
     }

@@ -28,7 +28,7 @@ const PROGRESS_PROVE: u8 = 75;
 
 static PROGRAM: GuestProgram = load_program!("liveness-guest");
 
-const COORDINATOR_URL: &str = "http://127.0.0.1:8000";
+const COORDINATOR_URL: &str = "http://127.0.0.1:7000";
 const CANCEL_DELAY: Duration = Duration::from_secs(2);
 
 /// After a cancel/failure the worker spends a moment parked in `SettingUp`

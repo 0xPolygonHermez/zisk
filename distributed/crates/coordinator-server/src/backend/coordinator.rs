@@ -410,13 +410,7 @@ impl BackendService for CoordinatorBackend {
         // Best-effort catchup from the Job snapshot. Setup jobs aren't in
         // `jobs` (they use `setup_pending`) — degrade to a Created-state
         // catchup (just Queued) in that case.
-        let job_state = self
-            .coordinator
-            .jobs()
-            .read()
-            .await
-            .get(&job_id_internal)
-            .cloned();
+        let job_state = self.coordinator.jobs().read().await.get(&job_id_internal).cloned();
         let state = match job_state {
             Some(arc) => arc.read().await.state.clone(),
             None => JobState::Created,

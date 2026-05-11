@@ -21,7 +21,7 @@ fn main() {
 
     if mode == 1 {
         // Busy-loop sized to take a few seconds on production hardware, well
-        // above the host's cancel-after-5s mark. Tune `ITER` if needed.
+        // above the host's cancel-after-2s mark. Tune `ITER` if needed.
         const ITER: u64 = 200_000_000;
         let mut acc: u64 = value;
         let mut i: u64 = 0;

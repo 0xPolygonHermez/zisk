@@ -833,7 +833,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
-    /// Soft-reset rank 0's ASM children, then signal `WorkerRecoveryComplete`.
+    /// Drive the cluster recovery handshake (notify peer-rank cancellation,
+    /// wait for the proofman thread to drain, cluster_barrier), then signal
+    /// `WorkerRecoveryComplete`. The ASM soft reset itself runs inside
+    /// `executor::execute`'s Err arm — this task is only the post-cancel sync.
     /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
     /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
     /// sweep won't reap it), so operator action is required.
@@ -844,7 +847,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
         tokio::spawn(async move {
-            warn!("[Recovery] {worker_id}: signalling ASM soft reset");
+            warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,
                 tokio::task::spawn_blocking(move || run_recovery(&*prover)),
@@ -852,20 +855,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .await;
             match join {
                 Ok(Ok(Ok(()))) => {
-                    info!("[Recovery] {worker_id}: cluster reset done; signalling Ready");
+                    info!("[Recovery] {worker_id}: cluster handshake done; signalling Ready");
                     let msg = WorkerRecoveryComplete { worker_id: worker_id.clone() };
                     if let Err(e) = recovery_complete_tx.send(msg) {
                         error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
                     }
                 }
                 Ok(Ok(Err(e))) => error!(
-                    "[Recovery] {worker_id}: soft reset failed: {e:#}; worker stays in SettingUp"
+                    "[Recovery] {worker_id}: cluster handshake failed: {e:#}; worker stays in SettingUp"
                 ),
                 Ok(Err(e)) => {
                     error!("[Recovery] {worker_id}: recovery task panicked: {e}")
                 }
                 Err(_) => error!(
-                    "[Recovery] {worker_id}: soft reset timed out after {:?}; worker is wedged in SettingUp and needs operator attention",
+                    "[Recovery] {worker_id}: cluster handshake timed out after {:?}; worker is wedged in SettingUp and needs operator attention",
                     Self::RECOVERY_TIMEOUT
                 ),
             }

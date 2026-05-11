@@ -20,10 +20,17 @@ pub trait StreamWrite: Send + 'static {
     /// Non-blocking peer-connection poll. Returns `true` once writes can
     /// proceed. The `ZiskStreamWriter` bg thread polls this with brief lock
     /// acquisitions, releasing `transport.lock()` between polls so callers
-    /// like `finish()` aren't blocked behind a long wait. Override for
-    /// transports where `open()` doesn't block until the peer connects.
+    /// like `finish()` aren't blocked behind a long wait.
+    ///
+    /// Default falls back to `is_active()`, which is safe for transports whose
+    /// `open()` synchronously establishes the connection. Transports that
+    /// defer accept (Unix socket, QUIC) MUST override to do a cheap poll —
+    /// returning a permanent `true` would push a blocking accept inside the
+    /// bg thread's `write()` call and hold `transport.lock()` for the full
+    /// connection deadline (the precise behavior the bg thread is meant to
+    /// avoid).
     fn is_client_connected(&mut self) -> bool {
-        true
+        self.is_active()
     }
 
     /// Blocking variant kept for transports that need to drive accept inside

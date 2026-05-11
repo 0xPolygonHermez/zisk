@@ -362,7 +362,7 @@ pub trait ProverEngine {
     // These are meaningful only for the ASM backend (distributed worker path).
     // Data operations (submit_hint, submit_input, register_hints_stream) return Err by
     // default because calling them on a non-ASM backend is always a caller bug.
-    // State operations (set_active_services, reset_resources) default to no-ops because
+    // State operations (set_active_services, reset) default to no-ops because
     // they are safe to skip when there are no ASM resources to manage.
 
     fn submit_hint(&self, _bytes: &[u8]) -> Result<()> {
@@ -391,7 +391,7 @@ pub trait ProverEngine {
         Ok(())
     }
 
-    fn reset_resources(&self) -> Result<()> {
+    fn reset(&self) -> Result<()> {
         Ok(())
     }
 
@@ -403,14 +403,14 @@ pub trait ProverEngine {
     /// (e.g. execute-only) and at the end of recovery.
     fn cluster_barrier(&self) {}
 
-    fn cancel(&self);
-
-    /// Poke the ASM children so any in-flight `execute` wakes up from its
-    /// wait functions and unwinds. Called by the worker at cancel time so the
-    /// `execute` Err arm can run its own cleanup promptly. Default no-op.
-    fn signal_children_reset(&self) -> Result<()> {
-        Ok(())
-    }
+    /// Cancel the in-flight job.
+    ///
+    /// Backends with out-of-process workers (ASM C children) must wake those
+    /// children here — otherwise their `executor::execute` won't return and
+    /// the recovery handshake will deadlock. The Rust-side proofman cancel
+    /// flag should be set first so that when the executor unwinds, proofman
+    /// already knows to bail.
+    fn cancel(&self) -> Result<()>;
 
     /// Block until any in-flight proofman entry point has returned. Called
     /// in recovery before advertising `Ready`. Default no-op.
@@ -638,8 +638,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_active_services(is_first_partition)
     }
 
-    pub fn reset_resources(&self) -> Result<()> {
-        self.prover.reset_resources()
+    pub fn reset(&self) -> Result<()> {
+        self.prover.reset()
     }
 
     pub fn notify_cluster_cancellation(&self) {
@@ -650,12 +650,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.cluster_barrier()
     }
 
-    pub fn cancel(&self) {
+    pub fn cancel(&self) -> Result<()> {
         self.prover.cancel()
-    }
-
-    pub fn signal_children_reset(&self) -> Result<()> {
-        self.prover.signal_children_reset()
     }
 
     pub fn wait_until_proofman_ready(&self) {
