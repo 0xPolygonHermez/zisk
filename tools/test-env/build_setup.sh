@@ -132,8 +132,10 @@ main() {
         ensure cp -R build/provingKey "$HOME/.zisk" || return 1
     fi
 
+    local gpu_flag=""
+    [[ "${ONLY_CPU:-}" != "1" ]] && gpu_flag="--gpu"
     step "Generate constant tree files..."
-    ensure cargo-zisk check-setup || return 1
+    ensure cargo-zisk check-setup ${gpu_flag} || return 1
 
     success "ZisK setup completed successfully!"
 }

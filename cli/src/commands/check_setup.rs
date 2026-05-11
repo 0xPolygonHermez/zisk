@@ -52,6 +52,8 @@ impl ZiskCheckSetup {
         #[cfg(feature = "cpu-only")]
         let gpu = false;
 
+        let proving_key_path = get_proving_key(self.proving_key.as_ref())?;
+        println!("{} Proving key path: {}", format!("{: >12}", "Info").bright_blue(), proving_key_path.display());
         ProofMan::<Goldilocks>::check_setup(
             get_proving_key(self.proving_key.as_ref())?,
             !self.no_aggregation,
