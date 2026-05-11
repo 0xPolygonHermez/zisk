@@ -232,7 +232,7 @@ impl HintBuffer {
         let mut flush_threshold = std::cmp::min(write_flush_threshold, MAX_WRITER_LEN);
         flush_threshold = flush_threshold.max(1);
 
-        let mut write_buf = Vec::with_capacity(flush_threshold);
+        let mut buf = Vec::with_capacity(flush_threshold);
         'drain: loop {
             // Get chunk of hints to write from HintBuffer (under lock)
             let chunk: Bytes = loop {
@@ -291,7 +291,7 @@ impl HintBuffer {
 
                 // If single hint exceeds MAX_WRITER_LEN, write it in chunks directly
                 if hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut write_buf)?;
+                    write_buf(&mut write_all, &mut buf)?;
 
                     let mut hint_pos = 0usize;
                     while hint_pos < hint_len {
@@ -315,21 +315,21 @@ impl HintBuffer {
                 let hint_bytes: &[u8] =
                     unsafe { core::slice::from_raw_parts(chunk_base.add(chunk_pos), hint_len) };
 
-                if write_buf.len() + hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut write_buf)?;
+                if buf.len() + hint_len > MAX_WRITER_LEN {
+                    write_buf(&mut write_all, &mut buf)?;
                 }
 
-                write_buf.extend_from_slice(hint_bytes);
+                buf.extend_from_slice(hint_bytes);
 
                 chunk_pos += hint_len;
             }
 
-            if write_buf.len() >= flush_threshold {
-                write_buf(&mut write_all, &mut write_buf)?;
+            if buf.len() >= flush_threshold {
+                write_buf(&mut write_all, &mut buf)?;
             }
         }
 
-        write_buf(&mut write_all, &mut write_buf)?;
+        write_buf(&mut write_all, &mut buf)?;
 
         // Flush the writer and debug writer at the end
         flush_with_retries(writer, 10, Duration::from_millis(50))?;
