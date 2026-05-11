@@ -10,7 +10,8 @@ use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::{
-    DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
+    DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticDataBus, StaticSMBundle,
+    MAX_NUM_STEPS,
 };
 
 use anyhow::Result;
@@ -106,7 +107,7 @@ impl EmulatorRust {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = sm_bundle.build_data_bus_counters(false)?;
+                let mut data_bus = StaticDataBus::from_bundle(sm_bundle, false)?;
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,

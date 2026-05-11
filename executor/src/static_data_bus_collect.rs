@@ -1,30 +1,15 @@
-//! The `DataBus` module facilitates communication between publishers and subscribers using a bus
-//! system. Subscribers, referred to as `BusDevice`, can listen to specific bus IDs or act as
-//! omnipresent devices that process all data sent to the bus. This module provides mechanisms to
-//! send data, route it to the appropriate subscribers, and manage device connections.
+//! `StaticDataBusCollect` — collector-phase data bus. See
+//! [`static_data_bus`](crate::static_data_bus) for the counter-phase
+//! counterpart.
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
-use precomp_arith_eq::ArithEqCollector;
-use precomp_arith_eq::ArithEqCounterInputGen;
-use precomp_arith_eq_384::ArithEq384Collector;
-use precomp_arith_eq_384::ArithEq384CounterInputGen;
-use precomp_big_int::Add256Collector;
-use precomp_big_int::Add256CounterInputGen;
-use precomp_blake2::Blake2Collector;
-use precomp_blake2::Blake2CounterInputGen;
 use precomp_dma::Dma64AlignedCollector;
 use precomp_dma::DmaCollector;
 use precomp_dma::DmaCounterInputGen;
 use precomp_dma::DmaPrePostCollector;
 use precomp_dma::DmaUnalignedCollector;
-use precomp_keccakf::KeccakfCollector;
-use precomp_keccakf::KeccakfCounterInputGen;
-use precomp_poseidon2::Poseidon2Collector;
-use precomp_poseidon2::Poseidon2CounterInputGen;
-use precomp_sha256f::Sha256fCollector;
-use precomp_sha256f::Sha256fCounterInputGen;
 use precompiles_common::{MemCollectorProcessor, MemProcessor};
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
@@ -35,6 +20,13 @@ use zisk_common::{
     BusDevice, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
+
+use crate::{BuiltinCollectors, PrecompileCollectors, StaticSMBundle};
+use anyhow::Result;
+use proofman_common::ProofCtx;
+use std::collections::HashMap;
+use zisk_common::Instance;
+use zisk_pil::ZISK_AIRGROUP_ID;
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -59,27 +51,8 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     pub arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
     pub arith_inputs_generator: ArithCounterInputGen,
 
-    /// Cryptographic hash collectors (grouped for cache locality)
-    pub keccakf_collector: Vec<(usize, KeccakfCollector)>,
-    pub keccakf_inputs_generator: KeccakfCounterInputGen<F>,
-    pub sha256f_collector: Vec<(usize, Sha256fCollector)>,
-    pub sha256f_inputs_generator: Sha256fCounterInputGen<F>,
-    pub poseidon2_collector: Vec<(usize, Poseidon2Collector)>,
-    pub poseidon2_inputs_generator: Poseidon2CounterInputGen<F>,
-    pub blake2_collector: Vec<(usize, Blake2Collector)>,
-    pub blake2_inputs_generator: Blake2CounterInputGen<F>,
-
-    /// Arithmetic equality collectors
-    pub arith_eq_collector: Vec<(usize, ArithEqCollector)>,
-    pub arith_eq_inputs_generator: ArithEqCounterInputGen<F>,
-
-    /// ArithEq384 collectors
-    pub arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
-    pub arith_eq_384_inputs_generator: ArithEq384CounterInputGen<F>,
-
-    /// Add256 collectors
-    pub add256_collector: Vec<(usize, Add256Collector)>,
-    pub add256_inputs_generator: Add256CounterInputGen<F>,
+    /// Per-precompile collectors + input generators (consolidated).
+    pub precompiles: PrecompileCollectors<F>,
 
     /// Dma collectors
     pub dma_collector: Vec<(usize, DmaCollector)>,
@@ -108,6 +81,63 @@ const BIG_INT_OP_TYPE_ID: u64 = ZiskOperationType::BigInt as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
 
 impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
+    /// Constructs a collector-phase data bus for a single chunk. Each
+    /// `global_idx` is dispatched to the matching built-in or
+    /// precompile wrapper via `try_push_collector`; on a miss the
+    /// air-id is reported. Returns `Ok(None)` for empty chunks.
+    /// Mirrors `StaticDataBus::from_bundle` on the counter side.
+    #[allow(clippy::borrowed_box)]
+    pub fn for_chunk(
+        bundle: &StaticSMBundle<F>,
+        pctx: &ProofCtx<F>,
+        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        chunk_id: usize,
+        global_idxs: &[usize],
+    ) -> Result<Option<Self>> {
+        if global_idxs.is_empty() {
+            return Ok(None);
+        }
+
+        let mut builtins = BuiltinCollectors::start_chunk(bundle)?;
+        let mut precompiles = PrecompileCollectors::start_chunk(bundle)?;
+
+        for global_idx in global_idxs {
+            let secn_instance = secn_instances
+                .get(global_idx)
+                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={}", global_idx))?;
+            let (_, air_id) = pctx
+                .dctx_get_instance_info(*global_idx)
+                .map_err(|e| anyhow::anyhow!("Execution failed: {e}"))?;
+            let instance = &***secn_instance;
+
+            if !builtins.try_push_collector(air_id, instance, chunk_id, *global_idx)?
+                && !precompiles.try_push_collector(air_id, instance, chunk_id, *global_idx)?
+            {
+                anyhow::bail!(
+                    "State machine not found: airgroup_id={}, air_id={air_id}",
+                    ZISK_AIRGROUP_ID
+                );
+            }
+        }
+
+        Ok(Some(Self::new(
+            builtins.mem,
+            builtins.mem_align,
+            builtins.binary_basic,
+            builtins.binary_add,
+            builtins.binary_extension,
+            builtins.arith,
+            precompiles,
+            builtins.dma,
+            builtins.dma_pre_post,
+            builtins.dma_64_aligned,
+            builtins.dma_unaligned,
+            builtins.rom,
+            builtins.arith_inputs_generator,
+            builtins.dma_inputs_generator,
+        )))
+    }
+
     /// Creates a new `DataBus` instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -117,26 +147,13 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
         binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
         arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
-        keccakf_collector: Vec<(usize, KeccakfCollector)>,
-        sha256f_collector: Vec<(usize, Sha256fCollector)>,
-        poseidon2_collector: Vec<(usize, Poseidon2Collector)>,
-        blake2_collector: Vec<(usize, Blake2Collector)>,
-        arith_eq_collector: Vec<(usize, ArithEqCollector)>,
-        arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
-        add256_collector: Vec<(usize, Add256Collector)>,
+        precompiles: PrecompileCollectors<F>,
         dma_collector: Vec<(usize, DmaCollector)>,
         dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
         dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
         dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
         rom_collector: Vec<(usize, RomCollector)>,
-        arith_eq_inputs_generator: ArithEqCounterInputGen<F>,
-        arith_eq_384_inputs_generator: ArithEq384CounterInputGen<F>,
-        keccakf_inputs_generator: KeccakfCounterInputGen<F>,
-        sha256f_inputs_generator: Sha256fCounterInputGen<F>,
-        poseidon2_inputs_generator: Poseidon2CounterInputGen<F>,
-        blake2_inputs_generator: Blake2CounterInputGen<F>,
         arith_inputs_generator: ArithCounterInputGen,
-        add256_inputs_generator: Add256CounterInputGen<F>,
         dma_inputs_generator: DmaCounterInputGen,
     ) -> Self {
         Self {
@@ -146,26 +163,13 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             binary_add_collector,
             binary_extension_collector,
             arith_collector,
-            keccakf_collector,
-            sha256f_collector,
-            poseidon2_collector,
-            blake2_collector,
-            arith_eq_collector,
-            arith_eq_384_collector,
-            add256_collector,
+            precompiles,
             dma_collector,
             dma_pre_post_collector,
             dma_64_aligned_collector,
             dma_unaligned_collector,
             rom_collector,
-            arith_eq_inputs_generator,
-            arith_eq_384_inputs_generator,
-            keccakf_inputs_generator,
-            sha256f_inputs_generator,
-            poseidon2_inputs_generator,
-            blake2_inputs_generator,
             arith_inputs_generator,
-            add256_inputs_generator,
             dma_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
         }
@@ -219,11 +223,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 KECCAK_TYPE => {
-                    for (_, keccakf_collector) in &mut self.keccakf_collector {
+                    for (_, keccakf_collector) in &mut self.precompiles.keccakf_collector {
                         keccakf_collector.process_data(&bus_id, data);
                     }
 
-                    self.keccakf_inputs_generator.process_data(
+                    self.precompiles.keccakf_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -233,11 +237,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 SHA256_TYPE => {
-                    for (_, sha256f_collector) in &mut self.sha256f_collector {
+                    for (_, sha256f_collector) in &mut self.precompiles.sha256f_collector {
                         sha256f_collector.process_data(&bus_id, data);
                     }
 
-                    self.sha256f_inputs_generator.process_data(
+                    self.precompiles.sha256f_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -247,10 +251,10 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 POSEIDON2_TYPE => {
-                    for (_, poseidon2_collector) in &mut self.poseidon2_collector {
+                    for (_, poseidon2_collector) in &mut self.precompiles.poseidon2_collector {
                         poseidon2_collector.process_data(&bus_id, data);
                     }
-                    self.poseidon2_inputs_generator.process_data(
+                    self.precompiles.poseidon2_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -260,10 +264,10 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 BLAKE2_TYPE => {
-                    for (_, blake2_collector) in &mut self.blake2_collector {
+                    for (_, blake2_collector) in &mut self.precompiles.blake2_collector {
                         blake2_collector.process_data(&bus_id, data);
                     }
-                    self.blake2_inputs_generator.process_data(
+                    self.precompiles.blake2_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -273,11 +277,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 ARITH_EQ_TYPE => {
-                    for (_, arith_eq_collector) in &mut self.arith_eq_collector {
+                    for (_, arith_eq_collector) in &mut self.precompiles.arith_eq_collector {
                         arith_eq_collector.process_data(&bus_id, data);
                     }
 
-                    self.arith_eq_inputs_generator.process_data(
+                    self.precompiles.arith_eq_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -287,11 +291,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 ARITH_EQ_384_TYPE => {
-                    for (_, arith_eq_384_collector) in &mut self.arith_eq_384_collector {
+                    for (_, arith_eq_384_collector) in &mut self.precompiles.arith_eq384_collector {
                         arith_eq_384_collector.process_data(&bus_id, data);
                     }
 
-                    self.arith_eq_384_inputs_generator.process_data(
+                    self.precompiles.arith_eq384_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -301,11 +305,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     );
                 }
                 BIG_INT_OP_TYPE_ID => {
-                    for (_, add256_collector) in &mut self.add256_collector {
+                    for (_, add256_collector) in &mut self.precompiles.add256_collector {
                         add256_collector.process_data(&bus_id, data);
                     }
 
-                    self.add256_inputs_generator.process_data(
+                    self.precompiles.add256_inputs_generator.process_data(
                         &bus_id,
                         data,
                         &mut MemCollectorProcessor::new(
@@ -405,33 +409,7 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 
-        for (id, collector) in self.keccakf_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.sha256f_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.poseidon2_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.blake2_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.arith_eq_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.arith_eq_384_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
-
-        for (id, collector) in self.add256_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
-        }
+        result.extend(self.precompiles.into_device_entries());
 
         for (id, collector) in self.dma_collector {
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));

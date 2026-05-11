@@ -4,7 +4,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use crate::AsmResources;
+use crate::{AsmResources, StaticDataBus};
 use crate::{
     DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
 };
@@ -312,12 +312,12 @@ impl EmulatorAsm {
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-                    let mut data_bus = match sm_bundle.build_data_bus_counters(true) {
+                    let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
                         Ok(db) => db,
                         Err(e) => {
                             let _ = errors_ref.lock().map(|mut errs| {
                                 errs.push(anyhow::anyhow!(
-                                    "build_data_bus_counters failed for chunk {}: {e}",
+                                    "StaticDataBus::from_bundle failed for chunk {}: {e}",
                                     chunk_id.0
                                 ));
                             });

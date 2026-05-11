@@ -2015,6 +2015,7 @@ dependencies = [
  "fields 1.0.0-beta",
  "mem-common",
  "named-sem",
+ "paste",
  "pil-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
@@ -3992,6 +3993,7 @@ name = "precomp-poseidon2"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
+ "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -7548,6 +7550,7 @@ dependencies = [
  "zisk-cluster-common",
  "zisk-common",
  "zisk-core",
+ "zisk-pil",
  "ziskemu",
 ]
 

@@ -29,6 +29,7 @@ pil-std-lib = { workspace = true }
 precompiles-hints = { workspace = true }
 anyhow = { workspace = true }
 arc-swap = { workspace = true }
+paste = { workspace = true }
 crossbeam = "0.8.4"
 
 precompiles-common = { workspace = true }
