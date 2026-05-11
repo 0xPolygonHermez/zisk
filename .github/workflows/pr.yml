@@ -48,11 +48,12 @@ jobs:
     name: Test on Ubuntu x86_64
     runs-on: gpu-hosted
     timeout-minutes: 30
-    # container:
-    #   image: ubuntu:22.04
-    #   options:
-    #     --shm-size=48g
-    #     -v /home/gha/cache-setup:/github/home/output:rw
+    container:
+      image: ubuntu:22.04
+      options:
+        --gpus all
+        --shm-size=48g
+        -v /home/gha/cache-setup:/github/home/output:rw
     defaults:
       run:
         shell: bash
@@ -65,6 +66,13 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+
+      - name: Install NVIDIA drivers
+        run: |
+          wget -q "https://us.download.nvidia.com/XFree86/Linux-x86_64/580.142/NVIDIA-Linux-x86_64-580.142.run" -O /tmp/nvidia-driver.run
+          chmod +x /tmp/nvidia-driver.run
+          /tmp/nvidia-driver.run --no-kernel-modules --silent
+          rm -f /tmp/nvidia-driver.run
 
       - name: Install dependencies
         run: |
