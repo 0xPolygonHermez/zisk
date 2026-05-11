@@ -434,7 +434,7 @@ impl Mem {
         // Calculate how aligned this operation is
         let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
         let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
-        let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
+        let is_full_aligned = ((addr & 0x07) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
@@ -682,7 +682,7 @@ impl Mem {
         // Calculate how aligned this operation is
         let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
         let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
-        let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
+        let is_full_aligned = ((addr & 0x07) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
@@ -764,7 +764,7 @@ impl Mem {
     /// Returns true if the address and width are fully aligned
     #[inline(always)]
     pub fn is_full_aligned(address: u64, width: u64) -> bool {
-        ((address & 0x03) == 0) && (width == 8)
+        ((address & 0x07) == 0) && (width == 8)
     }
 
     /// Returns true if the address and width are single non aligned
