@@ -49,7 +49,7 @@ jobs:
     runs-on: gpu-hosted
     timeout-minutes: 180
     container:
-      image: ubuntu:22.04
+      image: ziskvm/zisk-gpu-runner:latest
       options:
         --gpus all
         --shm-size=48g
@@ -67,10 +67,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh --cuda
+      # - name: Install dependencies
+      #   run: |
+      #     cd "$GITHUB_WORKSPACE/tools/test-env"
+      #     ./install_deps.sh --cuda
 
       - name: Build ZisK
         run: |

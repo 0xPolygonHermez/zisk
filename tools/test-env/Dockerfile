@@ -19,11 +19,7 @@ RUN groupadd --gid 1000 ziskuser \
 # Patch install_deps.sh to source utils.sh from /tmp, then run it as ziskuser
 RUN chmod +x /tmp/install_deps.sh \
  && cd /tmp/ \
- && if [ "$GPU" = "true" ]; then \
-      sudo -u ziskuser ./install_deps.sh --gpu; \
-    else \
-      sudo -u ziskuser ./install_deps.sh; \
-    fi \
+ && sudo -u ziskuser ./install_deps.sh --cuda \
  && rm -f ./utils.sh ./install_deps.sh
 
 # Create output directory and set ownership
@@ -38,5 +34,3 @@ RUN chown -R ziskuser:ziskuser /home/ziskuser \
 # Switch to the non-root user and set working directory
 USER ziskuser
 WORKDIR /home/ziskuser/scripts
-
-
