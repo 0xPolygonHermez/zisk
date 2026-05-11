@@ -15,7 +15,7 @@ pub fn ensure_program_vk<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &GuestProgram,
 ) -> Result<ProgramVK> {
-    rom_merkle_setup(pctx, elf.elf(), &None)
+    rom_merkle_setup(pctx, elf.elf(), &None, false)
 }
 
 pub fn get_rom_bin_path<F: PrimeField64>(
