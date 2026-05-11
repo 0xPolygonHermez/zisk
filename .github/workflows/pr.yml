@@ -84,6 +84,8 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
+          echo "Proving key should be available at: /github/home/.zisk/provingKey"
+          ls -lha /github/home/.zisk/provingKey
 
       # - name: Test sha_hasher (CPU)
       #   env:
