@@ -19,6 +19,7 @@ use crossbeam::atomic::AtomicCell;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use rayon::prelude::*;
 use std::{
     collections::HashMap,
     sync::{
@@ -215,14 +216,24 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
 
-        // Create data buses for each chunk
-        let data_buses = self
-            .sm_bundle
-            .build_data_bus_collectors(pctx, &secn_instances, &chunks_to_execute)
-            .map_err(|e| anyhow::anyhow!("Failed to build data bus collectors: {e}"))?
-            .into_iter()
-            .map(Mutex::new)
-            .collect::<Vec<_>>();
+        // Build one data bus per chunk in parallel.
+        let data_buses: Vec<_> = chunks_to_execute
+            .par_iter()
+            .enumerate()
+            .map(|(chunk_id, global_idxs)| {
+                crate::StaticDataBusCollect::for_chunk(
+                    &self.sm_bundle,
+                    pctx,
+                    &secn_instances,
+                    chunk_id,
+                    global_idxs,
+                )
+            })
+            .collect::<Result<_>>()
+            .map_err(|e| anyhow::anyhow!("Failed to build data bus collectors: {e}"))?;
+
+        // Wrap each so chunk-player threads can write to them concurrently.
+        let data_buses: Vec<_> = data_buses.into_iter().map(Mutex::new).collect();
 
         let n_chunks_left: Vec<AtomicUsize> = global_ids
             .iter()

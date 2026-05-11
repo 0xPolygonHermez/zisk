@@ -5,11 +5,11 @@ use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use executor::get_packed_info;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;

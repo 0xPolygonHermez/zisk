@@ -6,7 +6,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{initialize_executor, AsmResources, AsmSharedResources};
+use executor::{AsmResources, AsmSharedResources, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -575,7 +575,7 @@ impl AsmCoreProver {
         }
 
         let executor =
-            initialize_executor(options.verbose_mode, shared_tables, true, &proofman.get_wcm())?;
+            ZiskExecutor::new(&proofman.get_wcm(), options.verbose_mode, shared_tables, true)?;
 
         executor.set_packed(options.packed);
 
