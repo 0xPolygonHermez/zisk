@@ -12,15 +12,15 @@ main() {
     cd "${WORKSPACE_DIR}" || return 1
 
     info "Cloning zisk-eth-client repository..."
-    if [[ -n "$ZISK_ETH_CLIENT_BRANCH" ]]; then
-        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
-            warn "Skipping cloning zisk-eth-client repository as DISABLE_CLONE_REPO is set to 1"
-        else
-            rm -rf zisk-eth-client
-            ensure git clone --branch $ZISK_ETH_CLIENT_BRANCH --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-        fi
+    if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
+        warn "Skipping cloning zisk-eth-client repository as DISABLE_CLONE_REPO is set to 1"
     else
-        info "Skipping cloning zisk-eth-client repository as ZISK_ETH_CLIENT_BRANCH is not defined"
+        rm -rf zisk-eth-client
+        if [[ -n "$ZISK_ETH_CLIENT_BRANCH" ]]; then
+            ensure git clone --branch $ZISK_ETH_CLIENT_BRANCH --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
+        else
+            ensure git clone https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
+        fi
     fi
 
     ELF_FILE="zisk-eth-client/bin/guests/stateless-validator-reth/elf/zec-reth.elf"

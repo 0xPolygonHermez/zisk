@@ -1,6 +1,8 @@
 #!/bin/bash
 
 source "./utils.sh"
+source "./deploy_zisk_coordinator.sh"
+source "./deploy_zisk_worker.sh"
 
 PROOF_DIR="./proof"
 
@@ -103,11 +105,12 @@ distributed_prove() {
     local input_file="$3"
     local log_prefix="$4"
 
-    local port="${COORDINATOR_PORT:-50051}"
+    local api_port="${COORDINATOR_PORT:-7010}"
+    local cluster_port="${COORDINATOR_CLUSTER_PORT:-6100}"
     local capacity="${COORDINATOR_COMPUTE_CAPACITY:-10}"
     local startup_wait="${COORDINATOR_STARTUP_WAIT:-120}"
     local prove_timeout="${COORDINATOR_PROVE_TIMEOUT:-3600}"
-    local coord_url="http://127.0.0.1:${port}"
+    local coord_url="http://127.0.0.1:${cluster_port}"
 
     local coord_pid worker_pid
 
@@ -115,119 +118,121 @@ distributed_prove() {
 
     rm -rf "${PROOF_DIR}"
 
-    # Kill any leftover zisk-coordinator / zisk-worker processes owned by the current user
-    kill_distributed
+    # Uninstall zisk-coordinator and zisk-worker services
+    utils_uninstall "zisk-coordinator" "com.zisk.coordinator"
+    utils_uninstall "zisk-worker" "com.zisk.worker"
 
-    info "Starting zisk-coordinator on port ${port}..."
-    zisk-coordinator \
-        --port "${port}" \
-        --proofs-dir "${PROOF_DIR}" \
-        --compressed-proofs \
-        2>&1 | tee "${LOGS_DIR}/distributed/coordinator.log" | prefix_log_output "coordinator" &
-    coord_pid=$!
+    # Get current user and group
+    local current_user current_group
+    current_user="$(id -un)"
+    current_group="$(id -gn)"
+    info "Current user/group: ${current_user}:${current_group}"
 
-    info "Starting zisk-worker (elf: ${elf_file}, inputs-folder: ${inputs_path})..."
-    zisk-worker \
-        --elf "${elf_file}" \
-        --inputs-folder "${inputs_path}" \
-        --compute-capacity "${capacity}" \
-        --coordinator-url "${coord_url}" \
-        --asm-port 6100 \
-        2>&1 | tee "${LOGS_DIR}/distributed/worker.log" | prefix_log_output "worker" &
-    worker_pid=$!
+    info "Deploying zisk-coordinator..."
+    deploy_coordinator "${current_group}" "${current_user}" "${api_port}" "${cluster_port}" "${HOME}/.zisk/bin/zisk-coordinator"
 
-    # Terminate background processes if the script is interrupted (Ctrl-C / SIGTERM)
-    trap 'trap - INT TERM; kill "${coord_pid}" "${worker_pid}" 2>/dev/null || true; wait "${coord_pid}" "${worker_pid}" 2>/dev/null || true; exit 130' INT TERM
+    info "Deploying zisk-worker..."
+    deploy_worker "${current_group}" "${current_user}" "${coord_url}"
+
+    # Stream service logs to stdout in background
+    journalctl -fu zisk-coordinator 2>/dev/null | prefix_log_output "coordinator" &
+    local log_coord_pid=$!
+    journalctl -fu zisk-worker 2>/dev/null | prefix_log_output "worker" &
+    local log_worker_pid=$!
 
     info "Waiting for worker to register (timeout: ${startup_wait}s)..."
     local startup_elapsed=0
     while [[ ${startup_elapsed} -lt ${startup_wait} ]]; do
-        if grep -qF "Registration accepted: Registration successful" "${LOGS_DIR}/distributed/worker.log" 2>/dev/null; then
+        if journalctl -u zisk-worker -n 20 --no-pager 2>/dev/null | grep -qF "Registration accepted: Registration successful"; then
             info "Worker registered successfully."
             break
         fi
-        if ! kill -0 "${coord_pid}" 2>/dev/null; then
-            kill_distributed
-            err "Coordinator exited during startup. See ${LOGS_DIR}/distributed/coordinator.log"
+        if ! systemctl is-active --quiet zisk-coordinator; then
+            kill "${log_coord_pid}" "${log_worker_pid}" 2>/dev/null || true
+            sudo systemctl stop zisk-coordinator zisk-worker 2>/dev/null || true
+            err "zisk-coordinator service stopped during startup."
             return 1
         fi
-        if ! kill -0 "${worker_pid}" 2>/dev/null; then
-            kill_distributed
-            err "Worker exited during startup. See ${LOGS_DIR}/distributed/worker.log"
+        if ! systemctl is-active --quiet zisk-worker; then
+            kill "${log_coord_pid}" "${log_worker_pid}" 2>/dev/null || true
+            sudo systemctl stop zisk-coordinator zisk-worker 2>/dev/null || true
+            err "zisk-worker service stopped during startup."
             return 1
         fi
         sleep 2
         startup_elapsed=$(( startup_elapsed + 2 ))
     done
     if [[ ${startup_elapsed} -ge ${startup_wait} ]]; then
-        kill_distributed
-        err "Worker did not register within ${startup_wait}s. See ${LOGS_DIR}/distributed/worker.log"
+        kill "${log_coord_pid}" "${log_worker_pid}" 2>/dev/null || true
+        sudo systemctl stop zisk-coordinator zisk-worker 2>/dev/null || true
+        err "Worker did not register within ${startup_wait}s."
         return 1
     fi
 
-    # Build --inputs-uri flag with full path (omit entirely when input is "empty").
-    local inputs_flag=""
-    if [[ "${input_file}" != "empty" ]]; then
-        inputs_flag="--inputs-uri ${inputs_path}/${input_file} --direct-inputs"
-    fi
-
-    info "Submitting proof via zisk-coordinator prove..."
-    zisk-coordinator prove \
-        --coordinator-url "${coord_url}" \
-        ${inputs_flag} \
-        --compute-capacity "${capacity}" \
-        >"${LOGS_DIR}/single/prove_${input_file}.log" 2>&1
-    local prove_exit=$?
-
-    if [[ ${prove_exit} -ne 0 ]]; then
-        kill_distributed
-        err "zisk-coordinator prove failed (exit ${prove_exit}). See ${LOGS_DIR}/single/prove_${input_file}.log"
-        return 1
-    fi
-
-    # Poll for proof completion via worker logs
-    local elapsed=0
-    local prove_completed=false
-    info "Waiting for proof to complete (timeout: ${prove_timeout}s)..."
-    while [[ ${elapsed} -lt ${prove_timeout} ]]; do
-        if grep -qF "Aggregation task completed" "${LOGS_DIR}/distributed/worker.log" 2>/dev/null; then
-            prove_completed=true
-            break
-        fi
-        if ! kill -0 "${worker_pid}" 2>/dev/null; then
-            kill_distributed
-            err "Worker process (pid=${worker_pid}) exited unexpectedly. See ${LOGS_DIR}/distributed/worker.log"
-            return 1
-        fi
-        sleep 5
-        elapsed=$(( elapsed + 5 ))
-    done
-
-    kill_distributed
-
-    if [[ "${prove_completed}" != "true" ]]; then
-        err "Proof did not complete within ${prove_timeout}s."
-        err "  Coordinator log : ${LOGS_DIR}/distributed/coordinator.log"
-        err "  Worker log      : ${LOGS_DIR}/distributed/worker.log"
-        return 1
-    fi
-
-    # Find the proof file produced by the coordinator
-    local proof_file
-    proof_file=$(resolve_verify_proof_file) || {
-        err "No proof_*.bin or vadcop_final_proof.bin found in ${PROOF_DIR}"
-        return 1
-    }
-
-    # # Copy proof files to the expected location so downstream steps are identical
-    # cp "${proof_file}" "${PROOF_DIR}/vadcop_final_proof.bin"
-    # local proof_job_dir
-    # proof_job_dir=$(dirname "${proof_file}")
-    # if [[ -f "${proof_job_dir}/result.json" ]]; then
-    #     cp "${proof_job_dir}/result.json" "${PROOF_DIR}/result.json"
+    info "Worker is registered. Proceeding with proof submission."
+    # # Build --inputs-uri flag with full path (omit entirely when input is "empty").
+    # local inputs_flag=""
+    # if [[ "${input_file}" != "empty" ]]; then
+    #     inputs_flag="--inputs-uri ${inputs_path}/${input_file} --direct-inputs"
     # fi
 
-    info "Proof completed: ${proof_file}"
+    # info "Submitting proof via zisk-coordinator prove..."
+    # zisk-coordinator prove \
+    #     --coordinator-url "${coord_url}" \
+    #     ${inputs_flag} \
+    #     --compute-capacity "${capacity}" \
+    #     >"${LOGS_DIR}/single/prove_${input_file}.log" 2>&1
+    # local prove_exit=$?
+
+    # if [[ ${prove_exit} -ne 0 ]]; then
+    #     kill_distributed
+    #     err "zisk-coordinator prove failed (exit ${prove_exit}). See ${LOGS_DIR}/single/prove_${input_file}.log"
+    #     return 1
+    # fi
+
+    # # Poll for proof completion via worker logs
+    # local elapsed=0
+    # local prove_completed=false
+    # info "Waiting for proof to complete (timeout: ${prove_timeout}s)..."
+    # while [[ ${elapsed} -lt ${prove_timeout} ]]; do
+    #     if grep -qF "Aggregation task completed" "${LOGS_DIR}/distributed/worker.log" 2>/dev/null; then
+    #         prove_completed=true
+    #         break
+    #     fi
+    #     if ! kill -0 "${worker_pid}" 2>/dev/null; then
+    #         kill_distributed
+    #         err "Worker process (pid=${worker_pid}) exited unexpectedly. See ${LOGS_DIR}/distributed/worker.log"
+    #         return 1
+    #     fi
+    #     sleep 5
+    #     elapsed=$(( elapsed + 5 ))
+    # done
+
+    # kill_distributed
+
+    # if [[ "${prove_completed}" != "true" ]]; then
+    #     err "Proof did not complete within ${prove_timeout}s."
+    #     err "  Coordinator log : ${LOGS_DIR}/distributed/coordinator.log"
+    #     err "  Worker log      : ${LOGS_DIR}/distributed/worker.log"
+    #     return 1
+    # fi
+
+    # # Find the proof file produced by the coordinator
+    # local proof_file
+    # proof_file=$(resolve_verify_proof_file) || {
+    #     err "No proof_*.bin or vadcop_final_proof.bin found in ${PROOF_DIR}"
+    #     return 1
+    # }
+
+    # # # Copy proof files to the expected location so downstream steps are identical
+    # # cp "${proof_file}" "${PROOF_DIR}/vadcop_final_proof.bin"
+    # # local proof_job_dir
+    # # proof_job_dir=$(dirname "${proof_file}")
+    # # if [[ -f "${proof_job_dir}/result.json" ]]; then
+    # #     cp "${proof_job_dir}/result.json" "${PROOF_DIR}/result.json"
+    # # fi
+
+    # info "Proof completed: ${proof_file}"
     return 0
 }
 

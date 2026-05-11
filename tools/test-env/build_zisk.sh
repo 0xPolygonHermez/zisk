@@ -118,7 +118,7 @@ main() {
 
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
-    if [[ "${BUILD_ONLY_CPU}" == "1" ]]; then
+    if [[ "${ONLY_CPU}" == "1" ]]; then
         FEATURES+=("cpu-only")
         warn "Building with CPU only..."
     fi
