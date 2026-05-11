@@ -6,8 +6,23 @@
 //!
 //! ZisK's seven uniform precompiles (`blake2`, `keccakf`, `sha256f`,
 //! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`) share byte-isomorphic
-//! shell code. This macro generates that boilerplate from a small
+//! shell code. This module generates that boilerplate from a small
 //! declarative invocation.
+//!
+//! ## Two macros: façade + explicit
+//!
+//! [`zisk_precompile!`] is the **façade**: 4 declarative parameters
+//! (`name`, `op_type`, `trace`, `num_available_field`) plus the `ops`
+//! list. It derives every shell name from `$name` and every trace-related
+//! type from `$trace`, then forwards to the explicit form.
+//!
+//! [`zisk_precompile_explicit!`] is the **explicit form**: takes every
+//! name spelled out (SM type, input type, trace row + packed, AIR id
+//! paths). Use this directly only if your component cannot follow the
+//! `${name}SM` / `${name}Input` / `${trace}Row` / `${trace}RowPacked`
+//! convention — e.g. the SM type lives in another crate, or the trace
+//! type doesn't follow the `*Row` / `*RowPacked` suffix pattern. All
+//! seven in-tree precompiles use the façade.
 //!
 //! ## Mono-op vs multi-op
 //!
@@ -32,14 +47,18 @@
 /// Re-export of `paste::paste!` so consumers don't need a direct dep.
 pub use paste::paste as __zisk_paste;
 
-/// Generates the per-precompile shell types (Manager + Planner + Instance
-/// + Collector + CounterInputGen) for a precompile state-machine component.
+/// Explicit form — generates the per-precompile shell types from
+/// spelled-out names. The [`zisk_precompile!`] façade desugars to this.
+///
+/// Prefer the [`zisk_precompile!`] façade unless you need to override one
+/// of the conventional names. The façade derives all of the args this
+/// macro takes from just `$name` + `$trace`.
 ///
 /// Generated symbols (with `name = Foo`):
 ///
-/// * `FooManager<F>` — wraps `Arc<FooSM<F>>`; impls `ComponentBuilder<F>`
+/// * `FooManager<F>` — wraps `Arc<$sm<F>>`; impls `ComponentBuilder<F>`
 /// * `FooPlanner<F>` — single-instance planner; impls `Planner`
-/// * `FooInstance<F>` — wraps `Arc<FooSM<F>>` + `InstanceCtx`; impls `Instance<F>`
+/// * `FooInstance<F>` — wraps `Arc<$sm<F>>` + `InstanceCtx`; impls `Instance<F>`
 /// * `FooCollector` — input collector during witness gen; impls `BusDevice<PayloadType>`
 /// * `FooCounterInputGen<F>` — bus device for Counter / CounterAsm / InputGenerator
 ///   modes; impls `BusDevice<u64>`, `Metrics`, `Add`
@@ -47,26 +66,25 @@ pub use paste::paste as __zisk_paste;
 /// The associated method names (e.g. `build_foo_counter`, `foo_sm` field)
 /// are derived from `$name` via `paste`'s `:snake` case conversion.
 ///
-/// The SM type `${name}SM<F>` and storage type `${name}Input` are derived
-/// from `$name`. The trace types are derived from `$trace`:
-///
-/// * `${trace}::<()>::AIR_ID` / `::AIRGROUP_ID`
-/// * `${trace}Row` / `${trace}RowPacked`
-///
-/// The SM must:
+/// The SM (`$sm<F>`) must:
 ///
 /// * impl `precompiles_common::PrecompileMemInputs` (counter dispatches
 ///   per-op generation through this trait).
 /// * expose `compute_witness::<R>(&self, _sctx: &SetupCtx<F>,
-///   inputs: &[Vec<${name}Input>], buf: Vec<F>) -> ProofmanResult<AirInstance<F>>`.
+///   inputs: &[Vec<$input>], buf: Vec<F>) -> ProofmanResult<AirInstance<F>>`.
 /// * expose a `pub $num_available_field: usize` field giving the number of
 ///   ops a single instance can hold.
 #[macro_export]
-macro_rules! zisk_precompile {
+macro_rules! zisk_precompile_explicit {
     (
         name = $name:ident,
+        sm = $sm:path,
         op_type = $op_type:ident,
-        trace = $trace:ident,
+        input = $input:path,
+        trace_row = $trace_row:path,
+        trace_row_packed = $trace_row_packed:path,
+        air_id_path = $air_id_path:path,
+        air_group_id_path = $air_group_id_path:path,
         num_available_field = $num_available_field:ident,
         ops = [
             $(
@@ -84,12 +102,12 @@ macro_rules! zisk_precompile {
             // ============================================================
             #[allow(dead_code)]
             pub struct [<$name Manager>]<F: ::fields::PrimeField64> {
-                [<$name:snake _sm>]: ::std::sync::Arc<[<$name SM>]<F>>,
+                [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
             }
 
             impl<F: ::fields::PrimeField64> [<$name Manager>]<F> {
                 pub fn new(std: ::std::sync::Arc<::pil_std_lib::Std<F>>) -> ::std::sync::Arc<Self> {
-                    let [<$name:snake _sm>] = [<$name SM>]::new(std);
+                    let [<$name:snake _sm>] = <$sm<F>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
 
@@ -124,8 +142,8 @@ macro_rules! zisk_precompile {
                     ::std::boxed::Box::new(
                         [<$name Planner>]::<F>::new().add_instance(
                             $crate::InstanceInfo::new(
-                                ::zisk_pil::$trace::<()>::AIRGROUP_ID,
-                                ::zisk_pil::$trace::<()>::AIR_ID,
+                                $air_group_id_path,
+                                $air_id_path,
                                 num_available,
                                 ::zisk_core::ZiskOperationType::$op_type,
                             ),
@@ -138,7 +156,7 @@ macro_rules! zisk_precompile {
                     ictx: $crate::InstanceCtx,
                 ) -> ::std::boxed::Box<dyn $crate::Instance<F>> {
                     match ictx.plan.air_id {
-                        id if id == ::zisk_pil::$trace::<()>::AIR_ID => ::std::boxed::Box::new(
+                        id if id == $air_id_path => ::std::boxed::Box::new(
                             [<$name Instance>]::new(self.[<$name:snake _sm>].clone(), ictx),
                         ),
                         _ => panic!(
@@ -254,13 +272,13 @@ macro_rules! zisk_precompile {
             // Instance
             // ============================================================
             pub struct [<$name Instance>]<F: ::fields::PrimeField64> {
-                [<$name:snake _sm>]: ::std::sync::Arc<[<$name SM>]<F>>,
+                [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
                 ictx: $crate::InstanceCtx,
             }
 
             impl<F: ::fields::PrimeField64> [<$name Instance>]<F> {
                 pub fn new(
-                    [<$name:snake _sm>]: ::std::sync::Arc<[<$name SM>]<F>>,
+                    [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
                     ictx: $crate::InstanceCtx,
                 ) -> Self {
                     Self { [<$name:snake _sm>], ictx }
@@ -272,7 +290,7 @@ macro_rules! zisk_precompile {
                 ) -> [<$name Collector>] {
                     assert_eq!(
                         self.ictx.plan.air_id,
-                        ::zisk_pil::$trace::<()>::AIR_ID,
+                        $air_id_path,
                         concat!(stringify!($name), "Instance: Unsupported air_id: {:?}"),
                         self.ictx.plan.air_id,
                     );
@@ -315,10 +333,10 @@ macro_rules! zisk_precompile {
 
                     if packed {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<::zisk_pil::[<$trace RowPacked>]<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<$trace_row_packed<F>>(_sctx, &inputs, trace_buffer)?))
                     } else {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<::zisk_pil::[<$trace Row>]<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<$trace_row<F>>(_sctx, &inputs, trace_buffer)?))
                     }
                 }
 
@@ -342,7 +360,7 @@ macro_rules! zisk_precompile {
                 > {
                     assert_eq!(
                         self.ictx.plan.air_id,
-                        ::zisk_pil::$trace::<()>::AIR_ID,
+                        $air_id_path,
                         concat!(stringify!($name), "Instance: Unsupported air_id: {:?}"),
                         self.ictx.plan.air_id,
                     );
@@ -373,7 +391,7 @@ macro_rules! zisk_precompile {
             // enum variant — present for multi-op, absent for mono-op.
             // ============================================================
             pub struct [<$name Collector>] {
-                inputs: ::std::vec::Vec<[<$name Input>]>,
+                inputs: ::std::vec::Vec<$input>,
                 num_operations: u64,
                 collect_skipper: $crate::CollectSkipper,
             }
@@ -416,7 +434,7 @@ macro_rules! zisk_precompile {
                         $(
                             $crate::ExtOperationData::$ext_variant(bus_data) => {
                                 let __converted = $sub_input::from(&bus_data);
-                                $( let __converted = [<$name Input>]::$enum_variant(__converted); )?
+                                $( let __converted = <$input>::$enum_variant(__converted); )?
                                 __converted
                             }
                         )*
@@ -438,7 +456,7 @@ macro_rules! zisk_precompile {
 
             // ============================================================
             // CounterInputGen (Counter / CounterAsm / InputGenerator modes)
-            // Dispatches to `<[<$name SM>]<F> as PrecompileMemInputs>::generate /
+            // Dispatches to `<$sm<F> as PrecompileMemInputs>::generate /
             // should_skip`. The SM's PrecompileMemInputs impl handles any
             // inner sub-op match for multi-op precompiles.
             // ============================================================
@@ -486,7 +504,7 @@ macro_rules! zisk_precompile {
                     match self.mode {
                         $crate::BusDeviceMode::Counter => {
                             $crate::Metrics::measure(self, data);
-                            <[<$name SM>]<F> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<F> as ::precompiles_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, true, mem_processors,
                             );
                         }
@@ -494,12 +512,12 @@ macro_rules! zisk_precompile {
                             $crate::Metrics::measure(self, data);
                         }
                         $crate::BusDeviceMode::InputGenerator => {
-                            if <[<$name SM>]<F> as ::precompiles_common::PrecompileMemInputs>::should_skip(
+                            if <$sm<F> as ::precompiles_common::PrecompileMemInputs>::should_skip(
                                 addr_main, data, mem_processors,
                             ) {
                                 return true;
                             }
-                            <[<$name SM>]<F> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<F> as ::precompiles_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, false, mem_processors,
                             );
                         }
@@ -536,6 +554,58 @@ macro_rules! zisk_precompile {
                 fn as_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn ::std::any::Any> {
                     self
                 }
+            }
+        }
+    };
+}
+
+/// Façade — declares a precompile's shells using only `name`, `op_type`,
+/// `trace`, and `num_available_field` plus the ops list.
+///
+/// Derives the args of [`zisk_precompile_explicit!`] from `$name` and `$trace`:
+///
+/// * `sm = ${name}SM`
+/// * `input = ${name}Input`
+/// * `trace_row = ::zisk_pil::${trace}Row`
+/// * `trace_row_packed = ::zisk_pil::${trace}RowPacked`
+/// * `air_id_path = ::zisk_pil::${trace}::<()>::AIR_ID`
+/// * `air_group_id_path = ::zisk_pil::${trace}::<()>::AIRGROUP_ID`
+///
+/// If your component breaks any of these conventions, call
+/// [`zisk_precompile_explicit!`] directly and override the offending name.
+#[macro_export]
+macro_rules! zisk_precompile {
+    (
+        name = $name:ident,
+        op_type = $op_type:ident,
+        trace = $trace:ident,
+        num_available_field = $num_available_field:ident,
+        ops = [
+            $(
+                (
+                    $ext_variant:ident
+                    $( => $enum_variant:ident )?
+                    , $sub_input:ident
+                )
+            ),* $(,)?
+        ] $(,)?
+    ) => {
+        $crate::__zisk_paste! {
+            $crate::zisk_precompile_explicit! {
+                name = $name,
+                sm = [<$name SM>],
+                op_type = $op_type,
+                input = [<$name Input>],
+                trace_row = ::zisk_pil::[<$trace Row>],
+                trace_row_packed = ::zisk_pil::[<$trace RowPacked>],
+                air_id_path = ::zisk_pil::$trace::<()>::AIR_ID,
+                air_group_id_path = ::zisk_pil::$trace::<()>::AIRGROUP_ID,
+                num_available_field = $num_available_field,
+                ops = [
+                    $(
+                        ( $ext_variant $( => $enum_variant )? , $sub_input )
+                    ),*
+                ],
             }
         }
     };
