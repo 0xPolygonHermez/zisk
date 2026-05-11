@@ -138,6 +138,17 @@ impl ProverBackend {
         self.proofman.cancel();
     }
 
+    pub(crate) fn signal_children_reset(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.signal_children_reset()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn wait_until_proofman_ready(&self) {
+        self.proofman.wait_until_proofman_ready();
+    }
+
     pub fn get_pctx(&self) -> Result<Arc<ProofCtx<Goldilocks>>> {
         Ok(self.proofman.get_wcm().get_pctx())
     }
@@ -534,5 +545,13 @@ impl ProverBackend {
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.proofman.mpi_broadcast(data);
         Ok(())
+    }
+
+    pub(crate) fn notify_cluster_cancellation(&self) {
+        self.proofman.notify_cancellation();
+    }
+
+    pub(crate) fn cluster_barrier(&self) {
+        self.proofman.set_barrier();
     }
 }

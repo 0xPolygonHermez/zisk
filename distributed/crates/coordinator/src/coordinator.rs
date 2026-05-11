@@ -125,6 +125,11 @@ pub struct Coordinator {
     /// Dropping or sending `None` signals EOF to the relay thread.
     #[allow(clippy::type_complexity)]
     grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
+
+    /// Workers that owe a `WorkerRecoveryComplete`. Decoupled from
+    /// `WorkerState` so the intent survives a stream drop + reconnect
+    /// (which resets `WorkerState` to `default_state`).
+    pending_recovery: RwLock<HashSet<WorkerId>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -155,6 +160,7 @@ impl Coordinator {
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
+            pending_recovery: RwLock::new(HashSet::new()),
         }
     }
 
@@ -230,8 +236,19 @@ impl Coordinator {
             (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
         };
 
+        // Park first, send JobCancelled second. The worker may emit
+        // `WorkerRecoveryComplete` immediately on receipt; if we sent the
+        // message before parking, that completion would arrive while the
+        // coordinator still saw the worker as `Computing(_)` and be dropped,
+        // wedging the worker once the parking finally lands.
+        let parked = self.workers_pool.mark_computing_workers_settingup(&worker_ids).await;
+        if !parked.is_empty() {
+            let mut pending = self.pending_recovery.write().await;
+            for wid in &parked {
+                pending.insert(wid.clone());
+            }
+        }
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
-        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
 
@@ -451,13 +468,17 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        // Send Phase1 tasks to selected workers
+        // Increment `coordinator_active_jobs` BEFORE dispatch: even if dispatch
+        // fails, the job is already in `self.jobs` map and a later monitor
+        // timeout will call `record_job_terminal` (which decrements). Without
+        // the matching increment here, the gauge would underflow on the
+        // dispatch-failure path.
+        crate::metrics::record_job_started();
+
         let job = job_arc.read().await;
         self.dispatch_contributions_messages(&job, &active_workers).await?;
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
-
-        crate::metrics::record_job_started();
 
         Ok(LaunchProofResponseDto { job_id })
     }
@@ -750,10 +771,8 @@ impl Coordinator {
         self.fail_job_with_recovery(job_id, reason, None).await
     }
 
-    /// Same as [`Self::fail_job`] but parks `recovering_worker` in
-    /// `SettingUp` instead of `Ready` so the dispatcher won't pick it
-    /// while it does post-failure maintenance. The worker becomes
-    /// `Ready` again on the next `WorkerRecoveryComplete`.
+    /// Like `fail_job` but parks `recovering_worker` `SettingUp` until it
+    /// emits `WorkerRecoveryComplete`, instead of flipping it `Ready` directly.
     pub async fn fail_job_with_recovery(
         &self,
         job_id: &JobId,
@@ -778,12 +797,18 @@ impl Coordinator {
             // job write lock released here
         };
 
-        // These operations only need the worker IDs, not the job lock.
-        self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
+        // Same ordering rule as `cancel_job`: insert `pending_recovery` and
+        // park `recovering_worker` BEFORE sending JobCancelled, otherwise an
+        // immediate `WorkerRecoveryComplete` from the worker can race ahead
+        // of the parking and be dropped.
         match recovering_worker {
-            Some(rec) => self.ensure_workers_ready_except(&worker_ids, rec).await,
+            Some(rec) => {
+                self.pending_recovery.write().await.insert(rec.clone());
+                self.ensure_workers_ready_except(&worker_ids, rec).await;
+            }
             None => self.ensure_workers_ready(&worker_ids).await,
         }
+        self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
 
@@ -1070,9 +1095,16 @@ impl Coordinator {
     /// Removes worker entries that have been Disconnected for longer than the configured threshold.
     async fn cleanup_stale_disconnected_workers(&self) {
         let threshold_secs = self.config.coordinator.stale_disconnected_threshold_seconds;
-        self.workers_pool
+        let removed = self
+            .workers_pool
             .remove_stale_disconnected(chrono::Duration::seconds(threshold_secs as i64))
             .await;
+        if !removed.is_empty() {
+            let mut pending = self.pending_recovery.write().await;
+            for w in &removed {
+                pending.remove(w);
+            }
+        }
     }
 }
 
@@ -1316,6 +1348,219 @@ mod tests {
         // Job should still be Failed (not revived)
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_late_task_response_with_recovery_parks_settingup() {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ExecutionResultDataDto,
+            ZiskExecutorTimeDto,
+        };
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+
+        let w0_id = workers[0].0.clone();
+        let late_response = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
+                instances: 0,
+                executed_steps: 0,
+                zisk_executor_time: ZiskExecutorTimeDto {
+                    total_duration: 0.0,
+                    execution_duration: 0.0,
+                    count_and_plan_duration: 0.0,
+                    count_and_plan_mo_duration: 0.0,
+                    asm_execution_duration: None,
+                    task_received_time: 0.0,
+                },
+                publics: vec![],
+            }),
+            worker_in_recovery: true,
+        };
+
+        coordinator.handle_stream_execute_task_response(late_response).await.unwrap();
+
+        let state = coordinator.workers_pool.worker_state(&w0_id).await;
+        assert_eq!(state, Some(WorkerState::SettingUp));
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    #[tokio::test]
+    async fn test_recovery_complete_survives_reconnect() {
+        use zisk_cluster_common::WorkerReconnectRequestDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job_with_recovery(&job_id, "task failed", Some(&w0_id)).await.unwrap();
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
+
+        let (sender2, _msgs2) = MockMessageSender::new();
+        let req = WorkerReconnectRequestDto {
+            worker_id: w0_id.clone(),
+            compute_capacity: 1u32.into(),
+            last_known_job_id: None,
+        };
+        let (accepted, _msg, _directive, _setup) =
+            coordinator.handle_stream_reconnection(req, Box::new(sender2)).await;
+        assert!(accepted);
+
+        // Reconnect must preserve the recovery intent.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    /// `WorkerRecoveryComplete` arriving on the new stream before the failure
+    /// response lands on the old stream must still flip the worker Ready.
+    #[tokio::test]
+    async fn test_recovery_complete_handles_cross_stream_race() {
+        let (coordinator, workers, _job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+    }
+
+    /// `WorkerRecoveryComplete` must not clobber a `Computing(_)` state — a
+    /// re-dispatched worker is owned by the dispatcher.
+    #[tokio::test]
+    async fn test_recovery_complete_does_not_clobber_computing() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.pending_recovery.write().await.insert(w0_id.clone());
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0_id,
+                WorkerState::Computing((job_id.clone(), JobPhase::Prove)),
+            )
+            .await
+            .unwrap();
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::Computing((job_id, JobPhase::Prove)))
+        );
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    /// A stray `WorkerRecoveryComplete` with no `pending_recovery` record
+    /// must not pre-empt an in-flight `SetupProgramAck`.
+    #[tokio::test]
+    async fn test_recovery_complete_yields_to_setup_in_flight() {
+        let (coordinator, workers, _job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+        let setup_job_id = JobId::new();
+        coordinator.setup_pending.write().await.insert(
+            setup_job_id,
+            SetupPendingState {
+                pending: [w0_id.clone()].into_iter().collect(),
+                vks: Vec::new(),
+                hash_id: "h".into(),
+                program_name: "p".into(),
+                with_hints: false,
+            },
+        );
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_job_populates_pending_recovery() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        let w_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        coordinator.cancel_job(&job_id).await.unwrap();
+
+        for wid in &w_ids {
+            assert_eq!(
+                coordinator.workers_pool.worker_state(wid).await,
+                Some(WorkerState::SettingUp)
+            );
+            assert!(
+                coordinator.pending_recovery.read().await.contains(wid),
+                "worker {} must be in pending_recovery after cancel",
+                wid
+            );
+        }
+    }
+
+    /// Non-Computing workers don't owe a `WorkerRecoveryComplete` — they
+    /// must not end up in `pending_recovery`.
+    #[tokio::test]
+    async fn test_cancel_job_skips_non_computing_workers() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+        let w0 = workers[0].0.clone();
+        let w1 = workers[1].0.clone();
+
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::Ready).await.unwrap();
+
+        coordinator.cancel_job(&job_id).await.unwrap();
+
+        let pending = coordinator.pending_recovery.read().await;
+        assert!(!pending.contains(&w0), "non-computing worker must not be in pending_recovery");
+        assert!(pending.contains(&w1), "computing worker must be in pending_recovery");
+    }
+
+    #[tokio::test]
+    async fn test_unregister_worker_clears_pending_recovery() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job_with_recovery(&job_id, "task failed", Some(&w0_id)).await.unwrap();
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.unregister_worker(&w0_id).await.unwrap();
+
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
     }
 
     #[tokio::test]

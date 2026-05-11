@@ -73,6 +73,22 @@ impl EmulatorAsm {
         Ok(())
     }
 
+    /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
+    /// so any child currently blocked in `_wait_for_input_avail` /
+    /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
+    /// cancel time so a stuck `execute` returns Err promptly.
+    pub fn signal_children_reset(&self) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.signal_children_reset()?;
+        }
+        Ok(())
+    }
+
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.asm_resources
             .read()
@@ -183,6 +199,38 @@ impl EmulatorAsm {
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
             .clone();
 
+        self.execute_inner(
+            zisk_rom,
+            stdin,
+            pctx,
+            sm_bundle,
+            use_hints,
+            stats,
+            _caller_stats_scope,
+            &asm_resources,
+        )
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
+    fn execute_inner<F: PrimeField64>(
+        &self,
+        zisk_rom: &ZiskRom,
+        stdin: &Mutex<ZiskStdin>,
+        pctx: &ProofCtx<F>,
+        sm_bundle: &StaticSMBundle<F>,
+        use_hints: bool,
+        stats: &ExecutorStatsHandle,
+        _caller_stats_scope: &StatsScope,
+        asm_resources: &Arc<AsmResources>,
+    ) -> Result<(
+        Vec<EmuTrace>,
+        DeviceMetricsList,
+        NestedDeviceMetricsList,
+        Option<JoinHandle<Result<AsmRunnerMO>>>,
+        Option<JoinHandle<Result<AsmRunnerRH>>>,
+        u64,
+    )> {
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
             asm_resources.start_stream()?;
@@ -242,14 +290,30 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) =
-            self.run_mt_assembly(zisk_rom, sm_bundle, stats)?;
-        // Store execute steps
-        let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
-        stats_end!(stats, &_exec_scope);
-
-        Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+        match mt_result {
+            Ok((min_traces, main_count, secn_count)) => {
+                let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+                stats_end!(stats, &_exec_scope);
+                Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+            }
+            Err(e) => {
+                // MT already self-cleaned (signaled reset + joined its stdio
+                // thread). Wake MO/RH in case they're still parked, then join
+                // so their detached threads release the shmem-reader locks
+                // before the next job begins.
+                if let Err(reset_err) = asm_resources.signal_children_reset() {
+                    tracing::error!("execute_inner: signal_children_reset failed: {reset_err:#}");
+                }
+                let _ = handle_mo.join();
+                if let Some(h) = handle_rh {
+                    let _ = h.join();
+                }
+                stats_end!(stats, &_exec_scope);
+                Err(e)
+            }
+        }
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -325,11 +389,13 @@ impl EmulatorAsm {
                 .mt
                 .lock()
                 .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
+            let asm_resources_for_failure = asm_resources.clone();
             let result = AsmRunnerMT::run_and_count(
                 mt_shmem,
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
+                move || asm_resources_for_failure.signal_children_reset(),
                 asm_resources.asm_services().clone(),
                 stats.clone(),
             )?;

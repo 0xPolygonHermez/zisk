@@ -51,12 +51,16 @@ impl Coordinator {
             );
         }
 
-        // If this worker was held in SettingUp (registered while an active setup existed),
-        // transition it to Idle now so it becomes eligible for job assignment.
+        // A worker can be `SettingUp` either pending this `SetupProgramAck`
+        // or pending a `WorkerRecoveryComplete`. The recovery handshake owns
+        // the flip back to Ready in the latter case; setup-ack must not
+        // pre-empt it.
         let worker_id = ack.worker_id.clone();
-        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp)
+            && !self.pending_recovery.read().await.contains(&worker_id)
+        {
             let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-            info!("[Setup] Worker {} finished setup, now Idle", ack.worker_id);
+            info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
         }
 
         // Remove this worker from the pending set and accumulate its VK.
@@ -108,16 +112,36 @@ impl Coordinator {
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        if self.workers_pool.worker_state(worker_id).await == Some(WorkerState::SettingUp) {
+        let was_pending = self.pending_recovery.write().await.remove(worker_id);
+        let state = self.workers_pool.worker_state(worker_id).await;
+        let parked = state == Some(WorkerState::SettingUp);
+
+        if was_pending && parked {
             let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
             info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
+        } else if !was_pending && parked && !self.is_setup_in_flight(worker_id).await {
+            let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
+            info!(
+                "[Recovery] Worker {} RecoveryComplete with no pending-recovery record but parked SettingUp; flipping Ready (cross-stream race)",
+                worker_id
+            );
+        } else if was_pending {
+            warn!(
+                "[Recovery] Worker {} consumed pending-recovery entry but state was {:?} (not SettingUp); leaving worker state unchanged (likely re-dispatched)",
+                worker_id, state
+            );
         } else {
             warn!(
-                "[Recovery] Worker {} sent RecoveryComplete but is not in SettingUp; ignoring",
-                worker_id
+                "[Recovery] Worker {} sent RecoveryComplete with no pending-recovery record (state={:?}); ignoring",
+                worker_id, state
             );
         }
         Ok(())
+    }
+
+    async fn is_setup_in_flight(&self, worker_id: &WorkerId) -> bool {
+        let pending = self.setup_pending.read().await;
+        pending.values().any(|s| s.pending.contains(worker_id))
     }
 
     /// Sends cancellation messages to all workers assigned to a job.
@@ -252,10 +276,14 @@ impl Coordinator {
         let default_state =
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
-        // For a KeepComputing reconnect, preserve the current Computing(job_id, phase)
-        // state through the channel swap. For any other outcome, reset to the default.
+        // KeepComputing preserves the Computing(_) state across the channel
+        // swap. Pending-recovery workers stay SettingUp so the dispatcher
+        // doesn't pick them up before the queued `WorkerRecoveryComplete`
+        // arrives on the new stream.
         let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
             self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
+        } else if self.pending_recovery.read().await.contains(&worker_id) {
+            WorkerState::SettingUp
         } else {
             default_state
         };
@@ -384,6 +412,7 @@ impl Coordinator {
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "unregistered").await?;
+        self.pending_recovery.write().await.remove(worker_id);
         self.workers_pool.unregister_worker(worker_id).await
     }
 
@@ -482,8 +511,9 @@ impl Coordinator {
         // Validate and update heartbeat
         self.validate_and_update_heartbeat(&message).await?;
 
-        // If the job is already terminal (Failed/Completed), this is a late arrival
-        // (e.g. spawn_blocking finished after JobCancelled). Mark worker Ready and discard.
+        // Late arrival for a resolved job (e.g. spawn_blocking finished after
+        // JobCancelled): discard, but park in SettingUp when `worker_in_recovery`
+        // so the dispatcher waits for `WorkerRecoveryComplete`.
         let job_entry = {
             let jobs_map = self.jobs.read().await;
             jobs_map.get(&message.job_id).cloned()
@@ -491,15 +521,24 @@ impl Coordinator {
         if let Some(job_entry) = job_entry {
             let job = job_entry.read().await;
             if job.state().is_resolved() {
+                let target_state = if message.worker_in_recovery {
+                    WorkerState::SettingUp
+                } else {
+                    WorkerState::Ready
+                };
                 info!(
-                    "Ignoring late ExecuteTaskResponse from worker {} for resolved job {}",
-                    message.worker_id, message.job_id
+                    "Ignoring late ExecuteTaskResponse from worker {} for resolved job {} (worker_in_recovery={}, parking in {:?})",
+                    message.worker_id, message.job_id, message.worker_in_recovery, target_state
                 );
+                if message.worker_in_recovery {
+                    // The response arrived too late to drive the failure path,
+                    // so record the recovery intent here so the eventual
+                    // `WorkerRecoveryComplete` can flip the worker back Ready.
+                    self.pending_recovery.write().await.insert(message.worker_id.clone());
+                }
                 drop(job);
                 drop(job_entry);
-                self.workers_pool
-                    .mark_worker_with_state(&message.worker_id, WorkerState::Ready)
-                    .await?;
+                self.workers_pool.mark_worker_with_state(&message.worker_id, target_state).await?;
                 return Ok(());
             }
         }
@@ -559,13 +598,24 @@ impl Coordinator {
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
         let recovering = if message.worker_in_recovery { Some(&message.worker_id) } else { None };
-        self.fail_job_with_recovery(&message.job_id, "Task execution failed", recovering).await?;
+
+        // Surface the worker's own error_message so it propagates verbatim
+        // through JobState::Failed to the prove-client.
+        let worker_err = message.error_message.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let reason = match worker_err {
+            Some(detail) => {
+                format!("Task execution failed on worker {}: {}", message.worker_id, detail)
+            }
+            None => format!("Task execution failed on worker {} (no detail)", message.worker_id),
+        };
+
+        self.fail_job_with_recovery(&message.job_id, &reason, recovering).await?;
 
         Err(CoordinatorError::WorkerError(format!(
-            "Worker {} failed to execute task for {}: {}",
+            "Worker {} failed task for job {}: {}",
             message.worker_id,
             message.job_id,
-            message.error_message.unwrap_or_default()
+            worker_err.unwrap_or("(no detail)")
         )))
     }
 }

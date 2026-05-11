@@ -97,6 +97,13 @@ impl InputsShmemWriter {
         Ok(())
     }
 
+    /// Set the C-side `ResetFlag` so any child blocked in
+    /// `_wait_for_input_avail`/`_wait_for_prec_avail` aborts on the next
+    /// iteration. Cleared by the next job's `reset()`.
+    pub fn set_reset_flag(&self) {
+        self.control_writer.set_reset_flag();
+    }
+
     pub fn reset(&self) {
         for writer in &self.writers {
             let mut w = writer.lock().unwrap();

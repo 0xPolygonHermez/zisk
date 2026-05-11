@@ -395,11 +395,26 @@ pub trait ProverEngine {
         Ok(())
     }
 
-    fn restart_asm_resources(&self, _elf: &GuestProgram, _with_hints: bool) -> Result<()> {
+    fn notify_cluster_cancellation(&self) {}
+
+    /// Collective MPI barrier across all ranks. All ranks must call this for
+    /// the cluster to make progress. Used to synchronize end-of-task between
+    /// rank 0 and peer ranks where there is no implicit aggregation sync
+    /// (e.g. execute-only) and at the end of recovery.
+    fn cluster_barrier(&self) {}
+
+    fn cancel(&self);
+
+    /// Poke the ASM children so any in-flight `execute` wakes up from its
+    /// wait functions and unwinds. Called by the worker at cancel time so the
+    /// `execute` Err arm can run its own cleanup promptly. Default no-op.
+    fn signal_children_reset(&self) -> Result<()> {
         Ok(())
     }
 
-    fn cancel(&self);
+    /// Block until any in-flight proofman entry point has returned. Called
+    /// in recovery before advertising `Ready`. Default no-op.
+    fn wait_until_proofman_ready(&self) {}
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -627,12 +642,24 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.reset_resources()
     }
 
-    pub fn restart_asm_resources(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
-        self.prover.restart_asm_resources(elf, with_hints)
+    pub fn notify_cluster_cancellation(&self) {
+        self.prover.notify_cluster_cancellation()
+    }
+
+    pub fn cluster_barrier(&self) {
+        self.prover.cluster_barrier()
     }
 
     pub fn cancel(&self) {
         self.prover.cancel()
+    }
+
+    pub fn signal_children_reset(&self) -> Result<()> {
+        self.prover.signal_children_reset()
+    }
+
+    pub fn wait_until_proofman_ready(&self) {
+        self.prover.wait_until_proofman_ready()
     }
 }
 

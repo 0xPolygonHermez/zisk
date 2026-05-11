@@ -458,6 +458,14 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
+    fn notify_cluster_cancellation(&self) {
+        self.core_prover.backend.notify_cluster_cancellation();
+    }
+
+    fn cluster_barrier(&self) {
+        self.core_prover.backend.cluster_barrier();
+    }
+
     fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
@@ -498,38 +506,16 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.reset_resources()
     }
 
-    fn restart_asm_resources(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
-        let key = SetupKey::new(&*elf.program_id.hash_id, with_hints);
-        let world_rank = self.core_prover.rank_info.world_rank;
-
-        tracing::warn!(
-            ">>> [{world_rank}] Soft-resetting ASM children for program {} (with_hints={with_hints})",
-            elf.name(),
-        );
-
-        let resources = {
-            let cache = self.program_cache.read().unwrap();
-            cache
-                .get(&key)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "restart_asm_resources: program '{}' (with_hints={with_hints}) not in cache",
-                        elf.name()
-                    )
-                })?
-                .resources
-                .clone()
-        };
-
-        self.core_prover.backend.cancel();
-        resources.signal_children_reset()?;
-
-        tracing::info!(">>> [{world_rank}] Soft-reset signal sent for program {}", elf.name());
-        Ok(())
-    }
-
     fn cancel(&self) {
         self.core_prover.backend.cancel();
+    }
+
+    fn signal_children_reset(&self) -> Result<()> {
+        self.core_prover.backend.signal_children_reset()
+    }
+
+    fn wait_until_proofman_ready(&self) {
+        self.core_prover.backend.wait_until_proofman_ready();
     }
 }
 

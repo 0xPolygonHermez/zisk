@@ -253,6 +253,14 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
+    fn notify_cluster_cancellation(&self) {
+        self.core_prover.backend.notify_cluster_cancellation();
+    }
+
+    fn cluster_barrier(&self) {
+        self.core_prover.backend.cluster_barrier();
+    }
+
     fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
@@ -263,6 +271,14 @@ impl ProverEngine for EmuProver {
 
     fn cancel(&self) {
         self.core_prover.backend.cancel();
+    }
+
+    fn signal_children_reset(&self) -> Result<()> {
+        self.core_prover.backend.signal_children_reset()
+    }
+
+    fn wait_until_proofman_ready(&self) {
+        self.core_prover.backend.wait_until_proofman_ready();
     }
 }
 

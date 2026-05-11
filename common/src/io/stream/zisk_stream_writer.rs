@@ -44,6 +44,10 @@ use crate::io::UnixSocketStreamWriter;
 /// hint pipeline's existing flush threshold.
 const PUSH_DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
+/// Upper bound on how long `start()`'s bg thread polls for a peer connection.
+/// Beyond this we give up and surface an error to any waiting flusher.
+const WAIT_FOR_CONNECTION_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
 // ── Push sender trait ──────────────────────────────────────────────────────
 
 /// Sender for transports that push bytes through an external channel rather
@@ -82,12 +86,26 @@ enum TransportKind {
     Push,
 }
 
+/// Mutex-free tag mirroring `TransportKind`'s discriminant. `is_external` /
+/// `is_push` would otherwise lock `transport`, which the bg thread holds for
+/// the full `wait_for_connection()` deadline.
+#[derive(Copy, Clone, PartialEq)]
+enum TransportTag {
+    Direct,
+    External,
+    Push,
+}
+
 // ── Live state ─────────────────────────────────────────────────────────────
 
 struct LiveState {
     /// `true` after `start()` has opened the transport, drained any
     /// pre-buffered bytes, and seen the peer connect. `flush()` blocks on this.
     ready: bool,
+    /// `start()` is idempotent while this is set: the bg thread holds
+    /// `transport.lock()` for the full `wait_for_connection()` deadline,
+    /// so a second `start()` would otherwise block 60 s on that mutex.
+    starting: bool,
     /// Active push sender for the current job. Set/cleared in tandem with
     /// `ready` for [`TransportKind::Push`]; always `None` for other kinds.
     push_sender: Option<Box<dyn BytesPushSender>>,
@@ -97,6 +115,7 @@ struct LiveState {
 
 struct Inner {
     transport: Mutex<TransportKind>,
+    tag: TransportTag,
     pending: Mutex<Vec<u8>>,
     uri: String,
     live_state: Mutex<LiveState>,
@@ -123,9 +142,14 @@ impl ZiskStreamWriter {
         Self {
             inner: Arc::new(Inner {
                 transport: Mutex::new(TransportKind::Direct(writer)),
+                tag: TransportTag::Direct,
                 pending: Mutex::new(Vec::new()),
                 uri,
-                live_state: Mutex::new(LiveState { ready: false, push_sender: None }),
+                live_state: Mutex::new(LiveState {
+                    ready: false,
+                    starting: false,
+                    push_sender: None,
+                }),
                 live_cond: Condvar::new(),
             }),
         }
@@ -138,9 +162,14 @@ impl ZiskStreamWriter {
         Self {
             inner: Arc::new(Inner {
                 transport: Mutex::new(TransportKind::External),
+                tag: TransportTag::External,
                 pending: Mutex::new(Vec::new()),
                 uri,
-                live_state: Mutex::new(LiveState { ready: true, push_sender: None }),
+                live_state: Mutex::new(LiveState {
+                    ready: true,
+                    starting: false,
+                    push_sender: None,
+                }),
                 live_cond: Condvar::new(),
             }),
         }
@@ -172,9 +201,14 @@ impl ZiskStreamWriter {
         Self {
             inner: Arc::new(Inner {
                 transport: Mutex::new(TransportKind::Push),
+                tag: TransportTag::Push,
                 pending: Mutex::new(Vec::new()),
                 uri,
-                live_state: Mutex::new(LiveState { ready: false, push_sender: None }),
+                live_state: Mutex::new(LiveState {
+                    ready: false,
+                    starting: false,
+                    push_sender: None,
+                }),
                 live_cond: Condvar::new(),
             }),
         }
@@ -187,11 +221,11 @@ impl ZiskStreamWriter {
     }
 
     pub fn is_external(&self) -> bool {
-        matches!(*self.inner.transport.lock().unwrap(), TransportKind::External)
+        self.inner.tag == TransportTag::External
     }
 
     pub fn is_push(&self) -> bool {
-        matches!(*self.inner.transport.lock().unwrap(), TransportKind::Push)
+        self.inner.tag == TransportTag::Push
     }
 
     /// `true` after `start()` (and, for Push, `set_push_sender`) has succeeded.
@@ -356,7 +390,14 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        self.inner.live_state.lock().unwrap().ready = false;
+        // See `LiveState::starting` — repeated start()s share one bg thread.
+        {
+            let mut guard = self.inner.live_state.lock().unwrap();
+            if guard.starting || guard.ready {
+                return Ok(());
+            }
+            guard.starting = true;
+        }
 
         // Open (or reopen) the transport synchronously so the path is bindable
         // before this function returns.
@@ -366,42 +407,72 @@ impl ZiskStreamWriter {
             if writer.is_active() {
                 let _ = writer.close();
             }
-            writer.open()?;
+            if let Err(e) = writer.open() {
+                self.inner.live_state.lock().unwrap().starting = false;
+                return Err(e);
+            }
         }
 
-        // Background thread: wait for peer, drain pending, signal ready.
+        // Background thread: poll for peer connection without holding the
+        // transport mutex across the full wait. Each poll briefly locks
+        // `transport` to ask `is_client_connected()`, then releases for 5 ms
+        // — so `finish()` and `flush()` only ever wait on a single poll
+        // (≤ a few ms), not on the 60 s connection deadline.
         let inner = Arc::clone(&self.inner);
         std::thread::spawn(move || {
-            let result = (|| -> Result<()> {
-                let mut transport = inner.transport.lock().unwrap();
-                let TransportKind::Direct(writer) = &mut *transport else { unreachable!() };
-
-                writer.wait_for_connection()?;
-
-                let mut pending = inner.pending.lock().unwrap();
-                if !pending.is_empty() {
+            let deadline = std::time::Instant::now() + WAIT_FOR_CONNECTION_DEADLINE;
+            let result = loop {
+                let connected = {
+                    let mut transport = inner.transport.lock().unwrap();
+                    match &mut *transport {
+                        TransportKind::Direct(writer) => writer.is_client_connected(),
+                        // Transport was torn down (finish() raced us); abort.
+                        _ => break Err(anyhow::anyhow!("transport closed before peer connected")),
+                    }
+                };
+                if connected {
+                    let mut transport = inner.transport.lock().unwrap();
+                    let TransportKind::Direct(writer) = &mut *transport else {
+                        break Err(anyhow::anyhow!("transport closed before drain"));
+                    };
+                    let mut pending = inner.pending.lock().unwrap();
                     let chunk_size = aligned_chunk_size(writer.max_message_size());
                     let mut sent = 0;
+                    let mut drain_err: Option<anyhow::Error> = None;
                     while sent < pending.len() {
                         let take = std::cmp::min(chunk_size, pending.len() - sent);
                         if let Err(e) = writer.write(&pending[sent..sent + take]) {
-                            pending.drain(..sent);
-                            return Err(e);
+                            drain_err = Some(e);
+                            break;
                         }
                         sent += take;
                     }
+                    if let Some(e) = drain_err {
+                        pending.drain(..sent);
+                        break Err(e);
+                    }
                     pending.clear();
+                    break Ok(());
                 }
-                Ok(())
-            })();
+                if std::time::Instant::now() >= deadline {
+                    break Err(anyhow::anyhow!(
+                        "Timed out waiting for peer to connect to {}",
+                        inner.uri
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            };
 
+            let mut guard = inner.live_state.lock().unwrap();
+            guard.starting = false;
             match result {
                 Ok(()) => {
-                    inner.live_state.lock().unwrap().ready = true;
+                    guard.ready = true;
                     inner.live_cond.notify_all();
                 }
                 Err(e) => {
                     tracing::error!("ZiskStreamWriter start failed: {}", e);
+                    inner.live_cond.notify_all();
                 }
             }
         });

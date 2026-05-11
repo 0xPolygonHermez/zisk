@@ -233,11 +233,14 @@ impl AsmResources {
             .unwrap_or(false)
     }
 
-    /// Soft-reset the C children: write `1` to the `ResetFlag` slot and
-    /// post both `sem_prec_avail` and `sem_input_avail` so any child
-    /// sleeping in either wait function wakes up and aborts the in-flight
-    /// emulation cleanly. Children stay alive — no respawn needed.
+    /// Soft-reset the C children: set `ResetFlag=1` and post both
+    /// `sem_prec_avail` and `sem_input_avail` so any child sleeping in
+    /// either wait function aborts cleanly. The flag MUST be set
+    /// unconditionally — without it, a child stuck in `_wait_for_input_avail`
+    /// wakes from the sem post, sees flag=0, and goes back to sleep forever.
     pub fn signal_children_reset(&self) -> Result<()> {
+        self.shared.inputs_shmem_writer.set_reset_flag();
+
         if let Some(s) = &self.shared.hints_stream {
             let processor = s
                 .lock()

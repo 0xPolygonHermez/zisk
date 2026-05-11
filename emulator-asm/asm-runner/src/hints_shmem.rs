@@ -129,13 +129,13 @@ impl HintsShmem {
         Ok(())
     }
 
-    /// Soft-reset signal: write `1` to the `ResetFlag` slot and post
-    /// `sem_prec_avail` to wake any child sleeping in `_wait_for_prec_avail`.
-    /// The C side returns non-zero from the wait function, the assembly
-    /// unwinds cleanly out of `emulator_start()`, and the child stays alive
-    /// for the next request — no respawn.
+    /// Post `sem_prec_avail` for every bound service to wake any child
+    /// sleeping in `_wait_for_prec_avail` as part of the soft-reset
+    /// choreography. The caller (`AsmResources::signal_children_reset`)
+    /// owns flipping the shared `ResetFlag` — `ControlShmem` is shared with
+    /// `InputsShmemWriter`, so setting it from both sides would just write
+    /// the same byte twice.
     pub fn signal_children_reset(&self) -> Result<()> {
-        self.unified.lock().expect("unified mutex poisoned").control_writer.set_reset_flag();
         if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
         {
             for sem in sems.iter_mut() {
