@@ -319,6 +319,8 @@ get_shell_and_profile || return 1
 touch $PROFILE
 source "$PROFILE"
 source "$HOME/.cargo/env"
+info "Profile contents"
+cat "$PROFILE"
 
 # Define directories
 ZISK_DIR="$HOME/.zisk"
