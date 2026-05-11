@@ -46,13 +46,13 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: self-hosted
-    timeout-minutes: 180
-    container:
-      image: ubuntu:22.04
-      options:
-        --shm-size=48g
-        -v /home/gha/cache-setup:/github/home/output:rw
+    runs-on: gpu-hosted
+    timeout-minutes: 30
+    # container:
+    #   image: ubuntu:22.04
+    #   options:
+    #     --shm-size=48g
+    #     -v /home/gha/cache-setup:/github/home/output:rw
     defaults:
       run:
         shell: bash
