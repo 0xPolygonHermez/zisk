@@ -69,6 +69,17 @@ struct SetupPendingState {
     with_hints: bool,
 }
 
+/// Per-job event channel: live broadcast sender plus a one-slot stash for the
+/// terminal event so subscribers that arrive after termination can still read
+/// the final outcome (status + payload). Only the terminal event is retained —
+/// intermediate events are not.
+struct JobEventChannel {
+    tx: broadcast::Sender<CoordinatorJobEvent>,
+    /// Set exactly once when a terminal event fires; remains until the job is
+    /// evicted by the retention sweep.
+    terminal: Option<CoordinatorJobEvent>,
+}
+
 /// The main coordination service for managing distributed proof generation.
 ///
 /// `CoordinatorService` orchestrates the complex multi-phase proof generation workflow
@@ -111,8 +122,13 @@ pub struct Coordinator {
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
 
-    /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
-    job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
+    /// Per-job event channels. Populated on job creation; the live broadcast
+    /// sender stays alive across termination so late subscribers don't get
+    /// `None`. The terminal event itself is stashed inside the same entry at
+    /// termination time so late subscribers can read the final outcome.
+    /// Intermediate events are not retained. Entries are evicted by
+    /// `cleanup_expired_jobs` on the same TTL as `jobs`.
+    job_events: RwLock<HashMap<JobId, JobEventChannel>>,
 
     /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
@@ -176,7 +192,10 @@ impl Coordinator {
     /// Allocates a broadcast channel for the given job. Must be called before any event is fired.
     async fn alloc_job_events(&self, job_id: &JobId) {
         let (tx, _) = broadcast::channel(64);
-        self.job_events.write().await.insert(job_id.clone(), tx);
+        self.job_events
+            .write()
+            .await
+            .insert(job_id.clone(), JobEventChannel { tx, terminal: None });
     }
 
     /// Returns a live receiver for the job's event channel, or `None` if the job is unknown.
@@ -184,11 +203,21 @@ impl Coordinator {
         &self,
         job_id: &JobId,
     ) -> Option<broadcast::Receiver<CoordinatorJobEvent>> {
-        self.job_events.read().await.get(job_id).map(|tx| tx.subscribe())
+        self.job_events.read().await.get(job_id).map(|chan| chan.tx.subscribe())
+    }
+
+    /// Returns a clone of the stashed terminal event for a job, if one was recorded.
+    /// Used by API endpoints to read the final terminal outcome (with full result
+    /// payload or failure reason) for jobs that have already terminated. Survives
+    /// until the job is evicted by the retention sweep.
+    pub async fn get_terminal_event(&self, job_id: &JobId) -> Option<CoordinatorJobEvent> {
+        self.job_events.read().await.get(job_id).and_then(|chan| chan.terminal.clone())
     }
 
     /// Fires an event on the job's channel. Drops silently when there are no receivers.
-    /// Removes the channel from the map after a terminal event.
+    /// For terminal events, the event is also stashed inside the channel entry so
+    /// late subscribers can read it; the entry itself is kept alive (and evicted
+    /// later by `cleanup_expired_jobs`).
     async fn fire_job_event(&self, job_id: &JobId, event: CoordinatorJobEvent) {
         let terminal = matches!(
             event,
@@ -197,18 +226,23 @@ impl Coordinator {
                 | CoordinatorJobEvent::Cancelled
         );
 
-        {
-            let map = self.job_events.read().await;
-            if let Some(tx) = map.get(job_id) {
-                // send() only errors when there are no receivers — safe to ignore
-                let _ = tx.send(event);
-            }
-        }
-
         if terminal {
-            self.job_events.write().await.remove(job_id);
+            {
+                let mut map = self.job_events.write().await;
+                if let Some(chan) = map.get_mut(job_id) {
+                    // Skip the broadcast clone when nothing is listening —
+                    // terminal payloads (proof bytes) can be large and most
+                    // jobs terminate with no live watcher attached.
+                    if chan.tx.receiver_count() > 0 {
+                        let _ = chan.tx.send(event.clone());
+                    }
+                    chan.terminal.get_or_insert(event);
+                }
+            }
             // Dropping the sender signals EOF to any running gRPC hints relay.
             self.grpc_hints_senders.write().await.remove(job_id);
+        } else if let Some(chan) = self.job_events.read().await.get(job_id) {
+            let _ = chan.tx.send(event);
         }
     }
 
