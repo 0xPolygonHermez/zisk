@@ -91,6 +91,13 @@ jobs:
             systemctl is-system-running || true
           '
 
+      - name: Fix workspace permissions inside container
+        run: |
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            chown -R ziskuser:ziskuser /workspace/zisk
+            chmod -R u+rwX /workspace/zisk
+          '
+          
       - name: Build ZisK
         run: |
           docker exec -u ziskuser \
