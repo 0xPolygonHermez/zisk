@@ -113,6 +113,8 @@ jobs:
             -e CACHE_SETUP_HASH="e7de7a73" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
+              echo "Output folder contents:"
+              ls /home/ziskuser/output/linux/
               ./build_setup.sh
               echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
               ls -lha /home/ziskuser/.zisk/provingKey
