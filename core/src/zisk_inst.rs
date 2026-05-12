@@ -149,7 +149,7 @@ pub struct ZiskInst {
     pub input_size: u64,
     pub sorted_pc_list_index: usize,
     pub riscv_inst: Option<String>,
-    pub index: u64, // internal field used for tracking the instruction creation order in the ROM, not to be set by the user
+    pub index: u64, // internal field used for tracking the instruction creation order in the ROM
 }
 
 /// Default constructor

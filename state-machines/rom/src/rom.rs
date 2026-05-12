@@ -13,7 +13,6 @@ use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
-use itertools::Itertools;
 use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
@@ -193,9 +192,9 @@ impl RomSM {
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
     fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (_i, key) in rom.insts.keys().sorted().enumerate() {
+        for (_pc, zib) in rom.insts.iter() {
             // Get the ZisK instruction
-            let inst = &rom.insts[key].i;
+            let inst = &zib.i;
 
             // Get the ZisK instruction index
             let index = inst.index as usize;
