@@ -9671,7 +9671,7 @@ impl ZiskRom2Asm {
     ///     [8B] version
     ///     [8B] exit_code (0=success, 1=not completed)
     ///     [8B] allocated_size = xxx (bytes)
-    ///     [8B] used_size = xxx (bytes)
+    ///     [8B] executed steps
     /// Instruction histogram: (TRACE_ADDR_NUMBER)
     ///     [8B] multiplicity_size = S
     ///     [8B] multiplicity[0]

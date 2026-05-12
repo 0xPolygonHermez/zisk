@@ -148,6 +148,14 @@ impl RomSM {
     ) -> ProofmanResult<AirInstance<F>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
+        // Check that the provided histogram has at most as many entries as the ROM trace
+        assert!(
+            asm_romh.inst_count.len() <= RomTrace::<F>::NUM_ROWS as usize,
+            "The provided assembly histogram has {} entries, which exceeds the maximum supported by the Zisk PIL ROM trace ({} entries).  Please review zisk.pil and increase the ROM trace size accordingly.",
+            asm_romh.inst_count.len(),
+            RomTrace::<F>::NUM_ROWS
+        );
+
         for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
             if *multiplicity == 0 {
                 continue;

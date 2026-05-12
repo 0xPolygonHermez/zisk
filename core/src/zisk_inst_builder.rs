@@ -268,9 +268,8 @@ impl ZiskInstBuilder {
 
     /// Called when the instruction has been built
     pub fn build(&mut self) {
-        let build_counter = Self::get_build_counter();
-        self.i.index = build_counter;
-        Self::increment_build_counter();
+        // Set the instruction index to the current value of the global build counter, and then increment it
+        self.i.index = Self::increment_build_counter();
 
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }

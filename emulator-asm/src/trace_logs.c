@@ -150,7 +150,7 @@ void log_histogram(void)
         uint64_t * rom = trace + 1;
         for (uint64_t i=0; i<rom_length; i++)
         {
-            asm_printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), rom[i] );
+            asm_printf("%lu: multiplicity=%lu:\n", i, rom[i] );
         }
     }
 
