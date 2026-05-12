@@ -81,6 +81,9 @@ pub struct Riscv2ZiskContext<'a> {
     // precompile (arg1, previous_arg1, arg2 || immediate)
     pub input_precompile_reg: Option<u32>,
     pub output_precompile_reg: Option<u32>,
+
+    /// internal field used for tracking the instruction creation order in the ROM
+    pub build_counter: &'a mut u64,
 }
 
 impl Riscv2ZiskContext<'_> {
@@ -480,7 +483,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -490,7 +494,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("reg", i.rs2 as u64, false);
                 zib.op(op).unwrap();
                 zib.j(1, 1);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -502,7 +507,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op(storef).unwrap();
                 zib.store("ind", 0, false, false);
                 zib.j(2, 2);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else {
@@ -515,7 +521,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", 32, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -525,7 +532,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("reg", i.rs2 as u64, false);
                 zib.op(op).unwrap();
                 zib.j(1, 1);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -537,7 +545,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op(storef).unwrap();
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -548,7 +557,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.j(1, 1);
                 zib.store("reg", i.rd as i64, false, false);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -576,7 +586,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -588,7 +599,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.ind_width(w);
                 zib.store("ind", 0, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else {
@@ -601,7 +613,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", 32, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -613,7 +626,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.ind_width(w);
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -624,7 +638,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(2, 2);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -642,7 +657,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -671,7 +687,8 @@ impl Riscv2ZiskContext<'_> {
             "{} r{}, r{}, r{} => {op} r{}, r{rs1}, r{rs2}",
             i.inst, i.rd, i.rs1, i.rs2, i.rd
         ));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -710,7 +727,8 @@ impl Riscv2ZiskContext<'_> {
             i.rs1,
             i.rs2,
         ));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -730,7 +748,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
         zib.j(0, inst_size as i64);
         zib.verbose(&format!("sd r{}, (0x{}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.output_precompile = Some(i.csr);
         self.output_precompile_reg = Some(i.rs1);
         self.insts.insert(i.rom_address, zib);
@@ -754,7 +773,8 @@ impl Riscv2ZiskContext<'_> {
         } else {
             zib.j(i.imm as i64, inst_size as i64);
         }
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -768,7 +788,8 @@ impl Riscv2ZiskContext<'_> {
         zib.op("flag").unwrap();
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&i.inst.to_string());
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -782,7 +803,8 @@ impl Riscv2ZiskContext<'_> {
         zib.op("flag").unwrap();
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&i.inst.to_string());
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -796,7 +818,8 @@ impl Riscv2ZiskContext<'_> {
         zib.j(inst_size as i64, inst_size as i64);
         zib.end();
         zib.verbose(&i.inst.to_string());
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -821,7 +844,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -846,7 +870,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("ind", i.imm as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rs2, i.imm, i.rs1));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -864,7 +889,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -888,7 +914,8 @@ impl Riscv2ZiskContext<'_> {
         }
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -902,7 +929,8 @@ impl Riscv2ZiskContext<'_> {
         zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -917,7 +945,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store_pc("reg", i.rd as i64, false);
         zib.j(4, i.imm as i64);
         zib.verbose(&format!("auipc r{}, 0x{:x}", i.rd, i.imm));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -937,7 +966,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("sc.w r{}, r{}, (r{})", i.rd, i.rs2, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -949,7 +979,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.ind_width(4);
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else {
@@ -960,7 +991,8 @@ impl Riscv2ZiskContext<'_> {
             zib.ind_width(4);
             zib.store("ind", 0, false, false);
             zib.j(4, 4);
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         }
     }
@@ -981,7 +1013,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("ind", 0, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("sc.w r{}, r{}, (r{})", i.rd, i.rs2, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -992,7 +1025,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else {
@@ -1003,7 +1037,8 @@ impl Riscv2ZiskContext<'_> {
             zib.ind_width(8);
             zib.store("ind", 0, false, false);
             zib.j(4, 4);
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         }
     }
@@ -1020,7 +1055,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("lui r{}, 0x{:x}", i.rd, i.imm));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -1068,7 +1104,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store_pc("reg", i.rd as i64, false);
             zib.j(i.imm as i64, inst_size as i64);
             zib.verbose(&format!("jalr r{}, r{}, 0x{:x}", i.rd, i.rs1, i.imm));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1078,7 +1115,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("add").unwrap();
                 zib.j(1, 1);
                 zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 1/2", i.rd, i.rs1, i.imm));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1091,7 +1129,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store_pc("reg", i.rd as i64, false);
                 zib.j(0, inst_size as i64 - 1);
                 zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 2/2", i.rd, i.rs1, i.imm));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1109,7 +1148,8 @@ impl Riscv2ZiskContext<'_> {
         zib.store_pc("reg", i.rd as i64, false);
         zib.j(i.imm as i64, inst_size as i64);
         zib.verbose(&format!("jal r{}, 0x{:x}", i.rd, i.imm));
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(i.rom_address, zib);
     }
 
@@ -1123,7 +1163,8 @@ impl Riscv2ZiskContext<'_> {
         zib.set_pc();
         zib.j(0, 4);
         zib.verbose("ecall");
-        zib.build();
+        zib.build(*self.build_counter);
+        *self.build_counter += 1;
         self.insts.insert(_i.rom_address, zib);
     }
 
@@ -1166,7 +1207,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd=rs1=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             } else {
                 {
@@ -1176,7 +1218,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("copyb").unwrap();
                     zib.store("reg", 33, false, false);
                     zib.j(1, 1);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1191,7 +1234,8 @@ impl Riscv2ZiskContext<'_> {
                         "{} r{}, 0x{:x}, r{} #rd=rs1!=0",
                         i.inst, i.rd, i.csr, i.rs1
                     ));
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1202,7 +1246,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(2, 2);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
             }
@@ -1214,7 +1259,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rs1!=rd=0", i.inst, i.rd, i.csr, i.rs1));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1228,7 +1274,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} #rs1!=rd && rd!=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1239,7 +1286,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1283,7 +1331,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("imm", 0, false);
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             } else {
                 {
@@ -1297,7 +1346,8 @@ impl Riscv2ZiskContext<'_> {
                         "{} r{}, 0x{:x}, r{} # rd=rs!=0",
                         i.inst, i.rd, i.csr, i.rs1
                     ));
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1308,7 +1358,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("or").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                     zib.j(1, 1);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1319,7 +1370,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(2, 2);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
             }
@@ -1372,7 +1424,8 @@ impl Riscv2ZiskContext<'_> {
                     // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
                     // to match with that precompiles proves
                     zib.j(0, 4);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
                 CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END => {
@@ -1387,7 +1440,8 @@ impl Riscv2ZiskContext<'_> {
                         i.csr, i.rs1, words
                     ));
                     zib.j(4, 4);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
                 _ => {
@@ -1401,7 +1455,8 @@ impl Riscv2ZiskContext<'_> {
                         i.inst, i.rd, i.csr, i.rs1
                     ));
                     zib.j(4, 4);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
             }
@@ -1422,7 +1477,8 @@ impl Riscv2ZiskContext<'_> {
             }
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else if i.csr == SYSCALL_ADD256_ID as u32 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
@@ -1432,7 +1488,8 @@ impl Riscv2ZiskContext<'_> {
             zib.verbose("add256");
             zib.store("reg", i.rd as i64, false, false);
             zib.j(0, 4);
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1443,7 +1500,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1454,7 +1512,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("or").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1500,7 +1559,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             } else {
                 {
@@ -1514,7 +1574,8 @@ impl Riscv2ZiskContext<'_> {
                         "{} r{}, 0x{:x}, r{} # rd=rs!=0",
                         i.inst, i.rd, i.csr, i.rs1
                     ));
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1524,7 +1585,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.src_b("reg", i.rs1 as u64, false);
                     zib.op("xor").unwrap();
                     zib.j(1, 1);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1535,7 +1597,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("and").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                     zib.j(1, 1);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                     rom_address += 1;
                 }
@@ -1546,7 +1609,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.op("copyb").unwrap();
                     zib.store("reg", i.rd as i64, false, false);
                     zib.j(1, 1);
-                    zib.build();
+                    zib.build(*self.build_counter);
+                    *self.build_counter += 1;
                     self.insts.insert(rom_address, zib);
                 }
             }
@@ -1558,7 +1622,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("xor").unwrap();
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1570,7 +1635,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else if i.rs1 == 0 {
@@ -1581,7 +1647,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1592,7 +1659,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", i.rd as i64, false, false);
                 zib.j(1, 1);
                 zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1602,7 +1670,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("reg", i.rs1 as u64, false);
                 zib.op("xor").unwrap();
                 zib.j(1, 1);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1613,7 +1682,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(2, 2);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1660,7 +1730,8 @@ impl Riscv2ZiskContext<'_> {
                 ));
             }
             zib.j(4, 4);
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1674,7 +1745,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, 0x{:x} #rd != 0",
                     i.inst, i.rd, i.csr, i.imme
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1685,7 +1757,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1723,7 +1796,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             } else {
                 let mut zib = ZiskInstBuilder::new(rom_address);
@@ -1736,7 +1810,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} # rd=0 imm!=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else if i.imme == 0 {
@@ -1747,7 +1822,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1761,7 +1837,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} # rd!=0 imm!=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1772,7 +1849,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("or").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1808,7 +1886,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             } else {
                 let mut zib = ZiskInstBuilder::new(rom_address);
@@ -1821,7 +1900,8 @@ impl Riscv2ZiskContext<'_> {
                     i.inst, i.rd, i.csr, i.rs1
                 ));
                 zib.j(4, 4);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         } else if i.imme == 0 {
@@ -1832,7 +1912,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         } else {
             {
@@ -1846,7 +1927,8 @@ impl Riscv2ZiskContext<'_> {
                     "{} r{}, 0x{:x}, r{} # rd!=0 imm!=0",
                     i.inst, i.rd, i.csr, i.rs1
                 ));
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
                 rom_address += 1;
             }
@@ -1857,7 +1939,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("and").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(3, 3);
-                zib.build();
+                zib.build(*self.build_counter);
+                *self.build_counter += 1;
                 self.insts.insert(rom_address, zib);
             }
         }
@@ -1894,7 +1977,8 @@ impl Riscv2ZiskContext<'_> {
             zib.store("mem", FREG_INST as i64, false, false);
             zib.j(1, 1);
             zib.verbose(&format!("Float: store inst {} inst=0x{:x}", op, i.rvinst));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
             rom_address += 1;
         }
@@ -1912,7 +1996,8 @@ impl Riscv2ZiskContext<'_> {
                 FLOAT_HANDLER_ADDR as i64 - rom_address as i64,
             ); // Jump to float handler
             zib.verbose(&format!("Float: store ra {} inst=0x{:x} ra=0x{:x}", op, i.rvinst, ra));
-            zib.build();
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
             self.insts.insert(rom_address, zib);
         }
     }
@@ -2115,6 +2200,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     // Create a context to convert RISCV instructions to ZisK instructions, using rom.insts
     let mut ctx = Riscv2ZiskContext {
         insts: &mut rom.insts,
+        build_counter: &mut rom.build_counter,
         input_precompile: None,
         output_precompile: None,
         input_precompile_reg: None,
@@ -2164,7 +2250,8 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Init Data {o:08x}: {v:08x}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
         o += 8;
@@ -2187,7 +2274,8 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Init Data {o:08x}: {v:04x}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
         o += bytes;
@@ -2204,7 +2292,8 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Init Data {o:08x}: {v:04x}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
         o += 4;
@@ -2221,7 +2310,8 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Init Data {o:08x}: {v:02x}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
         o += 2;
@@ -2238,7 +2328,8 @@ pub fn add_zisk_init_data(rom: &mut ZiskRom, addr: u64, data: &[u8], force_align
         zib.store("ind", 0, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Init Data {o:08x}: {v:x}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
         o += 1;
@@ -2289,7 +2380,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("mem", ARCH_ID_CSR_ADDR as i64, false, false);
     zib.j(4, 4);
     zib.verbose(&format!("Set marchid: {ARCH_ID_ZISK:x}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2302,7 +2394,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("mem", MTVEC as i64, false, false);
     zib.j(4, 4);
     zib.verbose(&format!("Set mtvec: {trap_handler}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2315,7 +2408,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 10, false, false);
     zib.j(0, 4);
     zib.verbose(&format!("Set 1st Param (pInput): 0x{INPUT_ADDR:08x}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2328,7 +2422,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 11, false, false);
     zib.j(0, 4);
     zib.verbose(&format!("Set 2nd Param (pOutput): 0x{OUTPUT_ADDR:08x}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2342,7 +2437,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store_pc("reg", 1, false);
     zib.j(0, 4);
     zib.verbose(&format!("CALL to entry: 0x{addr:08x}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2371,7 +2467,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 11, false, false);
     zib.j(0, 4);
     zib.verbose("Set reg11 to output data length = 32");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2384,7 +2481,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 12, false, false);
     zib.j(0, 4);
     zib.verbose("Set reg12 to 0");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2398,7 +2496,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 13, false, false);
     zib.j(0, 4);
     zib.verbose("Set reg13 to OUTPUT_ADDR");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2411,7 +2510,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("none", 0, false, false);
     zib.j(20, 4);
     zib.verbose("If reg11==reg12 jumpt to end");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2425,7 +2525,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("none", 0, false, false);
     zib.j(0, 4);
     zib.verbose("Set c to mem(output_data[index]), a=index");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2438,7 +2539,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("none", 0, false, false);
     zib.j(0, 4);
     zib.verbose("Public output, set c to output_data[index], a=index");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2451,7 +2553,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 13, false, false);
     zib.j(0, 4);
     zib.verbose("Set reg13 to reg13 + 8");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2465,7 +2568,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.store("reg", 12, false, false);
     zib.j(4, -16);
     zib.verbose("Set reg12 to reg12 + 1");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2478,7 +2582,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.set_pc();
     zib.j(0, 0);
     zib.verbose("jump to end successfully");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2494,7 +2599,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("eq").unwrap();
     zib.j(-36, 4);
     zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2507,7 +2613,8 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.set_pc();
     zib.j(0, 4);
     zib.verbose("ret");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2532,7 +2639,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.op("copyb").unwrap();
     zib.j(4 * 68, 4 * 68);
     zib.verbose("Jump over end instruction and float handler");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2547,7 +2655,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.end();
     zib.j(0, 0);
     zib.verbose("end");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2565,7 +2674,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
         zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
     }
@@ -2578,7 +2688,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.store("reg", 2, false, false);
     zib.j(4, 4);
     zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2592,7 +2703,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.verbose(&format!(
         "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
     ));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2604,7 +2716,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.set_pc();
     zib.j(0, 4);
     zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2618,7 +2731,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
         zib.store("reg", i as i64, false, false);
         zib.j(4, 4);
         zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
-        zib.build();
+        zib.build(rom.build_counter);
+        rom.build_counter += 1;
         rom.insts.insert(rom.next_init_inst_addr, zib);
         rom.next_init_inst_addr += 4;
     }
@@ -2631,7 +2745,8 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.set_pc();
     zib.j(0, 4);
     zib.verbose("Float: jump to FREG_RA");
-    zib.build();
+    zib.build(rom.build_counter);
+    rom.build_counter += 1;
     rom.insts.insert(rom.next_init_inst_addr, zib);
     rom.next_init_inst_addr += 4;
 
@@ -2642,10 +2757,4 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
             rom.next_init_inst_addr, MAX_ZISK_OS_ROM_ADDR
         );
     }
-}
-
-/// Resets the transpiler state, including the instruction build counter, to allow for a new
-/// transpilation process without interference from previous state.
-pub fn transpiler_reset() {
-    ZiskInstBuilder::reset_build_counter();
 }

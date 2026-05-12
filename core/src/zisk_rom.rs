@@ -115,6 +115,9 @@ pub struct ZiskRom {
     /// Minimum rom instruction PC (first program instruction address)
     /// This is typically 0x80000000 but can be different (e.g., 0x80001000 with Go's internal linker)
     pub min_program_pc: u64,
+
+    /// Used for tracking the instruction creation order in the ROM
+    pub build_counter: u64,
 }
 
 /// ZisK ROM implementation
