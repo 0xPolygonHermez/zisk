@@ -80,6 +80,7 @@ jobs:
 
       - name: Check libziskos.a does not bundle std
         run: |
+          . "$HOME/.cargo/env"
           cargo +zisk build -p ziskos --release \
             --target riscv64ima-zisk-zkvm-elf \
             --config 'profile.release.lto="fat"'
