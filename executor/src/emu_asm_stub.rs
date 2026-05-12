@@ -56,6 +56,10 @@ impl EmulatorAsm {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 
+    pub fn signal_cancellation(&self) -> Result<()> {
+        unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
+    }
+
     pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }

@@ -25,16 +25,21 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
+    pub fn run_and_count<F, R>(
         _: &mut PreloadedMT,
         _: u64,
         _: u64,
         _: F,
+        _: R,
         _: i32,
         _: i32,
         _: Option<u16>,
         _: ExecutorStatsHandle,
-    ) -> Result<Vec<Arc<EmuTrace>>> {
+    ) -> Result<Vec<Arc<EmuTrace>>>
+    where
+        F: FnMut(usize, Arc<EmuTrace>),
+        R: FnOnce() -> Result<()>,
+    {
         Err(anyhow::anyhow!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."))
     }
 }

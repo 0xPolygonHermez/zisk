@@ -109,7 +109,7 @@ impl Coordinator {
             return Err(CoordinatorError::Internal(format!("Wrap task failed: {}", reason)));
         }
 
-        let ExecuteTaskResponseResultDataDto::WrapResult(wrap_result) =
+        let Some(ExecuteTaskResponseResultDataDto::WrapResult(wrap_result)) =
             execute_task_response.result_data
         else {
             return Err(CoordinatorError::Internal(

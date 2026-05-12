@@ -73,6 +73,22 @@ impl EmulatorAsm {
         Ok(())
     }
 
+    /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
+    /// so any child currently blocked in `_wait_for_input_avail` /
+    /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
+    /// cancel time so a stuck `execute` returns Err promptly.
+    pub fn signal_cancellation(&self) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.signal_cancellation()?;
+        }
+        Ok(())
+    }
+
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.asm_resources
             .read()
@@ -242,14 +258,35 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) =
-            self.run_mt_assembly(zisk_rom, sm_bundle, stats)?;
-        // Store execute steps
-        let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
-        stats_end!(stats, &_exec_scope);
-
-        Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+        match mt_result {
+            Ok((min_traces, main_count, secn_count)) => {
+                let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+                stats_end!(stats, &_exec_scope);
+                Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+            }
+            Err(e) => {
+                // MT already self-cleaned (signaled reset + joined its stdio
+                // thread). Wake MO/RH in case they're still parked, then join
+                // so their detached threads release the shmem-reader locks
+                // before the next job begins.
+                //
+                // We enter this arm for ANY MT failure — cancellation, shmem
+                // corruption, poisoned mutex, ASM child non-zero exit — so the
+                // join-failure logs deliberately say "MT-failure cleanup"
+                // rather than "after cancel" to avoid misattributing root cause.
+                if let Err(reset_err) = asm_resources.signal_cancellation() {
+                    tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
+                }
+                join_runner_during_cleanup("MO", handle_mo);
+                if let Some(h) = handle_rh {
+                    join_runner_during_cleanup("RH", h);
+                }
+                stats_end!(stats, &_exec_scope);
+                Err(e)
+            }
+        }
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -325,11 +362,13 @@ impl EmulatorAsm {
                 .mt
                 .lock()
                 .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
+            let asm_resources_for_failure = asm_resources.clone();
             let result = AsmRunnerMT::run_and_count(
                 mt_shmem,
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
+                move || asm_resources_for_failure.signal_cancellation(),
                 asm_resources.asm_services().clone(),
                 stats.clone(),
             )?;
@@ -416,5 +455,19 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         caller_stats_scope: &StatsScope,
     ) -> Result<crate::EmulatorResult> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+    }
+}
+
+/// Join an MO/RH runner thread on the MT-failure cleanup path, logging any
+/// thread panic or runner error so observability isn't silently lost. The
+/// caller has already issued `signal_cancellation`, so a healthy runner will
+/// observe the reset flag and exit `Ok(_)`.
+fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Result<T>>) {
+    match handle.join() {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+        }
+        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
     }
 }

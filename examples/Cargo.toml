@@ -13,6 +13,8 @@ members = [
     "hints/host",
     "panic/host",
     "panic/guest",
+    "liveness/host",
+    "liveness/guest",
 ]
 
 resolver = "2"

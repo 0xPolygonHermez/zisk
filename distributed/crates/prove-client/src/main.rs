@@ -98,6 +98,13 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         timeout: u64,
     },
+
+    /// Cancel a running or queued job by its id
+    Cancel {
+        /// Job UUID printed at submission time
+        #[arg(short = 'j', long)]
+        job_id: uuid::Uuid,
+    },
 }
 
 fn parse_proof_kind(s: &str) -> Result<DomainProofKind, String> {
@@ -363,6 +370,16 @@ async fn main() -> Result<()> {
                 output.as_ref(),
                 *timeout,
             )?;
+        }
+
+        Commands::Cancel { job_id } => {
+            info!("Cancelling job {job_id} …");
+            let cancelled = client.cancel_job(*job_id)?;
+            if cancelled {
+                println!("Job {job_id} cancelled.");
+            } else {
+                println!("Job {job_id} was not cancelled (already in a terminal state).");
+            }
         }
     }
 
