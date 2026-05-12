@@ -1,9 +1,12 @@
 use proofman_verifier::{verify_vadcop_final_compressed_u64, verify_vadcop_final_u64};
 
+/// Length, in u64 words, of the Vadcop final verification key appended to a serialized proof.
+pub const VADCOP_VK_LEN_WORDS: usize = 4;
+
 pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64]) -> bool {
     // Format: [minimal(1)][n_publics(1)][publics][proof]
 
-    if zisk_proof.is_empty() {
+    if zisk_proof.is_empty() || vadcop_final_vk.len() != VADCOP_VK_LEN_WORDS {
         return false;
     }
 

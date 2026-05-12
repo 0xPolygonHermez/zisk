@@ -6,7 +6,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use zisk_common::ZiskPaths;
+use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
 pub const ROM_MERKLE_TREE_ARITY: u64 = 4;
@@ -55,7 +55,7 @@ pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u64>>> {
     }
 
     let mut file = File::open(verkey_path)?;
-    let mut vk = vec![0u64; 4];
+    let mut vk = vec![0u64; PROGRAM_VK_LEN];
     for word in vk.iter_mut() {
         let mut buf = [0u8; 8];
         file.read_exact(&mut buf)?;

@@ -529,9 +529,24 @@ impl Proof {
         }
     }
 
-    pub fn get_proof_u64(&self) -> Vec<u64> {
+    pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
             ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+                if self.program_vk.vk.len() != PROGRAM_VK_LEN {
+                    return Err(anyhow!(
+                        "Invalid program_vk length: expected {}, got {}",
+                        PROGRAM_VK_LEN,
+                        self.program_vk.vk.len()
+                    ));
+                }
+                if zisk_vk.len() != PROGRAM_VK_LEN {
+                    return Err(anyhow!(
+                        "Invalid zisk_vk length: expected {}, got {}",
+                        PROGRAM_VK_LEN,
+                        zisk_vk.len()
+                    ));
+                }
+
                 let publics = self.publics.public_u64();
                 let n_publics = self.program_vk.vk.len() + publics.len();
 
@@ -544,11 +559,11 @@ impl Proof {
                 words.extend_from_slice(proof);
                 words.extend_from_slice(zisk_vk);
 
-                words
+                Ok(words)
             }
-            ProofBody::Plonk { .. } => panic!(
+            ProofBody::Plonk { .. } => Err(anyhow!(
                 "Proof not suitable for get_proof_u64. Only VadcopFinal and VadcopFinalMinimal proofs are supported."
-            ),
+            )),
         }
     }
 
