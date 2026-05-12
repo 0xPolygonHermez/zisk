@@ -163,6 +163,12 @@ impl RomSM {
             asm_romh.inst_count.len(),
             RomTrace::<F>::NUM_ROWS
         );
+        assert!(
+            asm_romh.inst_count.len() <= trace_buffer.len(),
+            "The provided assembly histogram has {} entries, but the trace buffer has only {} entries.",
+            asm_romh.inst_count.len(),
+            trace_buffer.len()
+        );
 
         for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
             if *multiplicity == 0 {

@@ -133,7 +133,7 @@ void log_histogram(void)
     asm_printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
     asm_printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
     asm_printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
-    asm_printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
+    asm_printf("Steps = %lu\n", pOutput[3]); // Emulated steps [8]
 
     uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
 

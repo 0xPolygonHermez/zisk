@@ -40,6 +40,11 @@ impl AsmRHData {
             let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
             // chunk data
             let len = std::ptr::read(data_ptr) as usize;
+            assert!(
+                (len + 1) * 8 <= (asm_shared_memory.mapped_size() - size_of::<AsmRHHeader>()),
+                "Data length {} exceeds allocated shared memory size",
+                len
+            );
             let data_ptr = data_ptr.add(1);
             let inst_count = Vec::from_raw_parts(data_ptr, len, len);
 
