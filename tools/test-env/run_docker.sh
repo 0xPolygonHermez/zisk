@@ -20,7 +20,7 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         [Yy])
             info "🔑 Connecting to existing container..."
             docker start "${CONTAINER_NAME}" >/dev/null
-            docker exec -it "${CONTAINER_NAME}" bash -i -c "./menu.sh"
+            docker exec -u ziskuser -it "${CONTAINER_NAME}" bash -i -c "./menu.sh"
             exit 0
             ;;
         [Nn])
@@ -42,6 +42,6 @@ info "🔑 Accessing the container now..."
 docker exec -u ziskuser -it ${CONTAINER_NAME} bash -i -c "sudo chmod 777 /home/ziskuser/output; ./menu.sh"
 
 echo
-info "${BOLD}To access the container, run:${RESET} docker exec -it ${CONTAINER_NAME}  bash -i -c "./menu.sh""
+info "${BOLD}To access the container, run:${RESET} docker exec -u ziskuser -it ${CONTAINER_NAME}  bash -i -c "./menu.sh""
 info "${BOLD}To stop the container, run:${RESET} docker stop ${CONTAINER_NAME}"
 info "${BOLD}To remove the container, run:${RESET} docker rm -f ${CONTAINER_NAME}"

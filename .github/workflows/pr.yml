@@ -48,90 +48,126 @@ jobs:
     name: Test on Ubuntu x86_64
     runs-on: gpu-hosted
     timeout-minutes: 180
-    container:
-      image: ziskvm/zisk-gpu-runner:latest
-      options:
-        --user 0:0
-        --gpus all
-        --shm-size=48g
-        -v /home/gha/cache-setup:/github/home/output:rw
     defaults:
       run:
         shell: bash
     env:
-      ZISK_GHA: "1"
-      ZISK_REPO_DIR: ${{ github.workspace }}
+      TEST_CONTAINER: zisk-gha-test
       ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
-      PROVE_FLAGS: "-y"
-      TERM: xterm
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      # - name: Install dependencies
-      #   run: |
-      #     cd "$GITHUB_WORKSPACE/tools/test-env"
-      #     ./install_deps.sh --cuda
+      - name: Start test container with systemd
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+
+          docker run -d \
+            --name "${TEST_CONTAINER}" \
+            --privileged \
+            --cgroupns=host \
+            --gpus all \
+            --shm-size=48g \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
+            -v /home/gha/cache-setup:/github/home/output:rw \
+            -e ZISK_GHA=1 \
+            -e ZISK_REPO_DIR=/workspace/zisk \
+            -e ZISK_TESTVECTORS_BRANCH=${ZISK_TESTVECTORS_BRANCH} \
+            -e PROVE_FLAGS=-y \
+            -e TERM=xterm \
+            ziskvm/zisk-gpu-runner:latest
+
+          docker exec -u ziskuser \
+            "${TEST_CONTAINER}" bash -lc '
+            echo "PID 1:"
+            ps -p 1 -o pid,comm,args
+            systemctl is-system-running || true
+          '
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zisk.sh
+          docker exec -u ziskuser \
+            "${TEST_CONTAINER}" bash -lc '
+            cd /workspace/zisk/tools/test-env
+            ./build_zisk.sh
+          '
 
       - name: Build setup
-        env:
-          USE_CACHE_SETUP: "1"
-          CACHE_SETUP_HASH: "e7de7a73"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_setup.sh
-          echo "Proving key should be available at: /github/home/.zisk/provingKey"
-          ls -lha /github/home/.zisk/provingKey
+          docker exec -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -e CACHE_SETUP_HASH="e7de7a73" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+              echo "Proving key should be available at: /github/home/.zisk/provingKey"
+              ls -lha /github/home/.zisk/provingKey
+            '
 
       # - name: Test sha_hasher (CPU)
-      #   env:
-      #     ONLY_CPU: "1"
-      #     ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.1"
       #   run: |
-      #     cd "$GITHUB_WORKSPACE/tools/test-env"
-      #     ./test_sha_hasher.sh
+      #     docker exec -u ziskuser \
+      #       -e ONLY_CPU="1" \
+      #       -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+      #       "${TEST_CONTAINER}" bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_sha_hasher.sh
+      #       '
 
       # - name: Test sha_hasher (GPU)
-      #   env:
-      #     ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.1"
       #   run: |
-      #     cd "$GITHUB_WORKSPACE/tools/test-env"
-      #     ./test_sha_hasher.sh
+      #     docker exec -u ziskuser \
+      #       -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+      #       "${TEST_CONTAINER}" bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_sha_hasher.sh
+      #       '
 
       - name: Test ELF diagnostic
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          echo "Proving key should be available at: /github/home/.zisk/provingKey"
-          ls -lha /github/home/.zisk/provingKey
-          ./test_diagnostic.sh
+          docker exec -u ziskuser \
+            "${TEST_CONTAINER}" bash -lc '
+            cd /workspace/zisk/tools/test-env
+            echo "Proving key should be available at: /github/home/.zisk/provingKey"
+            ls -lha /github/home/.zisk/provingKey
+            ./test_diagnostic.sh
+          '
 
       - name: Prove Ethereum block
-        env:
-          BLOCK_INPUTS_SINGLE: "mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_eth_block.sh
+          docker exec -u ziskuser \
+            -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_eth_block.sh
+            '
 
       - name: Ethproofs test (no hints)
-        env:
-          BLOCK_INPUTS_ETHPROOFS: "mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          echo "ZisK binary should be available at: /github/home/.zisk/bin/"
-          ls /github/home/.zisk/bin/
-          ./test_ethproofs.sh
+          docker exec -u ziskuser \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              echo "ZisK binary should be available at: /github/home/.zisk/bin/"
+              ls /github/home/.zisk/bin/
+              ./test_ethproofs.sh
+            '
 
       - name: Ethproofs test (hints)
-        env:
-          BLOCK_INPUTS_ETHPROOFS_HINTS: "mainnet_24628611_627_58_zec_reth.bin,mainnet_24628590_478_49_zec_reth.bin"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_ethproofs.sh
+          docker exec -u ziskuser \
+            -e BLOCK_INPUTS_ETHPROOFS_HINTS="mainnet_24628611_627_58_zec_reth.bin,mainnet_24628590_478_49_zec_reth.bin" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_ethproofs.sh
+            '
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
 
   test-macos:
     name: Test on macOS

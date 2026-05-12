@@ -1,12 +1,20 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV container=docker
 
 # Define build-time argument
 ARG GPU=false
 
 # Install base packages
-RUN apt update && apt install -y bash sudo curl gnupg
+RUN apt update && apt install -y \
+    bash \
+    sudo \
+    curl \
+    gnupg \
+    systemd \
+    systemd-sysv \
+    dbus
 
 # Copy helper scripts to /tmp
 COPY utils.sh install_deps.sh /tmp/
@@ -28,9 +36,12 @@ RUN mkdir -p /home/ziskuser/output \
 
 # Copy project files and adjust permissions
 COPY . /home/ziskuser/scripts/
+
 RUN chown -R ziskuser:ziskuser /home/ziskuser \
  && find /home/ziskuser/scripts -type f -exec chmod +x {} \;
 
-# Switch to the non-root user and set working directory
-USER ziskuser
 WORKDIR /home/ziskuser/scripts
+
+STOPSIGNAL SIGRTMIN+3
+
+CMD ["/sbin/init"]
