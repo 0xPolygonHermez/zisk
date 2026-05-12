@@ -126,7 +126,7 @@ impl RomSM {
                     multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                 }
             }
-            trace_buffer[i] = F::from_u64(multiplicity);
+            trace_buffer[inst.index as usize] = F::from_u64(multiplicity);
         }
 
         Ok(AirInstance::new(TraceInfo::new(
