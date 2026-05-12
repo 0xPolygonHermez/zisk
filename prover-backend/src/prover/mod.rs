@@ -21,7 +21,7 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -324,7 +324,7 @@ pub trait ProverEngine {
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
@@ -354,7 +354,7 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK>;
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
@@ -606,7 +606,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// * `minimal` - If true, returns the minimal verification key.
     ///   If false, returns the full verification key.
-    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
     }
 
@@ -793,6 +793,12 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     pub fn run(self) -> Result<ProveOutput> {
         let publics = self.override_publics.unwrap_or(&self.proof.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
-        self.prover.wrap_proof(&self.proof.proof_bytes, publics, program_vk, self.proof_kind)
+        let proof = match &self.proof.body {
+            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+            ProofBody::Plonk { .. } => {
+                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+            }
+        };
+        self.prover.wrap_proof(proof, publics, program_vk, self.proof_kind)
     }
 }
