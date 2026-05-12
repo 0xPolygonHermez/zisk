@@ -1,4 +1,4 @@
-use proofman_verifier::{verify_vadcop_final_u64, verify_vadcop_final_compressed_u64};
+use proofman_verifier::{verify_vadcop_final_compressed_u64, verify_vadcop_final_u64};
 
 pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64]) -> bool {
     // Format: [minimal(1)][n_publics(1)][publics][proof]
