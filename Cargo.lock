@@ -1580,7 +1580,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
@@ -2086,7 +2086,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3718,7 +3718,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "colored",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
@@ -4140,7 +4140,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "bincode",
  "blake3",
@@ -4174,7 +4174,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "bincode",
  "borsh",
@@ -4205,7 +4205,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "itoa",
@@ -4218,7 +4218,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4228,7 +4228,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4237,7 +4237,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "bincode",
  "colored",
@@ -4248,7 +4248,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "proofman-util",
@@ -7167,7 +7167,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#3281e91d01441604af20b073c858f663878c2208"
 dependencies = [
  "colored",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
@@ -7431,6 +7431,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zisk-core",
+ "zisk-verifier",
 ]
 
 [[package]]

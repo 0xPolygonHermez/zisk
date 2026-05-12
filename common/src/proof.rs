@@ -11,10 +11,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub const ZISK_PUBLICS: usize = 64;
-
-/// Length of `ProgramVK.vk` in u64 elements (32 bytes / 8).
-pub const PROGRAM_VK_LEN: usize = 4;
+pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetupKey {
