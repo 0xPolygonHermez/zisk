@@ -1,4 +1,6 @@
 #![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), no_std)]
+#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), feature(core_intrinsics))]
+#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), allow(internal_features))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -457,4 +459,13 @@ pub mod ziskos {
     core::arch::global_asm!(include_str!("dma/memcmp.s"));
     //core::arch::global_asm!(include_str!("dma/inputcpy.s"));
     core::arch::global_asm!(include_str!("dma/memset.s"));
+
+    #[panic_handler]
+    fn panic(info: &core::panic::PanicInfo) -> ! {
+        if let Some(msg) = info.message().as_str() {
+            sys_write(1, msg.as_ptr(), msg.len());
+            sys_write(1, b"\n".as_ptr(), 1);
+        }
+        core::intrinsics::abort()
+    }
 }

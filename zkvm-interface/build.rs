@@ -10,6 +10,7 @@ fn main() {
         .header(&accelerators_header)
         .header(&io_header)
         .clang_arg("-std=c11")
+        .use_core()
         .allowlist_type("zkvm_.*")
         .allowlist_var("ZKVM_.*")
         .allowlist_function("^zkvm_.*|^read_input$|^write_output$")
