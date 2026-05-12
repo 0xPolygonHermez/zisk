@@ -4,17 +4,31 @@
 
 use std::sync::{atomic::AtomicU64, Arc};
 
-use crate::{rom_counter::RomCounter, RomSM};
-use asm_runner::AsmRunnerRH;
+use crate::rom_counter::RomCounter;
+use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx, TraceInfo};
 use std::sync::Mutex;
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
     Metrics, PayloadType, ROM_BUS_ID,
 };
-use zisk_core::ZiskRom;
+use zisk_core::{ZiskRom, ROM_ADDR, ROM_ENTRY, ROM_EXIT};
+use zisk_pil::{MainTrace, RomTrace};
+
+/// Per-emulator state held by a `RomInstance`. Mirrors `RomCounters` in `rom.rs`.
+enum RomInstanceMode {
+    /// Rust emulator path: counters indexed by physical address and an aggregated
+    /// `CounterStats` populated after all chunks are collected.
+    Rust {
+        bios: Arc<Vec<AtomicU64>>,
+        prog: Arc<Vec<AtomicU64>>,
+        counter_stats: Mutex<Option<CounterStats>>,
+    },
+    /// ASM emulator path: histogram delivered by the assembly runner.
+    Asm { rh_data: Mutex<Option<AsmRunnerRH>> },
+}
 
 /// The `RomInstance` struct represents an instance to perform the witness computations for
 /// ROM-related execution plans.
@@ -28,67 +42,140 @@ pub struct RomInstance {
     /// The instance context.
     ictx: InstanceCtx,
 
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
-
-    /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
-
-    /// Execution statistics counter for ROM instructions.
-    counter_stats: Mutex<Option<CounterStats>>,
-
-    /// Rom Histogram data from the assembly runner thread.
-    rh_data: Mutex<Option<AsmRunnerRH>>,
-
-    /// Cached result from the assembly runner thread.
-    asm_result: Mutex<Option<AsmRunnerRH>>,
+    /// Per-emulator state.
+    mode: RomInstanceMode,
 }
 
 impl RomInstance {
-    /// Creates a new `RomInstance`.
-    ///
-    /// # Arguments
-    /// * `zisk_rom` - An `Arc`-wrapped reference to the Zisk ROM.
-    /// * `ictx` - The `InstanceCtx` associated with this instance.
-    ///
-    /// # Returns
-    /// A new `RomInstance` instance initialized with the provided ROM and context.
-    pub fn new(
+    /// Creates a new `RomInstance` for the Rust emulator path.
+    pub fn new_rust(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
-        bios_inst_count: Arc<Vec<AtomicU64>>,
-        prog_inst_count: Arc<Vec<AtomicU64>>,
-        rh_data: Option<AsmRunnerRH>,
+        bios: Arc<Vec<AtomicU64>>,
+        prog: Arc<Vec<AtomicU64>>,
     ) -> Self {
         Self {
             zisk_rom,
             ictx,
-            bios_inst_count: Mutex::new(bios_inst_count),
-            prog_inst_count: Mutex::new(prog_inst_count),
-            counter_stats: Mutex::new(None),
-            rh_data: Mutex::new(rh_data),
-            asm_result: Mutex::new(None),
+            mode: RomInstanceMode::Rust { bios, prog, counter_stats: Mutex::new(None) },
         }
+    }
+
+    /// Creates a new `RomInstance` for the ASM emulator path.
+    pub fn new_asm(
+        zisk_rom: Arc<ZiskRom>,
+        ictx: InstanceCtx,
+        rh_data: Option<AsmRunnerRH>,
+    ) -> Self {
+        Self { zisk_rom, ictx, mode: RomInstanceMode::Asm { rh_data: Mutex::new(rh_data) } }
     }
 
     pub fn skip_collector(&self) -> bool {
-        self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some()
-    }
-
-    pub fn is_asm_execution(&self) -> bool {
-        self.rh_data.lock().unwrap().is_some() || self.asm_result.lock().unwrap().is_some()
+        match &self.mode {
+            RomInstanceMode::Asm { .. } => true,
+            RomInstanceMode::Rust { counter_stats, .. } => counter_stats.lock().unwrap().is_some(),
+        }
     }
 
     pub fn build_rom_collector(&self, _chunk_id: ChunkId) -> Option<RomCollector> {
-        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
-            return None;
+        match &self.mode {
+            RomInstanceMode::Asm { .. } => None,
+            RomInstanceMode::Rust { bios, prog, counter_stats } => {
+                let already_computed = counter_stats.lock().unwrap().is_some();
+                if already_computed {
+                    return None;
+                }
+                Some(RomCollector::new(already_computed, bios.clone(), prog.clone()))
+            }
+        }
+    }
+
+    /// Builds the ROM air instance from aggregated Rust-emulator counters.
+    fn compute_witness_from_counters<F: PrimeField64>(
+        &self,
+        counter_stats: &CounterStats,
+        mut trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+
+        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
+
+        for (i, key) in self.zisk_rom.insts.keys().enumerate() {
+            let inst = &self.zisk_rom.insts[key].i;
+
+            let mut multiplicity: u64;
+            if inst.paddr < ROM_ADDR {
+                if counter_stats.bios_inst_count.is_empty() {
+                    multiplicity = 1; // empty histogram → use 1 for all pc's
+                } else {
+                    multiplicity = counter_stats.bios_inst_count
+                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if multiplicity == 0 {
+                        continue;
+                    }
+                    if inst.paddr == counter_stats.end_pc {
+                        multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
+                    }
+                }
+            } else {
+                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                if multiplicity == 0 {
+                    continue;
+                }
+                if inst.paddr == counter_stats.end_pc {
+                    multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
+                }
+            }
+            trace_buffer[i] = F::from_u64(multiplicity);
         }
 
-        Some(RomCollector::new(
-            self.counter_stats.lock().unwrap().is_some(),
-            self.bios_inst_count.lock().unwrap().clone(),
-            self.prog_inst_count.lock().unwrap().clone(),
-        ))
+        Ok(AirInstance::new(TraceInfo::new(
+            RomTrace::<F>::AIRGROUP_ID,
+            RomTrace::<F>::AIR_ID,
+            1,
+            RomTrace::<F>::NUM_ROWS,
+            trace_buffer,
+            false,
+            false,
+        )))
+    }
+
+    /// Builds the ROM air instance from the ASM-emulator histogram.
+    fn compute_witness_from_asm<F: PrimeField64>(
+        &self,
+        asm_romh: &AsmRHData,
+        mut trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
+
+        for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
+            if *multiplicity == 0 {
+                continue;
+            }
+            trace_buffer[i] = F::from_u64(*multiplicity);
+        }
+
+        // The exit instruction is repeated until the end of the main trace instance.
+        let index = self.zisk_rom.get_instruction(ROM_EXIT).index as usize;
+        assert!(
+            F::is_one(&trace_buffer[index]),
+            "The exit instruction should have been executed once in the assembly execution"
+        );
+
+        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
+
+        Ok(AirInstance::new(TraceInfo::new(
+            RomTrace::<F>::AIRGROUP_ID,
+            RomTrace::<F>::AIR_ID,
+            1,
+            RomTrace::<F>::NUM_ROWS,
+            trace_buffer,
+            false,
+            false,
+        )))
     }
 }
 
@@ -114,75 +201,60 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         trace_buffer: Vec<F>,
         _packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
-        // Case 1: Use ROM assembly output
-        if self.is_asm_execution() {
-            // Check if we already have the result cached
-            if self.asm_result.lock().unwrap().is_none() {
-                // Retrieve the data from the assembly runner
-                let rh_data = self.rh_data.lock().unwrap().take().unwrap();
-                *self.asm_result.lock().unwrap() = Some(rh_data);
+        match &self.mode {
+            // ASM path: borrow the histogram delivered by the assembly runner.
+            RomInstanceMode::Asm { rh_data } => {
+                let guard = rh_data.lock().unwrap();
+                let rh = guard.as_ref().expect("rh_data not set on ASM RomInstance");
+                Ok(Some(self.compute_witness_from_asm(&rh.asm_rowh_output, trace_buffer)?))
             }
+            // Rust path: aggregate collector stats on first call, then build the trace.
+            RomInstanceMode::Rust { bios, prog, counter_stats } => {
+                if counter_stats.lock().unwrap().is_none() {
+                    let collectors: Vec<_> = collectors
+                        .into_iter()
+                        .map(|(_, c)| c.as_any().downcast::<RomCollector>().unwrap())
+                        .collect();
 
-            // Use the cached result
-            let asm_result = self.asm_result.lock().unwrap();
-            let result_rh = asm_result.as_ref().unwrap();
+                    let mut stats = CounterStats::new(bios.clone(), prog.clone());
+                    for collector in collectors {
+                        stats += &collector.rom_counter.counter_stats;
+                    }
+                    *counter_stats.lock().unwrap() = Some(stats);
+                }
 
-            return Ok(Some(RomSM::compute_witness_from_asm(
-                &self.zisk_rom,
-                &result_rh.asm_rowh_output,
-                trace_buffer,
-            )?));
-        }
-
-        // Case 2: Fallback to counter stats when not using assembly
-        // Detach collectors and downcast to RomCollector
-        if self.counter_stats.lock().unwrap().is_none() {
-            let collectors: Vec<_> = collectors
-                .into_iter()
-                .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
-                .collect();
-
-            let mut counter_stats = CounterStats::new(
-                self.bios_inst_count.lock().unwrap().clone(),
-                self.prog_inst_count.lock().unwrap().clone(),
-            );
-
-            for collector in collectors {
-                counter_stats += &collector.rom_counter.counter_stats;
+                Ok(Some(self.compute_witness_from_counters(
+                    counter_stats.lock().unwrap().as_ref().unwrap(),
+                    trace_buffer,
+                )?))
             }
-
-            *self.counter_stats.lock().unwrap() = Some(counter_stats);
         }
-
-        let air_instance = Some(RomSM::compute_witness(
-            &self.zisk_rom,
-            self.counter_stats.lock().unwrap().as_ref().unwrap(),
-            trace_buffer,
-        )?);
-        Ok(air_instance)
     }
 
     fn reset(&self) {
-        *self.counter_stats.lock().unwrap() = None;
-        *self.asm_result.lock().unwrap() = None;
+        match &self.mode {
+            RomInstanceMode::Asm { rh_data } => {
+                *rh_data.lock().unwrap() = None;
+            }
+            RomInstanceMode::Rust { bios, prog, counter_stats } => {
+                *counter_stats.lock().unwrap() = None;
 
-        let bios_counts = self.bios_inst_count.lock().unwrap().clone();
-        let prog_counts = self.prog_inst_count.lock().unwrap().clone();
-
-        rayon::join(
-            || {
-                use rayon::prelude::*;
-                bios_counts
-                    .par_iter()
-                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
-            },
-            || {
-                use rayon::prelude::*;
-                prog_counts
-                    .par_iter()
-                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
-            },
-        );
+                let bios = bios.clone();
+                let prog = prog.clone();
+                rayon::join(
+                    || {
+                        use rayon::prelude::*;
+                        bios.par_iter()
+                            .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+                    },
+                    || {
+                        use rayon::prelude::*;
+                        prog.par_iter()
+                            .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
+                    },
+                );
+            }
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -213,15 +285,16 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, _: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        if self.is_asm_execution() || self.counter_stats.lock().unwrap().is_some() {
-            return None;
+        match &self.mode {
+            RomInstanceMode::Asm { .. } => None,
+            RomInstanceMode::Rust { bios, prog, counter_stats } => {
+                let already_computed = counter_stats.lock().unwrap().is_some();
+                if already_computed {
+                    return None;
+                }
+                Some(Box::new(RomCollector::new(already_computed, bios.clone(), prog.clone())))
+            }
         }
-
-        Some(Box::new(RomCollector::new(
-            self.counter_stats.lock().unwrap().is_some(),
-            self.bios_inst_count.lock().unwrap().clone(),
-            self.prog_inst_count.lock().unwrap().clone(),
-        )))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

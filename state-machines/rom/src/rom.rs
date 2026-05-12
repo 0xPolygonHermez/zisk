@@ -11,64 +11,61 @@
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use crate::{RomInstance, RomPlanner};
-use asm_runner::{AsmRHData, AsmRunnerRH};
+use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use itertools::Itertools;
-use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
-use zisk_common::{
-    create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
-};
+use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx, Planner};
 use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
+    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_IMM,
 };
-use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
+use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 
 use anyhow::Result;
+
+/// Per-emulator instruction counters for ROM histogram tracking.
+///
+/// The two emulators produce semantically different histograms:
+/// - Rust traces by *physical address*, split into two regions (BIOS / program).
+/// - ASM produces a single histogram already indexed by *instruction index* via `AsmRunnerRH`.
+enum RomCounters {
+    /// Rust emulator: counters indexed by physical address.
+    Rust {
+        /// BIOS region.
+        bios: Arc<Vec<AtomicU64>>,
+        /// Program region.
+        prog: Arc<Vec<AtomicU64>>,
+    },
+    /// ASM emulator: histogram is delivered by the assembly runner thread.
+    Asm { rh_data: Mutex<Option<AsmRunnerRH>> },
+}
 
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU64>>,
-
-    /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU64>>,
-
-    rh_data: Mutex<Option<AsmRunnerRH>>,
+    /// Instruction counters — depends on the emulator backend.
+    counters: RomCounters,
 }
 
 impl RomSM {
     /// Creates a new instance of the `RomSM` state machine.
     ///
-    /// # Arguments
-    /// * `zisk_rom` - The Zisk ROM representation.
-    ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new<F: PrimeField64>(is_asm_emulator: bool) -> Arc<Self> {
-        let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (create_atomic_vec(RomTrace::<F>::NUM_ROWS as usize), vec![])
+    pub fn new(is_asm_emulator: bool) -> Arc<Self> {
+        let counters = if is_asm_emulator {
+            RomCounters::Asm { rh_data: Mutex::new(None) }
         } else {
-            (
-                create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
-                create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize), // Cannot be dividede by 4
-            )
+            RomCounters::Rust {
+                // BIOS region: address-aligned, can divide by 4.
+                bios: Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)),
+                // Program region: cannot be divided by 4.
+                prog: Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)),
+            }
         };
 
-        Arc::new(Self {
-            zisk_rom: Mutex::new(None),
-            bios_inst_count: Arc::new(bios_inst_count),
-            prog_inst_count: Arc::new(prog_inst_count),
-            rh_data: Mutex::new(None),
-        })
-    }
-
-    pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
-        *self.rh_data.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
-            Some(handler);
-        Ok(())
+        Arc::new(Self { zisk_rom: Mutex::new(None), counters })
     }
 
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
@@ -77,105 +74,46 @@ impl RomSM {
         Ok(())
     }
 
-    /// Computes the witness for the provided plan using the given ROM.
-    ///
-    /// # Arguments
-    /// * `rom` - Reference to the Zisk ROM.
-    /// * `plan` - The execution plan for computing the witness.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness trace data.
-    pub fn compute_witness<F: PrimeField64>(
-        rom: &ZiskRom,
-        counter_stats: &CounterStats,
-        mut trace_buffer: Vec<F>,
-    ) -> ProofmanResult<AirInstance<F>> {
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
-
-        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
-
-        // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().enumerate() {
-            // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
-
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this
-            // execution
-            let mut multiplicity: u64;
-            if inst.paddr < ROM_ADDR {
-                if counter_stats.bios_inst_count.is_empty() {
-                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-                } else {
-                    multiplicity = counter_stats.bios_inst_count
-                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                        .load(std::sync::atomic::Ordering::Relaxed);
-
-                    if multiplicity == 0 {
-                        continue;
-                    }
-                    if inst.paddr == counter_stats.end_pc {
-                        multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                    }
-                }
-            } else {
-                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                if multiplicity == 0 {
-                    continue;
-                }
-                if inst.paddr == counter_stats.end_pc {
-                    multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                }
+    pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
+        match &self.counters {
+            RomCounters::Asm { rh_data } => {
+                *rh_data.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
+                    Some(handler);
+                Ok(())
             }
-            trace_buffer[i] = F::from_u64(multiplicity);
+            RomCounters::Rust { .. } => Err(anyhow::anyhow!("set_rh_data called on non-ASM RomSM")),
         }
-
-        Ok(AirInstance::new(TraceInfo::new(
-            RomTrace::<F>::AIRGROUP_ID,
-            RomTrace::<F>::AIR_ID,
-            1,
-            RomTrace::<F>::NUM_ROWS,
-            trace_buffer,
-            false,
-            false,
-        )))
     }
 
-    pub fn compute_witness_from_asm<F: PrimeField64>(
-        rom: &ZiskRom,
-        asm_romh: &AsmRHData,
-        mut trace_buffer: Vec<F>,
-    ) -> ProofmanResult<AirInstance<F>> {
-        tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
+    /// Computes a custom trace ROM from the given ELF file.
+    ///
+    /// # Arguments
+    /// * `rom_path` - The path to the ELF file.
+    /// * `rom_custom_trace` - Reference to the custom ROM trace.
+    pub fn compute_custom_trace_rom<F: PrimeField64>(
+        elf: &[u8],
+        rom_custom_trace: &mut RomRomTrace<F>,
+    ) {
+        tracing::info!("Computing custom trace ROM");
 
-        for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
-            if *multiplicity == 0 {
-                continue;
-            }
-            trace_buffer[i] = F::from_u64(*multiplicity);
+        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
+
+        // Create an instance of the RISCV -> ZisK program converter
+        let riscv2zisk = Riscv2zisk::new(elf);
+
+        // Convert program to rom
+        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+
+        let rom_len = rom.insts.len();
+        let air_rom_len = RomTrace::<F>::NUM_ROWS;
+        if rom_len > air_rom_len {
+            panic!(
+                "Error: The generated ROM has {} instructions, which exceeds the maximum supported by the Zisk PIL ROM trace ({} instructions).  Please review zisk.pil and increase the ROM trace size accordingly.",
+                rom_len, air_rom_len
+            );
         }
 
-        // Search for end instruction index
-        let index = rom.get_instruction(ROM_EXIT).index as usize;
-        assert!(
-            F::is_one(&trace_buffer[index]),
-            "The exit instruction should have been executed once in the assembly execution"
-        );
-
-        // Increment it as if it was executed the number of times needed to reach the end of the
-        // main trace instance, i.e. we repeat the last instruction until the end of the instance
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
-        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
-
-        Ok(AirInstance::new(TraceInfo::new(
-            RomTrace::<F>::AIRGROUP_ID,
-            RomTrace::<F>::AIR_ID,
-            1,
-            RomTrace::<F>::NUM_ROWS,
-            trace_buffer,
-            false,
-            false,
-        )))
+        Self::compute_trace_rom(&rom, rom_custom_trace);
     }
 
     /// Computes the ROM trace based on the ROM instructions.
@@ -185,7 +123,7 @@ impl RomSM {
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
     fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (_i, key) in rom.insts.keys().sorted().enumerate() {
+        for key in rom.insts.keys().sorted() {
             // Get the ZisK instruction
             let inst = &rom.insts[key].i;
 
@@ -250,37 +188,6 @@ impl RomSM {
             rom_custom_trace[i] = RomRomTraceRow::default();
         }
     }
-
-    /// Computes a custom trace ROM from the given ELF file.
-    ///
-    /// # Arguments
-    /// * `rom_path` - The path to the ELF file.
-    /// * `rom_custom_trace` - Reference to the custom ROM trace.
-    pub fn compute_custom_trace_rom<F: PrimeField64>(
-        elf: &[u8],
-        rom_custom_trace: &mut RomRomTrace<F>,
-    ) {
-        tracing::info!("Computing custom trace ROM");
-
-        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
-
-        // Create an instance of the RISCV -> ZisK program converter
-        let riscv2zisk = Riscv2zisk::new(elf);
-
-        // Convert program to rom
-        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
-
-        let rom_len = rom.insts.len();
-        let air_rom_len = RomTrace::<F>::NUM_ROWS;
-        if rom_len > air_rom_len {
-            panic!(
-                "Error: The generated ROM has {} instructions, which exceeds the maximum supported by the Zisk PIL ROM trace ({} instructions).  Please review zisk.pil and increase the ROM trace size accordingly.",
-                rom_len, air_rom_len
-            );
-        }
-
-        Self::compute_trace_rom(&rom, rom_custom_trace);
-    }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
@@ -300,12 +207,14 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        Box::new(RomInstance::new(
-            self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
-            ictx,
-            self.bios_inst_count.clone(),
-            self.prog_inst_count.clone(),
-            self.rh_data.lock().unwrap().take(),
-        ))
+        let zisk_rom = self.zisk_rom.lock().unwrap().as_ref().unwrap().clone();
+        match &self.counters {
+            RomCounters::Rust { bios, prog } => {
+                Box::new(RomInstance::new_rust(zisk_rom, ictx, bios.clone(), prog.clone()))
+            }
+            RomCounters::Asm { rh_data } => {
+                Box::new(RomInstance::new_asm(zisk_rom, ictx, rh_data.lock().unwrap().take()))
+            }
+        }
     }
 }
