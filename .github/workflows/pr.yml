@@ -81,12 +81,12 @@ jobs:
       - name: Build setup
         env:
           USE_CACHE_SETUP: "1"
+          CACHE_SETUP_HASH: "e7de7a73"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_setup.sh
           echo "Proving key should be available at: /github/home/.zisk/provingKey"
           ls -lha /github/home/.zisk/provingKey
-          ls -lha /github/home/.zisk/provingKey/zisk/Zisk
 
       # - name: Test sha_hasher (CPU)
       #   env:
@@ -108,7 +108,6 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           echo "Proving key should be available at: /github/home/.zisk/provingKey"
           ls -lha /github/home/.zisk/provingKey
-          ls -lha /github/home/.zisk/provingKey/zisk
           ./test_diagnostic.sh
 
       - name: Prove Ethereum block
@@ -123,6 +122,8 @@ jobs:
           BLOCK_INPUTS_ETHPROOFS: "mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
+          echo "ZisK binary should be available at: /github/home/.zisk/bin/"
+          ls /github/home/.zisk/bin/
           ./test_ethproofs.sh
 
       - name: Ethproofs test (hints)
