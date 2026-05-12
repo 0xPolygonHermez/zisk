@@ -2,8 +2,8 @@
 //! This module provides functionality to read and write data through Unix sockets
 //! using SOCK_SEQPACKET for message-oriented communication with built-in boundaries.
 
-use std::io::Write;
-use std::os::unix::io::FromRawFd;
+use std::io::{self, Write};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -439,9 +439,37 @@ impl StreamWrite for UnixSocketStreamWriter {
         }
 
         let socket = self.socket.as_mut().ok_or(UnixSocketError::NotConnected)?;
+        let fd = socket.as_raw_fd();
 
-        socket.write_all(item).map_err(UnixSocketError::WriteFailed)?;
-        Ok(item.len())
+        // SOCK_SEQPACKET on Linux returns ENOBUFS (not EAGAIN) when the peer's
+        // receive queue is full, even on blocking sockets. Retry with
+        // poll(POLLOUT) so the drain can wait for the kernel to free space
+        // instead of failing or busy-spinning.
+        loop {
+            match socket.write_all(item) {
+                Ok(()) => return Ok(item.len()),
+                Err(e)
+                    if e.raw_os_error() == Some(libc::ENOBUFS)
+                        || e.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    // Wait up to 1s for writability; the bounded timeout lets
+                    // callers periodically observe shutdown signals.
+                    let mut pfd =
+                        libc::pollfd { fd, events: libc::POLLOUT, revents: 0 };
+                    let ret = unsafe { libc::poll(&mut pfd, 1, 1000) };
+                    if ret < 0 {
+                        let err = io::Error::last_os_error();
+                        if err.kind() == io::ErrorKind::Interrupted {
+                            continue;
+                        }
+                        return Err(UnixSocketError::WriteFailed(err).into());
+                    }
+                    // Either we got POLLOUT (retry write) or timeout (also retry).
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(UnixSocketError::WriteFailed(e).into()),
+            }
+        }
     }
 
     /// Flush any buffered data
@@ -976,5 +1004,68 @@ mod tests {
         writer.close().unwrap();
         // Allow accept thread to fully terminate after fd is closed
         thread::sleep(Duration::from_millis(10));
+    }
+
+    /// Verifies the ENOBUFS / WouldBlock retry path inside
+    /// `UnixSocketStreamWriter::write`.
+    ///
+    /// SOCK_SEQPACKET on Linux has a small kernel queue (bounded by `wmem`
+    /// defaults, ~200 KB) — writing several 128 KB messages without reading
+    /// reliably exhausts it and forces the kernel to return ENOBUFS to the
+    /// sender. The writer must absorb that via `poll(POLLOUT)` and keep going;
+    /// the caller should observe only successful writes.
+    ///
+    /// Setup:
+    ///   * Writer thread sends `NUM_MESSAGES` max-sized messages back-to-back.
+    ///   * Reader sleeps 200 ms before draining, which guarantees the queue
+    ///     fills up (and the retry path actually executes) regardless of
+    ///     wmem tuning.
+    ///   * Each message is tagged at byte 0 with its sequence number, so we
+    ///     verify nothing is reordered or lost across the retry path.
+    #[test]
+    fn test_write_retries_on_full_queue() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let socket_path = unique_socket_path("write_retry_enobufs");
+        let _ = std::fs::remove_file(&socket_path);
+
+        const NUM_MESSAGES: usize = 20;
+        const MESSAGE_SIZE: usize = 128 * 1024;
+
+        let (writer_thread, sync) = spawn_writer_thread(&socket_path, |writer| {
+            // First write retries on NoClientConnected until the reader connects.
+            let mut initial = vec![0u8; MESSAGE_SIZE];
+            initial[0] = 0;
+            write_with_retry(writer, &initial);
+            // Subsequent writes target the now-connected socket. With the
+            // reader stalled for 200 ms below, the kernel queue saturates
+            // and the writer enters the poll(POLLOUT) retry path.
+            for i in 1..NUM_MESSAGES {
+                let mut msg = vec![0u8; MESSAGE_SIZE];
+                msg[0] = i as u8;
+                writer
+                    .write(&msg)
+                    .unwrap_or_else(|e| panic!("write {i} must succeed via poll retry: {e}"));
+            }
+        });
+
+        wait_for_writer(&sync);
+
+        // Stall the reader so the writer has to use the retry path.
+        thread::sleep(Duration::from_millis(200));
+
+        let mut reader = UnixSocketStreamReader::new(&socket_path).unwrap();
+        for expected in 0..NUM_MESSAGES {
+            let msg = reader.next().unwrap().unwrap();
+            assert_eq!(msg.len(), MESSAGE_SIZE);
+            assert_eq!(
+                msg[0], expected as u8,
+                "message {expected} out of order or corrupted (byte 0 = {})",
+                msg[0]
+            );
+        }
+        reader.close().unwrap();
+
+        sync.reader_done.store(true, Ordering::Release);
+        writer_thread.join().unwrap();
     }
 }

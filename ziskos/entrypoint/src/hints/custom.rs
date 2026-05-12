@@ -16,7 +16,7 @@ pub unsafe extern "C" fn hint_custom(
         return;
     }
 
-    let mut w = HINT_BUFFER.begin_hint(hint_id, data_len, is_result != 0);
+    let Some(mut w) = HINT_BUFFER.begin_hint(hint_id, data_len, is_result != 0) else { return; };
 
     w.write_data_ptr(data_ptr, data_len);
 

@@ -21,11 +21,11 @@ macro_rules! define_hint {
                     total_len += $len;
                 )+
 
-                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
+                let Some(mut w) = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     total_len,
                     $is_result,
-                );
+                ) else { return; };
 
                 $(
                     w.write_data_ptr($arg, $len);
@@ -59,11 +59,11 @@ macro_rules! define_hint_pairs {
 
                 let total_len = 8 + (num_pairs * ($pair_len as usize));
 
-                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
+                let Some(mut w) = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     total_len,
                     $is_result,
-                );
+                ) else { return; };
 
                 let num_pairs_bytes: [u8; 8] = (num_pairs as u64).to_le_bytes();
                 w.write_data_slice(&num_pairs_bytes);
@@ -98,11 +98,11 @@ macro_rules! define_hint_ptr {
 
                 let pad = (8 - ([<$arg _len>] & 7)) & 7;
 
-                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
+                let Some(mut w) = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     [<$arg _len>],
                     $is_result,
-                );
+                ) else { return; };
 
                 w.write_data_ptr([<$arg _ptr>], [<$arg _len>]);
 
@@ -143,11 +143,11 @@ macro_rules! define_hint_ptr {
 
                 let pad = (8 - (total_len & 7)) & 7;
 
-                let mut w = $crate::hints::HINT_BUFFER.begin_hint(
+                let Some(mut w) = $crate::hints::HINT_BUFFER.begin_hint(
                     $hint_id,
                     total_len,
                     $is_result,
-                );
+                ) else { return; };
 
                 $(
                     {

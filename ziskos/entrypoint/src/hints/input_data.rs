@@ -13,7 +13,7 @@ pub unsafe extern "C" fn hint_input_data(input_data_ptr: *const u8, input_data_l
     }
 
     let pad = (8 - (input_data_len & 7)) & 7;
-    let mut w = crate::hints::HINT_BUFFER.begin_input_data();
+    let Some(mut w) = crate::hints::HINT_BUFFER.begin_input_data(input_data_len) else { return; };
 
     // Write the length of the input data as the first 8 bytes of the hint data,
     // followed by the input data itself, and then pad with zeros if necessary
