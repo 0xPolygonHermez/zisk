@@ -65,6 +65,7 @@ ctor = { version = "0.2", optional = true }
 
 [features]
 default = ["user-hints", "inputcpy"]
+panic-handler = []
 user-hints = [
     "dep:zisk-common",
     "dep:bytes",
