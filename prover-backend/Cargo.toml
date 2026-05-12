@@ -13,6 +13,7 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-verifier = { workspace = true }
+proofman-starks-lib-c = { workspace = true }
 
 # Zisk internal crates
 zisk-common = { workspace = true }
@@ -43,3 +44,4 @@ default = []
 cpu-only = ["proofman-common/cpu-only"]
 stats = []
 diagnostic = ["proofman-common/diagnostic"]
+gpu = ["executor/gpu"]

@@ -53,3 +53,4 @@ named-sem = { workspace = true }
 [features]
 default = []
 stats = []
+gpu = ["asm-runner/gpu"]

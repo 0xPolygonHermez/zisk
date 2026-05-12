@@ -14,6 +14,7 @@ use proofman::{
 use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
+use proofman_starks_lib_c::{get_unified_buffer_gpu_c, get_unified_buffer_gpu_size_c};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
 use std::collections::HashMap;
@@ -186,6 +187,13 @@ impl AsmProver {
             asm_runner_options,
         )?;
 
+        // Borrow proofman's already-allocated unified GPU buffer (idle during
+        // count-and-plan, used later for proving). Zero values when CUDA is
+        // unavailable; downstream consumers no-op on (0, 0).
+        let device_buffers_ptr = pctx.get_device_buffers_ptr();
+        let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
+        let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
+
         let shared = Arc::new(AsmSharedResources::new(
             world_rank,
             local_rank,
@@ -195,6 +203,8 @@ impl AsmProver {
             init_rom,
             with_hints,
             asm_services.shm_prefix(),
+            gpu_buf_ptr,
+            gpu_buf_size,
         )?);
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 

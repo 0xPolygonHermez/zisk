@@ -53,6 +53,12 @@ impl GpuMemPlanner {
         }
     }
 
+    /// Clear per-block state so the same planner instance can process the
+    /// next block. Cheap — keeps the arena and per-stream resources alive.
+    pub fn reset(&self) {
+        unsafe { gpu_bindings::count_and_plan_reset(self.inner) };
+    }
+
     /// Returns a borrowed slice of metas owned by the C++ side. Valid until the next `reset` (or drop).
     pub fn run(&self) -> Option<&[GpuInstanceMeta]> {
         let mut ptr: *mut GpuInstanceMeta = std::ptr::null_mut();
@@ -63,6 +69,7 @@ impl GpuMemPlanner {
         }
         Some(unsafe { std::slice::from_raw_parts(ptr, n as usize) })
     }
+
 }
 
 impl Drop for GpuMemPlanner {

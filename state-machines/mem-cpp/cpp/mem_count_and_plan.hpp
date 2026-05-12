@@ -74,6 +74,10 @@ public:
     void add_chunk(MemCountersBusData *chunk_data, uint32_t chunk_size);
     void detach_execute();
     void execute(void);
+    // GPU-mode variant: spawns only the mem_align worker, skipping the count
+    // and plan workers (segmenting is provided by the in-process GpuMemPlanner).
+    void detach_execute_align_only();
+    void execute_align_only(void);
     void detach_execute_mem_align_counter();
     void count_phase();
     void plan_phase();

@@ -38,7 +38,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=memcpp");
     println!("cargo:rustc-link-lib=dylib=stdc++");
 
-    watch_dir_recursive("cpp");
+    watch_dir_recursive("cpp", &["cpp", "hpp"]);
 
     // Optional GPU build, gated by the `gpu` cargo feature.
     if cfg!(feature = "gpu") {
@@ -60,18 +60,20 @@ fn main() {
         println!("cargo:rustc-link-lib=static=memcpp_cu");
         println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
         println!("cargo:rustc-link-lib=dylib=cudart");
+
+        watch_dir_recursive("cu", &["cu", "cuh"]);
     }
 }
 
-fn watch_dir_recursive<P: AsRef<Path>>(dir: P) {
+fn watch_dir_recursive<P: AsRef<Path>>(dir: P, exts: &[&str]) {
     for entry in std::fs::read_dir(&dir).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
 
         if path.is_dir() {
-            watch_dir_recursive(&path);
-        } else if let Some(ext) = path.extension() {
-            if ext == "cpp" || ext == "hpp" {
+            watch_dir_recursive(&path, exts);
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if exts.iter().any(|e| *e == ext) {
                 println!("cargo:rerun-if-changed={}", path.display());
             }
         }

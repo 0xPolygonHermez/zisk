@@ -269,6 +269,9 @@ unsafe extern "C" {
     pub fn execute_mem_count_and_plan(mcp: *mut MemCountAndPlan);
 }
 unsafe extern "C" {
+    pub fn execute_mem_align_only(mcp: *mut MemCountAndPlan);
+}
+unsafe extern "C" {
     pub fn save_chunk_data(chunk_id: u32, chunk_data: *mut MemCountersBusData, chunk_size: u32);
 }
 unsafe extern "C" {
@@ -321,6 +324,13 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn get_mem_stats_len(mcp: *mut MemCountAndPlan) -> u64;
+}
+unsafe extern "C" {
+    pub fn inject_gpu_metas_from_pointers(
+        mcp: *mut MemCountAndPlan,
+        gpu_metas: *const ::std::os::raw::c_void,
+        n: u32,
+    ) -> bool;
 }
 unsafe extern "C" {
     pub fn get_mem_stats_ptr(mcp: *mut MemCountAndPlan) -> u64;

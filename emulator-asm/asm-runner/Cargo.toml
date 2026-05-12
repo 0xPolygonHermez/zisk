@@ -31,3 +31,4 @@ named-sem = { workspace = true }
 [features]
 stats = []
 save_mem_plans = []
+gpu = ["mem-planner-cpp/gpu"]

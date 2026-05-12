@@ -48,4 +48,5 @@ extern "C" {
         metas_out: *mut *mut InstanceMeta,
         n_metas: *mut u32,
     ) -> bool;
+    pub fn count_and_plan_reset(h: *mut CountAndPlanHandle);
 }

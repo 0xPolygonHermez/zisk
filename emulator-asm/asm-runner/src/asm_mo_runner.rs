@@ -15,6 +15,8 @@ use crate::{
     AsmRunError, AsmService, AsmServices,
 };
 use mem_planner_cpp::MemPlanner;
+#[cfg(feature = "gpu")]
+use mem_planner_cpp::{GpuMemOp, GpuMemPlanner};
 
 use anyhow::{Context, Result};
 
@@ -25,10 +27,20 @@ pub struct MOShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
+    /// Set up once at worker startup against proofman's unified GPU buffer,
+    /// then reused block-after-block via `reset()`. Constructing/destroying
+    /// per call would cost ~240 ms in CUDA cleanup.
+    #[cfg(feature = "gpu")]
+    gpu_planner: Option<GpuMemPlanner>,
 }
 
 impl MOShMemReader {
-    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+    pub fn new(
+        shm_prefix: &str,
+        unlock_mapped_memory: bool,
+        gpu_buf_ptr: usize,
+        gpu_buf_size: u64,
+    ) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
         let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
@@ -39,12 +51,44 @@ impl MOShMemReader {
             unlock_mapped_memory,
         )?;
 
+        #[cfg(feature = "gpu")]
+        let gpu_planner = setup_gpu_planner(gpu_buf_ptr, gpu_buf_size);
+        #[cfg(not(feature = "gpu"))]
+        let _ = (gpu_buf_ptr, gpu_buf_size);
+
         Ok(Self {
             output_shmem: output_shared_memory,
             mem_planner: Some(MemPlanner::new()),
             handle_mo: None,
+            #[cfg(feature = "gpu")]
+            gpu_planner,
         })
     }
+}
+
+#[cfg(feature = "gpu")]
+fn setup_gpu_planner(gpu_buf_ptr: usize, gpu_buf_size: u64) -> Option<GpuMemPlanner> {
+    if gpu_buf_ptr == 0 || gpu_buf_size == 0 {
+        tracing::warn!(
+            "[gpu] no borrowed buffer (ptr=0x{:x}, size={}); planner not constructed",
+            gpu_buf_ptr,
+            gpu_buf_size,
+        );
+        return None;
+    }
+    let gp = GpuMemPlanner::new();
+    if !gp.setup(gpu_buf_ptr as *mut c_void, gpu_buf_size as usize, 1, 0) {
+        tracing::error!(
+            "[gpu] GpuMemPlanner::setup returned false (size={} bytes); planner disabled",
+            gpu_buf_size,
+        );
+        return None;
+    }
+    tracing::info!(
+        "[gpu] GpuMemPlanner set up (borrowed {:.3} GB)",
+        gpu_buf_size as f64 / (1024.0 * 1024.0 * 1024.0),
+    );
+    Some(gp)
 }
 
 impl Drop for MOShMemReader {
@@ -118,8 +162,16 @@ impl AsmRunnerMO {
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
-        // Initialize C++ memory operations trace
+        // In GPU mode, the in-process GpuMemPlanner provides the segment
+        // table (injected after `wait()` below); the CPU side only needs to
+        // run the mem-align worker.
+        #[cfg(feature = "gpu")]
+        mem_planner.execute_align_only();
+        #[cfg(not(feature = "gpu"))]
         mem_planner.execute();
+
+        #[cfg(feature = "gpu")]
+        let gpu_planner: Option<GpuMemPlanner> = preloaded.gpu_planner.take();
 
         stats_begin!(_stats, &_runner_scope, _process_scope, "MO_PROCESS_CHUNKS", 0);
 
@@ -174,6 +226,25 @@ impl AsmRunnerMO {
 
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
+                    // `MemCountersBusData` and `GpuMemOp` share an identical
+                    // {u32 addr; u32 flags;} __packed layout, so the cast is
+                    // a pointer reinterpret — no copy.
+                    #[cfg(feature = "gpu")]
+                    if let Some(ref gp) = gpu_planner {
+                        let memops = unsafe {
+                            std::slice::from_raw_parts(
+                                data_ptr as *const GpuMemOp,
+                                chunk.mem_ops_size as usize,
+                            )
+                        };
+                        if !gp.add_chunk(memops) {
+                            tracing::error!(
+                                "[gpu] add_chunk failed (n={})",
+                                chunk.mem_ops_size,
+                            );
+                        }
+                    }
+
                     if chunk.end == 1 {
                         break 0;
                     }
@@ -195,15 +266,36 @@ impl AsmRunnerMO {
             }
         };
 
-        // Wind the C++ planner down before any further work. Without this,
-        // its background threads stay parked waiting for more chunks, and
-        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
-        // Mutex and hanging the next job's MO thread on lock acquisition.
         mem_planner.set_completed();
+
+        // Drain the GPU pipeline. The returned slice borrows from
+        // `gpu_planner`'s host-pinned buffers — kept alive for the inject below.
+        #[cfg(feature = "gpu")]
+        let gpu_metas_view: Option<(*const c_void, u32)> = gpu_planner
+            .as_ref()
+            .and_then(|gp| gp.run())
+            .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
+
         mem_planner.wait();
 
-        // Compute the result; on any error we still fall through to the
-        // single re-stash point below so the next job has a planner ready.
+        // Inject GPU metas into `mcp->segments[]`. `gpu_planner` is still
+        // alive, so the per-meta `count_per_chunk`/`addr_offsets` arrays it
+        // points into remain valid.
+        #[cfg(feature = "gpu")]
+        if let Some((ptr, n)) = gpu_metas_view {
+            let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
+            if !ok {
+                tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
+            }
+        }
+
+        // Reset and stash for the next block. Cheap — keeps CUDA resources alive.
+        #[cfg(feature = "gpu")]
+        if let Some(gp) = gpu_planner {
+            gp.reset();
+            preloaded.gpu_planner = Some(gp);
+        }
+
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
             if exit_code != 0 {
                 return Err(AsmRunError::ExitCode(exit_code as u32))
@@ -240,7 +332,7 @@ impl AsmRunnerMO {
             Ok(plans)
         })();
 
-        // Always re-stash the planner so the next call has one to take.
+        // Always re-stash the CPU planner so the next call has one to take.
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()

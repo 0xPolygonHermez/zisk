@@ -32,4 +32,11 @@ bool count_and_plan_run(void* h, InstanceMeta** metas_out, uint32_t* n_metas) {
     return ok;
 }
 
+// Clear per-block state so the same planner instance can process the next
+// block. Keeps the arena and per-stream resources alive (no cudaMalloc/Free).
+void count_and_plan_reset(void* h) {
+    if (!h) return;
+    static_cast<CountAndPlan*>(h)->reset();
+}
+
 }  // extern "C"

@@ -63,6 +63,14 @@ impl MemPlanner {
         unsafe { bindings::execute_mem_count_and_plan(self.inner) };
     }
 
+    /// GPU-mode variant of `execute`: spawns only the mem-align worker,
+    /// skipping the count and plan workers. Pair with
+    /// `inject_gpu_metas_from_pointers` (after `wait()`) to drive
+    /// `mcp->segments[]` from the in-process GPU planner.
+    pub fn execute_align_only(&self) {
+        unsafe { bindings::execute_mem_align_only(self.inner) };
+    }
+
     /// Adds a chunk of memory data
     pub fn add_chunk(&self, len: u64, data: *const c_void) {
         unsafe {
@@ -133,6 +141,24 @@ impl MemPlanner {
     /// Waits for all background processing to complete
     pub fn wait(&self) {
         unsafe { bindings::wait_mem_count_and_plan(self.inner) };
+    }
+
+    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`. Must
+    /// be called after `wait()` joins the background workers. The C++ side
+    /// casts `gpu_metas` to `const RawInstanceMeta*` — its layout must match
+    /// the Rust `GpuInstanceMeta` (#[repr(C)]) byte-for-byte. The GPU planner
+    /// that produced these metas must remain alive across this call.
+    ///
+    /// # Safety
+    /// Caller must ensure `gpu_metas` points to `n` valid `GpuInstanceMeta`
+    /// records and the per-meta arrays (`count_per_chunk`, `addr_offsets`)
+    /// remain live until this returns.
+    pub unsafe fn inject_gpu_metas_from_pointers(
+        &self,
+        gpu_metas: *const c_void,
+        n: u32,
+    ) -> bool {
+        bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }
 
     /// Retrieves a Vec of memory plans, adding to this result plans the mem_align_plans provided as argument.

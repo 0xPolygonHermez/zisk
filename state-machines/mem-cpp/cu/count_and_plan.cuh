@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "../cpp/gpu_raw_instance_meta.hpp"
+
 // ─── Public input type ──────────────────────────────────────────────
 
 struct __align__(8) MemOp {
@@ -22,21 +24,9 @@ struct __align__(8) MemOp {
 };
 
 // ─── Public output type ─────────────────────────────────────────────
-
-struct InstanceMeta {
-    uint32_t inst_id;
-    uint32_t kind;
-    uint32_t first_addr;
-    uint32_t last_addr;
-    const uint32_t* count_per_chunk;
-    uint32_t        n_chunks;
-    const uint32_t* addr_offsets;           
-    uint32_t        addr_offsets_size; // num_addrs in [first_addr,last_addr]
-    uint32_t first_addr_chunk;
-    uint32_t first_addr_skip;
-    uint32_t last_addr_chunk;
-    uint32_t last_addr_include;
-};
+// Aliased to the shared layout in gpu_raw_instance_meta.hpp so the plain
+// C++ side (mem_count_and_plan.cpp) can read these metas directly.
+using InstanceMeta = RawInstanceMeta;
 
 // ─── Internal types 
 struct PotentialEmit;

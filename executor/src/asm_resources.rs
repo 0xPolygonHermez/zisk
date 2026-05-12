@@ -34,10 +34,20 @@ pub struct AsmShmemReaders {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmShmemReaders {
-    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+    fn new(
+        shm_prefix: &str,
+        unlock_mapped_memory: bool,
+        gpu_buf_ptr: usize,
+        gpu_buf_size: u64,
+    ) -> Result<Self> {
         Ok(Self {
             mt: Arc::new(Mutex::new(MTShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
-            mo: Arc::new(Mutex::new(MOShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
+            mo: Arc::new(Mutex::new(MOShMemReader::new(
+                shm_prefix,
+                unlock_mapped_memory,
+                gpu_buf_ptr,
+                gpu_buf_size,
+            )?)),
             rh: Arc::new(Mutex::new(None)),
         })
     }
@@ -90,9 +100,16 @@ impl AsmSharedResources {
         init_rom: bool,
         with_hints: bool,
         shm_prefix: &str,
+        gpu_buf_ptr: usize,
+        gpu_buf_size: u64,
     ) -> Result<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory)?;
+        let readers =
+            AsmShmemReaders::new(shm_prefix, unlock_mapped_memory, gpu_buf_ptr, gpu_buf_size)?;
+
+        // Avoid "unused variable" warnings on non-x86_64/Linux targets where the readers aren't used.
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let _ = (gpu_buf_ptr, gpu_buf_size);
 
         let control_writer = Arc::new(ControlShmem::new(shm_prefix, unlock_mapped_memory)?);
 
