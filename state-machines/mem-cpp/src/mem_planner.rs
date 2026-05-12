@@ -161,6 +161,13 @@ impl MemPlanner {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }
 
+    /// No-feature fallback: load `tmp/metas.bin` (produced by the standalone
+    /// GPU runner) into `mcp->segments[]`. Returns `true` if a file was loaded
+    /// and segments populated; `false` if the file is missing.
+    pub fn load_mem_metas_from_disk(&self) -> bool {
+        unsafe { bindings::load_mem_metas_from_disk(self.inner) }
+    }
+
     /// Retrieves a Vec of memory plans, adding to this result plans the mem_align_plans provided as argument.
     ///
     /// # Parameters

@@ -404,12 +404,35 @@ void wait_mem_align_counters(MemCountAndPlan *mcp)
 
 void wait_mem_count_and_plan(MemCountAndPlan *mcp)
 {
+    // Joins workers only. The Rust caller is responsible for populating
+    // `mcp->segments[]` afterwards — either via `inject_gpu_metas_from_pointers`
+    // (GPU-feature build) or `load_mem_metas_from_disk` (no-feature fallback
+    // when tmp/metas.bin is provided externally).
     mcp->wait();
-    // Best-effort load of `tmp/metas.bin` (legacy path: file produced by the
-    // standalone GPU runner). Tolerant of a missing file so the in-process
-    // GPU build (which injects metas in-memory via inject_gpu_metas_from_pointers
-    // after this returns) and the no-GPU CPU build both work.
-    load_mem_metas_and_generate_segments(mcp);
+}
+
+// No-feature fallback: loads `tmp/metas.bin` (produced by the standalone GPU
+// runner) and populates mcp->segments[]. Tolerant of a missing file: returns
+// false silently. Idempotent via `mcp->wait_once`.
+bool load_mem_metas_from_disk(MemCountAndPlan *mcp)
+{
+    bool loaded = false;
+    std::call_once(mcp->wait_once, [&]() {
+        struct LoadedMetas metas;
+        try {
+            metas = load_instance_metas("tmp/metas.bin");
+        } catch (const std::exception &e) {
+            return;
+        }
+        std::sort(metas.metas.begin(), metas.metas.end(),
+                  [](const InstanceMeta &a, const InstanceMeta &b) {
+                      return a.type < b.type || (a.type == b.type && a.inst_id < b.inst_id);
+                  });
+        printf("Metas loaded from tmp/metas.bin (%zu instances).\n", metas.metas.size());
+        generate_mem_segments_from_gpu_plan(mcp, metas.metas);
+        loaded = true;
+    });
+    return loaded;
 }
 void load_mem_metas_and_generate_segments(MemCountAndPlan *mcp)
 {

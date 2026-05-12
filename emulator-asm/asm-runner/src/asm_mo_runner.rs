@@ -278,22 +278,32 @@ impl AsmRunnerMO {
 
         mem_planner.wait();
 
-        // Inject GPU metas into `mcp->segments[]`. `gpu_planner` is still
-        // alive, so the per-meta `count_per_chunk`/`addr_offsets` arrays it
-        // points into remain valid.
+        // Populate `mcp->segments[]`. Two paths:
+        //   * GPU feature on  → inject the in-memory metas produced this run.
+        //   * GPU feature off → fall back to the legacy `tmp/metas.bin` file
+        //                       written by the standalone GPU runner.
         #[cfg(feature = "gpu")]
-        if let Some((ptr, n)) = gpu_metas_view {
-            let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
-            if !ok {
-                tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
+        {
+            if let Some((ptr, n)) = gpu_metas_view {
+                let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
+                if !ok {
+                    tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
+                }
+            } else if !mem_planner.load_mem_metas_from_disk() {
+                tracing::warn!(
+                    "[gpu] no GPU planner and tmp/metas.bin missing; segments will be empty"
+                );
+            }
+
+            // Reset and stash for the next block. Cheap — keeps CUDA resources alive.
+            if let Some(gp) = gpu_planner {
+                gp.reset();
+                preloaded.gpu_planner = Some(gp);
             }
         }
-
-        // Reset and stash for the next block. Cheap — keeps CUDA resources alive.
-        #[cfg(feature = "gpu")]
-        if let Some(gp) = gpu_planner {
-            gp.reset();
-            preloaded.gpu_planner = Some(gp);
+        #[cfg(not(feature = "gpu"))]
+        if !mem_planner.load_mem_metas_from_disk() {
+            tracing::warn!("tmp/metas.bin missing; segments will be empty (no GPU build)");
         }
 
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
