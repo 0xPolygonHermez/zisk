@@ -470,7 +470,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.current_computation.is_some()
     }
 
-    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u8>> {
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
     }
 
@@ -979,12 +979,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let num_instances = prover.get_execution_info()?.0.total_instances;
 
-        let publics_u64: Vec<u64> = result
-            .get_publics()
-            .public_bytes()
-            .chunks_exact(8)
-            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
-            .collect();
+        let publics_u64 = result.get_publics().public_u64();
 
         // `execute` has no implicit MPI sync (each rank runs its own
         // partition independently). Block until every rank has finished so

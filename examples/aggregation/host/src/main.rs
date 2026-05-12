@@ -80,8 +80,8 @@ async fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    stdin_aggregation.write(&vadcop_result1.get_proof_bytes());
-    stdin_aggregation.write(&vadcop_result2.get_proof_bytes());
+    stdin_aggregation.write(&vadcop_result1.get_proof_u64());
+    stdin_aggregation.write(&vadcop_result2.get_proof_u64());
 
     let result_aggregation = client.prove(&PROGRAM2, stdin_aggregation).run()?.await?;
 

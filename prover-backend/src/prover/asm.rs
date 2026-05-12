@@ -26,7 +26,6 @@ use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
-    ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -408,16 +407,14 @@ impl ProverEngine for AsmProver {
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof_bytes, publics, vk)
-            }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof_bytes, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -466,7 +463,7 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.cluster_barrier();
     }
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 

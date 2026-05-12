@@ -957,12 +957,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7575182f7272186991736b70173b0ea045398f984bf5ebbb3804736ce1330c9d"
 
 [[package]]
-name = "bytemuck"
-version = "1.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1434,9 +1428,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "num-traits",
 ]
@@ -1813,7 +1807,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -1911,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2917,9 +2911,6 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 name = "liveness-guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -2997,7 +2988,7 @@ name = "mem-common"
 version = "0.17.1"
 dependencies = [
  "clap",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3574,10 +3565,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "colored",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3672,7 +3663,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3708,7 +3699,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-secp256k1",
  "ark-std 0.5.0",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3739,7 +3730,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3760,7 +3751,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3779,7 +3770,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3803,7 +3794,7 @@ name = "precomp-keccakf"
 version = "0.17.1"
 dependencies = [
  "circuit",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3823,7 +3814,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3843,7 +3834,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3862,7 +3853,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3967,18 +3958,17 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "bincode",
  "blake3",
  "borsh",
- "bytemuck",
  "chrono",
  "colored",
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4002,17 +3992,16 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "bincode",
  "borsh",
- "bytemuck",
  "colored",
  "crossbeam-channel",
  "crossbeam-queue",
  "csv",
  "env",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4034,9 +4023,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4047,7 +4036,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4057,7 +4046,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4066,10 +4055,9 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "bincode",
- "bytemuck",
  "colored",
  "serde",
  "sysinfo 0.35.2",
@@ -4078,10 +4066,9 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
- "bytemuck",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -4559,7 +4546,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -5205,7 +5192,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5225,7 +5212,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5245,7 +5232,7 @@ name = "sm-frequent-ops"
 version = "0.17.1"
 dependencies = [
  "clap",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -5259,7 +5246,7 @@ dependencies = [
 name = "sm-main"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -5278,7 +5265,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -5300,7 +5287,7 @@ version = "0.17.1"
 dependencies = [
  "anyhow",
  "asm-runner",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -6928,10 +6915,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#b6de7c9aed82fc0c64e00306b2ce62d97867bcd8"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64#662d33610c776aa1117bd83e376af6c0fcf01d52"
 dependencies = [
  "colored",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7044,9 +7031,9 @@ dependencies = [
 
 [[package]]
 name = "zerofrom"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69faa1f2a1ea75661980b013019ed6687ed0e83d069bc1114e2cc74c6c04c4df"
+checksum = "0ec05a11813ea801ff6d75110ad09cd0824ddba17dfe17128ea0d5f68e6c5272"
 dependencies = [
  "zerofrom-derive",
 ]
@@ -7175,7 +7162,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "dirs",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "libc",
  "proofman",
  "proofman-common",
@@ -7305,7 +7292,7 @@ name = "zisk-core"
 version = "0.17.1"
 dependencies = [
  "elf",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "lib-c",
  "lib-float",
  "paste",
@@ -7327,7 +7314,7 @@ version = "0.17.1"
 name = "zisk-pil"
 version = "0.17.1"
 dependencies = [
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -7347,7 +7334,7 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7372,7 +7359,7 @@ dependencies = [
  "bincode",
  "bytes",
  "colored",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "futures",
  "proofman-common",
  "rom-setup",
@@ -7403,7 +7390,7 @@ version = "0.17.1"
 dependencies = [
  "clap",
  "data-bus",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -7471,7 +7458,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
+ "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fverifier-u64)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",

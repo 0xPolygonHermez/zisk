@@ -125,14 +125,14 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/verifier-u64" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

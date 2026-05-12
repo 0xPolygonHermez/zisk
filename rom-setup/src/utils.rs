@@ -49,15 +49,19 @@ pub fn gen_elf_hash<F: PrimeField64>(
     )
 }
 
-pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u8>>> {
+pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u64>>> {
     if !verkey_path.exists() {
         return Ok(None);
     }
 
     let mut file = File::open(verkey_path)?;
-    let mut root_bytes = [0u8; 32];
-    file.read_exact(&mut root_bytes)?;
-    Ok(Some(root_bytes.to_vec()))
+    let mut vk = vec![0u64; 4];
+    for word in vk.iter_mut() {
+        let mut buf = [0u8; 8];
+        file.read_exact(&mut buf)?;
+        *word = u64::from_le_bytes(buf);
+    }
+    Ok(Some(vk))
 }
 
 pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {

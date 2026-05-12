@@ -59,10 +59,10 @@ pub fn write_output_reset() {
     crate::zisklib::zkvm_io::reset_output();
 }
 
-pub fn verify_zisk_proof(zisk_proof: &[u8]) -> bool {
-    if zisk_proof.len() < 32 {
+pub fn verify_zisk_proof(zisk_proof: &[u64]) -> bool {
+    if zisk_proof.len() < 4 {
         return false;
     }
-    let (proof, vk) = zisk_proof.split_at(zisk_proof.len() - 32);
+    let (proof, vk) = zisk_proof.split_at(zisk_proof.len() - 4);
     zisk_verifier::verify_vadcop_final_proof(proof, vk)
 }

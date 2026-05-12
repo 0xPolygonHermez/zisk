@@ -142,8 +142,8 @@ impl ProveOutput {
         &self.proof
     }
 
-    pub fn get_proof_bytes(&self) -> Vec<u8> {
-        self.proof.get_proof_bytes()
+    pub fn get_proof_u64(&self) -> Vec<u64> {
+        self.proof.get_proof_u64()
     }
 
     pub fn get_program_vk(&self) -> &ProgramVK {
