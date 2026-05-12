@@ -76,7 +76,20 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             table_id,
         })
     }
+    // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.
+    fn get_lt_flags(input: &ArithEq384Input) -> u8 {
+        const X3_LT_FLAG: u8 = 1;
+        const Y3_LT_FLAG: u8 = 2;
 
+        match input {
+            ArithEq384Input::Arith384Mod(_) => X3_LT_FLAG,
+            ArithEq384Input::Bls12_381CurveAdd(_) => X3_LT_FLAG | Y3_LT_FLAG,
+            ArithEq384Input::Bls12_381CurveDbl(_) => X3_LT_FLAG | Y3_LT_FLAG,
+            ArithEq384Input::Bls12_381ComplexAdd(_) => X3_LT_FLAG | Y3_LT_FLAG,
+            ArithEq384Input::Bls12_381ComplexSub(_) => X3_LT_FLAG | Y3_LT_FLAG,
+            ArithEq384Input::Bls12_381ComplexMul(_) => X3_LT_FLAG | Y3_LT_FLAG,
+        }
+    }
     fn expand_addr_step_on_trace<R: ArithEq384TraceRowOps<F>>(
         data: &ArithEq384StepAddr,
         trace: &mut [R],
@@ -101,9 +114,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Arith384ModInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Arith384Mod::execute(&input.a, &input.b, &input.c, &input.module);
-        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH384_MOD);
+        self.expand_data_on_trace(&data, trace, SEL_OP_ARITH384_MOD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -130,9 +144,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Bls12_381CurveAddInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Curve::execute_add(&input.p1, &input.p2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_ADD);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_ADD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -153,9 +168,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Bls12_381CurveDblInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Curve::execute_dbl(&input.p1);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_DBL);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_CURVE_DBL, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -176,9 +192,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Bls12_381ComplexAddInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_add(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_ADD);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_ADD, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -199,9 +216,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Bls12_381ComplexSubInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_sub(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_SUB);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_SUB, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -222,9 +240,10 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         &self,
         input: &Bls12_381ComplexMulInput,
         trace: &mut [R],
+        previous_lt_flags: u8,
     ) {
         let data = executors::Bls12_381Complex::execute_mul(&input.f1, &input.f2);
-        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_MUL);
+        self.expand_data_on_trace(&data, trace, SEL_OP_BLS12_381_COMPLEX_MUL, previous_lt_flags);
         Self::expand_addr_step_on_trace(
             &ArithEq384StepAddr {
                 main_step: input.step,
@@ -250,16 +269,21 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             (F::ORDER_U64 as i64 + value) as u64
         }
     }
+    const FIRST_CLOCK: u8 = 0;
+    const LAST_CLOCK: u8 = ARITH_EQ_384_ROWS_BY_OP as u8 - 1;
 
     fn expand_data_on_trace<R: ArithEq384TraceRowOps<F>>(
         &self,
         data: &executors::ArithEq384Data,
         trace: &mut [R],
         sel_op: usize,
+        previous_lt_flags: u8,
     ) {
         let mut x1_x2_different = false;
-        let mut prev_x3_lt = false;
-        let mut prev_y3_lt = false;
+        // To calculate the multiplicity, use the prev_x3_lt and prev_y3_lt flags. However, when
+        // calculating the delta on the first clock, the prev_lt flags must always be treated as 0.
+        let mut prev_x3_lt = (previous_lt_flags & 1) != 0;
+        let mut prev_y3_lt = (previous_lt_flags & 2) != 0;
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..ARITH_EQ_384_ROWS_BY_OP {
@@ -299,14 +323,21 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                     trace[i].set_sel_op_clk0(j, false);
                 }
             }
+            let iclock = match i as u8 {
+                Self::FIRST_CLOCK => 1,
+                Self::LAST_CLOCK => 2,
+                _ => 0,
+            };
             match sel_op {
                 SEL_OP_ARITH384_MOD => {
-                    let x3_lt = data.x3[i] < data.y2[i] || (data.x3[i] == data.y2[i] && prev_x3_lt);
+                    let x3_lt = data.x3[i] < data.y2[i]
+                        || (i > 0 && data.x3[i] == data.y2[i] && prev_x3_lt);
                     trace[i].set_x3_lt(x3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
                         data.x3[i] - data.y2[i],
+                        iclock,
                     );
                     self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
@@ -319,23 +350,25 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                 | SEL_OP_BLS12_381_COMPLEX_SUB
                 | SEL_OP_BLS12_381_COMPLEX_MUL => {
                     let x3_lt = data.x3[i] < BLS12_381_PRIME_CHUNKS[i]
-                        || (data.x3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_x3_lt);
+                        || (i > 0 && data.x3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_x3_lt);
                     trace[i].set_x3_lt(x3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_x3_lt,
                         x3_lt,
                         data.x3[i] - BLS12_381_PRIME_CHUNKS[i],
+                        iclock,
                     );
                     self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_x3_lt = x3_lt;
 
                     let y3_lt = data.y3[i] < BLS12_381_PRIME_CHUNKS[i]
-                        || (data.y3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_y3_lt);
+                        || (i > 0 && data.y3[i] == BLS12_381_PRIME_CHUNKS[i] && prev_y3_lt);
                     trace[i].set_y3_lt(y3_lt);
                     let row = ArithEqLtTableSM::calculate_table_row(
                         prev_y3_lt,
                         y3_lt,
                         data.y3[i] - BLS12_381_PRIME_CHUNKS[i],
+                        iclock,
                     );
                     self.std.inc_virtual_row(self.table_id, row as u64, 1);
                     prev_y3_lt = y3_lt;
@@ -403,41 +436,51 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
+        let full = num_rows_needed == num_rows;
 
         timer_start_trace!(ARITH_EQ_384_TRACE);
 
         let mut trace_rows = &mut trace.buffer[..];
-        let mut par_traces = Vec::new();
-        let mut inputs_indexes = Vec::new();
+        let mut par_traces = Vec::with_capacity(total_inputs);
+        let mut previous_lt_flags = 0;
+
         for (i, inputs) in inputs.iter().enumerate() {
-            for (j, _) in inputs.iter().enumerate() {
+            for (j, input) in inputs.iter().enumerate() {
                 let (head, tail) = trace_rows.split_at_mut(ARITH_EQ_384_ROWS_BY_OP);
-                par_traces.push(head);
-                inputs_indexes.push((i, j));
+                par_traces.push((head, i, j, previous_lt_flags));
+                // To save on column, each input's could use current 'lt_flag and lt_flag in a lookup table.
+                // In first row of each input we need to known the final lt_flag, how inputs are processed in
+                // parallel we add this extra information for each input.
+                previous_lt_flags = Self::get_lt_flags(input);
                 trace_rows = tail;
             }
         }
+        // if instance is full, the previous_lt_flag of first row it's lt_flag of last row.
+        if full {
+            par_traces[0].3 = previous_lt_flags;
+        }
         let index = par_traces.len();
 
-        par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
-            let input_index = inputs_indexes[index];
-            let input = &inputs[input_index.0][input_index.1];
+        par_traces.into_par_iter().for_each(|(trace, i, j, previous_lt_flags)| {
+            let input = &inputs[i][j];
             match input {
-                ArithEq384Input::Arith384Mod(idata) => self.process_arith384_mod(idata, trace),
+                ArithEq384Input::Arith384Mod(idata) => {
+                    self.process_arith384_mod(idata, trace, previous_lt_flags)
+                }
                 ArithEq384Input::Bls12_381CurveAdd(idata) => {
-                    self.process_bls12_381_curve_add(idata, trace)
+                    self.process_bls12_381_curve_add(idata, trace, previous_lt_flags)
                 }
                 ArithEq384Input::Bls12_381CurveDbl(idata) => {
-                    self.process_bls12_381_curve_dbl(idata, trace)
+                    self.process_bls12_381_curve_dbl(idata, trace, previous_lt_flags)
                 }
                 ArithEq384Input::Bls12_381ComplexAdd(idata) => {
-                    self.process_bls12_381_complex_add(idata, trace);
+                    self.process_bls12_381_complex_add(idata, trace, previous_lt_flags);
                 }
                 ArithEq384Input::Bls12_381ComplexSub(idata) => {
-                    self.process_bls12_381_complex_sub(idata, trace);
+                    self.process_bls12_381_complex_sub(idata, trace, previous_lt_flags);
                 }
                 ArithEq384Input::Bls12_381ComplexMul(idata) => {
-                    self.process_bls12_381_complex_mul(idata, trace);
+                    self.process_bls12_381_complex_mul(idata, trace, previous_lt_flags);
                 }
             }
         });
