@@ -126,7 +126,16 @@ impl RomSM {
                     multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                 }
             }
-            trace_buffer[inst.index as usize] = F::from_u64(multiplicity);
+
+            let index = inst.index as usize;
+            debug_assert!(
+                 index < trace_buffer.len(),
+                 "ROM trace index {} out of bounds for trace_buffer len {} (RomTrace::NUM_ROWS = {})",
+                 index,
+                 trace_buffer.len(),
+                 RomTrace::<F>::NUM_ROWS
+            );
+            trace_buffer[index] = F::from_u64(multiplicity);
         }
 
         Ok(AirInstance::new(TraceInfo::new(
@@ -198,6 +207,12 @@ impl RomSM {
 
             // Get the ZisK instruction index
             let index = inst.index as usize;
+            debug_assert!(
+                index < RomRomTrace::<F>::NUM_ROWS,
+                "ROM instruction index {} out of bounds for ROM trace with {} rows",
+                index,
+                RomRomTrace::<F>::NUM_ROWS
+            );
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
