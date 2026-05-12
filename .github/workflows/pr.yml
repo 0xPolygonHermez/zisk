@@ -56,6 +56,11 @@ jobs:
       ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
 
     steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
       - name: Checkout sources
         uses: actions/checkout@v4
 
@@ -168,6 +173,8 @@ jobs:
         if: always()
         run: |
           docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
 
   test-macos:
     name: Test on macOS
