@@ -94,9 +94,9 @@ impl RomSM {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for key in rom.insts.keys() {
+        for zib in rom.insts.values() {
             // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
+            let inst = &zib.i;
 
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
