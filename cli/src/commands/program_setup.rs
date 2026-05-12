@@ -95,7 +95,7 @@ impl ZiskProgramSetup {
 
         tracing::info!("Computing merkle root");
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
-        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
+        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir, true)?;
 
         gen_assembly(self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
 

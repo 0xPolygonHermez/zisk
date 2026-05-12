@@ -233,20 +233,14 @@ impl AsmResources {
             .unwrap_or(false)
     }
 
-    /// Soft-reset the C children: write `1` to the `ResetFlag` slot and
-    /// post both `sem_prec_avail` and `sem_input_avail` so any child
-    /// sleeping in either wait function wakes up and aborts the in-flight
-    /// emulation cleanly. Children stay alive — no respawn needed.
-    pub fn signal_children_reset(&self) -> Result<()> {
-        if let Some(s) = &self.shared.hints_stream {
-            let processor = s
-                .lock()
-                .map_err(|e| anyhow::anyhow!("hints_stream mutex poisoned: {e}"))?
-                .get_processor();
-            processor.hints_sink().signal_children_reset()?;
-        }
-        self.shared.inputs_shmem_writer.notify_all_services()?;
-        Ok(())
+    /// Soft-reset the C children: set `ResetFlag=1` and post `sem_input_avail`
+    /// so children stuck in `_wait_for_input_avail` wake immediately, see the
+    /// flag, and abort. Children stuck in `_wait_for_prec_avail` are NOT woken
+    /// explicitly — they exit on the next `sem_timedwait` expiry (≤ 5 s, see
+    /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
+    /// `RECOVERY_TIMEOUT` covers that slip.
+    pub fn signal_cancellation(&self) -> Result<()> {
+        self.shared.inputs_shmem_writer.signal_reset()
     }
 
     pub fn reset(&self) {

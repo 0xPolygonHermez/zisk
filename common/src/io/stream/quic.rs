@@ -191,6 +191,13 @@ pub struct QuicStreamWriter {
 
     /// Server endpoint — bound at construction time so clients can connect immediately.
     endpoint: Endpoint,
+
+    /// Spawned-accept handoff. `open()` launches an async task on `runtime`
+    /// that drives `endpoint.accept()` to completion and sends the resulting
+    /// `Connection` here. `is_client_connected()` polls this non-blocking;
+    /// `wait_for_connection()` blocks on it. `None` means no accept task is
+    /// currently in flight.
+    connection_rx: Option<std::sync::mpsc::Receiver<Result<Connection>>>,
 }
 
 impl QuicStreamWriter {
@@ -214,7 +221,12 @@ impl QuicStreamWriter {
         let endpoint = Endpoint::server(server_config, bind_addr)
             .context("Failed to bind QUIC server endpoint")?;
         drop(_guard);
-        Ok(QuicStreamWriter { connection: None, runtime: Some(runtime), endpoint })
+        Ok(QuicStreamWriter {
+            connection: None,
+            runtime: Some(runtime),
+            endpoint,
+            connection_rx: None,
+        })
     }
 
     /// Returns the actual local address the endpoint is bound to.
@@ -245,36 +257,95 @@ impl QuicStreamWriter {
     }
 }
 
-impl StreamWrite for QuicStreamWriter {
-    /// Prepare the endpoint for connections.
-    ///
-    /// The endpoint is already bound (`new()` did that), so this is a no-op.
-    /// The actual blocking `accept()` is in `wait_for_connection()`.
-    fn open(&mut self) -> Result<()> {
-        Ok(())
+impl QuicStreamWriter {
+    /// Kick off a background accept task if one isn't already running and we
+    /// don't already have a connection. Idempotent: callable from both
+    /// `open()` and the lazy paths in `is_client_connected` / `wait_for_connection`.
+    fn ensure_accept_task(&mut self) {
+        if self.is_active() || self.connection_rx.is_some() {
+            return;
+        }
+        let endpoint = self.endpoint.clone();
+        let rt = self.runtime.as_ref().expect("runtime dropped");
+        let (tx, rx) = std::sync::mpsc::channel();
+        rt.spawn(async move {
+            let result: Result<Connection> = async {
+                let incoming = endpoint.accept().await.context("Endpoint closed before accept")?;
+                let conn = incoming.await.context("Failed to establish QUIC connection")?;
+                Ok(conn)
+            }
+            .await;
+            // Receiver may have been dropped by close()/Drop — ignore send error.
+            let _ = tx.send(result);
+        });
+        self.connection_rx = Some(rx);
     }
 
-    /// Block until a client has connected (up to 60 seconds).
+    /// Consume a pending accept result if available. Returns `true` if the
+    /// connection was promoted to `self.connection`. Non-blocking.
+    fn try_take_connection(&mut self) -> bool {
+        let rx = match self.connection_rx.as_ref() {
+            Some(rx) => rx,
+            None => return false,
+        };
+        match rx.try_recv() {
+            Ok(Ok(conn)) => {
+                self.connection = Some(conn);
+                self.connection_rx = None;
+                true
+            }
+            Ok(Err(_)) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                // Accept failed or the spawned task died; drop the channel so
+                // `ensure_accept_task` can retry on the next call.
+                self.connection_rx = None;
+                false
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => false,
+        }
+    }
+
+    /// Block until a client has connected (up to `CONNECT_DEADLINE`). Called
+    /// from `write()` for callers that drive `QuicStreamWriter` directly
+    /// (without `ZiskStreamWriter`'s non-blocking poll loop).
     fn wait_for_connection(&mut self) -> Result<()> {
         if self.is_active() {
             return Ok(());
         }
+        self.ensure_accept_task();
 
-        let endpoint = self.endpoint.clone();
-
-        let rt = self.runtime.as_ref().expect("runtime dropped");
-        let connection = block_on_dedicated(rt, async move {
-            let accept_fut = async {
-                let incoming = endpoint.accept().await.context("Failed to accept connection")?;
-                incoming.await.context("Failed to establish connection")
-            };
-            tokio::time::timeout(std::time::Duration::from_secs(60), accept_fut).await.map_err(
-                |_| anyhow::anyhow!("Timed out waiting for QUIC client connection (60s)"),
-            )?
+        let rx =
+            self.connection_rx.take().ok_or_else(|| anyhow::anyhow!("QUIC accept task missing"))?;
+        let result = rx.recv_timeout(crate::io::CONNECT_DEADLINE).map_err(|_| {
+            anyhow::anyhow!(
+                "Timed out waiting for QUIC client connection ({}s)",
+                crate::io::CONNECT_DEADLINE.as_secs()
+            )
         })?;
-
+        let connection = result?;
         self.connection = Some(connection);
         Ok(())
+    }
+}
+
+impl StreamWrite for QuicStreamWriter {
+    /// Spawn the background accept task. The endpoint itself was bound in
+    /// `new()`; this just primes the future that resolves once a client has
+    /// completed the QUIC handshake.
+    fn open(&mut self) -> Result<()> {
+        self.ensure_accept_task();
+        Ok(())
+    }
+
+    /// Non-blocking peer poll. The `ZiskStreamWriter` bg thread calls this
+    /// every few ms; we drain the spawned-accept channel here instead of
+    /// blocking on `endpoint.accept()` so `transport.lock()` is only held
+    /// for the duration of a `try_recv()`.
+    fn is_client_connected(&mut self) -> bool {
+        if self.is_active() {
+            return true;
+        }
+        self.ensure_accept_task();
+        self.try_take_connection()
     }
 
     /// Write data to the stream, returns the number of bytes written.
@@ -320,6 +391,9 @@ impl StreamWrite for QuicStreamWriter {
         if let Some(connection) = self.connection.take() {
             connection.close(0u32.into(), b"closing");
         }
+        // Drop any in-flight accept handoff so a subsequent `open()` starts a
+        // fresh task against the new endpoint state.
+        self.connection_rx = None;
         // Close the endpoint and wait for it to go idle, then shut down the
         // runtime — all while still inside the runtime context so the IO
         // reactor is still live for the async close handshake.
@@ -538,36 +612,35 @@ mod tests {
         init_crypto();
         let server_addr: SocketAddr = "127.0.0.1:15004".parse().unwrap();
 
-        // Create a large message (1MB - QUIC can handle this)
         let large_data: Vec<u8> = (0..1024 * 1024).map(|i| (i % 256) as u8).collect();
         let large_data_clone = large_data.clone();
 
-        // Channel to signal when writer has written data
-        let (tx, rx) = mpsc::channel();
+        let (write_done_tx, write_done_rx) = mpsc::channel();
+        let (read_done_tx, read_done_rx) = mpsc::channel();
 
-        // Spawn writer (server) thread
         let writer_thread = thread::spawn(move || {
             let mut writer = QuicStreamWriter::new(server_addr).unwrap();
             writer.write(&large_data).unwrap();
-            tx.send(()).unwrap(); // Signal that data is written
+            write_done_tx.send(()).unwrap();
 
-            thread::sleep(Duration::from_millis(200));
+            // Wait until the reader has drained the data before closing.
+            // A timing-based sleep here flakes on busy CI under 1 MB payloads.
+            read_done_rx.recv_timeout(Duration::from_secs(10)).unwrap();
             writer.close().unwrap();
         });
 
         thread::sleep(Duration::from_millis(100));
 
-        // Reader connects
         let mut reader = QuicStreamReader::new(server_addr).unwrap();
-        reader.open().unwrap(); // Explicitly connect
+        reader.open().unwrap();
 
-        // Wait for writer to have written data
-        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        write_done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
 
         let message = reader.next().unwrap().unwrap();
         assert_eq!(message, large_data_clone);
         reader.close().unwrap();
 
+        read_done_tx.send(()).unwrap();
         writer_thread.join().unwrap();
     }
 

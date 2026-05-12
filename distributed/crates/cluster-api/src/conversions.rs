@@ -380,7 +380,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             } else {
                 Some(response.error_message)
             },
-            result_data: result_data.unwrap(),
+            result_data,
             worker_in_recovery: response.worker_in_recovery,
         }
     }
