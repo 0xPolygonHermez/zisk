@@ -303,6 +303,28 @@ impl QuicStreamWriter {
             Err(std::sync::mpsc::TryRecvError::Empty) => false,
         }
     }
+
+    /// Block until a client has connected (up to `CONNECT_DEADLINE`). Called
+    /// from `write()` for callers that drive `QuicStreamWriter` directly
+    /// (without `ZiskStreamWriter`'s non-blocking poll loop).
+    fn wait_for_connection(&mut self) -> Result<()> {
+        if self.is_active() {
+            return Ok(());
+        }
+        self.ensure_accept_task();
+
+        let rx =
+            self.connection_rx.take().ok_or_else(|| anyhow::anyhow!("QUIC accept task missing"))?;
+        let result = rx.recv_timeout(crate::io::CONNECT_DEADLINE).map_err(|_| {
+            anyhow::anyhow!(
+                "Timed out waiting for QUIC client connection ({}s)",
+                crate::io::CONNECT_DEADLINE.as_secs()
+            )
+        })?;
+        let connection = result?;
+        self.connection = Some(connection);
+        Ok(())
+    }
 }
 
 impl StreamWrite for QuicStreamWriter {
@@ -324,23 +346,6 @@ impl StreamWrite for QuicStreamWriter {
         }
         self.ensure_accept_task();
         self.try_take_connection()
-    }
-
-    /// Block until a client has connected (up to 60 seconds).
-    fn wait_for_connection(&mut self) -> Result<()> {
-        if self.is_active() {
-            return Ok(());
-        }
-        self.ensure_accept_task();
-
-        let rx =
-            self.connection_rx.take().ok_or_else(|| anyhow::anyhow!("QUIC accept task missing"))?;
-        let result = rx
-            .recv_timeout(std::time::Duration::from_secs(60))
-            .map_err(|_| anyhow::anyhow!("Timed out waiting for QUIC client connection (60s)"))?;
-        let connection = result?;
-        self.connection = Some(connection);
-        Ok(())
     }
 
     /// Write data to the stream, returns the number of bytes written.

@@ -116,15 +116,18 @@ impl Coordinator {
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 
-        if was_pending && parked {
+        let should_flip = parked && (was_pending || !self.is_setup_in_flight(worker_id).await);
+
+        if should_flip {
             let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
-            info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
-        } else if !was_pending && parked && !self.is_setup_in_flight(worker_id).await {
-            let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
-            info!(
-                "[Recovery] Worker {} RecoveryComplete with no pending-recovery record but parked SettingUp; flipping Ready (cross-stream race)",
-                worker_id
-            );
+            if was_pending {
+                info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
+            } else {
+                info!(
+                    "[Recovery] Worker {} RecoveryComplete with no pending-recovery record but parked SettingUp; flipping Ready (cross-stream race)",
+                    worker_id
+                );
+            }
         } else if was_pending {
             warn!(
                 "[Recovery] Worker {} consumed pending-recovery entry but state was {:?} (not SettingUp); leaving worker state unchanged (likely re-dispatched)",
@@ -370,28 +373,11 @@ impl Coordinator {
         Some(ReconnectionDirectiveDto::KeepComputing)
     }
 
-    /// Removes a worker from the active pool and cleans up associated resources.
-    ///
-    /// Handles worker disconnection or removal by cleaning up state, reallocating
-    /// work if necessary, and ensuring system consistency. This method is typically
-    /// called when workers disconnect unexpectedly or during graceful shutdowns.
-    ///
-    /// # Parameters
-    ///
-    /// * `worker_id` - Unique identifier of the worker to remove
-    ///
-    /// # Cleanup Operations
-    ///
-    /// 1. **State Removal**: Removes worker from active pool and associated data structures
-    /// 2. **Job Impact Assessment**: Identifies any active jobs that may be affected
-    /// 3. **Resource Reallocation**: May trigger job failure or rebalancing depending on job state
-    /// 4. **Connection Cleanup**: Releases communication channels and associated resources
-    ///
-    /// # Impact on Active Jobs
-    ///
-    /// When a worker is unregistered:
-    /// If the worker was computing, fail the associated job.
-    /// Returns Ok(()) if the worker was not computing or if the job was already terminal.
+    /// If the worker was Computing, fail its job via `fail_job_with_recovery`
+    /// so the worker is parked in `pending_recovery`. A subsequent reconnect
+    /// will land in `SettingUp` until `WorkerRecoveryComplete` arrives,
+    /// preventing the coordinator from dispatching a new task while the
+    /// worker's detached `spawn_blocking` is still unwinding.
     async fn fail_job_if_computing(
         &self,
         worker_id: &WorkerId,
@@ -403,12 +389,19 @@ impl Coordinator {
                 "Worker {} {} while computing for job {} in phase {:?}",
                 worker_id, reason, job_id, phase
             );
-            self.fail_job(&job_id, format!("Worker {} {}", worker_id, reason)).await?;
+            self.fail_job_with_recovery(
+                &job_id,
+                format!("Worker {} {}", worker_id, reason),
+                Some(worker_id),
+            )
+            .await?;
         }
         Ok(())
     }
 
-    /// Unregisters a worker. If it was computing, fails the associated job.
+    /// Permanently remove a worker. Clears any `pending_recovery` entry —
+    /// unlike `disconnect_worker`, this worker will not reconnect to send
+    /// `WorkerRecoveryComplete`, so the entry would otherwise leak.
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "unregistered").await?;
@@ -416,6 +409,8 @@ impl Coordinator {
         self.workers_pool.unregister_worker(worker_id).await
     }
 
+    /// Transient disconnect — preserves `pending_recovery` so a reconnect
+    /// re-parks the worker `SettingUp` until recovery completes.
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "disconnected").await?;
@@ -548,7 +543,13 @@ impl Coordinator {
             return self.handle_task_failure(message).await;
         }
 
-        match message.result_data {
+        let Some(result_data) = message.result_data.as_ref() else {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {} reported success for job {} without result_data",
+                message.worker_id, message.job_id
+            )));
+        };
+        match result_data {
             ExecuteTaskResponseResultDataDto::Execution(_) => {
                 self.handle_execution_completion(message).await
             }

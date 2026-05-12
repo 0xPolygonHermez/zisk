@@ -371,26 +371,6 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             None => None,
         };
 
-        // Failure responses can carry `result_data: None` (dispatch failure
-        // before any computation). The DTO field is non-optional and the
-        // coordinator only reads it on the success path, so a zero
-        // placeholder is safe and never inspected.
-        let result_data = result_data.unwrap_or_else(|| {
-            ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
-                instances: 0,
-                executed_steps: 0,
-                publics: Vec::new(),
-                zisk_executor_time: ZiskExecutorTimeDto {
-                    task_received_time: 0.0,
-                    total_duration: 0.0,
-                    execution_duration: 0.0,
-                    count_and_plan_duration: 0.0,
-                    count_and_plan_mo_duration: 0.0,
-                    asm_execution_duration: None,
-                },
-            })
-        });
-
         ExecuteTaskResponseDto {
             job_id: JobId::from(response.job_id),
             worker_id: WorkerId::from(response.worker_id),

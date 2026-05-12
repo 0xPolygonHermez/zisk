@@ -78,9 +78,7 @@ async fn main() -> Result<()> {
 /// Detect the coordinator's "workers are setting up; retry shortly" response.
 fn is_cluster_setting_up(e: &anyhow::Error) -> bool {
     let s = format!("{e:#}");
-    s.contains("workers are setting up")
-        || s.contains("Cluster unavailable")
-        || s.contains("currently unavailable")
+    s.contains("workers are setting up") || s.contains("Cluster unavailable")
 }
 
 /// Wait for the worker(s) to clear `SettingUp` after a cancel/failure, then

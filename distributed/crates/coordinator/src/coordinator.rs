@@ -1416,19 +1416,21 @@ mod tests {
             worker_id: w0_id.clone(),
             success: true,
             error_message: None,
-            result_data: ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
-                instances: 1,
-                executed_steps: 100,
-                zisk_executor_time: ZiskExecutorTimeDto {
-                    total_duration: 0.0,
-                    execution_duration: 0.0,
-                    count_and_plan_duration: 0.0,
-                    count_and_plan_mo_duration: 0.0,
-                    asm_execution_duration: None,
-                    task_received_time: 0.0,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Execution(
+                ExecutionResultDataDto {
+                    instances: 1,
+                    executed_steps: 100,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        total_duration: 0.0,
+                        execution_duration: 0.0,
+                        count_and_plan_duration: 0.0,
+                        count_and_plan_mo_duration: 0.0,
+                        asm_execution_duration: None,
+                        task_received_time: 0.0,
+                    },
+                    publics: vec![],
                 },
-                publics: vec![],
-            }),
+            )),
             worker_in_recovery: false,
         };
 
@@ -1446,10 +1448,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_late_task_response_with_recovery_parks_settingup() {
-        use zisk_cluster_common::{
-            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ExecutionResultDataDto,
-            ZiskExecutorTimeDto,
-        };
+        use zisk_cluster_common::ExecuteTaskResponseDto;
 
         let (coordinator, workers, job_id) =
             setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
@@ -1462,19 +1461,7 @@ mod tests {
             worker_id: w0_id.clone(),
             success: false,
             error_message: Some("contribution failed".into()),
-            result_data: ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
-                instances: 0,
-                executed_steps: 0,
-                zisk_executor_time: ZiskExecutorTimeDto {
-                    total_duration: 0.0,
-                    execution_duration: 0.0,
-                    count_and_plan_duration: 0.0,
-                    count_and_plan_mo_duration: 0.0,
-                    asm_execution_duration: None,
-                    task_received_time: 0.0,
-                },
-                publics: vec![],
-            }),
+            result_data: None,
             worker_in_recovery: true,
         };
 

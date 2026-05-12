@@ -239,15 +239,8 @@ impl AsmResources {
     /// explicitly — they exit on the next `sem_timedwait` expiry (≤ 5 s, see
     /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
     /// `RECOVERY_TIMEOUT` covers that slip.
-    ///
-    /// The flag MUST be set before posting the semaphore — without it, a
-    /// child wakes from the post, sees flag=0, and goes back to sleep forever.
     pub fn signal_cancellation(&self) -> Result<()> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        self.shared.inputs_shmem_writer.set_reset_flag();
-
-        self.shared.inputs_shmem_writer.notify_all_services()?;
-        Ok(())
+        self.shared.inputs_shmem_writer.signal_reset()
     }
 
     pub fn reset(&self) {

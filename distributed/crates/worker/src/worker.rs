@@ -60,6 +60,21 @@ pub(crate) enum WorkerMpiTag {
 /// `process_hints` call when shutting it down between proves.
 const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Run `body` inside `catch_unwind`; on unwind, log and invoke `on_panic`.
+/// Each `spawn_blocking` compute body uses this so a guest panic surfaces as
+/// a failure `LoopEvent` instead of silently killing the worker thread.
+fn run_panic_guarded<B, P>(label: &str, job_id: &JobId, body: B, on_panic: P)
+where
+    B: FnOnce(),
+    P: FnOnce(),
+{
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+    if outcome.is_err() {
+        error!("{label} task panicked for {job_id}; emitting failure result");
+        on_panic();
+    }
+}
+
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
@@ -90,6 +105,49 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         instances: u64,
     },
+}
+
+/// Events driving the worker event loop. Compute results and recovery
+/// completions share one channel — same lifetime, single source of truth.
+#[derive(Debug)]
+pub enum LoopEvent {
+    Computation(ComputationResult),
+    RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
+}
+
+/// Typed sender so call sites read `send_computation` / `send_recovery_complete`
+/// rather than wrapping variants by hand.
+#[derive(Clone)]
+pub struct LoopEventSender(mpsc::UnboundedSender<LoopEvent>);
+
+/// Zero-sized send error: callers discard the payload, so we don't carry the
+/// 600-byte `LoopEvent` around just to retrieve it.
+#[derive(Debug)]
+pub struct LoopChannelClosed;
+
+impl std::fmt::Display for LoopChannelClosed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("worker event loop channel closed")
+    }
+}
+
+impl std::error::Error for LoopChannelClosed {}
+
+impl LoopEventSender {
+    pub fn new(tx: mpsc::UnboundedSender<LoopEvent>) -> Self {
+        Self(tx)
+    }
+
+    pub fn send_computation(&self, result: ComputationResult) -> Result<(), LoopChannelClosed> {
+        self.0.send(LoopEvent::Computation(result)).map_err(|_| LoopChannelClosed)
+    }
+
+    pub fn send_recovery_complete(
+        &self,
+        rc: zisk_cluster_api::WorkerRecoveryComplete,
+    ) -> Result<(), LoopChannelClosed> {
+        self.0.send(LoopEvent::RecoveryComplete(rc)).map_err(|_| LoopChannelClosed)
+    }
 }
 
 pub struct ProverConfig {
@@ -509,7 +567,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn handle_partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> Result<JoinHandle<()>> {
         self.partial_contribution_mpi_broadcast(&job).await?;
         Ok(self.partial_contribution(job, tx))
@@ -549,7 +607,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub async fn handle_execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> Result<JoinHandle<()>> {
         self.execution_only_mpi_broadcast(&job).await?;
         let hash_id = job.lock().await.hash_id.clone();
@@ -591,7 +649,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> Result<JoinHandle<()>> {
         self.prove_mpi_broadcast(&job, challenges.clone()).await?;
         Ok(self.prove(job, challenges, tx))
@@ -623,7 +681,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> JoinHandle<()> {
         self.aggregate(job, agg_params, tx)
     }
@@ -631,7 +689,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
@@ -644,80 +702,73 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let tx_panic = tx.clone();
             let job_id_panic = job_id.clone();
 
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let guard = job.blocking_lock();
-                info!("Computing Contribution for {job_id}");
+            run_panic_guarded(
+                "Contribution",
+                &job_id,
+                || {
+                    let guard = job.blocking_lock();
+                    info!("Computing Contribution for {job_id}");
 
-                let phase_inputs = proofman::ProvePhaseInputs::Contributions();
-                let inputs_source = guard.data_ctx.input_source.clone();
-                let hints_source = guard.data_ctx.hints_source.clone();
-                let partition_info = PartitionInfo {
-                    total_compute_units: guard.total_compute_units as usize,
-                    allocation: guard.allocation.clone(),
-                    worker_idx: guard.rank_id as usize,
-                };
-                drop(guard);
-                let result = Self::execute_contribution_task(
-                    job_id.clone(),
-                    &prover,
-                    phase_inputs,
-                    inputs_source,
-                    hints_source,
-                    partition_info,
-                    options,
-                );
+                    let phase_inputs = proofman::ProvePhaseInputs::Contributions();
+                    let inputs_source = guard.data_ctx.input_source.clone();
+                    let hints_source = guard.data_ctx.hints_source.clone();
+                    let partition_info = PartitionInfo {
+                        total_compute_units: guard.total_compute_units as usize,
+                        allocation: guard.allocation.clone(),
+                        worker_idx: guard.rank_id as usize,
+                    };
+                    drop(guard);
+                    let result = Self::execute_contribution_task(
+                        job_id.clone(),
+                        &prover,
+                        phase_inputs,
+                        inputs_source,
+                        hints_source,
+                        partition_info,
+                        options,
+                    );
 
-                let (witness_info, zisk_execution_time) = prover
-                    .get_execution_info()
-                    .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
+                    let (witness_info, zisk_execution_time) = prover
+                        .get_execution_info()
+                        .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
-                let instances = witness_info.total_instances as u64;
+                    let instances = witness_info.total_instances as u64;
 
-                let mut guard = job.blocking_lock();
-                guard.instances = instances;
-                guard.executed_steps = prover.executed_steps();
-                drop(guard);
+                    let mut guard = job.blocking_lock();
+                    guard.instances = instances;
+                    guard.executed_steps = prover.executed_steps();
+                    drop(guard);
 
-                match result {
-                    Ok(data) => {
-                        if tx
-                            .send(ComputationResult::Contribution {
-                                job_id,
-                                success: true,
-                                result: Ok((witness_info, zisk_execution_time, data, instances)),
-                                task_received_time,
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send contribution result: event loop channel closed");
-                        }
-                    }
-                    Err(error) => {
-                        error!("Contribution computation failed for {}: {}", job_id, error);
-                        if tx
-                            .send(ComputationResult::Contribution {
-                                job_id,
+                    let computation = match result {
+                        Ok(data) => ComputationResult::Contribution {
+                            job_id: job_id.clone(),
+                            success: true,
+                            result: Ok((witness_info, zisk_execution_time, data, instances)),
+                            task_received_time,
+                        },
+                        Err(error) => {
+                            error!("Contribution computation failed for {job_id}: {error}");
+                            ComputationResult::Contribution {
+                                job_id: job_id.clone(),
                                 success: false,
                                 result: Err(error),
                                 task_received_time,
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send contribution error: event loop channel closed");
+                            }
                         }
+                    };
+                    if tx.send_computation(computation).is_err() {
+                        warn!("Failed to send contribution result: event loop channel closed");
                     }
-                }
-            }));
-
-            if panic.is_err() {
-                error!("Contribution task panicked for {job_id_panic}; emitting failure result");
-                let _ = tx_panic.send(ComputationResult::Contribution {
-                    job_id: job_id_panic,
-                    success: false,
-                    result: Err(anyhow::anyhow!("contribution task panicked")),
-                    task_received_time,
-                });
-            }
+                },
+                || {
+                    let _ = tx_panic.send_computation(ComputationResult::Contribution {
+                        job_id: job_id_panic,
+                        success: false,
+                        result: Err(anyhow::anyhow!("contribution task panicked")),
+                        task_received_time,
+                    });
+                },
+            );
         })
     }
 
@@ -725,7 +776,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         hash_id: String,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let guest_program = self
@@ -742,87 +793,81 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let tx_panic = tx.clone();
             let job_id_panic = job_id.clone();
 
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let guard = job.blocking_lock();
-                info!("Computing Execution (execution-only) for {job_id}");
+            run_panic_guarded(
+                "Execution",
+                &job_id,
+                || {
+                    let guard = job.blocking_lock();
+                    info!("Computing Execution (execution-only) for {job_id}");
 
-                let inputs_source = guard.data_ctx.input_source.clone();
-                let hints_source = guard.data_ctx.hints_source.clone();
-                let partition_info = PartitionInfo {
-                    total_compute_units: guard.total_compute_units as usize,
-                    allocation: guard.allocation.clone(),
-                    worker_idx: guard.rank_id as usize,
-                };
-                drop(guard);
+                    let inputs_source = guard.data_ctx.input_source.clone();
+                    let hints_source = guard.data_ctx.hints_source.clone();
+                    let partition_info = PartitionInfo {
+                        total_compute_units: guard.total_compute_units as usize,
+                        allocation: guard.allocation.clone(),
+                        worker_idx: guard.rank_id as usize,
+                    };
+                    drop(guard);
 
-                // Execute the program (same as contribution) but without generating challenges
-                let result = Self::execute_execution_task(
-                    &prover,
-                    inputs_source,
-                    hints_source,
-                    partition_info,
-                    &guest_program,
-                );
+                    // Execute the program (same as contribution) but without generating challenges
+                    let result = Self::execute_execution_task(
+                        &prover,
+                        inputs_source,
+                        hints_source,
+                        partition_info,
+                        &guest_program,
+                    );
 
-                let mut guard = job.blocking_lock();
-                guard.executed_steps = prover.executed_steps();
-                drop(guard);
+                    {
+                        let mut guard = job.blocking_lock();
+                        guard.executed_steps = prover.executed_steps();
+                    }
 
-                let (witness_info, zisk_execution_time) = prover
-                    .get_execution_info()
-                    .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
+                    let (witness_info, zisk_execution_time) = prover
+                        .get_execution_info()
+                        .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
-                match result {
-                    Ok((num_instances, publics)) => {
-                        let instances = num_instances as u64;
-                        let executed_steps = prover.executed_steps();
-                        guard = job.blocking_lock();
-                        guard.instances = instances;
-                        drop(guard);
+                    let computation = match result {
+                        Ok((num_instances, publics)) => {
+                            let instances = num_instances as u64;
+                            let executed_steps = prover.executed_steps();
+                            job.blocking_lock().instances = instances;
 
-                        // witness_info.publics is empty in execution-only mode (no witness phase),
-                        // so override with the publics from ExecuteOutput.
-                        let mut wi = witness_info;
-                        wi.publics = publics;
+                            // witness_info.publics is empty in execution-only mode (no witness
+                            // phase), so override with the publics from ExecuteOutput.
+                            let mut wi = witness_info;
+                            wi.publics = publics;
 
-                        if tx
-                            .send(ComputationResult::Execution {
-                                job_id,
+                            ComputationResult::Execution {
+                                job_id: job_id.clone(),
                                 success: true,
                                 result: Ok((wi, zisk_execution_time, instances, executed_steps)),
                                 task_received_time,
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send execution result: event loop channel closed");
+                            }
                         }
-                    }
-                    Err(error) => {
-                        error!("Execution-only computation failed for {}: {}", job_id, error);
-                        if tx
-                            .send(ComputationResult::Execution {
-                                job_id,
+                        Err(error) => {
+                            error!("Execution-only computation failed for {job_id}: {error}");
+                            ComputationResult::Execution {
+                                job_id: job_id.clone(),
                                 success: false,
                                 result: Err(error),
                                 task_received_time,
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send execution error: event loop channel closed");
+                            }
                         }
+                    };
+                    if tx.send_computation(computation).is_err() {
+                        warn!("Failed to send execution result: event loop channel closed");
                     }
-                }
-            }));
-
-            if panic.is_err() {
-                error!("Execution task panicked for {job_id_panic}; emitting failure result");
-                let _ = tx_panic.send(ComputationResult::Execution {
-                    job_id: job_id_panic,
-                    success: false,
-                    result: Err(anyhow::anyhow!("execution task panicked")),
-                    task_received_time,
-                });
-            }
+                },
+                || {
+                    let _ = tx_panic.send_computation(ComputationResult::Execution {
+                        job_id: job_id_panic,
+                        success: false,
+                        result: Err(anyhow::anyhow!("execution task panicked")),
+                        task_received_time,
+                    });
+                },
+            );
         })
     }
 
@@ -1030,7 +1075,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         challenges: Vec<ContributionsInfo>,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options = self.get_prove_options(false);
@@ -1040,50 +1085,43 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let tx_panic = tx.clone();
             let job_id_panic = job_id.clone();
 
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                info!("Computing Prove for {job_id}");
+            run_panic_guarded(
+                "Prove",
+                &job_id,
+                || {
+                    info!("Computing Prove for {job_id}");
 
-                let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
-                let result =
-                    Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
+                    let phase_inputs = proofman::ProvePhaseInputs::Internal(challenges);
+                    let result =
+                        Self::execute_prove_task(job_id.clone(), &prover, phase_inputs, options);
 
-                match result {
-                    Ok(data) => {
-                        if tx
-                            .send(ComputationResult::Proofs {
-                                job_id,
-                                success: true,
-                                result: Ok(data),
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send prove result: event loop channel closed");
-                        }
-                    }
-                    Err(error) => {
-                        error!("Prove computation failed for {}: {}", job_id, error);
-                        if tx
-                            .send(ComputationResult::Proofs {
-                                job_id,
+                    let computation = match result {
+                        Ok(data) => ComputationResult::Proofs {
+                            job_id: job_id.clone(),
+                            success: true,
+                            result: Ok(data),
+                        },
+                        Err(error) => {
+                            error!("Prove computation failed for {job_id}: {error}");
+                            ComputationResult::Proofs {
+                                job_id: job_id.clone(),
                                 success: false,
                                 result: Err(error),
-                            })
-                            .is_err()
-                        {
-                            warn!("Failed to send prove error: event loop channel closed");
+                            }
                         }
+                    };
+                    if tx.send_computation(computation).is_err() {
+                        warn!("Failed to send prove result: event loop channel closed");
                     }
-                }
-            }));
-
-            if panic.is_err() {
-                error!("Prove task panicked for {job_id_panic}; emitting failure result");
-                let _ = tx_panic.send(ComputationResult::Proofs {
-                    job_id: job_id_panic,
-                    success: false,
-                    result: Err(anyhow::anyhow!("prove task panicked")),
-                });
-            }
+                },
+                || {
+                    let _ = tx_panic.send_computation(ComputationResult::Proofs {
+                        job_id: job_id_panic,
+                        success: false,
+                        result: Err(anyhow::anyhow!("prove task panicked")),
+                    });
+                },
+            );
         })
     }
 
@@ -1120,7 +1158,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
-        tx: mpsc::UnboundedSender<ComputationResult>,
+        tx: LoopEventSender,
     ) -> JoinHandle<()> {
         let prover = self.prover.clone();
         let options =
@@ -1142,7 +1180,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             let instances = job_guard.instances;
 
             if tx
-                .send(ComputationResult::AggProof {
+                .send_computation(ComputationResult::AggProof {
                     job_id,
                     success: false,
                     result: Err(error),
@@ -1190,7 +1228,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         .unwrap_or_default();
 
                     if tx
-                        .send(ComputationResult::AggProof {
+                        .send_computation(ComputationResult::AggProof {
                             job_id,
                             success: true,
                             result: Ok(Some(proof)),
@@ -1206,7 +1244,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 Err(error) => {
                     tracing::error!("Aggregation failed for {}: {}", job_id, error);
                     if tx
-                        .send(ComputationResult::AggProof {
+                        .send_computation(ComputationResult::AggProof {
                             job_id,
                             success: false,
                             result: Err(error),

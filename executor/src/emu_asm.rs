@@ -199,38 +199,6 @@ impl EmulatorAsm {
             .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
             .clone();
 
-        self.execute_inner(
-            zisk_rom,
-            stdin,
-            pctx,
-            sm_bundle,
-            use_hints,
-            stats,
-            _caller_stats_scope,
-            &asm_resources,
-        )
-    }
-
-    #[allow(clippy::type_complexity)]
-    #[allow(clippy::too_many_arguments)]
-    fn execute_inner<F: PrimeField64>(
-        &self,
-        zisk_rom: &ZiskRom,
-        stdin: &ZiskStdin,
-        pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
-        use_hints: bool,
-        stats: &ExecutorStatsHandle,
-        _caller_stats_scope: &StatsScope,
-        asm_resources: &Arc<AsmResources>,
-    ) -> Result<(
-        Vec<EmuTrace>,
-        DeviceMetricsList,
-        NestedDeviceMetricsList,
-        Option<JoinHandle<Result<AsmRunnerMO>>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
-        u64,
-    )> {
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
             asm_resources.start_stream()?;
@@ -303,12 +271,17 @@ impl EmulatorAsm {
                 // thread). Wake MO/RH in case they're still parked, then join
                 // so their detached threads release the shmem-reader locks
                 // before the next job begins.
+                //
+                // We enter this arm for ANY MT failure — cancellation, shmem
+                // corruption, poisoned mutex, ASM child non-zero exit — so the
+                // join-failure logs deliberately say "MT-failure cleanup"
+                // rather than "after cancel" to avoid misattributing root cause.
                 if let Err(reset_err) = asm_resources.signal_cancellation() {
-                    tracing::error!("execute_inner: signal_cancellation failed: {reset_err:#}");
+                    tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
                 }
-                let _ = handle_mo.join();
+                join_runner_during_cleanup("MO", handle_mo);
                 if let Some(h) = handle_rh {
-                    let _ = h.join();
+                    join_runner_during_cleanup("RH", h);
                 }
                 stats_end!(stats, &_exec_scope);
                 Err(e)
@@ -482,5 +455,19 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         caller_stats_scope: &StatsScope,
     ) -> Result<crate::EmulatorResult> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+    }
+}
+
+/// Join an MO/RH runner thread on the MT-failure cleanup path, logging any
+/// thread panic or runner error so observability isn't silently lost. The
+/// caller has already issued `signal_cancellation`, so a healthy runner will
+/// observe the reset flag and exit `Ok(_)`.
+fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Result<T>>) {
+    match handle.join() {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+        }
+        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
     }
 }

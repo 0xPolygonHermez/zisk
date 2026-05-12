@@ -90,7 +90,7 @@ pub struct CoordinatorConfig {
     pub stale_disconnected_threshold_seconds: u64,
     /// Seconds a job in a terminal state (`Completed`, `Failed`, `Cancelled`) is kept
     /// in memory before being evicted by the monitor sweep. Default: 3600s (60 min).
-    /// `0` disables retention.
+    /// `0` evicts terminal jobs on the next monitor tick.
     pub job_ttl_seconds: u64,
     /// Optional webhook URL to POST job completion/failure notifications.
     pub webhook_url: Option<String>,

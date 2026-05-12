@@ -52,7 +52,7 @@ impl Coordinator {
 
         // Extract the proof data
         let proof_data = match execute_task_response.result_data {
-            ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
+            Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof)) => final_proof,
             _ => {
                 return Err(CoordinatorError::InvalidRequest(
                     "Expected FinalProof result data for Aggregation".to_string(),

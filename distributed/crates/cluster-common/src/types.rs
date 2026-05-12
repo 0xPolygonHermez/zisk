@@ -275,7 +275,6 @@ pub struct Job {
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
     pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
-    /// Time at which the job entered a terminal state (`Completed`, `Failed`, or `Cancelled`).
     pub terminated_at: Option<DateTime<Utc>>,
     pub state: JobState,
     pub data_id: DataId,

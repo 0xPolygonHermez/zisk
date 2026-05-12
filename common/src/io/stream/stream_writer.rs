@@ -1,5 +1,11 @@
 use anyhow::Result;
 
+/// Upper bound on how long any peer-connect poll loop waits before giving up.
+/// Shared between [`ZiskStreamWriter`](crate::io::ZiskStreamWriter)'s background
+/// connect thread and transports that drive accept inside their own `write()`
+/// (currently only QUIC).
+pub const CONNECT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Core trait for stream writing operations
 pub trait StreamWrite: Send + 'static {
     /// Open/initialize the stream for writing
@@ -17,26 +23,13 @@ pub trait StreamWrite: Send + 'static {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool;
 
-    /// Non-blocking peer-connection poll. Returns `true` once writes can
-    /// proceed. The `ZiskStreamWriter` bg thread polls this with brief lock
-    /// acquisitions, releasing `transport.lock()` between polls so callers
-    /// like `finish()` aren't blocked behind a long wait.
-    ///
-    /// Default falls back to `is_active()`, which is safe for transports whose
-    /// `open()` synchronously establishes the connection. Transports that
-    /// defer accept (Unix socket, QUIC) MUST override to do a cheap poll —
-    /// returning a permanent `true` would push a blocking accept inside the
-    /// bg thread's `write()` call and hold `transport.lock()` for the full
-    /// connection deadline (the precise behavior the bg thread is meant to
-    /// avoid).
+    /// Non-blocking peer-connection poll. Must return quickly:
+    /// `ZiskStreamWriter`'s connect thread calls this while holding
+    /// `transport.lock()`. Transports with deferred accept (Unix, QUIC) MUST
+    /// override; the default returns `is_active()` for transports whose
+    /// `open()` synchronously establishes the connection.
     fn is_client_connected(&mut self) -> bool {
         self.is_active()
-    }
-
-    /// Blocking variant kept for transports that need to drive accept inside
-    /// `write()` (QUIC). Not used by `ZiskStreamWriter`'s bg thread anymore.
-    fn wait_for_connection(&mut self) -> Result<()> {
-        Ok(())
     }
 
     /// Maximum bytes that can be sent in a single `write()` call.

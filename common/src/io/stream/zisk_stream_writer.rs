@@ -28,7 +28,7 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use anyhow::Result;
 
-use crate::io::StreamWrite;
+use crate::io::{StreamWrite, CONNECT_DEADLINE};
 
 use crate::io::QuicStreamWriter;
 #[cfg(unix)]
@@ -44,9 +44,9 @@ use crate::io::UnixSocketStreamWriter;
 /// hint pipeline's existing flush threshold.
 const PUSH_DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
-/// Upper bound on how long `start()`'s bg thread polls for a peer connection.
-/// Beyond this we give up and surface an error to any waiting flusher.
-const WAIT_FOR_CONNECTION_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+/// Background-connect poll interval. Short enough that `finish()` and
+/// `flush()` only ever wait one tick on `transport.lock()` between polls.
+const CONNECT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
 
 // ── Push sender trait ──────────────────────────────────────────────────────
 
@@ -86,9 +86,11 @@ enum TransportKind {
     Push,
 }
 
-/// Mutex-free tag mirroring `TransportKind`'s discriminant. `is_external` /
-/// `is_push` would otherwise lock `transport`, which the bg thread holds for
-/// the full `wait_for_connection()` deadline.
+/// Mutex-free tag mirroring `TransportKind`'s discriminant. The bg connect
+/// thread only holds `transport.lock()` for the duration of a single
+/// non-blocking poll (≤ a few ms), but `is_external` / `is_push` are called
+/// from hot paths where even brief contention with the bg thread is wasteful;
+/// caching the discriminant here avoids the lock entirely.
 #[derive(Copy, Clone, PartialEq)]
 enum TransportTag {
     Direct,
@@ -102,10 +104,16 @@ struct LiveState {
     /// `true` after `start()` has opened the transport, drained any
     /// pre-buffered bytes, and seen the peer connect. `flush()` blocks on this.
     ready: bool,
-    /// `start()` is idempotent while this is set: the bg thread holds
-    /// `transport.lock()` for the full `wait_for_connection()` deadline,
-    /// so a second `start()` would otherwise block 60 s on that mutex.
+    /// `start()` is idempotent while this is set so two concurrent `start()`
+    /// calls share one bg thread instead of racing.
     starting: bool,
+    /// Monotonic counter bumped by `start()` and `finish()`. Each bg connect
+    /// thread captures the value at spawn; on every loop iteration (and on
+    /// final state write-back) it compares against the current value and
+    /// bails out if they differ. This prevents a stale bg thread from a
+    /// previous `start()` from clobbering a fresh `start()`'s `LiveState`
+    /// after a `finish()` → `start()` sequence.
+    start_generation: u64,
     /// Set when the bg thread's start handshake (connect-poll or initial
     /// drain) failed. `flush()` returns this so waiters don't block forever
     /// after a connection timeout. Cleared by the next successful `start()`
@@ -153,6 +161,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: false,
                     starting: false,
+                    start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
@@ -174,6 +183,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: true,
                     starting: false,
+                    start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
@@ -214,6 +224,7 @@ impl ZiskStreamWriter {
                 live_state: Mutex::new(LiveState {
                     ready: false,
                     starting: false,
+                    start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
@@ -405,20 +416,21 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        // See `LiveState::starting` — repeated concurrent start()s share one
-        // bg thread. But if the stream is already `ready`, we still tear down
-        // and rebind: per the doc above, `start()` on an active stream is the
-        // "reuse" entry point.
-        {
+        // Idempotency: a concurrent `start()` becomes a no-op (`starting=true`
+        // → share the in-flight bg thread). Calling `start()` on an already-
+        // ready stream tears it down and rebinds.
+        let my_gen = {
             let mut guard = self.inner.live_state.lock().unwrap();
             if guard.starting {
                 return Ok(());
             }
             guard.starting = true;
+            guard.start_generation = guard.start_generation.wrapping_add(1);
             // Starting fresh: flushers must wait for the new bg thread to drain.
             guard.ready = false;
             guard.last_start_error = None;
-        }
+            guard.start_generation
+        };
 
         // Open (or reopen) the transport synchronously so the path is bindable
         // before this function returns.
@@ -429,7 +441,14 @@ impl ZiskStreamWriter {
                 let _ = writer.close();
             }
             if let Err(e) = writer.open() {
-                self.inner.live_state.lock().unwrap().starting = false;
+                // Surface the failure to any flusher already blocked on
+                // `live_cond` — otherwise they'd wait forever, since `ready`
+                // never flips and no bg thread will be spawned to set
+                // `last_start_error`.
+                let mut guard = self.inner.live_state.lock().unwrap();
+                guard.starting = false;
+                guard.last_start_error = Some(e.to_string());
+                self.inner.live_cond.notify_all();
                 return Err(e);
             }
         }
@@ -437,12 +456,30 @@ impl ZiskStreamWriter {
         // Background thread: poll for peer connection without holding the
         // transport mutex across the full wait. Each poll briefly locks
         // `transport` to ask `is_client_connected()`, then releases for 5 ms
-        // — so `finish()` and `flush()` only ever wait on a single poll
-        // (≤ a few ms), not on the 60 s connection deadline.
+        // — so callers contending on `transport.lock()` (e.g. `finish()`)
+        // only wait the duration of one poll, not the 60 s connection
+        // deadline. The loop also observes `start_generation` so a concurrent
+        // `finish()` (or a re-start) tears the thread down on the next tick
+        // instead of letting it spin for the remainder of the deadline.
+        //
+        // NOTE: once the peer connects, this thread acquires `transport` and
+        // `pending` simultaneously to drain the pre-buffered bytes. For
+        // pending payloads larger than the transport chunk size this can
+        // span multiple `write()` calls — `finish()` blocks on
+        // `transport.lock()` for the duration of the drain. In practice the
+        // drain is tens of ms on Unix and can reach hundreds of ms on QUIC.
         let inner = Arc::clone(&self.inner);
         std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + WAIT_FOR_CONNECTION_DEADLINE;
+            let deadline = std::time::Instant::now() + CONNECT_DEADLINE;
             let result = loop {
+                // Cheap check first: if the generation changed (either
+                // `finish()` cleared us or another `start()` superseded us),
+                // bail immediately. Without this, stale connect threads
+                // accumulate across cancel/retry scenarios, each sleeping up
+                // to the full 60 s deadline.
+                if inner.live_state.lock().unwrap().start_generation != my_gen {
+                    break Err(anyhow::anyhow!("start superseded before peer connected"));
+                }
                 let connected = {
                     let mut transport = inner.transport.lock().unwrap();
                     match &mut *transport {
@@ -481,16 +518,17 @@ impl ZiskStreamWriter {
                         inner.uri
                     ));
                 }
-                std::thread::sleep(std::time::Duration::from_millis(5));
+                std::thread::sleep(CONNECT_POLL_INTERVAL);
             };
 
             let mut guard = inner.live_state.lock().unwrap();
-            let still_ours = guard.starting;
-            guard.starting = false;
-            if !still_ours {
+            // Only write back if we're still the active start. Anything else
+            // means `finish()` or a fresh `start()` already took over.
+            if guard.start_generation != my_gen {
                 inner.live_cond.notify_all();
                 return;
             }
+            guard.starting = false;
             match result {
                 Ok(()) => {
                     guard.ready = true;
@@ -532,6 +570,9 @@ impl ZiskStreamWriter {
             let mut guard = self.inner.live_state.lock().unwrap();
             guard.ready = false;
             guard.starting = false;
+            // Invalidate any in-flight bg connect thread so it bails out
+            // instead of clobbering a future `start()`'s LiveState.
+            guard.start_generation = guard.start_generation.wrapping_add(1);
             guard.last_start_error = None;
             self.inner.live_cond.notify_all();
         }
@@ -665,7 +706,7 @@ mod tests {
                 w.start().unwrap();
 
                 let mut reader = UnixSocketStreamReader::new(&path).unwrap();
-                // wait_for_connection in start's bg thread completes once we open
+                // bg connect thread sees the accept once we open; pending bytes drain.
                 let msg = reader.next().unwrap().unwrap();
                 // Both pushes were drained before ready=true, so they arrive
                 // in one wire message (under the SOCK_SEQPACKET 128 KB limit).
