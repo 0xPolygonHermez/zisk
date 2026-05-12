@@ -94,7 +94,7 @@ impl RomSM {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().enumerate() {
+        for key in rom.insts.keys() {
             // Get the Zisk instruction
             let inst = &rom.insts[key].i;
 
