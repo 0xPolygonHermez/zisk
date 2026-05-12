@@ -48,7 +48,7 @@ impl RomSM {
     /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new<F: PrimeField64>(is_asm_emulator: bool) -> Arc<Self> {
         let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (create_atomic_vec(RomTrace::<F>::NUM_ROWS as usize), vec![])
+            (create_atomic_vec(RomTrace::<F>::NUM_ROWS), vec![])
         } else {
             (
                 create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
@@ -149,7 +149,7 @@ impl RomSM {
 
         // Check that the provided histogram has at most as many entries as the ROM trace
         assert!(
-            asm_romh.inst_count.len() <= RomTrace::<F>::NUM_ROWS as usize,
+            asm_romh.inst_count.len() <= RomTrace::<F>::NUM_ROWS,
             "The provided assembly histogram has {} entries, which exceeds the maximum supported by the Zisk PIL ROM trace ({} entries).  Please review zisk.pil and increase the ROM trace size accordingly.",
             asm_romh.inst_count.len(),
             RomTrace::<F>::NUM_ROWS
