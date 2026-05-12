@@ -76,7 +76,7 @@ jobs:
             --shm-size=48g \
             -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
             -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
-            -v /home/gha/cache-setup:/github/home/output:rw \
+            -v /home/gha/cache-setup:/home/ziskuser/output:rw \
             -e ZISK_GHA=1 \
             -e ZISK_REPO_DIR=/workspace/zisk \
             -e ZISK_TESTVECTORS_BRANCH=${ZISK_TESTVECTORS_BRANCH} \
