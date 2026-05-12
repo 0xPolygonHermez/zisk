@@ -760,10 +760,10 @@ impl Coordinator {
     /// * `result_data` - The result data from the worker's response
     fn extract_challenges_data(
         &self,
-        result_data: ExecuteTaskResponseResultDataDto,
+        result_data: Option<ExecuteTaskResponseResultDataDto>,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Challenges(ch_list) => {
+            Some(ExecuteTaskResponseResultDataDto::Challenges(ch_list)) => {
                 if ch_list.challenges.is_empty() {
                     return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
@@ -816,10 +816,10 @@ impl Coordinator {
     /// * `result_data` - The result data from the worker's response
     fn extract_execution_data(
         &self,
-        result_data: ExecuteTaskResponseResultDataDto,
+        result_data: Option<ExecuteTaskResponseResultDataDto>,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Execution(exec_data) => {
+            Some(ExecuteTaskResponseResultDataDto::Execution(exec_data)) => {
                 let zisk_executor_time =
                     Self::extract_execution_info(&exec_data.zisk_executor_time);
                 let instances = exec_data.instances;

@@ -88,13 +88,23 @@ impl InputsShmemWriter {
         Ok(())
     }
 
-    pub fn notify_all_services(&self) -> Result<()> {
+    fn notify_all_services(&self) -> Result<()> {
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
             for sem in sems.iter_mut() {
                 sem.post()?;
             }
         }
         Ok(())
+    }
+
+    /// Set the C-side `ResetFlag` and wake all `sem_input_avail` waiters in
+    /// the correct order: flag first, then post. A child that wakes from a
+    /// post with `flag == 0` goes back to sleep and would never see a later
+    /// `set_reset_flag()`, so the two steps must always run together.
+    /// Cleared by the next job's `reset()`.
+    pub fn signal_reset(&self) -> Result<()> {
+        self.control_writer.set_reset_flag();
+        self.notify_all_services()
     }
 
     pub fn reset(&self) {

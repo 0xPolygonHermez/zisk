@@ -11,7 +11,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub const ZISK_PUBLICS: usize = 64;
+pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetupKey {
@@ -27,21 +27,23 @@ impl SetupKey {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramVK {
-    pub vk: Vec<u8>,
+    pub vk: Vec<u64>,
 }
 
 impl ProgramVK {
-    pub fn new_from_publics(publics: &[u8]) -> Self {
+    /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob.
+    pub fn new_from_publics(publics: &[u64]) -> Self {
         assert!(
-            publics.len() >= 32,
-            "Not enough bytes to extract program VK (expected at least 32 bytes)"
+            publics.len() >= PROGRAM_VK_LEN,
+            "Not enough u64 publics to extract program VK (expected at least {})",
+            PROGRAM_VK_LEN
         );
 
-        Self { vk: publics[0..32].to_vec() }
+        Self { vk: publics[..PROGRAM_VK_LEN].to_vec() }
     }
 
     pub fn new_empty() -> Self {
-        Self { vk: vec![0u8; 32] }
+        Self { vk: vec![0u64; PROGRAM_VK_LEN] }
     }
 }
 
@@ -134,18 +136,11 @@ impl PlonkVkey {
     }
 }
 
-pub type ZiskVK = Vec<u8>;
-
-/// Encode a Plonk `zisk_vk` blob: `[vk_len: u32 LE][vadcop_vk_bytes][plonk_vkey_json]`.
-pub fn encode_plonk_zisk_vk(vadcop_vk: Vec<u8>, plonk_vkey: &PlonkVkey) -> Result<ZiskVK> {
-    let plonk_json =
-        serde_json::to_vec(plonk_vkey).context("Failed to serialize PlonkVkey to JSON")?;
-    let vk_len = vadcop_vk.len() as u32;
-    let mut bytes = Vec::with_capacity(4 + vadcop_vk.len() + plonk_json.len());
-    bytes.extend_from_slice(&vk_len.to_le_bytes());
-    bytes.extend_from_slice(&vadcop_vk);
-    bytes.extend_from_slice(&plonk_json);
-    Ok(bytes)
+/// Verification key for a Plonk proof: the underlying Vadcop vkey plus the structured Plonk vkey.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlonkVkBlob {
+    pub vadcop_vk: Vec<u64>,
+    pub plonk_vkey: PlonkVkey,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -172,6 +167,24 @@ impl PublicValues {
         for (i, chunk) in publics_bytes[32..].chunks_exact(8).enumerate() {
             let v32 = u32::from_le_bytes(chunk[0..4].try_into().unwrap());
             data[i * 4..(i + 1) * 4].copy_from_slice(&v32.to_le_bytes());
+        }
+
+        Self { data: data.to_vec(), ptr: AtomicUsize::new(0) }
+    }
+
+    /// Build from the full proof publics u64 blob: `[program_vk(4)][publics(ZISK_PUBLICS)]`.
+    /// Each public u64 is truncated to its low 32 bits (matching `public_u64()`).
+    pub fn new_from_u64(publics: &[u64]) -> Self {
+        assert!(
+            publics.len() == ZISK_PUBLICS + PROGRAM_VK_LEN,
+            "Expected {} u64 publics, got {}",
+            ZISK_PUBLICS + PROGRAM_VK_LEN,
+            publics.len()
+        );
+
+        let mut data = [0u8; ZISK_PUBLICS * 4];
+        for (i, &val) in publics[PROGRAM_VK_LEN..].iter().enumerate() {
+            data[i * 4..(i + 1) * 4].copy_from_slice(&(val as u32).to_le_bytes());
         }
 
         Self { data: data.to_vec(), ptr: AtomicUsize::new(0) }
@@ -266,26 +279,22 @@ impl PublicValues {
         Ok(decoded)
     }
 
-    pub fn public_bytes(&self) -> Vec<u8> {
-        let mut bytes = [0u8; ZISK_PUBLICS * 8];
-
-        // Convert the 256 bytes back to ZISK_PUBLICS u64 values (padding upper 32 bits with zeros)
-        for i in 0..ZISK_PUBLICS {
-            let start = i * 4;
-            let val32 = u32::from_le_bytes([
-                self.data[start],
-                self.data[start + 1],
-                self.data[start + 2],
-                self.data[start + 3],
-            ]);
-            let val64 = val32 as u64;
-            bytes[i * 8..(i + 1) * 8].copy_from_slice(&val64.to_le_bytes());
-        }
-
-        bytes.to_vec()
+    /// Public values as `ZISK_PUBLICS` u64 elements (each is a u32 widened to u64).
+    pub fn public_u64(&self) -> Vec<u64> {
+        (0..ZISK_PUBLICS)
+            .map(|i| {
+                let start = i * 4;
+                u32::from_le_bytes([
+                    self.data[start],
+                    self.data[start + 1],
+                    self.data[start + 2],
+                    self.data[start + 3],
+                ]) as u64
+            })
+            .collect()
     }
 
-    pub fn hash_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
+    pub fn hash_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
         let bytes = self.bytes_solidity(program_vk, vadcop_verkey);
 
         // SHA-256
@@ -296,27 +305,16 @@ impl PublicValues {
 }
 
 impl PublicValues {
-    pub fn bytes_u64(&self, program_vk: &ProgramVK) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(program_vk.vk.len() + ZISK_PUBLICS * 8);
-
-        bytes.extend(&program_vk.vk);
-        bytes.extend(self.public_bytes());
-
-        bytes
-    }
-
-    pub fn bytes_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u8]) -> Vec<u8> {
-        let mut prefix = [0u8; 32];
-        for (i, chunk) in program_vk.vk.chunks_exact(8).enumerate() {
-            let val = u64::from_le_bytes(chunk.try_into().unwrap());
+    pub fn bytes_solidity(&self, program_vk: &ProgramVK, vadcop_verkey: &[u64]) -> Vec<u8> {
+        let mut prefix = [0u8; PROGRAM_VK_LEN * 8];
+        for (i, val) in program_vk.vk.iter().enumerate() {
             prefix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
         }
 
         let mut bytes = prefix.to_vec();
         bytes.extend_from_slice(&self.data);
-        let mut suffix = [0u8; 32];
-        for (i, chunk) in vadcop_verkey.chunks_exact(8).enumerate() {
-            let val = u64::from_le_bytes(chunk.try_into().unwrap());
+        let mut suffix = [0u8; PROGRAM_VK_LEN * 8];
+        for (i, val) in vadcop_verkey.iter().enumerate() {
             suffix[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
         }
         bytes.extend(&suffix);
@@ -324,13 +322,27 @@ impl PublicValues {
     }
 }
 
+/// Kind-tagged proof payload. The Vadcop variant is u64-native; Plonk is byte-shaped.
+///
+/// The Plonk vkey blob is boxed so the enum doesn't carry ~880 bytes of inline Plonk
+/// vkey strings on the Vadcop variant — Vadcop is the common case and most-cloned.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProofBody {
+    Vadcop { proof: Vec<u64>, zisk_vk: Vec<u64>, minimal: bool },
+    Plonk { proof_bytes: Vec<u8>, plonk_vk: Box<PlonkVkBlob> },
+}
+
+impl Default for ProofBody {
+    fn default() -> Self {
+        ProofBody::Vadcop { proof: Vec::new(), zisk_vk: vec![0u64; PROGRAM_VK_LEN], minimal: false }
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Proof {
-    pub proof_kind: ProofKind,
-    pub proof_bytes: Vec<u8>,
+    pub body: ProofBody,
     pub publics: PublicValues,
     pub program_vk: ProgramVK,
-    pub zisk_vk: ZiskVK,
 }
 
 /// Builder for customizing verification parameters before calling verify.
@@ -384,42 +396,34 @@ impl<'a> ZiskVerifyBuilder<'a> {
     pub fn verify(self) -> Result<()> {
         let publics = self.override_publics.unwrap_or(&self.proof_with_values.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
-        let zisk_vk = &self.proof_with_values.zisk_vk;
 
-        match self.proof_with_values.proof_kind {
-            ProofKind::Plonk => {
-                let proof_bytes = &self.proof_with_values.proof_bytes;
-                let protocol_id = match self.proof_with_values.proof_kind {
-                    ProofKind::Plonk => SnarkProtocol::Plonk.protocol_id(),
-                    _ => unreachable!(),
-                };
-
-                // Parse blob: [vk_len: u32 LE][vadcop_vk_bytes][plonk_vkey_json]
-                if zisk_vk.len() < 4 {
-                    return Err(anyhow::anyhow!("zisk_vk too short for Plonk proof"));
-                }
-                let vk_len = u32::from_le_bytes(zisk_vk[0..4].try_into().unwrap()) as usize;
-                if zisk_vk.len() < 4 + vk_len {
-                    return Err(anyhow::anyhow!("zisk_vk truncated"));
-                }
-                let vadcop_vk = &zisk_vk[4..4 + vk_len];
-                let plonk_vkey_json = &zisk_vk[4 + vk_len..];
-
-                let pubs = publics.bytes_solidity(program_vk, vadcop_vk);
-
+        match &self.proof_with_values.body {
+            ProofBody::Plonk { proof_bytes, plonk_vk } => {
+                let pubs = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
                 let hash = Sha256::digest(&pubs).to_vec();
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
                     public_bytes: pubs,
                     public_snark_bytes: hash,
-                    protocol_id,
+                    protocol_id: SnarkProtocol::Plonk.protocol_id(),
                 };
 
                 let temp_dir = std::env::temp_dir();
-                let temp_file = temp_dir.join(format!("plonk_vkey_{}.json", std::process::id()));
+                // Concurrent verify() calls in one process otherwise race on the tempfile.
+                let unique_id = format!(
+                    "{}_{}",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos())
+                        .unwrap_or(0)
+                );
+                let temp_file = temp_dir.join(format!("plonk_vkey_{}.json", unique_id));
 
-                std::fs::write(&temp_file, plonk_vkey_json).with_context(|| {
+                let plonk_vkey_json = serde_json::to_vec(&plonk_vk.plonk_vkey)
+                    .context("Failed to serialize PlonkVkey to JSON")?;
+                std::fs::write(&temp_file, &plonk_vkey_json).with_context(|| {
                     format!("Failed to write PlonkVkey to temporary file: {}", temp_file.display())
                 })?;
 
@@ -434,27 +438,25 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result?;
                 Ok(())
             }
-            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
-                let minimal = self.proof_with_values.proof_kind != ProofKind::VadcopFinal;
-                let proof_bytes = &self.proof_with_values.proof_bytes;
-
+            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+                let minimal = *minimal;
                 let expected_len = if minimal {
                     expected_vadcop_final_compressed_proof_bytes()
                 } else {
                     expected_vadcop_final_proof_bytes()
                 };
-                if proof_bytes.len() != expected_len {
+                if proof.len() * 8 != expected_len {
                     return Err(anyhow!(
                         "Malformed proof: expected {} bytes for {:?}, got {}",
                         expected_len,
-                        self.proof_with_values.proof_kind,
-                        proof_bytes.len()
+                        self.proof_with_values.kind(),
+                        proof.len() * 8
                     ));
                 }
 
-                let mut pubs = program_vk.vk.clone();
-                pubs.extend(publics.public_bytes());
-                let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.clone(), pubs, minimal);
+                let mut pubs_u64 = program_vk.vk.clone();
+                pubs_u64.extend(publics.public_u64());
+                let vadcop_final_proof = VadcopFinalProof::new(proof.clone(), pubs_u64, minimal);
 
                 let is_valid = if minimal {
                     verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
@@ -473,14 +475,25 @@ impl<'a> ZiskVerifyBuilder<'a> {
 }
 
 impl Proof {
-    pub fn new(
-        proof_kind: ProofKind,
-        proof_bytes: Vec<u8>,
-        publics: PublicValues,
-        program_vk: ProgramVK,
-        zisk_vk: ZiskVK,
-    ) -> Self {
-        Self { proof_kind, proof_bytes, publics, program_vk, zisk_vk }
+    pub fn new(body: ProofBody, publics: PublicValues, program_vk: ProgramVK) -> Self {
+        Self { body, publics, program_vk }
+    }
+
+    /// Derive the `ProofKind` from the body discriminant.
+    pub fn kind(&self) -> ProofKind {
+        match &self.body {
+            ProofBody::Vadcop { minimal: true, .. } => ProofKind::VadcopFinalMinimal,
+            ProofBody::Vadcop { minimal: false, .. } => ProofKind::VadcopFinal,
+            ProofBody::Plonk { .. } => ProofKind::Plonk,
+        }
+    }
+
+    /// Whether the underlying proof payload is empty (used to detect non-prove flows).
+    pub fn is_empty(&self) -> bool {
+        match &self.body {
+            ProofBody::Vadcop { proof, .. } => proof.is_empty(),
+            ProofBody::Plonk { proof_bytes, .. } => proof_bytes.is_empty(),
+        }
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -503,36 +516,51 @@ impl Proof {
     }
 
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
-        match self.proof_kind {
-            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
-                let minimal = self.proof_kind == ProofKind::VadcopFinalMinimal;
-                let mut pubs = self.program_vk.vk.clone();
-                pubs.extend(self.publics.public_bytes());
-                Ok(VadcopFinalProof::new(self.proof_bytes.clone(), pubs, minimal))
+        match &self.body {
+            ProofBody::Vadcop { proof, minimal, .. } => {
+                let mut pubs_u64 = self.program_vk.vk.clone();
+                pubs_u64.extend(self.publics.public_u64());
+                Ok(VadcopFinalProof::new(proof.clone(), pubs_u64, *minimal))
             }
-            _ => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
+            ProofBody::Plonk { .. } => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
         }
     }
 
-    pub fn get_proof_bytes(&self) -> Vec<u8> {
-        match self.proof_kind {
-            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
-                let minimal = self.proof_kind == ProofKind::VadcopFinalMinimal;
+    pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
+        match &self.body {
+            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+                if self.program_vk.vk.len() != PROGRAM_VK_LEN {
+                    return Err(anyhow!(
+                        "Invalid program_vk length: expected {}, got {}",
+                        PROGRAM_VK_LEN,
+                        self.program_vk.vk.len()
+                    ));
+                }
+                if zisk_vk.len() != PROGRAM_VK_LEN {
+                    return Err(anyhow!(
+                        "Invalid zisk_vk length: expected {}, got {}",
+                        PROGRAM_VK_LEN,
+                        zisk_vk.len()
+                    ));
+                }
 
-                let mut pubs = self.program_vk.vk.clone();
-                pubs.extend(self.publics.public_bytes());
+                let publics = self.publics.public_u64();
+                let n_publics = self.program_vk.vk.len() + publics.len();
 
-                // Format: [minimal(8)][pubs_len(8)][pubs][proof_bytes][zisk_vk]
-                let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(minimal as u64).to_le_bytes());
-                bytes.extend_from_slice(&(ZISK_PUBLICS + 4).to_le_bytes());
-                bytes.extend_from_slice(&pubs);
-                bytes.extend_from_slice(&self.proof_bytes);
-                bytes.extend_from_slice(&self.zisk_vk);
+                // Format: [minimal(1)][n_publics(1)][program_vk][publics][proof][zisk_vk]
+                let mut words = Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len());
+                words.push(*minimal as u64);
+                words.push(n_publics as u64);
+                words.extend_from_slice(&self.program_vk.vk);
+                words.extend(publics);
+                words.extend_from_slice(proof);
+                words.extend_from_slice(zisk_vk);
 
-                bytes
+                Ok(words)
             }
-            _ => panic!("Proof not suitable for get_proof_bytes. Only VadcopFinal and VadcopFinalMinimal proofs are supported."),
+            ProofBody::Plonk { .. } => Err(anyhow!(
+                "Proof not suitable for get_proof_u64. Only VadcopFinal and VadcopFinalMinimal proofs are supported."
+            )),
         }
     }
 
@@ -544,11 +572,7 @@ impl Proof {
         &self.program_vk
     }
 
-    pub fn get_vk(&self) -> &ZiskVK {
-        &self.zisk_vk
-    }
-
-    /// Create Proof directly from a Vadcop proof byte array.
+    /// Create Proof directly from a Vadcop proof u64 array.
     ///
     /// This method parses the proof format (n_publics, publics..., proof...) and extracts
     /// the public values and program VK directly, without creating an intermediate VadcopFinalProof.
@@ -557,23 +581,19 @@ impl Proof {
     ///
     /// * `proof` - The proof as a slice of u64 values
     /// * `minimal` - Whether the proof is minimal
+    /// * `zisk_vk` - The Vadcop verification key (4 u64s)
     ///
     /// # Returns
     ///
     /// A Proof containing the parsed proof, publics, and program VK
-    pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u8>) -> Result<Self> {
+    pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u64>) -> Result<Self> {
         let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal)
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
-        let proof_kind =
-            if minimal { ProofKind::VadcopFinalMinimal } else { ProofKind::VadcopFinal };
-
         Ok(Self {
-            proof_kind,
-            proof_bytes: vadcop_proof.proof,
-            publics: PublicValues::new(&vadcop_proof.public_values),
+            body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal },
+            publics: PublicValues::new_from_u64(&vadcop_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&vadcop_proof.public_values),
-            zisk_vk,
         })
     }
 
@@ -635,11 +655,9 @@ mod tests {
     #[test]
     fn verify_returns_err_for_malformed_vadcop_final_minimal() {
         let result = Proof::new(
-            ProofKind::VadcopFinalMinimal,
-            vec![],
+            ProofBody::Vadcop { proof: vec![], zisk_vk: vec![0u64; PROGRAM_VK_LEN], minimal: true },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
-            vec![0; 32],
         )
         .verify();
 
@@ -649,14 +667,64 @@ mod tests {
     #[test]
     fn verify_returns_err_for_malformed_vadcop_final() {
         let result = Proof::new(
-            ProofKind::VadcopFinal,
-            vec![],
+            ProofBody::Vadcop {
+                proof: vec![],
+                zisk_vk: vec![0u64; PROGRAM_VK_LEN],
+                minimal: false,
+            },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
-            vec![0; 32],
         )
         .verify();
 
         assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
+    }
+
+    #[test]
+    fn proof_save_load_roundtrip_vadcop() {
+        let tmp = std::env::temp_dir().join(format!("proof_roundtrip_{}.bin", std::process::id()));
+        let original = Proof::new(
+            ProofBody::Vadcop {
+                proof: vec![1, 2, 3, 4],
+                zisk_vk: vec![10, 20, 30, 40],
+                minimal: true,
+            },
+            PublicValues::new_empty(),
+            ProgramVK::new_from_publics(&[7, 8, 9, 10]),
+        );
+
+        original.save(&tmp).unwrap();
+        let loaded = Proof::load(&tmp).unwrap();
+        std::fs::remove_file(&tmp).ok();
+
+        assert_eq!(loaded.kind(), ProofKind::VadcopFinalMinimal);
+        match loaded.body {
+            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+                assert_eq!(proof, vec![1, 2, 3, 4]);
+                assert_eq!(zisk_vk, vec![10, 20, 30, 40]);
+                assert!(minimal);
+            }
+            ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
+        }
+        assert_eq!(loaded.program_vk.vk, vec![7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn proof_kind_derivation() {
+        let vadcop = Proof::new(
+            ProofBody::Vadcop { proof: vec![], zisk_vk: vec![], minimal: false },
+            PublicValues::new_empty(),
+            ProgramVK::new_empty(),
+        );
+        assert_eq!(vadcop.kind(), ProofKind::VadcopFinal);
+        assert!(vadcop.is_empty());
+
+        let minimal = Proof::new(
+            ProofBody::Vadcop { proof: vec![1], zisk_vk: vec![], minimal: true },
+            PublicValues::new_empty(),
+            ProgramVK::new_empty(),
+        );
+        assert_eq!(minimal.kind(), ProofKind::VadcopFinalMinimal);
+        assert!(!minimal.is_empty());
     }
 }

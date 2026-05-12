@@ -21,7 +21,7 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, Proof, ProofKind, PublicValues, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -324,7 +324,7 @@ pub trait ProverEngine {
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
@@ -354,7 +354,7 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK>;
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
@@ -362,7 +362,7 @@ pub trait ProverEngine {
     // These are meaningful only for the ASM backend (distributed worker path).
     // Data operations (submit_hint, submit_input, register_hints_stream) return Err by
     // default because calling them on a non-ASM backend is always a caller bug.
-    // State operations (set_active_services, reset_resources) default to no-ops because
+    // State operations (set_active_services, reset) default to no-ops because
     // they are safe to skip when there are no ASM resources to manage.
 
     fn submit_hint(&self, _bytes: &[u8]) -> Result<()> {
@@ -391,15 +391,30 @@ pub trait ProverEngine {
         Ok(())
     }
 
-    fn reset_resources(&self) -> Result<()> {
+    fn reset(&self) -> Result<()> {
         Ok(())
     }
 
-    fn restart_asm_resources(&self, _elf: &GuestProgram, _with_hints: bool) -> Result<()> {
-        Ok(())
-    }
+    fn notify_cluster_cancellation(&self) {}
 
-    fn cancel(&self);
+    /// Collective MPI barrier across all ranks. All ranks must call this for
+    /// the cluster to make progress. Used to synchronize end-of-task between
+    /// rank 0 and peer ranks where there is no implicit aggregation sync
+    /// (e.g. execute-only) and at the end of recovery.
+    fn cluster_barrier(&self) {}
+
+    /// Cancel the in-flight job.
+    ///
+    /// Backends with out-of-process workers (ASM C children) must wake those
+    /// children here — otherwise their `executor::execute` won't return and
+    /// the recovery handshake will deadlock. The Rust-side proofman cancel
+    /// flag should be set first so that when the executor unwinds, proofman
+    /// already knows to bail.
+    fn cancel(&self) -> Result<()>;
+
+    /// Block until any in-flight proofman entry point has returned. Called
+    /// in recovery before advertising `Ready`. Default no-op.
+    fn wait_until_proofman_ready(&self) {}
 }
 
 pub trait ZiskBackend: Send + Sync {
@@ -591,7 +606,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///
     /// * `minimal` - If true, returns the minimal verification key.
     ///   If false, returns the full verification key.
-    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
     }
 
@@ -623,16 +638,24 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_active_services(is_first_partition)
     }
 
-    pub fn reset_resources(&self) -> Result<()> {
-        self.prover.reset_resources()
+    pub fn reset(&self) -> Result<()> {
+        self.prover.reset()
     }
 
-    pub fn restart_asm_resources(&self, elf: &GuestProgram, with_hints: bool) -> Result<()> {
-        self.prover.restart_asm_resources(elf, with_hints)
+    pub fn notify_cluster_cancellation(&self) {
+        self.prover.notify_cluster_cancellation()
     }
 
-    pub fn cancel(&self) {
+    pub fn cluster_barrier(&self) {
+        self.prover.cluster_barrier()
+    }
+
+    pub fn cancel(&self) -> Result<()> {
         self.prover.cancel()
+    }
+
+    pub fn wait_until_proofman_ready(&self) {
+        self.prover.wait_until_proofman_ready()
     }
 }
 
@@ -770,6 +793,12 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     pub fn run(self) -> Result<ProveOutput> {
         let publics = self.override_publics.unwrap_or(&self.proof.publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
-        self.prover.wrap_proof(&self.proof.proof_bytes, publics, program_vk, self.proof_kind)
+        let proof = match &self.proof.body {
+            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+            ProofBody::Plonk { .. } => {
+                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+            }
+        };
+        self.prover.wrap_proof(proof, publics, program_vk, self.proof_kind)
     }
 }

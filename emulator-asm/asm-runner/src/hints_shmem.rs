@@ -129,24 +129,6 @@ impl HintsShmem {
         Ok(())
     }
 
-    /// Soft-reset signal: write `1` to the `ResetFlag` slot and post
-    /// `sem_prec_avail` to wake any child sleeping in `_wait_for_prec_avail`.
-    /// The C side returns non-zero from the wait function, the assembly
-    /// unwinds cleanly out of `emulator_start()`, and the child stays alive
-    /// for the next request — no respawn.
-    pub fn signal_children_reset(&self) -> Result<()> {
-        self.unified.lock().expect("unified mutex poisoned").control_writer.set_reset_flag();
-        if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()
-        {
-            for sem in sems.iter_mut() {
-                if let Err(e) = sem.sem_available.post() {
-                    tracing::warn!("signal_children_reset: sem_available.post failed: {e}");
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Drop the semaphore handles (does not unlink — the binary owns the names).
     pub fn unbind_semaphores(&self) {
         *self.separate_sem.lock().expect("separate_sem mutex poisoned") = None;
