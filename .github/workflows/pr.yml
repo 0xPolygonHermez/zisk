@@ -83,7 +83,7 @@ jobs:
             --shm-size=48g \
             -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
             -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
-            -v /home/gha/cache-setup:/github/home/output:rw \
+            -v /home/gha/cache-setup:/home/ziskuser/output:rw \
             -e ZISK_GHA=1 \
             -e ZISK_REPO_DIR=/workspace/zisk \
             -e ZISK_TESTVECTORS_BRANCH="${ZISK_TESTVECTORS_BRANCH}" \
@@ -124,8 +124,8 @@ jobs:
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
-              echo "Proving key should be available at: /github/home/.zisk/provingKey"
-              ls -lha /github/home/.zisk/provingKey
+              echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
+              ls -lha /home/ziskuser/.zisk/provingKey
             '
 
       # - name: Test sha_hasher (CPU)
@@ -152,8 +152,8 @@ jobs:
           docker exec -u ziskuser \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
-              echo "Proving key should be available at: /github/home/.zisk/provingKey"
-              ls -lha /github/home/.zisk/provingKey
+              echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
+              ls -lha /home/ziskuser/.zisk/provingKey
               ./test_diagnostic.sh
             '
 
@@ -174,8 +174,8 @@ jobs:
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
-              echo "ZisK binary should be available at: /github/home/.zisk/bin/"
-              ls /github/home/.zisk/bin/
+              echo "ZisK binary should be available at: /home/ziskuser/.zisk/bin/"
+              ls /home/ziskuser/.zisk/bin/
               ./test_ethproofs.sh
             '
 
