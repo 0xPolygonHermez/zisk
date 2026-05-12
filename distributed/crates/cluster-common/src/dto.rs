@@ -267,7 +267,9 @@ pub struct ExecuteTaskResponseDto {
     pub worker_id: WorkerId,
     pub success: bool,
     pub error_message: Option<String>,
-    pub result_data: ExecuteTaskResponseResultDataDto,
+    /// `None` is only valid on failure responses (e.g. dispatch failure before
+    /// any computation). On success the variant must match the expected phase.
+    pub result_data: Option<ExecuteTaskResponseResultDataDto>,
     pub worker_in_recovery: bool,
 }
 

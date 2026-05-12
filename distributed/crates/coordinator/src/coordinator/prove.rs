@@ -169,7 +169,7 @@ impl Coordinator {
 
         // Extract and validate proofs data from Phase2 response
         let data = match execute_task_response.result_data {
-            ExecuteTaskResponseResultDataDto::Proofs(proof_list) => {
+            Some(ExecuteTaskResponseResultDataDto::Proofs(proof_list)) => {
                 let agg_proofs: Vec<AggProofData> = proof_list
                     .into_iter()
                     .map(|proof| AggProofData {
