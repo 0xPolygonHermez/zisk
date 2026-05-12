@@ -54,7 +54,7 @@ impl ControlShmem {
         self.writers[0].read_u64_at(ControlShmemOffsets::PrecompilesSize as usize)
     }
 
-    pub(crate) fn set_reset_flag(&self) {
+    pub fn set_reset_flag(&self) {
         for writer in &self.writers {
             writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 1);
         }
