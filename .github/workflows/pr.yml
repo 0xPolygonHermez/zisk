@@ -97,7 +97,7 @@ jobs:
             chown -R ziskuser:ziskuser /workspace/zisk
             chmod -R u+rwX /workspace/zisk
           '
-          
+
       - name: Build ZisK
         run: |
           docker exec -u ziskuser \
@@ -114,8 +114,8 @@ jobs:
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
-              echo "Proving key should be available at: /github/home/.zisk/provingKey"
-              ls -lha /github/home/.zisk/provingKey
+              echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
+              ls -lha /home/ziskuser/.zisk/provingKey
             '
 
       # - name: Test sha_hasher (CPU)
@@ -142,8 +142,8 @@ jobs:
           docker exec -u ziskuser \
             "${TEST_CONTAINER}" bash -lc '
             cd /workspace/zisk/tools/test-env
-            echo "Proving key should be available at: /github/home/.zisk/provingKey"
-            ls -lha /github/home/.zisk/provingKey
+            echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
+            ls -lha /home/ziskuser/.zisk/provingKey
             ./test_diagnostic.sh
           '
 
@@ -162,8 +162,8 @@ jobs:
             -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
-              echo "ZisK binary should be available at: /github/home/.zisk/bin/"
-              ls /github/home/.zisk/bin/
+              echo "ZisK binary should be available at: /home/ziskuser/.zisk/bin/"
+              ls /home/ziskuser/.zisk/bin/
               ./test_ethproofs.sh
             '
 
