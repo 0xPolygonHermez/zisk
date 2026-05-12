@@ -174,6 +174,13 @@ impl RomSM {
         // Search for end instruction index
         let index = rom.get_instruction(ROM_EXIT).index as usize;
         assert!(
+            index < trace_buffer.len(),
+            "ROM trace index {} out of bounds for trace_buffer len {} (RomTrace::NUM_ROWS = {})",
+            index,
+            trace_buffer.len(),
+            RomTrace::<F>::NUM_ROWS
+        );
+        assert!(
             F::is_one(&trace_buffer[index]),
             "The exit instruction should have been executed once in the assembly execution"
         );
