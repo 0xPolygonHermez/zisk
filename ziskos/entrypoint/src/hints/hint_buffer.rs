@@ -144,16 +144,30 @@ impl HintBuffer {
             retries: usize,
             base_delay: Duration,
         ) -> io::Result<()> {
-            for attempt in 0..=retries {
-                match writer.write_all(buf) {
-                    Ok(()) => return Ok(()),
-
+            let mut written = 0;
+            let mut attempt = 0;
+            while written < buf.len() {
+                match writer.write(&buf[written..]) {
+                    Ok(0) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "write_with_retries: write returned 0 bytes",
+                        ));
+                    }
+                    Ok(n) => {
+                        written += n;
+                        attempt = 0;
+                    }
+                    // EINTR: the syscall was interrupted by a signal before anything was
+                    // flushed. Retry immediately without counting against the retry budget
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                    // ENOBUFS / WouldBlock: a single write() that returns an error wrote
+                    // 0 bytes, so it is safe to retry from `written`
                     Err(e)
-                        if e.raw_os_error() == Some(105) // ENOBUFS
-                            || e.kind() == io::ErrorKind::WouldBlock
-                            || e.kind() == io::ErrorKind::Interrupted =>
+                        if e.raw_os_error() == Some(libc::ENOBUFS)
+                            || e.kind() == io::ErrorKind::WouldBlock =>
                     {
-                        if attempt == retries {
+                        if attempt >= retries {
                             return Err(io::Error::new(
                                 e.kind(),
                                 format!(
@@ -162,16 +176,17 @@ impl HintBuffer {
                                 ),
                             ));
                         }
-
+                        if attempt == 0 {
+                            println!("write_with_retries: transient error {}, retrying", e);
+                        }
                         let delay = base_delay * (attempt as u32 + 1);
                         thread::sleep(delay);
+                        attempt += 1;
                     }
-
                     Err(e) => return Err(e),
                 }
             }
-
-            unreachable!()
+            Ok(())
         }
 
         // Write hints from the buffer to the writer and optionally to a debug writer
@@ -205,16 +220,22 @@ impl HintBuffer {
             retries: usize,
             base_delay: Duration,
         ) -> io::Result<()> {
-            for attempt in 0..=retries {
+            let mut attempt = 0;
+            loop {
                 match writer.flush() {
                     Ok(()) => return Ok(()),
 
+                    // EINTR: the syscall was interrupted by a signal before anything was
+                    // flushed. Retry immediately without counting against the retry budget.
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+
+                    // ENOBUFS / WouldBlock: the kernel send buffer is full. Sleep to give
+                    // the receiver time to drain it, then retry.
                     Err(e)
-                        if e.raw_os_error() == Some(105) // ENOBUFS
-                            || e.kind() == io::ErrorKind::WouldBlock
-                            || e.kind() == io::ErrorKind::Interrupted =>
+                        if e.raw_os_error() == Some(libc::ENOBUFS)
+                            || e.kind() == io::ErrorKind::WouldBlock =>
                     {
-                        if attempt == retries {
+                        if attempt >= retries {
                             return Err(io::Error::new(
                                 e.kind(),
                                 format!(
@@ -223,16 +244,17 @@ impl HintBuffer {
                                 ),
                             ));
                         }
-
+                        if attempt == 0 {
+                            println!("flush_with_retries: transient error {}, retrying", e);
+                        }
                         let delay = base_delay * (attempt as u32 + 1);
                         thread::sleep(delay);
+                        attempt += 1;
                     }
 
                     Err(e) => return Err(e),
                 }
             }
-
-            unreachable!()
         }
 
         let mut flush_threshold = std::cmp::min(write_flush_threshold, MAX_WRITER_LEN);
