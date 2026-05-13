@@ -436,8 +436,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             num_rows,
             num_rows_needed as f64 / num_rows as f64 * 100.0
         );
-        let full = num_rows_needed == num_rows;
-
         timer_start_trace!(ARITH_EQ_384_TRACE);
 
         let mut trace_rows = &mut trace.buffer[..];
@@ -454,10 +452,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
                 previous_lt_flags = Self::get_lt_flags(input);
                 trace_rows = tail;
             }
-        }
-        // if instance is full, the previous_lt_flag of first row it's lt_flag of last row.
-        if full {
-            par_traces[0].3 = previous_lt_flags;
         }
         let index = par_traces.len();
 
