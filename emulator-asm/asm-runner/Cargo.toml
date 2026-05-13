@@ -7,6 +7,8 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
+build = "build.rs"
+
 [lib]
 name = "asm_runner"
 path = "src/lib.rs"
@@ -31,4 +33,4 @@ named-sem = { workspace = true }
 [features]
 stats = []
 save_mem_plans = []
-gpu = ["mem-planner-cpp/gpu"]
+cpu-only = ["mem-planner-cpp/cpu-only"]

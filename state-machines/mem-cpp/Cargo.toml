@@ -20,7 +20,7 @@ tracing = { workspace = true }
 
 [features]
 default = []
-gpu = []
+cpu-only = []
 save_mem_bus_data = []
 save_mem_plans = []
 save_mem_align_counters = []

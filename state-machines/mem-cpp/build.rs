@@ -2,6 +2,19 @@ use std::env;
 use std::path::Path;
 use std::process::Command;
 
+/// Detects whether GPU (CUDA) support is available.
+/// Returns false if the `cpu-only` feature is set or if no CUDA toolkit is found.
+
+fn detect_gpu() -> bool {
+    if cfg!(feature = "cpu-only") {
+        return false;
+    }
+    let nvcc_in_cuda = Path::new("/usr/local/cuda/bin/nvcc").exists();
+    let nvcc_in_path =
+        Command::new("nvcc").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+    nvcc_in_cuda || nvcc_in_path
+}
+
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
         return;
@@ -40,8 +53,19 @@ fn main() {
 
     watch_dir_recursive("cpp", &["cpp", "hpp"]);
 
-    // Optional GPU build, gated by the `gpu` cargo feature.
-    if cfg!(feature = "gpu") {
+    // GPU library — auto-detected
+    let use_gpu = if cfg!(feature = "cpu-only") {
+        println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with CPU-only support (feature enabled)");
+        false
+    } else if detect_gpu() {
+        println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with GPU support");
+        true
+    } else {
+        println!("cargo:warning=[BUILD INFO] mem-planner-cpp compiled with CPU-only support (CUDA not detected)");
+        false
+    };
+
+    if use_gpu {
         let gpu_build_dir = Path::new(&out_dir).join("memcpp_cu");
         std::fs::create_dir_all(&gpu_build_dir).unwrap();
 
@@ -62,7 +86,9 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=cudart");
 
         watch_dir_recursive("cu", &["cu", "cuh"]);
+        println!("cargo:rustc-cfg=gpu");
     }
+    println!("cargo:rustc-check-cfg=cfg(gpu)");
 }
 
 fn watch_dir_recursive<P: AsRef<Path>>(dir: P, exts: &[&str]) {

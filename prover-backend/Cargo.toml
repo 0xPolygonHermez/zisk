@@ -41,7 +41,6 @@ alloy-sol-types = { version = "1.5.7" }
 
 [features]
 default = []
-cpu-only = ["proofman-common/cpu-only"]
+cpu-only = ["proofman-common/cpu-only", "executor/cpu-only"]
 stats = []
 diagnostic = ["proofman-common/diagnostic"]
-gpu = ["executor/gpu"]

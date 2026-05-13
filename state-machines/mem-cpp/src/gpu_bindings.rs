@@ -1,4 +1,4 @@
-#![cfg(feature = "gpu")]
+#![cfg(gpu)]
 
 use std::os::raw::c_void;
 

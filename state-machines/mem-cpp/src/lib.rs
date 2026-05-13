@@ -6,13 +6,13 @@ mod bindings;
 mod mem_checkpoints;
 mod mem_planner;
 
-#[cfg(feature = "gpu")]
+#[cfg(gpu)]
 mod gpu_bindings;
-#[cfg(feature = "gpu")]
+#[cfg(gpu)]
 mod gpu_mem_planner;
 
 pub use mem_checkpoints::*;
 pub use mem_planner::*;
 
-#[cfg(feature = "gpu")]
+#[cfg(gpu)]
 pub use gpu_mem_planner::*;

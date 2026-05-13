@@ -15,7 +15,7 @@ use crate::{
     AsmRunError, AsmService, AsmServices,
 };
 use mem_planner_cpp::MemPlanner;
-#[cfg(feature = "gpu")]
+#[cfg(gpu)]
 use mem_planner_cpp::{GpuMemOp, GpuMemPlanner};
 
 use anyhow::{Context, Result};
@@ -27,10 +27,7 @@ pub struct MOShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
-    /// Set up once at worker startup against proofman's unified GPU buffer,
-    /// then reused block-after-block via `reset()`. Constructing/destroying
-    /// per call would cost ~240 ms in CUDA cleanup.
-    #[cfg(feature = "gpu")]
+    #[cfg(gpu)]
     gpu_planner: Option<GpuMemPlanner>,
 }
 
@@ -51,35 +48,33 @@ impl MOShMemReader {
             unlock_mapped_memory,
         )?;
 
-        #[cfg(feature = "gpu")]
+        #[cfg(gpu)]
         let gpu_planner = setup_gpu_planner(gpu_buf_ptr, gpu_buf_size);
-        #[cfg(not(feature = "gpu"))]
+        #[cfg(not(gpu))]
         let _ = (gpu_buf_ptr, gpu_buf_size);
 
         Ok(Self {
             output_shmem: output_shared_memory,
             mem_planner: Some(MemPlanner::new()),
             handle_mo: None,
-            #[cfg(feature = "gpu")]
+            #[cfg(gpu)]
             gpu_planner,
         })
     }
 }
 
-#[cfg(feature = "gpu")]
+#[cfg(gpu)]
 fn setup_gpu_planner(gpu_buf_ptr: usize, gpu_buf_size: u64) -> Option<GpuMemPlanner> {
     if gpu_buf_ptr == 0 || gpu_buf_size == 0 {
-        tracing::warn!(
-            "[gpu] no borrowed buffer (ptr=0x{:x}, size={}); planner not constructed",
-            gpu_buf_ptr,
-            gpu_buf_size,
+        tracing::info!(
+            "[gpu] no borrowed buffer (--gpu not set at runtime); using CPU mem_planner path"
         );
         return None;
     }
     let gp = GpuMemPlanner::new();
     if !gp.setup(gpu_buf_ptr as *mut c_void, gpu_buf_size as usize, 1, 0) {
         tracing::error!(
-            "[gpu] GpuMemPlanner::setup returned false (size={} bytes); planner disabled",
+            "[gpu] GpuMemPlanner::setup returned false (size={} bytes); falling back to CPU",
             gpu_buf_size,
         );
         return None;
@@ -132,7 +127,6 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        // Capture parent id for thread
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
 
@@ -159,16 +153,19 @@ impl AsmRunnerMO {
                 .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
         };
 
-        // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
-        // In GPU mode the GPU planner produces both the segment table and the
-        // per-chunk mem-align counters; no CPU worker is needed.
-        #[cfg(not(feature = "gpu"))]
-        mem_planner.execute();
-
-        #[cfg(feature = "gpu")]
+        // Take the optional GPU planner for this block.
+        #[cfg(gpu)]
         let gpu_planner: Option<GpuMemPlanner> = preloaded.gpu_planner.take();
+
+        // CPU workers are only spawned when no GPU planner is active.
+        #[cfg(gpu)]
+        if gpu_planner.is_none() {
+            mem_planner.execute();
+        }
+        #[cfg(not(gpu))]
+        mem_planner.execute();
 
         stats_begin!(_stats, &_runner_scope, _process_scope, "MO_PROCESS_CHUNKS", 0);
 
@@ -206,7 +203,6 @@ impl AsmRunnerMO {
                             "Failed to check and map new shared memory files for MO trace",
                         )?
                     {
-                        // Update threshold based on new total mapped size
                         threshold =
                             unsafe {
                                 preloaded.output_shmem.mapped_ptr().add(
@@ -216,18 +212,15 @@ impl AsmRunnerMO {
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
-
                     data_ptr = unsafe { data_ptr.add(1) };
 
                     stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
-                    #[cfg(not(feature = "gpu"))]
-                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
-
-                    // `MemCountersBusData` and `GpuMemOp` share an identical
-                    // {u32 addr; u32 flags;} __packed layout, so the cast is
-                    // a pointer reinterpret — no copy.
-                    #[cfg(feature = "gpu")]
+                    // Feed this chunk to whichever planner is active. The
+                    // `*const AsmMOChunk` body is a flat array of
+                    // {u32 addr; u32 flags;} __packed — byte-identical to
+                    // both `MemCountersBusData` (CPU) and `GpuMemOp` (GPU).
+                    #[cfg(gpu)]
                     if let Some(ref gp) = gpu_planner {
                         let memops = unsafe {
                             std::slice::from_raw_parts(
@@ -236,12 +229,13 @@ impl AsmRunnerMO {
                             )
                         };
                         if !gp.add_chunk(memops) {
-                            tracing::error!(
-                                "[gpu] add_chunk failed (n={})",
-                                chunk.mem_ops_size,
-                            );
+                            tracing::error!("[gpu] add_chunk failed (n={})", chunk.mem_ops_size);
                         }
+                    } else {
+                        mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
                     }
+                    #[cfg(not(gpu))]
+                    mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
                         break 0;
@@ -258,7 +252,6 @@ impl AsmRunnerMO {
                 }
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
-
                     break preloaded.output_shmem.map_header().exit_code;
                 }
             }
@@ -266,50 +259,39 @@ impl AsmRunnerMO {
 
         mem_planner.set_completed();
 
-        // Drain the GPU pipeline. The returned slice borrows from
-        // `gpu_planner`'s host-pinned buffers — kept alive for the inject below.
-        #[cfg(feature = "gpu")]
+        // GPU path: drain the pipeline. Pointer into pinned host memory owned
+        // by the planner; valid until the planner is reset below.
+        #[cfg(gpu)]
         let gpu_metas_view: Option<(*const c_void, u32)> = gpu_planner
             .as_ref()
             .and_then(|gp| gp.run())
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
+        #[cfg(not(gpu))]
+        let gpu_metas_view: Option<(*const c_void, u32)> = None;
 
         mem_planner.wait();
 
-        // Populate `mcp->segments[]` and (in GPU mode) the mem-align plans.
-        //   * GPU feature on  → inject the in-memory metas produced this run,
-        //                       and harvest per-chunk align counters BEFORE
-        //                       `reset()` zeroes `n_chunks_`.
-        //   * GPU feature off → fall back to the legacy `tmp/metas.bin` file
-        //                       written by the standalone GPU runner.
-        #[cfg(feature = "gpu")]
-        let gpu_mem_align_plans: Vec<Plan> = gpu_planner
-            .as_ref()
-            .map(|gp| gp.build_align_plans())
-            .unwrap_or_default();
+        // GPU path: build align plans BEFORE `reset()` zeroes `n_chunks_`.
+        #[cfg(gpu)]
+        let gpu_align_plans: Option<Vec<Plan>> =
+            gpu_planner.as_ref().map(|gp| gp.build_align_plans());
+        #[cfg(not(gpu))]
+        let gpu_align_plans: Option<Vec<Plan>> = None;
 
-        #[cfg(feature = "gpu")]
-        {
-            if let Some((ptr, n)) = gpu_metas_view {
-                let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
-                if !ok {
-                    tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
-                }
-            } else if !mem_planner.load_mem_metas_from_disk() {
-                tracing::warn!(
-                    "[gpu] no GPU planner and tmp/metas.bin missing; segments will be empty"
-                );
-            }
-
-            // Reset and stash for the next block. Cheap — keeps CUDA resources alive.
-            if let Some(gp) = gpu_planner {
-                gp.reset();
-                preloaded.gpu_planner = Some(gp);
+        // Inject GPU-produced metas into `mcp->segments[]`. No-op on the CPU
+        // path (where `gpu_metas_view` is `None`).
+        if let Some((ptr, n)) = gpu_metas_view {
+            let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
+            if !ok {
+                tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
             }
         }
-        #[cfg(not(feature = "gpu"))]
-        if !mem_planner.load_mem_metas_from_disk() {
-            tracing::warn!("tmp/metas.bin missing; segments will be empty (no GPU build)");
+
+        // Reset GPU planner and stash for the next block.
+        #[cfg(gpu)]
+        if let Some(gp) = gpu_planner {
+            gp.reset();
+            preloaded.gpu_planner = Some(gp);
         }
 
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
@@ -340,12 +322,11 @@ impl AsmRunnerMO {
                 ));
             }
 
-            // GPU path: align plans were built above from GPU-side per-chunk
-            // counters. CPU path: spawn-and-wait on the CPU mem-align worker.
-            #[cfg(feature = "gpu")]
-            let mut mem_align_plans = gpu_mem_align_plans;
-            #[cfg(not(feature = "gpu"))]
-            let mut mem_align_plans = mem_planner.wait_mem_align_plans();
+            // Use GPU-built align plans if available, otherwise wait on the
+            // CPU mem-align worker.
+            let mut mem_align_plans =
+                gpu_align_plans.unwrap_or_else(|| mem_planner.wait_mem_align_plans());
+
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
             let plans = mem_planner.collect_plans(&mut mem_align_plans);

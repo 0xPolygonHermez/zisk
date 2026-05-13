@@ -47,9 +47,8 @@ yansi = "1.0.1"
 
 [features]
 default = []
-cpu-only = ["zisk-build/cpu-only"]
+cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
-gpu = ["zisk-prover-backend/gpu"]
 custom_rust_llvm = []
 stats = []
 verify = ["fields/verify"]
