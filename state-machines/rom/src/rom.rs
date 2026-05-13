@@ -46,7 +46,7 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new<F: PrimeField64>(is_asm_emulator: bool) -> Arc<Self> {
+    pub fn new(is_asm_emulator: bool) -> Arc<Self> {
         let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
             (vec![], vec![])
         } else {
