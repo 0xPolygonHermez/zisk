@@ -71,11 +71,14 @@ impl ZiskStdin {
     pub fn read<T: DeserializeOwned>(&self) -> Result<T> {
         let data =
             self.read_raw().map_err(|e| anyhow::anyhow!("Failed to read from stdin: {}", e))?;
-        bincode::deserialize(&data).map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))
+        bincode::serde::decode_from_slice(&data, bincode::config::standard())
+            .map(|(v, _)| v)
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))
     }
 
     pub fn write<T: Serialize>(&self, data: &T) {
-        let bytes = bincode::serialize(data).expect("Failed to serialize");
+        let bytes = bincode::serde::encode_to_vec(data, bincode::config::standard())
+            .expect("Failed to serialize");
         self.write_slice(&bytes);
     }
 

@@ -1,0 +1,7 @@
+[package]
+name = "liveness-guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ziskos = { path = "../../../ziskos/entrypoint" }

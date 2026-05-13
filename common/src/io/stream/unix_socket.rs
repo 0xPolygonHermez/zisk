@@ -349,26 +349,6 @@ impl UnixSocketStreamWriter {
         self.listener_fd = Some(sock_fd);
         Ok(())
     }
-
-    /// Check if a client is currently connected.
-    ///
-    /// Returns `true` if a client is connected and ready to receive data.
-    pub fn is_client_connected(&mut self) -> bool {
-        // Already have a connection
-        if self.socket.is_some() {
-            return true;
-        }
-
-        // Try to receive socket from accept thread (non-blocking)
-        if let Some(rx) = &self.socket_receiver {
-            if let Ok(stream) = rx.try_recv() {
-                self.socket = Some(stream);
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
 impl StreamWrite for UnixSocketStreamWriter {
@@ -504,26 +484,17 @@ impl StreamWrite for UnixSocketStreamWriter {
         self.socket.is_some()
     }
 
-    /// Block until a client has connected to the listening socket.
-    ///
-    /// Unix socket `open()` is non-blocking (spawns accept thread), so the first
-    /// `write()` can fail with `NoClientConnected` before the peer connects.
-    /// This method polls with a 5 ms sleep, timing out after 60 seconds.
-    fn wait_for_connection(&mut self) -> Result<()> {
-        let start = std::time::Instant::now();
-        let deadline = start + std::time::Duration::from_secs(60);
-        let mut last_log = start;
-        while !self.is_client_connected() {
-            let now = std::time::Instant::now();
-            if now >= deadline {
-                anyhow::bail!("Timed out waiting for a client to connect to Unix socket");
-            }
-            if now.duration_since(last_log) >= std::time::Duration::from_secs(5) {
-                last_log = now;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
+    fn is_client_connected(&mut self) -> bool {
+        if self.socket.is_some() {
+            return true;
         }
-        Ok(())
+        if let Some(rx) = &self.socket_receiver {
+            if let Ok(stream) = rx.try_recv() {
+                self.socket = Some(stream);
+                return true;
+            }
+        }
+        false
     }
 
     fn max_message_size(&self) -> usize {

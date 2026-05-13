@@ -36,6 +36,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
     output_dir: &Option<PathBuf>,
+    force: bool,
 ) -> Result<ProgramVK, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
@@ -45,7 +46,7 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 
     let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
-    if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
+    if !force && elf_bin_path.exists() && elf_verkey_bin_path.exists() {
         let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
         return Ok(ProgramVK { vk });
@@ -61,9 +62,10 @@ pub fn rom_merkle_setup<F: PrimeField64>(
 
     tracing::info!("Root hash: {:?}", root);
 
-    let vk: Vec<u8> = root.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
+    let vk: Vec<u64> = root.iter().map(|x| x.as_canonical_u64()).collect();
 
-    std::fs::write(&elf_verkey_bin_path, &vk)?;
+    let vk_bytes: Vec<u8> = vk.iter().flat_map(|w| w.to_le_bytes()).collect();
+    std::fs::write(&elf_verkey_bin_path, &vk_bytes)?;
 
     Ok(ProgramVK { vk })
 }
