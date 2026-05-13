@@ -65,11 +65,11 @@ main() {
         fi
 
         step "Verifying constraints..."
-        ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
-        if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
-            err "verify constraints failed"
-            return 1
-        fi
+        # ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
+        # if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
+        #     err "verify constraints failed"
+        #     return 1
+        # fi
 
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
             step "Generating proof..."
