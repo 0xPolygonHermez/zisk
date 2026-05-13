@@ -28,19 +28,18 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-        let job = job_entry.write().await;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
+        if matches!(job_entry.read().await.state(), JobState::Failed) {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
-
-        drop(job);
 
         // An aggregation request has failed, fail the job
         if !execute_task_response.success {
@@ -66,9 +65,6 @@ impl Coordinator {
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
         }
-
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
 
         let mut job = job_entry.write().await;
 

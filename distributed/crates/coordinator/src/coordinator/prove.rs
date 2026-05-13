@@ -88,8 +88,11 @@ impl Coordinator {
         let job_id = execute_task_response.job_id.clone();
         let worker_id = execute_task_response.worker_id.clone();
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
+
         let mut job = job_entry.write().await;
 
         // If in simulation mode, complete the job
@@ -99,6 +102,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
+            drop(job);
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
@@ -124,17 +128,20 @@ impl Coordinator {
         let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
 
         if job.agg_task_inflight.is_none() {
-            // Nothing in-flight — store a copy and dispatch the original immediately.
-            job.agg_task_inflight = Some(task.clone());
+            // Nothing in-flight — dispatch immediately. Only mark in-flight
+            // AFTER the send succeeds; otherwise a failed send would leave the
+            // slot stuck `Some` forever and subsequent completions would queue
+            // tasks that never get dispatched.
             drop(job);
             self.send_aggregation_task(
                 &job_id,
                 &agg_worker_id,
-                task.proofs,
+                task.proofs.clone(),
                 task.all_done,
                 task.proof_type,
             )
             .await?;
+            job_entry.write().await.agg_task_inflight = Some(task);
         } else {
             // Task in-flight — queue this one; it will be sent after the ack.
             job.agg_task_queue.push_back(task);
