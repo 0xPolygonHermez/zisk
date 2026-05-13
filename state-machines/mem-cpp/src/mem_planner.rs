@@ -63,14 +63,6 @@ impl MemPlanner {
         unsafe { bindings::execute_mem_count_and_plan(self.inner) };
     }
 
-    /// GPU-mode variant of `execute`: spawns only the mem-align worker,
-    /// skipping the count and plan workers. Pair with
-    /// `inject_gpu_metas_from_pointers` (after `wait()`) to drive
-    /// `mcp->segments[]` from the in-process GPU planner.
-    pub fn execute_align_only(&self) {
-        unsafe { bindings::execute_mem_align_only(self.inner) };
-    }
-
     /// Adds a chunk of memory data
     pub fn add_chunk(&self, len: u64, data: *const c_void) {
         unsafe {

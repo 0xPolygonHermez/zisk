@@ -20,9 +20,6 @@ extern "C"
     MemCountAndPlan *create_mem_count_and_plan(void);
     void destroy_mem_count_and_plan(MemCountAndPlan *mcp);
     void execute_mem_count_and_plan(MemCountAndPlan *mcp);
-    // GPU-mode variant: skips the count + plan workers, leaving only mem_align.
-    // Use together with `inject_gpu_metas_from_pointers` to drive `mcp->segments[]`.
-    void execute_mem_align_only(MemCountAndPlan *mcp);
     void save_chunk_data(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size);
     void add_chunk_mem_count_and_plan(MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size);
     void stats_mem_count_and_plan(MemCountAndPlan *mcp);
@@ -40,15 +37,12 @@ extern "C"
     uint64_t get_mem_stats_len(MemCountAndPlan * mcp);
     uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp);
 
-    // Populates `mcp->segments[]` from GPU-produced metas (shared layout
-    // declared in instance_meta.hpp). Caller must keep the GPU planner alive:
+    // Populates `mcp->segments[]` from GPU-produced metas . Caller must keep the GPU planner alive:
     // `gpu_metas` and its `count_per_chunk` / `addr_offsets` arrays are owned
     // by it.
     bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas, uint32_t n);
 
-    // No-feature fallback: loads `tmp/metas.bin` (produced by the standalone
-    // GPU runner) into `mcp->segments[]`. Tolerant of a missing file (returns
-    // false silently). Idempotent — safe to call multiple times.
+    // loads `tmp/metas.bin`
     bool load_mem_metas_from_disk(MemCountAndPlan *mcp);
 
 #ifdef __cplusplus
