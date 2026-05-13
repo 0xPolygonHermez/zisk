@@ -41,9 +41,9 @@ extern "C"
     uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp);
 
     // Populates `mcp->segments[]` from GPU-produced metas (shared layout
-    // declared in gpu_raw_instance_meta.hpp). Caller must keep the GPU planner
-    // alive: `gpu_metas` and its `count_per_chunk` / `addr_offsets` arrays are
-    // owned by it.
+    // declared in instance_meta.hpp). Caller must keep the GPU planner alive:
+    // `gpu_metas` and its `count_per_chunk` / `addr_offsets` arrays are owned
+    // by it.
     bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas, uint32_t n);
 
     // No-feature fallback: loads `tmp/metas.bin` (produced by the standalone

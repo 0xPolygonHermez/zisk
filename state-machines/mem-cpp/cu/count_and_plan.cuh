@@ -14,7 +14,10 @@
 #include <string>
 #include <vector>
 
-#include "../cpp/gpu_raw_instance_meta.hpp"
+// `InstanceMeta` is declared in this shared header so the plain C++ side
+// (mem_count_and_plan.cpp) can read GPU-produced metas directly without
+// pulling in any CUDA-only types.
+#include "../cpp/instance_meta.hpp"
 
 // ─── Public input type ──────────────────────────────────────────────
 
@@ -23,15 +26,21 @@ struct __align__(8) MemOp {
     uint32_t flags;
 };
 
-// ─── Public output type ─────────────────────────────────────────────
-// Aliased to the shared layout in gpu_raw_instance_meta.hpp so the plain
-// C++ side (mem_count_and_plan.cpp) can read these metas directly.
-using InstanceMeta = RawInstanceMeta;
-
-// ─── Internal types 
+// ─── Internal types
 struct PotentialEmit;
 struct BlockOpSpill;
-struct ChunkCounters;
+
+// Per-chunk mem-align counters. POD; same five u32 fields the CPU planner's
+// `MemAlignCounters` uses (without the chunk_id — index in the per-chunk
+// array is the chunk_id). Exposed in the header so the C ABI shim can
+// hand a typed pointer back to Rust without dereferencing it.
+struct ChunkCounters {
+    uint32_t full_5;
+    uint32_t full_3;
+    uint32_t full_2;
+    uint32_t read_byte;
+    uint32_t write_byte;
+};
 
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
@@ -84,6 +93,10 @@ public:
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
 
+    // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
+    const ChunkCounters* align_counters_data()   const { return h_chunk_counters_per_chunk_; }
+    uint32_t             n_chunks()              const { return n_chunks_; }
+
 private:
 
     // ─── Single device buffer + slicing cursor ────────────────────────
@@ -99,9 +112,9 @@ private:
     uint32_t*      d_prefix_                 = nullptr;
     void*          d_temp_hist_              = nullptr;
     size_t         d_temp_hist_bytes_        = 0;
-    uint32_t*      d_max_compact_            = nullptr;
-    uint32_t*      d_invalid_mode_flag_      = nullptr;
-    ChunkCounters* d_chunk_counters_scratch_ = nullptr;
+    uint32_t*      d_max_compact_              = nullptr;
+    uint32_t*      d_invalid_mode_flag_        = nullptr;
+    ChunkCounters* d_chunk_counters_per_chunk_ = nullptr;  // device, MAX_CHUNKS slots
     uint32_t*      d_gappy_offsets_          = nullptr;
     uint32_t*      d_chunk_lens_             = nullptr;
     uint32_t*      d_packed_chunk_offsets_   = nullptr;
@@ -146,13 +159,14 @@ private:
 
     // ─── Pinned host buffers ─────────────────────────────────────────
 
-    MemOp*    h_memops_           = nullptr;
-    size_t    h_memops_used_      = 0;
-    uint32_t* h_n_emits_all_      = nullptr;
-    uint32_t* h_offsets_buf_      = nullptr;
-    size_t    h_offsets_buf_size_ = 0;
-    uint32_t* h_result_nops_      = nullptr;
-    uint32_t* h_meta_scalars_     = nullptr;
+    MemOp*         h_memops_                   = nullptr;
+    size_t         h_memops_used_              = 0;
+    uint32_t*      h_n_emits_all_              = nullptr;
+    uint32_t*      h_offsets_buf_              = nullptr;
+    size_t         h_offsets_buf_size_         = 0;
+    uint32_t*      h_result_nops_              = nullptr;
+    uint32_t*      h_meta_scalars_             = nullptr;
+    ChunkCounters* h_chunk_counters_per_chunk_ = nullptr;  // pinned, MAX_CHUNKS slots
 
     // ─── Streams + events ────────────────────────────────────────────
 

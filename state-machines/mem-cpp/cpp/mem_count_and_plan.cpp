@@ -5,7 +5,7 @@
 #include "mem_count_and_plan.hpp"
 #include "mem_stats.hpp"
 #include "instance_meta_loader.hpp"
-#include "gpu_raw_instance_meta.hpp"
+#include "instance_meta.hpp"
 
 static void mkdir_recursive(const char *path) {
     char tmp[512];
@@ -426,7 +426,7 @@ bool load_mem_metas_from_disk(MemCountAndPlan *mcp)
         }
         std::sort(metas.metas.begin(), metas.metas.end(),
                   [](const InstanceMeta &a, const InstanceMeta &b) {
-                      return a.type < b.type || (a.type == b.type && a.inst_id < b.inst_id);
+                      return a.kind < b.kind || (a.kind == b.kind && a.inst_id < b.inst_id);
                   });
         printf("Metas loaded from tmp/metas.bin (%zu instances).\n", metas.metas.size());
         generate_mem_segments_from_gpu_plan(mcp, metas.metas);
@@ -447,26 +447,24 @@ void load_mem_metas_and_generate_segments(MemCountAndPlan *mcp)
             return;
         }
         std::sort(metas.metas.begin(), metas.metas.end(),
-                  [](const InstanceMeta &a, const InstanceMeta &b) { return a.type < b.type || (a.type == b.type && a.inst_id < b.inst_id); });
+                  [](const InstanceMeta &a, const InstanceMeta &b) { return a.kind < b.kind || (a.kind == b.kind && a.inst_id < b.inst_id); });
         for (const auto &meta : metas.metas) {
             uint32_t count_zeros = 0;
-            for (size_t i = 0; i < meta.addr_offsets.size(); ++i) {
+            for (size_t i = 0; i < meta.addr_offsets_size; ++i) {
                 if (meta.addr_offsets[i] == 0) {
                     count_zeros++;
                 }
             }
-            printf("Instance %d: type=%d first_addr=0x%08X last_addr=0x%08X first_chunk=%d first_skip=%d last_chunk=%d last_include=%d count_per_chunk_len=%zu addr_offsets_len=%zu zeros=%d/%d\n",
-                meta.inst_id, meta.type, meta.first_addr, meta.last_addr, meta.first_addr_chunk, meta.first_addr_skip,
-                meta.last_addr_chunk, meta.last_addr_include, meta.count_per_chunk.size(), meta.addr_offsets.size(), count_zeros, meta.addr_offsets.size());
+            printf("Instance %u: kind=%u first_addr=0x%08X last_addr=0x%08X first_chunk=%u first_skip=%u last_chunk=%u last_include=%u count_per_chunk_len=%u addr_offsets_len=%u zeros=%u/%u\n",
+                meta.inst_id, meta.kind, meta.first_addr, meta.last_addr, meta.first_addr_chunk, meta.first_addr_skip,
+                meta.last_addr_chunk, meta.last_addr_include, meta.n_chunks, meta.addr_offsets_size, count_zeros, meta.addr_offsets_size);
         }
         printf("Metas loaded (%zu).\n", metas.metas.size());
         generate_mem_segments_from_gpu_plan(mcp, metas.metas);
     });
 }
 
-// Pure generator: writes into the provided destination table. Used by both
-// `generate_mem_segments_from_gpu_plan` (file path → mcp->segments) and the
-// phase-2 comparator (buffer path → mcp->shadow_segments).
+// Pure generator: writes into the provided destination table.
 static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::vector<InstanceMeta> &instances) {
     uint32_t last_segments[MEM_TYPES];
     for (int i = 0; i < MEM_TYPES; ++i) {
@@ -475,8 +473,8 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
     }
 
     for (const auto &instance : instances) {
-        if (instance.inst_id >= last_segments[instance.type]) {
-            last_segments[instance.type] = instance.inst_id;
+        if (instance.inst_id >= last_segments[instance.kind]) {
+            last_segments[instance.kind] = instance.inst_id;
         }
     }
     for (const auto &instance : instances) {
@@ -484,7 +482,7 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
         uint32_t first_chunk = instance.first_addr_chunk;
         uint32_t last_chunk = instance.last_addr_chunk;
 
-        for (uint32_t chunk_id = 0; chunk_id < instance.count_per_chunk.size(); ++chunk_id) {
+        for (uint32_t chunk_id = 0; chunk_id < instance.n_chunks; ++chunk_id) {
             uint32_t count = instance.count_per_chunk[chunk_id];
             if (count == 0) continue;
 
@@ -509,41 +507,44 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
                 segment->swap_last_and_first();
             }
         }
-        segment->is_last_segment = instance.inst_id == last_segments[instance.type];
+        segment->is_last_segment = instance.inst_id == last_segments[instance.kind];
         segment->offsets_base_addr = instance.first_addr;
-        segment->offsets.assign(instance.addr_offsets.begin(), instance.addr_offsets.end());
-        dest[instance.type].set(instance.inst_id, segment);
+        segment->offsets.assign(instance.addr_offsets, instance.addr_offsets + instance.addr_offsets_size);
+        dest[instance.kind].set(instance.inst_id, segment);
     }
 }
 
-// Zero-copy injection. Build a vector<InstanceMeta> (loader layout) whose
-// spans point into the GPU planner's host-pinned arrays (count_per_chunk,
-// addr_offsets), then run the segment generator on it. The GPU planner must
-// remain alive until this returns (caller's responsibility).
+// Inject GPU-produced metas straight into `mcp->segments[]`. The GPU planner
+// owns the per-meta `count_per_chunk` / `addr_offsets` arrays and must remain
+// alive until this returns. The shallow vector copy here just gives the
+// segment generator the `vector<InstanceMeta>` shape it expects; the pointers
+// inside are untouched.
 bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_ptr, uint32_t n) {
+    // TODO: optimize addr_offsets representation.
+    //
+    // Measured on the reference input: of the 85 M total entries across all
+    // instances, ~83.5% are consecutive duplicates of their predecessor
+    // (the cumulative-offset array is mostly flat). The biggest instances
+    // are the most sparse:
+    //   inst 46 (RAM, 53.5 M entries) -> 99.59% repeats (~245x compressible)
+    //   inst  1 (kind=0, 16.4 M)      -> 99.93% repeats (~1500x compressible)
+    //   inst  0 (kind=2, 544 K)       -> 98.19% repeats (~54x)
+    //
+    // A paged or RLE representation would:
+    //   - cut the host `segment->offsets.assign(...)` memcpy from ~341 MB
+    //     per inject (the dominant ~110 ms here) to ~50-100 MB;
+    //   - reduce GPU->host bandwidth in the count_and_plan pipeline (the
+    //     same arrays are produced on GPU and copied back today);
+    //   - require coordinated changes in: the GPU kernel that emits
+    //     addr_offsets, MemSegment::offsets, MemModuleSegmentCheckPoint
+    //     in Rust, and every downstream consumer (mem_sm.rs etc.).
+    //
+    // Deferred — out of scope for this integration.
+
     if (!mcp || (!gpu_metas_ptr && n != 0)) return false;
-    const RawInstanceMeta *gpu_metas = static_cast<const RawInstanceMeta *>(gpu_metas_ptr);
-    std::vector<InstanceMeta> loader_metas;
-    loader_metas.reserve(n);
-    for (uint32_t i = 0; i < n; ++i) {
-        const RawInstanceMeta &g = gpu_metas[i];
-        InstanceMeta lm{};
-        lm.inst_id           = g.inst_id;
-        lm.type              = static_cast<uint8_t>(g.kind);
-        lm.first_addr        = g.first_addr;
-        lm.last_addr         = g.last_addr;
-        lm.first_addr_chunk  = g.first_addr_chunk;
-        lm.first_addr_skip   = g.first_addr_skip;
-        lm.last_addr_chunk   = g.last_addr_chunk;
-        lm.last_addr_include = g.last_addr_include;
-        lm.count_per_chunk   = std::span<const uint32_t>(g.count_per_chunk, g.n_chunks);
-        // generate_mem_segments_into only reads addr_offsets via .begin()/.end()
-        // (no mutation); cast away const to fit the loader's span<uint32_t>.
-        lm.addr_offsets      = std::span<uint32_t>(
-            const_cast<uint32_t*>(g.addr_offsets), g.addr_offsets_size);
-        loader_metas.push_back(lm);
-    }
-    generate_mem_segments_into(mcp->segments, loader_metas);
+    const InstanceMeta *gpu_metas = static_cast<const InstanceMeta *>(gpu_metas_ptr);
+    std::vector<InstanceMeta> metas(gpu_metas, gpu_metas + n);
+    generate_mem_segments_into(mcp->segments, metas);
     return true;
 }
 
@@ -617,6 +618,9 @@ void MemCountAndPlan::wait_mem_align_counters() {
 }
 
 void MemCountAndPlan::wait() {
+    // GPU-mode callers skip `execute_align_only`, so `parallel_execute` is
+    // never spawned. Joining a null unique_ptr segfaults — guard it.
+    if (!parallel_execute || !parallel_execute->joinable()) return;
     try {
         parallel_execute->join();
     } catch (const std::exception &e) {

@@ -162,11 +162,8 @@ impl AsmRunnerMO {
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
-        // In GPU mode, the in-process GpuMemPlanner provides the segment
-        // table (injected after `wait()` below); the CPU side only needs to
-        // run the mem-align worker.
-        #[cfg(feature = "gpu")]
-        mem_planner.execute_align_only();
+        // In GPU mode the GPU planner produces both the segment table and the
+        // per-chunk mem-align counters; no CPU worker is needed.
         #[cfg(not(feature = "gpu"))]
         mem_planner.execute();
 
@@ -224,6 +221,7 @@ impl AsmRunnerMO {
 
                     stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
+                    #[cfg(not(feature = "gpu"))]
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     // `MemCountersBusData` and `GpuMemOp` share an identical
@@ -278,10 +276,18 @@ impl AsmRunnerMO {
 
         mem_planner.wait();
 
-        // Populate `mcp->segments[]`. Two paths:
-        //   * GPU feature on  → inject the in-memory metas produced this run.
+        // Populate `mcp->segments[]` and (in GPU mode) the mem-align plans.
+        //   * GPU feature on  → inject the in-memory metas produced this run,
+        //                       and harvest per-chunk align counters BEFORE
+        //                       `reset()` zeroes `n_chunks_`.
         //   * GPU feature off → fall back to the legacy `tmp/metas.bin` file
         //                       written by the standalone GPU runner.
+        #[cfg(feature = "gpu")]
+        let gpu_mem_align_plans: Vec<Plan> = gpu_planner
+            .as_ref()
+            .map(|gp| gp.build_align_plans())
+            .unwrap_or_default();
+
         #[cfg(feature = "gpu")]
         {
             if let Some((ptr, n)) = gpu_metas_view {
@@ -334,6 +340,11 @@ impl AsmRunnerMO {
                 ));
             }
 
+            // GPU path: align plans were built above from GPU-side per-chunk
+            // counters. CPU path: spawn-and-wait on the CPU mem-align worker.
+            #[cfg(feature = "gpu")]
+            let mut mem_align_plans = gpu_mem_align_plans;
+            #[cfg(not(feature = "gpu"))]
             let mut mem_align_plans = mem_planner.wait_mem_align_plans();
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);

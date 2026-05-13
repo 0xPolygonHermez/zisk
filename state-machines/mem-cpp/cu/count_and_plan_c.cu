@@ -39,4 +39,14 @@ void count_and_plan_reset(void* h) {
     static_cast<CountAndPlan*>(h)->reset();
 }
 
+// Per-chunk mem-align counters, valid after `count_and_plan_run`. Returns a
+// pointer to `*n_chunks` entries (one per submitted chunk) of the POD
+// `ChunkCounters` struct declared in count_and_plan.cuh. Storage is owned by
+// the planner; valid until the next `count_and_plan_reset` on this handle.
+const ChunkCounters* count_and_plan_get_align_counters(void* h, uint32_t* n_chunks) {
+    CountAndPlan* p = static_cast<CountAndPlan*>(h);
+    if (n_chunks) *n_chunks = p->n_chunks();
+    return p->align_counters_data();
+}
+
 }  // extern "C"

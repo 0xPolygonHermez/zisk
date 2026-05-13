@@ -1,36 +1,27 @@
-// instance_meta_loader.hpp
+// Loader for the binary `metas.bin` format produced by the standalone GPU
+// runner. Produces a `LoadedMetas` whose `metas[]` use the same
+// `InstanceMeta` layout the in-process GPU pipeline does — pointer + size
+// instead of std::span — so downstream consumers can be written once.
 //
-// Self-contained loader for InstanceMeta files produced by main_real.cu's
-// --save-metas option.
-//
-// File format (binary, little-endian):
+// On-disk format (little-endian, packed, in order):
 //
 //   uint32_t num_metas
 //   for each meta:
 //     uint32_t inst_id
-//     uint8_t  type             (0=ROM, 1=INPUT, 2=RAM)
-//     uint8_t  pad[3]
+//     uint32_t kind                       // 0=ROM, 1=INPUT, 2=RAM
 //     uint32_t first_addr
 //     uint32_t last_addr
 //     uint32_t first_addr_chunk
 //     uint32_t first_addr_skip
 //     uint32_t last_addr_chunk
 //     uint32_t last_addr_include
-//     uint32_t count_per_chunk_size
+//     uint32_t n_chunks
 //     uint32_t addr_offsets_size
-//     uint32_t count_per_chunk[count_per_chunk_size]
+//     uint32_t count_per_chunk[n_chunks]
 //     uint32_t addr_offsets[addr_offsets_size]
 //
-// Usage:
-//   #include "instance_meta_loader.hpp"
-//   LoadedMetas L = load_instance_metas("metas.bin");
-//   for (const InstanceMeta& m : L.metas) {
-//       // ... use m.inst_id, m.type, m.count_per_chunk, m.addr_offsets, ...
-//   }
-//   // L owns the backing storage for the spans; do not move/destroy L while
-//   // any meta is still in use.
-//
-// Requires C++20 (std::span). Header-only, no external dependencies.
+// `LoadedMetas` owns the backing storage; do not move/destroy it while any
+// pointer inside `metas[i].count_per_chunk` / `addr_offsets` is in use.
 
 #ifndef INSTANCE_META_LOADER_HPP
 #define INSTANCE_META_LOADER_HPP
@@ -38,31 +29,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-// Mirror of the InstanceMeta struct produced by main_real.cu. The two spans
-// view contiguous slices of LoadedMetas::count_storage / offset_storage; the
-// caller must keep the LoadedMetas alive while iterating the metas.
-struct InstanceMeta {
-    uint32_t inst_id;
-    uint8_t  type;                                 // 0=ROM, 1=INPUT, 2=RAM
-    uint32_t first_addr;
-    uint32_t last_addr;
-    std::span<const uint32_t> count_per_chunk;
-    std::span<uint32_t> addr_offsets;
-    uint32_t first_addr_chunk;
-    uint32_t first_addr_skip;
-    uint32_t last_addr_chunk;
-    uint32_t last_addr_include;
-};
+#include "instance_meta.hpp"
 
-// Owns the backing storage that the spans inside `metas` point into.
-// `metas[i].count_per_chunk` is a view into `count_storage` starting at
-// `cnt_offsets[i]`; same for `addr_offsets` / `offset_storage` / `aos_offsets`.
 struct LoadedMetas {
     std::vector<InstanceMeta> metas;
     std::vector<uint32_t>     count_storage;
@@ -90,31 +62,26 @@ inline LoadedMetas load_instance_metas(const std::string& path) {
     out.cnt_offsets.reserve(n);
     out.aos_offsets.reserve(n);
 
-    // Single pass: read into temporaries, append to bundle storage, record
-    // offsets. Span binding is deferred to a final pass below so that vector
-    // re-allocations during inserts don't invalidate already-bound spans.
+    // Append into bundle storage first; pointers are bound below so vector
+    // re-allocations during inserts can't invalidate already-bound pointers.
     std::vector<uint32_t> tmp_cnt;
     std::vector<uint32_t> tmp_aos;
     InstanceMeta m{};
     for (uint32_t i = 0; i < n; i++) {
-        uint8_t type, pad[3];
         rd(&m.inst_id,           sizeof(uint32_t));
-        rd(&type, 1);
-        rd(pad, 3);
-        m.type = type;
+        rd(&m.kind,              sizeof(uint32_t));
         rd(&m.first_addr,        sizeof(uint32_t));
         rd(&m.last_addr,         sizeof(uint32_t));
         rd(&m.first_addr_chunk,  sizeof(uint32_t));
         rd(&m.first_addr_skip,   sizeof(uint32_t));
         rd(&m.last_addr_chunk,   sizeof(uint32_t));
         rd(&m.last_addr_include, sizeof(uint32_t));
-        uint32_t cps, aos;
-        rd(&cps, sizeof(uint32_t));
-        rd(&aos, sizeof(uint32_t));
-        tmp_cnt.resize(cps);
-        tmp_aos.resize(aos);
-        rd(tmp_cnt.data(), cps * sizeof(uint32_t));
-        rd(tmp_aos.data(), aos * sizeof(uint32_t));
+        rd(&m.n_chunks,          sizeof(uint32_t));
+        rd(&m.addr_offsets_size, sizeof(uint32_t));
+        tmp_cnt.resize(m.n_chunks);
+        tmp_aos.resize(m.addr_offsets_size);
+        rd(tmp_cnt.data(), m.n_chunks            * sizeof(uint32_t));
+        rd(tmp_aos.data(), m.addr_offsets_size  * sizeof(uint32_t));
 
         out.cnt_offsets.push_back(out.count_storage.size());
         out.aos_offsets.push_back(out.offset_storage.size());
@@ -126,18 +93,10 @@ inline LoadedMetas load_instance_metas(const std::string& path) {
     }
     std::fclose(f);
 
-    // Bind spans now that count_storage / offset_storage are final.
+    // Bind pointers now that count_storage / offset_storage are final.
     for (std::size_t i = 0; i < out.metas.size(); i++) {
-        std::size_t cnt_size = (i + 1 < out.cnt_offsets.size())
-            ? out.cnt_offsets[i + 1] - out.cnt_offsets[i]
-            : out.count_storage.size() - out.cnt_offsets[i];
-        std::size_t aos_size = (i + 1 < out.aos_offsets.size())
-            ? out.aos_offsets[i + 1] - out.aos_offsets[i]
-            : out.offset_storage.size() - out.aos_offsets[i];
-        out.metas[i].count_per_chunk = std::span<const uint32_t>(
-            out.count_storage.data() + out.cnt_offsets[i], cnt_size);
-        out.metas[i].addr_offsets = std::span<uint32_t>(
-            out.offset_storage.data() + out.aos_offsets[i], aos_size);
+        out.metas[i].count_per_chunk = out.count_storage.data() + out.cnt_offsets[i];
+        out.metas[i].addr_offsets    = out.offset_storage.data() + out.aos_offsets[i];
     }
     return out;
 }

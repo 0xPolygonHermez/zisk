@@ -28,6 +28,19 @@ pub struct InstanceMeta {
 
 pub enum CountAndPlanHandle {}
 
+/// Per-chunk mem-align counters produced by the GPU kernel. Same five u32
+/// fields the CPU planner's `MemAlignCounters` uses (without `chunk_id` —
+/// the index in the returned slice IS the chunk_id).
+#[repr(C)]
+#[derive(Copy, Clone, Default, Debug)]
+pub struct GpuMemAlignCounter {
+    pub full_5: u32,
+    pub full_3: u32,
+    pub full_2: u32,
+    pub read_byte: u32,
+    pub write_byte: u32,
+}
+
 extern "C" {
     pub fn count_and_plan_create() -> *mut CountAndPlanHandle;
     pub fn count_and_plan_destroy(h: *mut CountAndPlanHandle);
@@ -49,4 +62,8 @@ extern "C" {
         n_metas: *mut u32,
     ) -> bool;
     pub fn count_and_plan_reset(h: *mut CountAndPlanHandle);
+    pub fn count_and_plan_get_align_counters(
+        h: *mut CountAndPlanHandle,
+        n_chunks: *mut u32,
+    ) -> *const GpuMemAlignCounter;
 }

@@ -145,9 +145,10 @@ impl MemPlanner {
 
     /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`. Must
     /// be called after `wait()` joins the background workers. The C++ side
-    /// casts `gpu_metas` to `const RawInstanceMeta*` — its layout must match
-    /// the Rust `GpuInstanceMeta` (#[repr(C)]) byte-for-byte. The GPU planner
-    /// that produced these metas must remain alive across this call.
+    /// casts `gpu_metas` to `const InstanceMeta*` (declared in
+    /// `cpp/instance_meta.hpp`) — its layout must match the Rust
+    /// `GpuInstanceMeta` (#[repr(C)]) byte-for-byte. The GPU planner that
+    /// produced these metas must remain alive across this call.
     ///
     /// # Safety
     /// Caller must ensure `gpu_metas` points to `n` valid `GpuInstanceMeta`

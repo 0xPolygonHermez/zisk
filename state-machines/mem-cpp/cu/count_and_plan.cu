@@ -81,13 +81,6 @@ struct BlockOpSpill {
     uint32_t kind_w;
 };
 
-struct ChunkCounters {
-    uint32_t full_5;
-    uint32_t full_3;
-    uint32_t full_2;
-    uint32_t read_byte;
-    uint32_t write_byte;
-};
 
 // 64-bit RAM sort-key bit layout (see kernels below).
 #define KIND_W_BIT          0u
@@ -1077,8 +1070,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_addr_offsets_           = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
     d_offset_starts_          = (uint32_t*)take((size_t)max_active_ * 4);
     d_max_compact_            = (uint32_t*)take(3 * 4);
-    d_invalid_mode_flag_      = (uint32_t*)take(4);
-    d_chunk_counters_scratch_ = (ChunkCounters*)take(sizeof(ChunkCounters));
+    d_invalid_mode_flag_        = (uint32_t*)take(4);
+    d_chunk_counters_per_chunk_ = (ChunkCounters*)take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
     d_gappy_offsets_          = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
     d_chunk_lens_             = (uint32_t*)take((size_t)MAX_CHUNKS * 4);
     d_packed_chunk_offsets_   = (uint32_t*)take(((size_t)MAX_CHUNKS + 1) * 4);
@@ -1128,6 +1121,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_n_emits_all_, (size_t)MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_result_nops_, (size_t)max_active_ * MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
+    CUDA_CHECK(cudaMallocHost(&h_chunk_counters_per_chunk_,
+        (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
     h_offsets_buf_size_ = 1ull << 30;
     CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     for (int s = 0; s < N_STREAMS; s++)
@@ -1243,7 +1238,7 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
 
     decode_count_kernel<<<g_memops, BLOCK, 0, st>>>(
         d_memops_[s], n, d_counts_[s], d_spill_status_[s],
-        d_chunk_counters_scratch_,
+        &d_chunk_counters_per_chunk_[c],
         d_spill_[s], d_spill_count_[s],
         d_invalid_mode_flag_);
 
@@ -1317,6 +1312,17 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
             CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
         CUDA_CHECK(cudaEventRecord(e_after_preproc_, 0));
 
+        // Pull per-chunk mem-align counters back to host (only the touched
+        // range; max 8192 * 20 B = 160 KB). Streams are already synced above,
+        // so a plain synchronous memcpy is fine.
+        if (h_chunk_counters_per_chunk_ && d_chunk_counters_per_chunk_) {
+            CUDA_CHECK(cudaMemcpy(
+                h_chunk_counters_per_chunk_,
+                d_chunk_counters_per_chunk_,
+                (size_t)n_chunks_ * sizeof(ChunkCounters),
+                cudaMemcpyDeviceToHost));
+        }
+
         packed_chunk_offsets_h_.assign(n_chunks_ + 1, 0);
         for (uint32_t c = 0; c < n_chunks_; c++)
             packed_chunk_offsets_h_[c + 1] = packed_chunk_offsets_h_[c] + h_n_emits_all_[c];
@@ -1378,18 +1384,20 @@ void CountAndPlan::reset() {
     preprocessed_           = false;
     prepared_               = false;
 
-    if (d_histogram_)              CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
-    if (d_max_compact_)            CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
-    if (d_invalid_mode_flag_)      CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 4));
-    if (d_chunk_counters_scratch_) CUDA_CHECK(cudaMemset(d_chunk_counters_scratch_, 0, sizeof(ChunkCounters)));
+    if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
+    if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
+    if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 4));
+    if (d_chunk_counters_per_chunk_) CUDA_CHECK(cudaMemset(d_chunk_counters_per_chunk_, 0,
+        (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
 }
 
 void CountAndPlan::free_pinned_() {
-    if (h_memops_)       { cudaFreeHost(h_memops_);       h_memops_       = nullptr; }
-    if (h_n_emits_all_)  { cudaFreeHost(h_n_emits_all_);  h_n_emits_all_  = nullptr; }
-    if (h_offsets_buf_)  { cudaFreeHost(h_offsets_buf_);  h_offsets_buf_  = nullptr; }
-    if (h_result_nops_)  { cudaFreeHost(h_result_nops_);  h_result_nops_  = nullptr; }
-    if (h_meta_scalars_) { cudaFreeHost(h_meta_scalars_); h_meta_scalars_ = nullptr; }
+    if (h_memops_)                   { cudaFreeHost(h_memops_);                   h_memops_                   = nullptr; }
+    if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
+    if (h_offsets_buf_)              { cudaFreeHost(h_offsets_buf_);              h_offsets_buf_              = nullptr; }
+    if (h_result_nops_)              { cudaFreeHost(h_result_nops_);              h_result_nops_              = nullptr; }
+    if (h_meta_scalars_)             { cudaFreeHost(h_meta_scalars_);             h_meta_scalars_             = nullptr; }
+    if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
     for (int s = 0; s < N_STREAMS; s++)
         if (h_n_emits_[s]) { cudaFreeHost(h_n_emits_[s]); h_n_emits_[s] = nullptr; }
 }
