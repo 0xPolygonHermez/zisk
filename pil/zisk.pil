@@ -111,8 +111,8 @@ airgroup Zisk {
     
     // Standard operations
     Arith(N: 2**21);
-    virtual ArithTable();
-    virtual ArithRangeTable();
+    virtual ArithTable(ARITH_TABLE_SIZE);
+    virtual ArithRangeTable(ARITH_RANGE_TABLE_SIZE);
     virtual FrequentOps(2085944, table_id: ARITH_FROPS_TABLE_ID, 
                         bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 

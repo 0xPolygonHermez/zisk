@@ -1,10 +1,46 @@
 require "std_lookup.pil"
 require "opids.pil"
 
+const int ARITH_RANGE_TABLE_SIZE = 2**22; // TODO: Adjust this size
 const int ARITH_RANGE_CARRY = 100;
 const int ARITH_RANGE_16_BITS = 0;
 
+/*
+    ArithRangeTable: fixed table for arithmetic chunk and carry range checks.
+
+    Notes:
+    - POS and NEG each admit half of the 16-bit domain. Together, the 9 POS ids
+        and 9 NEG ids contribute 18 * 2^15 = 9 * 2^16 rows.
+    - The carry interval is inclusive, so it has 0xF0000 - (-0xEFFFF) + 1
+        = 0x1E0000 = 30 * 2^16 rows.
+
+    CONSTRAINTS:
+        This is a fixed lookup table air: it publishes range-id/value pairs and has
+        no per-row polynomial constraints other than bus balance through multiplicity.
+        Range ids cover full 16-bit chunks, positive signed high chunks, negative
+        signed high chunks, and the carry interval used by Arith's carry chain.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Callers must pass range ids in the documented compressed layout: base id
+          for high chunk 3, `+26` for high chunk 1, `+17` for paired high chunk 3,
+          and `+9` for paired high chunk 1.
+        - Carry checks must use `ARITH_RANGE_CARRY`; plain full 16-bit checks must
+          use `ARITH_RANGE_16_BITS`.
+
+    POST-CONDITIONS (what the template guarantees):
+        - Full range ids admit `[0x0000, 0xFFFF]`.
+        - Positive range ids admit `[0x0000, 0x7FFF]`.
+        - Negative range ids admit `[0x8000, 0xFFFF]`.
+        - `ARITH_RANGE_CARRY` admits `[-0xEFFFF, 0xF0000]`.
+
+    BUSES:
+        - ARITH_RANGE_TABLE_ID (proves): [RANGE_ID, RANGE_VALUES] with witness
+          multiplicity.
+*/
 airtemplate ArithRangeTable(const int N = 2**22) {
+    if (N < ARITH_RANGE_TABLE_SIZE) {
+        error(`N must be at least ${ARITH_RANGE_TABLE_SIZE}, but N=${N} was provided`);
+    }
 
     //     a3 a1 b3 b1
     // rid c3 c1 d3 d1 range 2^16 2^15 notes
@@ -28,10 +64,7 @@ airtemplate ArithRangeTable(const int N = 2**22) {
     //  16  F  -  F  - ab cd    2    2
     //                       ---- ----
 
-    // COL COMPRESSION
-    //
-    //
-    //
+    // COLUMN COMPRESSION
     // 0: F F F + + + - - - F F F F F F F F                                                       offset: 0
     // 1:                                                     F F F F F F F F F F F + + + - - -   offset: 26
     // 2:                                   F + - F + - F + - F F F F F F F F                     offset: 17
@@ -45,14 +78,14 @@ airtemplate ArithRangeTable(const int N = 2**22) {
     //
     //    F F F + + + - - - F F F F F F F F F + - F + - F + - F F F F F F F F F F F + + + - - -
     //
-    //    25:FULL + 9:POS + 9:NEG = 34 * 2^16 = 2^21 + 2^17
+    //    25:FULL + 9:POS + 9:NEG = 25*2^16 + 18*2^15 = 34*2^16 = 2^21 + 2^17
     //
     // a3 c3 [range, 0] => [range]
     // a1 c1 [range, 1] => [range + 26]
     // b3 d3 [range, 2] => [range + 17]
     // b1 d1 [range, 3] => [range + 9]
     //
-    // [-(2^19+2^18+2^16-1)...(2^19+2^18+2^16)] range check carry
+    // Carry range check: [-(2^19 + 2^18 + 2^16 - 1)..(2^19 + 2^18 + 2^16)]
 
     const int FULL = 2**16;
     const int POS = 2**15;
@@ -66,14 +99,12 @@ airtemplate ArithRangeTable(const int N = 2**22) {
     col fixed RANGE_VALUES = [[0x0000..0xFFFF]:25,
                               [0x0000..0x7FFF]:9,
                               [0x8000..0xFFFF]:9,
-                              [-0xEFFFF..0xF0000]];
-
+                              [-0xEFFFF..0xF0000]]; // TODO: review carry range bounds.
 
     col witness multiplicity;
-
     lookup_proves(ARITH_RANGE_TABLE_ID, [RANGE_ID, RANGE_VALUES], multiplicity);
 }
 
 function arith_range_table_assumes(const expr range_type, const expr value, const expr sel = 1) {
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:sel);
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:);
 }

@@ -5,10 +5,43 @@ require "opids.pil"
 require "arith_table.pil"
 require "arith_range_table.pil"
 
-//          full   mul_64  full_32  mul_32
-// TOTAL      88       77       57      44
+/*
+    Arith: 64-bit and 32-bit multiplication, division, and remainder provider.
 
+    CONSTRAINTS:
+        Splits operands/results into four 16-bit chunks and enforces the arithmetic
+        identity for multiplication or division through an 8-chunk carry chain.
+        Signed modes are handled with sign flags/factors, and 32-bit word modes
+        zero out ignored high input limbs while sign-extending the published result.
+        Division-by-zero and signed overflow cases are explicitly gated and constrained.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Operation Bus callers must request one of the arithmetic opcodes admitted
+          by ArithTable: MULU/MULUH/MULSUH/MUL/MULH/MUL_W/DIV/REM variants.
+        - Binary helper comparison operations used for the remainder bound must be
+          provided by the Binary state machine.
+
+    POST-CONDITIONS (what the template guarantees):
+        - For multiplication, the Operation Bus result is either the low product
+          (`main_mul`) or the high product (`secondary`).
+        - For division, the Operation Bus result is either quotient (`main_div`) or
+          remainder (`secondary`), with `flag = div_by_zero`.
+        - For non-zero division, `|remainder| < |divisor|` is enforced through a
+          Binary helper comparison.
+        - All chunks and carries used by the arithmetic identity are range-checked
+          against ArithRangeTable.
+
+    BUSES:
+        - OPERATION_BUS_ID (proves): [op, a0, a1, b0, b1, c0, c1, flag,
+          main_step=0, extended_arg=0, extra_arg=0].
+        - OPERATION_BUS_ID (assumes): Binary helper comparison for the remainder
+          bound when `div * (1 - div_by_zero)` is active.
+        - ARITH_TABLE_ID (assumes): [op, packed_flags, range_ab, range_cd].
+        - ARITH_RANGE_TABLE_ID (assumes): chunk and carry range checks.
+*/
 airtemplate Arith(const int N = 2**18) {
+    //          full   mul_64  full_32  mul_32
+    // TOTAL      88       77       57      44
 
     const int CHUNK_SIZE = 2**16;
     const int CHUNKS_INPUT = 4;
@@ -36,10 +69,6 @@ airtemplate Arith(const int N = 2**18) {
     col witness bits(64, signed) na_fb;
     col witness bits(64, signed) nb_fa;
 
-/*
-    col witness bits(1) secondary;
-    secondary * (secondary - 1) === 0;
-*/
     col witness bits(1) main_div;
     col witness bits(1) main_mul;
     col witness bits(1) signed;
@@ -54,30 +83,30 @@ airtemplate Arith(const int N = 2**18) {
     div_by_zero * (1 - div_by_zero) === 0;
     div_overflow * (1 - div_overflow) === 0;
 
-    // factor ab € {-1, 1}
-    fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
-    na_fb === na * (1 - 2 * nb);
-    nb_fa === nb * (1 - 2 * na);
+    // Sign factor for a*b, in {-1, 1}.
+    fab <== 1 - 2 * na - 2 * nb + 4 * na * nb;
+    na_fb <== na * (1 - 2 * nb);
+    nb_fa <== nb * (1 - 2 * na);
 
     expr sum_all_bs = 0;
     for (int i = 0; i < length(b); ++i) {
-        div_by_zero * b[i] === 0;               // forces b must be zero when div_by_zero
-        sum_all_bs = sum_all_bs + b[i];                 // all b are values of 16 bits (verified by range_check)
+                div_by_zero * b[i] === 0;               // Forces b to be zero when div_by_zero is set.
+                sum_all_bs = sum_all_bs + b[i];         // All b chunks are 16-bit values, verified by range checks.
     }
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // When div_by_zero is set, the quotient a is otherwise free; force it to -1.
     div_by_zero * (a[0] - 0xFFFF) === 0;
     div_by_zero * (a[1] - 0xFFFF) === 0;
     div_by_zero * (a[2] - (1 - m32) * 0xFFFF) === 0;
     div_by_zero * (a[3] - (1 - m32) * 0xFFFF) === 0;
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // When div_overflow is set, force the divisor b to -1.
     div_overflow * (b[0] - 0xFFFF) === 0;
     div_overflow * (b[1] - 0xFFFF) === 0;
     div_overflow * (b[2] - (1 - m32) * 0xFFFF) === 0;
     div_overflow * (b[3] - (1 - m32) * 0xFFFF) === 0;
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // When div_overflow is set, force the dividend c to INT_MIN.
     div_overflow * c[0] === 0;
     div_overflow * (c[1] - m32 * 0x8000) === 0;
     div_overflow * c[2] === 0;
@@ -86,15 +115,15 @@ airtemplate Arith(const int N = 2**18) {
     // b != 0 <==> sum_all_bs != 0
     col witness bits(64, signed) inv_sum_all_bs;
 
-    // div = 0 => div_by_zero must be 0 => 0 (no need calculate inverse)
-    // div = 1 and div_by_zero = 0 => 1 calculate inverse to demostrate b != 0
-    // div = 1 and div_by_zero = 1 => 0 (no need calculate inverse)
+    // div = 0 => div_by_zero must be 0, so no inverse is needed.
+    // div = 1 and div_by_zero = 0 => the inverse proves b != 0.
+    // div = 1 and div_by_zero = 1 => no inverse is needed.
     (div - div_by_zero) * (1 - inv_sum_all_bs * sum_all_bs) === 0;
 
-    // div_by_zero only active for divisions
+    // div_by_zero is only active for divisions.
     div_by_zero * (1 - div) === 0;
 
-    // div_overflow only active for signed divisions
+    // div_overflow is only active for signed divisions.
     div_overflow * (1 - div) === 0;
     div_overflow * (1 - signed) === 0;
 
@@ -103,11 +132,11 @@ airtemplate Arith(const int N = 2**18) {
 
     const expr eq[CHUNKS_OP];
 
-    // NOTE: Equations with m32 for multiplication not exists, because mul m32 it's an unsigned operation.
-    //       In internal equations, it's same than unsigned mul 64 where high part of a and b are zero
+    // NOTE: There are no special m32 multiplication equations because mulw is modeled as
+    //       unsigned 64-bit multiplication with the high input chunks set to zero.
 
-    // abs(x)  x >= 0 ➜ nx == 0 ➜ x
-    //         x < 0  ➜ nx == 1 ➜ 2^64 - x
+    // abs(x): if x >= 0, then nx == 0 and abs(x) = x.
+    //         if x < 0, then nx == 1 and abs(x) = 2^64 - x.
     //
     // abs(x,nx) = nx * (2^64 - 2 * x) + x = 2^64 * nx - 2 * nx * x + x
     //
@@ -120,8 +149,9 @@ airtemplate Arith(const int N = 2**18) {
     //    or chunk[3] = x[3] - 2 * nx + x[3] + 2^16 * nx
     //       chunk[4] = 0
     //
-    //    dual use of d, on multiplication d is high part of result, while in division d
-    //    is the remainder. Selector of these two uses is div or nr (because nr = 0 for div = 0)
+    //    d has two roles: for multiplication it is the high part of the result,
+    //    while for division it is the remainder. div/nr select the active use
+    //    because nr = 0 when div = 0.
     //
     //    div = 0  ➜   a * b = 2^64 * d + c ➜  a * b - 2^64 * d - c === 0
     //    div = 1  ➜   a * b + d = c ➜  a * b - c + d === 0
@@ -208,7 +238,7 @@ airtemplate Arith(const int N = 2**18) {
     }
     eq[CHUNKS_OP-1] + carry[CHUNKS_OP-2] === 0;
 
-    // binary constraint
+    // Boolean constraints.
     div * (1 - div) === 0;
     m32 * (1 - m32) === 0;
     na * (1 - na) === 0;
@@ -219,29 +249,31 @@ airtemplate Arith(const int N = 2**18) {
 
     col witness bits(8) op;
 
-    // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
-    // -------------------------------------------------------------------------------------
-    //  0   0   0   0  mulu     muluh      0xb0 176  0xb1 177   =0   =0   =0   =0   =0   =0
-    //  0   0   1   0  *n/a*    mulsuh     0xb2  -   0xb3 179   a3   =0   d3   =0   =0   =0  a3,      d3
-    //  0   0   1   1  mul      mulh       0xb4 180  0xb5 181   a3   b3   d3   =0   =0   =0  a3,b3,   d3
-    //  0   1   0   0  mul_w    *n/a*      0xb6 182  0xb7  -    =0   =0   =0   =0   c1   =0
+    /*
+        div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
+        -------------------------------------------------------------------------------------
+        0   0   0   0  mulu     muluh      0xb0 176  0xb1 177   =0   =0   =0   =0   =0   =0
+        0   0   1   0  *n/a*    mulsuh     0xb2  -   0xb3 179   a3   =0   d3   =0   =0   =0  a3,      d3
+        0   0   1   1  mul      mulh       0xb4 180  0xb5 181   a3   b3   d3   =0   =0   =0  a3,b3,   d3
+        0   1   0   0  mul_w    *n/a*      0xb6 182  0xb7  -    =0   =0   =0   =0   c1   =0
 
-    // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(a,d)(*2)
-    // ------------------------------------------------------------------------------------------
-    //  1   0   0   0  divu     remu       0xb8 184  0xb9 185   =0   =0   =0   =0   =0   =0
-    //  1   0   1   1  div      rem        0xba 186  0xbb 187   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
-    //  1   1   0   0  divu_w   remu_w     0xbc 188  0xbd 189   =0   =0   =0   =0   a1   d1               a1      ,d1
-    //  1   1   1   1  div_w    rem_w      0xbe 190  0xbf 191   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
+        div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(a,d)(*2)
+        ------------------------------------------------------------------------------------------
+        1   0   0   0  divu     remu       0xb8 184  0xb9 185   =0   =0   =0   =0   =0   =0
+        1   0   1   1  div      rem        0xba 186  0xbb 187   a3   b3   c3   d3   =0   =0  a3,b3,c3,d3
+        1   1   0   0  divu_w   remu_w     0xbc 188  0xbd 189   =0   =0   =0   =0   a1   d1               a1      ,d1
+        1   1   1   1  div_w    rem_w      0xbe 190  0xbf 191   a1   b1   c1   d1   a1   d1               a1,b1,c1,d1
 
-    // (*) removed combinations of flags div,m32,sa,sb did allow combinations div, m32, sa, sb
-    // (*2) sext affects to 32 bits result (bus), but in divisions a is used as result
-    // see 5 previous constraints.
-    // =0 means forced to zero by previous constraints
+        (*) Invalid div/m32/sa/sb flag combinations are removed by ArithTable.
+        (*2) sext affects the 32-bit bus result; for divisions, a is used as the result.
+            See the five constraints above.
+        =0 means the value is forced to zero by previous constraints.
 
-    // bus result     primary  secondary
-    // ----------------------------------
-    // mul (mulh)           c       d
-    // div (remu)           a       d
+        bus result     primary  secondary
+        ----------------------------------
+        mul (mulh)           c       d
+        div (remu)           a       d
+    */
 
     const expr secondary = 1 - main_mul - main_div;
     const expr bus_a0 = div * (c[0] + c[1] * CHUNK_SIZE) + (1 - div) * (a[0] + a[1] * CHUNK_SIZE);
@@ -259,7 +291,7 @@ airtemplate Arith(const int N = 2**18) {
                               main_div * (a[2] + a[3] * CHUNK_SIZE));
     col witness bits(32) bus_res1;
 
-    bus_res1 === sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
+    bus_res1 <== sext * 0xFFFF_FFFF + (1 - m32) * bus_res1_64;
 
     m32 * bus_a1 === 0;
     m32 * bus_b1 === 0;
@@ -269,15 +301,15 @@ airtemplate Arith(const int N = 2**18) {
     proves_operation(op:, a: [bus_a0, bus_a1], b: [bus_b0, bus_b1], c: [bus_res0, bus_res1],
                           flag: div_by_zero, mul: multiplicity);
 
-    // Check that remainder (d) is lower than divisor (b) when division is performed
-    // Specifically, we ensure that 0 <= |d| < |b|
+    // Check that remainder d is smaller than divisor b when division is performed.
+    // Specifically, enforce 0 <= |d| < |b|.
     assumes_operation(op: (1 - nr) * (1 - nb) * OP_LTU + nr * (1 - nb) * OP_LT_ABS_NP + (1 - nr) * nb * OP_LT_ABS_PN + nr * nb * OP_GT,
                       a: [(d[0] + CHUNK_SIZE * d[1]), (d[2] + CHUNK_SIZE * d[3]) + m32 * nr * 0xFFFFFFFF], // remainder
                       b: [(b[0] + CHUNK_SIZE * b[1]), (b[2] + CHUNK_SIZE * b[3]) + m32 * nb * 0xFFFFFFFF], // divisor
                       c: [1, 0], flag: 1, sel: div * (1 - div_by_zero));
 
     for (int index = 0; index < length(carry); ++index) {
-         arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);     // TODO: review carry range
+         arith_range_table_assumes(ARITH_RANGE_CARRY, carry[index]);
     }
 
     col witness bits(7) range_ab;
@@ -305,7 +337,7 @@ airtemplate Arith(const int N = 2**18) {
     arith_range_table_assumes(range_c3, c[3]);
     arith_range_table_assumes(range_d3, d[3]);
 
-    // loop for range checks index 0, 2
+    // Range-check chunks at indexes 0 and 2.
     for (int index = 0; index < 2; ++index) {
         arith_range_table_assumes(ARITH_RANGE_16_BITS, a[2 * index]);
         arith_range_table_assumes(ARITH_RANGE_16_BITS, b[2 * index]);

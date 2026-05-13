@@ -3,40 +3,83 @@ require "std_lookup.pil"
 require "operations.pil"
 require "opids.pil"
 
-/* PIL Binary Operations Table used by Binary
-                                                                                     Running Total
-    MINU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                           + 2^18 + 2^17
-    MIN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                    + 2^19 + 2^18
-    MAXU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20               + 2^17
-    MAX        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20 + 2^19
-    LT_ABS_NP  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21
-    LT_ABS_PN  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21        + 2^19 
-    LTU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21        + 2^19 + 2^18
-    LT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20
-    GT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20        + 2^18
-    EQ         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 
-    ADD        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 + 2^18
-    SUB        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22
-    LEU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22                      + 2^18
-    LE         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19
-    AND        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19        + 2^17
-    OR         2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18     
-    XOR        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18 + 2^17   
-    SEXT_00    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20                      + 2^16
-    SEXT_FF    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20         + 2^18
-    -------------------------------------------------------------------------------------------------------------------
+const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_18;
+const int OP_SEXT_00 = 0x200;
+const int OP_SEXT_FF = 0x201;
+
+/*
+    BinaryTable: Fixed byte-transition table for Binary.
+
+    Supported operations are listed below.
+
+    ┼───────────┼─────────┼───────────────────────────────────────────────────────────────────────┼-----------------------------------------------
+    |   Name    | ZisK OP | Combinations                                                          | Running Total
+    ┼-----------┼---------┼-----------------------------------------------------------------------┼-----------------------------------------------
+    | MINU      |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                           + 2^18 + 2^17
+    | MIN       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                    + 2^19 + 2^18
+    | MAXU      |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20               + 2^17
+    | MAX       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20 + 2^19
+    | LT_ABS_NP |         |  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21
+    | LT_ABS_PN |         |  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21        + 2^19 
+    | LTU       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21        + 2^19 + 2^18
+    | LT        |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20
+    | GT        |         |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20        + 2^18
+    | EQ        |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 
+    | ADD       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 + 2^18
+    | SUB       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22
+    | LEU       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22                      + 2^18
+    | LE        |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19
+    | AND       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19        + 2^17
+    | OR        |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18     
+    | XOR       |    X    |  2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22               + 2^19 + 2^18 + 2^17   
+    | SEXT_00   |         |  2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20                      + 2^16
+    | SEXT_FF   |         |  2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20         + 2^18
+    ┼-----------┼---------┼-----------------------------------------------------------------------┼-----------------------------------------------
     Notes:
     - MINU/MIN/MAXU/MAX: POS_IND=0 (2^18 rows with FLAGS), POS_IND=1 (2^17 rows without FLAGS)
     - SEXT_00/SEXT_FF: FLAGS=0 (2^17 rows with CIN), FLAGS=1 (2^16 rows without CIN)
     - Bitwise ops don't use POS_IND operationally, but include it for consistency with other ops
     - Sign extension ops don't use A,B,CIN operationally, but include them for consistency with other ops
-    - SEXT_00, SEXT_FF are the only (unary) operation which are not a ZisK OP but are used to prove the rest
+
+    CONSTRAINTS:
+        The fixed table enumerates valid one-byte transitions for Binary's
+        arithmetic, comparison, min/max, bitwise, and 32-bit sign-extension
+        helper paths.
+        Each row maps a byte position indicator, table opcode, input bytes,
+        and incoming carry/borrow/comparison state to one output byte plus
+        packed flags.
+        The table is a byte-level provider only; Binary composes eight table
+        queries into two 32-bit limbs and publishes the Operation Bus tuple.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Assumers query the exact 7-column tuple
+          [POS_IND, OP, A, B, CIN, C, FLAGS].
+        - Assumers must use POS_IND, CIN, and FLAGS consistently with Binary's
+          byte schedule: first byte, middle bytes, low high-byte, extension
+          bytes, and final byte have different meanings.
+        - OP_SEXT_00 and OP_SEXT_FF are internal helper opcodes used for
+          32-bit sign extension in Binary; they are not public ZisK Operation
+          Bus opcodes.
+        - The public opcode domain is enforced by the assumer/caller contract
+          or by an explicit Binary-side domain check, not by this table alone.
+
+    POST-CONDITIONS (what the template guarantees):
+        - Any matched row has A and B in [0, 255], CIN in the allowed carry
+          domain for the selected table opcode, and C in [0, 255].
+        - FLAGS encodes cout + 2*result_is_a + 4*use_first_byte
+          + 8*c_is_signed for the selected byte transition.
+        - For ADD/SUB rows, C and cout represent byte addition/subtraction
+          with carry/borrow propagation.
+        - For comparison and min/max rows, cout/result_is_a/use_first_byte
+          encode the byte-wise comparison state consumed by Binary.
+        - For AND/OR/XOR rows, C is the byte-wise bitwise result.
+        - For OP_SEXT_00 and OP_SEXT_FF rows, C is 0x00 or 0xFF and
+          c_is_signed is fixed accordingly.
+
+    BUSES:
+        - BINARY_TABLE_ID (proves):
+          [POS_IND, OP, A, B, CIN, C, FLAGS] with witness multiplicity.
 */
-
-const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_18;
-const int OP_SEXT_00 = 0x200;
-const int OP_SEXT_FF = 0x201;
-
 airtemplate BinaryTable(const int N = 2**23) {
     if (N < BINARY_TABLE_SIZE) {
         error(`N must be at least ${BINARY_TABLE_SIZE}, but N=${N} was provided`);
@@ -326,12 +369,27 @@ airtemplate BinaryTable(const int N = 2**23) {
                 error(`Invalid operation opcode: ${op} at row ${i}`);
         }
 
+        // Set output
         C[i] = c;
+
+        // Set flags
         const int flags = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed;
         FLAGS[i] = flags;
+
+        //  Log the generated row for debugging
         log(`T[${i}] = [${pos_ind}, ${op}, ${a}, ${b}, ${cin}, ${c}, ${flags}]`);
     }
 
     col witness multiplicity;
     lookup_proves(BINARY_TABLE_ID, [POS_IND, OP, A, B, CIN, C, FLAGS], multiplicity);
+}
+
+function binary_table_assumes(const expr pos_ind, const expr op, const expr a, const expr b,
+                              const expr cin, const expr c, const expr flag_cout,
+                              const expr flag_result_is_a, const expr flag_use_first_byte,
+                              const expr flag_c_is_signed, const expr sel = 1) {
+
+    lookup_assumes(BINARY_TABLE_ID, expressions: [pos_ind, op, a, b, cin, c,
+                                                  flag_cout + 2 * flag_result_is_a +
+                                                  4 * flag_use_first_byte + 8 * flag_c_is_signed], sel: sel);
 }
