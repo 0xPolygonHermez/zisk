@@ -7,9 +7,11 @@
 //!   generation.
 
 mod fcalls;
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 mod fcalls_impl;
 pub mod lib;
 
 pub use fcalls::*;
+#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
 pub use fcalls_impl::*;
 pub use lib::*;

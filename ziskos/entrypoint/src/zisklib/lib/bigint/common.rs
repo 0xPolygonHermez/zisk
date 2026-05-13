@@ -3,6 +3,11 @@ use core::{
     fmt::{self, Debug, Display},
 };
 
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
+
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
 #[derive(Clone, Copy)]

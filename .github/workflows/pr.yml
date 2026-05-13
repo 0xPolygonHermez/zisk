@@ -78,6 +78,21 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
+      - name: Check libziskos.a does not bundle std
+        run: |
+          . "$HOME/.cargo/env"
+          cargo +zisk build -p ziskos --release \
+            --target riscv64ima-zisk-zkvm-elf \
+            --config 'profile.release.lto="fat"' \
+            --features panic-handler
+          LIBZISKOS=$(find target -name "libziskos.a" -path "*riscv64ima*" | head -1)
+          if ar t "$LIBZISKOS" | grep -q std; then
+            echo "FAIL: libziskos.a contains std object files:"
+            ar t "$LIBZISKOS" | grep std
+            exit 1
+          fi
+          echo "OK: libziskos.a contains no std object files"
+
       - name: Build setup
         env:
           USE_CACHE_SETUP: "1"

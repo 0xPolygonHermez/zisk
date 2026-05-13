@@ -28,19 +28,18 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-        let job = job_entry.write().await;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
+        if matches!(job_entry.read().await.state(), JobState::Failed) {
             self.workers_pool
                 .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
                 .await?;
             return Ok(());
         }
-
-        drop(job);
 
         // An aggregation request has failed, fail the job
         if !execute_task_response.success {
@@ -67,9 +66,6 @@ impl Coordinator {
             return Ok(());
         }
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-
         let mut job = job_entry.write().await;
 
         let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
@@ -78,9 +74,12 @@ impl Coordinator {
         self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
-        let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
-        })?;
+        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
+            &proof_data.proof_data,
+            bincode::config::standard(),
+        )
+        .map(|(v, _)| v)
+        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
         job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
@@ -357,10 +356,11 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serialize(p).unwrap_or_else(|e| {
-                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                    vec![]
-                }),
+                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                        vec![]
+                    }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);
