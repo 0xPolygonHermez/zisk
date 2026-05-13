@@ -95,8 +95,10 @@ impl Coordinator {
         let job_id = &execute_task_response.job_id;
         let worker_id = &execute_task_response.worker_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
         let mut job = job_entry.write().await;
 
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
