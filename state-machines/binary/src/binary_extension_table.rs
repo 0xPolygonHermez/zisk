@@ -28,6 +28,12 @@ pub struct BinaryExtensionTableSM;
 impl BinaryExtensionTableSM {
     pub const TABLE_ID: usize = 124;
 
+    /// Maximum row index that `calculate_table_row` can ever return.
+    /// SextW (highest opcode) with max offset=7, max a=255, b=0 (Sext ops always have b=0).
+    pub const MAX_TABLE_ROW: u64 = 6 * P2_19 + 2 * P2_11  // SextW opcode base
+        + 7 * P2_8              // max offset
+        + 255; // max a (b=0 for all Sext ops)
+
     /// Calculates the row index in the Binary Extension Table based on the operation and its
     /// inputs.
     ///

@@ -3,6 +3,8 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
@@ -27,6 +29,13 @@ const SIGN_BYTE: u64 = 0x80;
 
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
+
+const TABLE_ROW_SPAN: usize = BinaryExtensionTableSM::MAX_TABLE_ROW as usize + 1;
+
+thread_local! {
+    static TL_COUNTS: RefCell<Vec<u64>> = RefCell::new(vec![0u64; TABLE_ROW_SPAN]);
+    static TL_DIRTY:  RefCell<Vec<u32>> = RefCell::new(Vec::with_capacity(32768));
+}
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
@@ -104,7 +113,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice<R: BinaryExtensionTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
+    pub fn process_slice<R: BinaryExtensionTraceRowOps<F>>(
+        &self,
+        input: &BinaryInput,
+        counts: &mut Vec<u64>,
+        dirty: &mut Vec<u32>,
+    ) -> R {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
@@ -292,7 +306,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            self.std.inc_virtual_row(self.table_id, row, 1);
+            let offset = row as usize;
+            debug_assert!(offset < TABLE_ROW_SPAN);
+            if counts[offset] == 0 {
+                dirty.push(offset as u32);
+            }
+            counts[offset] += 1;
         }
 
         row
@@ -334,24 +353,72 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             rest = tail;
         }
 
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice::<R>(&inputs[i][j]);
+        // Phase 1 (parallel): each worker accumulates row multiplicities into its thread-local
+        // Vec, then returns compact (offset, count) pairs.
+        let chunk_results: Vec<Vec<(u32, u64)>> = slices
+            .into_par_iter()
+            .enumerate()
+            .map(|(i, slice)| {
+                TL_COUNTS.with(|counts_cell| {
+                    TL_DIRTY.with(|dirty_cell| {
+                        let mut counts = counts_cell.borrow_mut();
+                        let mut dirty = dirty_cell.borrow_mut();
+
+                        slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                            *trace_row =
+                                self.process_slice::<R>(&inputs[i][j], &mut counts, &mut dirty);
+                        });
+
+                        let result: Vec<(u32, u64)> =
+                            dirty.iter().map(|&o| (o, counts[o as usize])).collect();
+                        for &o in dirty.iter() {
+                            counts[o as usize] = 0;
+                        }
+                        dirty.clear();
+                        result
+                    })
+                })
+            })
+            .collect();
+
+        // Phase 2 (single-threaded): merge all chunk results and call inc_virtual_row once
+        // per globally unique row.
+        TL_COUNTS.with(|counts_cell| {
+            TL_DIRTY.with(|dirty_cell| {
+                let mut counts = counts_cell.borrow_mut();
+                let mut dirty = dirty_cell.borrow_mut();
+
+                for chunk in &chunk_results {
+                    for &(offset, count) in chunk {
+                        if counts[offset as usize] == 0 {
+                            dirty.push(offset);
+                        }
+                        counts[offset as usize] += count;
+                    }
+                }
+
+                for &offset in dirty.iter() {
+                    self.std.inc_virtual_row(self.table_id, offset as u64, counts[offset as usize]);
+                    counts[offset as usize] = 0;
+                }
+                dirty.clear();
             });
         });
 
-        // Iterate over all inputs and check opcode
-        // to update multiplicity for the corresponding table row.
+        // Accumulate range check values, then emit one call per unique value.
+        // Sparse in practice (profiling shows 1-2 unique values), but correct for any workload.
+        let mut rc_counts: HashMap<u64, u64> = HashMap::new();
         for row in inputs.iter() {
             for input in row.iter() {
                 let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-                let op_is_shift = Self::opcode_is_shift(opcode);
-                if op_is_shift {
-                    let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check(self.range_id, row as i64, 1);
+                if Self::opcode_is_shift(opcode) {
+                    let val = (input.b >> 8) & 0xFFFFFF;
+                    *rc_counts.entry(val).or_insert(0) += 1;
                 }
             }
+        }
+        for (val, count) in &rc_counts {
+            self.std.range_check(self.range_id, *val as i64, *count);
         }
 
         // Set SEXT_B(0) as the padding row

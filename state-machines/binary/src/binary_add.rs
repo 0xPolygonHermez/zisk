@@ -117,27 +117,38 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             total_inputs as f64 / num_rows as f64 * 100.0
         );
 
-        // Split the add_e_trace.buffer into slices matching each inner vector’s length.
+        // Process each input in parallel. Each chunk accumulates range check hits into a
+        // local [u32; 65536] (256 KB, fits in L2/L3), then chunks are reduced into the
+        // final multiplicities array — avoiding the 128 MB intermediate range_checks Vec
+        // and the sequential summation pass.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
+        let num_threads = rayon::current_num_threads();
+        let chunk_size = (flat_inputs.len() / num_threads).max(1);
 
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        flat_inputs
-            .into_par_iter()
-            .zip(add_trace.buffer.par_iter_mut())
-            .zip(range_checks.par_iter_mut())
-            .for_each(|((input, trace_row), range_check)| {
-                let checks = self.process_slice::<R>(trace_row, input);
-                *range_check = checks;
-            });
+        let mut multiplicities: Vec<u32> = flat_inputs
+            .par_chunks(chunk_size)
+            .zip(add_trace.buffer[..flat_inputs.len()].par_chunks_mut(chunk_size))
+            .map(|(input_chunk, trace_chunk)| {
+                let mut local_mults = vec![0u32; 0xFFFF + 1];
+                for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
+                    let checks = self.process_slice(trace_row, input);
+                    local_mults[checks[0] as usize] += 1;
+                    local_mults[checks[1] as usize] += 1;
+                    local_mults[checks[2] as usize] += 1;
+                    local_mults[checks[3] as usize] += 1;
+                }
+                local_mults
+            })
+            .reduce(
+                || vec![0u32; 0xFFFF + 1],
+                |mut a, b| {
+                    for i in 0..=0xFFFF {
+                        a[i] += b[i];
+                    }
+                    a
+                },
+            );
 
-        let mut multiplicities = vec![0u32; 0xFFFF + 1];
-        for range_check in range_checks {
-            multiplicities[range_check[0] as usize] += 1;
-            multiplicities[range_check[1] as usize] += 1;
-            multiplicities[range_check[2] as usize] += 1;
-            multiplicities[range_check[3] as usize] += 1;
-        }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
         self.std.range_checks(self.range_id, multiplicities);

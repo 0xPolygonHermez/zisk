@@ -37,6 +37,14 @@ pub struct BinaryBasicTableSM;
 impl BinaryBasicTableSM {
     pub const TABLE_ID: usize = 125;
 
+    /// Maximum row index that `calculate_table_row` can ever return, across all opcodes.
+    /// Derived from SextFF (highest opcode offset) plus the largest possible sub-offsets.
+    pub const MAX_TABLE_ROW: u64 = 2 * P2_19 + 12 * P2_18 + 8 * P2_17 + P2_16  // SextFF base
+        + 255            // max a
+        + 255 * P2_8     // max b
+        + P2_16          // max cin  (offset_cin for SextFF = P2_16)
+        + P2_17; // max result_is_a (offset_result_is_a for SextFF = P2_17)
+
     /// Calculates the table row offset based on the provided parameters.
     ///
     /// # Arguments

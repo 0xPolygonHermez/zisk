@@ -2,6 +2,7 @@
 //!
 //! This state machine processes binary-related operations.
 
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
@@ -15,6 +16,13 @@ use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRowOps};
 
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
+
+const TABLE_ROW_SPAN: usize = BinaryBasicTableSM::MAX_TABLE_ROW as usize + 1;
+
+thread_local! {
+    static TL_COUNTS: RefCell<Vec<u64>> = RefCell::new(vec![0u64; TABLE_ROW_SPAN]);
+    static TL_DIRTY:  RefCell<Vec<u32>> = RefCell::new(Vec::with_capacity(32768));
+}
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
 pub struct BinaryBasicSM<F: PrimeField64> {
@@ -139,7 +147,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<R: BinaryTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
+    pub fn process_slice<R: BinaryTraceRowOps<F>>(
+        &self,
+        input: &BinaryInput,
+        counts: &mut Vec<u64>,
+        dirty: &mut Vec<u32>,
+    ) -> R {
         // Create an empty trace
         let mut row: R = R::default();
 
@@ -249,7 +262,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -316,7 +334,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -368,7 +391,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -420,7 +448,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         if i == 0 { 2 * pfirst[i] } else { plast[i] },
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -484,7 +517,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -537,7 +575,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -586,7 +629,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -632,7 +680,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -677,7 +730,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -732,7 +790,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
                 row.set_all_carry(&carry);
             }
@@ -765,7 +828,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
             }
             OR_OP => {
@@ -797,7 +865,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
             }
             XOR_OP => {
@@ -829,7 +902,12 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         plast[i],
                         flags,
                     );
-                    self.std.inc_virtual_row(self.table_id, row, 1);
+                    let offset = row as usize;
+                    debug_assert!(offset < TABLE_ROW_SPAN);
+                    if counts[offset] == 0 {
+                        dirty.push(offset as u32);
+                    }
+                    counts[offset] += 1;
                 }
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
@@ -882,9 +960,52 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
             slices.push(head);
             rest = tail;
         }
-        slices.into_par_iter().enumerate().for_each(|(i, slice)| {
-            slice.iter_mut().enumerate().for_each(|(j, row)| {
-                *row = self.process_slice::<R>(&inputs[i][j]);
+
+        let chunk_results: Vec<Vec<(u32, u64)>> = slices
+            .into_par_iter()
+            .enumerate()
+            .map(|(i, slice)| {
+                TL_COUNTS.with(|counts_cell| {
+                    TL_DIRTY.with(|dirty_cell| {
+                        let mut counts = counts_cell.borrow_mut();
+                        let mut dirty = dirty_cell.borrow_mut();
+
+                        slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
+                            *trace_row =
+                                self.process_slice::<R>(&inputs[i][j], &mut counts, &mut dirty);
+                        });
+
+                        let result: Vec<(u32, u64)> =
+                            dirty.iter().map(|&o| (o, counts[o as usize])).collect();
+                        for &o in dirty.iter() {
+                            counts[o as usize] = 0;
+                        }
+                        dirty.clear();
+                        result
+                    })
+                })
+            })
+            .collect();
+
+        TL_COUNTS.with(|counts_cell| {
+            TL_DIRTY.with(|dirty_cell| {
+                let mut counts = counts_cell.borrow_mut();
+                let mut dirty = dirty_cell.borrow_mut();
+
+                for chunk in &chunk_results {
+                    for &(offset, count) in chunk {
+                        if counts[offset as usize] == 0 {
+                            dirty.push(offset);
+                        }
+                        counts[offset as usize] += count;
+                    }
+                }
+
+                for &offset in dirty.iter() {
+                    self.std.inc_virtual_row(self.table_id, offset as u64, counts[offset as usize]);
+                    counts[offset as usize] = 0;
+                }
+                dirty.clear();
             });
         });
 
