@@ -48,7 +48,7 @@ impl RomSM {
     /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new<F: PrimeField64>(is_asm_emulator: bool) -> Arc<Self> {
         let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (create_atomic_vec(RomTrace::<F>::NUM_ROWS), vec![])
+            (vec![], vec![])
         } else {
             (
                 create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
