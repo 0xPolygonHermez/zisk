@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
-use proofman_util::VadcopFinalProof;
+use proofman_verifier::VadcopFinalProof;
 use proofman_verifier::{
     expected_vadcop_final_compressed_proof_bytes, expected_vadcop_final_proof_bytes,
     verify_vadcop_final, verify_vadcop_final_compressed,
