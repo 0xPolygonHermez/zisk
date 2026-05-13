@@ -22,6 +22,7 @@ critical-section = { version = "1.2.0", optional = true }
 embedded-alloc = { version = "0.6.0", optional = true }
 talc = { version = "4.4.3", default-features = false, features = ["lock_api"], optional = true }
 dlmalloc = { version = "0.2", default-features = false, optional = true }
+zisk-verifier = { workspace = true }
 
 [target.'cfg(all(target_os = "zkvm", target_vendor = "zisk"))'.dependencies]
 spin = "0.9"
@@ -41,7 +42,6 @@ serde = { workspace = true, features = ["derive"] }
 aurora-engine-modexp = { version = "1.2", default-features = false }
 ark-ec = { version = "0.5", default-features = false }
 ark-serialize = { version = "0.5", default-features = false }
-zisk-verifier = { workspace = true }
 bincode = { workspace = true }
 ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
