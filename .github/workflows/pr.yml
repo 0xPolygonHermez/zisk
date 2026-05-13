@@ -128,24 +128,24 @@ jobs:
               ls -lha /home/ziskuser/.zisk/provingKey
             '
 
-      # - name: Test sha_hasher (CPU)
-      #   run: |
-      #     docker exec -u ziskuser \
-      #       -e ONLY_CPU="1" \
-      #       -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
-      #       "${TEST_CONTAINER}" bash -lc '
-      #         cd /workspace/zisk/tools/test-env
-      #         ./test_sha_hasher.sh
-      #       '
+      - name: Test sha_hasher (CPU)
+        run: |
+          docker exec -u ziskuser \
+            -e ONLY_CPU="1" \
+            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_sha_hasher.sh
+            '
 
-      # - name: Test sha_hasher (GPU)
-      #   run: |
-      #     docker exec -u ziskuser \
-      #       -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
-      #       "${TEST_CONTAINER}" bash -lc '
-      #         cd /workspace/zisk/tools/test-env
-      #         ./test_sha_hasher.sh
-      #       '
+      - name: Test sha_hasher (GPU)
+        run: |
+          docker exec -u ziskuser \
+            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+            "${TEST_CONTAINER}" bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_sha_hasher.sh
+            '
 
       - name: Test ELF diagnostic
         run: |
