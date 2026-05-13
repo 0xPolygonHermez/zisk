@@ -640,7 +640,10 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
-        let proof_data = job.proof.as_ref().and_then(|p| bincode::serialize(p).ok());
+        let proof_data = job
+            .proof
+            .as_ref()
+            .and_then(|p| bincode::serde::encode_to_vec(p, bincode::config::standard()).ok());
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;

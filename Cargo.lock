@@ -764,6 +764,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "serde",
+ "unty",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.69.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4142,7 +4152,7 @@ name = "proofman"
 version = "0.17.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#0decc651c08c98c94005e3d0d1bc06cdc23b0581"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "blake3",
  "borsh",
  "chrono",
@@ -4176,7 +4186,7 @@ name = "proofman-common"
 version = "0.17.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#0decc651c08c98c94005e3d0d1bc06cdc23b0581"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "borsh",
  "colored",
  "crossbeam-channel",
@@ -4239,7 +4249,7 @@ name = "proofman-util"
 version = "0.17.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#0decc651c08c98c94005e3d0d1bc06cdc23b0581"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "colored",
  "serde",
  "sysinfo 0.35.2",
@@ -5479,6 +5489,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
+
+[[package]]
 name = "spki"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6304,6 +6323,12 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "url"
@@ -7412,7 +7437,7 @@ version = "0.17.1"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
- "bincode",
+ "bincode 2.0.1",
  "dirs",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
  "libc",
@@ -7440,7 +7465,7 @@ version = "0.17.1"
 dependencies = [
  "anyhow",
  "async-stream",
- "bincode",
+ "bincode 2.0.1",
  "blake3",
  "chrono",
  "clap",
@@ -7596,7 +7621,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "asm-runner",
- "bincode",
+ "bincode 2.0.1",
  "blake3",
  "borsh",
  "colored",
@@ -7623,7 +7648,7 @@ version = "0.17.1"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
- "bincode",
+ "bincode 2.0.1",
  "bytes",
  "colored",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
@@ -7657,7 +7682,7 @@ version = "0.17.1"
 dependencies = [
  "anyhow",
  "asm-runner",
- "bincode",
+ "bincode 2.0.1",
  "borsh",
  "chrono",
  "clap",
@@ -7733,7 +7758,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
  "aurora-engine-modexp",
- "bincode",
+ "bincode 2.0.1",
  "blst",
  "bytes",
  "cfg-if",
@@ -7756,6 +7781,7 @@ dependencies = [
  "secp256k1",
  "serde",
  "sha2",
+ "spin",
  "talc",
  "tiny-keccak",
  "tokio",
@@ -7770,7 +7796,7 @@ name = "ziskos-hints"
 version = "0.17.1"
 dependencies = [
  "anyhow",
- "bincode",
+ "bincode 2.0.1",
  "cfg-if",
  "fields 0.17.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1)",
  "getrandom 0.2.17",

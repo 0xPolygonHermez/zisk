@@ -1,6 +1,7 @@
 //! Operations on the BN254 curve E: y² = x³ + 3
 
-use num_traits::ops::bytes;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
 
 use crate::{
     syscalls::{

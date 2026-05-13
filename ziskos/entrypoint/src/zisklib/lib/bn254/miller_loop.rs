@@ -1,5 +1,8 @@
 //! Miller Loop for the pairings over BN254
 
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::{eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs};
 
 use super::{

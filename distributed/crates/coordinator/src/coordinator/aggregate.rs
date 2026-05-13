@@ -74,9 +74,12 @@ impl Coordinator {
         self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
-        let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
-        })?;
+        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
+            &proof_data.proof_data,
+            bincode::config::standard(),
+        )
+        .map(|(v, _)| v)
+        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
         job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
@@ -353,10 +356,11 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serialize(p).unwrap_or_else(|e| {
-                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                    vec![]
-                }),
+                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                        vec![]
+                    }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);
