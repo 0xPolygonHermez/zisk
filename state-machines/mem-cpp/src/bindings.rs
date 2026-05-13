@@ -330,8 +330,5 @@ unsafe extern "C" {
     ) -> bool;
 }
 unsafe extern "C" {
-    pub fn load_mem_metas_from_disk(mcp: *mut MemCountAndPlan) -> bool;
-}
-unsafe extern "C" {
     pub fn get_mem_stats_ptr(mcp: *mut MemCountAndPlan) -> u64;
 }

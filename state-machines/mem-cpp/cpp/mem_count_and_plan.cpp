@@ -4,7 +4,6 @@
 #include "tools.hpp"
 #include "mem_count_and_plan.hpp"
 #include "mem_stats.hpp"
-#include "instance_meta_loader.hpp"
 #include "instance_meta.hpp"
 
 static void mkdir_recursive(const char *path) {
@@ -324,30 +323,6 @@ void wait_mem_align_counters(MemCountAndPlan *mcp)
 void wait_mem_count_and_plan(MemCountAndPlan *mcp)
 {
     mcp->wait();
-}
-
-// No-feature fallback: loads `tmp/metas.bin` (produced by the standalone GPU
-// runner) and populates mcp->segments[]. Tolerant of a missing file: returns
-// false silently. Idempotent via `mcp->wait_once`.
-bool load_mem_metas_from_disk(MemCountAndPlan *mcp)
-{
-    bool loaded = false;
-    std::call_once(mcp->wait_once, [&]() {
-        struct LoadedMetas metas;
-        try {
-            metas = load_instance_metas("tmp/metas.bin");
-        } catch (const std::exception &e) {
-            return;
-        }
-        std::sort(metas.metas.begin(), metas.metas.end(),
-                  [](const InstanceMeta &a, const InstanceMeta &b) {
-                      return a.kind < b.kind || (a.kind == b.kind && a.inst_id < b.inst_id);
-                  });
-        printf("Metas loaded from tmp/metas.bin (%zu instances).\n", metas.metas.size());
-        generate_mem_segments_into(mcp->segments, metas.metas);
-        loaded = true;
-    });
-    return loaded;
 }
 
 // Pure generator: writes into the provided destination table.

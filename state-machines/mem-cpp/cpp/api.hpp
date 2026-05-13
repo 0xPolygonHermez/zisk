@@ -42,9 +42,6 @@ extern "C"
     // by it.
     bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas, uint32_t n);
 
-    // loads `tmp/metas.bin`
-    bool load_mem_metas_from_disk(MemCountAndPlan *mcp);
-
 #ifdef __cplusplus
 }
 #endif
