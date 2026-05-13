@@ -7770,6 +7770,7 @@ dependencies = [
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
+ "libc",
  "num-bigint",
  "num-integer",
  "num-traits",
