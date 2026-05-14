@@ -29,6 +29,10 @@ fi
 # Use a herestring (<<<) instead of echo | grep to avoid a pipefail/SIGPIPE race
 # where grep -q exits early, echo receives SIGPIPE (141), and pipefail surfaces
 # the 141 rather than grep's 0, flipping the ! check.
+if ! command -v llvm-nm &>/dev/null; then
+  echo "FAIL: llvm-nm not found. Install llvm (e.g. apt-get install -y llvm)"
+  exit 1
+fi
 NM_OUTPUT=$(llvm-nm "$LIBZISKOS" 2>/dev/null)
 
 REQUIRED_SYMBOLS=(
