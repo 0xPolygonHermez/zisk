@@ -1,4 +1,4 @@
-use std::{ffi::c_void, mem::MaybeUninit};
+use core::mem::MaybeUninit;
 
 use cfg_if::cfg_if;
 

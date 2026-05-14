@@ -427,8 +427,10 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         let mut job = job_entry.write().await;
 
@@ -436,6 +438,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
+            drop(job);
             self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }
@@ -481,8 +484,10 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         let mut job = job_entry.write().await;
 
@@ -490,6 +495,7 @@ impl Coordinator {
 
         // If job has Failed, mark worker as Idle and return early
         if matches!(job.state(), JobState::Failed) {
+            drop(job);
             self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
             return Ok(());
         }

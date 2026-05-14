@@ -15,7 +15,7 @@ use proofman::{
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
-use proofman_util::VadcopFinalProof;
+use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;

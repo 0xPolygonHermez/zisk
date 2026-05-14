@@ -589,8 +589,10 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
         let job = job_entry.read().await;
 
         // Check if webhook URL is configured and spawn it in a separate task
@@ -638,7 +640,10 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
-        let proof_data = job.proof.as_ref().and_then(|p| bincode::serialize(p).ok());
+        let proof_data = job
+            .proof
+            .as_ref()
+            .and_then(|p| bincode::serde::encode_to_vec(p, bincode::config::standard()).ok());
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;
@@ -860,8 +865,11 @@ impl Coordinator {
         // Ensure cleanup always runs even if it does.
         if let Err(e) = self.post_launch_proof(job_id).await {
             warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
-            let jobs_map = self.jobs.read().await;
-            if let Some(job_entry) = jobs_map.get(job_id) {
+            let cleanup_entry = {
+                let jobs_map = self.jobs.read().await;
+                jobs_map.get(job_id).cloned()
+            };
+            if let Some(job_entry) = cleanup_entry {
                 job_entry.write().await.cleanup();
             }
         }
@@ -1150,23 +1158,28 @@ impl Coordinator {
         let retention_secs = self.config.coordinator.job_ttl_seconds;
         let cutoff = Utc::now() - chrono::Duration::seconds(retention_secs as i64);
 
-        // Phase 1: collect expired IDs under a read lock to avoid holding a write lock during iteration.
-        let expired: Vec<JobId> = {
+        // Phase 1: snapshot (id, Arc) pairs and drop `jobs.read()` BEFORE
+        // awaiting any per-job lock. Holding `jobs.read()` across per-job
+        // awaits would let one stalled per-job writer pin us here, blocking
+        // anyone wanting `jobs.write()` for the duration (including this
+        // function's own later `jobs.write()` upgrade).
+        let entries: Vec<(JobId, Arc<RwLock<Job>>)> = {
             let jobs_map = self.jobs.read().await;
-            let mut out = Vec::new();
-            for (job_id, job_lock) in jobs_map.iter() {
-                let job = job_lock.read().await;
-                if !job.state().is_resolved() {
-                    continue;
-                }
-                if let Some(terminated_at) = job.terminated_at {
-                    if terminated_at <= cutoff {
-                        out.push(job_id.clone());
-                    }
+            jobs_map.iter().map(|(id, lock)| (id.clone(), lock.clone())).collect()
+        };
+
+        let mut expired: Vec<JobId> = Vec::new();
+        for (job_id, job_lock) in entries {
+            let job = job_lock.read().await;
+            if !job.state().is_resolved() {
+                continue;
+            }
+            if let Some(terminated_at) = job.terminated_at {
+                if terminated_at <= cutoff {
+                    expired.push(job_id);
                 }
             }
-            out
-        };
+        }
 
         if expired.is_empty() {
             return;

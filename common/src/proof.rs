@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
-use proofman_util::VadcopFinalProof;
+use proofman_verifier::VadcopFinalProof;
 use proofman_verifier::{
     expected_vadcop_final_compressed_proof_bytes, expected_vadcop_final_proof_bytes,
     verify_vadcop_final, verify_vadcop_final_compressed,
@@ -197,7 +197,7 @@ impl PublicValues {
     /// Create PublicValues from a serializable value.
     /// The value is serialized with bincode and stored in the public outputs as 64-bit chunks.
     pub fn write<T: serde::Serialize>(value: &T) -> Result<Self> {
-        let serialized = bincode::serialize(value)
+        let serialized = bincode::serde::encode_to_vec(value, bincode::config::standard())
             .map_err(|e| anyhow::anyhow!("Serialization failed: {}", e))?;
 
         if serialized.len() > ZISK_PUBLICS * 4 {
@@ -258,11 +258,10 @@ impl PublicValues {
     /// The value must have been previously written with bincode serialization using `commit()`.
     pub fn read<T: serde::Serialize + serde::de::DeserializeOwned>(&self) -> Result<T> {
         let ptr = self.ptr.load(Ordering::Relaxed);
-        let result: T = bincode::deserialize(&self.data[ptr..])
-            .map_err(|e| anyhow::anyhow!("Deserialization failed: {}", e))?;
-        let nb_bytes = bincode::serialized_size(&result)
-            .map_err(|e| anyhow::anyhow!("Failed to get serialized size: {}", e))?;
-        self.ptr.store(ptr + nb_bytes as usize, Ordering::Relaxed);
+        let (result, nb_bytes): (T, usize) =
+            bincode::serde::decode_from_slice(&self.data[ptr..], bincode::config::standard())
+                .map_err(|e| anyhow::anyhow!("Deserialization failed: {}", e))?;
+        self.ptr.store(ptr + nb_bytes, Ordering::Relaxed);
         Ok(result)
     }
 
@@ -498,20 +497,21 @@ impl Proof {
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
-        bincode::serialize_into(
-            File::create(path.as_ref()).with_context(|| {
-                format!("failed to create file for saving proof: {}", path.as_ref().display())
-            })?,
-            self,
-        )
-        .map_err(Into::into)
+        let mut file = File::create(path.as_ref()).with_context(|| {
+            format!("failed to create file for saving proof: {}", path.as_ref().display())
+        })?;
+        bincode::serde::encode_into_std_write(self, &mut file, bincode::config::standard())
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!("Failed to save proof: {}", e))
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let file = File::open(path.as_ref()).with_context(|| {
+        let mut file = File::open(path.as_ref()).with_context(|| {
             format!("failed to open file for loading proof: {}", path.as_ref().display())
         })?;
-        let proof: Proof = bincode::deserialize_from(file)?;
+        let proof: Proof =
+            bincode::serde::decode_from_std_read(&mut file, bincode::config::standard())
+                .map_err(|e| anyhow::anyhow!("Failed to load proof: {}", e))?;
         Ok(proof)
     }
 
