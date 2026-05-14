@@ -5,7 +5,6 @@
 
 use std::any::Any;
 
-use fields::PrimeField64;
 use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -27,7 +26,7 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField64>(min_traces: &[EmuTrace], min_traces_size: u64) -> Vec<Plan> {
+    pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Vec<Plan> {
         let num_rows = MainTrace::<()>::NUM_ROWS as u64;
 
         assert!(num_rows.is_power_of_two());

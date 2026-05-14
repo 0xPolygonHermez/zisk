@@ -50,7 +50,7 @@ impl InstancePlanner {
     /// # Returns
     /// Planning output containing the main-instance plans.
     pub fn plan_main<F: PrimeField64>(&self, min_traces: &[EmuTrace]) -> MainPlanningOutput {
-        let plans = MainPlanner::plan::<F>(min_traces, self.chunk_size);
+        let plans = MainPlanner::plan(min_traces, self.chunk_size);
         MainPlanningOutput { plans }
     }
 
