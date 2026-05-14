@@ -12,5 +12,5 @@ crate-type = ["staticlib"]
 default = ["panic-handler"]
 panic-handler = []
 
-[target.'cfg(all(target_os = "zkvm", target_vendor = "zisk"))'.dependencies]
+[dependencies]
 ziskos = { path = "../ziskos/entrypoint", default-features = false }
