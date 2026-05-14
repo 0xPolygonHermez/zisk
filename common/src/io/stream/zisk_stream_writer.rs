@@ -472,11 +472,6 @@ impl ZiskStreamWriter {
         std::thread::spawn(move || {
             let deadline = std::time::Instant::now() + CONNECT_DEADLINE;
             let result = loop {
-                // Cheap check first: if the generation changed (either
-                // `finish()` cleared us or another `start()` superseded us),
-                // bail immediately. Without this, stale connect threads
-                // accumulate across cancel/retry scenarios, each sleeping up
-                // to the full 60 s deadline.
                 if inner.live_state.lock().unwrap().start_generation != my_gen {
                     break Err(anyhow::anyhow!("start superseded before peer connected"));
                 }
@@ -484,7 +479,6 @@ impl ZiskStreamWriter {
                     let mut transport = inner.transport.lock().unwrap();
                     match &mut *transport {
                         TransportKind::Direct(writer) => writer.is_client_connected(),
-                        // Transport was torn down (finish() raced us); abort.
                         _ => break Err(anyhow::anyhow!("transport closed before peer connected")),
                     }
                 };
@@ -522,8 +516,6 @@ impl ZiskStreamWriter {
             };
 
             let mut guard = inner.live_state.lock().unwrap();
-            // Only write back if we're still the active start. Anything else
-            // means `finish()` or a fresh `start()` already took over.
             if guard.start_generation != my_gen {
                 inner.live_cond.notify_all();
                 return;
