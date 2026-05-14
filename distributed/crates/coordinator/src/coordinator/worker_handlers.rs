@@ -76,8 +76,9 @@ impl Coordinator {
                     let hash_id = state.hash_id.clone();
                     let program_name = state.program_name.clone();
                     let with_hints = state.with_hints;
+                    let emulator_only = state.emulator_only;
                     pending.remove(&job_id);
-                    Some((vks, hash_id, program_name, with_hints))
+                    Some((vks, hash_id, program_name, with_hints, emulator_only))
                 } else {
                     None
                 }
@@ -87,13 +88,13 @@ impl Coordinator {
             }
         };
 
-        if let Some((vks, hash_id, program_name, with_hints)) = outcome {
+        if let Some((vks, hash_id, program_name, with_hints, emulator_only)) = outcome {
             let event = match validate_setup_vks(&ack.job_id, vks) {
                 Ok(vk) => {
                     self.active_setups
                         .write()
                         .await
-                        .insert(SetupKey::new(hash_id, with_hints), program_name);
+                        .insert(SetupKey::new(hash_id, with_hints, emulator_only), program_name);
                     CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk })
                 }
                 Err(e) => {

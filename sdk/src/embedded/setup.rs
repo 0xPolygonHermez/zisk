@@ -14,6 +14,7 @@ impl EmbeddedClient {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
@@ -24,7 +25,7 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_setup_inner(with_hints, program, prover)?;
+            let result = Self::do_setup_inner(with_hints, emulator_only, program, prover)?;
 
             fire_result_event(&subs_cloned, &result);
 
@@ -36,6 +37,7 @@ impl EmbeddedClient {
 
     fn do_setup_inner(
         with_hints: bool,
+        emulator_only: bool,
         program: GuestProgram,
         prover: Arc<EmbeddedProver>,
     ) -> Result<std::result::Result<SetupResult, anyhow::Error>, anyhow::Error> {
@@ -45,12 +47,14 @@ impl EmbeddedClient {
                 Ok(SetupResult { job_id: None })
             }
             EmbeddedProver::Asm(p) => {
-                let builder = p.setup(&program);
+                let mut builder = p.setup(&program);
                 if with_hints {
-                    builder.with_hints().run()?;
-                } else {
-                    builder.run()?;
+                    builder = builder.with_hints();
                 }
+                if emulator_only {
+                    builder = builder.emulator_only();
+                }
+                builder.run()?;
                 Ok(SetupResult { job_id: None })
             }
         };

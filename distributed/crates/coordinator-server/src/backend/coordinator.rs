@@ -260,7 +260,7 @@ impl BackendService for CoordinatorBackend {
             DomainJobKind::Setup(r) => {
                 let job_id_internal = self
                     .coordinator
-                    .setup_program(&r.hash_id, r.program_name, r.with_hints)
+                    .setup_program(&r.hash_id, r.program_name, r.with_hints, r.emulator_only)
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&job_id_internal.as_string())

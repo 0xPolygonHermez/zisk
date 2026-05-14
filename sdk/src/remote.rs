@@ -80,10 +80,11 @@ impl Client for RemoteClient {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup(program, with_hints, timeout, subs)
+        self.do_setup(program, with_hints, emulator_only, timeout, subs)
     }
 
     fn run_prove(

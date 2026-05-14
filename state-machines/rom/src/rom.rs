@@ -8,7 +8,7 @@
 //! - `ComponentBuilder` trait implementations for creating counters, planners, and input
 //!   collectors.
 
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex, OnceLock};
 
 use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
@@ -29,11 +29,14 @@ pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU64>>,
+    /// Shared bios instruction counter for monitoring ROM operations.
+    /// Lazy-allocated on first emulator-mode `build_instance` call so that
+    /// pure-ASM workflows don't pay the memory cost.
+    bios_inst_count: OnceLock<Arc<Vec<AtomicU64>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU64>>,
+    /// Lazy-allocated alongside `bios_inst_count`.
+    prog_inst_count: OnceLock<Arc<Vec<AtomicU64>>>,
 
     rh_data: Mutex<Option<AsmRunnerRH>>,
 }
@@ -41,27 +44,30 @@ pub struct RomSM {
 impl RomSM {
     /// Creates a new instance of the `RomSM` state machine.
     ///
-    /// # Arguments
-    /// * `zisk_rom` - The Zisk ROM representation.
-    ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(is_asm_emulator: bool) -> Arc<Self> {
-        let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (vec![], vec![])
-        } else {
-            (
-                create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
-                create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize), // Cannot be dividede by 4
-            )
-        };
-
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
             zisk_rom: Mutex::new(None),
-            bios_inst_count: Arc::new(bios_inst_count),
-            prog_inst_count: Arc::new(prog_inst_count),
+            bios_inst_count: OnceLock::new(),
+            prog_inst_count: OnceLock::new(),
             rh_data: Mutex::new(None),
         })
+    }
+
+    /// Allocates the shared inst-count vectors on first use; returns Arc clones.
+    /// Called from `build_instance` only when an emulator-mode (non-ASM) run is
+    /// about to need them.
+    fn ensure_inst_counts(&self) -> (Arc<Vec<AtomicU64>>, Arc<Vec<AtomicU64>>) {
+        let bios = self
+            .bios_inst_count
+            .get_or_init(|| Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)))
+            .clone();
+        let prog = self
+            .prog_inst_count
+            .get_or_init(|| Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)))
+            .clone();
+        (bios, prog)
     }
 
     pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
@@ -335,12 +341,22 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+        let rh_data = self.rh_data.lock().unwrap().take();
+        let (bios_inst_count, prog_inst_count) = if rh_data.is_some() {
+            // ASM mode for this run: RomInstance routes to compute_witness_from_asm,
+            // never reading these vecs. Pass empty Arcs to avoid the lazy allocation.
+            (Arc::new(Vec::new()), Arc::new(Vec::new()))
+        } else {
+            // Emulator mode: allocate on first need; subsequent emulator-mode runs reuse
+            // (RomInstance::reset zeroes them between executions).
+            self.ensure_inst_counts()
+        };
         Box::new(RomInstance::new(
             self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
             ictx,
-            self.bios_inst_count.clone(),
-            self.prog_inst_count.clone(),
-            self.rh_data.lock().unwrap().take(),
+            bios_inst_count,
+            prog_inst_count,
+            rh_data,
         ))
     }
 }

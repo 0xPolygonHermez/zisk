@@ -191,6 +191,7 @@ async fn setup_job_completes() {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id,
                     with_hints: false,
+                    emulator_only: false,
                     program_name: "test".into(),
                 })),
             }),
@@ -387,6 +388,7 @@ async fn cancel_completed_job_returns_false() {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id,
                     with_hints: false,
+                    emulator_only: false,
                     program_name: "test".into(),
                 })),
             }),
@@ -441,6 +443,7 @@ async fn program_not_found_returns_error() {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id: "nonexistent_hash".into(),
                     with_hints: false,
+                    emulator_only: false,
                     program_name: "test".into(),
                 })),
             }),
@@ -553,6 +556,7 @@ async fn push_input_on_terminal_job_fails() {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id,
                     with_hints: false,
+                    emulator_only: false,
                     program_name: "test".into(),
                 })),
             }),
@@ -648,6 +652,7 @@ async fn push_hints_input_on_terminal_job_fails() {
                 kind: Some(job_kind::Kind::Setup(SetupRequest {
                     hash_id,
                     with_hints: false,
+                    emulator_only: false,
                     program_name: "test".into(),
                 })),
             }),

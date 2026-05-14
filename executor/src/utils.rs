@@ -61,7 +61,6 @@ pub fn get_packed_info() -> HashMap<(usize, usize), PackedInfo> {
 pub fn initialize_executor<F: PrimeField64>(
     verbose_mode: proofman_common::VerboseMode,
     shared_tables: bool,
-    is_asm_emulator: bool,
     wcm: &WitnessManager<F>,
 ) -> Result<Arc<ZiskExecutor<F>>> {
     let rank_info = wcm.get_rank_info();
@@ -72,7 +71,7 @@ pub fn initialize_executor<F: PrimeField64>(
     let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
     register_std(wcm, &std);
 
-    let rom_sm = RomSM::new(is_asm_emulator);
+    let rom_sm = RomSM::new();
     let binary_sm = BinarySM::new(std.clone());
     let arith_sm = ArithSM::new(std.clone());
     let mem_sm = Mem::new(std.clone());
