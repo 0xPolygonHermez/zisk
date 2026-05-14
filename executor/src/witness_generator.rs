@@ -70,7 +70,6 @@ impl WitnessGenerator {
                 &zisk_rom,
                 min_traces,
                 self.chunk_size,
-                main_instance,
                 trace_buffer,
             )?
         } else {
@@ -78,7 +77,6 @@ impl WitnessGenerator {
                 &zisk_rom,
                 min_traces,
                 self.chunk_size,
-                main_instance,
                 trace_buffer,
             )?
         };
