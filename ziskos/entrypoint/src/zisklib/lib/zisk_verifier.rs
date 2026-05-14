@@ -12,7 +12,8 @@ pub fn verify_zisk_proof(zisk_proof: &[u64]) -> bool {
 /// - `zisk_proof` must point to at least `zisk_proof_len` valid, initialized bytes
 /// - `zisk_proof` must be 8-byte aligned and `zisk_proof_len` a multiple of 8;
 ///   the function returns `false` otherwise.
-#[no_mangle]
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_verify_zisk_proof_c")]
 pub unsafe extern "C" fn verify_zisk_proof_c(zisk_proof: *const u8, zisk_proof_len: usize) -> bool {
     let zisk_proof_bytes = core::slice::from_raw_parts(zisk_proof, zisk_proof_len);
     let (prefix, words, suffix) = zisk_proof_bytes.align_to::<u64>();
