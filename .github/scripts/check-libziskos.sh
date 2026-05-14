@@ -33,7 +33,11 @@ if ! command -v llvm-nm &>/dev/null; then
   echo "FAIL: llvm-nm not found. Install llvm (e.g. apt-get install -y llvm)"
   exit 1
 fi
-NM_OUTPUT=$(llvm-nm "$LIBZISKOS" 2>/dev/null)
+NM_OUTPUT=$(llvm-nm "$LIBZISKOS" 2>&1) || {
+  echo "FAIL: llvm-nm failed to read $LIBZISKOS (possible LLVM version mismatch):"
+  echo "$NM_OUTPUT"
+  exit 1
+}
 
 REQUIRED_SYMBOLS=(
   _start
