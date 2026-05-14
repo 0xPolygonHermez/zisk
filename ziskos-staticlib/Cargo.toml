@@ -1,0 +1,16 @@
+[package]
+name = "ziskos-staticlib"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = ["panic-handler"]
+panic-handler = []
+
+[target.'cfg(all(target_os = "zkvm", target_vendor = "zisk"))'.dependencies]
+ziskos = { path = "../ziskos/entrypoint", default-features = false }

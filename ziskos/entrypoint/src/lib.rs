@@ -459,14 +459,4 @@ pub mod ziskos {
     core::arch::global_asm!(include_str!("dma/memcmp.s"));
     //core::arch::global_asm!(include_str!("dma/inputcpy.s"));
     core::arch::global_asm!(include_str!("dma/memset.s"));
-
-    #[cfg(feature = "panic-handler")]
-    #[panic_handler]
-    fn panic(info: &core::panic::PanicInfo) -> ! {
-        if let Some(msg) = info.message().as_str() {
-            sys_write(1, msg.as_ptr(), msg.len());
-            sys_write(1, b"\n".as_ptr(), 1);
-        }
-        core::intrinsics::abort()
-    }
 }
