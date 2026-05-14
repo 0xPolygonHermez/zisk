@@ -1,0 +1,17 @@
+[package]
+name = "test-artifacts"
+description = "Compiled Zisk guest ELFs used as fixtures by other crates' tests and benchmarks."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+
+[dependencies]
+zisk-sdk.workspace = true
+
+[build-dependencies]
+zisk-sdk.workspace = true
