@@ -2182,16 +2182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "guest-agg"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "serde",
- "sha2",
- "ziskos",
-]
-
-[[package]]
 name = "h2"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3164,16 +3154,6 @@ checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "multiple-program-guest"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "serde",
- "sha2",
- "ziskos",
-]
-
-[[package]]
-name = "multiple-program-guest-2"
 version = "0.1.0"
 dependencies = [
  "byteorder",
