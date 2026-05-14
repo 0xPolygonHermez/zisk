@@ -67,6 +67,6 @@ done
 
 if [ "$FAIL" -eq 0 ]; then
   echo "OK: libziskos_staticlib.a passes all checks"
+else
+  exit "$FAIL"
 fi
-
-exit "$FAIL"
