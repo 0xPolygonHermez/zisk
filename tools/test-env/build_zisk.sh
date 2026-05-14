@@ -121,7 +121,7 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    if ! (cargo build --release -p test-artifacts --target ${TARGET} ${BUILD_FEATURES}); then
+    if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
         warn "Build failed. Trying to fix missing stddef.h..."
 
         stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
