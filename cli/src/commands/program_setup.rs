@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman_common::{MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -88,6 +88,8 @@ impl ZiskProgramSetup {
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
+        init_gpu_setup(sctx.max_n_bits_ext as u64, gpu)?;
+
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1)?;
         let pctx = Arc::new(pctx);
 
