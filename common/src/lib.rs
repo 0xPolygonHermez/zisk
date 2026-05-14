@@ -1,5 +1,6 @@
 mod bus;
 mod component;
+pub mod cpu_affinity;
 mod emu_minimal_trace;
 mod executor_stats;
 mod hints;

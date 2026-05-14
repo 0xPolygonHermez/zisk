@@ -77,6 +77,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `hints_stream` - Optional hints stream for processing precompile hints.
     #[allow(clippy::too_many_arguments)]
     pub fn new(sm_bundle: StaticSMBundle<F>) -> Self {
+        // Install a rayon global pool whose workers are pinned to the host's
+        // P-cores (no-op on non-hybrid CPUs, or if rayon was already used).
+        // Logs detection result once.
+        zisk_common::cpu_affinity::log_p_core_detection();
+        let _ = zisk_common::cpu_affinity::install_pinned_rayon_global_pool(None);
+
         let sm_bundle = Arc::new(sm_bundle);
         let chunk_size = CHUNK_SIZE;
 

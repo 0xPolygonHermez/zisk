@@ -13,6 +13,7 @@ use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
+use zisk_common::cpu_affinity::pin_current_thread_to_p_cores;
 use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
@@ -213,6 +214,7 @@ impl EmulatorAsm {
             let asm_shmem_mo = asm_resources.readers().mo.clone();
             let asm_services = asm_resources.asm_services().clone();
             move || -> Result<AsmRunnerMO> {
+                pin_current_thread_to_p_cores();
                 let mut guard = asm_shmem_mo
                     .lock()
                     .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
@@ -230,6 +232,7 @@ impl EmulatorAsm {
             let asm_services = asm_resources.asm_services().clone();
             let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || -> Result<AsmRunnerRH> {
+                pin_current_thread_to_p_cores();
                 let mut guard = asm_shmem_rh
                     .lock()
                     .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;

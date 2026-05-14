@@ -1,4 +1,5 @@
 use named_sem::NamedSemaphore;
+use zisk_common::cpu_affinity::pin_current_thread_to_p_cores;
 use zisk_common::{stats_begin, stats_end, stats_mark, AsmExecutionInfo};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::{ChunkId, EmuTrace, ExecutorStatsHandle};
@@ -68,6 +69,7 @@ impl AsmRunnerMT {
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
         let handle = std::thread::spawn(move || {
+            pin_current_thread_to_p_cores();
             stats_begin!(_thread_stats, _parent_id, _mt_scope, "ASM_MT", 0);
             let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);

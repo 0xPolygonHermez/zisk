@@ -18,6 +18,9 @@ use mem_planner_cpp::MemPlanner;
 #[cfg(gpu)]
 use mem_planner_cpp::{GpuMemOp, GpuMemPlanner};
 
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use zisk_common::cpu_affinity::pin_current_thread_to_p_cores;
+
 use anyhow::{Context, Result};
 
 #[cfg(feature = "save_mem_plans")]
@@ -131,6 +134,7 @@ impl AsmRunnerMO {
         let _thread_stats = _stats.clone();
 
         let handle = std::thread::spawn(move || {
+            pin_current_thread_to_p_cores();
             stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
             #[allow(clippy::let_and_return)]
@@ -336,6 +340,7 @@ impl AsmRunnerMO {
 
         // Always re-stash the CPU planner so the next call has one to take.
         preloaded.handle_mo = Some(std::thread::spawn(move || {
+            pin_current_thread_to_p_cores();
             drop(mem_planner);
             MemPlanner::new()
         }));
