@@ -1,0 +1,16 @@
+[package]
+name = "sha256"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+rand.workspace = true
+sha2 = { version = "0.10.9", features = ["compress"] }
+generic-array = "0.14"
+
+[build-dependencies]
+zisk-sdk.workspace = true
+
+# [lints]
+# workspace = true
