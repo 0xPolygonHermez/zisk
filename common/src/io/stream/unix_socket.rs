@@ -459,16 +459,27 @@ impl StreamWrite for UnixSocketStreamWriter {
         // Clear the connected socket
         self.socket = None;
 
-        // Close the listener fd first — this unblocks the accept thread
-        // (accept() returns EBADF), allowing it to exit.
-        if let Some(fd) = self.listener_fd.take() {
-            unsafe { libc::close(fd) };
+        // shutdown → join → close. close() must come *after* the accept
+        // thread has exited: closing first frees the fd number for reuse,
+        // and if another listener in this process gets that number before
+        // our accept thread re-enters libc::accept(fd), the syscall resolves
+        // to the *new* kernel file and steals a client connection meant for
+        // it. shutdown() alone wakes a blocked accept and makes future
+        // accept() calls on the same kernel file return EINVAL.
+        let listener = self.listener_fd.take();
+        if let Some(fd) = listener {
+            unsafe {
+                libc::shutdown(fd, libc::SHUT_RDWR);
+            }
         }
-
-        // Now join the accept thread and clear the channel
-        self.socket_receiver = None;
         if let Some(handle) = self.accept_thread.take() {
             let _ = handle.join();
+        }
+        self.socket_receiver = None;
+        if let Some(fd) = listener {
+            unsafe {
+                libc::close(fd);
+            }
         }
 
         // Clean up socket file
