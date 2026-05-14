@@ -402,7 +402,7 @@ build_worker_program_args_plist() {
 		args+=(mpirun --report-bindings --allow-run-as-root -np "1" -map-by "ppr:1:numa" --bind-to numa --rank-by slot -x "RAYON_NUM_THREADS=1" "${DEFAULT_WORKER_DATA_DIR}/${DEFAULT_WORKER_BIN_NAME}")
 	fi
 
-	args+=(--coordinator-url "${DEFAULT_WORKER_COORDINATOR_URL}" --worker-id "${DEFAULT_WORKER_ID}")
+	args+=(--coordinator-url "${DEFAULT_WORKER_COORDINATOR_URL}" --worker-id "${DEFAULT_WORKER_ID} -m")
 	[[ -n "$DEFAULT_WORKER_PROVINGKEY_DIR" ]] && args+=(-k "$DEFAULT_WORKER_PROVINGKEY_DIR")
 	[[ "$DEFAULT_WORKER_GPU_ENABLED" == "true" ]] && args+=(--gpu)
 

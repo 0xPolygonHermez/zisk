@@ -55,13 +55,11 @@ main() {
     deploy_distributed
 
     step "Executing ethproofs-client tests..."
-    #RPC_URL=http://144.76.59.84:8545
-    #RPC_WS_URL=ws://144.76.59.84:8546
     BLOCK_MODULUS=1
     COORDINATOR_URL=http://localhost:7010
     INPUTS_FOLDER="${WORKSPACE_DIR}/zisk-ethproofs/inputs"
     COMPUTE_CAPACITY=10
-    ensure export RPC_URL RPC_WS_URL BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
+    ensure export BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
 
     ensure cd zisk-ethproofs
     local input_files_arg=""

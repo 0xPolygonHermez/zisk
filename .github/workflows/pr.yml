@@ -116,23 +116,8 @@ jobs:
               ./build_zisk.sh
             '
 
-      - name: Check libziskos.a does not bundle std
-        run: |
-          docker exec -u ziskuser \
-            "${TEST_CONTAINER}" bash -lc '
-              . "$HOME/.cargo/env"
-              cargo +zisk build -p ziskos --release \
-                --target riscv64ima-zisk-zkvm-elf \
-                --config 'profile.release.lto="fat"' \
-                --features panic-handler
-              LIBZISKOS=$(find target -name "libziskos.a" -path "*riscv64ima*" | head -1)
-              if ar t "$LIBZISKOS" | grep -q std; then
-                echo "FAIL: libziskos.a contains std object files:"
-                ar t "$LIBZISKOS" | grep std
-                exit 1
-              fi
-              echo "OK: libziskos.a contains no std object files"
-            '
+      - name: Check libziskos.a does not bundle std and contains required symbols
+        run: .github/scripts/check-libziskos.sh
 
       - name: Build setup
         run: |
@@ -174,6 +159,7 @@ jobs:
         run: |
           docker exec -u ziskuser \
             -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
+            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -195,6 +181,7 @@ jobs:
           docker exec -u ziskuser \
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
+            -e ENABLE_HINTS="1" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh

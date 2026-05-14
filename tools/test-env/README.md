@@ -51,8 +51,8 @@ This will run the Docker container and open the ZisK test menu inside the contai
    It also performs constraints verification.
 
 7. **Test Ethereum Block**
-   Tests Ethereum block proof generation using files from the `zisk-tethc-lient` repository.
-   First, it proves the input files specified in the `BLOCK_INPUTS_SINGLE` environment variable using cargo-zisk with one single process (no mpi). Second, it proves the input files specified in the `BLOCK_INPUTS_MPI` environment variable using cargo-zisk and mpi with the number of processes and threads specified in `MPI_PROCESSES` and `MPI_THREADS`environment variables. Finally, it proves the input files specified in the `BLOCK_INPUTS_DISTRIBUTED` environment variable using distributed mode (zisk-coordinator and one zisk-worker).
+   Tests Ethereum block proof generation using files from the `zisk-eth-client` repository.
+   First, it proves the input files specified in the `BLOCK_INPUTS_SINGLE` environment variable using cargo-zisk with one single process (no mpi). Second, it proves the input files specified in the `BLOCK_INPUTS_MPI` environment variable using cargo-zisk and mpi with the number of processes and threads specified in `MPI_PROCESSES` and `MPI_THREADS`environment variables.
 
 8. **Test EthProofs**
    Clones the `zisk-eth-client` and `zisk-ethproofs` repositories, builds `zisk-ethproofs`, and deploys the `zisk-coordinator` and `zisk-worker` services.

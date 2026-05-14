@@ -144,7 +144,7 @@ test_elf() {
     cd "${WORKSPACE_DIR}" || return 1
 
     local gpu_flag=""
-    [[ "${ONLY_CPU:-}" != "1" ]] && gpu_flag="--gpu"
+    [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
 
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $MPI_PROCESSES -x OMP_NUM_THREADS=$MPI_THREADS -x RAYON_NUM_THREADS=$MPI_THREADS"
@@ -262,7 +262,7 @@ test_elf() {
                     return 1
                 fi
 
-                if ! grep -qF "Stark proof was verified" "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
+                if ! grep -qF "STARK proof was verified" "${LOGS_DIR}/mpi/verify_mpi_${input_file}.log"; then
                     err "Verify mpi proof failed for ${input_file}"
                     return 1
                 fi

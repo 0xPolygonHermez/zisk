@@ -57,7 +57,7 @@ main() {
     else
         step "Generating program setup..."
         local gpu_flag=""
-        [[ "${ONLY_CPU:-}" != "1" ]] && gpu_flag="--gpu"
+        [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
         ensure cargo-zisk program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
            err "program setup failed"
