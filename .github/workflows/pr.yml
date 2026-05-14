@@ -120,7 +120,10 @@ jobs:
         run: |
           docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
           docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
-          docker exec -u ziskuser "${TEST_CONTAINER}" bash -lc '/home/ziskuser/check-libziskos.sh'
+          docker exec -u ziskuser "${TEST_CONTAINER}" bash -lc '
+            . "$HOME/.cargo/env"
+            /home/ziskuser/check-libziskos.sh
+          '
 
       - name: Build setup
         run: |
@@ -189,6 +192,11 @@ jobs:
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
             '
+
+      - name: Cancel cleanup
+        if: cancelled()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
 
       - name: Stop test container
         if: always()
