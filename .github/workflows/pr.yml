@@ -89,7 +89,7 @@ jobs:
             -e ZISK_TESTVECTORS_BRANCH="${ZISK_TESTVECTORS_BRANCH}" \
             -e PROVE_FLAGS=-y \
             -e TERM=xterm \
-            ziskvm/zisk-gpu-runner:latest \
+            ziskvm/zisk-runner-gpu:latest \
             /sbin/init
 
           sleep 3

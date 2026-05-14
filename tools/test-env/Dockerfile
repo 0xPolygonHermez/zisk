@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV container=docker
 
 # Define build-time argument
-ARG GPU=false
+ARG CUDA=false
 
 # Install base packages
 RUN apt update && apt install -y \
@@ -27,7 +27,11 @@ RUN groupadd --gid 1000 ziskuser \
 # Patch install_deps.sh to source utils.sh from /tmp, then run it as ziskuser
 RUN chmod +x /tmp/install_deps.sh \
  && cd /tmp/ \
- && sudo -u ziskuser ./install_deps.sh --cuda \
+ && if [ "$CUDA" = "true" ]; then \
+      sudo -u ziskuser ./install_deps.sh --cuda; \
+    else \
+      sudo -u ziskuser ./install_deps.sh; \
+    fi \
  && rm -f ./utils.sh ./install_deps.sh
 
 # Create output directory and set ownership
