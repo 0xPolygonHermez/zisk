@@ -2176,6 +2176,8 @@ name = "guest"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "serde",
+ "sha2",
  "ziskos",
 ]
 
@@ -2184,6 +2186,8 @@ name = "guest-agg"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "serde",
+ "sha2",
  "ziskos",
 ]
 
@@ -2912,6 +2916,9 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 name = "liveness-guest"
 version = "0.1.0"
 dependencies = [
+ "byteorder",
+ "serde",
+ "sha2",
  "ziskos",
 ]
 
@@ -3160,6 +3167,8 @@ name = "multiple-program-guest"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "serde",
+ "sha2",
  "ziskos",
 ]
 
@@ -3168,6 +3177,8 @@ name = "multiple-program-guest-2"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "serde",
+ "sha2",
  "ziskos",
 ]
 
