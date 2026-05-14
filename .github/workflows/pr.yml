@@ -135,7 +135,6 @@ jobs:
         run: |
           docker exec -u ziskuser \
             -e USE_CACHE_SETUP="1" \
-            -e CACHE_SETUP_HASH="e7de7a73" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
