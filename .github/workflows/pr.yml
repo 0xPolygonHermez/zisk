@@ -117,7 +117,10 @@ jobs:
             '
 
       - name: Check libziskos.a does not bundle std and contains required symbols
-        run: .github/scripts/check-libziskos.sh
+        run: |
+          docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
+          docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
+          docker exec -u ziskuser "${TEST_CONTAINER}" bash -lc '/home/ziskuser/check-libziskos.sh'
 
       - name: Build setup
         run: |
