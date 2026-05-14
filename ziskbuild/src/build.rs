@@ -207,7 +207,13 @@ pub fn generate_elf_paths(
                     .map(|p| p.id.clone())
             })
             .collect::<Result<Vec<_>>>()?,
-        _ => metadata.workspace_default_members.to_vec(),
+        _ => {
+            if let Some(root_package) = metadata.root_package() {
+                vec![root_package.id.clone()]
+            } else {
+                metadata.workspace_default_members.to_vec()
+            }
+        }
     };
 
     for program_crate in packages_to_iterate {
