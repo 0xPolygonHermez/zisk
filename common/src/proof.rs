@@ -564,6 +564,15 @@ impl Proof {
         }
     }
 
+    pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
+        let words = self.get_proof_u64()?;
+        let mut bytes = Vec::with_capacity(words.len() * 8);
+        for w in &words {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        Ok(bytes)
+    }
+
     pub fn get_publics(&self) -> &PublicValues {
         &self.publics
     }
