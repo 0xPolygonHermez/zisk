@@ -14,3 +14,8 @@ panic-handler = []
 
 [dependencies]
 ziskos = { path = "../ziskos/entrypoint", default-features = false }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_vendor, values("zisk"))',
+] }
