@@ -1,0 +1,40 @@
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = [
+    "blake2",
+    "diagnostic",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[workspace.dependencies]
+ziskos = { path = "../../ziskos/entrypoint" }
+zisk-sdk = { path = "../../sdk" }
+precompiles-helpers = { path = "../../precompiles/helpers" }
+
+# guest-reth = { git = "https://github.com/0xPolygonHermez/zisk-eth-client.git", branch = "develop-0.8.0" }
+# # guest-reth = { path = "../../../../patches/zisk-eth-client/crates/guest-reth" }
+
+# revm = { version = "34.0.0", default-features = false }
+
+# alloy-primitives = { version = "1.5.6", default-features = false }
+# alloy-consensus = { version = "1.7.3", default-features = false }
+
+# ruint = { version = "1", default-features = false }
+
+# hex = "0.4"
+# num-bigint = "0.4"
+# serde = { version = "1.0", features = ["derive"] }
+# serde_json = "1.0"
+rand = "0.8.1"
+
+# [workspace.lints.rust]
+# unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_vendor, values("zisk"))', 'cfg(zisk_hints)'] }
