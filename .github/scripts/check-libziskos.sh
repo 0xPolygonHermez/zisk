@@ -25,19 +25,21 @@ else
   echo "OK: no std object files bundled"
 fi
 
-# Use llvm-nm to read symbols from the LLVM bitcode archive produced by lto=fat.
-# Use a herestring (<<<) instead of echo | grep to avoid a pipefail/SIGPIPE race
-# where grep -q exits early, echo receives SIGPIPE (141), and pipefail surfaces
-# the 141 rather than grep's 0, flipping the ! check.
-if ! command -v llvm-nm &>/dev/null; then
-  echo "FAIL: llvm-nm not found. Install llvm (e.g. apt-get install -y llvm)"
+# Use llvm-nm from the zisk toolchain sysroot to avoid LLVM version mismatches
+# when reading bitcode objects produced by lto="fat".
+rustup component add llvm-tools --toolchain zisk 2>/dev/null || true
+LLVM_NM=$(rustup run zisk sh -c 'find "$(rustc --print sysroot)" -name "llvm-nm" -type f | head -1')
+if [[ -z "$LLVM_NM" ]]; then
+  echo "FAIL: llvm-nm not found in zisk toolchain sysroot"
   exit 1
 fi
-NM_OUTPUT=$(llvm-nm "$LIBZISKOS" 2>&1) || {
-  echo "FAIL: llvm-nm failed to read $LIBZISKOS (possible LLVM version mismatch):"
-  echo "$NM_OUTPUT"
+echo "Using llvm-nm: $LLVM_NM"
+
+NM_OUTPUT=$("$LLVM_NM" "$LIBZISKOS" 2>/dev/null || true)
+if [[ -z "$NM_OUTPUT" ]]; then
+  echo "FAIL: llvm-nm produced no output for $LIBZISKOS"
   exit 1
-}
+fi
 
 REQUIRED_SYMBOLS=(
   _start
