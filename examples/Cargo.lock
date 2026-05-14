@@ -5208,6 +5208,7 @@ dependencies = [
  "proofman-macros",
  "proofman-util",
  "rayon",
+ "thiserror 2.0.18",
  "tracing",
  "zisk-common",
  "zisk-core",

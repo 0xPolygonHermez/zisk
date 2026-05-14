@@ -3,8 +3,8 @@
 //! It generates execution plans for segments of the main trace, mapping each segment
 //! to a specific `Plan` instance.
 
+use crate::{MainSmError, Result};
 use std::any::Any;
-
 use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -26,18 +26,26 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Vec<Plan> {
-        let num_rows = MainTrace::<()>::NUM_ROWS as u64;
+    pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Result<Vec<Plan>> {
+        const _: () = assert!(
+            (MainTrace::<()>::NUM_ROWS as u64).is_power_of_two(),
+            "MainTrace::NUM_ROWS must be a power of two",
+        );
+        const NUM_ROWS: u64 = MainTrace::<()>::NUM_ROWS as u64;
 
-        assert!(num_rows.is_power_of_two());
-        assert!(min_traces_size.is_power_of_two());
-        assert!(num_rows >= min_traces_size);
+        if !min_traces_size.is_power_of_two() {
+            return Err(MainSmError::MinTraceSizeNotPowerOfTwo { size: min_traces_size });
+        }
+
+        if NUM_ROWS < min_traces_size {
+            return Err(MainSmError::MinTraceSizeTooBig { min_traces_size, num_rows: NUM_ROWS });
+        }
 
         // This is the number of minimal traces wrapped in a main trace
-        let num_within = num_rows / min_traces_size;
+        let num_within = NUM_ROWS / min_traces_size;
         let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
 
-        (0..num_instances)
+        Ok((0..num_instances)
             .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
@@ -48,6 +56,6 @@ impl MainPlanner {
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })
-            .collect()
+            .collect())
     }
 }

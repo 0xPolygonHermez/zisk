@@ -185,7 +185,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .assign_rom_instance(&pctx)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
-        let main_output = self.planner.plan_main::<F>(&output.min_traces);
+        let main_output = self.planner.plan_main(&output.min_traces)?;
         *self.state.min_traces.write().map_err(|e| {
             proofman_common::ProofmanError::InvalidSetup(format!("min_traces lock poisoned: {e}"))
         })? = Some(output.min_traces);

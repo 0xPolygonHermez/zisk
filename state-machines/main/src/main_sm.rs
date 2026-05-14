@@ -27,6 +27,7 @@ pub struct MainInstance<F: PrimeField64> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
+    /// Standard library for the main instance, used for range checks operations.
     pub std: Arc<Std<F>>,
 }
 

@@ -5,7 +5,7 @@
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_main::MainPlanner;
+use sm_main::{MainPlanner, MainSmError};
 use std::{collections::BTreeMap, sync::RwLock};
 use zisk_common::{EmuTrace, InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
@@ -48,10 +48,14 @@ impl InstancePlanner {
     /// * `min_traces` - Minimal traces from execution.
     ///
     /// # Returns
-    /// Planning output containing the main-instance plans.
-    pub fn plan_main<F: PrimeField64>(&self, min_traces: &[EmuTrace]) -> MainPlanningOutput {
-        let plans = MainPlanner::plan(min_traces, self.chunk_size);
-        MainPlanningOutput { plans }
+    /// Planning output containing the main-instance plans, or a `MainSmError`
+    /// if the planner rejects the configuration.
+    pub fn plan_main(
+        &self,
+        min_traces: &[EmuTrace],
+    ) -> std::result::Result<MainPlanningOutput, MainSmError> {
+        let plans = MainPlanner::plan(min_traces, self.chunk_size)?;
+        Ok(MainPlanningOutput { plans })
     }
 
     /// Plans secondary state machine instances.
