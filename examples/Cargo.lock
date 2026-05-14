@@ -14,7 +14,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
- "sha2",
  "tokio",
  "zisk-sdk",
 ]
@@ -748,9 +747,6 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "big-program-guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -759,8 +755,6 @@ name = "big-program-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
- "sha2",
  "tokio",
  "zisk-sdk",
 ]
@@ -2175,9 +2169,6 @@ dependencies = [
 name = "guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -2280,8 +2271,6 @@ name = "hints-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
- "sha2",
  "tokio",
  "zisk-sdk",
 ]
@@ -2906,9 +2895,6 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 name = "liveness-guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -3156,9 +3142,6 @@ checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 name = "multiple-program-guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -3167,8 +3150,6 @@ name = "multiple-programs-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
- "sha2",
  "tokio",
  "zisk-sdk",
 ]
@@ -3398,9 +3379,6 @@ dependencies = [
 name = "panic-guest"
 version = "0.1.0"
 dependencies = [
- "byteorder",
- "serde",
- "sha2",
  "ziskos",
 ]
 
@@ -3409,8 +3387,6 @@ name = "panic-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
- "sha2",
  "tokio",
  "zisk-sdk",
 ]
@@ -5015,8 +4991,6 @@ name = "sha-hasher-guest"
 version = "0.1.0"
 dependencies = [
  "alloy-sol-types",
- "byteorder",
- "serde",
  "sha-hasher-common",
  "sha2",
  "ziskos",
@@ -5026,9 +5000,7 @@ dependencies = [
 name = "sha-hasher-host"
 version = "0.1.0"
 dependencies = [
- "alloy-sol-types",
  "anyhow",
- "serde",
  "sha-hasher-common",
  "sha2",
  "tokio",
