@@ -6,12 +6,8 @@
 use std::any::Any;
 
 use fields::PrimeField64;
-use zisk_common::{
-    BusDeviceMetrics, CheckPoint, ChunkId, EmuTrace, InstanceType, Metrics, Plan, SegmentId,
-};
+use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-
-use crate::MainCounter;
 
 /// The `MainPlanner` struct generates execution plans for the Main State Machine.
 ///
@@ -27,24 +23,12 @@ impl MainPlanner {
     ///
     /// # Arguments
     /// * `min_traces` - A slice of `EmuTrace` instances representing the segments to be planned.
-    /// * `main_counters` - A vector of main counters, each associated with a specific chunk ID.
     /// * `min_traces_size` - The size of the minimal traces.
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
-    pub fn plan<F: PrimeField64>(
-        min_traces: &[EmuTrace],
-        main_counters: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>,
-        min_traces_size: u64,
-    ) -> (Vec<Plan>, Vec<(u64, u32)>) {
+    pub fn plan<F: PrimeField64>(min_traces: &[EmuTrace], min_traces_size: u64) -> Vec<Plan> {
         let num_rows = MainTrace::<()>::NUM_ROWS as u64;
-
-        let mut publics = Vec::new();
-
-        main_counters.iter().for_each(|(_, counter)| {
-            let reg_counter = Metrics::as_any(&**counter).downcast_ref::<MainCounter>().unwrap();
-            publics.extend_from_slice(&reg_counter.publics);
-        });
 
         assert!(num_rows.is_power_of_two());
         assert!(min_traces_size.is_power_of_two());
@@ -54,7 +38,7 @@ impl MainPlanner {
         let num_within = num_rows / min_traces_size;
         let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
 
-        let plans: Vec<Plan> = (0..num_instances)
+        (0..num_instances)
             .map(|segment_id| {
                 Plan::new(
                     ZISK_AIRGROUP_ID,
@@ -65,8 +49,6 @@ impl MainPlanner {
                     Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
                 )
             })
-            .collect();
-
-        (plans, publics)
+            .collect()
     }
 }

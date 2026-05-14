@@ -9,9 +9,7 @@ use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-use crate::{
-    DeviceMetricsList, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
-};
+use crate::{EmulatorResult, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS};
 
 use anyhow::Result;
 
@@ -61,10 +59,10 @@ impl EmulatorRust {
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
         timer_start_info!(COUNT);
-        let (main_count, secn_count) = self.count(zisk_rom, &min_traces, sm_bundle)?;
+        let (secn_count, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
         timer_stop_and_log_info!(COUNT);
 
-        Ok((min_traces, main_count, secn_count, None, None, steps))
+        Ok((min_traces, secn_count, None, None, steps, pub_outs))
     }
 
     fn run_emulator(
@@ -102,7 +100,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<(DeviceMetricsList, NestedDeviceMetricsList)> {
+    ) -> Result<(NestedDeviceMetricsList, Vec<(u64, u32)>)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -115,46 +113,37 @@ impl EmulatorRust {
                     true,
                 );
 
-                let mut counters = Vec::new();
-
+                let pub_outs_chunk = data_bus.take_pub_outs();
                 let databus_counters = data_bus.into_devices(true);
+
+                let mut counters = Vec::new();
                 for counter in databus_counters.into_iter() {
                     counters.push(counter);
                 }
 
-                Ok(counters)
+                Ok((counters, pub_outs_chunk))
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut main_count = Vec::new();
         let mut secn_count = HashMap::new();
+        let mut pub_outs = Vec::new();
 
-        for (chunk_id, counter_slice) in metrics_slices.into_iter().enumerate() {
+        for (chunk_id, (counter_slice, pub_outs_chunk)) in metrics_slices.into_iter().enumerate() {
+            pub_outs.extend(pub_outs_chunk);
             for (idx, counter) in counter_slice.into_iter() {
-                match idx {
-                    None => {
-                        main_count.push((
-                            ChunkId(chunk_id),
-                            counter.ok_or_else(|| {
-                                anyhow::anyhow!("main counter is None for chunk {chunk_id}")
-                            })?,
-                        ));
-                    }
-                    Some(idx) => {
-                        secn_count.entry(idx).or_insert_with(Vec::new).push((
-                            ChunkId(chunk_id),
-                            counter.ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "secondary counter is None for chunk {chunk_id}, idx {idx}"
-                                )
-                            })?,
-                        ));
-                    }
-                }
+                let idx = idx.ok_or_else(|| {
+                    anyhow::anyhow!("unexpected unindexed counter for chunk {chunk_id}")
+                })?;
+                secn_count.entry(idx).or_insert_with(Vec::new).push((
+                    ChunkId(chunk_id),
+                    counter.ok_or_else(|| {
+                        anyhow::anyhow!("secondary counter is None for chunk {chunk_id}, idx {idx}")
+                    })?,
+                ));
             }
         }
 
-        Ok((main_count, secn_count))
+        Ok((secn_count, pub_outs))
     }
 }
 

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::AsmRunnerRH;
 use crate::{NestedDeviceMetricsList, StaticDataBusCollect};
-use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use precomp_arith_eq::{ArithEqInstance, ArithEqManager};
@@ -27,7 +26,7 @@ use sm_mem::{
 };
 use sm_rom::{RomInstance, RomSM};
 use std::collections::{BTreeMap, HashMap};
-use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
+use zisk_common::{ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_INPUT_CPY_AIR_IDS;
@@ -240,10 +239,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(sm.build_instance(ictx))
     }
 
-    pub fn build_data_bus_counters(
-        &self,
-        is_asm_emulator: bool,
-    ) -> Result<impl DataBusTrait<u64, Box<dyn BusDeviceMetrics>> + Send + Sync + 'static> {
+    pub fn build_data_bus_counters(&self, is_asm_emulator: bool) -> Result<StaticDataBus<u64>> {
         // Extract counters from each state machine type
         let mut mem_counter = None;
         let mut binary_counter = None;
