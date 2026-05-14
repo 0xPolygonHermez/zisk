@@ -141,8 +141,6 @@ jobs:
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
-              echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
-              ls -lha /home/ziskuser/.zisk/provingKey
             '
 
       - name: Test sha_hasher (CPU)
@@ -169,8 +167,6 @@ jobs:
           docker exec -u ziskuser \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
-              echo "Proving key should be available at: /home/ziskuser/.zisk/provingKey"
-              ls -lha /home/ziskuser/.zisk/provingKey
               ./test_diagnostic.sh
             '
 
@@ -191,8 +187,6 @@ jobs:
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             "${TEST_CONTAINER}" bash -lc '
               cd /workspace/zisk/tools/test-env
-              echo "ZisK binary should be available at: /home/ziskuser/.zisk/bin/"
-              ls /home/ziskuser/.zisk/bin/
               ./test_ethproofs.sh
             '
 
