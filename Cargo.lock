@@ -7817,6 +7817,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziskos-staticlib"
+version = "0.17.1"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "zkvm-interface"
 version = "0.17.1"
 dependencies = [
