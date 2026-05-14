@@ -33,7 +33,9 @@ main() {
     ensure tar -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
 
     step "Generating constant tree files..."
-    ensure cargo-zisk check-setup || return 1
+    local gpu_flag=""
+    [[ "${ONLY_CPU:-}" != "1" ]] && gpu_flag="--gpu"
+    ensure cargo-zisk check-setup ${gpu_flag} || return 1
 
     success "Local proving key ${ZISK_SETUP_FILE} installed successfully!"
 }

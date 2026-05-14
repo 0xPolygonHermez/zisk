@@ -196,7 +196,6 @@ jobs:
       - name: Ethproofs test (hints)
         run: |
           docker exec -u ziskuser \
-            -e BLOCK_INPUTS_ETHPROOFS_HINTS="mainnet_24628611_627_58_zec_reth.bin,mainnet_24628590_478_49_zec_reth.bin" \
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             "${TEST_CONTAINER}" bash -lc '
