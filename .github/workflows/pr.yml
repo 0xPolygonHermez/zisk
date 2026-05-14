@@ -121,7 +121,7 @@ jobs:
           docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
           docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
           docker exec -u ziskuser "${TEST_CONTAINER}" bash -lc '
-            . "$HOME/.cargo/env"
+            cd /workspace/zisk
             /home/ziskuser/check-libziskos.sh
           '
 
