@@ -5,11 +5,51 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-// Precompile in charge of performing the BLAKE2b round function. 
-// For reference: https://datatracker.ietf.org/doc/html/rfc7693 or https://www.blake2.net/
+/*
+	Blake2br: BLAKE2b single-round compression precompile.
+    For reference: https://datatracker.ietf.org/doc/html/rfc7693 or https://www.blake2.net/
 
-// We use little-endian representation
+    Note: We use little-endian representation
 
+	CONSTRAINTS:
+		The template proves one BLAKE2b round over 24 clocked rows. It reads a
+		canonical round index, 16 state words, and 16 message words from memory,
+		applies the 8 BLAKE2b G functions using the SIGMA row selected by the
+		round index, and writes the 16 updated state words back to memory.
+		Additions are constrained modulo 2^64 with 32-bit limb carry checks;
+		rotations and XORs are constrained through boolean bit decompositions.
+
+	PRE-CONDITIONS (caller responsibilities):
+		- Main must query OP_BLAKE2BR with a = [0, 0], b = [addr_op, 0],
+			c = [0, 0], flag = 0, main_step = STEP, extended_arg = 0, and
+			extra_args[0] = 0.
+		- Memory at addr_op must contain a canonical round index in [0, 10).
+		- Memory at addr_op + 8 and addr_op + 16 must contain the state and
+			input pointers, respectively, with high 32-bit limbs equal to zero.
+		- State and input pointers address 16 contiguous 64-bit words each.
+
+	POST-CONDITIONS (what the template guarantees):
+		- Each active 24-row cycle proves exactly one OP_BLAKE2BR Operation Bus
+			tuple for the corresponding Main step and addr_op.
+		- Selected memory rows read the round index, state pointer, input
+			pointer, 16 state words, and 16 message words, and write 16 updated
+			state words at main_step + 1 in precompiled memory-step order.
+		- The written state equals one BLAKE2b round with column then diagonal
+			G mixing using SIGMA[round_idx].
+		- Inactive cycles emit no Operation Bus, Memory, or permutation bus
+			contribution.
+
+	BUSES:
+		- OPERATION_BUS_ID (proves):
+			[OP_BLAKE2BR, 0, 0, addr_op, 0, 0, 0, 0, main_step, 0, 0].
+		- MEMORY_ID (assumes via precompiled_mem_op):
+			[MEMORY_LOAD_OP or MEMORY_STORE_OP, addr, derived_mem_step, 8,
+				value[0], value[1]].
+		- BLAKE2BR_PERMUTATION_ID (assumes/proves):
+			assumes [MSG_IDX, m[0], m[1]] and proves [sigma_idx, ms[0], ms[1]]
+			for the 16 active message rows.
+		- Range check (assumes): m, va, and vc 16-bit limbs in [0, 2^16 - 1].
+*/
 airtemplate Blake2br(const int N = 2**20) {
     /*
        ═══════════════════════════════════════════════════════════════════════════
@@ -32,7 +72,7 @@ airtemplate Blake2br(const int N = 2**20) {
             v[c] := (v[c] + v[d]) mod 2⁶⁴
             v[b] := (v[b] ^ v[c]) >>> 63
 
-       Message words x,y selected by SIGMA[round_idx % 10]
+       Message words x,y selected by SIGMA[round_idx]
 
        ═══════════════════════════════════════════════════════════════════════════
        EXECUTION TRACE LAYOUT (24 clocks per round)

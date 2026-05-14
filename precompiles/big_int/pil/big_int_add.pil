@@ -3,7 +3,7 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-/// BinIntAdd Precompile
+/// BigIntAdd Precompile
 ///
 /// Proves the addition of n-bits, using N_RC chunks of RC chunks of 32 bits
 /// RC is the number of chunks of 32 bits defined in native architecture
