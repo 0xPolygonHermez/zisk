@@ -13,7 +13,7 @@ use precomp_dma::DmaCounterInputGen;
 use precompiles_common::MemCounterProcessor;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
-use sm_main::MainCounter;
+use sm_main::PubOutsCollector;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
@@ -35,7 +35,7 @@ pub struct StaticDataBus<D, F: PrimeField64> {
     process_only_operation_bus: bool,
 
     /// List of devices connected to the bus.
-    pub main_counter: MainCounter,
+    pub pub_outs_collector: PubOutsCollector,
     pub mem_counter: (usize, Option<MemCounters>),
     pub binary_counter: (usize, BinaryCounter),
     pub arith_counter: (usize, ArithCounterInputGen),
@@ -79,7 +79,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     ) -> Self {
         Self {
             process_only_operation_bus,
-            main_counter: MainCounter::new(),
+            pub_outs_collector: PubOutsCollector::new(),
             mem_counter,
             binary_counter,
             arith_counter,
@@ -88,6 +88,14 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
             rom_counter_id,
             pending_transfers: VecDeque::new(),
         }
+    }
+
+    /// Drains the accumulated public outputs from the embedded `PubOutsCollector`,
+    /// leaving the collector with an empty Vec. Must be called BEFORE
+    /// `into_devices`, which consumes the bus.
+    #[inline]
+    pub fn take_pub_outs(&mut self) -> Vec<(u64, u32)> {
+        std::mem::take(&mut self.pub_outs_collector.0)
     }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
@@ -119,7 +127,10 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                 _continue
             }
             OPERATION_BUS_ID => match data[OP_TYPE] as u32 {
-                PUB_OUT_OP_TYPE_ID => self.main_counter.process_data(&bus_id, data),
+                PUB_OUT_OP_TYPE_ID => {
+                    self.pub_outs_collector.process_data(data);
+                    true
+                }
                 BINARY_OP_TYPE_ID | BINARY_E_OP_TYPE_ID => {
                     self.binary_counter.1.process_data(&bus_id, data)
                 }
@@ -209,7 +220,6 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
 
         #[allow(clippy::type_complexity)]
         let mut counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
-            (None, Some(Box::new(self.main_counter))),
             (self.rom_counter_id, Some(Box::new(DummyCounter {}))),
             (Some(self.binary_counter.0), Some(Box::new(self.binary_counter.1))),
             (Some(self.arith_counter.0), Some(Box::new(self.arith_counter.1))),

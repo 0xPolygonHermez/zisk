@@ -58,11 +58,11 @@ use anyhow::Result;
 
 pub type EmulatorResult = (
     Vec<EmuTrace>,
-    DeviceMetricsList,
     NestedDeviceMetricsList,
     Option<JoinHandle<Result<AsmRunnerMO>>>,
     Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
+    Vec<(u64, u32)>,
 );
 
 /// Trait for unified execution across different emulator backends
