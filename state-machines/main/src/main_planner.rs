@@ -26,12 +26,22 @@ impl MainPlanner {
     ///
     /// # Returns
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
+    /// # Errors
+    /// Returns a `MainSmError` when:
+    /// - The `min_traces_size` is not a power of two ([`MainSmError::MinTraceSizeNotPowerOfTwo`]).
+    /// - The `min_traces_size` exceeds the row capacity of `MainTrace` ([`MainSmError::MinTraceSizeTooBig`]).
     pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Result<Vec<Plan>> {
-        const _: () = assert!(
-            (MainTrace::<()>::NUM_ROWS as u64).is_power_of_two(),
-            "MainTrace::NUM_ROWS must be a power of two",
-        );
         const NUM_ROWS: u64 = MainTrace::<()>::NUM_ROWS as u64;
+
+        // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
+        const _: () =
+            assert!(NUM_ROWS.is_power_of_two(), "MainTrace::NUM_ROWS must be a power of two",);
+
+        // Compile-time assertion to ensure `MainTrace::NUM_ROWS` does not exceed `usize::MAX`.
+        const _: () = assert!(
+            NUM_ROWS <= usize::MAX as u64,
+            "MainTrace::NUM_ROWS exceeds usize::MAX on this target",
+        );
 
         if !min_traces_size.is_power_of_two() {
             return Err(MainSmError::MinTraceSizeNotPowerOfTwo { size: min_traces_size });
@@ -41,9 +51,12 @@ impl MainPlanner {
             return Err(MainSmError::MinTraceSizeTooBig { min_traces_size, num_rows: NUM_ROWS });
         }
 
-        // This is the number of minimal traces wrapped in a main trace
-        let num_within = NUM_ROWS / min_traces_size;
-        let num_instances = (min_traces.len() as f64 / num_within as f64).ceil() as usize;
+        // This is the number of minimal traces wrapped in a main trace.
+        // NUM_ROWS / min_traces_size <= NUM_ROWS, and NUM_ROWS is asserted to
+        // fit in usize at compile time above, so the cast is exact.
+        #[allow(clippy::cast_possible_truncation)]
+        let num_within = (NUM_ROWS / min_traces_size) as usize;
+        let num_instances = min_traces.len().div_ceil(num_within);
 
         Ok((0..num_instances)
             .map(|segment_id| {
