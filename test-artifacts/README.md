@@ -17,7 +17,7 @@ test-artifacts/
 └── programs/           # nested Cargo workspace with one member per guest
     ├── Cargo.toml
     ├── blake2/
-    └── diagnostic/
+    ├── ...
 ```
 
 `programs/` is its own Cargo workspace because the guests cross-compile to the
