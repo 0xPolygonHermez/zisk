@@ -1,4 +1,5 @@
 use crate::{MemInput, MemPreviousSegment};
+use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofmanResult};
 #[cfg(feature = "debug_mem")]
 use std::{
@@ -26,33 +27,25 @@ pub trait MemModule<F: Clone>: Send + Sync {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        // `seg` carries the segment's sparse offsets table (use
+        // `seg.offset_at(k)` for point lookup and `seg.previous_change_addr_w(k)`
+        // for the change-point boundary lookup).
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>>;
     fn get_addr_range(&self) -> (u32, u32);
     fn is_dual(&self) -> bool;
     fn get_mem_name(&self) -> &str;
 }
 
-pub fn get_previous_addr_w(
-    offsets: &[u32],
-    addr_index: usize,
-    offset_base_addr_w: u32,
-) -> Option<u64> {
-    let ref_offset = offsets[addr_index];
-    (0..addr_index)
-        .rev()
-        .find(|&i| offsets[i] != ref_offset)
-        .map(|prev_addr_offset| offset_base_addr_w as u64 + prev_addr_offset as u64)
-}
-
 #[cfg(feature = "debug_mem")]
-pub fn save_offsets_to_file(offset_base_addr: u32, offsets: &[u32], file_name: &str) {
+pub fn save_offsets_to_file(seg: &MemModuleSegmentCheckPoint, file_name: &str) {
     println!("[MemDebug] saving offsets to {} .....", file_name);
     let file = File::create(file_name).unwrap();
     let mut writer = BufWriter::new(file);
-    for (index, &value) in offsets.iter().enumerate() {
-        let addr = index as u64 * 8 + offset_base_addr as u64;
+    let base = seg.offsets_base_addr as u64;
+    for index in 0..seg.addr_range_slots {
+        let addr = index as u64 * 8 + base;
+        let value = seg.offset_at(index);
         writeln!(writer, "{} {:#010X} {}", index, addr, value).unwrap();
     }
     println!("[MemDebug] done");

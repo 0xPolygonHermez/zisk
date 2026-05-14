@@ -18,8 +18,12 @@ pub struct InstanceMeta {
     pub last_addr: u32,
     pub count_per_chunk: *const u32,
     pub n_chunks: u32,
-    pub addr_offsets: *const u32,
-    pub addr_offsets_size: u32,
+    // Sparse offsets: two parallel arrays (SoA). See `cpp/instance_meta.hpp`
+    // for invariants. `offset_change_slots[0]` is always 0.
+    pub offset_change_slots: *const u32,
+    pub offset_change_values: *const u32,
+    pub offset_changes_count: u32,
+    pub addr_range_slots: u32,
     pub first_addr_chunk: u32,
     pub first_addr_skip: u32,
     pub last_addr_chunk: u32,

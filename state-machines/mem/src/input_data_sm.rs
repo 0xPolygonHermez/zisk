@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::{mem_module::get_previous_addr_w, MemInput, MemModule, MemPreviousSegment};
-use mem_common::{MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use crate::{MemInput, MemModule, MemPreviousSegment};
+use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -281,18 +281,18 @@ impl<F: PrimeField64> InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
-        if packed {
+        // [witness perf gate — temporary, remove after gate is green]
+        let _t = std::time::Instant::now();
+        let result = if packed {
             self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
-                offset_base_addr,
-                offsets,
+                seg,
             )
         } else {
             self.compute_witness_with_offsets_inner::<InputDataTraceRow<F>>(
@@ -301,10 +301,19 @@ impl<F: PrimeField64> InputDataSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
-                offset_base_addr,
-                offsets,
+                seg,
             )
-        }
+        };
+        tracing::info!(
+            target: "witness_perf",
+            "[witness] input_data_sm seg={} ops={} slots={} changes={} {}µs",
+            segment_id.0,
+            mem_ops.len(),
+            seg.addr_range_slots,
+            seg.offset_change_slots.len(),
+            _t.elapsed().as_micros()
+        );
+        result
     }
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
@@ -337,8 +346,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = InputDataTrace::<R>::new_from_vec(trace_buffer)?;
 
@@ -350,13 +358,13 @@ impl<F: PrimeField64> InputDataSM<F> {
             num_rows
         );
 
-        let mut current_offsets = vec![0u32; offsets.len()];
+        let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
         let mut range_check_cache = vec![0u32; MAX_RANGE_CHECK_CACHE];
 
         #[cfg(feature = "debug_mem")]
         let mut filled_rows = vec![false; trace.num_rows()];
-        let offset_base_addr_w = offset_base_addr >> 3;
+        let offset_base_addr_w = seg.offsets_base_addr >> 3;
 
         // first address == halo
         // In input data, first special address not active flag change address.
@@ -367,7 +375,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             let addr_changes = current_offsets[addr_index] == 0;
 
             let irow = if addr_changes {
-                let offset = offsets[addr_index];
+                let offset = seg.offset_at(addr_index as u32);
                 current_offsets[addr_index] = offset | OFFSET_USE_FLAG;
                 offset as usize - 1
             } else {
@@ -400,7 +408,7 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             if addr_changes {
                 trace[irow].set_addr_changes(true);
-                let previous_addr = get_previous_addr_w(offsets, addr_index, offset_base_addr_w)
+                let previous_addr = seg.previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 let distance = mem_op.addr as i64 - previous_addr as i64 - 1;
                 if distance < MAX_RANGE_CHECK_CACHE as i64 {
@@ -526,8 +534,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         #[cfg(not(feature = "legacy_mem_count_and_plan"))]
         {
@@ -538,8 +545,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
                 previous_segment,
                 trace_buffer,
                 packed,
-                offset_base_addr,
-                offsets,
+                seg,
             )
         }
         #[cfg(feature = "legacy_mem_count_and_plan")]

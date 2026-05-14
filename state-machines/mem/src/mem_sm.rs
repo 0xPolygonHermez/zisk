@@ -12,9 +12,9 @@ use std::{
 #[cfg(feature = "debug_mem")]
 use crate::mem_module::save_offsets_to_file;
 
-use crate::{mem_module::get_previous_addr_w, MemInput, MemModule};
+use crate::{MemInput, MemModule};
 use fields::PrimeField64;
-use mem_common::{MemHelpers, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
+use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
@@ -510,18 +510,18 @@ impl<F: PrimeField64> MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
-        if packed {
+        // [witness perf gate — temporary, remove after gate is green]
+        let _t = std::time::Instant::now();
+        let result = if packed {
             self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
-                offset_base_addr,
-                offsets,
+                seg,
             )
         } else {
             self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
@@ -530,10 +530,19 @@ impl<F: PrimeField64> MemSM<F> {
                 is_last_segment,
                 previous_segment,
                 trace_buffer,
-                offset_base_addr,
-                offsets,
+                seg,
             )
-        }
+        };
+        tracing::info!(
+            target: "witness_perf",
+            "[witness] mem_sm seg={} ops={} slots={} changes={} {}µs",
+            segment_id.0,
+            mem_ops.len(),
+            seg.addr_range_slots,
+            seg.offset_change_slots.len(),
+            _t.elapsed().as_micros()
+        );
+        result
     }
 
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
@@ -567,16 +576,14 @@ impl<F: PrimeField64> MemSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = MemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         #[cfg(feature = "debug_mem")]
         {
             Self::save_mem_inputs_to_file(mem_ops, segment_id);
             save_offsets_to_file(
-                offset_base_addr,
-                offsets,
+                seg,
                 &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"),
             );
         }
@@ -586,12 +593,13 @@ impl<F: PrimeField64> MemSM<F> {
 
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
-        // the last_step of previous_row
-        let mut current_offsets = vec![0u32; offsets.len()];
+        // the last_step of previous_row. Sized by the segment's full slot count
+        // (carried through verbatim from the dense representation).
+        let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
 
         #[cfg(feature = "debug_mem")]
         let mut filled_rows = vec![false; trace.num_rows()];
-        let offset_base_addr_w = offset_base_addr >> 3;
+        let offset_base_addr_w = seg.offsets_base_addr >> 3;
 
         let mut i = 0;
         let mut step = 0;
@@ -600,7 +608,7 @@ impl<F: PrimeField64> MemSM<F> {
 
         // The address with offset 0 is the halo address, but point of view of continuations halo doesn't
         // implies a addr_changes, for this reason init current_offsets[0] with OFFSET_USE_FLAG
-        if offsets[0] == 0 {
+        if seg.offset_change_values[0] == 0 {
             current_offsets[0] = OFFSET_USE_FLAG;
         }
         for (index, mem_op) in mem_ops.iter().enumerate().take(mem_op_count) {
@@ -611,9 +619,10 @@ impl<F: PrimeField64> MemSM<F> {
             let mut dual_available = current_offsets[addr_index] & OFFSET_DUAL_FLAG != 0;
             let addr_changes = current_offsets[addr_index] == 0;
             let mut irow = if addr_changes {
-                debug_assert!(offsets[addr_index] > 0, "MemSM: Address 0x{:X} at index {index} is out of offsets range, offset_base_addr_w: 0x{:X}",
+                let off_val = seg.offset_at(addr_index as u32);
+                debug_assert!(off_val > 0, "MemSM: Address 0x{:X} at index {index} is out of offsets range, offset_base_addr_w: 0x{:X}",
                         mem_op.addr * 8, offset_base_addr_w * 8);
-                offsets[addr_index] as usize - 1
+                off_val as usize - 1
             } else {
                 (current_offsets[addr_index] & OFFSET_VALUE_MASK) as usize
             };
@@ -638,12 +647,12 @@ impl<F: PrimeField64> MemSM<F> {
                         trace[irow - 1].get_step()
                     } - 1
                 } else if addr_changes {
-                    // This means it's the first access to this address, so it will be a new row.
-                    // We can't take the address from previous trace row because maybe this row
-                    // isn't write yet. We need to walk for offsets array to find the previous non
-                    // empty address.
+                    // First access to this address → new row. The previous
+                    // distinct address comes from the sparse change-point
+                    // table (was a backward linear scan on the dense
+                    // offsets array before the SoA refactor).
                     mem_op.addr as u64
-                        - get_previous_addr_w(offsets, addr_index, offset_base_addr_w)
+                        - seg.previous_change_addr_w(addr_index as u32)
                             .unwrap_or(previous_segment.addr as u64)
                         - 1
                 } else {
@@ -685,7 +694,7 @@ impl<F: PrimeField64> MemSM<F> {
                 // dual available
                 init_row = true;
 
-                let previous_addr = get_previous_addr_w(offsets, addr_index, offset_base_addr_w)
+                let previous_addr = seg.previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 debug_assert!(previous_addr <= mem_op.addr as u64, "MemSM: Warning: address goes back \
                               from 0x{:X} to 0x{previous_addr:X} at irow {irow} (offset_base_addr_w: \
@@ -914,8 +923,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
         packed: bool,
-        offset_base_addr: u32,
-        offsets: &[u32],
+        seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         #[cfg(not(feature = "legacy_mem_count_and_plan"))]
         {
@@ -926,8 +934,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
                 previous_segment,
                 trace_buffer,
                 packed,
-                offset_base_addr,
-                offsets,
+                seg,
             )
         }
         #[cfg(feature = "legacy_mem_count_and_plan")]

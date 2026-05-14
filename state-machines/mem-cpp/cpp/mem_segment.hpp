@@ -17,17 +17,22 @@ class MemSegment {
 public:
     bool is_last_segment;
     uint32_t offsets_base_addr;
-    std::vector<uint32_t> offsets;
+    // Sparse offsets — see `instance_meta.hpp` for invariants.
+    // `offset_change_slots[0]` is always 0 when present.
+    std::vector<uint32_t> offset_change_slots;
+    std::vector<uint32_t> offset_change_values;
+    uint32_t addr_range_slots;
 
     MemSegment(const MemSegment&) = delete;
     MemSegment& operator=(const MemSegment&) = delete;
     MemSegment(MemSegment&&) noexcept = delete;
 
-    MemSegment() : is_last_segment(false), offsets_base_addr(0) {
+    MemSegment() : is_last_segment(false), offsets_base_addr(0), addr_range_slots(0) {
         chunks = nullptr;
         init();
     }
-    MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count): is_last_segment(false), offsets_base_addr(0) {
+    MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count)
+        : is_last_segment(false), offsets_base_addr(0), addr_range_slots(0) {
         chunks = nullptr;
         init();
         push(chunk_id, from_addr, skip, count);

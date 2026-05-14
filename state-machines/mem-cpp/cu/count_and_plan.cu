@@ -921,7 +921,8 @@ void save_metas_append(FILE* f, const InstanceMeta& m) {
         }
     };
     uint32_t cps = m.n_chunks;
-    uint32_t aos = m.addr_offsets_size;
+    uint32_t ocs = m.offset_changes_count;
+    uint32_t ars = m.addr_range_slots;
     wr(&m.inst_id,            sizeof(uint32_t));
     wr(&m.kind,               sizeof(uint32_t));
     wr(&m.first_addr,         sizeof(uint32_t));
@@ -931,9 +932,11 @@ void save_metas_append(FILE* f, const InstanceMeta& m) {
     wr(&m.last_addr_chunk,    sizeof(uint32_t));
     wr(&m.last_addr_include,  sizeof(uint32_t));
     wr(&cps, sizeof(uint32_t));
-    wr(&aos, sizeof(uint32_t));
-    wr(m.count_per_chunk, cps * sizeof(uint32_t));
-    wr(m.addr_offsets,    aos * sizeof(uint32_t));
+    wr(&ocs, sizeof(uint32_t));
+    wr(&ars, sizeof(uint32_t));
+    wr(m.count_per_chunk,        cps * sizeof(uint32_t));
+    wr(m.offset_change_slots,    ocs * sizeof(uint32_t));
+    wr(m.offset_change_values,   ocs * sizeof(uint32_t));
 }
 
 void save_metas_end(FILE* f, uint32_t total) {
@@ -1125,6 +1128,13 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
     h_offsets_buf_size_ = 1ull << 30;
     CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
+    // Sparse-offsets output buffers — phase 1.5 host-side compaction. Sized
+    // to match h_offsets_buf_ (worst case: every slot is a change-point and
+    // we double-write slot+value pairs). Phase 2 moves the compaction onto
+    // the GPU and shrinks these buffers to typical-sparse size.
+    h_change_buf_size_ = h_offsets_buf_size_;
+    CUDA_CHECK(cudaMallocHost(&h_change_slots_buf_, h_change_buf_size_));
+    CUDA_CHECK(cudaMallocHost(&h_change_values_buf_, h_change_buf_size_));
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
 
@@ -1395,6 +1405,8 @@ void CountAndPlan::free_pinned_() {
     if (h_memops_)                   { cudaFreeHost(h_memops_);                   h_memops_                   = nullptr; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_offsets_buf_)              { cudaFreeHost(h_offsets_buf_);              h_offsets_buf_              = nullptr; }
+    if (h_change_slots_buf_)         { cudaFreeHost(h_change_slots_buf_);         h_change_slots_buf_         = nullptr; }
+    if (h_change_values_buf_)        { cudaFreeHost(h_change_values_buf_);        h_change_values_buf_        = nullptr; }
     if (h_result_nops_)              { cudaFreeHost(h_result_nops_);              h_result_nops_              = nullptr; }
     if (h_meta_scalars_)             { cudaFreeHost(h_meta_scalars_);             h_meta_scalars_             = nullptr; }
     if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
@@ -1562,6 +1574,15 @@ void CountAndPlan::process_worker_() {
         h_offsets_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
         CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     }
+    // Sparse-output sibling buffers grow alongside (worst-case = same byte
+    // count when every slot is a change-point).
+    if (needed_offsets_bytes > h_change_buf_size_) {
+        if (h_change_slots_buf_)  CUDA_CHECK(cudaFreeHost(h_change_slots_buf_));
+        if (h_change_values_buf_) CUDA_CHECK(cudaFreeHost(h_change_values_buf_));
+        h_change_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
+        CUDA_CHECK(cudaMallocHost(&h_change_slots_buf_,  h_change_buf_size_));
+        CUDA_CHECK(cudaMallocHost(&h_change_values_buf_, h_change_buf_size_));
+    }
 
     // instance_boundaries_kernel writes d_offset_starts_ per-region (each region
     // resets `offset = 0`). compute_addr_offsets_kernel writes into d_addr_offsets_
@@ -1601,6 +1622,8 @@ void CountAndPlan::process_worker_() {
     CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
     CUDA_CHECK(cudaStreamSynchronize(d2h_stream_));
 
+    // Running cursor into the per-instance sparse output buffers.
+    size_t change_cursor = 0;
     uint32_t ai = 0;
     for (uint8_t r = 0; r < 3; r++) {
         for (uint32_t j = 0; j < num_active_per_[r]; j++, ai++) {
@@ -1614,10 +1637,32 @@ void CountAndPlan::process_worker_() {
             metas_[ai].last_addr_chunk   = scalars[2];
             metas_[ai].last_addr_include = scalars[3];
             const uint32_t num_addrs = h_active_last_[ai] - h_active_first_[ai] + 1;
-            metas_[ai].count_per_chunk      = h_result_nops_ + (size_t)ai * n_chunks_;
-            metas_[ai].n_chunks = n_chunks_;
-            metas_[ai].addr_offsets         = h_offsets_buf_ + h_offset_starts[ai];
-            metas_[ai].addr_offsets_size    = num_addrs;
+            metas_[ai].count_per_chunk = h_result_nops_ + (size_t)ai * n_chunks_;
+            metas_[ai].n_chunks        = n_chunks_;
+
+            // ── Phase 1.5: host-side compaction of dense → sparse ──
+            // Walk the dense per-instance segment, emit a change-point
+            // wherever the value differs from its predecessor. The first
+            // slot is always emitted (invariant: slots[0] == 0).
+            const uint32_t* dense = h_offsets_buf_ + h_offset_starts[ai];
+            uint32_t* out_slots  = h_change_slots_buf_  + change_cursor;
+            uint32_t* out_values = h_change_values_buf_ + change_cursor;
+            uint32_t  n_changes  = 0;
+            uint32_t  prev       = 0;
+            for (uint32_t k = 0; k < num_addrs; k++) {
+                const uint32_t v = dense[k];
+                if (k == 0 || v != prev) {
+                    out_slots[n_changes]  = k;
+                    out_values[n_changes] = v;
+                    ++n_changes;
+                    prev = v;
+                }
+            }
+            metas_[ai].offset_change_slots  = out_slots;
+            metas_[ai].offset_change_values = out_values;
+            metas_[ai].offset_changes_count = n_changes;
+            metas_[ai].addr_range_slots     = num_addrs;
+            change_cursor += n_changes;
         }
     }
 }

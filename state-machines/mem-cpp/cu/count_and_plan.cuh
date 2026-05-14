@@ -164,6 +164,13 @@ private:
     uint32_t*      h_n_emits_all_              = nullptr;
     uint32_t*      h_offsets_buf_              = nullptr;
     size_t         h_offsets_buf_size_         = 0;
+    // Sparse-offsets output buffers (host-side compaction of h_offsets_buf_).
+    // Sized identically to h_offsets_buf_ so the worst case (no compression)
+    // still fits. Real workloads use ~5-10 % of that. Phase 2 (kernel-side
+    // compaction) will shrink these to typical sparse-output size.
+    uint32_t*      h_change_slots_buf_         = nullptr;
+    uint32_t*      h_change_values_buf_        = nullptr;
+    size_t         h_change_buf_size_          = 0;
     uint32_t*      h_result_nops_              = nullptr;
     uint32_t*      h_meta_scalars_             = nullptr;
     ChunkCounters* h_chunk_counters_per_chunk_ = nullptr;  // pinned, MAX_CHUNKS slots
@@ -229,6 +236,10 @@ private:
 //   for (i) save_metas_append(f, metas[i]);
 //   save_metas_end(f, /*total=*/N);
 //
+// Wire-format version: sparse-soa v1 (incompatible with the previous dense
+// `addr_offsets[]` format — keep `instance_meta_loader.hpp` in sync if you
+// touch this).
+//
 // On-disk wire format (little-endian, all sizes in bytes unless noted):
 //
 //   uint32_t num_metas                    // header at offset 0
@@ -243,12 +254,13 @@ private:
 //     uint32_t last_addr_chunk
 //     uint32_t last_addr_include
 //     uint32_t cps                        // = n_chunks
-//     uint32_t aos                        // = addr_offsets_size
+//     uint32_t ocs                        // = offset_changes_count
+//     uint32_t ars                        // = addr_range_slots = (last_addr - first_addr)/8 + 1
 //     uint32_t count_per_chunk[cps]       // n_chunks entries (total per-chunk
 //                                          //  surviving emits in this instance)
-//     uint32_t addr_offsets[aos]          // num_addrs entries (cumulative
-//                                          //  write offset per 8-byte slot in
-//                                          //  [first_addr, last_addr])
+//     uint32_t offset_change_slots[ocs]   // strictly increasing slot indices,
+//                                          //  slots[0] == 0 invariant
+//     uint32_t offset_change_values[ocs]  // value at each change-point
 //
 FILE* save_metas_begin (const std::string& path);
 void  save_metas_append(FILE* f, const InstanceMeta& m);

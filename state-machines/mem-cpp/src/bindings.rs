@@ -294,11 +294,13 @@ unsafe extern "C" {
     pub fn get_mem_segment_count(mcp: *mut MemCountAndPlan, mem_id: u32) -> u32;
 }
 unsafe extern "C" {
-    pub fn get_mem_segment_offsets(
+    pub fn get_mem_segment_offset_changes(
         mcp: *mut MemCountAndPlan,
         mem_id: u32,
         segment_id: u32,
-        offsets_base_addr: *mut u32,
+        offsets_base_addr_out: *mut u32,
+        range_slots_out: *mut u32,
+        values_out: *mut *const u32,
         count: *mut u32,
     ) -> *const u32;
 }

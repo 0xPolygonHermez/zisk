@@ -135,22 +135,11 @@ impl MemPlanner {
         unsafe { bindings::wait_mem_count_and_plan(self.inner) };
     }
 
-    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`. Must
-    /// be called after `wait()` joins the background workers. The C++ side
-    /// casts `gpu_metas` to `const InstanceMeta*` (declared in
-    /// `cpp/instance_meta.hpp`) — its layout must match the Rust
-    /// `GpuInstanceMeta` (#[repr(C)]) byte-for-byte. The GPU planner that
-    /// produced these metas must remain alive across this call.
-    ///
-    /// # Safety
-    /// Caller must ensure `gpu_metas` points to `n` valid `GpuInstanceMeta`
-    /// records and the per-meta arrays (`count_per_chunk`, `addr_offsets`)
-    /// remain live until this returns.
-    pub unsafe fn inject_gpu_metas_from_pointers(
-        &self,
-        gpu_metas: *const c_void,
-        n: u32,
-    ) -> bool {
+    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`.
+    /// The GPU planner that produced these metas must remain alive across
+    /// this call, since the per-meta `count_per_chunk` and `addr_offsets`
+    /// pointers reference its pinned host memory.
+    pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }
 
@@ -194,23 +183,33 @@ impl MemPlanner {
                     );
                 }
 
-                // Collect offsets for this segment
+                // Collect sparse offset change-points for this segment.
                 let mut offsets_base_addr: u32 = 0;
-                let mut offsets_count: u32 = 0;
-                let offsets_ptr = unsafe {
-                    bindings::get_mem_segment_offsets(
+                let mut range_slots: u32 = 0;
+                let mut values_ptr: *const u32 = std::ptr::null();
+                let mut count: u32 = 0;
+                let slots_ptr = unsafe {
+                    bindings::get_mem_segment_offset_changes(
                         self.inner,
                         mem_id as u32,
                         segment_id,
                         &mut offsets_base_addr as *mut u32,
-                        &mut offsets_count as *mut u32,
+                        &mut range_slots as *mut u32,
+                        &mut values_ptr as *mut *const u32,
+                        &mut count as *mut u32,
                     )
                 };
-                if !offsets_ptr.is_null() && offsets_count > 0 {
+                if !slots_ptr.is_null() && count > 0 {
                     segment.offsets_base_addr = offsets_base_addr;
-                    segment.offsets =
-                        unsafe { std::slice::from_raw_parts(offsets_ptr, offsets_count as usize) }
-                            .to_vec();
+                    segment.addr_range_slots = range_slots;
+                    segment.offset_change_slots = unsafe {
+                        std::slice::from_raw_parts(slots_ptr, count as usize)
+                    }
+                    .to_vec();
+                    segment.offset_change_values = unsafe {
+                        std::slice::from_raw_parts(values_ptr, count as usize)
+                    }
+                    .to_vec();
                 }
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,
