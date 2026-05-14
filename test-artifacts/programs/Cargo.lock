@@ -878,6 +878,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bls12_381"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "blst"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -887,6 +894,13 @@ dependencies = [
  "glob",
  "threadpool",
  "zeroize",
+]
+
+[[package]]
+name = "bn254"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -2711,6 +2725,16 @@ dependencies = [
 
 [[package]]
 name = "keccak"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.6",
+ "tiny-keccak",
+ "zisk-sdk",
+ "ziskos",
+]
+
+[[package]]
+name = "keccak"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
@@ -3053,6 +3077,13 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "modexp"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -3524,6 +3555,15 @@ name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+
+[[package]]
+name = "poseidon2"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.6",
+ "zisk-sdk",
+ "ziskos",
+]
 
 [[package]]
 name = "potential_utf"
@@ -4742,6 +4782,13 @@ dependencies = [
 
 [[package]]
 name = "secp256k1"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "secp256k1"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c3c81b43dc2d8877c216a3fccf76677ee1ebccd429566d3e67447290d0c42b2"
@@ -4758,6 +4805,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcb913707158fadaf0d8702c2db0e857de66eb003ccfdda5924b5f5ac98efb38"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "secp256r1"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -4924,13 +4978,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha256"
+version = "0.1.0"
+dependencies = [
+ "generic-array",
+ "rand 0.8.6",
+ "sha2",
+ "zisk-sdk",
+ "ziskos",
+]
+
+[[package]]
 name = "sha3"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77fd7028345d415a4034cf8777cd4f8ab1851274233b45f84e3d955502d93874"
 dependencies = [
  "digest 0.10.7",
- "keccak",
+ "keccak 0.1.6",
 ]
 
 [[package]]
@@ -5897,6 +5962,13 @@ dependencies = [
  "crunchy",
  "hex",
  "static_assertions",
+]
+
+[[package]]
+name = "uint256"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -7321,7 +7393,7 @@ dependencies = [
  "precompiles-helpers",
  "rand 0.8.6",
  "ripemd",
- "secp256k1",
+ "secp256k1 0.31.1",
  "serde",
  "sha2",
  "spin",

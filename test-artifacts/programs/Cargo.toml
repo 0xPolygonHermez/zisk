@@ -5,7 +5,16 @@ edition = "2021"
 [workspace]
 members = [
     "blake2",
+    "bls12_381",
+    "bn254",
     "diagnostic",
+    "keccak",
+    "modexp",
+    "poseidon2",
+    "secp256k1",
+    "secp256r1",
+    "sha256",
+    "uint256",
 ]
 resolver = "2"
 
@@ -20,20 +29,6 @@ ziskos = { path = "../../ziskos/entrypoint" }
 zisk-sdk = { path = "../../sdk" }
 precompiles-helpers = { path = "../../precompiles/helpers" }
 
-# guest-reth = { git = "https://github.com/0xPolygonHermez/zisk-eth-client.git", branch = "develop-0.8.0" }
-# # guest-reth = { path = "../../../../patches/zisk-eth-client/crates/guest-reth" }
-
-# revm = { version = "34.0.0", default-features = false }
-
-# alloy-primitives = { version = "1.5.6", default-features = false }
-# alloy-consensus = { version = "1.7.3", default-features = false }
-
-# ruint = { version = "1", default-features = false }
-
-# hex = "0.4"
-# num-bigint = "0.4"
-# serde = { version = "1.0", features = ["derive"] }
-# serde_json = "1.0"
 rand = "0.8.1"
 
 # [workspace.lints.rust]
