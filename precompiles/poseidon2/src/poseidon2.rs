@@ -113,9 +113,6 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         trace[0].set_step_addr(input.step_main);
         trace[1].set_step_addr(input.addr_main as u64);
 
-        // Fill in_use_clk_0
-        trace[0].set_in_use_clk_0(true);
-
         // Fill in_use
         for item in trace.iter_mut().take(CLOCKS) {
             item.set_in_use(true);
