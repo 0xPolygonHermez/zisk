@@ -54,7 +54,6 @@ impl<F: PrimeField64> MainInstance<F> {
     /// * `min_traces` - A vector of the minimal traces, each segment has num_within minimal traces
     ///   inside.
     /// * `chunk_size` - The size of the minimal traces.
-    /// * `main_instance` - Reference to the `MainInstance` representing the current segment.
     ///
     /// The computed trace is added to the proof context's air instance repository.
     pub fn compute_witness<R: MainTraceRowOps<F>>(
@@ -62,15 +61,14 @@ impl<F: PrimeField64> MainInstance<F> {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_size: u64,
-        main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let segment_id = main_instance.ictx.plan.segment_id.unwrap();
+        let segment_id = self.ictx.plan.segment_id.unwrap();
 
-        let is_last_segment = main_instance
+        let is_last_segment = self
             .ictx
             .plan
             .meta
