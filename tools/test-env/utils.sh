@@ -316,8 +316,8 @@ get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell
 get_shell_and_profile || return 1
 # Ensure profile is loaded
-touch $PROFILE
-source "$PROFILE"
+# touch $PROFILE
+# source "$PROFILE"
 source "$HOME/.cargo/env"
 
 # Define directories
