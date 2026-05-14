@@ -30,6 +30,7 @@ members = [
     "state-machines/mem-cpp",
     "state-machines/rom",
     "ziskos/entrypoint",
+    "ziskos-staticlib",
     "ziskos-hints",
     "precompiles/arith_eq",
     "precompiles/arith_eq_384",
