@@ -8,7 +8,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 zkvm-interface = { workspace = true }
@@ -66,7 +66,6 @@ ctor = { version = "0.2", optional = true }
 
 [features]
 default = ["user-hints", "inputcpy"]
-panic-handler = []
 user-hints = [
     "dep:zisk-common",
     "dep:bytes",
