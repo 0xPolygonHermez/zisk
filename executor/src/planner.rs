@@ -62,17 +62,17 @@ impl InstancePlanner {
     ///
     /// # Arguments
     /// * `sm_bundle` - State machine bundle.
-    /// * `secn_count` - Device metrics for secondary instances.
+    /// * `counters` - Device metrics for secondary instances.
     ///
     /// # Returns
     /// BTreeMap of SM type ID to plans.
     pub fn plan_secondary<F: PrimeField64>(
         &self,
         sm_bundle: &StaticSMBundle<F>,
-        secn_count: &mut NestedDeviceMetricsList,
+        counters: &mut NestedDeviceMetricsList,
         is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
-        sm_bundle.plan_sec(secn_count, is_asm_emulator)
+        sm_bundle.plan_sec(counters, is_asm_emulator)
     }
 
     /// Assigns ROM instance to the proof context.
