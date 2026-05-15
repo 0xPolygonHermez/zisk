@@ -145,7 +145,6 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ONLY_CPU="1" \
-            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_sha_hasher.sh
@@ -155,7 +154,6 @@ jobs:
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_sha_hasher.sh
@@ -241,8 +239,6 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
-        env:
-          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh

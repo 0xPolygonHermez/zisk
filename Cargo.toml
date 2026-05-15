@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.17.1"
+version = "0.18.0"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -8,8 +8,9 @@ categories = ["cryptography"]
 
 [workspace.metadata]
 gha_zisk_testvectors_branch = "develop-0.3.0"
-gha_zisk_ethproofs_branch = "pre-develop-0.17.1"
+gha_zisk_ethproofs_branch = "pre-develop-0.18.0"
 gha_zisk_eth_client_branch = "develop-0.9.0"
+gha_zisk_template_branch = "pre-develop-0.18.0"
 gha_pil2_proofman_js_branch = "tags/v0.17.0"
 gha_pil2_compiler_branch = "tags/v0.9.0"
 
@@ -129,14 +130,14 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-0.17.1" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

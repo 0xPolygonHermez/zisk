@@ -80,7 +80,7 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
     cargo-zisk --version
     ```
 
-    It should show `cargo-zisk 0.17.0 [gpu]` if the GPU version is installed, or `cargo-zisk 0.17.0 [cpu]` otherwise
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is installed, or `cargo-zisk X.X.X [cpu]` otherwise
 
 #### Updating ZisK
 
@@ -180,7 +180,7 @@ To install the PLONK proving key (provingKeySnark), run:
     cargo-zisk --version
     ```
 
-    It should show `cargo-zisk 0.17.0 [gpu]` if the GPU version is built, or `cargo-zisk 0.17.0 [cpu]` otherwise.
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is built, or `cargo-zisk X.X.X [cpu]` otherwise.
 
 #### Build Setup
 
