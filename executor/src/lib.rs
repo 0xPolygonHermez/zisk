@@ -9,6 +9,7 @@ mod emu_asm_stub;
 mod emu_rust;
 mod executor;
 mod planner;
+mod pub_outs_collector;
 mod registry;
 mod rom_executor;
 mod sm_static_bundle;
