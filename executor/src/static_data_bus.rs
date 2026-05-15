@@ -4,7 +4,10 @@
 //! send data, route it to the appropriate subscribers, and manage device connections.
 use std::collections::VecDeque;
 
-use crate::{BuiltinCounters, DummyCounter, PrecompileCounters, StaticSMBundle};
+use crate::{
+    pub_outs_collector::PubOutsCollector, BuiltinCounters, DummyCounter, PrecompileCounters,
+    StaticSMBundle,
+};
 use anyhow::Result;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -13,7 +16,6 @@ use precomp_dma::DmaCounterInputGen;
 use precompiles_common::MemCounterProcessor;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
-use sm_main::PubOutsCollector;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,

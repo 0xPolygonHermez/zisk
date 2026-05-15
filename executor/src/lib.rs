@@ -10,6 +10,7 @@ mod emu_rust;
 mod executor;
 mod init;
 mod planner;
+mod pub_outs_collector;
 mod registry;
 mod rom_executor;
 mod sm_builtins;
