@@ -15,16 +15,16 @@ pub enum MainSmError {
     #[error("min_traces_size ({size}) must be a power of two")]
     MinTraceSizeNotPowerOfTwo {
         /// The offending minimal trace size.
-        size: u64,
+        size: usize,
     },
 
     /// The configured minimal trace size exceeds the row capacity of `MainTrace`.
     #[error("min_traces_size ({min_traces_size}) exceeds MainTrace::NUM_ROWS ({num_rows})")]
     MinTraceSizeTooBig {
         /// The offending minimal trace size.
-        min_traces_size: u64,
+        min_traces_size: usize,
         /// The fixed row count of `MainTrace`.
-        num_rows: u64,
+        num_rows: usize,
     },
     // /// The plan handed to the main instance has no `segment_id`.
     // #[error("plan is missing a segment_id")]
