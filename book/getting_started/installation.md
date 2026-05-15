@@ -13,6 +13,8 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 Ensure the following tools are installed:
 * [Rust](https://www.rust-lang.org/tools/install)
 * [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+* To enable GPU support in ZisK, you must have NVIDIA Driver version 525.60.13 or later installed.
+* If you use `zisk-sdk` crate, you must also have CUDA Toolkit version 12.9 or later installed.
 
 ## Installing Dependencies
 
@@ -52,14 +54,16 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
     curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
     ```
 
-2. During the installation, you will be prompted to select a setup option. You can choose from the following:
+2. During installation, ziskup will detect whether CUDA is available on your machine. If so, it will install ZisK binaries with GPU support. Otherwise, you will be prompted to choose between CPU binaries (default) or GPU binaries.
+
+3. Also during the installation, you will be prompted to select a setup option. You can choose from the following:
 
     1. **Install proving key (default)** – Required for generating and verifying proofs.
     2. **Install proving key (no constant tree files)** – Install proving key but without constant tree files generation.
     3. **Install verify key** – Needed only if you want to verify proofs.
     4. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
-3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
+4. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
     ```bash
     rustup toolchain list
     ```
@@ -71,10 +75,12 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
     zisk
     ```
 
-4. Verify the `cargo-zisk` CLI tool:
+5. Verify the `cargo-zisk` CLI tool:
     ```bash
     cargo-zisk --version
     ```
+
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is installed, or `cargo-zisk X.X.X [cpu]` otherwise
 
 #### Updating ZisK
 
@@ -106,24 +112,22 @@ To install the PLONK proving key (provingKeySnark), run:
     cargo build --release
     ```
 
-    **Note**: If you encounter the following error during compilation on Ubuntu:
-    ```
-    --- stderr
-    /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
-    ```
+    **Note**: The build process will automatically detect whether CUDA is available on your machine. If so, it will build the GPU-enabled binaries; otherwise, it will build the CPU version. To force the CPU version, use the `--features cpu-only` flag.
 
-    Follow these steps to resolve it:
+    **Note**: By default, the build process auto-detects the GPU architecture of the host machine. Use the `CUDA_ARCHS` environment variable to control which architectures are compiled:
 
-    1. Locate the `stddef.h` file:
-        ```bash
-        find /usr -name "stddef.h"
-        ```
-    2. Set the environment variables to include the directory where `stddef.h` is located (e.g.):
-        ```bash
-        export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
-        export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
-        ```
-    3. Try building again
+    ```bash
+    # Single architecture (faster build — e.g. Ada Lovelace sm_89 / RTX 4090)
+    CUDA_ARCHS="89" cargo build --release
+
+    # Multiple architectures (e.g. Ada + Hopper)
+    CUDA_ARCHS="89,90" cargo build --release
+
+    # All major architectures — portable binary for distribution
+    # (sm_80, sm_86, sm_89, sm_90, sm_100, sm_120 + PTX forward compatibility)
+    # Note: this takes significantly longer to compile
+    CUDA_ARCHS="major" cargo build --release
+    ```
 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
@@ -170,6 +174,13 @@ To install the PLONK proving key (provingKeySnark), run:
     rustup toolchain list
     ```
     Confirm that `zisk` appears in the list of installed toolchains.
+
+8. Verify the `cargo-zisk` CLI tool:
+    ```bash
+    cargo-zisk --version
+    ```
+
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is built, or `cargo-zisk X.X.X [cpu]` otherwise.
 
 #### Build Setup
 

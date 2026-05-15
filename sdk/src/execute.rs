@@ -86,7 +86,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
 
     /// Submit the execution, returning a [`JobHandle<ExecuteOutput>`].
     pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
-        let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        let executor = self.executor.unwrap_or_else(|| self.client.default_executor());
         let subs = new_subscriber_list();
         self.client.run_execute(self.program, self.stdin, self.hints, executor, self.timeout, subs)
     }

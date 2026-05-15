@@ -52,6 +52,12 @@ pub struct BuildArgs {
 
     #[clap(long, value_name = "HINTS")]
     pub hints: Option<bool>,
+
+    #[clap(long = "package", value_name = "PACKAGE")]
+    pub packages: Vec<String>,
+
+    #[clap(long = "bin", value_name = "BIN")]
+    pub binaries: Vec<String>,
 }
 
 pub fn build_program(path: &str) {

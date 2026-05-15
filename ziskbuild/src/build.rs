@@ -85,7 +85,7 @@ pub fn execute_build_program(
     // Get the command corresponding to Docker or local build.
     let cmd = create_command(args, &program_dir, &program_metadata)?;
 
-    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args));
+    let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;
 
     if target_elf_paths.len() > 1 && args.elf_name.is_some() {
         anyhow::bail!("--elf-name is not supported when --output-directory is used and multiple ELFs are built.");
@@ -186,22 +186,67 @@ pub(crate) fn execute_command(mut command: Command) -> Result<()> {
     Ok(())
 }
 
+/// Collects the list of targets that would be built and their output ELF file paths.
 pub fn generate_elf_paths(
     metadata: &cargo_metadata::Metadata,
     args: Option<&BuildArgs>,
-) -> Vec<(String, Utf8PathBuf)> {
+) -> Result<Vec<(String, Utf8PathBuf)>> {
     let profile = args.map(|v| if v.release { "release" } else { "debug" }).unwrap_or("debug");
-    let root_package = metadata.root_package().expect("No root package found in metadata");
-    let bin_target = root_package.targets.first().unwrap();
-    let target_elf_path = metadata
-        .target_directory
-        .join(HELPER_TARGET_SUBDIR)
-        .join(ZISK_TARGET)
-        .join(profile)
-        .join(&bin_target.name);
+    let mut target_elf_paths = vec![];
 
-    vec![(bin_target.name.to_owned(), target_elf_path)]
+    let packages_to_iterate = match args {
+        Some(args) if !args.packages.is_empty() => args
+            .packages
+            .iter()
+            .map(|wanted_package| {
+                metadata
+                    .packages
+                    .iter()
+                    .find(|p| p.name == *wanted_package)
+                    .ok_or_else(|| anyhow::anyhow!("cannot find package named {wanted_package}"))
+                    .map(|p| p.id.clone())
+            })
+            .collect::<Result<Vec<_>>>()?,
+        _ => {
+            if let Some(root_package) = metadata.root_package() {
+                vec![root_package.id.clone()]
+            } else {
+                metadata.workspace_default_members.to_vec()
+            }
+        }
+    };
+
+    for program_crate in packages_to_iterate {
+        let program = metadata
+            .packages
+            .iter()
+            .find(|p| p.id == program_crate)
+            .ok_or_else(|| anyhow::anyhow!("cannot find package for {program_crate}"))?;
+
+        for bin_target in program.targets.iter().filter(|t| {
+            t.kind.contains(&cargo_metadata::TargetKind::Bin)
+                && t.crate_types.contains(&cargo_metadata::CrateType::Bin)
+        }) {
+            if let Some(args) = args {
+                if !args.binaries.is_empty() && !args.binaries.contains(&bin_target.name) {
+                    continue;
+                }
+            }
+
+            let elf_path = metadata
+                .target_directory
+                .join(HELPER_TARGET_SUBDIR)
+                .join(ZISK_TARGET)
+                .join(profile)
+                .join(&bin_target.name);
+
+            target_elf_paths.push((bin_target.name.to_owned(), elf_path));
+        }
+    }
+
+    Ok(target_elf_paths)
 }
+
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)], hints: bool) {
     for (target_name, elf_path) in target_elf_paths.iter() {
         // Only set env var if the ELF file actually exists

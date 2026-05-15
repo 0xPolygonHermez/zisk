@@ -15,7 +15,7 @@ use proofman::{
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
-use proofman_util::VadcopFinalProof;
+use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,10 +23,8 @@ use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
-use zisk_common::{
-    encode_plonk_zisk_vk, PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK,
-};
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
+use zisk_common::{PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
@@ -127,7 +125,7 @@ impl ProverBackend {
         Ok(())
     }
 
-    pub(crate) fn reset_resources(&self) -> Result<()> {
+    pub(crate) fn reset(&self) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
             asm.reset()?;
         }
@@ -136,6 +134,17 @@ impl ProverBackend {
 
     pub(crate) fn cancel(&self) {
         self.proofman.cancel();
+    }
+
+    pub(crate) fn signal_cancellation(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.signal_cancellation()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn wait_until_proofman_ready(&self) {
+        self.proofman.wait_until_proofman_ready();
     }
 
     pub fn get_pctx(&self) -> Result<Arc<ProofCtx<Goldilocks>>> {
@@ -338,7 +347,7 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        let vadcop_vk = get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?;
+        let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
@@ -348,7 +357,7 @@ impl ProverBackend {
                     .unwrap()
                     .generate_final_snark_proof(&vadcop_proof)?;
 
-                let publics = PublicValues::new(&vadcop_proof.public_values);
+                let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
                 let program_vk = ProgramVK::new_from_publics(&vadcop_proof.public_values);
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     let proving_key_snark =
@@ -366,11 +375,15 @@ impl ProverBackend {
                         execution_result,
                         start.elapsed(),
                         Proof {
-                            proof_kind: ProofKind::Plonk,
-                            proof_bytes: snark_proof.proof_bytes,
+                            body: ProofBody::Plonk {
+                                proof_bytes: snark_proof.proof_bytes,
+                                plonk_vk: Box::new(PlonkVkBlob {
+                                    vadcop_vk: vadcop_vk_u64,
+                                    plonk_vkey,
+                                }),
+                            },
                             publics,
                             program_vk,
-                            zisk_vk: encode_plonk_zisk_vk(vadcop_vk, &plonk_vkey)?,
                         },
                     ))
                 } else {
@@ -380,36 +393,30 @@ impl ProverBackend {
                     ))
                 }
             }
-            (_, Some(p)) => {
-                let proof_kind =
-                    if minimal { ProofKind::VadcopFinalMinimal } else { ProofKind::VadcopFinal };
-                Ok(ProveOutput::new(
-                    execution_result,
-                    start.elapsed(),
-                    Proof {
-                        proof_kind,
-                        proof_bytes: p.proof,
-                        publics: PublicValues::new(&p.public_values),
-                        program_vk: ProgramVK::new_from_publics(&p.public_values),
-                        zisk_vk: vadcop_vk,
-                    },
-                ))
-            }
+            (_, Some(p)) => Ok(ProveOutput::new(
+                execution_result,
+                start.elapsed(),
+                Proof {
+                    body: ProofBody::Vadcop { proof: p.proof, zisk_vk: vadcop_vk_u64, minimal },
+                    publics: PublicValues::new_from_u64(&p.public_values),
+                    program_vk: ProgramVK::new_from_publics(&p.public_values),
+                },
+            )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
     }
 
     pub(crate) fn minimal(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         program_vk: &ProgramVK,
     ) -> Result<ProveOutput> {
         let start = std::time::Instant::now();
 
-        let mut pubs = program_vk.vk.clone();
-        pubs.extend(publics.public_bytes());
-        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.to_vec(), pubs, false);
+        let mut pubs_u64 = program_vk.vk.clone();
+        pubs_u64.extend(publics.public_u64());
+        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
 
         let minimal_proof = self
             .proofman
@@ -419,11 +426,13 @@ impl ProverBackend {
         let time = start.elapsed();
 
         let proof = Proof {
-            proof_kind: ProofKind::VadcopFinalMinimal,
-            proof_bytes: minimal_proof.proof.clone(),
-            publics: PublicValues::new(&minimal_proof.public_values),
+            body: ProofBody::Vadcop {
+                proof: minimal_proof.proof.clone(),
+                zisk_vk: self.get_vadcop_vk(true)?,
+                minimal: true,
+            },
+            publics: PublicValues::new_from_u64(&minimal_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
-            zisk_vk: get_vadcop_final_proof_vkey(&self.proving_key_path, true)?,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -431,7 +440,7 @@ impl ProverBackend {
 
     pub(crate) fn plonk(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         program_vk: &ProgramVK,
     ) -> Result<ProveOutput> {
@@ -443,9 +452,9 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        let mut pubs = program_vk.vk.clone();
-        pubs.extend(publics.public_bytes());
-        let vadcop_final_proof = VadcopFinalProof::new(proof_bytes.to_vec(), pubs, false);
+        let mut pubs_u64 = program_vk.vk.clone();
+        pubs_u64.extend(publics.public_u64());
+        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
 
         let snark_proof =
             self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
@@ -464,14 +473,15 @@ impl ProverBackend {
         let plonk_vkey = PlonkVkey::load(&verkey_path)?;
 
         let proof = Proof {
-            proof_kind: ProofKind::Plonk,
-            proof_bytes: snark_proof.proof_bytes.clone(),
-            publics: PublicValues::new(&vadcop_final_proof.public_values),
+            body: ProofBody::Plonk {
+                proof_bytes: snark_proof.proof_bytes.clone(),
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: self.get_vadcop_vk(false)?,
+                    plonk_vkey,
+                }),
+            },
+            publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&vadcop_final_proof.public_values),
-            zisk_vk: encode_plonk_zisk_vk(
-                get_vadcop_final_proof_vkey(&self.proving_key_path, false)?,
-                &plonk_vkey,
-            )?,
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -527,12 +537,20 @@ impl ProverBackend {
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
     }
 
-    pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         Ok(get_vadcop_final_proof_vkey(&self.proving_key_path, minimal)?)
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
         self.proofman.mpi_broadcast(data);
         Ok(())
+    }
+
+    pub(crate) fn notify_cluster_cancellation(&self) {
+        self.proofman.notify_cancellation();
+    }
+
+    pub(crate) fn cluster_barrier(&self) {
+        self.proofman.set_barrier();
     }
 }

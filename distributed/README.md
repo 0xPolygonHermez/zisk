@@ -62,17 +62,17 @@ The easiest way to run the distributed system. All commands run from the **works
 
 ```bash
 # Build images
-docker compose -f distributed/deploy/docker/docker-compose.yml build
+docker compose -f distributed/deploy/docker/compose.yaml build
 
 # Start the coordinator only
-docker compose -f distributed/deploy/docker/docker-compose.yml up coordinator
+docker compose -f distributed/deploy/docker/compose.yaml up coordinator
 
 # Start the full stack: coordinator + 4 workers + Prometheus
-docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
+docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
 
 # Build workers with GPU support
-docker compose -f distributed/deploy/docker/docker-compose.yml build --build-arg GPU=true worker
-docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker=4
+docker compose -f distributed/deploy/docker/compose.yaml build --build-arg GPU=true worker
+docker compose -f distributed/deploy/docker/compose.yaml up --scale worker=4
 ```
 
 **Port mapping:**
@@ -86,7 +86,7 @@ docker compose -f distributed/deploy/docker/docker-compose.yml up --scale worker
 
 **Volumes:**
 
-Uncomment the cache volume in `docker-compose.yml` to mount proving keys and ELF cache from the host:
+Uncomment the cache volume in `compose.yaml` to mount proving keys and ELF cache from the host:
 
 ```yaml
 volumes:

@@ -56,14 +56,16 @@ main() {
         warn "Skipping prove and verify steps on macOS as it's not supported in GHA"
     else
         step "Generating program setup..."
-        ensure cargo-zisk program-setup -e "$ELF_PATH" 2>&1 | tee romsetup_output.log || return 1
+        local gpu_flag=""
+        [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
+        ensure cargo-zisk program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
-            err "program setup failed"
-            return 1
+           err "program setup failed"
+           return 1
         fi
 
         step "Verifying constraints..."
-        ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" 2>&1 | tee constraints_output.log || return 1
+        ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
         if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
             err "verify constraints failed"
             return 1
@@ -71,14 +73,7 @@ main() {
 
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
             step "Generating proof..."
-            MPI_CMD=""
-            # If ZISK_GHA is set, use mpirun command for distributed proving to prove it faster and reduce GHA time
-            if is_gha; then
-                # Build mpi command
-                info "Using mpirun for distributed proving"
-                MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $DISTRIBUTED_PROCESSES -x OMP_NUM_THREADS=$DISTRIBUTED_THREADS -x RAYON_NUM_THREADS=$DISTRIBUTED_THREADS"
-            fi
-            ensure $MPI_CMD cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS 2>&1 | tee prove_output.log || return 1
+            ensure cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS ${gpu_flag} 2>&1 | tee prove_output.log || return 1
             if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
                 err "prove program failed"
                 return 1

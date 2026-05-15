@@ -27,6 +27,14 @@ pub struct ZiskBuild {
     #[arg(long)]
     artifact_dir: Option<String>,
 
+    /// Build only the specified binary (repeat for multiple)
+    #[arg(long = "bin", value_name = "BIN")]
+    binaries: Vec<String>,
+
+    /// Build only the specified package (repeat for multiple)
+    #[arg(short = 'p', long = "package", value_name = "PACKAGE")]
+    packages: Vec<String>,
+
     /// Toolchain name to use
     #[arg(long, hide = true)]
     toolchain_name: Option<String>,
@@ -65,6 +73,12 @@ impl ZiskBuild {
         }
         if let Some(artifact_dir) = &self.artifact_dir {
             command.arg("--artifact-dir").arg(artifact_dir);
+        }
+        for package in &self.packages {
+            command.args(["--package", package]);
+        }
+        for bin in &self.binaries {
+            command.args(["--bin", bin]);
         }
 
         command.args(["--target", ZISK_TARGET]);

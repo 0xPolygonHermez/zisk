@@ -1,5 +1,4 @@
 use anyhow::Result;
-use cargo_zisk::ux::print_banner;
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -109,7 +108,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    print_banner();
+    println!("ZisK Worker v{}", env!("CARGO_PKG_VERSION"));
 
     #[cfg(not(feature = "cpu-only"))]
     let gpu = cli.gpu;
@@ -140,11 +139,27 @@ async fn main() -> Result<()> {
 
     if prover_config.emulator {
         let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
-        return worker.run().await;
+        run_with_signals(worker.run()).await
     } else {
         let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
-        return worker.run().await;
-    };
+        run_with_signals(worker.run()).await
+    }
+}
+
+async fn run_with_signals(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = signal(SignalKind::terminate())?;
+    tokio::select! {
+        res = fut => res,
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received SIGINT, shutting down gracefully");
+            Ok(())
+        }
+        _ = sigterm.recv() => {
+            tracing::info!("Received SIGTERM, shutting down gracefully");
+            Ok(())
+        }
+    }
 }
 
 fn print_command_info(

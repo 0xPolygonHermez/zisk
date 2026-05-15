@@ -1,3 +1,8 @@
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
+
 use crate::syscalls::{
     syscall_add256, syscall_arith256, SyscallAdd256Params, SyscallArith256Params,
 };
