@@ -14,24 +14,25 @@ use std::path::PathBuf;
 use test_artifacts::ELF_DIAGNOSTIC;
 use zisk_sdk::{EmbeddedClientBuilder, VerifyConstraintsExtension, ZiskStdin};
 
-// Look for a proving key in the local `build/provingKey` directory
-fn local_build_proving_key() -> Option<PathBuf> {
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent()?.to_path_buf();
-    let candidate = workspace_root.join("build").join("provingKey");
-    candidate.is_dir().then_some(candidate)
-}
-
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]
 async fn verify_constraints_diagnostic() {
     let mut builder = EmbeddedClientBuilder::default();
 
-    // Get the proving key
-    if let Some(pk) = local_build_proving_key() {
-        eprintln!("[diagnostic_smoke] using local proving key at {}", pk.display());
+    if std::env::var_os("ZISK_TEST_ASM").is_some() {
+        eprintln!("[diagnostic_smoke] ZISK_TEST_ASM set — using Assembly executor");
+        builder = builder.assembly();
+    }
+    if std::env::var_os("ZISK_TEST_GPU").is_some() {
+        eprintln!("[diagnostic_smoke] ZISK_TEST_GPU set — enabling GPU");
+        builder = builder.gpu();
+    }
+
+    if let Some(pk) = std::env::var_os("ZISK_TEST_PROVING_KEY").map(PathBuf::from) {
+        eprintln!("[diagnostic_smoke] using ZISK_TEST_PROVING_KEY={}", pk.display());
         builder = builder.proving_key(pk);
     } else {
-        eprintln!("[diagnostic_smoke] no build/provingKey found, falling back to default");
+        eprintln!("[diagnostic_smoke] no override set, using ZiskPaths default");
     }
 
     // Build the client

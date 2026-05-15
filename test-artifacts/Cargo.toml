@@ -12,6 +12,7 @@ publish = false
 
 [dependencies]
 zisk-sdk.workspace = true
+sha_hasher_common = { path = "sha_hasher_common" }
 
 [build-dependencies]
 zisk-sdk.workspace = true

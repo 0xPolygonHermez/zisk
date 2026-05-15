@@ -1,7 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, Proof, ProofKind, ProverClient, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use test_artifacts::ELF_SHA_HASHER;
+use zisk_sdk::{Proof, ProofKind, ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,11 +20,11 @@ async fn main() -> Result<()> {
     let client = builder.build()?;
 
     println!("Setting up program and generating verification key...");
-    client.setup(&PROGRAM).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(&PROGRAM, stdin).wrap(ProofKind::Plonk).run()?.await?;
+    let snark_proof = client.prove(&ELF_SHA_HASHER, stdin).wrap(ProofKind::Plonk).run()?.await?;
     println!("PLONK proof generated successfully in {} ms", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 
@@ -39,7 +38,7 @@ async fn main() -> Result<()> {
 
     println!("Loading and verifying saved PLONK proof...");
     let proof = Proof::load("/tmp/sha_hasher_proof_snark.bin")?;
-    let vkey = PROGRAM.vk()?;
+    let vkey = ELF_SHA_HASHER.vk()?;
     proof.with_program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");
 

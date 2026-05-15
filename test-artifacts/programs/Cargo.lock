@@ -16,6 +16,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agg_verify"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -760,6 +767,13 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "big_input"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
 
 [[package]]
 name = "bincode"
@@ -1990,6 +2004,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fib_mod"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "fields"
 version = "0.17.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.17.0#ff0e33a9b40f2467b35ef26aa2aabb4a624dfed3"
@@ -2989,6 +3010,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
+name = "liveness"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3445,6 +3473,13 @@ checksum = "49203cdcae0030493bad186b28da2fa25645fa276a51b6fec8010d281e02ef79"
 dependencies = [
  "dlv-list",
  "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "panic_modes"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -5132,6 +5167,23 @@ checksum = "9f3f15d4e239ebe08413eed880e0f9b5af4b40ee0472543320efa91d488e96a7"
 dependencies = [
  "cc",
  "cfg-if",
+]
+
+[[package]]
+name = "sha_hasher"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+ "sha2",
+ "sha_hasher_common",
+ "ziskos",
+]
+
+[[package]]
+name = "sha_hasher_common"
+version = "0.17.1"
+dependencies = [
+ "alloy-sol-types",
 ]
 
 [[package]]

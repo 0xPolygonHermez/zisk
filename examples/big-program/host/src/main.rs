@@ -1,8 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("big-program-guest");
+use test_artifacts::ELF_BIG_INPUT;
+use zisk_sdk::{ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,16 +19,14 @@ async fn main() -> Result<()> {
     let stdin = ZiskStdin::from_file(&input_path)?;
     println!("Input loaded successfully");
 
-    // Create a `ProverClient` method.
     let builder = ProverClient::embedded();
     #[cfg(feature = "gpu")]
     let builder = builder.gpu();
     let client = builder.build()?;
 
-    client.setup(&PROGRAM).run()?.await?;
+    client.setup(&ELF_BIG_INPUT).run()?.await?;
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_BIG_INPUT, stdin.clone()).run()?.await?;
 
     println!(
         "ZisK has executed program with {} cycles in {} ms",
@@ -38,7 +35,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof...");
-    client.prove(&PROGRAM, stdin.clone()).run()?.await?;
+    client.prove(&ELF_BIG_INPUT, stdin.clone()).run()?.await?;
 
     println!("\u{2713} Prove completed successfully!");
 

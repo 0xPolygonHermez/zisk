@@ -67,6 +67,7 @@ ctor = { version = "0.2", optional = true }
 [target.'cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))'.dev-dependencies]
 test-artifacts = { workspace = true }
 zisk-common = { workspace = true }
+serial_test = { workspace = true }
 
 [features]
 default = ["user-hints", "inputcpy"]

@@ -58,6 +58,7 @@ path-clean = "1.0"
 
 [dev-dependencies]
 test-artifacts = { workspace = true }
+serial_test = { workspace = true }
 
 [features]
 default = []
