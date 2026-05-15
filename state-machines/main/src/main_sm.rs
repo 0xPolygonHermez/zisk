@@ -269,8 +269,7 @@ impl<F: PrimeField64> MainInstance<F> {
                     fill_trace_outputs[index - 1].2.reg_steps[reg_index]
                 };
                 reg_steps[reg_index] = reg_prev_mem_step;
-                if reg_trace.first_step_uses[reg_index].is_some() {
-                    let mem_step = reg_trace.first_step_uses[reg_index].unwrap();
+                if let Some(mem_step) = reg_trace.first_step_uses[reg_index] {
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
                     let range = mem_step - reg_prev_mem_step - 1;
