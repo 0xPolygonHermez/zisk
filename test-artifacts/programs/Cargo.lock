@@ -4920,6 +4920,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "secp256r1"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "secp256r1_add"
 version = "0.1.0"
 dependencies = [

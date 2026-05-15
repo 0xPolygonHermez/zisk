@@ -23,8 +23,6 @@ mod add256_tests {
 
     #[test]
     fn execute_add256_tests() {
-        let stdin = ZiskStdin::new();
-
-        ELF_ADD256.run_emulation(stdin, None).expect("add256 guest emulation failed");
+        ELF_ADD256.run_emulation(ZiskStdin::new(), None).expect("add256 guest emulation failed");
     }
 }

@@ -28,49 +28,43 @@ mod arith_eq_384_tests {
 
     #[test]
     fn execute_arith384_mod_tests() {
-        let stdin = ZiskStdin::new();
-
-        ELF_ARITH384_MOD.run_emulation(stdin, None).expect("arith384_mod guest emulation failed");
+        ELF_ARITH384_MOD
+            .run_emulation(ZiskStdin::new(), None)
+            .expect("arith384_mod guest emulation failed");
     }
 
     #[test]
     fn execute_bls12_381_add_tests() {
-        let stdin = ZiskStdin::new();
-
-        ELF_BLS12_381_ADD.run_emulation(stdin, None).expect("bls12_381_add guest emulation failed");
+        ELF_BLS12_381_ADD
+            .run_emulation(ZiskStdin::new(), None)
+            .expect("bls12_381_add guest emulation failed");
     }
 
     #[test]
     fn execute_bls12_381_dbl_tests() {
-        let stdin = ZiskStdin::new();
-
-        ELF_BLS12_381_DBL.run_emulation(stdin, None).expect("bls12_381_dbl guest emulation failed");
+        ELF_BLS12_381_DBL
+            .run_emulation(ZiskStdin::new(), None)
+            .expect("bls12_381_dbl guest emulation failed");
     }
 
     #[test]
     fn execute_bls12_381_complex_add_tests() {
-        let stdin = ZiskStdin::new();
-
         ELF_BLS12_381_COMPLEX_ADD
-            .run_emulation(stdin, None)
+            .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_add guest emulation failed");
     }
 
     #[test]
     fn execute_bls12_381_complex_mul_tests() {
-        let stdin = ZiskStdin::new();
-
         ELF_BLS12_381_COMPLEX_MUL
-            .run_emulation(stdin, None)
+            .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_mul guest emulation failed");
     }
 
     #[test]
     fn execute_bls12_381_complex_sub_tests() {
-        let stdin = ZiskStdin::new();
-
         ELF_BLS12_381_COMPLEX_SUB
-            .run_emulation(stdin, None)
+            .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_sub guest emulation failed");
     }
 }
