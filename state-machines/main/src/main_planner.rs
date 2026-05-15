@@ -31,25 +31,25 @@ impl MainPlanner {
     /// - The `min_traces_size` is not a power of two ([`MainSmError::MinTraceSizeNotPowerOfTwo`]).
     /// - The `min_traces_size` exceeds the row capacity of `MainTrace` ([`MainSmError::MinTraceSizeTooBig`]).
     /// - A `u64` quantity could not be converted to `usize` on this target ([`MainSmError::TryFromIntError`]).
-    pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Result<Vec<Plan>> {
+    pub fn plan(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> {
         const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
         // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
         const _: () =
             assert!(NUM_ROWS.is_power_of_two(), "MainTrace::NUM_ROWS must be a power of two",);
 
-        let min_traces_size: usize = min_traces_size.try_into()?;
+        let chunk_size: usize = chunk_size.try_into()?;
 
-        if !min_traces_size.is_power_of_two() {
-            return Err(MainSmError::MinTraceSizeNotPowerOfTwo { size: min_traces_size });
+        if !chunk_size.is_power_of_two() {
+            return Err(MainSmError::MinTraceSizeNotPowerOfTwo { size: chunk_size });
         }
 
-        if NUM_ROWS < min_traces_size {
-            return Err(MainSmError::MinTraceSizeTooBig { min_traces_size, num_rows: NUM_ROWS });
+        if NUM_ROWS < chunk_size {
+            return Err(MainSmError::MinTraceSizeTooBig { min_traces_size: chunk_size, num_rows: NUM_ROWS });
         }
 
         // Number of minimal traces wrapped in a main trace.
-        let num_within = NUM_ROWS / min_traces_size;
+        let num_within = NUM_ROWS / chunk_size;
 
         // Number of `Main` segments needed to cover all the execution trace.
         let num_instances = min_traces.len().div_ceil(num_within);
