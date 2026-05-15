@@ -19,3 +19,20 @@ pub use keccakf_instance::*;
 pub use keccakf_manager::*;
 pub use keccakf_planner::*;
 use keccakf_table::*;
+
+#[cfg(test)]
+mod keccak_tests {
+    use test_artifacts::ELF_KECCAK;
+    use zisk_common::io::ZiskStdin;
+
+    /// Number of `syscall_keccak_f` invocations the guest will perform.
+    const NUM_KECCAKFS: u64 = 10;
+
+    #[test]
+    fn execute_keccak() {
+        let stdin = ZiskStdin::new();
+        stdin.write(&NUM_KECCAKFS);
+
+        ELF_KECCAK.run_emulation(stdin, None).expect("keccak guest emulation failed");
+    }
+}

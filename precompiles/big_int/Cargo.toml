@@ -25,5 +25,8 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 generic-array = "0.14"
 
+[dev-dependencies]
+test-artifacts = { workspace = true }
+
 [features]
 default = []
