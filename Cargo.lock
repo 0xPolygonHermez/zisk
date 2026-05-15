@@ -5444,11 +5444,8 @@ version = "0.18.0"
 dependencies = [
  "fields",
  "mem-common",
- "num-bigint",
  "pil-std-lib",
  "proofman-common",
- "proofman-macros",
- "proofman-util",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
