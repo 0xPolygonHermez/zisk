@@ -41,3 +41,83 @@ impl PubOutsCollector {
         self.0.push((pub_index + 1, ((pub_value >> 32) & 0xFFFFFFFF) as u32));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a 4-element data array carrying a `PubOut` op with the given
+    /// `a` (pub_index source) and `b` (pub_value).
+    fn pubout_data(a: u64, b: u64) -> [u64; 4] {
+        let mut data = [0u64; 4];
+        data[OP_TYPE] = ZiskOperationType::PubOut as u64;
+        data[A] = a;
+        data[B] = b;
+        data
+    }
+
+    #[test]
+    fn new_is_empty() {
+        let coll = PubOutsCollector::new();
+        assert!(coll.0.is_empty());
+    }
+
+    #[test]
+    fn non_pubout_op_is_ignored() {
+        let mut data = [0u64; 4];
+        data[OP_TYPE] = ZiskOperationType::Arith as u64;
+        data[A] = 5;
+        data[B] = u64::MAX;
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&data);
+        assert!(coll.0.is_empty());
+    }
+
+    #[test]
+    fn pubout_appends_lo_and_hi_halves() {
+        let data = pubout_data(5, 0x1234_5678_9ABC_DEF0);
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&data);
+        assert_eq!(coll.0.len(), 2);
+        // pub_index = a << 1 = 10. Low 32 bits go first, then index + 1 with high 32.
+        assert_eq!(coll.0[0], (10, 0x9ABC_DEF0));
+        assert_eq!(coll.0[1], (11, 0x1234_5678));
+    }
+
+    #[test]
+    fn pubout_index_is_left_shifted_by_one() {
+        let data = pubout_data(3, 0);
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&data);
+        assert_eq!(coll.0[0].0, 6);
+        assert_eq!(coll.0[1].0, 7);
+    }
+
+    #[test]
+    fn pubout_handles_zero_value() {
+        let data = pubout_data(0, 0);
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&data);
+        assert_eq!(coll.0, vec![(0, 0), (1, 0)]);
+    }
+
+    #[test]
+    fn pubout_handles_max_value() {
+        let data = pubout_data(0, u64::MAX);
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&data);
+        assert_eq!(coll.0, vec![(0, u32::MAX), (1, u32::MAX)]);
+    }
+
+    #[test]
+    fn multiple_pubouts_accumulate_in_order() {
+        let mut coll = PubOutsCollector::new();
+        coll.process_data(&pubout_data(0, 0xAA));
+        coll.process_data(&pubout_data(1, 0xBB << 32));
+        assert_eq!(coll.0.len(), 4);
+        assert_eq!(coll.0[0], (0, 0xAA));
+        assert_eq!(coll.0[1], (1, 0));
+        assert_eq!(coll.0[2], (2, 0));
+        assert_eq!(coll.0[3], (3, 0xBB));
+    }
+}
