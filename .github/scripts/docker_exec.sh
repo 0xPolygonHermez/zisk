@@ -4,17 +4,22 @@
 # it forcefully removes the container so the runner step exits immediately
 # instead of blocking until the docker exec command finishes on its own.
 #
-# Usage: docker_exec.sh CONTAINER [docker exec flags/args...]
-#   e.g. docker_exec.sh my-container -u myuser bash -lc 'echo hello'
+# The container name is read from the TEST_CONTAINER environment variable.
+#
+# Usage: docker_exec.sh [docker exec options] COMMAND [ARGS...]
+#   e.g. docker_exec.sh -u myuser -e VAR=val bash -lc 'echo hello'
 set -e
-CONTAINER="$1"
-shift
+
+if [[ -z "${TEST_CONTAINER:-}" ]]; then
+    echo "ERROR: TEST_CONTAINER environment variable is not set" >&2
+    exit 1
+fi
 
 _cleanup() {
-    echo "Signal received — stopping container ${CONTAINER}..."
-    docker rm -f "${CONTAINER}" 2>/dev/null || true
+    echo "Signal received — stopping container ${TEST_CONTAINER}..."
+    docker rm -f "${TEST_CONTAINER}" 2>/dev/null || true
 }
 trap _cleanup INT TERM
 
-docker exec "${CONTAINER}" "$@" &
+docker exec "${TEST_CONTAINER}" "$@" &
 wait $!

@@ -115,7 +115,7 @@ jobs:
 
       - name: Build ZisK
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_zisk.sh
@@ -125,7 +125,7 @@ jobs:
         run: |
           docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
           docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser bash -lc '
               cd /workspace/zisk
               /home/ziskuser/check-libziskos.sh
@@ -133,7 +133,7 @@ jobs:
 
       - name: Build setup
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             bash -lc '
@@ -143,7 +143,7 @@ jobs:
 
       - name: Test sha_hasher (CPU)
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ONLY_CPU="1" \
             -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
@@ -154,7 +154,7 @@ jobs:
 
       - name: Test sha_hasher (GPU)
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
             bash -lc '
@@ -164,7 +164,7 @@ jobs:
 
       - name: Test ELF diagnostic
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_diagnostic.sh
@@ -172,7 +172,7 @@ jobs:
 
       - name: Prove Ethereum block
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
@@ -183,7 +183,7 @@ jobs:
 
       - name: Ethproofs test (no hints)
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
@@ -195,7 +195,7 @@ jobs:
 
       - name: Ethproofs test (hints)
         run: |
-          .github/scripts/docker_exec.sh "${TEST_CONTAINER}" \
+          .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
