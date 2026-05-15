@@ -45,9 +45,11 @@ main() {
 
     step "Building zisk-ethproofs..."
     ensure cd zisk-ethproofs
-    local cfg_hints=""
-    [[ "${ENABLE_HINTS:-}" == "1" ]] && cfg_hints="RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread'"
-    ensure eval "$cfg_hints cargo build --release" || return 1
+    if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
+        ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release || return 1
+    else
+        ensure cargo build --release || return 1
+    fi
     cd ..
 
     step "Deploying ZisK coordinator and worker services..."
