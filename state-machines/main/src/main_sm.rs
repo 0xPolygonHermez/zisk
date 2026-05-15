@@ -68,15 +68,10 @@ impl<F: PrimeField64> MainInstance<F> {
 
         let segment_id = self.ictx.plan.segment_id.unwrap();
 
-        let is_last_segment = self
-            .ictx
-            .plan
-            .meta
-            .as_ref()
-            .and_then(|m| m.downcast_ref::<bool>())
-            .unwrap_or_else(|| {
-                panic!("create_main_instance: Invalid metadata format, expected bool")
-            });
+        let is_last_segment =
+            self.ictx.plan.meta.as_ref().and_then(|m| m.downcast_ref::<bool>()).unwrap_or_else(
+                || panic!("create_main_instance: Invalid metadata format, expected bool"),
+            );
 
         // Determine the number of minimal traces per segment
         let num_rows = main_trace.num_rows();
@@ -99,17 +94,10 @@ impl<F: PrimeField64> MainInstance<F> {
             filled_rows as f64 / num_rows as f64 * 100.0
         );
 
-        // Calculate final_step of instance, last mem slot of last row. The initial_step is 0 for the
-        // first segment, for the rest is the final_step of the previous segment
-
-        let last_row_previous_segment =
-            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
-
-        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
-
-        let final_step = MemHelpers::main_step_to_special_mem_step(
-            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
-        );
+        // Compute the segment's boundary mem-steps. `initial_step` is the mem-step at the
+        // end of the previous segment (0 for the first segment); `final_step` is the
+        // mem-step at the last row of this segment.
+        let (initial_step, final_step) = Self::mem_steps_for_segment(segment_id, num_rows);
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
@@ -347,6 +335,25 @@ impl<F: PrimeField64> MainInstance<F> {
             .expect("Failed to get range ID");
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
     }
+
+    /// Computes the boundary mem-steps for a given segment of the main trace.
+    ///
+    /// Returns `(initial_step, final_step)`:
+    /// - `initial_step`: mem-step at the last row of segment `segment_id - 1`
+    ///   (or at row 0 for `segment_id == 0`, since there is no previous segment).
+    /// - `final_step`: mem-step at the last row of segment `segment_id`.
+    ///
+    /// Adjacent segments are contiguous in mem-step space:
+    /// `mem_steps_for_segment(s, n).1 == mem_steps_for_segment(s + 1, n).0`.
+    fn mem_steps_for_segment(segment_id: SegmentId, num_rows: usize) -> (u64, u64) {
+        let last_row_previous_segment =
+            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
+        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
+        let final_step = MemHelpers::main_step_to_special_mem_step(
+            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
+        );
+        (initial_step, final_step)
+    }
 }
 
 /// The `MainSM` struct represents the Main State Machine,
@@ -357,5 +364,62 @@ impl MainSM {
     /// Debug method for the main state machine.
     pub fn debug<F: PrimeField64>(_pctx: &ProofCtx<F>, _sctx: &SetupCtx<F>) {
         // No debug information to display
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fields::Goldilocks;
+
+    // `mem_steps_for_segment` doesn't use `F`, but it's now an associated fn on
+    // `MainInstance<F>`, so the call site has to pick some concrete `F`.
+    type MI = MainInstance<Goldilocks>;
+
+    #[test]
+    fn segment_zero_starts_at_row_zero() {
+        let num_rows = 1 << 8; // 256 rows
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0), num_rows);
+        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
+        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(num_rows as u64 - 1));
+    }
+
+    #[test]
+    fn segment_one_starts_at_end_of_segment_zero() {
+        let num_rows = 1 << 8; // 256 rows
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(1), num_rows);
+        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(num_rows as u64 - 1));
+        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(2 * num_rows as u64 - 1));
+    }
+
+    #[test]
+    fn arbitrary_segment_uses_correct_row_indices() {
+        let num_rows = 1 << 8; // 256 rows
+        let s = 5usize;
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(s), num_rows);
+        let expected_last_row_prev = (s * num_rows) as u64 - 1;
+        let expected_final_row = ((s + 1) * num_rows) as u64 - 1;
+        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(expected_last_row_prev));
+        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(expected_final_row));
+    }
+
+    #[test]
+    fn consecutive_segments_are_contiguous_in_mem_step_space() {
+        // The invariant the planner + witness pipeline rely on: segment `s`'s `final_step`
+        // is the same mem-step as segment `s + 1`'s `initial_step`.
+        let num_rows = 1 << 8; // 256 rows
+        for s in 0..4 {
+            let (_, final_s) = MI::mem_steps_for_segment(SegmentId(s), num_rows);
+            let (initial_next, _) = MI::mem_steps_for_segment(SegmentId(s + 1), num_rows);
+            assert_eq!(final_s, initial_next, "discontinuity between segment {s} and {}", s + 1);
+        }
+    }
+
+    #[test]
+    fn num_rows_one_does_not_panic() {
+        // Degenerate but valid: a single-row segment.
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0), 1);
+        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
+        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(0));
     }
 }
