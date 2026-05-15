@@ -33,6 +33,7 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
+    /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and `MainTrace::NUM_ROWS`.
     const MAX_SEGMENT_ID: usize =
         (((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1) as usize;
 
@@ -307,6 +308,8 @@ impl<F: PrimeField64> MainInstance<F> {
         Ok(large_range_checks)
     }
 
+    /// Updates `reg_steps` with the last chunk's register steps, which are the initial
+    /// steps for the next chunk.
     fn update_reg_steps_with_last_chunk(
         last_emu_reg_trace: &EmuRegTrace,
         reg_steps: &mut [u64; REGS_IN_MAIN],
@@ -321,6 +324,7 @@ impl<F: PrimeField64> MainInstance<F> {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
+    /// Updates the AIR values for the main instance's registers.
     fn update_reg_airvalues(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
