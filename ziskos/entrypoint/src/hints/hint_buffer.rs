@@ -156,6 +156,12 @@ impl HintBuffer {
                     }
                     Ok(n) => {
                         written += n;
+                        if attempt > 0 {
+                            println!(
+                                "write_with_retries: writesucceeded after {} attempts",
+                                attempt
+                            );
+                        }
                         attempt = 0;
                     }
 
@@ -186,9 +192,6 @@ impl HintBuffer {
                         attempt += 1;
                     }
                 }
-            }
-            if attempt > 0 {
-                println!("write_with_retries: succeeded after {} attempts", attempt);
             }
             Ok(())
         }

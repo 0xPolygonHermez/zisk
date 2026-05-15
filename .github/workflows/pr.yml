@@ -46,73 +46,174 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: self-hosted
+    runs-on: gpu-hosted
     timeout-minutes: 180
-    container:
-      image: ubuntu:22.04
-      options:
-        --shm-size=48g
-        -v /home/gha/cache-setup:/github/home/output:rw
+    # NOTE: We intentionally use 'docker exec' in individual steps rather than
+    # defining a job-level container. The test scripts deploy systemd services
+    # (zisk-coordinator, zisk-worker) inside the container, which requires
+    # systemd as PID 1 and a fully privileged environment. GitHub Actions
+    # job-level containers do not support this setup.
     defaults:
       run:
         shell: bash
     env:
-      ZISK_GHA: "1"
-      ZISK_REPO_DIR: ${{ github.workspace }}
+      TEST_CONTAINER: zisk-gha-test
       ZISK_TESTVECTORS_BRANCH: "develop-0.3.0"
-      DISTRIBUTED_PROCESSES: "2"
-      DISTRIBUTED_THREADS: "64"
-      PROVE_FLAGS: "-y"
-      TERM: xterm
+      ZISK_ETHPROOFS_BRANCH: "pre-develop-0.17.1"
+      ZISK_ETH_CLIENT_BRANCH: "develop-0.9.0"
+
     steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Give workspace ownership to container user
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./install_deps.sh
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+      - name: Start test container with systemd
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+
+          docker run -d \
+            --name "${TEST_CONTAINER}" \
+            --privileged \
+            --cgroupns=host \
+            --gpus all \
+            --shm-size=48g \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
+            -v /home/gha/cache-setup:/home/ziskuser/output:rw \
+            -e ZISK_GHA=1 \
+            -e ZISK_REPO_DIR=/workspace/zisk \
+            -e ZISK_TESTVECTORS_BRANCH="${ZISK_TESTVECTORS_BRANCH}" \
+            -e PROVE_FLAGS=-y \
+            -e TERM=xterm \
+            ziskvm/zisk-runner-gpu:latest \
+            /sbin/init
+
+          sleep 3
+
+          if ! docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            echo "Container stopped unexpectedly"
+            docker ps -a
+            docker logs "${TEST_CONTAINER}" || true
+            docker inspect "${TEST_CONTAINER}" --format '{{.State.ExitCode}} {{.State.Error}}' || true
+            exit 1
+          fi
+
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            echo "PID 1:"
+            ps -p 1 -o pid,comm,args
+            systemctl is-system-running || true
+          '
 
       - name: Build ZisK
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zisk.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
 
       - name: Check libziskos.a does not bundle std and contains required symbols
-        run: .github/scripts/check-libziskos.sh
+        run: |
+          docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
+          docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk
+              /home/ziskuser/check-libziskos.sh
+            '
 
       - name: Build setup
-        env:
-          USE_CACHE_SETUP: "1"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_setup.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+            '
 
-      - name: Test sha_hasher
+      - name: Test sha_hasher (CPU)
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_sha_hasher.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e ONLY_CPU="1" \
+            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_sha_hasher.sh
+            '
+
+      - name: Test sha_hasher (GPU)
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_sha_hasher.sh
+            '
 
       - name: Test ELF diagnostic
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_diagnostic.sh
-
-      - name: Verify Constraints Ethereum block
-        env:
-          DISABLE_PROVE: "1"
-          BLOCK_INPUTS: "mainnet_24626900_221_16_zec_reth.bin"
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_eth_block.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_diagnostic.sh
+            '
 
       - name: Prove Ethereum block
-        env:
-          DISABLE_ROM_SETUP: "1"
-          BLOCK_INPUTS_DISTRIBUTED: "mainnet_24628607_66_7_zec_reth.bin"
         run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./test_eth_block.sh
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
+            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_eth_block.sh
+            '
+
+      - name: Ethproofs test (no hints)
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
+            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
+            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_ethproofs.sh
+            '
+
+      - name: Ethproofs test (hints)
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
+            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
+            -e ENABLE_HINTS="1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_ethproofs.sh
+            '
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
 
   test-macos:
     name: Test on macOS
@@ -143,6 +244,8 @@ jobs:
           ./build_zisk.sh
 
       - name: Test sha_hasher
+        env:
+          ZISK_TEMPLATE_BRANCH: "pre-develop-0.17.1"
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./test_sha_hasher.sh
