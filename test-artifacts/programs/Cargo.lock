@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "add256"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -226,6 +233,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "arith256"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "arith256_mod"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "arith384_mod"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -885,6 +913,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "bls12_381_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bls12_381_complex_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bls12_381_complex_mul"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bls12_381_complex_sub"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bls12_381_dbl"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "blst"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -898,6 +961,41 @@ dependencies = [
 
 [[package]]
 name = "bn254"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bn254_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bn254_complex_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bn254_complex_mul"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bn254_complex_sub"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "bn254_dbl"
 version = "0.1.0"
 dependencies = [
  "ziskos",
@@ -4808,7 +4906,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "secp256r1"
+name = "secp256k1_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "secp256k1_dbl"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "secp256r1_add"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
+name = "secp256r1_dbl"
 version = "0.1.0"
 dependencies = [
  "ziskos",

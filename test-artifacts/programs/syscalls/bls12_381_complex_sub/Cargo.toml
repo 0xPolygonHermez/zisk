@@ -1,0 +1,7 @@
+[package]
+name = "bls12_381_complex_sub"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

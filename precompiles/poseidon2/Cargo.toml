@@ -23,3 +23,6 @@ fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 sha2 = { workspace = true }
+
+[dev-dependencies]
+test-artifacts = { workspace = true }
