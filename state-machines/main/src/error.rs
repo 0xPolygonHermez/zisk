@@ -48,11 +48,11 @@ pub enum MainSmError {
 
     /// Conversion of a `u64` quantity into `usize` failed on this target.
     #[error("integer conversion to usize failed: {0}")]
-    IntConversion(#[from] std::num::TryFromIntError),
+    TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
 impl From<MainSmError> for proofman_common::ProofmanError {
     fn from(err: MainSmError) -> Self {
-        proofman_common::ProofmanError::InvalidSetup(err.to_string())
+        proofman_common::ProofmanError::ProofmanError(err.to_string())
     }
 }
