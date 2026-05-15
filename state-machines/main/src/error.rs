@@ -35,19 +35,25 @@ pub enum MainSmError {
     #[error("plan metadata is not the expected bool (is_last_segment)")]
     InvalidSegmentMetadata,
 
-    // /// `fill_trace_outputs` was empty — the segment had no minimal traces to process.
-    // #[error("fill_trace_outputs is empty; segment has no minimal traces")]
-    // EmptyFillTraceOutput,
+    /// `fill_trace_outputs` was empty — the segment had no minimal traces to process.
+    #[error("fill_trace_outputs is empty; segment has no minimal traces")]
+    EmptyFillTraceOutput,
 
-    // /// `MemHelpers::mem_step_to_slot` returned a value outside the expected `0..=2` range.
-    // #[error("mem_step_to_slot produced invalid slot {slot}")]
-    // InvalidSlot {
-    //     /// The offending slot value.
-    //     slot: u8,
-    // },
+    /// `MemHelpers::mem_step_to_slot` returned a value outside the expected `0..=2` range.
+    #[error("mem_step_to_slot produced invalid slot {slot}")]
+    InvalidSlot {
+        /// The offending slot value.
+        slot: u8,
+    },
+
     /// Conversion of a `u64` quantity into `usize` failed on this target.
     #[error("integer conversion to usize failed: {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
+
+    /// A `ProofmanError` propagated from a `proofman_common` operation (e.g. the
+    /// `MainTrace::new_from_vec` constructor rejecting a mis-sized `trace_buffer`).
+    #[error("proofman error: {0}")]
+    Proofman(#[from] proofman_common::ProofmanError),
 }
 
 impl From<MainSmError> for proofman_common::ProofmanError {
