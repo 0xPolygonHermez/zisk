@@ -28,7 +28,13 @@ extern "C"
     void wait_mem_align_counters(MemCountAndPlan *mcp);
 
     uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id);
-    const uint32_t *get_mem_segment_offsets(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &offsets_base_addr, uint32_t &count);
+    const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
+                                                 uint32_t &offsets_base_addr_out,
+                                                 uint32_t &addr_range_slots_out,
+                                                 uint32_t &num_pages_out,
+                                                 uint32_t &present_count_out,
+                                                 const uint32_t *&page_single_value_out,
+                                                 const uint32_t *&pages_dense_out);
     const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_total_counters(MemCountAndPlan *mcp);
@@ -37,9 +43,10 @@ extern "C"
     uint64_t get_mem_stats_len(MemCountAndPlan * mcp);
     uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp);
 
-    // Populates `mcp->segments[]` from GPU-produced metas . Caller must keep the GPU planner alive:
-    // `gpu_metas` and its `count_per_chunk` / `addr_offsets` arrays are owned
-    // by it.
+    // Populates `mcp->segments[]` from GPU-produced metas. Caller must keep the
+    // GPU planner alive: `gpu_metas` and its per-instance arrays
+    // (`count_per_chunk`, `page_starts`, `page_single_value`, `pages_dense`)
+    // are owned by it.
     bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas, uint32_t n);
 
 #ifdef __cplusplus

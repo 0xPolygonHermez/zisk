@@ -117,8 +117,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             &prev_segment,
             trace_buffer,
             packed,
-            self.check_point.offsets_base_addr,
-            &self.check_point.offsets,
+            &self.check_point,
         )?))
     }
 

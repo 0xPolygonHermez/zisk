@@ -164,6 +164,17 @@ private:
     uint32_t*      h_n_emits_all_              = nullptr;
     uint32_t*      h_offsets_buf_              = nullptr;
     size_t         h_offsets_buf_size_         = 0;
+    // Paged-dense output buffers (host-side compaction of h_offsets_buf_).
+    //   - h_page_starts_buf_ / h_page_single_buf_ are sized in "pages"
+    //     (1 entry per page); cumulative across the active instances.
+    //   - h_pages_dense_buf_ is sized in slots (PAGE_SIZE per present page);
+    //     bounded above by total_addrs (every page present) and sized
+    //     accordingly so it always fits.
+    uint32_t*      h_page_starts_buf_          = nullptr;
+    uint32_t*      h_page_single_buf_           = nullptr;
+    size_t         h_page_meta_buf_size_       = 0;       // bytes (covers both)
+    uint32_t*      h_pages_dense_buf_          = nullptr;
+    size_t         h_pages_dense_buf_size_     = 0;
     uint32_t*      h_result_nops_              = nullptr;
     uint32_t*      h_meta_scalars_             = nullptr;
     ChunkCounters* h_chunk_counters_per_chunk_ = nullptr;  // pinned, MAX_CHUNKS slots
@@ -229,26 +240,33 @@ private:
 //   for (i) save_metas_append(f, metas[i]);
 //   save_metas_end(f, /*total=*/N);
 //
+// Wire-format version: paged v1 (incompatible with the previous dense
+// `addr_offsets[]` and sparse-soa formats — keep `instance_meta_loader.hpp`
+// in sync if you touch this).
+//
 // On-disk wire format (little-endian, all sizes in bytes unless noted):
 //
-//   uint32_t num_metas                    // header at offset 0
+//   uint32_t num_metas                       // header at offset 0
 //
 //   for each meta (no padding between records):
 //     uint32_t inst_id
-//     uint32_t kind                       // 0=ROM, 1=INPUT, 2=RAM
+//     uint32_t kind                          // 0=ROM, 1=INPUT, 2=RAM
 //     uint32_t first_addr
 //     uint32_t last_addr
 //     uint32_t first_addr_chunk
 //     uint32_t first_addr_skip
 //     uint32_t last_addr_chunk
 //     uint32_t last_addr_include
-//     uint32_t cps                        // = n_chunks
-//     uint32_t aos                        // = addr_offsets_size
-//     uint32_t count_per_chunk[cps]       // n_chunks entries (total per-chunk
-//                                          //  surviving emits in this instance)
-//     uint32_t addr_offsets[aos]          // num_addrs entries (cumulative
-//                                          //  write offset per 8-byte slot in
-//                                          //  [first_addr, last_addr])
+//     uint32_t cps                           // = n_chunks
+//     uint32_t np                            // = num_pages
+//     uint32_t pc                            // = present_count
+//     uint32_t ars                           // = addr_range_slots = (last_addr - first_addr)/8 + 1
+//     uint32_t count_per_chunk[cps]          // per-chunk surviving emit counts
+//     uint32_t page_starts[np]               // MEM_OFFSETS_PAGE_ABSENT or
+//                                            //  page index into pages_dense
+//     uint32_t page_single_value[np]         // value carried into each page
+//     uint32_t pages_dense[pc * MEM_OFFSETS_PAGE_SIZE]
+//                                            // present-page dense data
 //
 FILE* save_metas_begin (const std::string& path);
 void  save_metas_append(FILE* f, const InstanceMeta& m);

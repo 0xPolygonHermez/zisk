@@ -5,6 +5,7 @@ use crate::*;
 
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
+use mem_common::MEM_OFFSETS_PAGE_SIZE;
 use mem_common::{
     MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
@@ -135,22 +136,11 @@ impl MemPlanner {
         unsafe { bindings::wait_mem_count_and_plan(self.inner) };
     }
 
-    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`. Must
-    /// be called after `wait()` joins the background workers. The C++ side
-    /// casts `gpu_metas` to `const InstanceMeta*` (declared in
-    /// `cpp/instance_meta.hpp`) — its layout must match the Rust
-    /// `GpuInstanceMeta` (#[repr(C)]) byte-for-byte. The GPU planner that
-    /// produced these metas must remain alive across this call.
-    ///
-    /// # Safety
-    /// Caller must ensure `gpu_metas` points to `n` valid `GpuInstanceMeta`
-    /// records and the per-meta arrays (`count_per_chunk`, `addr_offsets`)
-    /// remain live until this returns.
-    pub unsafe fn inject_gpu_metas_from_pointers(
-        &self,
-        gpu_metas: *const c_void,
-        n: u32,
-    ) -> bool {
+    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`.
+    /// The GPU planner that produced these metas must remain alive across
+    /// this call, since the per-meta `count_per_chunk` and `addr_offsets`
+    /// pointers reference its pinned host memory.
+    pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }
 
@@ -194,23 +184,48 @@ impl MemPlanner {
                     );
                 }
 
-                // Collect offsets for this segment
+                // Collect paged-dense offsets for this segment.
                 let mut offsets_base_addr: u32 = 0;
-                let mut offsets_count: u32 = 0;
-                let offsets_ptr = unsafe {
-                    bindings::get_mem_segment_offsets(
+                let mut addr_range_slots: u32 = 0;
+                let mut num_pages: u32 = 0;
+                let mut present_count: u32 = 0;
+                let mut page_single_ptr: *const u32 = std::ptr::null();
+                let mut pages_dense_ptr: *const u32 = std::ptr::null();
+                let page_starts_ptr = unsafe {
+                    bindings::get_mem_segment_offset_pages(
                         self.inner,
                         mem_id as u32,
                         segment_id,
                         &mut offsets_base_addr as *mut u32,
-                        &mut offsets_count as *mut u32,
+                        &mut addr_range_slots as *mut u32,
+                        &mut num_pages as *mut u32,
+                        &mut present_count as *mut u32,
+                        &mut page_single_ptr as *mut *const u32,
+                        &mut pages_dense_ptr as *mut *const u32,
                     )
                 };
-                if !offsets_ptr.is_null() && offsets_count > 0 {
+                if !page_starts_ptr.is_null() && num_pages > 0 {
                     segment.offsets_base_addr = offsets_base_addr;
-                    segment.offsets =
-                        unsafe { std::slice::from_raw_parts(offsets_ptr, offsets_count as usize) }
-                            .to_vec();
+                    segment.addr_range_slots = addr_range_slots;
+                    segment.num_pages = num_pages;
+                    segment.present_count = present_count;
+                    segment.page_starts = unsafe {
+                        std::slice::from_raw_parts(page_starts_ptr, num_pages as usize)
+                    }
+                    .to_vec();
+                    segment.page_single_value = unsafe {
+                        std::slice::from_raw_parts(page_single_ptr, num_pages as usize)
+                    }
+                    .to_vec();
+                    let dense_len = present_count as usize * MEM_OFFSETS_PAGE_SIZE as usize;
+                    segment.pages_dense = if dense_len == 0 {
+                        Vec::new()
+                    } else {
+                        unsafe {
+                            std::slice::from_raw_parts(pages_dense_ptr, dense_len)
+                        }
+                        .to_vec()
+                    };
                 }
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,

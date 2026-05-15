@@ -370,38 +370,29 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
         }
         segment->is_last_segment = instance.inst_id == last_segments[instance.kind];
         segment->offsets_base_addr = instance.first_addr;
-        segment->offsets.assign(instance.addr_offsets, instance.addr_offsets + instance.addr_offsets_size);
+        segment->addr_range_slots = instance.addr_range_slots;
+        segment->num_pages = instance.num_pages;
+        segment->present_count = instance.present_count;
+        segment->page_starts.assign(
+            instance.page_starts,
+            instance.page_starts + instance.num_pages);
+        segment->page_single_value.assign(
+            instance.page_single_value,
+            instance.page_single_value + instance.num_pages);
+        const size_t dense_words = static_cast<size_t>(instance.present_count) * MEM_OFFSETS_PAGE_SIZE;
+        segment->pages_dense.assign(
+            instance.pages_dense,
+            instance.pages_dense + dense_words);
         dest[instance.kind].set(instance.inst_id, segment);
     }
 }
 
 // Inject GPU-produced metas straight into `mcp->segments[]`. The GPU planner
-// owns the per-meta `count_per_chunk` / `addr_offsets` arrays and must remain
-// alive until this returns. The shallow vector copy here just gives the
+// owns the per-meta `count_per_chunk` / `offset_change_*` arrays and must
+// remain alive until this returns. The shallow vector copy here just gives the
 // segment generator the `vector<InstanceMeta>` shape it expects; the pointers
 // inside are untouched.
 bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_ptr, uint32_t n) {
-    // TODO: optimize addr_offsets representation.
-    //
-    // Measured on the reference input: of the 85 M total entries across all
-    // instances, ~83.5% are consecutive duplicates of their predecessor
-    // (the cumulative-offset array is mostly flat). The biggest instances
-    // are the most sparse:
-    //   inst 46 (RAM, 53.5 M entries) -> 99.59% repeats (~245x compressible)
-    //   inst  1 (kind=0, 16.4 M)      -> 99.93% repeats (~1500x compressible)
-    //   inst  0 (kind=2, 544 K)       -> 98.19% repeats (~54x)
-    //
-    // A paged or RLE representation would:
-    //   - cut the host `segment->offsets.assign(...)` memcpy from ~341 MB
-    //     per inject (the dominant ~110 ms here) to ~50-100 MB;
-    //   - reduce GPU->host bandwidth in the count_and_plan pipeline (the
-    //     same arrays are produced on GPU and copied back today);
-    //   - require coordinated changes in: the GPU kernel that emits
-    //     addr_offsets, MemSegment::offsets, MemModuleSegmentCheckPoint
-    //     in Rust, and every downstream consumer (mem_sm.rs etc.).
-    //
-    // Deferred — out of scope for this integration.
-
     if (!mcp || (!gpu_metas_ptr && n != 0)) return false;
     const InstanceMeta *gpu_metas = static_cast<const InstanceMeta *>(gpu_metas_ptr);
     std::vector<InstanceMeta> metas(gpu_metas, gpu_metas + n);
@@ -421,16 +412,30 @@ const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t
     return segment->get_chunks();
 }
 
-const uint32_t *get_mem_segment_offsets(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &offsets_base_addr, uint32_t &count)
+const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
+                                             uint32_t &offsets_base_addr_out,
+                                             uint32_t &addr_range_slots_out,
+                                             uint32_t &num_pages_out,
+                                             uint32_t &present_count_out,
+                                             const uint32_t *&page_single_value_out,
+                                             const uint32_t *&pages_dense_out)
 {
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
-        offsets_base_addr = segment->offsets_base_addr;
-        count = segment->offsets.size();
-        return segment->offsets.data();
+        offsets_base_addr_out = segment->offsets_base_addr;
+        addr_range_slots_out  = segment->addr_range_slots;
+        num_pages_out         = segment->num_pages;
+        present_count_out     = segment->present_count;
+        page_single_value_out = segment->page_single_value.data();
+        pages_dense_out       = segment->pages_dense.data();
+        return segment->page_starts.data();
     } else {
-        offsets_base_addr = 0;
-        count = 0;
+        offsets_base_addr_out = 0;
+        addr_range_slots_out  = 0;
+        num_pages_out         = 0;
+        present_count_out     = 0;
+        page_single_value_out = nullptr;
+        pages_dense_out       = nullptr;
         return nullptr;
     }
 }
@@ -467,8 +472,7 @@ void MemCountAndPlan::wait_mem_align_counters() {
 }
 
 void MemCountAndPlan::wait() {
-    // GPU-mode callers skip `execute()`, so `parallel_execute` is never
-    // spawned. Joining a null unique_ptr segfaults — guard it.
+    // GPU-mode callers skip `execute()`, so `parallel_execute` is never spawned. 
     if (!parallel_execute || !parallel_execute->joinable()) return;
     try {
         parallel_execute->join();

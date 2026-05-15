@@ -17,17 +17,26 @@ class MemSegment {
 public:
     bool is_last_segment;
     uint32_t offsets_base_addr;
-    std::vector<uint32_t> offsets;
+    std::vector<uint32_t> page_starts;
+    std::vector<uint32_t> page_single_value;
+    std::vector<uint32_t> pages_dense;
+    uint32_t num_pages;
+    uint32_t present_count;
+    uint32_t addr_range_slots;
 
     MemSegment(const MemSegment&) = delete;
     MemSegment& operator=(const MemSegment&) = delete;
     MemSegment(MemSegment&&) noexcept = delete;
 
-    MemSegment() : is_last_segment(false), offsets_base_addr(0) {
+    MemSegment()
+        : is_last_segment(false), offsets_base_addr(0),
+          num_pages(0), present_count(0), addr_range_slots(0) {
         chunks = nullptr;
         init();
     }
-    MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count): is_last_segment(false), offsets_base_addr(0) {
+    MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count)
+        : is_last_segment(false), offsets_base_addr(0),
+          num_pages(0), present_count(0), addr_range_slots(0) {
         chunks = nullptr;
         init();
         push(chunk_id, from_addr, skip, count);

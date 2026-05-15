@@ -101,8 +101,7 @@ impl MemModulePlanner {
             chunks,
             is_last_segment,
             first_chunk_id: self.first_chunk_id,
-            offsets_base_addr: 0,
-            offsets: Vec::new(),
+            ..MemModuleSegmentCheckPoint::default()
         });
     }
 
