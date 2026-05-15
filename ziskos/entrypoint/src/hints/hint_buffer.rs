@@ -188,10 +188,7 @@ impl HintBuffer {
                 }
             }
             if attempt > 0 {
-                println!(
-                    "write_with_retries: succeeded after {} attempts",
-                    attempt
-                );
+                println!("write_with_retries: succeeded after {} attempts", attempt);
             }
             Ok(())
         }
@@ -232,10 +229,7 @@ impl HintBuffer {
                 match writer.flush() {
                     Ok(()) => {
                         if attempt > 0 {
-                            println!(
-                                "flush_with_retries: succeeded after {} attempts",
-                                attempt
-                            );
+                            println!("flush_with_retries: succeeded after {} attempts", attempt);
                         }
                         return Ok(());
                     }
@@ -332,8 +326,9 @@ impl HintBuffer {
 
                 // If single hint exceeds MAX_WRITER_LEN, write it in chunks directly
                 if hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut buf)
-                        .map_err(|e| io::Error::new(e.kind(), format!("write_buf before oversized hint: {}", e)))?;
+                    write_buf(&mut write_all, &mut buf).map_err(|e| {
+                        io::Error::new(e.kind(), format!("write_buf before oversized hint: {}", e))
+                    })?;
 
                     let mut hint_pos = 0usize;
                     while hint_pos < hint_len {
@@ -358,8 +353,12 @@ impl HintBuffer {
                     unsafe { core::slice::from_raw_parts(chunk_base.add(chunk_pos), hint_len) };
 
                 if buf.len() + hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut buf)
-                        .map_err(|e| io::Error::new(e.kind(), format!("write_buf on buffer full before hint: {}", e)))?;
+                    write_buf(&mut write_all, &mut buf).map_err(|e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!("write_buf on buffer full before hint: {}", e),
+                        )
+                    })?;
                 }
 
                 buf.extend_from_slice(hint_bytes);
@@ -368,8 +367,9 @@ impl HintBuffer {
             }
 
             if buf.len() >= flush_threshold {
-                write_buf(&mut write_all, &mut buf)
-                    .map_err(|e| io::Error::new(e.kind(), format!("write_buf on flush threshold: {}", e)))?;
+                write_buf(&mut write_all, &mut buf).map_err(|e| {
+                    io::Error::new(e.kind(), format!("write_buf on flush threshold: {}", e))
+                })?;
             }
         }
 
