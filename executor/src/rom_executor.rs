@@ -21,7 +21,7 @@ pub struct RomExecutionOutput {
     /// Minimal traces collected during execution.
     pub min_traces: Vec<EmuTrace>,
     /// Device metrics for secondary state machines.
-    pub secn_count: NestedDeviceMetricsList,
+    pub counters: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
     pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
@@ -123,7 +123,7 @@ impl RomExecutor {
         caller_stats_scope: &StatsScope,
     ) -> Result<RomExecutionOutput> {
         let stdin = self.stdin.load_full();
-        let (min_traces, secn_count, handle_mo, handle_rh, steps, pub_outs) =
+        let (min_traces, counters, handle_mo, handle_rh, steps, pub_outs) =
             match self.is_asm_execution.load(Ordering::SeqCst) {
                 true => self.emulator_asm.execute(
                     zisk_rom,
@@ -137,6 +137,6 @@ impl RomExecutor {
                 false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle)?,
             };
 
-        Ok(RomExecutionOutput { min_traces, secn_count, handle_mo, handle_rh, steps, pub_outs })
+        Ok(RomExecutionOutput { min_traces, counters, handle_mo, handle_rh, steps, pub_outs })
     }
 }

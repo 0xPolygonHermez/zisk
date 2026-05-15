@@ -258,10 +258,10 @@ impl EmulatorAsm {
         let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
         match mt_result {
-            Ok((min_traces, secn_count, pub_outs)) => {
+            Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
-                Ok((min_traces, secn_count, Some(handle_mo), handle_rh, steps, pub_outs))
+                Ok((min_traces, counters, Some(handle_mo), handle_rh, steps, pub_outs))
             }
             Err(e) => {
                 // MT already self-cleaned (signaled reset + joined its stdio
@@ -411,7 +411,7 @@ impl EmulatorAsm {
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
-        let mut secn_count = HashMap::new();
+        let mut counters = HashMap::new();
         let mut pub_outs = Vec::new();
 
         for (chunk_id, mut data_bus) in data_buses {
@@ -425,12 +425,12 @@ impl EmulatorAsm {
                 let counter = counter.ok_or_else(|| {
                     anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
                 })?;
-                secn_count.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
+                counters.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
             }
         }
 
         stats_end!(stats, &_mt_scope);
-        Ok((emu_traces, secn_count, pub_outs))
+        Ok((emu_traces, counters, pub_outs))
     }
 }
 

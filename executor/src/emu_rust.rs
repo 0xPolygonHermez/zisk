@@ -61,10 +61,10 @@ impl EmulatorRust {
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
         timer_start_info!(COUNT);
-        let (secn_count, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
+        let (counters, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
         timer_stop_and_log_info!(COUNT);
 
-        Ok((min_traces, secn_count, None, None, steps, pub_outs))
+        Ok((min_traces, counters, None, None, steps, pub_outs))
     }
 
     fn run_emulator(
@@ -127,7 +127,7 @@ impl EmulatorRust {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut secn_count = HashMap::new();
+        let mut counters = HashMap::new();
         let mut pub_outs = Vec::new();
 
         for (chunk_id, (counter_slice, pub_outs_chunk)) in metrics_slices.into_iter().enumerate() {
@@ -136,7 +136,7 @@ impl EmulatorRust {
                 let idx = idx.ok_or_else(|| {
                     anyhow::anyhow!("unexpected unindexed counter for chunk {chunk_id}")
                 })?;
-                secn_count.entry(idx).or_insert_with(Vec::new).push((
+                counters.entry(idx).or_insert_with(Vec::new).push((
                     ChunkId(chunk_id),
                     counter.ok_or_else(|| {
                         anyhow::anyhow!("secondary counter is None for chunk {chunk_id}, idx {idx}")
@@ -145,7 +145,7 @@ impl EmulatorRust {
             }
         }
 
-        Ok((secn_count, pub_outs))
+        Ok((counters, pub_outs))
     }
 }
 
