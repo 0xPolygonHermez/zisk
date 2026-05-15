@@ -25,7 +25,7 @@ main() {
 
     ELF_FILE="zisk-testvectors/zisk-programs/diagnostic/elf/diagnostic.elf"
     DIAGNOSTIC_INPUTS_SINGLE="empty"
-    test_elf "${ELF_FILE}" "${INPUTS_PATH}" "DIAGNOSTIC_INPUTS_SINGLE" "ELF Diagnostic" || return 1
+    test_elf "${ELF_FILE}" "${INPUTS_PATH}" "DIAGNOSTIC_INPUTS" "ELF Diagnostic" || return 1
 }
 
 main
