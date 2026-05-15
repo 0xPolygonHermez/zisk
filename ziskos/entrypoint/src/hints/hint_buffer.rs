@@ -158,33 +158,40 @@ impl HintBuffer {
                         written += n;
                         attempt = 0;
                     }
-                    // EINTR: the syscall was interrupted by a signal before anything was
-                    // flushed. Retry immediately without counting against the retry budget
-                    Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-                    // ENOBUFS / WouldBlock: a single write() that returns an error wrote
-                    // 0 bytes, so it is safe to retry from `written`
-                    Err(e)
-                        if e.raw_os_error() == Some(libc::ENOBUFS)
-                            || e.kind() == io::ErrorKind::WouldBlock =>
-                    {
+
+                    // Any error: retry with backoff.
+                    Err(e) => {
                         if attempt >= retries {
                             return Err(io::Error::new(
                                 e.kind(),
                                 format!(
-                                    "write_with_retries: max retries ({}) reached: {}",
-                                    retries, e
+                                    "write_with_retries: max retries ({}) reached, kind={:?}, os_error={:?}: {}",
+                                    retries,
+                                    e.kind(),
+                                    e.raw_os_error(),
+                                    e
                                 ),
                             ));
                         }
                         if attempt == 0 {
-                            println!("write_with_retries: transient error {}, retrying", e);
+                            println!(
+                                "write_with_retries: transient error kind={:?}, os_error={:?}: {}, retrying",
+                                e.kind(),
+                                e.raw_os_error(),
+                                e
+                            );
                         }
                         let delay = base_delay * (attempt as u32 + 1);
                         thread::sleep(delay);
                         attempt += 1;
                     }
-                    Err(e) => return Err(e),
                 }
+            }
+            if attempt > 0 {
+                println!(
+                    "write_with_retries: succeeded after {} attempts",
+                    attempt
+                );
             }
             Ok(())
         }
@@ -223,36 +230,42 @@ impl HintBuffer {
             let mut attempt = 0;
             loop {
                 match writer.flush() {
-                    Ok(()) => return Ok(()),
+                    Ok(()) => {
+                        if attempt > 0 {
+                            println!(
+                                "flush_with_retries: succeeded after {} attempts",
+                                attempt
+                            );
+                        }
+                        return Ok(());
+                    }
 
-                    // EINTR: the syscall was interrupted by a signal before anything was
-                    // flushed. Retry immediately without counting against the retry budget.
-                    Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-
-                    // ENOBUFS / WouldBlock: the kernel send buffer is full. Sleep to give
-                    // the receiver time to drain it, then retry.
-                    Err(e)
-                        if e.raw_os_error() == Some(libc::ENOBUFS)
-                            || e.kind() == io::ErrorKind::WouldBlock =>
-                    {
+                    // Any error: retry with backoff.
+                    Err(e) => {
                         if attempt >= retries {
                             return Err(io::Error::new(
                                 e.kind(),
                                 format!(
-                                    "flush_with_retries: max retries ({}) reached, error: {}",
-                                    retries, e
+                                    "flush_with_retries: max retries ({}) reached, kind={:?}, os_error={:?}: {}",
+                                    retries,
+                                    e.kind(),
+                                    e.raw_os_error(),
+                                    e
                                 ),
                             ));
                         }
                         if attempt == 0 {
-                            println!("flush_with_retries: transient error {}, retrying", e);
+                            println!(
+                                "flush_with_retries: transient error kind={:?}, os_error={:?}: {}, retrying",
+                                e.kind(),
+                                e.raw_os_error(),
+                                e
+                            );
                         }
                         let delay = base_delay * (attempt as u32 + 1);
                         thread::sleep(delay);
                         attempt += 1;
                     }
-
-                    Err(e) => return Err(e),
                 }
             }
         }
@@ -319,7 +332,8 @@ impl HintBuffer {
 
                 // If single hint exceeds MAX_WRITER_LEN, write it in chunks directly
                 if hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut buf)?;
+                    write_buf(&mut write_all, &mut buf)
+                        .map_err(|e| io::Error::new(e.kind(), format!("write_buf before oversized hint: {}", e)))?;
 
                     let mut hint_pos = 0usize;
                     while hint_pos < hint_len {
@@ -344,7 +358,8 @@ impl HintBuffer {
                     unsafe { core::slice::from_raw_parts(chunk_base.add(chunk_pos), hint_len) };
 
                 if buf.len() + hint_len > MAX_WRITER_LEN {
-                    write_buf(&mut write_all, &mut buf)?;
+                    write_buf(&mut write_all, &mut buf)
+                        .map_err(|e| io::Error::new(e.kind(), format!("write_buf on buffer full before hint: {}", e)))?;
                 }
 
                 buf.extend_from_slice(hint_bytes);
@@ -353,11 +368,13 @@ impl HintBuffer {
             }
 
             if buf.len() >= flush_threshold {
-                write_buf(&mut write_all, &mut buf)?;
+                write_buf(&mut write_all, &mut buf)
+                    .map_err(|e| io::Error::new(e.kind(), format!("write_buf on flush threshold: {}", e)))?;
             }
         }
 
-        write_buf(&mut write_all, &mut buf)?;
+        write_buf(&mut write_all, &mut buf)
+            .map_err(|e| io::Error::new(e.kind(), format!("write_buf final drain: {}", e)))?;
 
         // Flush the writer and debug writer at the end
         flush_with_retries(writer, 10, Duration::from_millis(50))?;
