@@ -88,6 +88,9 @@ pub struct CoordinatorConfig {
     /// Seconds a worker can remain in `Disconnected` state before being removed from
     /// the pool entirely. Default: 300s.
     pub stale_disconnected_threshold_seconds: u64,
+    /// Seconds before unregistering a worker stuck in `pending_recovery`.
+    /// `0` disables the sweep. Default: 600s.
+    pub stuck_recovery_threshold_seconds: u64,
     /// Seconds a job in a terminal state (`Completed`, `Failed`, `Cancelled`) is kept
     /// in memory before being evicted by the monitor sweep. Default: 3600s (60 min).
     /// `0` evicts terminal jobs on the next monitor tick.
@@ -150,6 +153,7 @@ impl Config {
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
+            .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
             .set_default("coordinator.job_ttl_seconds", 3600)?
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 1)?
