@@ -97,6 +97,16 @@ impl InputsShmemWriter {
         Ok(())
     }
 
+    /// Set the C-side `ResetFlag` and wake all `sem_input_avail` waiters in
+    /// the correct order: flag first, then post. A child that wakes from a
+    /// post with `flag == 0` goes back to sleep and would never see a later
+    /// `set_reset_flag()`, so the two steps must always run together.
+    /// Cleared by the next job's `reset()`.
+    pub fn signal_reset(&self) -> Result<()> {
+        self.control_writer.set_reset_flag();
+        self.notify_all_services()
+    }
+
     pub fn reset(&self) {
         for writer in &self.writers {
             let mut w = writer.lock().unwrap();

@@ -47,7 +47,12 @@ message WorkerMessage {
     ExecuteTaskResponse execute_task_response = 5;
     JobCancelledAck job_cancelled_ack = 6;
     SetupProgramAck setup_program_ack = 7;
+    WorkerRecoveryComplete recovery_complete = 8;
   }
+}
+
+message WorkerRecoveryComplete {
+  string worker_id = 1;
 }
 
 message SetupProgram {
@@ -208,6 +213,7 @@ message ExecuteTaskResponse {
     FinalProof final_proof = 9;
     WrapResult wrap_result = 10;
   }
+  bool worker_in_recovery = 11;
 }
 
 message WitnessExecInfo {

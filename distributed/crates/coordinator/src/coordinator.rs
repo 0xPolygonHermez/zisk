@@ -53,13 +53,13 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{broadcast, RwLock};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
-    elf_cache_path, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto,
-    Job, JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto,
-    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
+    ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
+    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
+    PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
 };
-use zisk_common::SetupKey;
+use zisk_common::{SetupKey, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -67,6 +67,17 @@ struct SetupPendingState {
     hash_id: String,
     program_name: String,
     with_hints: bool,
+}
+
+/// Per-job event channel: live broadcast sender plus a one-slot stash for the
+/// terminal event so subscribers that arrive after termination can still read
+/// the final outcome (status + payload). Only the terminal event is retained —
+/// intermediate events are not.
+struct JobEventChannel {
+    tx: broadcast::Sender<CoordinatorJobEvent>,
+    /// Set exactly once when a terminal event fires; remains until the job is
+    /// evicted by the retention sweep.
+    terminal: Option<CoordinatorJobEvent>,
 }
 
 /// The main coordination service for managing distributed proof generation.
@@ -111,8 +122,13 @@ pub struct Coordinator {
     /// Number of reconnections accumulated.
     reconnections: AtomicU64,
 
-    /// Per-job event broadcast channels. Populated on job creation, cleaned up on terminal state.
-    job_events: RwLock<HashMap<JobId, broadcast::Sender<CoordinatorJobEvent>>>,
+    /// Per-job event channels. Populated on job creation; the live broadcast
+    /// sender stays alive across termination so late subscribers don't get
+    /// `None`. The terminal event itself is stashed inside the same entry at
+    /// termination time so late subscribers can read the final outcome.
+    /// Intermediate events are not retained. Entries are evicted by
+    /// `cleanup_expired_jobs` on the same TTL as `jobs`.
+    job_events: RwLock<HashMap<JobId, JobEventChannel>>,
 
     /// Tracks in-flight setup jobs: maps job_id to per-job state.
     /// Removed once all workers have acknowledged (or the job is cancelled/failed).
@@ -125,6 +141,11 @@ pub struct Coordinator {
     /// Dropping or sending `None` signals EOF to the relay thread.
     #[allow(clippy::type_complexity)]
     grpc_hints_senders: Arc<RwLock<HashMap<JobId, std::sync::mpsc::Sender<Option<Vec<u8>>>>>>,
+
+    /// Workers that owe a `WorkerRecoveryComplete`. Decoupled from
+    /// `WorkerState` so the intent survives a stream drop + reconnect
+    /// (which resets `WorkerState` to `default_state`).
+    pending_recovery: RwLock<HashSet<WorkerId>>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -155,6 +176,7 @@ impl Coordinator {
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
+            pending_recovery: RwLock::new(HashSet::new()),
         }
     }
 
@@ -176,7 +198,10 @@ impl Coordinator {
     /// Allocates a broadcast channel for the given job. Must be called before any event is fired.
     async fn alloc_job_events(&self, job_id: &JobId) {
         let (tx, _) = broadcast::channel(64);
-        self.job_events.write().await.insert(job_id.clone(), tx);
+        self.job_events
+            .write()
+            .await
+            .insert(job_id.clone(), JobEventChannel { tx, terminal: None });
     }
 
     /// Returns a live receiver for the job's event channel, or `None` if the job is unknown.
@@ -184,11 +209,21 @@ impl Coordinator {
         &self,
         job_id: &JobId,
     ) -> Option<broadcast::Receiver<CoordinatorJobEvent>> {
-        self.job_events.read().await.get(job_id).map(|tx| tx.subscribe())
+        self.job_events.read().await.get(job_id).map(|chan| chan.tx.subscribe())
+    }
+
+    /// Returns a clone of the stashed terminal event for a job, if one was recorded.
+    /// Used by API endpoints to read the final terminal outcome (with full result
+    /// payload or failure reason) for jobs that have already terminated. Survives
+    /// until the job is evicted by the retention sweep.
+    pub async fn get_terminal_event(&self, job_id: &JobId) -> Option<CoordinatorJobEvent> {
+        self.job_events.read().await.get(job_id).and_then(|chan| chan.terminal.clone())
     }
 
     /// Fires an event on the job's channel. Drops silently when there are no receivers.
-    /// Removes the channel from the map after a terminal event.
+    /// For terminal events, the event is also stashed inside the channel entry so
+    /// late subscribers can read it; the entry itself is kept alive (and evicted
+    /// later by `cleanup_expired_jobs`).
     async fn fire_job_event(&self, job_id: &JobId, event: CoordinatorJobEvent) {
         let terminal = matches!(
             event,
@@ -197,18 +232,23 @@ impl Coordinator {
                 | CoordinatorJobEvent::Cancelled
         );
 
-        {
-            let map = self.job_events.read().await;
-            if let Some(tx) = map.get(job_id) {
-                // send() only errors when there are no receivers — safe to ignore
-                let _ = tx.send(event);
-            }
-        }
-
         if terminal {
-            self.job_events.write().await.remove(job_id);
+            {
+                let mut map = self.job_events.write().await;
+                if let Some(chan) = map.get_mut(job_id) {
+                    // Skip the broadcast clone when nothing is listening —
+                    // terminal payloads (proof bytes) can be large and most
+                    // jobs terminate with no live watcher attached.
+                    if chan.tx.receiver_count() > 0 {
+                        let _ = chan.tx.send(event.clone());
+                    }
+                    chan.terminal.get_or_insert(event);
+                }
+            }
             // Dropping the sender signals EOF to any running gRPC hints relay.
             self.grpc_hints_senders.write().await.remove(job_id);
+        } else if let Some(chan) = self.job_events.read().await.get(job_id) {
+            let _ = chan.tx.send(event);
         }
     }
 
@@ -221,19 +261,36 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(false);
             }
             job.change_state(JobState::Cancelled);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
         };
 
+        // Park first, send JobCancelled second. The worker may emit
+        // `WorkerRecoveryComplete` immediately on receipt; if we sent the
+        // message before parking, that completion would arrive while the
+        // coordinator still saw the worker as `Computing(_)` and be dropped,
+        // wedging the worker once the parking finally lands.
+        let parked = self.workers_pool.mark_computing_workers_settingup(&worker_ids).await;
+        if !parked.is_empty() {
+            let mut pending = self.pending_recovery.write().await;
+            for wid in &parked {
+                pending.insert(wid.clone());
+            }
+        }
         self.cancel_job_workers(&worker_ids, job_id, "cancelled by client").await;
-        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_CANCELLED,
+            &worker_ids,
+            phase1_start,
+        );
 
         info!("Cancelled job {}", job_id);
 
@@ -247,7 +304,7 @@ impl Coordinator {
         hasher.update(&elf_bytes);
         let hash_id = hasher.finalize().to_hex().to_string();
 
-        let path = elf_cache_path(&hash_id);
+        let path = ZiskPaths::global().elf_cache(&hash_id);
         if !path.exists() {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)
@@ -255,6 +312,7 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
+            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
         }
 
         Ok(hash_id)
@@ -268,7 +326,7 @@ impl Coordinator {
         program_name: String,
         with_hints: bool,
     ) -> CoordinatorResult<JobId> {
-        let path = elf_cache_path(hash_id);
+        let path = ZiskPaths::global().elf_cache(hash_id);
         let elf_bytes =
             fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
@@ -347,7 +405,7 @@ impl Coordinator {
         let mut result = Vec::with_capacity(setups.len());
         for (key, program_name) in setups {
             let (hash_id, with_hints) = (key.hash_id, key.with_hints);
-            let path = elf_cache_path(&hash_id);
+            let path = ZiskPaths::global().elf_cache(&hash_id);
             match fs::read(&path) {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
                     job_id: JobId::new().as_string(),
@@ -444,7 +502,13 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        // Send Phase1 tasks to selected workers
+        // Increment `coordinator_active_jobs` BEFORE dispatch: even if dispatch
+        // fails, the job is already in `self.jobs` map and a later monitor
+        // timeout will call `record_job_terminal` (which decrements). Without
+        // the matching increment here, the gauge would underflow on the
+        // dispatch-failure path.
+        crate::metrics::record_job_started();
+
         let job = job_arc.read().await;
         self.dispatch_contributions_messages(&job, &active_workers).await?;
 
@@ -525,8 +589,10 @@ impl Coordinator {
     ///   coordinator server --webhook-url 'http://example.com/notify'
     ///   # becomes 'http://example.com/notify/12345'
     pub async fn post_launch_proof(&self, job_id: &JobId) -> CoordinatorResult<()> {
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
         let job = job_entry.read().await;
 
         // Check if webhook URL is configured and spawn it in a separate task
@@ -574,7 +640,10 @@ impl Coordinator {
         let duration_ms = job.duration_ms.unwrap_or(0);
         let job_state = job.state.clone();
         let executed_steps = job.executed_steps;
-        let proof_data = job.proof.as_ref().and_then(|p| bincode::serialize(p).ok());
+        let proof_data = job
+            .proof
+            .as_ref()
+            .and_then(|p| bincode::serde::encode_to_vec(p, bincode::config::standard()).ok());
 
         tokio::spawn(async move {
             const MAX_RETRIES: usize = 10;
@@ -738,12 +807,23 @@ impl Coordinator {
     /// * `job_id` - Identifier of the failing job
     /// * `reason` - Human-readable description of the failure cause
     pub async fn fail_job(&self, job_id: &JobId, reason: impl AsRef<str>) -> CoordinatorResult<()> {
+        self.fail_job_with_recovery(job_id, reason, None).await
+    }
+
+    /// Like `fail_job` but parks `recovering_worker` `SettingUp` until it
+    /// emits `WorkerRecoveryComplete`, instead of flipping it `Ready` directly.
+    pub async fn fail_job_with_recovery(
+        &self,
+        job_id: &JobId,
+        reason: impl AsRef<str>,
+        recovering_worker: Option<&WorkerId>,
+    ) -> CoordinatorResult<()> {
         let jobs_map = self.jobs.read().await;
         let job_entry =
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let worker_ids = {
+        let (worker_ids, phase1_start) = {
             let mut job = job_entry.write().await;
 
             // Prevent double-fail races (monitor + worker error racing)
@@ -752,15 +832,30 @@ impl Coordinator {
             }
 
             job.change_state(JobState::Failed);
-            job.workers.clone()
+            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
             // job write lock released here
         };
 
-        // These operations only need the worker IDs, not the job lock.
+        // Same ordering rule as `cancel_job`: insert `pending_recovery` and
+        // park `recovering_worker` BEFORE sending JobCancelled, otherwise an
+        // immediate `WorkerRecoveryComplete` from the worker can race ahead
+        // of the parking and be dropped.
+        match recovering_worker {
+            Some(rec) => {
+                self.pending_recovery.write().await.insert(rec.clone());
+                self.ensure_workers_ready_except(&worker_ids, rec).await;
+            }
+            None => self.ensure_workers_ready(&worker_ids).await,
+        }
         self.cancel_job_workers(&worker_ids, job_id, reason.as_ref()).await;
-        self.ensure_workers_ready(&worker_ids).await;
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.as_ref().to_string())).await;
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_FAILURE,
+            &worker_ids,
+            phase1_start,
+        );
 
         error!("Failed job {} (reason: {})", job_id, reason.as_ref());
 
@@ -770,8 +865,11 @@ impl Coordinator {
         // Ensure cleanup always runs even if it does.
         if let Err(e) = self.post_launch_proof(job_id).await {
             warn!("post_launch_proof failed for job {}: {} — forcing cleanup", job_id, e);
-            let jobs_map = self.jobs.read().await;
-            if let Some(job_entry) = jobs_map.get(job_id) {
+            let cleanup_entry = {
+                let jobs_map = self.jobs.read().await;
+                jobs_map.get(job_id).cloned()
+            };
+            if let Some(job_entry) = cleanup_entry {
                 job_entry.write().await.cleanup();
             }
         }
@@ -958,6 +1056,7 @@ impl Coordinator {
         self.check_phase_timeouts().await;
         self.check_stale_heartbeats().await;
         self.cleanup_stale_disconnected_workers().await;
+        self.cleanup_expired_jobs().await;
     }
 
     /// Checks all running jobs for phase timeouts and fails them if exceeded.
@@ -1039,9 +1138,80 @@ impl Coordinator {
     /// Removes worker entries that have been Disconnected for longer than the configured threshold.
     async fn cleanup_stale_disconnected_workers(&self) {
         let threshold_secs = self.config.coordinator.stale_disconnected_threshold_seconds;
-        self.workers_pool
+        let removed = self
+            .workers_pool
             .remove_stale_disconnected(chrono::Duration::seconds(threshold_secs as i64))
             .await;
+        if !removed.is_empty() {
+            let mut pending = self.pending_recovery.write().await;
+            for w in &removed {
+                pending.remove(w);
+            }
+        }
+    }
+
+    /// Evicts jobs that have been in a terminal state longer than the retention threshold.
+    ///
+    /// A job becomes eligible once `terminated_at + job_ttl_seconds <= now`.
+    /// Removes the job from `jobs`, and defensively from `job_events` and `grpc_hints_senders`
+    pub async fn cleanup_expired_jobs(&self) {
+        let retention_secs = self.config.coordinator.job_ttl_seconds;
+        let cutoff = Utc::now() - chrono::Duration::seconds(retention_secs as i64);
+
+        // Phase 1: snapshot (id, Arc) pairs and drop `jobs.read()` BEFORE
+        // awaiting any per-job lock. Holding `jobs.read()` across per-job
+        // awaits would let one stalled per-job writer pin us here, blocking
+        // anyone wanting `jobs.write()` for the duration (including this
+        // function's own later `jobs.write()` upgrade).
+        let entries: Vec<(JobId, Arc<RwLock<Job>>)> = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.iter().map(|(id, lock)| (id.clone(), lock.clone())).collect()
+        };
+
+        let mut expired: Vec<JobId> = Vec::new();
+        for (job_id, job_lock) in entries {
+            let job = job_lock.read().await;
+            if !job.state().is_resolved() {
+                continue;
+            }
+            if let Some(terminated_at) = job.terminated_at {
+                if terminated_at <= cutoff {
+                    expired.push(job_id);
+                }
+            }
+        }
+
+        if expired.is_empty() {
+            return;
+        }
+
+        // Phase 2: remove in batches under each map's write lock.
+        // Order matches `fire_job_event`: drop auxiliary state first so the canonical
+        // `jobs` entry is the last thing to disappear for any racing observer.
+        {
+            let mut events = self.job_events.write().await;
+            for id in &expired {
+                events.remove(id);
+            }
+        }
+        {
+            let mut senders = self.grpc_hints_senders.write().await;
+            for id in &expired {
+                senders.remove(id);
+            }
+        }
+        {
+            let mut jobs_map = self.jobs.write().await;
+            for id in &expired {
+                jobs_map.remove(id);
+            }
+        }
+
+        debug!(
+            "[Monitor] Evicted {} job(s) past retention window ({}s)",
+            expired.len(),
+            retention_secs
+        );
     }
 }
 
@@ -1259,19 +1429,22 @@ mod tests {
             worker_id: w0_id.clone(),
             success: true,
             error_message: None,
-            result_data: ExecuteTaskResponseResultDataDto::Execution(ExecutionResultDataDto {
-                instances: 1,
-                executed_steps: 100,
-                zisk_executor_time: ZiskExecutorTimeDto {
-                    total_duration: 0.0,
-                    execution_duration: 0.0,
-                    count_and_plan_duration: 0.0,
-                    count_and_plan_mo_duration: 0.0,
-                    asm_execution_duration: None,
-                    task_received_time: 0.0,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Execution(
+                ExecutionResultDataDto {
+                    instances: 1,
+                    executed_steps: 100,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        total_duration: 0.0,
+                        execution_duration: 0.0,
+                        count_and_plan_duration: 0.0,
+                        count_and_plan_mo_duration: 0.0,
+                        asm_execution_duration: None,
+                        task_received_time: 0.0,
+                    },
+                    publics: vec![],
                 },
-                publics: vec![],
-            }),
+            )),
+            worker_in_recovery: false,
         };
 
         // Should succeed (not error) — the late response is silently discarded
@@ -1284,6 +1457,204 @@ mod tests {
         // Job should still be Failed (not revived)
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_late_task_response_with_recovery_parks_settingup() {
+        use zisk_cluster_common::ExecuteTaskResponseDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        coordinator.fail_job(&job_id, "intentional").await.unwrap();
+
+        let w0_id = workers[0].0.clone();
+        let late_response = ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: w0_id.clone(),
+            success: false,
+            error_message: Some("contribution failed".into()),
+            result_data: None,
+            worker_in_recovery: true,
+        };
+
+        coordinator.handle_stream_execute_task_response(late_response).await.unwrap();
+
+        let state = coordinator.workers_pool.worker_state(&w0_id).await;
+        assert_eq!(state, Some(WorkerState::SettingUp));
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    #[tokio::test]
+    async fn test_recovery_complete_survives_reconnect() {
+        use zisk_cluster_common::WorkerReconnectRequestDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job_with_recovery(&job_id, "task failed", Some(&w0_id)).await.unwrap();
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
+
+        let (sender2, _msgs2) = MockMessageSender::new();
+        let req = WorkerReconnectRequestDto {
+            worker_id: w0_id.clone(),
+            compute_capacity: 1u32.into(),
+            last_known_job_id: None,
+        };
+        let (accepted, _msg, _directive, _setup) =
+            coordinator.handle_stream_reconnection(req, Box::new(sender2)).await;
+        assert!(accepted);
+
+        // Reconnect must preserve the recovery intent.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    /// `WorkerRecoveryComplete` arriving on the new stream before the failure
+    /// response lands on the old stream must still flip the worker Ready.
+    #[tokio::test]
+    async fn test_recovery_complete_handles_cross_stream_race() {
+        let (coordinator, workers, _job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+    }
+
+    /// `WorkerRecoveryComplete` must not clobber a `Computing(_)` state — a
+    /// re-dispatched worker is owned by the dispatcher.
+    #[tokio::test]
+    async fn test_recovery_complete_does_not_clobber_computing() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.pending_recovery.write().await.insert(w0_id.clone());
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0_id,
+                WorkerState::Computing((job_id.clone(), JobPhase::Prove)),
+            )
+            .await
+            .unwrap();
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::Computing((job_id, JobPhase::Prove)))
+        );
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
+    }
+
+    /// A stray `WorkerRecoveryComplete` with no `pending_recovery` record
+    /// must not pre-empt an in-flight `SetupProgramAck`.
+    #[tokio::test]
+    async fn test_recovery_complete_yields_to_setup_in_flight() {
+        let (coordinator, workers, _job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+        let setup_job_id = JobId::new();
+        coordinator.setup_pending.write().await.insert(
+            setup_job_id,
+            SetupPendingState {
+                pending: [w0_id.clone()].into_iter().collect(),
+                vks: Vec::new(),
+                hash_id: "h".into(),
+                program_name: "p".into(),
+                with_hints: false,
+            },
+        );
+
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w0_id).await,
+            Some(WorkerState::SettingUp)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_job_populates_pending_recovery() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        let w_ids: Vec<_> = workers.iter().map(|(id, _)| id.clone()).collect();
+
+        coordinator.cancel_job(&job_id).await.unwrap();
+
+        for wid in &w_ids {
+            assert_eq!(
+                coordinator.workers_pool.worker_state(wid).await,
+                Some(WorkerState::SettingUp)
+            );
+            assert!(
+                coordinator.pending_recovery.read().await.contains(wid),
+                "worker {} must be in pending_recovery after cancel",
+                wid
+            );
+        }
+    }
+
+    /// Non-Computing workers don't owe a `WorkerRecoveryComplete` — they
+    /// must not end up in `pending_recovery`.
+    #[tokio::test]
+    async fn test_cancel_job_skips_non_computing_workers() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+        let w0 = workers[0].0.clone();
+        let w1 = workers[1].0.clone();
+
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::Ready).await.unwrap();
+
+        coordinator.cancel_job(&job_id).await.unwrap();
+
+        let pending = coordinator.pending_recovery.read().await;
+        assert!(!pending.contains(&w0), "non-computing worker must not be in pending_recovery");
+        assert!(pending.contains(&w1), "computing worker must be in pending_recovery");
+    }
+
+    #[tokio::test]
+    async fn test_unregister_worker_clears_pending_recovery() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job_with_recovery(&job_id, "task failed", Some(&w0_id)).await.unwrap();
+        assert!(coordinator.pending_recovery.read().await.contains(&w0_id));
+
+        coordinator.unregister_worker(&w0_id).await.unwrap();
+
+        assert!(!coordinator.pending_recovery.read().await.contains(&w0_id));
     }
 
     #[tokio::test]

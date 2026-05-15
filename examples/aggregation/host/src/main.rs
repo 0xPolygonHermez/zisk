@@ -1,11 +1,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProfilingMode, ProverClient, ZiskStdin};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {
-    n: u32,
-    module: u32,
+    n: u16,
+    module: u8,
     b: u32,
 }
 
@@ -16,8 +16,8 @@ static PROGRAM2: GuestProgram = load_program!("guest-agg");
 async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
 
-    // Create an input stream and write '1000' to it.
-    let n = 1000u32;
+    // Create an input stream and write '2000' to it.
+    let n = 2000u16;
     let stdin = ZiskStdin::new();
     stdin.write(&n);
 
@@ -46,12 +46,12 @@ async fn main() -> Result<()> {
 
     let publics: GuestPublics = result.get_public_values()?;
 
-    let expected_module: u32 = 233;
+    let expected_module: u8 = 233;
     let expected_b = {
         let mut a: u32 = 0;
         let mut b: u32 = 1;
         for _ in 0..n {
-            let c = (a + b) % expected_module;
+            let c = (a + b) % expected_module as u32;
             a = b;
             b = c;
         }
@@ -80,8 +80,11 @@ async fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    stdin_aggregation.write(&vadcop_result1.get_proof_bytes());
-    stdin_aggregation.write(&vadcop_result2.get_proof_bytes());
+    stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
+    stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
+
+    println!("Running ZisK Emulator on aggregation program for profiling...");
+    zisk_sdk::run(&PROGRAM2, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
 
     let result_aggregation = client.prove(&PROGRAM2, stdin_aggregation).run()?.await?;
 

@@ -14,11 +14,8 @@ use std::time::Duration;
 use crate::setup::SetupResult;
 use anyhow::Result;
 use zisk_common::ProofKind;
-use zisk_common::{ProgramVK, Proof, PublicValues};
-use zisk_prover_backend::{
-    get_proving_key, get_proving_key_snark, Asm, AsmOptions, AsmProver, Emu, EmuProver,
-    GuestProgram, ZiskProver,
-};
+use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
+use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
@@ -145,13 +142,13 @@ impl EmbeddedClientBuilder {
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
         }
-        let pk = get_proving_key(backend_opts.get_proving_key());
-        let pk_snark = get_proving_key_snark(backend_opts.get_proving_key_snark());
+        let pk = ZiskPaths::get_proving_key(backend_opts.get_proving_key());
+        let pk_snark = ZiskPaths::get_proving_key_snark(backend_opts.get_proving_key_snark());
         let prover = match self.executor {
             ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, backend_opts, self.proof_kind)?,
             ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, backend_opts, self.proof_kind)?,
         };
-        Ok(EmbeddedClient { prover: Arc::new(prover) })
+        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor })
     }
 
     fn build_emu(
@@ -203,15 +200,20 @@ enum EmbeddedProver {
 
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
+    executor: ExecutorKind,
 }
 
 impl Clone for EmbeddedClient {
     fn clone(&self) -> Self {
-        Self { prover: Arc::clone(&self.prover) }
+        Self { prover: Arc::clone(&self.prover), executor: self.executor }
     }
 }
 
 impl Client for EmbeddedClient {
+    fn default_executor(&self) -> ExecutorKind {
+        self.executor
+    }
+
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
         self.do_upload(program)
     }

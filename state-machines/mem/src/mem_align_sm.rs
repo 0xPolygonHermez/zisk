@@ -623,9 +623,9 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
                     value_row.set_reg(i, {
                         if i < rem_bytes {
-                            second_write_row.get_reg(i)
+                            Self::get_byte(value_second_write, i, 0)
                         } else if i >= offset {
-                            first_write_row.get_reg(i)
+                            Self::get_byte(value_first_write, i, 0)
                         } else {
                             Self::get_byte(value, i, CHUNK_NUM - offset)
                         }

@@ -172,7 +172,7 @@ void MemCounter::execute_chunk(uint32_t chunk_id, const MemCountersBusData *chun
                     if ((aligned_addr & ADDR_MASK) == addr_mask) {
                         incr_counter(aligned_addr, chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
                     }
-                    else if (((aligned_addr + 7) & ADDR_MASK) == addr_mask) {
+                    else if (((addr + 7) & ADDR_MASK) == addr_mask) {
                         incr_counter(aligned_addr + 8 , chunk_id, false, chunk_data->flags & MOPS_WRITE_FLAG);
                     }
                 }

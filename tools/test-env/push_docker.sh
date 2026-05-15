@@ -2,12 +2,15 @@
 
 set -e
 
+IMAGE_NAME="zisk-test-env"
+PUSH_IMAGE="ziskvm/zisk-runner"
+
 # Check if --gpu was passed
-DOCKER_IMAGE="zisk-test-env"
 if [[ "$1" == "--gpu" ]]; then
-    DOCKER_IMAGE="${DOCKER_IMAGE}-gpu"
+    IMAGE_NAME="${IMAGE_NAME}-gpu"
+    PUSH_IMAGE="${PUSH_IMAGE}-gpu"
 fi
 
-echo "Pushing Docker image ${DOCKER_IMAGE}..."
-docker tag zisk-test-env:latest ziskvm/${DOCKER_IMAGE}:latest
-docker push ziskvm/${DOCKER_IMAGE}:latest
+echo "Pushing Docker image ${PUSH_IMAGE}..."
+docker tag ${IMAGE_NAME}:latest ${PUSH_IMAGE}:latest
+docker push ${PUSH_IMAGE}:latest

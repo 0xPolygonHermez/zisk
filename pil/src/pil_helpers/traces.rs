@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "647895f302c180f9204fa4fbd9a6829c7b99a0248605f5621f14b38edcee0a36";
+pub const PILOUT_HASH: &str = "921a1548756c4957d14c3e75a7d7f272379ef98f99d963ddcf020851376e17e5";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -113,7 +113,7 @@ fn default_array_inputs() -> [u64; 64] {
 
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PublicValues {
+pub struct ZiskPublics {
     #[serde(default = "default_array_rom_root", with = "serde_arrays")]
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
@@ -121,7 +121,7 @@ pub struct PublicValues {
     
 }
 
-impl Default for PublicValues {
+impl Default for ZiskPublics {
     fn default() -> Self {
         Self {  
             rom_root: [0; 4],  
@@ -430,7 +430,7 @@ trace_row!(ArithEqFixedRow<F> {
 pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 26>;
 
 trace_row!(ArithEqTraceRow<F> {
- x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 11], sel_op_clk0:[bit; 11], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 11], sel_op_clk0:[bit; 11], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
 pub type ArithEqTrace<R> = GenericTrace<R, 1048576, 0, 26>;
@@ -441,7 +441,7 @@ trace_row!(ArithEq384FixedRow<F> {
 pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 27>;
 
 trace_row!(ArithEq384TraceRow<F> {
- x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, carry:[[u64; 2]; 3], step_addr:ubit(40),
+ x1:u16, y1:u16, x2:u16, y2:u16, x3:u16, y3:u16, q0:ubit(22), q1:ubit(22), q2:ubit(22), s:ubit(22), sel_op:[bit; 6], sel_op_clk0:[bit; 6], x_delta_chunk_inv:u64, x_are_different:bit, x3_lt:bit, y3_lt:bit, delta_x3:u64, delta_y3:u64, carry:[[u64; 2]; 3], step_addr:ubit(40),
 });
 
 pub type ArithEq384Trace<R> = GenericTrace<R, 1048576, 0, 27>;
@@ -502,12 +502,12 @@ trace_row!(SpecifiedRangesTraceRow<F> {
 pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 1048576, 0, 32>;
 
 trace_row!(VirtualTable0FixedRow<F> {
- UID: [F; 8], column: [F; 43], __L1__: F,
+ UID: [F; 9], column: [F; 50], __L1__: F,
 });
 pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 33>;
 
 trace_row!(VirtualTable0TraceRow<F> {
- multiplicity:[F; 8],
+ multiplicity:[F; 9],
 });
 
 pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 33>;
@@ -861,13 +861,13 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 26, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 11,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 27, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 11,
-        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 40],
+        num_packed_words: 13,
+        unpack_info: &[16, 16, 16, 16, 16, 16, 22, 22, 22, 22, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 40],
     }),
     (0, 28, PackedInfoConst {
         is_packed: true,

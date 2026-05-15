@@ -1,37 +1,96 @@
 require "std_lookup.pil"
 require "opids.pil"
 
-airtemplate ArithEqLtTable (const int N = 2**18) {
+// This table validates the less-than (LT) comparison performed chunk by chunk across clocks.
+//
+// Each lookup provides two values: [LT_T, DELTA], where:
+//   LT_T  = 4 * CLK_SELECTOR + 2 * 'lt + lt    (encodes clock type + borrow transition)
+//   DELTA = chunk_A - chunk_B                   (signed 16-bit difference)
+//
+// The borrow bit 'lt is propagated from the previous clock (lower-order chunk), and lt is the
+// result for the current clock (higher-order chunk). The LT rule per chunk is:
+//   DELTA < 0  ==>  lt = 1    (A < B on this chunk)
+//   DELTA = 0  ==>  lt = 'lt  (tie: propagate borrow)
+//   DELTA > 0  ==>  lt = 0    (A > B on this chunk)
+//
+// CLK_SELECTOR values:
+//   0 - Middle clocks: standard borrow propagation, all four ('lt, lt) combinations valid.
+//   1 - First clock:   'lt is ignored (treated as 0), same ranges as middle but
+//                      cases (1,0) and (1,1) are mapped to (0,0) and (0,1) respectively.
+//   2 - Last clock:    lt must be 1 (final borrow must exist); only the two cases
+//                      where lt=1 are included, so any attempt to prove lt=0 at the
+//                      last clock will fail the lookup.
+//
+// Table size: 2^18 (middle) + 2^18 (first) + 2^17 (last) = ARITH_EQ_LT_TABLE_SIZE rows.
 
-    // LT_T =  2 * 'lt + lt
+const int ARITH_EQ_LT_TABLE_SIZE = 2**18 + 2**18 + 2**17;
+
+airtemplate ArithEqLtTable (const int N = ARITH_EQ_LT_TABLE_SIZE) {
+
+    // LT_T =  4 * CLK_SELECTOR + 2 * 'lt + lt
 
     const int MAX16 = (2**16) - 1;
     const int MIN16 = -MAX16;
     const int P2_16_MINUS_1 = (2**16) - 1;
 
+    // invalid combination (unused row, acts as padding)
     const int __ = 0xFF;
 
-    // A - B < 0 ==> lt = 1    (A < B)
-    // A - B = 0 ==> lt = 'lt  (A = B)
-    // A - B > 0 ==> lt = 0    (A > B)
+    // Middle Clocks (CLK_SELECTOR = 0)  — standard borrow propagation
+    // 'lt => lt  LT_T   valid DELTA range
+    //   0 => 0     0    A - B >= 0  [ 0,  2^16-1]
+    //   0 => 1     1    A - B < 0   [-1, -2^16-1]
+    //   1 => 0     2    A - B > 0   [ 1,  2^16-1]
+    //   1 => 1     3    A - B <= 0  [ 0, -2^16-1]
 
-    // 'lt => lt  LT_T
-    //   0 => 0     0   A - B >= 0  [ 0,  2^16-1]
-    //   0 => 1     1   A - B < 0   [-1, -2^16-1]
-    //   1 => 0     2   A - B > 0   [ 1,  2^16-1]
-    //   1 => 1     3   A - B <= 0  [ 0, -2^16-1]
+    // First Clock (CLK_SELECTOR = 1)  — 'lt ignored, behaves as 'lt = 0
+    // 'lt => lt  LT_T   valid DELTA range
+    //   0 => 0     4    A - B >= 0  [ 0,  2^16-1]
+    //   0 => 1     5    A - B < 0   [-1, -2^16-1]
+    //   1 => 0     6    A - B >= 0  [ 0,  2^16-1]   (same range as case 4)
+    //   1 => 1     7    A - B < 0   [-1, -2^16-1]   (same range as case 5)
 
-    col fixed LT_T = [0:2**16,
+    // Last Clock (CLK_SELECTOR = 2)  — only lt = 1 entries exist (borrow must be set)
+    // 'lt => lt  LT_T   valid DELTA range
+    //   0 => 1     9    A - B < 0   [-1, -2^16-1]
+    //   1 => 1    11    A - B <= 0  [ 0, -2^16-1]
+
+    col fixed LT_T = [
+                    // middle clocks                  
+                      0:2**16,              
                       1:P2_16_MINUS_1,
                       __,
                       2:P2_16_MINUS_1,
                       __,
-                      3:2**16];
+                      3:2**16,
+                    // first clock
+                      4:2**16,
+                      5:P2_16_MINUS_1,
+                      __,
+                      6:2**16,
+                      7:P2_16_MINUS_1,
+                      __,
+                    // last clock
+                      9:P2_16_MINUS_1,
+                      __,
+                      11:2**16
+                    ];
 
-    col fixed DELTA = [ 0..MAX16,
+    col fixed DELTA = [ 
+                    // middle clocks                  
+                        0..MAX16,
                        -1..MIN16, 0,
                         1..MAX16, 0,
-                        0..MIN16];
+                        0..MIN16,
+                    // first clock
+                        0..MAX16,
+                       -1..MIN16, 0,
+                        0..MAX16,
+                       -1..MIN16, 0,
+                    // last clock                       
+                       -1..MIN16, 0,
+                        0..MIN16
+                    ];
 
     col witness multiplicity;
 

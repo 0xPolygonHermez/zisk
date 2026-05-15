@@ -1,9 +1,9 @@
 // extern crate env_logger;
-use crate::common::{get_proving_key, get_proving_key_snark};
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_common::ZiskPaths;
 
 use fields::Goldilocks;
 
@@ -53,7 +53,7 @@ impl ZiskCheckSetup {
         let gpu = false;
 
         ProofMan::<Goldilocks>::check_setup(
-            get_proving_key(self.proving_key.as_ref())?,
+            ZiskPaths::get_proving_key(self.proving_key.as_ref()),
             !self.no_aggregation,
             self.verbose.into(),
             gpu,
@@ -62,7 +62,7 @@ impl ZiskCheckSetup {
 
         if self.plonk {
             check_setup_snark::<Goldilocks>(
-                &get_proving_key_snark(self.proving_key_plonk.as_ref())?,
+                &ZiskPaths::get_proving_key_snark(self.proving_key_plonk.as_ref()),
                 self.verbose.into(),
                 gpu,
             )
