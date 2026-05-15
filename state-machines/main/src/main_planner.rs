@@ -41,11 +41,11 @@ impl MainPlanner {
         let chunk_size: usize = chunk_size.try_into()?;
 
         if !chunk_size.is_power_of_two() {
-            return Err(MainSmError::MinTraceSizeNotPowerOfTwo { size: chunk_size });
+            return Err(MainSmError::ChunkSizeNotPowerOfTwo { size: chunk_size });
         }
 
         if NUM_ROWS < chunk_size {
-            return Err(MainSmError::MinTraceSizeTooBig { min_traces_size: chunk_size, num_rows: NUM_ROWS });
+            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: NUM_ROWS });
         }
 
         // Number of minimal traces wrapped in a main trace.
@@ -88,7 +88,7 @@ mod tests {
     fn min_traces_size_not_power_of_two_errors() {
         let traces = n_default_traces(1);
         let err = MainPlanner::plan(&traces, 3).unwrap_err();
-        assert!(matches!(err, MainSmError::MinTraceSizeNotPowerOfTwo { size: 3 }));
+        assert!(matches!(err, MainSmError::ChunkSizeNotPowerOfTwo { size: 3 }));
     }
 
     #[test]
@@ -96,7 +96,7 @@ mod tests {
         // 0 is not a power of two per Rust's `is_power_of_two()` definition.
         let traces = n_default_traces(1);
         let err = MainPlanner::plan(&traces, 0).unwrap_err();
-        assert!(matches!(err, MainSmError::MinTraceSizeNotPowerOfTwo { size: 0 }));
+        assert!(matches!(err, MainSmError::ChunkSizeNotPowerOfTwo { size: 0 }));
     }
 
     #[test]
@@ -105,7 +105,7 @@ mod tests {
         let traces = n_default_traces(1);
         let oversized = (NUM_ROWS as u64) * 2;
         let err = MainPlanner::plan(&traces, oversized).unwrap_err();
-        assert!(matches!(err, MainSmError::MinTraceSizeTooBig { .. }));
+        assert!(matches!(err, MainSmError::ChunkSizeTooBig { .. }));
     }
 
     #[test]
