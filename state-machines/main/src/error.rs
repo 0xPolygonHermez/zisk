@@ -46,9 +46,9 @@ pub enum MainSmError {
     //     slot: u8,
     // },
 
-    // /// An internal error occurred.
-    // #[error("{0}")]
-    // Internal(String),
+    /// Conversion of a `u64` quantity into `usize` failed on this target.
+    #[error("integer conversion to usize failed: {0}")]
+    IntConversion(#[from] std::num::TryFromIntError),
 }
 
 impl From<MainSmError> for proofman_common::ProofmanError {

@@ -30,6 +30,7 @@ impl MainPlanner {
     /// Returns a `MainSmError` when:
     /// - The `min_traces_size` is not a power of two ([`MainSmError::MinTraceSizeNotPowerOfTwo`]).
     /// - The `min_traces_size` exceeds the row capacity of `MainTrace` ([`MainSmError::MinTraceSizeTooBig`]).
+    /// - A `u64` quantity could not be converted to `usize` on this target ([`MainSmError::IntConversion`]).
     pub fn plan(min_traces: &[EmuTrace], min_traces_size: u64) -> Result<Vec<Plan>> {
         const NUM_ROWS: u64 = MainTrace::<()>::NUM_ROWS as u64;
 
@@ -51,12 +52,12 @@ impl MainPlanner {
             return Err(MainSmError::MinTraceSizeTooBig { min_traces_size, num_rows: NUM_ROWS });
         }
 
-        // This is the number of minimal traces wrapped in a main trace.
-        // NUM_ROWS / min_traces_size <= NUM_ROWS, and NUM_ROWS is asserted to
-        // fit in usize at compile time above, so the cast is exact.
-        #[allow(clippy::cast_possible_truncation)]
-        let num_within = (NUM_ROWS / min_traces_size) as usize;
-        let num_instances = min_traces.len().div_ceil(num_within);
+        // Number of minimal traces wrapped in a main trace.
+        let num_within = NUM_ROWS / min_traces_size;
+
+        // Number of `Main` segments needed to cover all the execution trace.
+        let num_instances: u64 = (min_traces.len() as u64).div_ceil(num_within);
+        let num_instances: usize = num_instances.try_into()?;
 
         Ok((0..num_instances)
             .map(|segment_id| {
