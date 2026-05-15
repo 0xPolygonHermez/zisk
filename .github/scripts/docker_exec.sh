@@ -30,5 +30,6 @@ _cleanup() {
 }
 trap _cleanup INT TERM
 
+# Run the command in the container
 docker exec "${EXEC_OPTS[@]}" "${TEST_CONTAINER}" "$@" &
 wait $!
