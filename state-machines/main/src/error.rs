@@ -11,18 +11,18 @@ pub type Result<T> = std::result::Result<T, MainSmError>;
 /// Errors produced by the Main State Machine planner and witness pipeline.
 #[derive(Debug, thiserror::Error)]
 pub enum MainSmError {
-    /// The minimal trace size is not a power of two.
-    #[error("min_traces_size ({size}) must be a power of two")]
-    MinTraceSizeNotPowerOfTwo {
-        /// The offending minimal trace size.
+    /// The chunk size is not a power of two.
+    #[error("chunk_size ({size}) must be a power of two")]
+    ChunkSizeNotPowerOfTwo {
+        /// The offending chunk size.
         size: usize,
     },
 
-    /// The configured minimal trace size exceeds the row capacity of `MainTrace`.
-    #[error("min_traces_size ({min_traces_size}) exceeds MainTrace::NUM_ROWS ({num_rows})")]
-    MinTraceSizeTooBig {
+    /// The configured chunk size exceeds the row capacity of `MainTrace`.
+    #[error("chunk_size ({chunk_size}) exceeds MainTrace::NUM_ROWS ({num_rows})")]
+    ChunkSizeTooBig {
         /// The offending minimal trace size.
-        min_traces_size: usize,
+        chunk_size: usize,
         /// The fixed row count of `MainTrace`.
         num_rows: usize,
     },

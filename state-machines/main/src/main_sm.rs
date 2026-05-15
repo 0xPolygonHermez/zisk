@@ -75,14 +75,29 @@ impl<F: PrimeField64> MainInstance<F> {
         chunk_size: u64,
         trace_buffer: Vec<F>,
     ) -> Result<AirInstance<F>, MainSmError> {
-        // Create the main trace buffer
         const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
+
+        // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
+        const _: () =
+            assert!(NUM_ROWS.is_power_of_two(), "MainTrace::NUM_ROWS must be a power of two",);
+
+        let chunk_size: usize = chunk_size.try_into()?;
+
+        if !chunk_size.is_power_of_two() {
+            return Err(MainSmError::ChunkSizeNotPowerOfTwo { size: chunk_size });
+        }
+
+        if NUM_ROWS < chunk_size {
+            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: NUM_ROWS });
+        }
+
+        // Create the main trace buffer
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
         let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
 
         // Determine the number of minimal traces per segment
-        let num_within = NUM_ROWS / chunk_size as usize;
+        let num_within = NUM_ROWS / chunk_size;
 
         // Determine trace slice for the current segment
         let start_idx = segment_id.as_usize() * num_within;
@@ -107,8 +122,9 @@ impl<F: PrimeField64> MainInstance<F> {
         let (initial_step, final_step) = Self::mem_steps_for_segment(segment_id, NUM_ROWS);
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
-        // minimal trace.
-        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP;
+        // minimal trace. `chunk_size <= NUM_ROWS` and `MEM_STEPS_BY_MAIN_STEP` is a small
+        // constant, so `chunk_size * MEM_STEPS_BY_MAIN_STEP` fits in usize by construction.
+        let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP as usize;
 
         // We know each register's previous step, but only by instance. We don't have this
         // information by chunk, so we need to store in the EmuRegTrace the location of the
@@ -121,7 +137,7 @@ impl<F: PrimeField64> MainInstance<F> {
             .enumerate()
             .take(segment_min_traces.len())
             .map(|(chunk_id, chunk)| {
-                let mut step_range_check = vec![0; max_range as usize];
+                let mut step_range_check = vec![0; max_range];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
                 let (pc, regs) = Self::fill_partial_trace::<R>(
@@ -138,7 +154,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_result = fill_trace_outputs.last().ok_or(MainSmError::EmptyFillTraceOutput)?;
         let next_pc = last_result.0;
 
-        let mut step_range_check: Vec<u32> = (0..max_range as usize)
+        let mut step_range_check: Vec<u32> = (0..max_range)
             .into_par_iter()
             .map(|i| fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum())
             .collect();
