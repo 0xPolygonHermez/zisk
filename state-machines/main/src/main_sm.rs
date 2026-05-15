@@ -9,12 +9,13 @@
 
 use std::sync::Arc;
 
+use crate::MainSmError;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
 use rayon::prelude::*;
-use zisk_common::{EmuTrace, InstanceCtx, SegmentId};
+use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
@@ -66,12 +67,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
-        let segment_id = self.ictx.plan.segment_id.unwrap();
-
-        let is_last_segment =
-            self.ictx.plan.meta.as_ref().and_then(|m| m.downcast_ref::<bool>()).unwrap_or_else(
-                || panic!("create_main_instance: Invalid metadata format, expected bool"),
-            );
+        let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
 
         // Determine the number of minimal traces per segment
         let num_rows = main_trace.num_rows();
@@ -167,7 +163,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut air_values = MainAirValues::<F>::new();
 
         air_values.main_segment = F::from_usize(segment_id.into());
-        air_values.main_last_segment = F::from_bool(*is_last_segment);
+        air_values.main_last_segment = F::from_bool(is_last_segment);
         air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
@@ -354,6 +350,22 @@ impl<F: PrimeField64> MainInstance<F> {
         );
         (initial_step, final_step)
     }
+
+    /// Decodes `segment_id` and `is_last_segment` from the plan handed to this
+    /// instance.
+    ///
+    /// Returns `Err(MissingSegmentId)` if the plan has no `segment_id`, and
+    /// `Err(InvalidSegmentMetadata)` if the metadata is missing or isn't a `bool`.
+    fn decode_plan(plan: &Plan) -> std::result::Result<(SegmentId, bool), MainSmError> {
+        let segment_id = plan.segment_id.ok_or(MainSmError::MissingSegmentId)?;
+        let is_last_segment = plan
+            .meta
+            .as_ref()
+            .and_then(|m| m.downcast_ref::<bool>())
+            .copied()
+            .ok_or(MainSmError::InvalidSegmentMetadata)?;
+        Ok((segment_id, is_last_segment))
+    }
 }
 
 /// The `MainSM` struct represents the Main State Machine,
@@ -421,5 +433,50 @@ mod tests {
         let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0), 1);
         assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
         assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(0));
+    }
+
+    // ---- decode_plan -------------------------------------------------------
+
+    use std::any::Any;
+    use zisk_common::{CheckPoint, ChunkId, InstanceType};
+
+    fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
+        Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
+    }
+
+    #[test]
+    fn decode_plan_returns_segment_id_and_last_flag() {
+        let plan = make_plan(Some(SegmentId(5)), Some(Box::new(true)));
+        let (id, is_last) = MI::decode_plan(&plan).expect("valid plan");
+        assert_eq!(id, SegmentId(5));
+        assert!(is_last);
+    }
+
+    #[test]
+    fn decode_plan_returns_false_for_non_last_segment() {
+        let plan = make_plan(Some(SegmentId(2)), Some(Box::new(false)));
+        let (_id, is_last) = MI::decode_plan(&plan).expect("valid plan");
+        assert!(!is_last);
+    }
+
+    #[test]
+    fn decode_plan_missing_segment_id_errors() {
+        let plan = make_plan(None, Some(Box::new(true)));
+        let err = MI::decode_plan(&plan).unwrap_err();
+        assert!(matches!(err, MainSmError::MissingSegmentId));
+    }
+
+    #[test]
+    fn decode_plan_wrong_metadata_type_errors() {
+        let plan = make_plan(Some(SegmentId(0)), Some(Box::new(42i32)));
+        let err = MI::decode_plan(&plan).unwrap_err();
+        assert!(matches!(err, MainSmError::InvalidSegmentMetadata));
+    }
+
+    #[test]
+    fn decode_plan_missing_metadata_errors() {
+        let plan = make_plan(Some(SegmentId(0)), None);
+        let err = MI::decode_plan(&plan).unwrap_err();
+        assert!(matches!(err, MainSmError::InvalidSegmentMetadata));
     }
 }
