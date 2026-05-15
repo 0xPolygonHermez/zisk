@@ -60,8 +60,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Errors
     /// Returns a [`MainSmError`] when:
-    /// - A `proofman_common` operation fails — e.g. `MainTrace::new_from_vec`
-    ///   rejecting a mis-sized `trace_buffer` ([`MainSmError::Proofman`]).
+    /// - A Proofman error ([`MainSmError::Proofman`]).
     /// - The plan is missing a `segment_id` ([`MainSmError::MissingSegmentId`]).
     /// - The plan metadata is not the expected `bool`
     ///   ([`MainSmError::InvalidSegmentMetadata`]).
@@ -69,11 +68,6 @@ impl<F: PrimeField64> MainInstance<F> {
     ///   ([`MainSmError::EmptyFillTraceOutput`]).
     /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
     ///   ([`MainSmError::InvalidSlot`]).
-    ///
-    /// # Panics
-    /// Panics if `pil_std_lib` cannot resolve the range IDs used for the `mem_step`
-    /// and `segment_id` range checks. This indicates a setup-time configuration
-    /// error in the standard library, not a runtime condition.
     pub fn compute_witness<R: MainTraceRowOps<F>>(
         &self,
         zisk_rom: &ZiskRom,
@@ -194,7 +188,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut step_range_check,
             &mut large_range_checks,
         );
-        self.update_std_range_checks(segment_id, step_range_check, &large_range_checks);
+        self.update_std_range_checks(segment_id, step_range_check, &large_range_checks)?;
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))
@@ -256,7 +250,7 @@ impl<F: PrimeField64> MainInstance<F> {
         main_trace: &mut MainTrace<R>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
-    ) -> std::result::Result<Vec<u32>, MainSmError> {
+    ) -> Result<Vec<u32>, MainSmError> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
         for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
@@ -333,26 +327,30 @@ impl<F: PrimeField64> MainInstance<F> {
             }
         }
     }
+
+    /// Updates the standard library range checks for the main instance
+    /// based on the provided segment ID, step range checks, and large range checks.
+    ///
+    /// # Errors
+    /// Returns [`MainSmError::Proofman`] if `pil_std_lib::Std::get_range_id` fails
+    /// to resolve the range IDs for the `mem_step` or `segment_id` range checks.
+    /// This indicates a setup-time misconfiguration of the standard library.
     fn update_std_range_checks(
         &self,
         segment_id: SegmentId,
         step_range_check: Vec<u32>,
         large_range_checks: &[u32],
-    ) {
-        let range_id = self
-            .std
-            .get_range_id(0, MEM_REGS_MAX_DIFF as i64, None)
-            .expect("Failed to get range ID");
+    ) -> Result<(), MainSmError> {
+        let range_id = self.std.get_range_id(0, MEM_REGS_MAX_DIFF as i64, None)?;
         self.std.range_checks(range_id, step_range_check);
 
         for range in large_range_checks {
             self.std.range_check(range_id, *range as i64, 1);
         }
-        let range_id = self
-            .std
-            .get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)
-            .expect("Failed to get range ID");
+
+        let range_id = self.std.get_range_id(0, Self::MAX_SEGMENT_ID as i64, None)?;
         self.std.range_check(range_id, segment_id.as_usize() as i64, 1);
+        Ok(())
     }
 
     /// Computes the boundary mem-steps for a given segment of the main trace.
@@ -381,7 +379,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// - [`MainSmError::MissingSegmentId`] if the plan has no `segment_id`.
     /// - [`MainSmError::InvalidSegmentMetadata`] if the metadata is missing or
     ///   isn't a `bool`.
-    fn decode_plan(plan: &Plan) -> std::result::Result<(SegmentId, bool), MainSmError> {
+    fn decode_plan(plan: &Plan) -> Result<(SegmentId, bool), MainSmError> {
         let segment_id = plan.segment_id.ok_or(MainSmError::MissingSegmentId)?;
         let is_last_segment = plan
             .meta
