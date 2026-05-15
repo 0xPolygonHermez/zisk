@@ -76,13 +76,13 @@ impl<F: PrimeField64> MainInstance<F> {
         trace_buffer: Vec<F>,
     ) -> Result<AirInstance<F>, MainSmError> {
         // Create the main trace buffer
+        const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
         let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
 
         // Determine the number of minimal traces per segment
-        let num_rows = main_trace.num_rows();
-        let num_within = num_rows / chunk_size as usize;
+        let num_within = NUM_ROWS / chunk_size as usize;
 
         // Determine trace slice for the current segment
         let start_idx = segment_id.as_usize() * num_within;
@@ -97,14 +97,14 @@ impl<F: PrimeField64> MainInstance<F> {
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
             segment_id,
             filled_rows,
-            num_rows,
-            filled_rows as f64 / num_rows as f64 * 100.0
+            NUM_ROWS,
+            filled_rows as f64 / NUM_ROWS as f64 * 100.0
         );
 
         // Compute the segment's boundary mem-steps. `initial_step` is the mem-step at the
         // end of the previous segment (0 for the first segment); `final_step` is the
         // mem-step at the last row of this segment.
-        let (initial_step, final_step) = Self::mem_steps_for_segment(segment_id, num_rows);
+        let (initial_step, final_step) = Self::mem_steps_for_segment(segment_id, NUM_ROWS);
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace.
@@ -148,7 +148,7 @@ impl<F: PrimeField64> MainInstance<F> {
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
         let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
-            num_rows,
+            NUM_ROWS,
             &fill_trace_outputs,
             &mut main_trace,
             &mut step_range_check,
@@ -160,7 +160,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // Pad remaining rows with the last valid row.
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check conntribution.
-        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, num_rows);
+        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
