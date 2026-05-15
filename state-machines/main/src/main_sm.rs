@@ -146,11 +146,10 @@ impl<F: PrimeField64> MainInstance<F> {
 
         Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
 
-        // Pad remaining rows with the last valid row
+        // Pad remaining rows with the last valid row.
         // In padding row must be clear of registers access, if not need to calculate previous
-        // register step and range check conntribution
-        let last_row = main_trace.buffer[filled_rows - 1];
-        main_trace.buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
+        // register step and range check conntribution.
+        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, num_rows);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
@@ -366,6 +365,21 @@ impl<F: PrimeField64> MainInstance<F> {
             .ok_or(MainSmError::InvalidSegmentMetadata)?;
         Ok((segment_id, is_last_segment))
     }
+
+    /// Pads `buffer[filled_rows..num_rows]` with `buffer[filled_rows - 1]` (the
+    /// last filled row), in parallel. Returns the row used for padding so the
+    /// caller can reuse it (e.g. for AIR values).
+    ///
+    /// Caller must ensure `1 <= filled_rows <= num_rows <= buffer.len()`.
+    fn pad_trailing_rows<R: Copy + Send + Sync>(
+        buffer: &mut [R],
+        filled_rows: usize,
+        num_rows: usize,
+    ) -> R {
+        let last_row = buffer[filled_rows - 1];
+        buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
+        last_row
+    }
 }
 
 /// The `MainSM` struct represents the Main State Machine,
@@ -383,10 +397,16 @@ impl MainSM {
 mod tests {
     use super::*;
     use fields::Goldilocks;
+    use std::any::Any;
+    use zisk_common::{CheckPoint, ChunkId, InstanceType};
 
     // `mem_steps_for_segment` doesn't use `F`, but it's now an associated fn on
     // `MainInstance<F>`, so the call site has to pick some concrete `F`.
     type MI = MainInstance<Goldilocks>;
+
+    fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
+        Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
+    }
 
     #[test]
     fn segment_zero_starts_at_row_zero() {
@@ -435,15 +455,6 @@ mod tests {
         assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(0));
     }
 
-    // ---- decode_plan -------------------------------------------------------
-
-    use std::any::Any;
-    use zisk_common::{CheckPoint, ChunkId, InstanceType};
-
-    fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
-        Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
-    }
-
     #[test]
     fn decode_plan_returns_segment_id_and_last_flag() {
         let plan = make_plan(Some(SegmentId(5)), Some(Box::new(true)));
@@ -478,5 +489,30 @@ mod tests {
         let plan = make_plan(Some(SegmentId(0)), None);
         let err = MI::decode_plan(&plan).unwrap_err();
         assert!(matches!(err, MainSmError::InvalidSegmentMetadata));
+    }
+
+    #[test]
+    fn pad_trailing_rows_fills_tail_with_last_filled_row() {
+        let mut buf = [1u32, 2, 3, 4, 5, 0, 0, 0, 0, 0];
+        let last = MI::pad_trailing_rows(&mut buf, 5, 10);
+        assert_eq!(last, 5);
+        assert_eq!(buf, [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]);
+    }
+
+    #[test]
+    fn pad_trailing_rows_filled_equals_num_rows_is_noop() {
+        let mut buf = [1u32, 2, 3, 4, 5];
+        let before = buf;
+        let last = MI::pad_trailing_rows(&mut buf, 5, 5);
+        assert_eq!(last, 5);
+        assert_eq!(buf, before);
+    }
+
+    #[test]
+    fn pad_trailing_rows_single_filled_row_pads_rest() {
+        let mut buf = [42u32, 0, 0, 0];
+        let last = MI::pad_trailing_rows(&mut buf, 1, 4);
+        assert_eq!(last, 42);
+        assert_eq!(buf, [42, 42, 42, 42]);
     }
 }
