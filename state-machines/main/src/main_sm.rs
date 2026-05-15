@@ -33,8 +33,12 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    const MAX_SEGMENT_ID: usize =
-        ((DEFAULT_MAX_STEPS + 1) as usize / MainTrace::<()>::NUM_ROWS) - 1;
+    #[allow(clippy::cast_possible_truncation)]
+    const MAX_SEGMENT_ID: usize = {
+        let v = ((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1;
+        assert!(v <= usize::MAX as u64, "MAX_SEGMENT_ID exceeds usize::MAX on this target");
+        v as usize
+    };
 
     /// Creates a new `MainInstance`.
     ///
