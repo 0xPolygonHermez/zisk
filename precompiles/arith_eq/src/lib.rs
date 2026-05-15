@@ -23,6 +23,7 @@ pub use arith_eq_planner::*;
 
 #[cfg(test)]
 mod arith_eq_tests {
+    use serial_test::serial;
     use test_artifacts::{
         ELF_ARITH256, ELF_ARITH256_MOD, ELF_BN254_ADD, ELF_BN254_COMPLEX_ADD,
         ELF_BN254_COMPLEX_MUL, ELF_BN254_COMPLEX_SUB, ELF_BN254_DBL, ELF_SECP256K1_ADD,
@@ -30,7 +31,11 @@ mod arith_eq_tests {
     };
     use zisk_common::io::ZiskStdin;
 
+    // Tests share a global lock (#[serial]) because each `run_emulation`
+    // allocates several GB; running 11 in parallel exceeds RAM and triggers OOM.
+
     #[test]
+    #[serial]
     fn execute_arith256_tests() {
         ELF_ARITH256
             .run_emulation(ZiskStdin::new(), None)
@@ -38,6 +43,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_arith256_mod_tests() {
         ELF_ARITH256_MOD
             .run_emulation(ZiskStdin::new(), None)
@@ -45,6 +51,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_secp256k1_add_tests() {
         ELF_SECP256K1_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -52,6 +59,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_secp256k1_dbl_tests() {
         ELF_SECP256K1_DBL
             .run_emulation(ZiskStdin::new(), None)
@@ -59,6 +67,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_secp256r1_add_tests() {
         ELF_SECP256R1_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -66,6 +75,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_secp256r1_dbl_tests() {
         ELF_SECP256R1_DBL
             .run_emulation(ZiskStdin::new(), None)
@@ -73,6 +83,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bn254_add_tests() {
         ELF_BN254_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -80,6 +91,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bn254_dbl_tests() {
         ELF_BN254_DBL
             .run_emulation(ZiskStdin::new(), None)
@@ -87,6 +99,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bn254_complex_add_tests() {
         ELF_BN254_COMPLEX_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -94,6 +107,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bn254_complex_mul_tests() {
         ELF_BN254_COMPLEX_MUL
             .run_emulation(ZiskStdin::new(), None)
@@ -101,6 +115,7 @@ mod arith_eq_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bn254_complex_sub_tests() {
         ELF_BN254_COMPLEX_SUB
             .run_emulation(ZiskStdin::new(), None)

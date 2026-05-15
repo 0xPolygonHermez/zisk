@@ -1,8 +1,6 @@
 use anyhow::Result;
-use sha_hasher_common::Output;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use test_artifacts::{Output, ELF_SHA_HASHER};
+use zisk_sdk::{ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,12 +20,12 @@ async fn main() -> Result<()> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run()?.await?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&PROGRAM, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_SHA_HASHER, stdin.clone()).run()?.await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

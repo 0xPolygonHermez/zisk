@@ -6,6 +6,12 @@ edition = "2021"
 members = [
     "bls12_381",
     "bn254",
+    "examples/agg_verify",
+    "examples/big_input",
+    "examples/fib_mod",
+    "examples/liveness",
+    "examples/panic_modes",
+    "examples/sha_hasher",
     "diagnostic",
     "modexp",
     "secp256k1",

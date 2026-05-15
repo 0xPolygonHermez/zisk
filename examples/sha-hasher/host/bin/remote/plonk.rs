@@ -1,7 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, Proof, ProofKind, ProverClient, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use test_artifacts::ELF_SHA_HASHER;
+use zisk_sdk::{Proof, ProofKind, ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,12 +17,12 @@ async fn main() -> Result<()> {
     let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     println!("Setting up program and generating verification key...");
-    client.upload(&PROGRAM).run()?;
-    client.setup(&PROGRAM).run()?.await?;
+    client.upload(&ELF_SHA_HASHER).run()?;
+    client.setup(&ELF_SHA_HASHER).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating Vadcop proof...");
-    let vadcop_result = client.prove(&PROGRAM, stdin).run()?.await?;
+    let vadcop_result = client.prove(&ELF_SHA_HASHER, stdin).run()?.await?;
     println!("Vadcop proof generated in {} ms", vadcop_result.get_proving_time());
 
     println!("Wrapping into PLONK proof (this may take a while)...");
@@ -41,7 +40,7 @@ async fn main() -> Result<()> {
 
     println!("Loading and verifying saved PLONK proof...");
     let proof = Proof::load("/tmp/sha_hasher_proof_snark.bin")?;
-    let vkey = PROGRAM.vk()?;
+    let vkey = ELF_SHA_HASHER.vk()?;
     proof.with_program_vk(&vkey).verify()?;
     println!("Saved PLONK proof verification successful!");
 

@@ -40,10 +40,6 @@ ripemd = { workspace = true }
 anyhow = { workspace = true }
 zisk-verifier = { workspace = true }
 
-[dev-dependencies]
-test-artifacts = { workspace = true }
-zisk-common = { workspace = true }
-
 [features]
 default = ["hints"]
 hints = []

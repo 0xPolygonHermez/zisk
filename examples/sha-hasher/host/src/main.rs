@@ -1,20 +1,20 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProverClient, ZiskStream};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use test_artifacts::ELF_SHA_HASHER;
+use zisk_sdk::{ExecutorKind, ProverClient, ZiskStream};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
-    client.upload(&PROGRAM).run()?;
+    client.upload(&ELF_SHA_HASHER).run()?;
 
-    let setup_handle = client.setup(&PROGRAM).run()?;
+    let setup_handle = client.setup(&ELF_SHA_HASHER).run()?;
     setup_handle.await?;
 
     let input = ZiskStream::unix();
 
-    let handle = client.execute(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    let handle =
+        client.execute(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
     input.write(&1000u32);
     input.flush()?;
     let result = handle.await?;
@@ -27,11 +27,11 @@ async fn main() -> Result<()> {
 
     input.write(&2000u32);
     let prove_handle =
-        client.prove(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+        client.prove(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
     input.flush()?;
     let vadcop_result = prove_handle.await?;
 
-    let vkey = PROGRAM.vk()?;
+    let vkey = ELF_SHA_HASHER.vk()?;
     vadcop_result.with_program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");
@@ -39,11 +39,11 @@ async fn main() -> Result<()> {
 
     input.write(&3000u32);
     let prove_handle2 =
-        client.prove(&PROGRAM, input.clone()).executor(ExecutorKind::Assembly).run()?;
+        client.prove(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
     input.flush()?;
     let vadcop_result2 = prove_handle2.await?;
 
-    let vkey = PROGRAM.vk()?;
+    let vkey = ELF_SHA_HASHER.vk()?;
     vadcop_result2.with_program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");

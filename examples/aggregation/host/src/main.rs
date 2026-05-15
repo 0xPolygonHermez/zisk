@@ -1,42 +1,39 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProfilingMode, ProverClient, ZiskStdin};
+use test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
+use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {
-    n: u16,
-    module: u8,
+    n: u32,
+    module: u32,
     b: u32,
 }
-
-static PROGRAM1: GuestProgram = load_program!("guest");
-static PROGRAM2: GuestProgram = load_program!("guest-agg");
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
 
-    // Create an input stream and write '2000' to it.
-    let n = 2000u16;
+    let n: u32 = 2000;
+    let module: u32 = 233;
     let stdin = ZiskStdin::new();
     stdin.write(&n);
+    stdin.write(&module);
 
-    // Create a `ProverClient` method.
     let embedded_opts = EmbeddedOpts::default().minimal_memory();
     let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
     #[cfg(feature = "gpu")]
     let builder = builder.gpu();
     let client = builder.build()?;
 
-    println!("Setting up first program...");
-    client.setup(&PROGRAM1).run()?.await?;
+    println!("Setting up first program (fib_mod)...");
+    client.setup(&ELF_FIB_MOD).run()?.await?;
 
-    println!("Setting up second program...");
-    client.setup(&PROGRAM2).run()?.await?;
+    println!("Setting up second program (agg_verify)...");
+    client.setup(&ELF_AGG_VERIFY).run()?.await?;
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing first program...");
-    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, stdin.clone()).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",
@@ -46,12 +43,11 @@ async fn main() -> Result<()> {
 
     let publics: GuestPublics = result.get_public_values()?;
 
-    let expected_module: u8 = 233;
     let expected_b = {
         let mut a: u32 = 0;
         let mut b: u32 = 1;
         for _ in 0..n {
-            let c = (a + b) % expected_module as u32;
+            let c = (a + b) % module;
             a = b;
             b = c;
         }
@@ -59,34 +55,28 @@ async fn main() -> Result<()> {
     };
 
     assert_eq!(publics.n, n, "expected n={}, got {}", n, publics.n);
-    assert_eq!(
-        publics.module, expected_module,
-        "expected module={}, got {}",
-        expected_module, publics.module
-    );
+    assert_eq!(publics.module, module, "expected module={}, got {}", module, publics.module);
     assert_eq!(publics.b, expected_b, "expected b={}, got {}", expected_b, publics.b);
     println!("Publics OK: n={}, module={}, b={}", publics.n, publics.module, publics.b);
 
-    println!("Generating first proof for program...");
-    let vadcop_result1 = client.prove(&PROGRAM1, stdin).run()?.await?;
+    println!("Generating first proof for fib_mod...");
+    let vadcop_result1 = client.prove(&ELF_FIB_MOD, stdin).run()?.await?;
 
-    let n = 2000u32;
     let stdin2 = ZiskStdin::new();
     stdin2.write(&n);
+    stdin2.write(&module);
 
-    println!("Generating second proof for program...");
-    let vadcop_result2 = client.prove(&PROGRAM1, stdin2).run()?.await?;
+    println!("Generating second proof for fib_mod...");
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run()?.await?;
 
-    // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
-
     stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
     stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
 
     println!("Running ZisK Emulator on aggregation program for profiling...");
-    zisk_sdk::run(&PROGRAM2, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
+    zisk_sdk::run(&ELF_AGG_VERIFY, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
 
-    let result_aggregation = client.prove(&PROGRAM2, stdin_aggregation).run()?.await?;
+    let result_aggregation = client.prove(&ELF_AGG_VERIFY, stdin_aggregation).run()?.await?;
 
     result_aggregation.verify()?;
 

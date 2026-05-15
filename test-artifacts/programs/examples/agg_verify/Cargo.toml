@@ -1,0 +1,7 @@
+[package]
+name = "agg_verify"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

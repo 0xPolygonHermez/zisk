@@ -75,3 +75,4 @@ let outcome = client.verify_constraints(&ELF_BLAKE2, stdin).run()?;
 
 - [ ] Add guests for verifying basic ZisK operations like add, xor, ...
 - [ ] Add guests for memory operations.
+- [ ] Create diagnosis guest for hints (precompile calls)

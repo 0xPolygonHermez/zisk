@@ -20,13 +20,18 @@ pub use arith_eq_384_planner::*;
 
 #[cfg(test)]
 mod arith_eq_384_tests {
+    use serial_test::serial;
     use test_artifacts::{
         ELF_ARITH384_MOD, ELF_BLS12_381_ADD, ELF_BLS12_381_COMPLEX_ADD, ELF_BLS12_381_COMPLEX_MUL,
         ELF_BLS12_381_COMPLEX_SUB, ELF_BLS12_381_DBL,
     };
     use zisk_common::io::ZiskStdin;
 
+    // Tests share a global lock (#[serial]) because each `run_emulation`
+    // allocates several GB; running them in parallel exceeds RAM.
+
     #[test]
+    #[serial]
     fn execute_arith384_mod_tests() {
         ELF_ARITH384_MOD
             .run_emulation(ZiskStdin::new(), None)
@@ -34,6 +39,7 @@ mod arith_eq_384_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bls12_381_add_tests() {
         ELF_BLS12_381_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -41,6 +47,7 @@ mod arith_eq_384_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bls12_381_dbl_tests() {
         ELF_BLS12_381_DBL
             .run_emulation(ZiskStdin::new(), None)
@@ -48,6 +55,7 @@ mod arith_eq_384_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bls12_381_complex_add_tests() {
         ELF_BLS12_381_COMPLEX_ADD
             .run_emulation(ZiskStdin::new(), None)
@@ -55,6 +63,7 @@ mod arith_eq_384_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bls12_381_complex_mul_tests() {
         ELF_BLS12_381_COMPLEX_MUL
             .run_emulation(ZiskStdin::new(), None)
@@ -62,6 +71,7 @@ mod arith_eq_384_tests {
     }
 
     #[test]
+    #[serial]
     fn execute_bls12_381_complex_sub_tests() {
         ELF_BLS12_381_COMPLEX_SUB
             .run_emulation(ZiskStdin::new(), None)
