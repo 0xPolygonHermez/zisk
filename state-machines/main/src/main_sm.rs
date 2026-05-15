@@ -13,7 +13,7 @@ use crate::MainSmError;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
@@ -57,13 +57,30 @@ impl<F: PrimeField64> MainInstance<F> {
     /// * `chunk_size` - The size of the minimal traces.
     ///
     /// The computed trace is added to the proof context's air instance repository.
+    ///
+    /// # Errors
+    /// Returns a [`MainSmError`] when:
+    /// - A `proofman_common` operation fails — e.g. `MainTrace::new_from_vec`
+    ///   rejecting a mis-sized `trace_buffer` ([`MainSmError::Proofman`]).
+    /// - The plan is missing a `segment_id` ([`MainSmError::MissingSegmentId`]).
+    /// - The plan metadata is not the expected `bool`
+    ///   ([`MainSmError::InvalidSegmentMetadata`]).
+    /// - The segment has no minimal traces to process
+    ///   ([`MainSmError::EmptyFillTraceOutput`]).
+    /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
+    ///   ([`MainSmError::InvalidSlot`]).
+    ///
+    /// # Panics
+    /// Panics if `pil_std_lib` cannot resolve the range IDs used for the `mem_step`
+    /// and `segment_id` range checks. This indicates a setup-time configuration
+    /// error in the standard library, not a runtime condition.
     pub fn compute_witness<R: MainTraceRowOps<F>>(
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         chunk_size: u64,
         trace_buffer: Vec<F>,
-    ) -> ProofmanResult<AirInstance<F>> {
+    ) -> Result<AirInstance<F>, MainSmError> {
         // Create the main trace buffer
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
@@ -124,7 +141,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 (pc, regs, reg_trace, step_range_check)
             })
             .collect::<Vec<(u64, Vec<u64>, EmuRegTrace, Vec<u32>)>>();
-        let last_result = fill_trace_outputs.last().unwrap();
+        let last_result = fill_trace_outputs.last().ok_or(MainSmError::EmptyFillTraceOutput)?;
         let next_pc = last_result.0;
 
         let mut step_range_check: Vec<u32> = (0..max_range as usize)
@@ -142,7 +159,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut main_trace,
             &mut step_range_check,
             &mut reg_steps,
-        );
+        )?;
 
         Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
 
@@ -225,13 +242,21 @@ impl<F: PrimeField64> MainInstance<F> {
         )
     }
 
+    /// Propagates per-register previous mem-step state across consecutive chunks of
+    /// the segment, mutating `main_trace` and `step_range_check` in place. Returns
+    /// the vector of out-of-range values (`large_range_checks`) for the caller to
+    /// fold into the std range-check pipeline.
+    ///
+    /// # Errors
+    /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
+    /// produces a value outside `0..=2`.
     fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<R>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
-    ) -> Vec<u32> {
+    ) -> std::result::Result<Vec<u32>, MainSmError> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
         for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
@@ -264,13 +289,13 @@ impl<F: PrimeField64> MainInstance<F> {
                         2 => {
                             main_trace.buffer[row].set_store_reg_prev_mem_step(reg_prev_mem_step);
                         }
-                        _ => panic!("Invalid slot {slot}"),
+                        _ => return Err(MainSmError::InvalidSlot { slot }),
                     }
                     // TODO: range_check mem_step - reg_prev_mem_step
                 }
             }
         }
-        large_range_checks
+        Ok(large_range_checks)
     }
 
     fn update_reg_steps_with_last_chunk(
@@ -353,8 +378,10 @@ impl<F: PrimeField64> MainInstance<F> {
     /// Decodes `segment_id` and `is_last_segment` from the plan handed to this
     /// instance.
     ///
-    /// Returns `Err(MissingSegmentId)` if the plan has no `segment_id`, and
-    /// `Err(InvalidSegmentMetadata)` if the metadata is missing or isn't a `bool`.
+    /// # Errors
+    /// - [`MainSmError::MissingSegmentId`] if the plan has no `segment_id`.
+    /// - [`MainSmError::InvalidSegmentMetadata`] if the metadata is missing or
+    ///   isn't a `bool`.
     fn decode_plan(plan: &Plan) -> std::result::Result<(SegmentId, bool), MainSmError> {
         let segment_id = plan.segment_id.ok_or(MainSmError::MissingSegmentId)?;
         let is_last_segment = plan
