@@ -169,8 +169,6 @@ private:
     MemOp*         h_memops_                   = nullptr;
     size_t         h_memops_used_              = 0;
     uint32_t*      h_n_emits_all_              = nullptr;
-    uint32_t*      h_offsets_buf_              = nullptr;
-    size_t         h_offsets_buf_size_         = 0;
     // Pinned destinations for the compacted paged-offsets output.
     //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
     //     (1 entry per page); cumulative across the active instances.

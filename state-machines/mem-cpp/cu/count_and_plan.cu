@@ -1212,15 +1212,14 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
     CUDA_CHECK(cudaMallocHost(&h_chunk_counters_per_chunk_,
         (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
-    h_offsets_buf_size_ = 1ull << 30;
-    CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     // Pinned destinations for the compacted paged-offsets output. Each
     // instance contributes ceil(addr_range_slots / MEM_OFFSETS_PAGE_SIZE)
     // entries to h_page_starts_buf_ / h_page_single_buf_, and at most
     // addr_range_slots entries to h_pages_dense_buf_ (worst case: every
-    // page present).
-    h_page_meta_buf_size_   = h_offsets_buf_size_ / MEM_OFFSETS_PAGE_SIZE + 4096;
-    h_pages_dense_buf_size_ = h_offsets_buf_size_;
+    // page present). Seeded at 1 GiB; grown on demand in process_worker_().
+    const size_t initial_offsets_bytes = 1ull << 30;
+    h_page_meta_buf_size_   = initial_offsets_bytes / MEM_OFFSETS_PAGE_SIZE + 4096;
+    h_pages_dense_buf_size_ = initial_offsets_bytes;
     CUDA_CHECK(cudaMallocHost(&h_page_starts_buf_,  h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,   h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_,  h_pages_dense_buf_size_));
@@ -1494,7 +1493,6 @@ void CountAndPlan::reset() {
 void CountAndPlan::free_pinned_() {
     if (h_memops_)                   { cudaFreeHost(h_memops_);                   h_memops_                   = nullptr; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
-    if (h_offsets_buf_)              { cudaFreeHost(h_offsets_buf_);              h_offsets_buf_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }
     if (h_pages_dense_buf_)          { cudaFreeHost(h_pages_dense_buf_);          h_pages_dense_buf_          = nullptr; }
@@ -1659,11 +1657,6 @@ void CountAndPlan::process_worker_() {
     // Sizing tracker for the paged buffers below (in bytes, equivalent to the
     // dense addr_offsets footprint — one u32 per addr).
     size_t needed_offsets_bytes = (size_t)total_addrs * sizeof(uint32_t);
-    if (needed_offsets_bytes > h_offsets_buf_size_) {
-        if (h_offsets_buf_) CUDA_CHECK(cudaFreeHost(h_offsets_buf_));
-        h_offsets_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
-        CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
-    }
     // Paged-output buffers grow on demand:
     //   page-meta arrays: bounded by ceil(total_addrs / MEM_OFFSETS_PAGE_SIZE) + 1 entry
     //                     per instance (small).
