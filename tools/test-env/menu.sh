@@ -15,8 +15,8 @@ while true; do
     echo " 4) Package setup outcome"
     echo " 5) Install ZisK from binaries"
     echo " 6) Test sha_hasher"
-    echo " 7) Test pessimistic proof"
-    echo " 8) Test Ethereum block"
+    echo " 7) Test Ethereum block"
+    echo " 8) Test EthProofs"
     echo " 9) Test ELF diagnostic"
     echo "10) Install setup from public packages"
     echo "11) Install setup from local packages"
@@ -48,10 +48,10 @@ while true; do
             run_timed "./test_sha_hasher.sh"
             ;;
         7)
-            run_timed "./test_pp.sh"
+            run_timed "./test_eth_block.sh"
             ;;
         8)
-            run_timed "./test_eth_block.sh"
+            run_timed "./test_ethproofs.sh"
             ;;
         9)
             run_timed "./test_diagnostic.sh"

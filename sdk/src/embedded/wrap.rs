@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::{sync::Arc, time::Duration};
-use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
 use zisk_prover_backend::ProverEngine;
 
 impl EmbeddedClient {
@@ -52,15 +52,21 @@ impl EmbeddedClient {
     ) -> Result<ProveResult> {
         let publics = override_publics.unwrap_or(&proof.publics);
         let program_vk = override_program_vk.unwrap_or(&proof.program_vk);
+        let proof_words = match &proof.body {
+            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+            ProofBody::Plonk { .. } => {
+                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+            }
+        };
 
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => p
                 .prover
-                .wrap_proof(&proof.proof_bytes, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, publics, program_vk, proof_kind)
                 .map(ProveResult::from),
             EmbeddedProver::Asm(p) => p
                 .prover
-                .wrap_proof(&proof.proof_bytes, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, publics, program_vk, proof_kind)
                 .map(ProveResult::from),
         }
     }

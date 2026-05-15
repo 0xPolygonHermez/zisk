@@ -1,0 +1,10 @@
+{{ include "zisk-worker.fullname" . }} deployed.
+
+Workers connect to coordinator at: {{ .Values.coordinator.url }}
+Replicas: {{ if .Values.autoscaling.enabled }}auto ({{ .Values.autoscaling.minReplicas }}–{{ .Values.autoscaling.maxReplicas }} via HPA){{ else }}{{ .Values.replicaCount }}{{ end }}
+Bundle: {{ .Values.provingKey.strategy }}{{ if eq .Values.provingKey.strategy "pvc" }} (PVC: {{ .Values.provingKey.pvc.claimName }}){{ end }}
+
+Useful commands:
+  kubectl -n {{ .Release.Namespace }} get {{ .Values.workloadKind | lower }} {{ include "zisk-worker.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "zisk-worker.name" . }} -f
+  kubectl -n {{ .Release.Namespace }} scale {{ .Values.workloadKind | lower }}/{{ include "zisk-worker.fullname" . }} --replicas=N

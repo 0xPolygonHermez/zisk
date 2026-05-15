@@ -229,6 +229,10 @@ impl WorkersPool {
 
         drop(workers);
 
+        if is_new_worker {
+            metrics::gauge!("coordinator_workers_connected").increment(1.0);
+        }
+
         let action = if is_new_worker { "Registered" } else { "Reconnected" };
         let (total, cc, acc) = self.pool_stats().await;
         info!("{} worker: {} (total: {} CC: {} ACC: {})", action, worker_id, total, cc, acc);
@@ -308,6 +312,7 @@ impl WorkersPool {
             Some(_) => {
                 let total = workers.len(); // Get count from the current HashMap
                 drop(workers); // Release the lock before logging
+                metrics::gauge!("coordinator_workers_connected").decrement(1.0);
                 info!(
                     "Unregistered worker: {} (total: {} CC: {} ACC: {})",
                     worker_id,
@@ -387,21 +392,24 @@ impl WorkersPool {
         self.workers.read().await.get(worker_id).map(|w| w.connection_generation)
     }
 
-    /// Removes worker entries that have been Disconnected for longer than a threshold.
-    /// Prevents unbounded growth of the workers HashMap.
-    pub async fn remove_stale_disconnected(&self, threshold: chrono::Duration) {
+    /// Removes worker entries that have been `Disconnected` past `threshold`.
+    /// Returns the removed IDs so callers can drop side-band state keyed by `WorkerId`.
+    pub async fn remove_stale_disconnected(&self, threshold: chrono::Duration) -> Vec<WorkerId> {
         let now = Utc::now();
+        let mut removed = Vec::new();
         let mut workers = self.workers.write().await;
         workers.retain(|id, w| {
             if w.state == WorkerState::Disconnected {
                 let elapsed = now.signed_duration_since(w.last_heartbeat);
                 if elapsed >= threshold {
                     info!("Removing stale disconnected worker: {}", id);
+                    removed.push(id.clone());
                     return false;
                 }
             }
             true
         });
+        removed
     }
 
     /// Sets a worker's last heartbeat to a specific time. Used for testing only.
@@ -464,6 +472,32 @@ impl WorkersPool {
                 info!("Worker {} ready (total: {} CC: {} ACC: {})", wid, total, cc, acc);
             }
         }
+    }
+
+    /// Transitions any `Computing(_)` worker in `worker_ids` to `SettingUp`
+    /// and returns the IDs that were transitioned.
+    pub async fn mark_computing_workers_settingup(&self, worker_ids: &[WorkerId]) -> Vec<WorkerId> {
+        let mut workers = self.workers.write().await;
+        let mut transitioned = Vec::new();
+        for wid in worker_ids {
+            if let Some(worker) = workers.get_mut(wid) {
+                if matches!(worker.state, WorkerState::Computing(_)) {
+                    worker.state = WorkerState::SettingUp;
+                    transitioned.push(wid.clone());
+                }
+            }
+        }
+        drop(workers);
+        if !transitioned.is_empty() {
+            let (total, cc, acc) = self.pool_stats().await;
+            for wid in &transitioned {
+                info!(
+                    "Worker {} parked in SettingUp pending tear-down (total: {} CC: {} ACC: {})",
+                    wid, total, cc, acc
+                );
+            }
+        }
+        transitioned
     }
 
     /// Updates the state of a single worker.

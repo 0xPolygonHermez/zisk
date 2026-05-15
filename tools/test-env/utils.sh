@@ -52,8 +52,13 @@ warn() {
 }
 
 err() {
-    echo "${RED}❌ Error: $1${RESET}" >&2
-    press_any_key
+    local message="$1"
+    local skip_press_any_key="${2:-false}"
+
+    echo "${RED}❌ Error: ${message}${RESET}" >&2
+    if [[ "${skip_press_any_key}" != "true" ]]; then
+        press_any_key
+    fi
     return 1
 }
 
@@ -67,8 +72,6 @@ tolower() {
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    local zisk_repo_dir=$1
-
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         info "Skipping loading .env file as it does not exist"
@@ -157,7 +160,7 @@ is_proving_key_installed() {
 
 # is_gha: Check if the script is running in a GitHub Actions environment
 is_gha() {
-    [[ "$ZISK_GHA" == "1" ]]
+    [[ "${ZISK_GHA:-}" == "1" ]]
 }
 
 # get_var_list_to_array: fills a bash array with items from a comma-separated env var
@@ -296,10 +299,10 @@ get_var_from_cargo_toml() {
 
 # get_zisk_repo_dir: returns the ZisK repository directory
 get_zisk_repo_dir() {
-    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+    if [[ -n "${ZISK_REPO_DIR:-}" ]]; then
         echo "${ZISK_REPO_DIR}"
     else
-        echo "${WORKSPACE_DIR}/zisk"
+        echo "${WORKSPACE_DIR:-${PWD}}/zisk"
     fi
 }
 
@@ -369,9 +372,8 @@ run_timed() {
 get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell
 get_shell_and_profile || return 1
-# Ensure profile is loaded
-touch $PROFILE
-source "$PROFILE"
+
+source "$HOME/.cargo/env"
 
 # Define directories
 ZISK_DIR="$HOME/.zisk"

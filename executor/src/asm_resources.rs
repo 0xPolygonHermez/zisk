@@ -233,13 +233,20 @@ impl AsmResources {
             .unwrap_or(false)
     }
 
+    /// Soft-reset the C children: set `ResetFlag=1` and post `sem_input_avail`
+    /// so children stuck in `_wait_for_input_avail` wake immediately, see the
+    /// flag, and abort. Children stuck in `_wait_for_prec_avail` are NOT woken
+    /// explicitly — they exit on the next `sem_timedwait` expiry (≤ 5 s, see
+    /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
+    /// `RECOVERY_TIMEOUT` covers that slip.
+    pub fn signal_cancellation(&self) -> Result<()> {
+        self.shared.inputs_shmem_writer.signal_reset()
+    }
+
     pub fn reset(&self) {
         if let Some(s) = &self.shared.hints_stream {
-            s.lock().unwrap().reset();
+            s.lock().expect("hints_stream mutex poisoned").reset();
         }
-
-        // Full reset: clear shmem data and size.  Every job re-streams its
-        // input via the relay, so there is nothing to preserve.
         self.shared.inputs_shmem_writer.reset();
     }
 
@@ -304,5 +311,11 @@ impl Drop for AsmResources {
                 e
             );
         }
+        // The ASM service children don't unlink shmem on exit (the
+        // `delete_*_shm` flags aren't set for them), so the parent must
+        // unlink the `/dev/shm/{shm_prefix}*` and `sem.{sem_prefix}*`
+        // entries here. Otherwise GBs of `_input`, `_ram`, `_rom` files
+        // leak until the next worker startup runs `cleanup_stale_shmem`.
+        self.asm_services.cleanup_my_shmem();
     }
 }

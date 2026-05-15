@@ -198,6 +198,10 @@ impl CoordinatorGrpc {
                         })
                         .await
                 }
+                worker_message::Payload::RecoveryComplete(rc) => {
+                    Self::validate_same_worker_id(worker_id, &rc.worker_id)?;
+                    coordinator.handle_stream_recovery_complete(worker_id).await
+                }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }

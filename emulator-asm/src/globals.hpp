@@ -142,6 +142,7 @@ extern uint64_t * shmem_control_input_address;
 extern volatile uint64_t * precompile_written_address;
 extern volatile uint64_t * precompile_exit_address;
 extern volatile uint64_t * input_written_address;
+extern volatile uint64_t * precompile_reset_address;
 
 // Control output shared memory
 extern int shmem_control_output_fd;

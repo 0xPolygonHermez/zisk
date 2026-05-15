@@ -2,15 +2,17 @@
 members = [
     "sha-hasher/host", 
     "sha-hasher/guest", 
-    "multiple-programs/host", 
-    "multiple-programs/guest", 
-    "multiple-programs/guest_2",
+    "multiple-programs/host",
+    "multiple-programs/guest",
     "aggregation/host",
     "aggregation/guest",
-    "aggregation/guest_agg",
     "big-program/host",
     "big-program/guest",
     "hints/host",
+    "panic/host",
+    "panic/guest",
+    "liveness/host",
+    "liveness/guest",
 ]
 
 resolver = "2"

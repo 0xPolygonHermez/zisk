@@ -6,7 +6,8 @@ use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
 use zisk_common::{
-    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
+    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID, ZISK_PUBLICS,
 };
 use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
@@ -20,7 +21,6 @@ use zisk_core::{
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-pub const ZISK_PUBLICS: usize = 64;
 const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -844,7 +844,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            8,
+                            instruction.ind_width as u8,
                             [raw_data_1, raw_data_2],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);

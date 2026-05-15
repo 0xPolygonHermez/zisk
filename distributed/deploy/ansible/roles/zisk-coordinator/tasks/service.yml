@@ -1,0 +1,18 @@
+---
+- name: Deploy zisk-coordinator systemd unit
+  ansible.builtin.template:
+    src: zisk-coordinator.service.j2
+    dest: "{{ zisk_coordinator_unit_file }}"
+    mode: "0644"
+    owner: root
+    group: root
+  notify:
+    - reload systemd
+    - restart zisk-coordinator
+
+- name: Ensure zisk-coordinator service is enabled and started
+  ansible.builtin.systemd_service:
+    name: zisk-coordinator
+    enabled: true
+    state: started
+    daemon_reload: true

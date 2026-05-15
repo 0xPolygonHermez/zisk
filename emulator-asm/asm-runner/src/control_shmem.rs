@@ -6,11 +6,14 @@ pub struct ControlShmem {
     writers: Vec<SharedMemoryWriter>,
 }
 
+/// Byte offsets into the C-side `shmem_control_input_address` array.
+/// Each slot is a `u64`; the C wait functions read these on every iteration.
 #[derive(Copy, Clone)]
-pub enum ControlShmemOffsets {
+enum ControlShmemOffsets {
     PrecompilesSize = 0,
     ShutdownFlag = 8,
     InputsSize = 16,
+    ResetFlag = 24,
 }
 
 impl ControlShmem {
@@ -32,21 +35,12 @@ impl ControlShmem {
         Ok(Self { writers })
     }
 
-    pub fn read_u64_at(&self, offset: ControlShmemOffsets) -> u64 {
-        self.writers[0].read_u64_at(offset as usize)
-    }
-
-    pub fn write_u64_at(&self, offset: ControlShmemOffsets, size: u64) {
-        for writer in &self.writers {
-            writer.write_u64_at(offset as usize, size);
-        }
-    }
-
     pub fn reset(&self) {
         for writer in &self.writers {
             writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, 0);
             writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0);
             writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, 0);
+            writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0);
         }
     }
 
@@ -60,15 +54,9 @@ impl ControlShmem {
         self.writers[0].read_u64_at(ControlShmemOffsets::PrecompilesSize as usize)
     }
 
-    pub fn set_shutdown_flag(&self) {
+    pub fn set_reset_flag(&self) {
         for writer in &self.writers {
-            writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 1);
-        }
-    }
-
-    pub fn set_inputs_size(&self, size: u64) {
-        for writer in &self.writers {
-            writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, size);
+            writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 1);
         }
     }
 
@@ -78,9 +66,5 @@ impl ControlShmem {
         for writer in &self.writers {
             writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, new_size);
         }
-    }
-
-    pub fn inputs_size(&self) -> u64 {
-        self.writers[0].read_u64_at(ControlShmemOffsets::InputsSize as usize)
     }
 }

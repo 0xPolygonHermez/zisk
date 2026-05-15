@@ -139,7 +139,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     /// Submit proof generation, returning a [`JobHandle<ProveResult>`] immediately.
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
         let mode = self.resolve_mode();
-        let executor = self.executor.unwrap_or(ExecutorKind::Emulator);
+        let executor = self.executor.unwrap_or_else(|| self.client.default_executor());
         let subs: SubscriberList = subscriber_list_from(self.subscribers);
         self.client.run_prove(
             self.program,

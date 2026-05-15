@@ -349,26 +349,6 @@ impl UnixSocketStreamWriter {
         self.listener_fd = Some(sock_fd);
         Ok(())
     }
-
-    /// Check if a client is currently connected.
-    ///
-    /// Returns `true` if a client is connected and ready to receive data.
-    pub fn is_client_connected(&mut self) -> bool {
-        // Already have a connection
-        if self.socket.is_some() {
-            return true;
-        }
-
-        // Try to receive socket from accept thread (non-blocking)
-        if let Some(rx) = &self.socket_receiver {
-            if let Ok(stream) = rx.try_recv() {
-                self.socket = Some(stream);
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
 impl StreamWrite for UnixSocketStreamWriter {
@@ -479,16 +459,27 @@ impl StreamWrite for UnixSocketStreamWriter {
         // Clear the connected socket
         self.socket = None;
 
-        // Close the listener fd first — this unblocks the accept thread
-        // (accept() returns EBADF), allowing it to exit.
-        if let Some(fd) = self.listener_fd.take() {
-            unsafe { libc::close(fd) };
+        // shutdown → join → close. close() must come *after* the accept
+        // thread has exited: closing first frees the fd number for reuse,
+        // and if another listener in this process gets that number before
+        // our accept thread re-enters libc::accept(fd), the syscall resolves
+        // to the *new* kernel file and steals a client connection meant for
+        // it. shutdown() alone wakes a blocked accept and makes future
+        // accept() calls on the same kernel file return EINVAL.
+        let listener = self.listener_fd.take();
+        if let Some(fd) = listener {
+            unsafe {
+                libc::shutdown(fd, libc::SHUT_RDWR);
+            }
         }
-
-        // Now join the accept thread and clear the channel
-        self.socket_receiver = None;
         if let Some(handle) = self.accept_thread.take() {
             let _ = handle.join();
+        }
+        self.socket_receiver = None;
+        if let Some(fd) = listener {
+            unsafe {
+                libc::close(fd);
+            }
         }
 
         // Clean up socket file
@@ -504,26 +495,17 @@ impl StreamWrite for UnixSocketStreamWriter {
         self.socket.is_some()
     }
 
-    /// Block until a client has connected to the listening socket.
-    ///
-    /// Unix socket `open()` is non-blocking (spawns accept thread), so the first
-    /// `write()` can fail with `NoClientConnected` before the peer connects.
-    /// This method polls with a 5 ms sleep, timing out after 60 seconds.
-    fn wait_for_connection(&mut self) -> Result<()> {
-        let start = std::time::Instant::now();
-        let deadline = start + std::time::Duration::from_secs(60);
-        let mut last_log = start;
-        while !self.is_client_connected() {
-            let now = std::time::Instant::now();
-            if now >= deadline {
-                anyhow::bail!("Timed out waiting for a client to connect to Unix socket");
-            }
-            if now.duration_since(last_log) >= std::time::Duration::from_secs(5) {
-                last_log = now;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
+    fn is_client_connected(&mut self) -> bool {
+        if self.socket.is_some() {
+            return true;
         }
-        Ok(())
+        if let Some(rx) = &self.socket_receiver {
+            if let Ok(stream) = rx.try_recv() {
+                self.socket = Some(stream);
+                return true;
+            }
+        }
+        false
     }
 
     fn max_message_size(&self) -> usize {
