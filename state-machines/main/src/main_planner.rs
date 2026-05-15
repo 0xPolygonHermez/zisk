@@ -28,8 +28,8 @@ impl MainPlanner {
     /// A vector of `Plan` instances, each corresponding to a segment of the main trace.
     /// # Errors
     /// Returns a `MainSmError` when:
-    /// - The `min_traces_size` is not a power of two ([`MainSmError::MinTraceSizeNotPowerOfTwo`]).
-    /// - The `min_traces_size` exceeds the row capacity of `MainTrace` ([`MainSmError::MinTraceSizeTooBig`]).
+    /// - The `chunk_size` is not a power of two ([`MainSmError::ChunkSizeNotPowerOfTwo`]).
+    /// - The `chunk_size` exceeds the row capacity of `MainTrace` ([`MainSmError::ChunkSizeTooBig`]).
     /// - A `u64` quantity could not be converted to `usize` on this target ([`MainSmError::TryFromIntError`]).
     pub fn plan(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> {
         const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
