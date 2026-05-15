@@ -32,7 +32,6 @@ DEFAULT_LOG_ROTATIONS="5"
 DEFAULT_WORKER_ID="worker-01"
 DEFAULT_WORKER_NO_MPI="true"
 DEFAULT_WORKER_HINTS_ENABLED="false"
-DEFAULT_WORKER_GPU_ENABLED="false"
 DEFAULT_WORKER_PROVINGKEY_DIR=""
 DEFAULT_WORKER_EXTRA_ARGS=""
 
@@ -373,7 +372,6 @@ deploy_coordinator_service() {
 build_worker_exec_start() {
 	local hints_arg=""
 	local gpu_arg=""
-	[[ "$DEFAULT_WORKER_GPU_ENABLED" == "true" ]] && gpu_arg=" --gpu"
 
 	local common_args="--coordinator-url ${DEFAULT_WORKER_COORDINATOR_URL} -m"
 	[[ -n "$DEFAULT_WORKER_PROVINGKEY_DIR" ]] && common_args+=" -k ${DEFAULT_WORKER_PROVINGKEY_DIR}"
@@ -401,9 +399,8 @@ build_worker_program_args_plist() {
 		args+=(mpirun --report-bindings --allow-run-as-root -np "1" -map-by "ppr:1:numa" --bind-to numa --rank-by slot -x "RAYON_NUM_THREADS=1" "${DEFAULT_WORKER_DATA_DIR}/${DEFAULT_WORKER_BIN_NAME}")
 	fi
 
-	args+=(--coordinator-url "${DEFAULT_WORKER_COORDINATOR_URL}" --worker-id "${DEFAULT_WORKER_ID} -m")
+	args+=(--coordinator-url "${DEFAULT_WORKER_COORDINATOR_URL}" --worker-id "${DEFAULT_WORKER_ID}" -m)
 	[[ -n "$DEFAULT_WORKER_PROVINGKEY_DIR" ]] && args+=(-k "$DEFAULT_WORKER_PROVINGKEY_DIR")
-	[[ "$DEFAULT_WORKER_GPU_ENABLED" == "true" ]] && args+=(--gpu)
 
 	if [[ -n "$DEFAULT_WORKER_EXTRA_ARGS" ]]; then
 		read -ra extra_arr <<< "$DEFAULT_WORKER_EXTRA_ARGS"

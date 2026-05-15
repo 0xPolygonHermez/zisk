@@ -158,7 +158,7 @@ impl HintBuffer {
                         written += n;
                         if attempt > 0 {
                             println!(
-                                "write_with_retries: writesucceeded after {} attempts",
+                                "write_with_retries: write succeeded after {} attempts",
                                 attempt
                             );
                         }

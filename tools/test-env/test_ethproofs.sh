@@ -1,3 +1,5 @@
+#!/bin/bash
+
 source "./utils.sh"
 source "./deploy_distributed.sh"
 
@@ -8,9 +10,6 @@ main() {
     step "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
-
-    ZISK_GHA=1
-    export ZISK_GHA
 
     cd "${WORKSPACE_DIR}"
 
@@ -59,7 +58,7 @@ main() {
     COORDINATOR_URL=http://localhost:7010
     INPUTS_FOLDER="${WORKSPACE_DIR}/zisk-ethproofs/inputs"
     COMPUTE_CAPACITY=10
-    ensure export BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
+    export BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
 
     ensure cd zisk-ethproofs
     local input_files_arg=""

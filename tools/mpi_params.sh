@@ -27,7 +27,7 @@ mpi_params() {
     num_sockets=$(numactl --hardware 2>/dev/null | grep "available:" | awk '{print $2}')
   fi
   if [[ -z "$num_sockets" || "$num_sockets" -eq 0 ]]; then
-    err "mpi_params: could not detect number of sockets/NUMA nodes." true
+    echo "[ERROR] mpi_params: could not detect number of sockets/NUMA nodes." true
     exit 1
   fi
 
@@ -45,11 +45,11 @@ mpi_params() {
   local gpus_per_socket=0 procs_per_socket=1
   if [[ "$num_gpus" -gt 0 ]]; then
     if [[ $((num_gpus % num_sockets)) -ne 0 ]]; then
-      warn "GPUs (${num_gpus}) don't divide evenly across sockets (${num_sockets})."
+      echo "[WARN] GPUs (${num_gpus}) don't divide evenly across sockets (${num_sockets})."
     fi
     gpus_per_socket=$((num_gpus / num_sockets))
     if [[ "$gpus_per_socket" -eq 0 ]]; then
-      warn "Fewer GPUs (${num_gpus}) than sockets (${num_sockets}), using 1 process total."
+      echo "[WARN] Fewer GPUs (${num_gpus}) than sockets (${num_sockets}), using 1 process total."
       procs_per_socket=0
     elif [[ $((gpus_per_socket % 2)) -eq 0 ]]; then
       procs_per_socket=$((gpus_per_socket / 2))

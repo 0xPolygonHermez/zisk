@@ -66,14 +66,6 @@ resolve_verify_proof_file() {
     return 1
 }
 
-# prefix_log_output: Prefix each log line written to stdout.
-prefix_log_output() {
-    local prefix="$1"
-    local prefix_width="${LOG_PREFIX_WIDTH:-11}"
-
-    awk -v prefix="${prefix}" -v width="${prefix_width}" '{ printf "[%-*s] %s\n", width, prefix, $0; fflush() }'
-}
-
 # test_elf: Run proofs for a given ELF program.
 #
 # Parameters:
@@ -169,9 +161,9 @@ test_elf() {
                 -e "${ELF_FILE}" \
                 ${input_flag} \
                 ${gpu_flag} \
-                2>&1 | tee "constraints_${input_file}.log" || return 1
+                2>&1 | tee "${LOGS_DIR}/single/constraints_${input_file}.log" || return 1
             if ! grep -F "All global constraints were successfully verified" \
-                        "constraints_${input_file}.log"; then
+                        "${LOGS_DIR}/single/constraints_${input_file}.log"; then
                 err "verify constraints failed for ${input_file}"
                 return 1
             fi
@@ -185,26 +177,26 @@ test_elf() {
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
                     ${gpu_flag} \
-                    2>&1 | tee "prove_${input_file}.log" || return 1
-                if ! grep -F "Vadcop Final proof was verified" "prove_${input_file}.log"; then
+                    2>&1 | tee "${LOGS_DIR}/single/prove_${input_file}.log" || return 1
+                if ! grep -F "Vadcop Final proof was verified" "${LOGS_DIR}/single/prove_${input_file}.log"; then
                     err "prove failed for ${input_file}"
                     return 1
                 fi
 
                 # Extract time and cycles from prove log and save to result JSON
                 local prove_time
-                prove_time=$(sed -nE 's/.*Proof Time: ([0-9.]+) seconds.*/\1/p' "prove_${input_file}.log")
+                prove_time=$(sed -nE 's/.*Proof Time: ([0-9.]+) seconds.*/\1/p' "${LOGS_DIR}/single/prove_${input_file}.log")
                 echo "Extracted proof time: ${prove_time}s"
                 local prove_cycles
-                prove_cycles=$(sed -nE 's/.*steps:[[:space:]]*([0-9]+).*/\1/p' "prove_${input_file}.log")
+                prove_cycles=$(sed -nE 's/.*steps:[[:space:]]*([0-9]+).*/\1/p' "${LOGS_DIR}/single/prove_${input_file}.log")
                 echo "{\"time\": ${prove_time:-0}, \"cycles\": ${prove_cycles:-0}}" > "${PROOF_RESULTS_DIR}/single/${input_file}.json"
                 result_files+=("${input_file}")
 
                 step "Verifying proof for ${input_file}..."
                 ensure cargo-zisk verify \
                     -p ./proof.bin \
-                    2>&1 | tee "verify_${input_file}.log" || return 1
-                if ! grep -F "STARK proof was verified" "verify_${input_file}.log"; then
+                    2>&1 | tee "${LOGS_DIR}/single/verify_${input_file}.log" || return 1
+                if ! grep -F "STARK proof was verified" "${LOGS_DIR}/single/verify_${input_file}.log"; then
                     err "verify proof failed for ${input_file}"
                     return 1
                 fi
