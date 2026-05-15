@@ -16,5 +16,5 @@ _cleanup() {
 }
 trap _cleanup INT TERM
 
-docker exec "$@" &
+docker exec "${CONTAINER}" "$@" &
 wait $!
