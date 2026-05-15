@@ -116,7 +116,8 @@ jobs:
       - name: Build ZisK
         run: |
           .github/scripts/docker_exec.sh \
-            -u ziskuser bash -lc '
+            -u ziskuser \
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_zisk.sh
             '
@@ -126,7 +127,8 @@ jobs:
           docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
           docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
           .github/scripts/docker_exec.sh \
-            -u ziskuser bash -lc '
+            -u ziskuser \
+            -- bash -lc '
               cd /workspace/zisk
               /home/ziskuser/check-libziskos.sh
             '
@@ -136,7 +138,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
             '
@@ -147,7 +149,7 @@ jobs:
             -u ziskuser \
             -e ONLY_CPU="1" \
             -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_sha_hasher.sh
             '
@@ -157,7 +159,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZISK_TEMPLATE_BRANCH="pre-develop-0.17.1" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_sha_hasher.sh
             '
@@ -165,7 +167,8 @@ jobs:
       - name: Test ELF diagnostic
         run: |
           .github/scripts/docker_exec.sh \
-            -u ziskuser bash -lc '
+            -u ziskuser \
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_diagnostic.sh
             '
@@ -176,7 +179,7 @@ jobs:
             -u ziskuser \
             -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
             '
@@ -188,7 +191,7 @@ jobs:
             -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
             '
@@ -200,7 +203,7 @@ jobs:
             -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
             -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -e ENABLE_HINTS="1" \
-            bash -lc '
+            -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
             '

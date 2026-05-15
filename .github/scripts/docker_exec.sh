@@ -5,9 +5,10 @@
 # instead of blocking until the docker exec command finishes on its own.
 #
 # The container name is read from the TEST_CONTAINER environment variable.
+# Use '--' to separate docker exec options from the command:
 #
-# Usage: docker_exec.sh [docker exec options] COMMAND [ARGS...]
-#   e.g. docker_exec.sh -u myuser -e VAR=val bash -lc 'echo hello'
+# Usage: docker_exec.sh [docker exec options] -- COMMAND [ARGS...]
+#   e.g. docker_exec.sh -u myuser -e VAR=val -- bash -lc 'echo hello'
 set -e
 
 if [[ -z "${TEST_CONTAINER:-}" ]]; then
@@ -15,11 +16,19 @@ if [[ -z "${TEST_CONTAINER:-}" ]]; then
     exit 1
 fi
 
+# Split args into docker exec options (before --) and command (after --)
+EXEC_OPTS=()
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+    EXEC_OPTS+=("$1")
+    shift
+done
+shift  # remove --
+
 _cleanup() {
     echo "Signal received — stopping container ${TEST_CONTAINER}..."
     docker rm -f "${TEST_CONTAINER}" 2>/dev/null || true
 }
 trap _cleanup INT TERM
 
-docker exec "${TEST_CONTAINER}" "$@" &
+docker exec "${EXEC_OPTS[@]}" "${TEST_CONTAINER}" "$@" &
 wait $!
