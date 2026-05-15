@@ -50,6 +50,8 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=static=memcpp");
     println!("cargo:rustc-link-lib=dylib=stdc++");
+    // libmemcpp.a is compiled with -fopenmp; the consumer must link gomp.
+    println!("cargo:rustc-link-lib=dylib=gomp");
 
     watch_dir_recursive("cpp", &["cpp", "hpp"]);
 

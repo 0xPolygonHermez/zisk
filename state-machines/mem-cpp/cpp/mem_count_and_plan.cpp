@@ -338,7 +338,12 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
             last_segments[instance.kind] = instance.inst_id;
         }
     }
-    for (const auto &instance : instances) {
+    // num_threads(4): wider teams contend with the rayon witness pool and
+    // grew the WAIT_PLAN_MEM_CPP envelope rather than shrinking it.
+    const int64_t n_inst = static_cast<int64_t>(instances.size());
+    #pragma omp parallel for schedule(dynamic) num_threads(4)
+    for (int64_t i = 0; i < n_inst; ++i) {
+        const InstanceMeta &instance = instances[i];
         MemSegment *segment = new MemSegment();
         uint32_t first_chunk = instance.first_addr_chunk;
         uint32_t last_chunk = instance.last_addr_chunk;
@@ -371,18 +376,11 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
         segment->is_last_segment = instance.inst_id == last_segments[instance.kind];
         segment->offsets_base_addr = instance.first_addr;
         segment->addr_range_slots = instance.addr_range_slots;
-        segment->num_pages = instance.num_pages;
-        segment->present_count = instance.present_count;
-        segment->page_starts.assign(
-            instance.page_starts,
-            instance.page_starts + instance.num_pages);
-        segment->page_single_value.assign(
-            instance.page_single_value,
-            instance.page_single_value + instance.num_pages);
-        const size_t dense_words = static_cast<size_t>(instance.present_count) * MEM_OFFSETS_PAGE_SIZE;
-        segment->pages_dense.assign(
-            instance.pages_dense,
-            instance.pages_dense + dense_words);
+        segment->num_pages        = instance.num_pages;
+        segment->present_count    = instance.present_count;
+        segment->page_starts       = instance.page_starts;
+        segment->page_single_value = instance.page_single_value;
+        segment->pages_dense       = instance.pages_dense;
         dest[instance.kind].set(instance.inst_id, segment);
     }
 }
@@ -426,9 +424,9 @@ const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_
         addr_range_slots_out  = segment->addr_range_slots;
         num_pages_out         = segment->num_pages;
         present_count_out     = segment->present_count;
-        page_single_value_out = segment->page_single_value.data();
-        pages_dense_out       = segment->pages_dense.data();
-        return segment->page_starts.data();
+        page_single_value_out = segment->page_single_value;
+        pages_dense_out       = segment->pages_dense;
+        return segment->page_starts;
     } else {
         offsets_base_addr_out = 0;
         addr_range_slots_out  = 0;
