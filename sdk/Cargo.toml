@@ -37,6 +37,9 @@ alloy-sol-types = { version = "1.5.7" }
 # For utils.rs
 rom-setup = { workspace = true }
 
+[dev-dependencies]
+test-artifacts = { workspace = true }
+
 [features]
 default = []
 cpu-only = ["zisk-prover-backend/cpu-only"]

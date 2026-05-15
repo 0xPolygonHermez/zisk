@@ -9,7 +9,7 @@ members = [
     "diagnostic",
     "modexp",
     "secp256k1",
-    # "secp256r1", // Too big
+    "secp256r1",
     "syscalls/add256",
     "syscalls/arith256",
     "syscalls/arith256_mod",

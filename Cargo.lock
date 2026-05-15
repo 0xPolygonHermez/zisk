@@ -7791,6 +7791,7 @@ dependencies = [
  "sha2",
  "spin",
  "talc",
+ "test-artifacts",
  "tiny-keccak",
  "tokio",
  "zisk-common",
@@ -7819,7 +7820,9 @@ dependencies = [
  "ripemd",
  "serde",
  "sha2",
+ "test-artifacts",
  "tiny-keccak",
+ "zisk-common",
  "zisk-verifier",
  "zkvm-interface",
 ]

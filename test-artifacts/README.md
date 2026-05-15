@@ -70,3 +70,8 @@ let outcome = client.verify_constraints(&ELF_BLAKE2, stdin).run()?;
 - ELF bytes are embedded into the compiled `test-artifacts` rlib via
   `include_bytes!` (inside `load_program!`), so consumers do not need access to
   the `target/` directory at runtime.
+
+## TODOs
+
+- [ ] Add guests for verifying basic ZisK operations like add, xor, ...
+- [ ] Add guests for memory operations.

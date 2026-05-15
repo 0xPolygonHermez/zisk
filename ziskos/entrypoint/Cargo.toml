@@ -64,6 +64,10 @@ tokio = { workspace = true, optional = true }
 [target.'cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_metrics))'.dependencies]
 ctor = { version = "0.2", optional = true }
 
+[target.'cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))'.dev-dependencies]
+test-artifacts = { workspace = true }
+zisk-common = { workspace = true }
+
 [features]
 default = ["user-hints", "inputcpy"]
 user-hints = [
