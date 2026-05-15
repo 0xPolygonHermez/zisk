@@ -26,14 +26,14 @@ pub enum MainSmError {
         /// The fixed row count of `MainTrace`.
         num_rows: usize,
     },
-    // /// The plan handed to the main instance has no `segment_id`.
-    // #[error("plan is missing a segment_id")]
-    // MissingSegmentId,
+    /// The plan handed to the main instance has no `segment_id`.
+    #[error("plan is missing a segment_id")]
+    MissingSegmentId,
 
-    // /// The plan metadata could not be downcast to the expected `bool`
-    // /// (the `is_last_segment` flag set by the planner).
-    // #[error("plan metadata is not the expected bool (is_last_segment)")]
-    // InvalidSegmentMetadata,
+    /// The plan metadata could not be downcast to the expected `bool`
+    /// (the `is_last_segment` flag set by the planner).
+    #[error("plan metadata is not the expected bool (is_last_segment)")]
+    InvalidSegmentMetadata,
 
     // /// `fill_trace_outputs` was empty — the segment had no minimal traces to process.
     // #[error("fill_trace_outputs is empty; segment has no minimal traces")]
@@ -45,7 +45,6 @@ pub enum MainSmError {
     //     /// The offending slot value.
     //     slot: u8,
     // },
-
     /// Conversion of a `u64` quantity into `usize` failed on this target.
     #[error("integer conversion to usize failed: {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
