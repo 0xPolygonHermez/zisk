@@ -57,6 +57,9 @@ pub enum MainSmError {
 
 impl From<MainSmError> for proofman_common::ProofmanError {
     fn from(err: MainSmError) -> Self {
-        proofman_common::ProofmanError::ProofmanError(err.to_string())
+        match err {
+            MainSmError::Proofman(e) => e,
+            other => proofman_common::ProofmanError::ProofmanError(other.to_string()),
+        }
     }
 }
