@@ -72,8 +72,6 @@ tolower() {
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    local zisk_repo_dir=$1
-
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         info "Skipping loading .env file as it does not exist"
