@@ -50,8 +50,7 @@ pub enum MainSmError {
     #[error("integer conversion to usize failed: {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
 
-    /// A `ProofmanError` propagated from a `proofman_common` operation (e.g. the
-    /// `MainTrace::new_from_vec` constructor rejecting a mis-sized `trace_buffer`).
+    /// A `ProofmanError` propagated from a `proofman_common` operation
     #[error("proofman error: {0}")]
     Proofman(#[from] proofman_common::ProofmanError),
 }
