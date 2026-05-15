@@ -900,6 +900,81 @@ __global__ void compute_addr_offsets_kernel(
         out[j] = prefix[fa + j] - (base_pos - 1);
 }
 
+// Dense → paged compaction. One block per (instance, page); one thread per
+// slot. Precondition: present_counters[ai] must be zero on entry.
+__global__ void compact_paged_kernel(
+    const uint32_t* addr_offsets,
+    const uint32_t* offset_starts,        // [num_active]
+    const uint32_t* active_first,         // [num_active]
+    const uint32_t* active_last,          // [num_active]
+    const uint32_t* page_meta_starts,     // [num_active] — prefix sum of num_pages
+    const uint32_t* pages_dense_starts,   // [num_active] — prefix sum of num_pages (worst-case dense reservation, in pages)
+    uint32_t        num_active,
+    uint32_t*       present_counters,     // [num_active], atomic
+    uint32_t*       page_starts,
+    uint32_t*       page_single_value,
+    uint32_t*       pages_dense)
+{
+    const uint32_t ai = blockIdx.y;
+    if (ai >= num_active) return;
+    const uint32_t page = blockIdx.x;
+
+    const uint32_t fa = active_first[ai];
+    const uint32_t la = active_last[ai];
+    const uint32_t num_addrs = la - fa + 1;
+    const uint32_t num_pages = (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
+    if (page >= num_pages) return;
+
+    const uint32_t* dense        = addr_offsets + offset_starts[ai];
+    const uint32_t  page_start   = page * MEM_OFFSETS_PAGE_SIZE;
+    const uint32_t  page_end_live = (page_start + MEM_OFFSETS_PAGE_SIZE < num_addrs)
+                                        ? page_start + MEM_OFFSETS_PAGE_SIZE
+                                        : num_addrs;
+
+    const uint32_t single_value = dense[page_start];
+
+    const uint32_t tid = threadIdx.x;
+    // Each thread checks one slot (slot = page_start + tid). Skip slot 0 (== single_value by definition).
+    bool local_diff = false;
+    if (tid > 0) {
+        const uint32_t slot = page_start + tid;
+        if (slot < page_end_live && dense[slot] != single_value) {
+            local_diff = true;
+        }
+    }
+
+    // Block-wide vote.
+    __shared__ uint32_t s_has_diff;
+    if (tid == 0) s_has_diff = 0;
+    __syncthreads();
+    if (local_diff) atomicOr(&s_has_diff, 1u);
+    __syncthreads();
+    const bool present = s_has_diff != 0;
+
+    const uint32_t page_meta_idx = page_meta_starts[ai] + page;
+    __shared__ uint32_t s_local_idx;
+    if (tid == 0) {
+        page_single_value[page_meta_idx] = single_value;
+        if (present) {
+            s_local_idx = atomicAdd(&present_counters[ai], 1u);
+            page_starts[page_meta_idx] = s_local_idx;
+        } else {
+            page_starts[page_meta_idx] = MEM_OFFSETS_PAGE_ABSENT;
+        }
+    }
+    __syncthreads();
+
+    if (!present) return;
+
+    // Each thread writes one slot into the compact output. Slots past
+    // num_addrs are padded with single_value so any read past the live
+    // range returns a well-defined value.
+    const uint32_t dense_dst_page = pages_dense_starts[ai] + s_local_idx;
+    uint32_t* out = pages_dense + (size_t)dense_dst_page * MEM_OFFSETS_PAGE_SIZE;
+    const uint32_t src_slot = page_start + tid;
+    out[tid] = (src_slot < num_addrs) ? dense[src_slot] : single_value;
+}
+
 // =====================================================================
 // Binary save helpers (declared in count_and_plan.cuh)
 // =====================================================================
@@ -1076,6 +1151,13 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_meta_scalars_           = (uint32_t*)take((size_t)max_active_ * 4 * 4);
     d_addr_offsets_           = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
     d_offset_starts_          = (uint32_t*)take((size_t)max_active_ * 4);
+    const size_t max_total_pages = ((size_t)N_ADDR + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE + max_active_;
+    d_page_starts_            = (uint32_t*)take(max_total_pages * 4);
+    d_page_single_            = (uint32_t*)take(max_total_pages * 4);
+    d_pages_dense_            = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
+    d_present_counters_       = (uint32_t*)take((size_t)max_active_ * 4);
+    d_page_meta_starts_       = (uint32_t*)take((size_t)max_active_ * 4);
+    d_pages_dense_starts_     = (uint32_t*)take((size_t)max_active_ * 4);
     d_max_compact_            = (uint32_t*)take(3 * 4);
     d_invalid_mode_flag_        = (uint32_t*)take(4);
     d_chunk_counters_per_chunk_ = (ChunkCounters*)take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
@@ -1132,16 +1214,17 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
     h_offsets_buf_size_ = 1ull << 30;
     CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
-    // Paged-offsets output buffers — phase 1.5 host-side compaction.
-    // Each instance contributes ceil(addr_range_slots / PAGE_SIZE) entries to
-    // h_page_starts_buf_ / h_page_single_buf_, and at most addr_range_slots
-    // entries to h_pages_dense_buf_ (worst case: every page present, so the
-    // dense data equals the dense h_offsets_buf_ in size).
+    // Pinned destinations for the compacted paged-offsets output. Each
+    // instance contributes ceil(addr_range_slots / MEM_OFFSETS_PAGE_SIZE)
+    // entries to h_page_starts_buf_ / h_page_single_buf_, and at most
+    // addr_range_slots entries to h_pages_dense_buf_ (worst case: every
+    // page present).
     h_page_meta_buf_size_   = h_offsets_buf_size_ / MEM_OFFSETS_PAGE_SIZE + 4096;
     h_pages_dense_buf_size_ = h_offsets_buf_size_;
     CUDA_CHECK(cudaMallocHost(&h_page_starts_buf_,  h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_page_single_buf_,   h_page_meta_buf_size_));
     CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_,  h_pages_dense_buf_size_));
+    CUDA_CHECK(cudaMallocHost(&h_present_counters_, (size_t)max_active_ * sizeof(uint32_t)));
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
 
@@ -1415,6 +1498,7 @@ void CountAndPlan::free_pinned_() {
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }
     if (h_pages_dense_buf_)          { cudaFreeHost(h_pages_dense_buf_);          h_pages_dense_buf_          = nullptr; }
+    if (h_present_counters_)         { cudaFreeHost(h_present_counters_);         h_present_counters_         = nullptr; }
     if (h_result_nops_)              { cudaFreeHost(h_result_nops_);              h_result_nops_              = nullptr; }
     if (h_meta_scalars_)             { cudaFreeHost(h_meta_scalars_);             h_meta_scalars_             = nullptr; }
     if (h_chunk_counters_per_chunk_) { cudaFreeHost(h_chunk_counters_per_chunk_); h_chunk_counters_per_chunk_ = nullptr; }
@@ -1572,18 +1656,16 @@ void CountAndPlan::process_worker_() {
         total_addrs += h_active_last_[i] - h_active_first_[i] + 1;
     }
 
-    // h_offsets_buf_ is the pinned destination for the addr_offsets D2H copy.
-    // Its size must cover total_addrs * sizeof(uint32_t); otherwise the async
-    // copy fails (destination not fully pinned) and metas point at stale zero
-    // memory. Grow it on demand with a small headroom to avoid re-alloc churn.
+    // Sizing tracker for the paged buffers below (in bytes, equivalent to the
+    // dense addr_offsets footprint — one u32 per addr).
     size_t needed_offsets_bytes = (size_t)total_addrs * sizeof(uint32_t);
     if (needed_offsets_bytes > h_offsets_buf_size_) {
         if (h_offsets_buf_) CUDA_CHECK(cudaFreeHost(h_offsets_buf_));
         h_offsets_buf_size_ = needed_offsets_bytes + (needed_offsets_bytes / 4);
         CUDA_CHECK(cudaMallocHost(&h_offsets_buf_, h_offsets_buf_size_));
     }
-    // Paged-output sibling buffers grow alongside h_offsets_buf_.
-    //   page-meta arrays: bounded by ceil(total_addrs / PAGE_SIZE) + 1 entry
+    // Paged-output buffers grow on demand:
+    //   page-meta arrays: bounded by ceil(total_addrs / MEM_OFFSETS_PAGE_SIZE) + 1 entry
     //                     per instance (small).
     //   pages_dense:      bounded by total_addrs (every page present).
     size_t needed_page_meta_bytes =
@@ -1633,15 +1715,78 @@ void CountAndPlan::process_worker_() {
                                num_active_ * 4 * 4, cudaMemcpyDeviceToHost, meta_stream_));
     CUDA_CHECK(cudaMemcpyAsync(h_result_nops_, d_result_nops_,
                                (size_t)num_active_ * n_chunks_ * 4, cudaMemcpyDeviceToHost, meta_stream_));
-    CUDA_CHECK(cudaMemcpyAsync(h_offsets_buf_, d_addr_offsets_,
-                               (size_t)total_addrs * 4, cudaMemcpyDeviceToHost, d2h_stream_));
+
+    // Dense → paged compaction.
+    // Compute per-instance num_pages and prefix sums (host-side over a
+    // handful of values).
+    std::vector<uint32_t> h_num_pages(num_active_);
+    std::vector<uint32_t> h_page_meta_prefix(num_active_);
+    std::vector<uint32_t> h_pages_dense_dev_prefix(num_active_);
+    uint32_t total_pages         = 0;
+    uint32_t max_pages_per_inst  = 0;
+    for (uint32_t i = 0; i < num_active_; i++) {
+        const uint32_t num_addrs = h_active_last_[i] - h_active_first_[i] + 1;
+        const uint32_t np = (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
+        h_num_pages[i] = np;
+        h_page_meta_prefix[i] = total_pages;
+        h_pages_dense_dev_prefix[i] = total_pages;  // worst-case device reservation: np pages per instance
+        total_pages += np;
+        if (np > max_pages_per_inst) max_pages_per_inst = np;
+    }
+
+    // Push prefix sums to device, zero the per-instance present counters.
+    CUDA_CHECK(cudaMemcpyAsync(d_page_meta_starts_, h_page_meta_prefix.data(),
+                               num_active_ * 4, cudaMemcpyHostToDevice, d2h_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(d_pages_dense_starts_, h_pages_dense_dev_prefix.data(),
+                               num_active_ * 4, cudaMemcpyHostToDevice, d2h_stream_));
+    CUDA_CHECK(cudaMemsetAsync(d_present_counters_, 0,
+                               num_active_ * 4, d2h_stream_));
+
+    // One block per (instance, page); one thread per slot.
+    dim3 compact_grid(max_pages_per_inst, num_active_);
+    compact_paged_kernel<<<compact_grid, MEM_OFFSETS_PAGE_SIZE, 0, d2h_stream_>>>(
+        d_addr_offsets_, d_offset_starts_,
+        d_active_first_, d_active_last_,
+        d_page_meta_starts_, d_pages_dense_starts_,
+        num_active_,
+        d_present_counters_, d_page_starts_, d_page_single_, d_pages_dense_);
+
+    // Pull per-instance present counts so we know the per-instance D2H sizes.
+    CUDA_CHECK(cudaMemcpyAsync(h_present_counters_, d_present_counters_,
+                               num_active_ * 4, cudaMemcpyDeviceToHost, d2h_stream_));
 
     CUDA_CHECK(cudaStreamSynchronize(meta_stream_));
     CUDA_CHECK(cudaStreamSynchronize(d2h_stream_));
 
-    // Running cursors into the per-instance paged-output buffers.
-    size_t page_meta_cursor  = 0;          // entries (u32s) in page_starts/page_single_value
-    size_t pages_dense_cursor = 0;         // entries (u32s) in pages_dense
+    // Per-instance prefix sum of present pages — gives the host-side dense
+    // slice base for each instance's compacted output.
+    std::vector<uint32_t> h_pages_dense_host_prefix(num_active_);
+    uint32_t total_present_pages = 0;
+    for (uint32_t i = 0; i < num_active_; i++) {
+        h_pages_dense_host_prefix[i] = total_present_pages;
+        total_present_pages += h_present_counters_[i];
+    }
+
+    // D2H the paged metadata (page_starts + page_single_value — total_pages
+    // entries each) and the per-instance compact dense slices.
+    CUDA_CHECK(cudaMemcpyAsync(h_page_starts_buf_, d_page_starts_,
+                               (size_t)total_pages * 4, cudaMemcpyDeviceToHost, d2h_stream_));
+    CUDA_CHECK(cudaMemcpyAsync(h_page_single_buf_, d_page_single_,
+                               (size_t)total_pages * 4, cudaMemcpyDeviceToHost, d2h_stream_));
+    for (uint32_t i = 0; i < num_active_; i++) {
+        const uint32_t pc = h_present_counters_[i];
+        if (pc == 0) continue;
+        uint32_t*       dst = h_pages_dense_buf_
+                              + (size_t)h_pages_dense_host_prefix[i] * MEM_OFFSETS_PAGE_SIZE;
+        const uint32_t* src = d_pages_dense_
+                              + (size_t)h_pages_dense_dev_prefix[i]  * MEM_OFFSETS_PAGE_SIZE;
+        CUDA_CHECK(cudaMemcpyAsync(dst, src,
+                                   (size_t)pc * MEM_OFFSETS_PAGE_SIZE * 4,
+                                   cudaMemcpyDeviceToHost, d2h_stream_));
+    }
+    CUDA_CHECK(cudaStreamSynchronize(d2h_stream_));
+
+    // Wire metas: pointers into the pinned host buffers.
     uint32_t ai = 0;
     for (uint8_t r = 0; r < 3; r++) {
         for (uint32_t j = 0; j < num_active_per_[r]; j++, ai++) {
@@ -1654,60 +1799,16 @@ void CountAndPlan::process_worker_() {
             metas_[ai].first_addr_skip   = scalars[1];
             metas_[ai].last_addr_chunk   = scalars[2];
             metas_[ai].last_addr_include = scalars[3];
-            const uint32_t num_addrs = h_active_last_[ai] - h_active_first_[ai] + 1;
+            const uint32_t num_addrs   = h_active_last_[ai] - h_active_first_[ai] + 1;
             metas_[ai].count_per_chunk = h_result_nops_ + (size_t)ai * n_chunks_;
             metas_[ai].n_chunks        = n_chunks_;
-
-            // ── Phase 1.5: host-side compaction of dense → paged ──
-            // For each page (of MEM_OFFSETS_PAGE_SIZE slots) we record:
-            //   * page_single_value[p] — value at the first slot of the page;
-            //   * page_starts[p]       — present-page index into pages_dense,
-            //                            or MEM_OFFSETS_PAGE_ABSENT when the
-            //                            page is uniform (= page_single_value).
-            // Present pages are emitted dense (PAGE_SIZE entries each), with
-            // the trailing partial page padded with the carry value so any
-            // out-of-range read still returns a well-defined value.
-            const uint32_t* dense = h_offsets_buf_ + h_offset_starts[ai];
-            const uint32_t num_pages =
-                (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
-            uint32_t* out_starts = h_page_starts_buf_ + page_meta_cursor;
-            uint32_t* out_carry  = h_page_single_buf_  + page_meta_cursor;
-            uint32_t* out_dense  = h_pages_dense_buf_ + pages_dense_cursor;
-            uint32_t  present_count = 0;
-            for (uint32_t p = 0; p < num_pages; p++) {
-                const uint32_t start = p * MEM_OFFSETS_PAGE_SIZE;
-                const uint32_t end =
-                    (start + MEM_OFFSETS_PAGE_SIZE < num_addrs)
-                        ? start + MEM_OFFSETS_PAGE_SIZE
-                        : num_addrs;
-                const uint32_t carry = dense[start];
-                out_carry[p] = carry;
-                bool present = false;
-                for (uint32_t s = start + 1; s < end; s++) {
-                    if (dense[s] != carry) { present = true; break; }
-                }
-                if (present) {
-                    out_starts[p] = present_count;
-                    uint32_t* dst = out_dense + (size_t)present_count * MEM_OFFSETS_PAGE_SIZE;
-                    const uint32_t copy_len = end - start;
-                    std::memcpy(dst, dense + start, copy_len * sizeof(uint32_t));
-                    if (copy_len < MEM_OFFSETS_PAGE_SIZE) {
-                        for (uint32_t s = copy_len; s < MEM_OFFSETS_PAGE_SIZE; s++)
-                            dst[s] = carry;
-                    }
-                    ++present_count;
-                } else {
-                    out_starts[p] = MEM_OFFSETS_PAGE_ABSENT;
-                }
-            }
-            metas_[ai].page_starts        = out_starts;
-            metas_[ai].page_single_value  = out_carry;
-            metas_[ai].pages_dense        = out_dense;
-            metas_[ai].num_pages          = num_pages;
-            metas_[ai].present_count      = present_count;
-            metas_[ai].addr_range_slots   = num_addrs;
-            page_meta_cursor  += num_pages;
-            pages_dense_cursor += (size_t)present_count * MEM_OFFSETS_PAGE_SIZE;
+            metas_[ai].num_pages       = h_num_pages[ai];
+            metas_[ai].present_count   = h_present_counters_[ai];
+            metas_[ai].addr_range_slots = num_addrs;
+            metas_[ai].page_starts       = h_page_starts_buf_ + h_page_meta_prefix[ai];
+            metas_[ai].page_single_value = h_page_single_buf_  + h_page_meta_prefix[ai];
+            metas_[ai].pages_dense       = h_pages_dense_buf_
+                                           + (size_t)h_pages_dense_host_prefix[ai] * MEM_OFFSETS_PAGE_SIZE;
         }
     }
 }

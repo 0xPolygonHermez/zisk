@@ -126,6 +126,13 @@ private:
     uint32_t*      d_meta_scalars_           = nullptr;
     uint32_t*      d_addr_offsets_           = nullptr;
     uint32_t*      d_offset_starts_          = nullptr;
+    uint32_t*      d_page_starts_            = nullptr;
+    uint32_t*      d_page_single_            = nullptr;
+    uint32_t*      d_pages_dense_            = nullptr;
+    uint32_t*      d_present_counters_       = nullptr;
+    uint32_t*      d_page_meta_starts_       = nullptr;
+    uint32_t*      d_pages_dense_starts_     = nullptr;
+    uint32_t*      h_present_counters_       = nullptr;
 
     // ─── Per-stream device buffers (parallel arrays) ──────────────────
 
@@ -164,12 +171,11 @@ private:
     uint32_t*      h_n_emits_all_              = nullptr;
     uint32_t*      h_offsets_buf_              = nullptr;
     size_t         h_offsets_buf_size_         = 0;
-    // Paged-dense output buffers (host-side compaction of h_offsets_buf_).
-    //   - h_page_starts_buf_ / h_page_single_buf_ are sized in "pages"
+    // Pinned destinations for the compacted paged-offsets output.
+    //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
     //     (1 entry per page); cumulative across the active instances.
-    //   - h_pages_dense_buf_ is sized in slots (PAGE_SIZE per present page);
-    //     bounded above by total_addrs (every page present) and sized
-    //     accordingly so it always fits.
+    //   - h_pages_dense_buf_ is sized in slots (MEM_OFFSETS_PAGE_SIZE per
+    //     present page); bounded above by total_addrs (every page present).
     uint32_t*      h_page_starts_buf_          = nullptr;
     uint32_t*      h_page_single_buf_           = nullptr;
     size_t         h_page_meta_buf_size_       = 0;       // bytes (covers both)
