@@ -9,7 +9,10 @@ use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-use crate::{EmulatorResult, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS};
+use crate::{
+    pub_outs_collector::PubOutsCollector, EmulatorResult, NestedDeviceMetricsList, StaticSMBundle,
+    MAX_NUM_STEPS,
+};
 
 use anyhow::Result;
 
@@ -100,7 +103,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<(NestedDeviceMetricsList, Vec<(u64, u32)>)> {
+    ) -> Result<(NestedDeviceMetricsList, PubOutsCollector)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -126,10 +129,10 @@ impl EmulatorRust {
             .collect::<Result<Vec<_>>>()?;
 
         let mut counters = HashMap::new();
-        let mut pub_outs = Vec::new();
+        let mut pub_outs = PubOutsCollector::new();
 
         for (chunk_id, (counter_slice, pub_outs_chunk)) in metrics_slices.into_iter().enumerate() {
-            pub_outs.extend(pub_outs_chunk);
+            pub_outs.0.extend(pub_outs_chunk.0);
             for (idx, counter) in counter_slice.into_iter() {
                 let idx = idx.ok_or_else(|| {
                     anyhow::anyhow!("unexpected unindexed counter for chunk {chunk_id}")

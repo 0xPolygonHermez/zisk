@@ -4,7 +4,7 @@ use std::{
     thread::JoinHandle,
 };
 
-use crate::AsmResources;
+use crate::{pub_outs_collector::PubOutsCollector, AsmResources};
 use crate::{NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS};
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
@@ -187,7 +187,7 @@ impl EmulatorAsm {
         Option<JoinHandle<Result<AsmRunnerMO>>>,
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
-        Vec<(u64, u32)>,
+        PubOutsCollector,
     )> {
         let asm_resources = self
             .asm_resources
@@ -292,7 +292,7 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, Vec<(u64, u32)>)> {
+    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
@@ -413,10 +413,10 @@ impl EmulatorAsm {
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
         let mut counters = HashMap::new();
-        let mut pub_outs = Vec::new();
+        let mut pub_outs = PubOutsCollector::new();
 
         for (chunk_id, mut data_bus) in data_buses {
-            pub_outs.extend(data_bus.take_pub_outs());
+            pub_outs.0.extend(data_bus.take_pub_outs().0);
             let databus_counters = data_bus.into_devices(false);
 
             for (idx, counter) in databus_counters.into_iter() {

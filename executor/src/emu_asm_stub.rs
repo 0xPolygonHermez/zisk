@@ -39,7 +39,7 @@ impl EmulatorAsm {
         Option<JoinHandle<Result<AsmRunnerMO>>>,
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
-        Vec<(u64, u32)>,
+        PubOutsCollector,
     )> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }

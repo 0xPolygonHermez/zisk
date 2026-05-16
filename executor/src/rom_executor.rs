@@ -3,6 +3,7 @@
 //! This module handles the execution of a ZisK ROM program, coordinating
 //! the emulator backend and hints stream processing.
 
+use crate::pub_outs_collector::PubOutsCollector;
 use crate::{AsmResources, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList, StaticSMBundle};
 use arc_swap::ArcSwap;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
@@ -29,7 +30,7 @@ pub struct RomExecutionOutput {
     /// Execution result with step counts.
     pub steps: u64,
     /// Public outputs accumulated during execution (low/high 32-bit halves).
-    pub pub_outs: Vec<(u64, u32)>,
+    pub pub_outs: PubOutsCollector,
 }
 
 pub struct RomExecutor {

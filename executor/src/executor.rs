@@ -316,7 +316,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Add public values to the proof context (Option D: pub_outs flow directly
         // from the executor output, not via the planner's downcast).
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
-        for (index, value) in output.pub_outs.iter() {
+        for (index, value) in output.pub_outs.0.iter() {
             publics.inputs[*index as usize] = F::from_u32(*value);
         }
         drop(publics);
