@@ -10,6 +10,7 @@ mod emu_rust;
 mod executor;
 mod init;
 mod planner;
+mod pub_outs_collector;
 mod registry;
 mod rom_executor;
 mod sm_builtins;
@@ -56,13 +57,15 @@ use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 
 use anyhow::Result;
 
+use crate::pub_outs_collector::PubOutsCollector;
+
 pub type EmulatorResult = (
     Vec<EmuTrace>,
-    DeviceMetricsList,
     NestedDeviceMetricsList,
     Option<JoinHandle<Result<AsmRunnerMO>>>,
     Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
+    PubOutsCollector,
 );
 
 /// Trait for unified execution across different emulator backends
