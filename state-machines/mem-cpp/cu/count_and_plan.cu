@@ -1059,10 +1059,14 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     cub_temp_bytes_    = std::max({scan_counts_b, scan_emit_b, scan_runs_b, sort_b, rle_b});
     d_temp_hist_bytes_ = hist_scan_b;
 
+    // Worst-case total page-meta entries across all active instances.
+    const size_t max_total_pages =
+        ((size_t)N_ADDR + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE + max_active_;
+
     auto fixed_bytes = [&]() -> size_t {
         size_t cur = 0;
         auto take = [&](size_t b) { cur = (cur + 255) & ~(size_t)255; cur += b; };
-        take((size_t)N_ADDR     * 4);
+        take(((size_t)N_ADDR + max_active_) * 4);  // d_histogram_ (also backs d_pages_dense_)
         take(((size_t)N_ADDR + 1) * 4);
         take(d_temp_hist_bytes_);
         take((size_t)max_active_ * 4);
@@ -1071,11 +1075,17 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take((size_t)max_active_ * MAX_CHUNKS * 3 * 4);
         take((size_t)max_active_ * MAX_CHUNKS * 4);
         take((size_t)max_active_ * 4 * 4);
-        take(((size_t)N_ADDR + max_active_) * 4);
-        take((size_t)max_active_ * 4);
+        take(((size_t)N_ADDR + max_active_) * 4);   // d_addr_offsets_
+        take((size_t)max_active_ * 4);               // d_offset_starts_
+        take(max_total_pages * 4);                   // d_page_starts_
+        take(max_total_pages * 4);                   // d_page_single_
+        // d_pages_dense_ aliases d_histogram_ (counted above) — no take
+        take((size_t)max_active_ * 4);               // d_present_counters_
+        take((size_t)max_active_ * 4);               // d_page_meta_starts_
+        take((size_t)max_active_ * 4);               // d_pages_dense_starts_
         take(3 * 4);
         take(4);
-        take(sizeof(ChunkCounters));
+        take((size_t)MAX_CHUNKS * sizeof(ChunkCounters));
         take((size_t)MAX_CHUNKS * 4);
         take((size_t)MAX_CHUNKS * 4);
         take(((size_t)MAX_CHUNKS + 1) * 4);
@@ -1140,7 +1150,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         return p;
     };
 
-    d_histogram_              = (uint32_t*)take((size_t)N_ADDR * 4);
+    d_histogram_              = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
     d_prefix_                 = (uint32_t*)take(((size_t)N_ADDR + 1) * 4);
     d_temp_hist_              = (void*)    take(d_temp_hist_bytes_);
     d_active_ids_             = (uint32_t*)take((size_t)max_active_ * 4);
@@ -1151,10 +1161,18 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_meta_scalars_           = (uint32_t*)take((size_t)max_active_ * 4 * 4);
     d_addr_offsets_           = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
     d_offset_starts_          = (uint32_t*)take((size_t)max_active_ * 4);
-    const size_t max_total_pages = ((size_t)N_ADDR + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE + max_active_;
     d_page_starts_            = (uint32_t*)take(max_total_pages * 4);
     d_page_single_            = (uint32_t*)take(max_total_pages * 4);
-    d_pages_dense_            = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
+    // d_pages_dense_ aliases d_histogram_. Lifetimes are disjoint: the last
+    // read of d_histogram_ is the histogram->prefix scan in prepare_global_()
+    // (followed by a synchronous D2H, so the scan is complete); the only
+    // writer of d_pages_dense_, compact_paged_kernel, runs strictly later in
+    // process_worker_(). reset() re-zeros the histogram only at the next
+    // block boundary, after this block's compaction D2H has finished. No
+    // concurrent reader (unlike d_prefix_, which build_metas_kernel reads on
+    // a separate stream). d_histogram_ is allocated N_ADDR+max_active_ so it
+    // covers d_pages_dense_'s footprint.
+    d_pages_dense_            = d_histogram_;
     d_present_counters_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_meta_starts_       = (uint32_t*)take((size_t)max_active_ * 4);
     d_pages_dense_starts_     = (uint32_t*)take((size_t)max_active_ * 4);
