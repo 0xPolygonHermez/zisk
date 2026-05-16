@@ -45,10 +45,11 @@ impl EmulatorRust {
     /// # Returns
     /// A tuple containing:
     /// * `Vec<EmuTrace>` - The minimal traces produced by the emulator.
-    /// * `DeviceMetricsList` - Metrics for primary devices.
     /// * `NestedDeviceMetricsList` - Metrics for secondary/nested devices.
-    /// * `None`.
+    /// * `None` - Placeholder for optional `AsmRunnerMO` join handle (not used in this implementation).
+    /// * `None` - Placeholder for optional `AsmRunnerRH` join handle (not used in this implementation).
     /// * `u64` - Total number of steps.
+    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
     #[allow(clippy::type_complexity)]
     pub fn execute<F: PrimeField64>(
         &self,
