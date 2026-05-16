@@ -1,6 +1,6 @@
 use std::{sync::Arc, thread::JoinHandle};
 
-use crate::{NestedDeviceMetricsList, StaticSMBundle};
+use crate::{pub_outs_collector::PubOutsCollector, NestedDeviceMetricsList, StaticSMBundle};
 use anyhow::Result;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH, HintsShmem};
 use precompiles_hints::HintsProcessor;
