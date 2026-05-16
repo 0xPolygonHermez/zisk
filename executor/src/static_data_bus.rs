@@ -96,8 +96,8 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     /// leaving the collector with an empty Vec. Must be called BEFORE
     /// `into_devices`, which consumes the bus.
     #[inline]
-    pub fn take_pub_outs(&mut self) -> Vec<(u64, u32)> {
-        std::mem::take(&mut self.pub_outs_collector.0)
+    pub fn take_pub_outs(&mut self) -> PubOutsCollector {
+        std::mem::take(&mut self.pub_outs_collector)
     }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.

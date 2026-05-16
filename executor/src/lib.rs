@@ -57,13 +57,15 @@ use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 
 use anyhow::Result;
 
+use crate::pub_outs_collector::PubOutsCollector;
+
 pub type EmulatorResult = (
     Vec<EmuTrace>,
     NestedDeviceMetricsList,
     Option<JoinHandle<Result<AsmRunnerMO>>>,
     Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
-    Vec<(u64, u32)>,
+    PubOutsCollector,
 );
 
 /// Trait for unified execution across different emulator backends
