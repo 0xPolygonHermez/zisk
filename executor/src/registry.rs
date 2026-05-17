@@ -17,6 +17,7 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use zisk_common::{CheckPoint, InstanceType, Plan};
 
+use crate::ports::{GlobalId, ProofRegistry};
 use crate::AirClassifier;
 use crate::{state::ExecutionState, InstanceFactory, StaticSMBundle};
 
@@ -38,13 +39,13 @@ impl<F: PrimeField64> InstanceRegistry<F> {
     /// Populates main instances in the execution state.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context (used to gate `set_witness_ready` on
-    ///   rank-owned mains).
+    /// * `registry` - Proof-context surface (used to gate
+    ///   `set_witness_ready` on rank-owned mains).
     /// * `state` - Execution state to populate.
     /// * `assignments` - Vector of (global_id, plan) pairs.
     pub fn populate_main_instances(
         &self,
-        pctx: &ProofCtx<F>,
+        registry: &dyn ProofRegistry,
         state: &ExecutionState<F>,
         assignments: Vec<(usize, Plan)>,
     ) -> Result<()> {
@@ -55,9 +56,9 @@ impl<F: PrimeField64> InstanceRegistry<F> {
                 .entry(global_id)
                 .or_insert_with(|| self.factory.new_main(plan, global_id));
 
-            let is_mine = pctx.dctx_is_my_process_instance(global_id)?;
-            if is_mine {
-                pctx.set_witness_ready(global_id, false);
+            let gid = GlobalId(global_id);
+            if registry.is_my_process_instance(gid)? {
+                registry.set_witness_ready(gid, false);
             }
         }
 
@@ -112,12 +113,13 @@ impl<F: PrimeField64> InstanceRegistry<F> {
     /// Configures checkpoints for secondary instances.
     ///
     /// # Arguments
-    /// * `pctx` - Proof context.
+    /// * `registry` - Proof-context surface for instance-info lookup
+    ///   and chunk assignment.
     /// * `state` - Execution state containing the instances.
     /// * `global_ids` - Global IDs of secondary instances to configure.
     pub fn configure_checkpoints(
         &self,
-        pctx: &ProofCtx<F>,
+        registry: &dyn ProofRegistry,
         state: &ExecutionState<F>,
         global_ids: &[usize],
     ) -> Result<()> {
@@ -132,7 +134,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
 
             if instance.instance_type() == InstanceType::Instance {
                 let checkpoint = instance.check_point();
-                let chunks = match checkpoint {
+                let chunks: Vec<usize> = match checkpoint {
                     CheckPoint::None => vec![],
                     CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
                     CheckPoint::Multiple(chunk_ids) => {
@@ -140,9 +142,10 @@ impl<F: PrimeField64> InstanceRegistry<F> {
                     }
                 };
 
-                let (_, air_id) = pctx.dctx_get_instance_info(global_id)?;
-                let is_memory_related = AirClassifier::is_memory_related(air_id);
-                pctx.dctx_set_chunks(global_id, chunks, is_memory_related);
+                let gid = GlobalId(global_id);
+                let info = registry.instance_info(gid)?;
+                let is_memory_related = AirClassifier::is_memory_related(info.air_id);
+                registry.set_chunks(gid, &chunks, is_memory_related);
             }
         }
 

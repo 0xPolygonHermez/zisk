@@ -40,8 +40,8 @@ use zisk_pil::{
     MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
     ZISK_AIRGROUP_ID,
 };
-use zisk_pil::ZiskPublicValues;
 
+use crate::ports::{GlobalId, ProofRegistry};
 use crate::{
     state::ExecutionState, InstancePlanner, InstanceRegistry, PlanPhase, TraceOutput,
     WitnessOrchestrator,
@@ -87,6 +87,13 @@ impl MaterializePhase {
     /// future polish step may introduce a `MaterializeContext` to
     /// aggregate the shared borrows. Kept explicit for now to make
     /// the migration easy to read.
+    ///
+    /// `proof_registry` is the executor's anti-corruption layer over
+    /// `ProofCtx<F>`; it routes every `add_instance*`,
+    /// `set_witness_ready`, `dctx_*`, and `write_pub_outs` call. `pctx`
+    /// is still passed because `InstanceRegistry::configure_sm_instances`
+    /// forwards to `StaticSMBundle::configure_instances`, which uses
+    /// the SM-trait's `&ProofCtx` argument (cross-crate, kept as-is).
     #[allow(clippy::too_many_arguments)]
     // `stats` / `exec_scope` only referenced inside `stats_begin!` /
     // `stats_end!`, which expand to nothing without the `stats` feature.
@@ -99,6 +106,7 @@ impl MaterializePhase {
         registry: &InstanceRegistry<F>,
         orchestrator: &WitnessOrchestrator<F>,
         state: &ExecutionState<F>,
+        proof_registry: &dyn ProofRegistry,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
@@ -113,7 +121,7 @@ impl MaterializePhase {
         timer_start_info!(PLAN);
         let start_partial = Instant::now();
 
-        planner.assign_rom_instance(pctx)?;
+        planner.assign_rom_instance(proof_registry)?;
 
         let main_plans = plan.plan_main(&trace.min_traces)?;
         *state
@@ -122,9 +130,10 @@ impl MaterializePhase {
             .map_err(|e| anyhow::anyhow!("min_traces lock poisoned: {e}"))? =
             Some(trace.min_traces);
 
-        let main_assignments = planner.assign_main_instances(pctx, global_ids, main_plans)?;
+        let main_assignments =
+            planner.assign_main_instances(proof_registry, global_ids, main_plans)?;
         let main_instances_count = main_assignments.len();
-        registry.populate_main_instances(pctx, state, main_assignments)?;
+        registry.populate_main_instances(proof_registry, state, main_assignments)?;
 
         stats_end!(stats, &_main_plan_scope);
 
@@ -195,7 +204,7 @@ impl MaterializePhase {
 
         let mut secn_planning: Vec<_> = secn_planning.into_values().flatten().collect();
 
-        planner.assign_secn_instances(pctx, global_ids, &mut secn_planning)?;
+        planner.assign_secn_instances(proof_registry, global_ids, &mut secn_planning)?;
 
         let secn_global_ids: Vec<usize> = secn_planning
             .iter()
@@ -205,20 +214,15 @@ impl MaterializePhase {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // Add public values to the proof context (Option D: pub_outs
-        // flow directly from the executor output, not via the
-        // planner's downcast).
-        let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
-        for (index, value) in trace.pub_outs.0.iter() {
-            publics.inputs[*index as usize] = F::from_u32(*value);
-        }
-        drop(publics);
+        // Inject public outputs into the proof context. The ACL handles
+        // the F-specific conversion inside `ProofmanAdapter`.
+        proof_registry.write_pub_outs(&trace.pub_outs.0);
 
         // Create secondary instances directly from the plans.
         registry.populate_secn_instances(state, secn_planning)?;
 
-        // Configure instance checkpoints using registry method.
-        registry.configure_checkpoints(pctx, state, &secn_global_ids)?;
+        // Configure instance checkpoints.
+        registry.configure_checkpoints(proof_registry, state, &secn_global_ids)?;
 
         stats_end!(stats, &_config_scope);
 
@@ -228,9 +232,9 @@ impl MaterializePhase {
             .read()
             .map_err(|e| anyhow::anyhow!("secn_instances lock poisoned: {e}"))?;
         for (global_id, instance) in secn_instances.iter() {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id)?;
+            let info = proof_registry.instance_info(GlobalId(*global_id))?;
 
-            let setup = sctx.get_setup(airgroup_id, air_id)?;
+            let setup = sctx.get_setup(info.airgroup_id, info.air_id)?;
             let n_bits = setup.stark_info.stark_struct.n_bits;
             let total_cols: u64 = setup
                 .stark_info

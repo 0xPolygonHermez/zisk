@@ -20,8 +20,8 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, MaterializePhase, PlanPhase, StaticSMBundle,
-    TracePhase, WitnessOrchestrator,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, MaterializePhase, PlanPhase, ProofmanAdapter,
+    StaticSMBundle, TracePhase, WitnessOrchestrator,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -203,8 +203,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
         // Phases 2-4: planning + pctx mutation + instance materialization
-        // + cost accumulation. Lifted into `MaterializePhase` in step 3.2.
+        // + cost accumulation. Lifted into `MaterializePhase` in step 3.2;
+        // pctx mutations route through `ProofmanAdapter` since step 3.3.
         let steps = output.steps;
+        let proof_registry = ProofmanAdapter::new(&pctx);
         let mat_output = self.materialize.run(
             output,
             &self.plan,
@@ -212,6 +214,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.registry,
             &self.orchestrator,
             &self.state,
+            &proof_registry,
             &pctx,
             &sctx,
             global_ids,
