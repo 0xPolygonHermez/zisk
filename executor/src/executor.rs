@@ -20,8 +20,8 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, PlanPhase, StaticSMBundle, TracePhase,
-    WitnessOrchestrator,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, MaterializePhase, PlanPhase, StaticSMBundle,
+    TracePhase, WitnessOrchestrator,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -34,14 +34,9 @@ use std::{
 use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
-    StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
+    ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
-use zisk_pil::ZiskPublicValues;
-use zisk_pil::{
-    MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
-    ZISK_AIRGROUP_ID,
-};
 
 use anyhow::Result;
 
@@ -59,6 +54,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     trace: TracePhase,
     /// Phase-2 actor: pure planning from the trace ingredients.
     plan: PlanPhase,
+    /// Phase-3 actor: pctx-mutating instance materialization + cost accumulation.
+    materialize: MaterializePhase,
     /// `ProofCtx` assignment for already-planned instances.
     planner: InstancePlanner,
     /// Instance registry component.
@@ -87,6 +84,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             // was built for. No runtime AtomicBool flip needed.
             trace: TracePhase::new(chunk_size, is_asm),
             plan: PlanPhase::new(chunk_size),
+            materialize: MaterializePhase::new(),
             planner: InstancePlanner::new(),
             registry: InstanceRegistry::new(sm_bundle.clone()),
             orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
@@ -192,7 +190,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let start_partial = Instant::now();
 
         let zisk_rom = self.state.get_rom()?;
-        let mut output = self.trace.run(
+        let output = self.trace.run(
             &zisk_rom,
             &pctx,
             self.registry.sm_bundle(),
@@ -204,169 +202,39 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let execution_duration = start_partial.elapsed();
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        // Phase 2: Plan main instances
-        stats_begin!(self.state.stats, &_exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
+        // Phases 2-4: planning + pctx mutation + instance materialization
+        // + cost accumulation. Lifted into `MaterializePhase` in step 3.2.
+        let steps = output.steps;
+        let mat_output = self.materialize.run(
+            output,
+            &self.plan,
+            &self.planner,
+            &self.registry,
+            &self.orchestrator,
+            &self.state,
+            &pctx,
+            &sctx,
+            global_ids,
+            &self.state.stats,
+            &_exec_scope,
+        )?;
 
-        timer_start_info!(PLAN);
-        let start_partial = Instant::now();
-
-        self.planner.assign_rom_instance(&pctx)?;
-
-        let main_plans = self.plan.plan_main(&output.min_traces)?;
-        *self
-            .state
-            .min_traces
-            .write()
-            .map_err(|e| anyhow::anyhow!("min_traces lock poisoned: {e}"))? =
-            Some(output.min_traces);
-
-        let main_assignments =
-            self.planner.assign_main_instances(&pctx, global_ids, main_plans)?;
-        let main_instances_count = main_assignments.len();
-        self.registry.populate_main_instances(&pctx, &self.state, main_assignments)?;
-
-        stats_end!(self.state.stats, &_main_plan_scope);
-
-        // Phase 3: Plan secondary instances
-        stats_begin!(self.state.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
-
-        let mut counters = output.counters;
-        let mut secn_planning =
-            self.plan.plan_secondary(&mut counters, self.registry.sm_bundle());
-
-        let count_and_plan_duration = start_partial.elapsed();
-        timer_stop_and_log_info!(PLAN);
-
-        timer_start_info!(WAIT_PLAN_MEM_CPP);
-        stats_end!(self.state.stats, &_secn_plan_scope);
-        let start_partial = Instant::now();
-
-        // Wait for the ASM Memory Operations runner (if any) and merge its
-        // plans into the secondary planning. On the Rust path
-        // `await_mem_plans()` returns an empty `Vec` immediately, so this
-        // is unconditional and the stats scopes fire with ~0ms duration.
-        stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
-        let mem_plans = output.backend.await_mem_plans()?;
-        stats_end!(self.state.stats, &_mo_wait_scope);
-
-        stats_begin!(self.state.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
-        self.registry.sm_bundle().extend_mem_plans(&mut secn_planning, mem_plans);
-        stats_end!(self.state.stats, &_mo_add_scope);
-
-        let count_and_plan_mo_duration = start_partial.elapsed();
-        timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
-
-        // Wait for the ASM ROM Histogram runner (if any) and hand its
-        // output to the orchestrator. `await_rom_histogram()` returns
-        // `Ok(None)` on the Rust path and on non-first ASM ranks.
-        timer_start_info!(WAIT_ASM_RH);
-        if let Some(rh_data) = output.backend.await_rom_histogram()? {
-            self.orchestrator.set_rh_data(rh_data)?;
-        }
-        timer_stop_and_log_info!(WAIT_ASM_RH);
-
-        // Phase 4: Configure and assign secondary instances
-        stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
-
-        // Configure secondary state machine instances based on planning
-        self.registry.configure_sm_instances(&pctx, &secn_planning);
-
-        let mut cost_per_type = StatsCostPerType::default();
-        {
-            let setup_main = sctx.get_setup(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])?;
-            let n_bits = setup_main.stark_info.stark_struct.n_bits;
-            let total_cols: u64 = setup_main
-                .stark_info
-                .map_sections_n
-                .iter()
-                .filter(|(key, _)| *key != "const")
-                .map(|(_, value)| *value)
-                .sum();
-            let cost = (1 << n_bits) * total_cols;
-            cost_per_type.add_cost(StatsType::Main, cost * main_instances_count as u64);
-        }
-
-        let mut secn_planning: Vec<_> = secn_planning.into_values().flatten().collect();
-
-        self.planner.assign_secn_instances(&pctx, global_ids, &mut secn_planning)?;
-
-        let secn_global_ids: Vec<usize> = secn_planning
-            .iter()
-            .map(|plan| {
-                plan.global_id
-                    .ok_or_else(|| anyhow::anyhow!("secn plan missing global_id after assignment"))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        // Add public values to the proof context (Option D: pub_outs flow directly
-        // from the executor output, not via the planner's downcast).
-        let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
-        for (index, value) in output.pub_outs.0.iter() {
-            publics.inputs[*index as usize] = F::from_u32(*value);
-        }
-        drop(publics);
-
-        // Create secondary instances directly from the plans — no more
-        // round-trip through `state.secn_planning`.
-        self.registry.populate_secn_instances(&self.state, secn_planning)?;
-
-        // Configure instance checkpoints using registry method
-        self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids)?;
-
-        // Reset hints stream and input shmem
+        // Reset hints stream and input shmem after the ASM
+        // backend-specific await calls have drained the runners.
         self.trace.reset()?;
 
-        stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);
-
-        let secn_instances = self
-            .state
-            .secn_instances
-            .read()
-            .map_err(|e| anyhow::anyhow!("secn_instances lock poisoned: {e}"))?;
-        for (global_id, instance) in secn_instances.iter() {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id)?;
-
-            let setup = sctx.get_setup(airgroup_id, air_id)?;
-            let n_bits = setup.stark_info.stark_struct.n_bits;
-            let total_cols: u64 = setup
-                .stark_info
-                .map_sections_n
-                .iter()
-                .filter(|(key, _)| *key != "const")
-                .map(|(_, value)| *value)
-                .sum();
-            let cost = (1 << n_bits) * total_cols;
-            let stats_type = instance.stats_type();
-            cost_per_type.add_cost(stats_type, cost);
-        }
-
-        let tables_air_ids =
-            [SPECIFIED_RANGES_AIR_IDS[0], VIRTUAL_TABLE_0_AIR_IDS[0], VIRTUAL_TABLE_1_AIR_IDS[0]];
-        for air_id in tables_air_ids {
-            let setup = sctx.get_setup(ZISK_AIRGROUP_ID, air_id)?;
-            let n_bits = setup.stark_info.stark_struct.n_bits;
-            let total_cols: u64 = setup
-                .stark_info
-                .map_sections_n
-                .iter()
-                .filter(|(key, _)| *key != "const")
-                .map(|(_, value)| *value)
-                .sum();
-            let cost = (1 << n_bits) * total_cols;
-            cost_per_type.add_cost(StatsType::Tables, cost);
-        }
 
         let zisk_execution_time = ZiskExecutorTime {
             execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: count_and_plan_mo_duration.as_millis() as u64,
+            count_and_plan_duration: mat_output.count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: mat_output.count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.trace.get_asm_execution_info()?,
         };
         // Store the execution result
         let execution_result =
-            ZiskExecutorSummary::new(output.steps, zisk_execution_time, cost_per_type);
+            ZiskExecutorSummary::new(steps, zisk_execution_time, mat_output.cost_per_type);
 
         // Store the execution result
         self.state.set_execution_result(execution_result);
