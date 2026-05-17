@@ -27,6 +27,7 @@ use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
+use crate::ports::{GlobalId, WitnessRegistry};
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
@@ -41,8 +42,14 @@ type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a Box<dyn Instance<F>>>;
 ///
 /// `is_asm_emulator` is **not** carried here any more — the router
 /// itself knows which backend it was built for.
+///
+/// `registry` is the ACL surface for `pctx` lookups
+/// ([`crate::ports::Dctx`] / [`WitnessRegistry`]); `pctx` itself is
+/// still kept because the downstream `WitnessGenerator` and
+/// `ChunkDataCollector` call sites take `&ProofCtx<F>` directly
+/// (cross-crate, library-coupled — out of scope for step 4.2).
 pub struct WitnessContext<'a, F: PrimeField64> {
-    /// Proof context.
+    /// Proof context (used by witness_generator / collector).
     pub pctx: &'a ProofCtx<F>,
 
     /// Setup context.
@@ -56,6 +63,10 @@ pub struct WitnessContext<'a, F: PrimeField64> {
 
     /// Statistics scope.
     pub stats_scope: &'a StatsScope,
+
+    /// ACL surface used by the router's own pctx-equivalent lookups
+    /// (instance_info, set_witness_ready, is_my_process_instance, ...).
+    pub registry: &'a dyn WitnessRegistry<F>,
 }
 
 impl<'a, F: PrimeField64> WitnessContext<'a, F> {
@@ -66,13 +77,17 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
         state: &'a ExecutionState<F>,
         buffer_pool: &'a dyn BufferPool<F>,
         stats_scope: &'a StatsScope,
+        registry: &'a dyn WitnessRegistry<F>,
     ) -> Self {
-        Self { pctx, sctx, state, buffer_pool, stats_scope }
+        Self { pctx, sctx, state, buffer_pool, stats_scope, registry }
     }
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
+    /// Routed via [`WitnessRegistry`] (which inherits from
+    /// [`crate::ports::Dctx`]) — never touches `pctx` directly.
     pub fn get_instance_info(&self, global_id: usize) -> Result<(usize, usize)> {
-        Ok(self.pctx.dctx_get_instance_info(global_id)?)
+        let info = self.registry.instance_info(GlobalId(global_id))?;
+        Ok((info.airgroup_id, info.air_id))
     }
 }
 
@@ -323,9 +338,15 @@ impl<F: PrimeField64> WitnessRouter<F> {
     /// Pre-calculates witnesses by determining which instances need collection.
     ///
     /// Reads `self.is_asm` for the ROM pre-calc branch.
+    ///
+    /// `pctx` is still required because [`ChunkDataCollector::collect`]
+    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled — out
+    /// of scope for step 4.2). All other `pctx`-equivalent lookups
+    /// (`instance_info`, `set_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
         pctx: &ProofCtx<F>,
+        registry: &dyn WitnessRegistry<F>,
         state: &ExecutionState<F>,
         global_ids: &[usize],
     ) -> Result<()> {
@@ -335,23 +356,23 @@ impl<F: PrimeField64> WitnessRouter<F> {
         let mut instances_to_collect = HashMap::new();
 
         for &global_id in global_ids {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(global_id)?;
+            let info = registry.instance_info(GlobalId(global_id))?;
 
-            if AirClassifier::is_main(air_id) {
-                pctx.set_witness_ready(global_id, false);
-            } else if AirClassifier::is_rom(air_id) {
+            if AirClassifier::is_main(info.air_id) {
+                registry.set_witness_ready(GlobalId(global_id), false);
+            } else if AirClassifier::is_rom(info.air_id) {
                 self.handle_rom_pre_calculate(
-                    pctx,
+                    registry,
                     state,
                     &secn_instances_guard,
                     &mut instances_to_collect,
                     global_id,
-                    airgroup_id,
-                    air_id,
+                    info.airgroup_id,
+                    info.air_id,
                 )?;
             } else {
                 self.handle_secondary_pre_calculate(
-                    pctx,
+                    registry,
                     state,
                     &secn_instances_guard,
                     &mut instances_to_collect,
@@ -374,7 +395,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
     #[allow(clippy::too_many_arguments)]
     fn handle_rom_pre_calculate<'a>(
         &self,
-        pctx: &ProofCtx<F>,
+        registry: &dyn WitnessRegistry<F>,
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
@@ -382,8 +403,9 @@ impl<F: PrimeField64> WitnessRouter<F> {
         airgroup_id: usize,
         air_id: usize,
     ) -> Result<()> {
+        let gid = GlobalId(global_id);
         if self.is_asm {
-            pctx.set_witness_ready(global_id, false);
+            registry.set_witness_ready(gid, false);
         } else {
             let secn_instance = secn_instances
                 .get(&global_id)
@@ -395,7 +417,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
 
             if rom_instance.skip_collector() {
                 self.register_empty_collector(state, global_id, airgroup_id, air_id)?;
-                pctx.set_witness_ready(global_id, true);
+                registry.set_witness_ready(gid, true);
             } else {
                 instances_to_collect.insert(global_id, secn_instance);
             }
@@ -407,7 +429,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
     /// Handles secondary instance pre-calculation.
     fn handle_secondary_pre_calculate<'a>(
         &self,
-        pctx: &ProofCtx<F>,
+        registry: &dyn WitnessRegistry<F>,
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
@@ -427,7 +449,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
         {
             instances_to_collect.insert(global_id, secn_instance);
         } else {
-            pctx.set_witness_ready(global_id, true);
+            registry.set_witness_ready(GlobalId(global_id), true);
         }
 
         Ok(())

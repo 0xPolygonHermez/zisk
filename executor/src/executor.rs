@@ -268,6 +268,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         stats_begin!(self.state.stats, 0, _witness_scope, "CALCULATE_WITNESS", 0);
 
         let pool = create_pool(n_cores);
+        let registry = ProofmanAdapter::new(&pctx);
         pool.install(|| -> Result<()> {
             let ctx = WitnessContext::new(
                 &pctx,
@@ -275,6 +276,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &self.state,
                 buffer_pool,
                 &_witness_scope,
+                &registry,
             );
             for &global_id in global_ids {
                 self.router.dispatch(&ctx, global_id)?;
@@ -304,8 +306,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         let pool = create_pool(n_cores);
+        let registry = ProofmanAdapter::new(&pctx);
 
-        pool.install(|| self.router.pre_calculate(&pctx, &self.state, global_ids))?;
+        pool.install(|| self.router.pre_calculate(&pctx, &registry, &self.state, global_ids))?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())
