@@ -366,7 +366,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             if AirClassifier::is_main(air_id) {
                 MainSM::debug(&pctx, &sctx);
             } else {
-                let secn_instances = self.state.secn_instances.read().map_err(|e| {
+                let secn_instances = self.state.instance_set.secn_instances.read().map_err(|e| {
                     ProofmanError::InvalidSetup(format!("secn_instances lock poisoned: {e}"))
                 })?;
                 let secn_instance = secn_instances.get(&global_id).ok_or_else(|| {

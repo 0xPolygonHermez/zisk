@@ -257,7 +257,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             let stats = Stats::new_pending_collection(airgroup_id, air_id, n_chunks);
 
             state
-                .collectors_by_instance
+                .collector_store
+                .inner
                 .write()
                 .map_err(|e| anyhow::anyhow!("collectors_by_instance lock poisoned: {e}"))?
                 .insert(*global_id, (0..n_chunks).map(|_| None).collect());
@@ -272,7 +273,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             for _ in 0..rayon::current_num_threads() {
                 let next_chunk = &next_chunk;
                 let n_chunks_left = &n_chunks_left;
-                let collectors_by_instance = &state.collectors_by_instance;
+                let collectors_by_instance = &state.collector_store.inner;
                 let collect_start_times = &collect_start_times;
                 let stats = &state.stats;
                 let min_traces = &min_traces;

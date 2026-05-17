@@ -160,7 +160,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         buffer_pool: &dyn BufferPool<F>,
         stats_scope: &StatsScope,
     ) -> Result<()> {
-        let main_instances = state.main_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let main_instances = state.instance_set.main_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
         let main_instance = main_instances
             .get(&global_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
@@ -198,14 +198,15 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         stats_scope: &StatsScope,
         is_asm_emulator: bool,
     ) -> Result<()> {
-        let secn_instances = state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let secn_instances = state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
         let secn_instance = secn_instances
             .get(&global_id)
             .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
 
         if secn_instance.instance_type() == InstanceType::Instance {
             let needs_collection = !state
-                .collectors_by_instance
+                .collector_store
+                .inner
                 .read()
                 .map_err(|e| anyhow::anyhow!("{e}"))?
                 .contains_key(&global_id);
@@ -263,7 +264,8 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         let stats = Stats::new_no_collection(airgroup_id, air_id);
 
         state
-            .collectors_by_instance
+            .collector_store
+            .inner
             .write()
             .map_err(|e| anyhow::anyhow!("{e}"))?
             .insert(global_id, Vec::new());
@@ -287,7 +289,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         match instance_type {
             InstanceType::Instance => {
                 let mut guard =
-                    state.collectors_by_instance.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+                    state.collector_store.inner.write().map_err(|e| anyhow::anyhow!("{e}"))?;
 
                 let collectors = guard.remove(&global_id).ok_or_else(|| {
                     anyhow::anyhow!("Missing collectors for global_id {global_id}")
@@ -327,7 +329,7 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
         is_asm_emulator: bool,
     ) -> Result<()> {
         let secn_instances_guard =
-            state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         let mut instances_to_collect = HashMap::new();
 
@@ -418,7 +420,8 @@ impl<F: PrimeField64> WitnessOrchestrator<F> {
 
         if secn_instance.instance_type() == InstanceType::Instance
             && !state
-                .collectors_by_instance
+                .collector_store
+                .inner
                 .read()
                 .map_err(|e| anyhow::anyhow!("{e}"))?
                 .contains_key(&global_id)

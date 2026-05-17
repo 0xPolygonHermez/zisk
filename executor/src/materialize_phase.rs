@@ -6,7 +6,7 @@
 //!
 //! 1. Register the ROM instance on `pctx` (`add_instance_assign`).
 //! 2. Plan main instances (via [`crate::PlanPhase::plan_main`]), assign
-//!    their global ids, and populate them into `state.main_instances`.
+//!    their global ids, and populate them into `state.instance_set.main_instances`.
 //! 3. Stash `min_traces` in the execution state so the witness side can
 //!    read them.
 //! 4. Plan secondary instances (via [`crate::PlanPhase::plan_secondary`]),
@@ -228,6 +228,7 @@ impl MaterializePhase {
 
         // Cost accumulation: per-secondary instance.
         let secn_instances = state
+            .instance_set
             .secn_instances
             .read()
             .map_err(|e| anyhow::anyhow!("secn_instances lock poisoned: {e}"))?;

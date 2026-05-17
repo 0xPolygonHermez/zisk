@@ -1,23 +1,30 @@
 //! Shared execution state for the ZisK executor components.
 
 use fields::PrimeField64;
-use sm_main::MainInstance;
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, RwLock,
 };
-use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, Instance, ZiskExecutorSummary};
+use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
 
 use anyhow::Result;
+
+use crate::{ChunkCollectorStore, InstanceSet};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 
 /// Execution state for the ZisK executor.
+///
+/// After step 3.4, the instance maps and chunk-collector map live
+/// behind dedicated wrappers ([`InstanceSet`] / [`ChunkCollectorStore`])
+/// instead of being three free-standing `RwLock`-protected fields on
+/// this struct. Their access paths get one extra hop
+/// (`state.instance_set.main_instances` instead of
+/// `state.main_instances`) but the names now document the lifecycle:
+/// `InstanceSet` is *write-once* in `MaterializePhase`,
+/// `ChunkCollectorStore` is *lock-contested* during witness collection.
 pub struct ExecutionState<F: PrimeField64> {
     /// ZisK ROM (ELF), can be changed between executions.
     pub zisk_rom: RwLock<Option<Arc<ZiskRom>>>,
@@ -25,14 +32,12 @@ pub struct ExecutionState<F: PrimeField64> {
     /// Planning information for main state machines (minimal traces from emulation).
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
 
-    /// Main state machine instances, indexed by their global ID.
-    pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
+    /// Main + secondary instance maps populated by `MaterializePhase`.
+    pub instance_set: InstanceSet<F>,
 
-    /// Secondary state machine instances, indexed by their global ID.
-    pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
-
-    /// Collectors by instance, storing statistics and collectors for each instance.
-    pub collectors_by_instance: Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>,
+    /// Per-instance chunk collectors. Lock-contested during the
+    /// witness phase.
+    pub collector_store: ChunkCollectorStore,
 
     /// Execution result, including the number of executed steps.
     pub execution_result: Mutex<ZiskExecutorSummary>,
@@ -53,9 +58,8 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             min_traces: Arc::new(RwLock::new(None)),
-            main_instances: RwLock::new(HashMap::new()),
-            secn_instances: RwLock::new(HashMap::new()),
-            collectors_by_instance: Arc::new(RwLock::new(HashMap::new())),
+            instance_set: InstanceSet::new(),
+            collector_store: ChunkCollectorStore::new(),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
             stats: ExecutorStatsHandle::new(),
             is_rom_initialized: AtomicBool::new(false),
@@ -91,9 +95,8 @@ impl<F: PrimeField64> ExecutionState<F> {
     pub fn reset(&self) {
         *self.execution_result.lock().unwrap() = ZiskExecutorSummary::default();
         *self.min_traces.write().unwrap() = None;
-        self.main_instances.write().unwrap().clear();
-        self.secn_instances.write().unwrap().clear();
-        self.collectors_by_instance.write().unwrap().clear();
+        self.instance_set.reset();
+        self.collector_store.reset();
         self.stats.reset();
     }
 

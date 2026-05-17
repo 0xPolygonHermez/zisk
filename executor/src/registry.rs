@@ -50,7 +50,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         assignments: Vec<(usize, Plan)>,
     ) -> Result<()> {
         let mut main_instances =
-            state.main_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.main_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
         for (global_id, plan) in assignments {
             main_instances
                 .entry(global_id)
@@ -78,7 +78,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         plans: Vec<Plan>,
     ) -> Result<()> {
         let mut secn_instances =
-            state.secn_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.secn_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
         for plan in plans {
             let global_id = plan
                 .global_id
@@ -123,7 +123,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         state: &ExecutionState<F>,
         global_ids: &[usize],
     ) -> Result<()> {
-        let secn_instances = state.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let secn_instances = state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         for &global_id in global_ids {
             let instance = secn_instances
