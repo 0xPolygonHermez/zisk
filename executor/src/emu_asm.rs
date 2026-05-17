@@ -1,15 +1,11 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use crate::{
     pub_outs_collector::PubOutsCollector,
-    {AsmResources, AsmRunnerSupervisor, AsmTransport, StaticDataBus},
+    {AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor},
     {BackendArtifacts, CountersChunkMetrics, StaticSMBundle, TraceOutput, MAX_NUM_STEPS},
 };
 use asm_runner::{AsmRunnerMT, HintsShmem};
-use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
@@ -18,7 +14,6 @@ use zisk_common::{
     ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
-use ziskemu::ZiskEmulator;
 
 use anyhow::Result;
 
@@ -204,56 +199,25 @@ impl EmulatorAsm {
     ) -> Result<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
-        let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
-        let errors: Mutex<Vec<anyhow::Error>> = Mutex::new(Vec::new());
+        let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
 
-        // Capture the parent scope ID so it can be copied into the closure
+        // Capture the parent scope ID so it can be copied into the closure.
         #[allow(unused_variables)]
         let mt_scope_id = _mt_scope.id();
 
         let scope_result: Result<_> = rayon::in_place_scope(|scope| {
+            let processor_ref = &processor;
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
-                let results_ref = &results_mu;
-                let errors_ref = &errors;
                 scope.spawn(move |_| {
-                    stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
-
-                    let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
-                        Ok(db) => db,
-                        Err(e) => {
-                            let _ = errors_ref.lock().map(|mut errs| {
-                                errs.push(anyhow::anyhow!(
-                                    "StaticDataBus::from_bundle failed for chunk {}: {e}",
-                                    chunk_id.0
-                                ));
-                            });
-                            return;
-                        }
-                    };
-
-                    ZiskEmulator::process_emu_trace::<F, _, _>(
-                        zisk_rom,
+                    processor_ref.process_chunk(
+                        chunk_id,
                         &emu_trace,
-                        &mut data_bus,
-                        false,
+                        zisk_rom,
+                        sm_bundle,
+                        stats,
+                        mt_scope_id,
                     );
-
-                    data_bus.on_close();
-
-                    stats_end!(stats, &_chunk_scope);
-
-                    match results_ref.lock() {
-                        Ok(mut guard) => guard.push((chunk_id, data_bus)),
-                        Err(e) => {
-                            let _ = errors_ref.lock().map(|mut errs| {
-                                errs.push(anyhow::anyhow!(
-                                    "results_mu lock poisoned for chunk {}: {e}",
-                                    chunk_id.0
-                                ));
-                            });
-                        }
-                    }
                 });
             };
 
@@ -278,29 +242,12 @@ impl EmulatorAsm {
 
         let (emu_traces, asm_execution_info) = scope_result?;
 
-        // Check for errors collected during parallel execution
-        let err_vec =
-            errors.into_inner().map_err(|e| anyhow::anyhow!("errors mutex poisoned: {e}"))?;
-        if !err_vec.is_empty() {
-            let combined = err_vec
-                .iter()
-                .enumerate()
-                .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
-                .collect::<Vec<_>>()
-                .join("\n");
-            return Err(anyhow::anyhow!(
-                "MT assembly chunk processing failed ({} errors):\n{}",
-                err_vec.len(),
-                combined
-            ));
-        }
-
         self.asm_execution_info
             .lock()
             .map_err(|e| anyhow::anyhow!("asm_execution_info lock poisoned: {e}"))?
             .replace(asm_execution_info);
 
-        // Unwrap the Arc pointers now that all rayon tasks have completed
+        // Unwrap the Arc pointers now that all rayon tasks have completed.
         let emu_traces = emu_traces
             .into_iter()
             .map(|arc| {
@@ -309,29 +256,7 @@ impl EmulatorAsm {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut data_buses = results_mu
-            .into_inner()
-            .map_err(|e| anyhow::anyhow!("results_mu lock poisoned: {e}"))?;
-
-        data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
-
-        let mut counters = HashMap::new();
-        let mut pub_outs = PubOutsCollector::new();
-
-        for (chunk_id, mut data_bus) in data_buses {
-            pub_outs.0.extend(data_bus.take_pub_outs().0);
-            let databus_counters = data_bus.into_devices(false);
-
-            for (idx, counter) in databus_counters.into_iter() {
-                let idx = idx.ok_or_else(|| {
-                    anyhow::anyhow!("unexpected unindexed counter for chunk {}", chunk_id.0)
-                })?;
-                let counter = counter.ok_or_else(|| {
-                    anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
-                })?;
-                counters.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
-            }
-        }
+        let (counters, pub_outs) = processor.finalize()?;
 
         stats_end!(stats, &_mt_scope);
         Ok((emu_traces, counters, pub_outs))
