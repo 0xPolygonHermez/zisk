@@ -5,10 +5,10 @@ use std::{
 
 use crate::{
     pub_outs_collector::PubOutsCollector,
-    {AsmResources, AsmTransport, StaticDataBus},
+    {AsmResources, AsmRunnerSupervisor, AsmTransport, StaticDataBus},
     {BackendArtifacts, CountersChunkMetrics, StaticSMBundle, TraceOutput, MAX_NUM_STEPS},
 };
-use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
+use asm_runner::{AsmRunnerMT, HintsShmem};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
@@ -152,51 +152,15 @@ impl EmulatorAsm {
 
         stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
 
-        let config = asm_resources.config();
-
         asm_resources.write_input(stdin)?;
 
         stats_end!(stats, &_write_scope);
 
-        let chunk_size = self.chunk_size;
-
-        let _stats = stats.clone();
-
-        // Run the assembly Memory Operations (MO) runner thread
-        let handle_mo = std::thread::spawn({
-            let asm_shmem_mo = asm_resources.readers().mo.clone();
-            let asm_services = asm_resources.asm_services().clone();
-            move || -> Result<AsmRunnerMO> {
-                let mut guard = asm_shmem_mo
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
-                AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, _stats)
-            }
-        });
-
-        // Run the ROM histogram only on partition 0 as it is always computed by this partition
+        // Spawn the MO + (optionally) RH runner threads. RH only on the
+        // first rank — that's the one that computes the ROM histogram.
         let has_rom_sm = pctx.dctx_is_first_process();
-
-        let _stats = stats.clone();
-
-        let handle_rh = (has_rom_sm).then(|| {
-            let asm_shmem_rh = asm_resources.readers().rh.clone();
-            let asm_services = asm_resources.asm_services().clone();
-            let unlock_mapped_memory = config.unlock_mapped_memory;
-            std::thread::spawn(move || -> Result<AsmRunnerRH> {
-                let mut guard = asm_shmem_rh
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;
-
-                AsmRunnerRH::run(
-                    &mut guard,
-                    MAX_NUM_STEPS,
-                    asm_services,
-                    unlock_mapped_memory,
-                    _stats,
-                )
-            })
-        });
+        let supervisor =
+            AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 
         let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
@@ -204,34 +168,28 @@ impl EmulatorAsm {
             Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
+                let (handle_mo, handle_rh) = supervisor.into_handles();
                 Ok(TraceOutput {
                     min_traces,
                     counters,
                     pub_outs,
                     steps,
-                    backend: BackendArtifacts::Asm {
-                        mo: Some(handle_mo),
-                        rh: handle_rh,
-                    },
+                    backend: BackendArtifacts::Asm { mo: Some(handle_mo), rh: handle_rh },
                 })
             }
             Err(e) => {
                 // MT already self-cleaned (signaled reset + joined its stdio
-                // thread). Wake MO/RH in case they're still parked, then join
+                // thread). Hand the lifecycle to the supervisor: it pokes the
+                // ASM children via the cancellation closure, then joins MO/RH
                 // so their detached threads release the shmem-reader locks
                 // before the next job begins.
                 //
                 // We enter this arm for ANY MT failure — cancellation, shmem
-                // corruption, poisoned mutex, ASM child non-zero exit — so the
-                // join-failure logs deliberately say "MT-failure cleanup"
-                // rather than "after cancel" to avoid misattributing root cause.
-                if let Err(reset_err) = asm_resources.signal_cancellation() {
-                    tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
-                }
-                join_runner_during_cleanup("MO", handle_mo);
-                if let Some(h) = handle_rh {
-                    join_runner_during_cleanup("RH", h);
-                }
+                // corruption, poisoned mutex, ASM child non-zero exit — so any
+                // join-failure log inside `cleanup_after_mt_failure` deliberately
+                // says "MT-failure cleanup" rather than "after cancel" to avoid
+                // misattributing root cause.
+                supervisor.cleanup_after_mt_failure(|| asm_resources.signal_cancellation());
                 stats_end!(stats, &_exec_scope);
                 Err(e)
             }
@@ -392,19 +350,5 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         caller_stats_scope: &StatsScope,
     ) -> Result<crate::TraceOutput> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
-    }
-}
-
-/// Join an MO/RH runner thread on the MT-failure cleanup path, logging any
-/// thread panic or runner error so observability isn't silently lost. The
-/// caller has already issued `signal_cancellation`, so a healthy runner will
-/// observe the reset flag and exit `Ok(_)`.
-fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Result<T>>) {
-    match handle.join() {
-        Ok(Ok(_)) => {}
-        Ok(Err(err)) => {
-            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
-        }
-        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
     }
 }

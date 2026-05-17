@@ -12,6 +12,7 @@
 mod adapters;
 mod air_classifier;
 mod asm_resources;
+mod asm_runner_supervisor;
 mod asm_transport;
 mod collector;
 mod dummy_counter;
@@ -41,6 +42,7 @@ mod witness_orchestrator;
 pub use adapters::*;
 use air_classifier::*;
 pub use asm_resources::*;
+pub use asm_runner_supervisor::*;
 pub use asm_transport::*;
 use collector::*;
 pub use dummy_counter::*;
