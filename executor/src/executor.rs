@@ -20,7 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, StaticSMBundle, TracePhase,
     WitnessOrchestrator,
 };
 use fields::PrimeField64;
@@ -55,8 +55,8 @@ pub const MAX_NUM_STEPS: u64 = 1 << 36;
 pub struct ZiskExecutor<F: PrimeField64> {
     /// Shared execution state.
     state: ExecutionState<F>,
-    /// ROM executor component.
-    rom_executor: RomExecutor,
+    /// Phase-1 actor: runs the chosen emulator and produces a `TraceOutput`.
+    trace: TracePhase,
     /// Instance planner component.
     planner: InstancePlanner,
     /// Instance registry component.
@@ -74,12 +74,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// # Arguments
     /// * `sm_bundle` - State machines bundle.
     pub fn with_bundle(sm_bundle: StaticSMBundle<F>) -> Self {
+        let is_asm = sm_bundle.is_asm();
         let sm_bundle = Arc::new(sm_bundle);
         let chunk_size = CHUNK_SIZE;
 
         Self {
             state: ExecutionState::new(),
-            rom_executor: RomExecutor::new(chunk_size),
+            // Backend chosen once, at construction, from the bundle's
+            // `is_asm` flag — agrees with the SM-counter set the bundle
+            // was built for. No runtime AtomicBool flip needed.
+            trace: TracePhase::new(chunk_size, is_asm),
             planner: InstancePlanner::new(chunk_size),
             registry: InstanceRegistry::new(sm_bundle.clone()),
             orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
@@ -137,17 +141,17 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.rom_executor.set_stdin(stdin)
+        self.trace.set_stdin(stdin)
     }
 
     /// Sets ASM resources for execution (only applicable for ASM emulator).
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
-        self.rom_executor.set_asm_resources(asm_resources)
+        self.trace.set_asm_resources(asm_resources)
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
-        self.rom_executor.asm_emulator()
+        self.trace.asm_emulator()
     }
 
     /// Gets the execution result and stats.
@@ -185,7 +189,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let start_partial = Instant::now();
 
         let zisk_rom = self.state.get_rom()?;
-        let mut output = self.rom_executor.execute(
+        let mut output = self.trace.run(
             &zisk_rom,
             &pctx,
             self.registry.sm_bundle(),
@@ -313,7 +317,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids)?;
 
         // Reset hints stream and input shmem
-        self.rom_executor.reset()?;
+        self.trace.reset()?;
 
         stats_end!(self.state.stats, &_config_scope);
         stats_end!(self.state.stats, &_exec_scope);
@@ -361,7 +365,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
             count_and_plan_mo_duration: count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
-            asm_execution_duration: self.rom_executor.get_asm_execution_info()?,
+            asm_execution_duration: self.trace.get_asm_execution_info()?,
         };
         // Store the execution result
         let execution_result =
@@ -397,7 +401,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &self.state,
                 buffer_pool,
                 &_witness_scope,
-                self.rom_executor.is_asm_emulator(),
+                self.trace.is_asm(),
             );
             for &global_id in global_ids {
                 self.orchestrator.compute_witness_for_instance(&ctx, global_id)?;
@@ -433,7 +437,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &pctx,
                 &self.state,
                 global_ids,
-                self.rom_executor.is_asm_emulator(),
+                self.trace.is_asm(),
             )
         })?;
 
