@@ -67,8 +67,6 @@
 //!
 //! | Component                  | Test surface                                  |
 //! |----------------------------|-----------------------------------------------|
-//! | `AirClassifier`            | Pure functions (no setup)                     |
-//! | `PubOutsCollector`         | Pure functions (no setup)                     |
 //! | [`BackendArtifacts`]       | Synthetic `JoinHandle`s, fake threads         |
 //! | [`PlanPhase`] `::plan_main`| Synthetic `EmuTrace` array (no `ProofCtx`)    |
 //! | `InstancePlanner`          | `FakeProofRegistry` records call sequences    |
@@ -77,7 +75,7 @@
 //! | [`InstanceSet`] / [`ChunkCollectorStore`] | Construct + reset / is_empty   |
 //! | [`TracePhase`]             | Rust-backend construction (no ASM bring-up)   |
 //! | [`AsmTransport`]           | Uninstalled-resource error paths              |
-//! | [`MaterializePhase`]       | **Integration only** — needs real `ProofCtx`  |
+//! | [`MaterializePhase`]       | **Integration only** — needs real `SetupCtx`  |
 //! | Witness handlers           | **Integration only** — `WitnessGenerator` / `ChunkDataCollector` still take `&ProofCtx<F>` |
 //!
 //! Adding unit-level coverage to the integration-only rows means
