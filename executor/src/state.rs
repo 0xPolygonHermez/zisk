@@ -9,7 +9,7 @@ use std::{
         Arc, Mutex, RwLock,
     },
 };
-use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, Instance, Plan, ZiskExecutorSummary};
+use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, Instance, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
 
 use anyhow::Result;
@@ -24,9 +24,6 @@ pub struct ExecutionState<F: PrimeField64> {
 
     /// Planning information for main state machines (minimal traces from emulation).
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
-
-    /// Planning information for secondary state machines.
-    pub secn_planning: RwLock<Vec<Plan>>,
 
     /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
@@ -56,7 +53,6 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             min_traces: Arc::new(RwLock::new(None)),
-            secn_planning: RwLock::new(Vec::new()),
             main_instances: RwLock::new(HashMap::new()),
             secn_instances: RwLock::new(HashMap::new()),
             collectors_by_instance: Arc::new(RwLock::new(HashMap::new())),
@@ -95,7 +91,6 @@ impl<F: PrimeField64> ExecutionState<F> {
     pub fn reset(&self) {
         *self.execution_result.lock().unwrap() = ZiskExecutorSummary::default();
         *self.min_traces.write().unwrap() = None;
-        *self.secn_planning.write().unwrap() = Vec::new();
         self.main_instances.write().unwrap().clear();
         self.secn_instances.write().unwrap().clear();
         self.collectors_by_instance.write().unwrap().clear();

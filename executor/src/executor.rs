@@ -306,15 +306,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
         drop(publics);
 
-        // Store secondary planning in execution state
-        *self
-            .state
-            .secn_planning
-            .write()
-            .map_err(|e| anyhow::anyhow!("secn_planning lock poisoned: {e}"))? = secn_planning;
-
-        // Create secondary instances
-        self.registry.populate_secn_instances(&self.state, &secn_global_ids)?;
+        // Create secondary instances directly from the plans — no more
+        // round-trip through `state.secn_planning`.
+        self.registry.populate_secn_instances(&self.state, secn_planning)?;
 
         // Configure instance checkpoints using registry method
         self.registry.configure_checkpoints(&pctx, &self.state, &secn_global_ids)?;

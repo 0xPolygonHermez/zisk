@@ -1,86 +1,46 @@
-//! Instance registry component.
+//! Instance lifecycle component.
 //!
-//! This module handles the creation and lifecycle management of main and secondary
-//! state machine instances.
+//! After step 3.1, *construction* of main / secondary instances lives
+//! in [`crate::InstanceFactory`]; this module retains the lifecycle
+//! responsibilities (`populate_*`, `configure_sm_instances`,
+//! `configure_checkpoints`) that interact with [`crate::ExecutionState`]
+//! and [`proofman_common::ProofCtx`].
+//!
+//! The `swap_remove`-from-state lookup that used to live in
+//! `create_secn_instance_from_state` is gone — callers now pass plans
+//! directly to [`Self::populate_secn_instances`], removing the
+//! producer/consumer round-trip through `ExecutionState::secn_planning`.
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_main::MainInstance;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
-use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
+use zisk_common::{CheckPoint, InstanceType, Plan};
 
 use crate::AirClassifier;
-use crate::{state::ExecutionState, StaticSMBundle};
+use crate::{state::ExecutionState, InstanceFactory, StaticSMBundle};
 
 use anyhow::Result;
 
+/// Lifecycle owner for main + secondary instances on the executor.
 pub struct InstanceRegistry<F: PrimeField64> {
-    /// State machine bundle for secondary instance creation.
-    sm_bundle: Arc<StaticSMBundle<F>>,
+    /// Factory used for actual instance construction. Holds the
+    /// shared SM bundle.
+    factory: InstanceFactory<F>,
 }
 
 impl<F: PrimeField64> InstanceRegistry<F> {
-    /// Creates a new `InstanceRegistry`.
-    ///
-    /// # Arguments
-    /// * `sm_bundle` - State machine bundle.
+    /// Creates a new `InstanceRegistry` backed by `sm_bundle`.
     pub fn new(sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
-        Self { sm_bundle }
-    }
-
-    /// Creates a main state machine instance.
-    ///
-    /// # Arguments
-    /// * `plan` - The plan for the instance.
-    /// * `global_id` - The global ID assigned to this instance.
-    pub fn create_main_instance(&self, plan: Plan, global_id: usize) -> MainInstance<F> {
-        MainInstance::new(InstanceCtx::new(global_id, plan), self.sm_bundle.get_std())
-    }
-
-    /// Creates a secondary state machine instance.
-    ///
-    /// # Arguments
-    /// * `plan` - The plan for the instance.
-    /// * `global_id` - The global ID assigned to this instance.
-    pub fn create_secn_instance(
-        &self,
-        plan: Plan,
-        global_id: usize,
-    ) -> Result<Box<dyn Instance<F>>> {
-        let ictx = InstanceCtx::new(global_id, plan);
-        self.sm_bundle.build_instance(ictx)
-    }
-
-    /// Creates a secondary instance by looking up the plan in execution state.
-    ///
-    /// # Arguments
-    /// * `state` - The execution state containing the plans.
-    /// * `global_id` - The global ID to look up.
-    pub fn create_secn_instance_from_state(
-        &self,
-        state: &ExecutionState<F>,
-        global_id: usize,
-    ) -> Result<Box<dyn Instance<F>>> {
-        let mut secn_planning_guard = state
-            .secn_planning
-            .write()
-            .map_err(|e| anyhow::anyhow!("Planning lock poisoned: {e}"))?;
-
-        // Find and remove in single operation using swap_remove for O(1) removal
-        let plan = secn_planning_guard
-            .iter()
-            .position(|plan| plan.global_id == Some(global_id))
-            .map(|idx| secn_planning_guard.swap_remove(idx))
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
-
-        self.create_secn_instance(plan, global_id)
+        Self { factory: InstanceFactory::new(sm_bundle) }
     }
 
     /// Populates main instances in the execution state.
     ///
     /// # Arguments
-    /// * `state` - The execution state to populate.
+    /// * `pctx` - Proof context (used to gate `set_witness_ready` on
+    ///   rank-owned mains).
+    /// * `state` - Execution state to populate.
     /// * `assignments` - Vector of (global_id, plan) pairs.
     pub fn populate_main_instances(
         &self,
@@ -93,7 +53,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         for (global_id, plan) in assignments {
             main_instances
                 .entry(global_id)
-                .or_insert_with(|| self.create_main_instance(plan, global_id));
+                .or_insert_with(|| self.factory.new_main(plan, global_id));
 
             let is_mine = pctx.dctx_is_my_process_instance(global_id)?;
             if is_mine {
@@ -106,19 +66,24 @@ impl<F: PrimeField64> InstanceRegistry<F> {
 
     /// Populates secondary instances in the execution state.
     ///
-    /// # Arguments
-    /// * `state` - The execution state to populate.
-    /// * `global_ids` - Vector of global IDs for instances to create.
+    /// Each plan must already have its `global_id` stamped (done by
+    /// `InstancePlanner::assign_secn_instances`). The plans are
+    /// consumed in place: this method moves each plan into the
+    /// factory call rather than re-reading from state — no
+    /// `swap_remove`, no `RwLock<Vec<Plan>>` round-trip.
     pub fn populate_secn_instances(
         &self,
         state: &ExecutionState<F>,
-        global_ids: &[usize],
+        plans: Vec<Plan>,
     ) -> Result<()> {
         let mut secn_instances =
             state.secn_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
-        for &global_id in global_ids {
+        for plan in plans {
+            let global_id = plan
+                .global_id
+                .ok_or_else(|| anyhow::anyhow!("secn plan missing global_id before populate"))?;
             if let Entry::Vacant(e) = secn_instances.entry(global_id) {
-                let instance = self.create_secn_instance_from_state(state, global_id)?;
+                let instance = self.factory.new_secn(plan, global_id)?;
                 e.insert(instance);
             }
         }
@@ -128,7 +93,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
 
     /// Gets a reference to the state machine bundle.
     pub fn sm_bundle(&self) -> &StaticSMBundle<F> {
-        &self.sm_bundle
+        self.factory.sm_bundle()
     }
 
     /// Configures secondary state machine instances based on planning.
@@ -141,7 +106,7 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         pctx: &ProofCtx<F>,
         plannings: &std::collections::BTreeMap<usize, Vec<Plan>>,
     ) {
-        self.sm_bundle.configure_instances(pctx, plannings);
+        self.factory.sm_bundle().configure_instances(pctx, plannings);
     }
 
     /// Configures checkpoints for secondary instances.
