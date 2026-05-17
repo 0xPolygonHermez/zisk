@@ -18,9 +18,7 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
-    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
-    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, BLAKE2_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
-    POSEIDON2_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -145,48 +143,18 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                 ARITH_OP_TYPE_ID => {
                     self.arith_counter.1.process_data(&bus_id, data, &mut self.pending_transfers)
                 }
-                KECCAK_OP_TYPE_ID => self.precompiles.keccakf.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                SHA256_OP_TYPE_ID => self.precompiles.sha256f.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                POSEIDON2_OP_TYPE_ID => self.precompiles.poseidon2.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                BLAKE2_OP_TYPE_ID => self.precompiles.blake2.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                ARITH_EQ_OP_TYPE_ID => self.precompiles.arith_eq.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                ARITH_EQ_384_OP_TYPE_ID => self.precompiles.arith_eq384.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                BIG_INT_OP_TYPE_ID => self.precompiles.add256.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
                 DMA_OP_TYPE_ID => self.dma_counter.1.process_data(
                     &bus_id,
                     data,
                     data_ext,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
-                _ => true,
+                op => self.precompiles.dispatch_op(
+                    op,
+                    &bus_id,
+                    data,
+                    self.mem_counter.1.as_mut(),
+                ),
             },
             _ => true,
         }

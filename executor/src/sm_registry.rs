@@ -3,10 +3,20 @@
 //!
 //! ```ignore
 //! register_precompiles! {
-//!     Keccakf [air: KECCAKF_AIR_IDS] => KeccakfManager<F>,
+//!     Keccakf [
+//!         op: KECCAK_OP_TYPE_ID,
+//!         air: KECCAKF_AIR_IDS,
+//!         rank_assign: true,
+//!     ] => KeccakfManager<F>,
 //!     // ... add yours here
 //! }
 //! ```
+//!
+//! Per-precompile fields:
+//! * `op`     — `OP_TYPE_ID` constant from `zisk_core`. Drives bus dispatch.
+//! * `air`    — `*_AIR_IDS` slice from `zisk_pil`. Drives planner/collector dispatch.
+//! * `rank_assign` — `true` if instances need `pctx.add_instance_assign` (rank-owned)
+//!   rather than the default `pctx.add_instance` (distributed). Today only `Keccakf` uses `true`.
 //!
 //! Per-precompile types derived via `paste!`:
 //! * `${Name}CounterInputGen<F>` — counter / input-generator bus device.
@@ -19,7 +29,8 @@
 //!
 //! Caller must `use` each precompile crate's `Manager`, `CounterInputGen`,
 //! `Instance`, and `Collector` types so the bare identifiers the macro
-//! emits resolve correctly.
+//! emits resolve correctly. The `op:` constants must also be in scope at
+//! the invocation site — typically `KECCAK_OP_TYPE_ID` etc. from `zisk_core`.
 //!
 //! Built-in SMs stay hand-written in [`sm_builtins.rs`](crate::sm_builtins)
 //! (their dispatch is irregular).
@@ -32,10 +43,11 @@
 ///    `build_instance` dispatch.
 /// 2. `struct PrecompileCounters<F>` (one field per variant, type
 ///    `(usize, ${Name}CounterInputGen<F>)`) + `from_bundle` +
-///    `into_device_entries`.
+///    `dispatch_op` (counter-phase bus arm) + `into_device_entries`.
 /// 3. `struct PrecompileCollectors<F>` (per-variant `Vec<(usize,
 ///    ${Name}Collector)>` + `${Name}CounterInputGen<F>` input gen) +
-///    `start_chunk` + `try_push_collector` + `into_device_entries`.
+///    `start_chunk` + `try_push_collector` + `dispatch_op` (collect-phase
+///    bus arm) + `into_device_entries`.
 ///
 /// Identity inside the bundle is the variant's *position* in the
 /// bundle's `Vec`, assigned at construction time.
@@ -43,7 +55,11 @@
 macro_rules! register_precompiles {
     (
         $(
-            $variant:ident [air: $air:expr] => $mgr:ty
+            $variant:ident [
+                op: $op:expr,
+                air: $air:expr,
+                rank_assign: $rank_assign:expr $(,)?
+            ] => $mgr:ty
         ),* $(,)?
     ) => {
         /// Tagged union of every precompile state machine registered via
@@ -93,7 +109,33 @@ macro_rules! register_precompiles {
                     $( Self::$variant(sm) => (**sm).build_instance(ictx), )*
                 }
             }
+
+            /// Canonical default precompile set — one entry per registered
+            /// variant. Macro-generated from the registration list; mirrors
+            /// `BuiltinSMs::all` on the built-in side.
+            pub(crate) fn all(
+                std: ::std::sync::Arc<::pil_std_lib::Std<F>>,
+            ) -> ::std::vec::Vec<(::std::primitive::usize, Self)> {
+                ::std::vec![
+                    $(
+                        ($air[0], Self::$variant(<$mgr>::new(std.clone()))),
+                    )*
+                ]
+            }
         }
+
+        /// Air-id slice for every registered precompile, in declaration order.
+        /// Macro-generated from the registration list.
+        pub(crate) const PRECOMPILE_AIR_IDS: &[::std::primitive::usize] = &[
+            $( $air[0], )*
+        ];
+
+        /// Parallel to [`PRECOMPILE_AIR_IDS`]: `true` for precompiles whose
+        /// instances need `pctx.add_instance_assign` (rank-owned) instead of
+        /// the default `pctx.add_instance` (distributed). Macro-generated.
+        pub(crate) const PRECOMPILE_RANK_ASSIGN: &[::std::primitive::bool] = &[
+            $( $rank_assign, )*
+        ];
 
         ::paste::paste! {
             // ────────────────────────────────────────────────────────
@@ -151,6 +193,40 @@ macro_rules! register_precompiles {
                             })?,
                         )*
                     })
+                }
+
+                /// Counter-phase bus dispatch. Routes an operation by its
+                /// `OP_TYPE_ID` to the matching precompile's counter
+                /// `process_data` call. Returns the precompile's continue
+                /// flag, or `true` if `op_type` does not match any registered
+                /// precompile (caller handles built-in ops upstream).
+                ///
+                /// `mem_counter` is the parent bus's optional memory counter,
+                /// passed through as `MemCounterProcessor::new(mem_counter)`
+                /// for use by each precompile. `None` under the ASM emulator.
+                #[inline(always)]
+                pub fn dispatch_op(
+                    &mut self,
+                    op_type: ::std::primitive::u32,
+                    bus_id: &::zisk_common::BusId,
+                    data: &[::zisk_common::PayloadType],
+                    mem_counter: ::std::option::Option<&mut ::mem_common::MemCounters>,
+                ) -> ::std::primitive::bool {
+                    $(
+                        const [<__ $variant:upper _OP>]: ::std::primitive::u32 = $op;
+                    )*
+                    let mut mem_processor =
+                        ::precompiles_common::MemCounterProcessor::new(mem_counter);
+                    match op_type {
+                        $(
+                            [<__ $variant:upper _OP>] => self.[<$variant:snake>].1.process_data(
+                                bus_id,
+                                data,
+                                &mut mem_processor,
+                            ),
+                        )*
+                        _ => true,
+                    }
                 }
 
                 /// Consumes the slots, producing the per-precompile
@@ -290,6 +366,59 @@ macro_rules! register_precompiles {
                         }
                     )*
                     ::std::result::Result::Ok(false)
+                }
+
+                /// Collect-phase bus dispatch. Routes an operation by its
+                /// `OP_TYPE_ID` to the matching precompile: fans out to every
+                /// collector for that precompile, then drives the input
+                /// generator with a `MemCollectorProcessor` over the parent
+                /// bus's memory + memory-align collectors.
+                ///
+                /// Returns `true` always (route_data on the collect side
+                /// discards the result); `false` is reserved for non-matching
+                /// ops so the caller can distinguish handled vs. unhandled.
+                ///
+                /// The `&mut Vec<_>` parameters are kept as `Vec` (not slices)
+                /// because `MemCollectorProcessor::new` requires `&mut Vec`
+                /// to push during memory-op derivation.
+                #[inline(always)]
+                #[allow(clippy::ptr_arg)]
+                pub fn dispatch_op(
+                    &mut self,
+                    op_type: ::std::primitive::u32,
+                    bus_id: &::zisk_common::BusId,
+                    data: &[::zisk_common::PayloadType],
+                    mem_collector: &mut ::std::vec::Vec<(
+                        ::std::primitive::usize,
+                        ::sm_mem::MemModuleCollector,
+                    )>,
+                    mem_align_collector: &mut ::std::vec::Vec<(
+                        ::std::primitive::usize,
+                        ::sm_mem::MemAlignCollector,
+                    )>,
+                ) -> ::std::primitive::bool {
+                    $(
+                        const [<__ $variant:upper _OP>]: ::std::primitive::u32 = $op;
+                    )*
+                    match op_type {
+                        $(
+                            [<__ $variant:upper _OP>] => {
+                                for (_, c) in &mut self.[<$variant:snake _collector>] {
+                                    c.process_data(bus_id, data);
+                                }
+                                self.[<$variant:snake _inputs_generator>].process_data(
+                                    bus_id,
+                                    data,
+                                    &mut ::precompiles_common::MemCollectorProcessor::new(
+                                        mem_collector,
+                                        mem_align_collector,
+                                    ),
+                                );
+                                true
+                            }
+                        )*
+                        _ => false,
+                    }
                 }
 
                 /// Consumes the slots, producing all per-precompile

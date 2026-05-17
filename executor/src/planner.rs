@@ -130,7 +130,10 @@ impl InstancePlanner {
             let global_id = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
                 let (_, id) = pctx.dctx_find_instance_id(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])?;
                 id
-            } else if AirClassifier::is_keccakf_instance(plan.airgroup_id, plan.air_id) {
+            } else if AirClassifier::is_rank_assigned_precompile_instance(
+                plan.airgroup_id,
+                plan.air_id,
+            ) {
                 pctx.add_instance_assign(plan.airgroup_id, plan.air_id)?
             } else {
                 match plan.instance_type {

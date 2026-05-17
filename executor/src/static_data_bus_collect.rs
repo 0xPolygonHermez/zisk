@@ -76,13 +76,6 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
 const BINARY_TYPE: u64 = ZiskOperationType::Binary as u64;
 const BINARY_E_TYPE: u64 = ZiskOperationType::BinaryE as u64;
 const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
-const KECCAK_TYPE: u64 = ZiskOperationType::Keccak as u64;
-const SHA256_TYPE: u64 = ZiskOperationType::Sha256 as u64;
-const POSEIDON2_TYPE: u64 = ZiskOperationType::Poseidon2 as u64;
-const BLAKE2_TYPE: u64 = ZiskOperationType::Blake2 as u64;
-const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
-const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
-const BIG_INT_OP_TYPE_ID: u64 = ZiskOperationType::BigInt as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
 
 impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
@@ -227,102 +220,6 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         &mut self.pending_transfers,
                     );
                 }
-                KECCAK_TYPE => {
-                    for (_, keccakf_collector) in &mut self.precompiles.keccakf_collector {
-                        keccakf_collector.process_data(&bus_id, data);
-                    }
-
-                    self.precompiles.keccakf_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                SHA256_TYPE => {
-                    for (_, sha256f_collector) in &mut self.precompiles.sha256f_collector {
-                        sha256f_collector.process_data(&bus_id, data);
-                    }
-
-                    self.precompiles.sha256f_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                POSEIDON2_TYPE => {
-                    for (_, poseidon2_collector) in &mut self.precompiles.poseidon2_collector {
-                        poseidon2_collector.process_data(&bus_id, data);
-                    }
-                    self.precompiles.poseidon2_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                BLAKE2_TYPE => {
-                    for (_, blake2_collector) in &mut self.precompiles.blake2_collector {
-                        blake2_collector.process_data(&bus_id, data);
-                    }
-                    self.precompiles.blake2_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                ARITH_EQ_TYPE => {
-                    for (_, arith_eq_collector) in &mut self.precompiles.arith_eq_collector {
-                        arith_eq_collector.process_data(&bus_id, data);
-                    }
-
-                    self.precompiles.arith_eq_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                ARITH_EQ_384_TYPE => {
-                    for (_, arith_eq_384_collector) in &mut self.precompiles.arith_eq384_collector {
-                        arith_eq_384_collector.process_data(&bus_id, data);
-                    }
-
-                    self.precompiles.arith_eq384_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
-                BIG_INT_OP_TYPE_ID => {
-                    for (_, add256_collector) in &mut self.precompiles.add256_collector {
-                        add256_collector.process_data(&bus_id, data);
-                    }
-
-                    self.precompiles.add256_inputs_generator.process_data(
-                        &bus_id,
-                        data,
-                        &mut MemCollectorProcessor::new(
-                            &mut self.mem_collector,
-                            &mut self.mem_align_collector,
-                        ),
-                    );
-                }
                 DMA_OP_TYPE_ID => {
                     for (_, dma_collector) in &mut self.dma_collector {
                         dma_collector.process_data(&bus_id, data, data_ext);
@@ -347,7 +244,15 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         ),
                     );
                 }
-                _ => {}
+                op => {
+                    self.precompiles.dispatch_op(
+                        op as u32,
+                        &bus_id,
+                        data,
+                        &mut self.mem_collector,
+                        &mut self.mem_align_collector,
+                    );
+                }
             },
             ROM_BUS_ID => {
                 for (_, rom_collector) in &mut self.rom_collector {

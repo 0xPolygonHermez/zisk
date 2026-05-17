@@ -1,20 +1,17 @@
 //! Precompile registry — the declarative source of truth for every
 //! precompile available to the executor.
 //!
-//! The `register_precompiles!` macro emits `Precompiles<F>`,
-//! `PrecompileCounters<F>`, and `PrecompileCollectors<F>` from the
-//! one-liner-per-precompile list below. Per-precompile types
+//! The `register_precompiles!` macro emits `Precompiles<F>` (with its
+//! `all` constructor), `PrecompileCounters<F>`, `PrecompileCollectors<F>`,
+//! plus the `PRECOMPILE_AIR_IDS` / `PRECOMPILE_RANK_ASSIGN` const slices
+//! from the one-liner-per-precompile list below. Per-precompile types
 //! (`*Manager`, `*CounterInputGen`, `*Instance`, `*Collector`) are
 //! derived from the variant name via `paste!` and must be in scope —
 //! hence the per-crate `use` lines above the invocation.
 //!
-//! Adding a precompile: ONE line in `register_precompiles!`, ONE line
-//! in `Precompiles::all`, plus the matching per-crate import.
+//! Adding a precompile: ONE line in `register_precompiles!`, plus the
+//! matching per-crate import.
 
-use std::sync::Arc;
-
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use precomp_arith_eq::{ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager};
 use precomp_arith_eq_384::{
     ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
@@ -27,33 +24,49 @@ use precomp_poseidon2::{
 };
 use precomp_sha256f::{Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager};
 use zisk_common::ComponentBuilder;
+use zisk_core::{
+    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2_OP_TYPE_ID,
+    KECCAK_OP_TYPE_ID, POSEIDON2_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+};
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS,
     POSEIDON_2_AIR_IDS, SHA_256_F_AIR_IDS,
 };
 
 crate::register_precompiles! {
-    Keccakf    [air: KECCAKF_AIR_IDS]      => KeccakfManager<F>,
-    Sha256f    [air: SHA_256_F_AIR_IDS]    => Sha256fManager<F>,
-    Poseidon2  [air: POSEIDON_2_AIR_IDS]   => Poseidon2Manager<F>,
-    Blake2     [air: BLAKE_2_BR_AIR_IDS]   => Blake2Manager<F>,
-    ArithEq    [air: ARITH_EQ_AIR_IDS]     => ArithEqManager<F>,
-    ArithEq384 [air: ARITH_EQ_384_AIR_IDS] => ArithEq384Manager<F>,
-    Add256     [air: ADD_256_AIR_IDS]      => Add256Manager<F>,
-}
-
-impl<F: PrimeField64> Precompiles<F> {
-    /// Canonical default precompile set — one entry per registered
-    /// variant. Mirrors `BuiltinSMs::all` on the built-in side.
-    pub(crate) fn all(std: Arc<Std<F>>) -> Vec<(usize, Self)> {
-        vec![
-            (KECCAKF_AIR_IDS[0], Self::Keccakf(KeccakfManager::new(std.clone()))),
-            (SHA_256_F_AIR_IDS[0], Self::Sha256f(Sha256fManager::new(std.clone()))),
-            (POSEIDON_2_AIR_IDS[0], Self::Poseidon2(Poseidon2Manager::new(std.clone()))),
-            (BLAKE_2_BR_AIR_IDS[0], Self::Blake2(Blake2Manager::new(std.clone()))),
-            (ARITH_EQ_AIR_IDS[0], Self::ArithEq(ArithEqManager::new(std.clone()))),
-            (ARITH_EQ_384_AIR_IDS[0], Self::ArithEq384(ArithEq384Manager::new(std.clone()))),
-            (ADD_256_AIR_IDS[0], Self::Add256(Add256Manager::new(std))),
-        ]
-    }
+    Keccakf [
+        op: KECCAK_OP_TYPE_ID,
+        air: KECCAKF_AIR_IDS,
+        rank_assign: true,
+    ] => KeccakfManager<F>,
+    Sha256f [
+        op: SHA256_OP_TYPE_ID,
+        air: SHA_256_F_AIR_IDS,
+        rank_assign: false,
+    ] => Sha256fManager<F>,
+    Poseidon2 [
+        op: POSEIDON2_OP_TYPE_ID,
+        air: POSEIDON_2_AIR_IDS,
+        rank_assign: false,
+    ] => Poseidon2Manager<F>,
+    Blake2 [
+        op: BLAKE2_OP_TYPE_ID,
+        air: BLAKE_2_BR_AIR_IDS,
+        rank_assign: false,
+    ] => Blake2Manager<F>,
+    ArithEq [
+        op: ARITH_EQ_OP_TYPE_ID,
+        air: ARITH_EQ_AIR_IDS,
+        rank_assign: false,
+    ] => ArithEqManager<F>,
+    ArithEq384 [
+        op: ARITH_EQ_384_OP_TYPE_ID,
+        air: ARITH_EQ_384_AIR_IDS,
+        rank_assign: false,
+    ] => ArithEq384Manager<F>,
+    Add256 [
+        op: BIG_INT_OP_TYPE_ID,
+        air: ADD_256_AIR_IDS,
+        rank_assign: false,
+    ] => Add256Manager<F>,
 }
