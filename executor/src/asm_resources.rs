@@ -10,8 +10,11 @@ use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 /// Configuration for assembly resources.
 #[derive(Clone)]
 pub struct AsmResourcesConfig {
+    /// World rank of the process.
     pub world_rank: i32,
+    /// Local rank of the process (e.g., within a node).
     pub local_rank: i32,
+    /// Whether to unlock mapped memory.
     pub unlock_mapped_memory: bool,
 }
 
@@ -27,8 +30,11 @@ impl std::fmt::Debug for AsmResourcesConfig {
 /// Output-side shmem readers for the three ASM services, mapped once at worker startup.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
+    /// Reader for the minimal trace shmem segment (MT).
     pub mt: Arc<Mutex<MTShMemReader>>,
+    /// Reader for the memory-ops shmem segment (MO).
     pub mo: Arc<Mutex<MOShMemReader>>,
+    /// Reader for the ROM histogram shmem segment (RH).
     pub rh: Arc<Mutex<Option<RHShMemReader>>>,
 }
 
@@ -58,6 +64,7 @@ pub struct AsmSharedResources {
     /// Pipeline for receiving inputs over a stream transport (QUIC, Unix socket).
     inputs_stream: Arc<Mutex<ZiskStream<InputsShmemWriter>>>,
 
+    /// Readers for output shmem segments.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub readers: AsmShmemReaders,
 }
@@ -208,6 +215,7 @@ impl AsmResources {
         processor.hints_sink().submit(data)
     }
 
+    /// Starts the hints stream.
     pub fn start_stream(&self) -> Result<()> {
         let Some(hints_stream) = &self.shared.hints_stream else {
             return Err(anyhow::anyhow!("Program was not set up with hints"));
@@ -215,6 +223,7 @@ impl AsmResources {
         hints_stream.lock().map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?.start_stream()
     }
 
+    /// Sets the stream source for the hints stream.
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         let Some(hints_stream) = &self.shared.hints_stream else {
             return Err(anyhow::anyhow!("Program was not set up with hints"));
@@ -225,6 +234,7 @@ impl AsmResources {
             .set_stream_src(stream)
     }
 
+    /// Checks if the hints stream is initialized.
     pub fn is_hints_stream_initialized(&self) -> bool {
         self.shared
             .hints_stream
@@ -243,6 +253,7 @@ impl AsmResources {
         self.shared.inputs_shmem_writer.signal_reset()
     }
 
+    /// Resets the Hints Stream and the inputs shared memory writer, preparing for the next execution.
     pub fn reset(&self) {
         if let Some(s) = &self.shared.hints_stream {
             s.lock().expect("hints_stream mutex poisoned").reset();
@@ -250,14 +261,17 @@ impl AsmResources {
         self.shared.inputs_shmem_writer.reset();
     }
 
+    /// Returns the configuration for the ASM resources.
     pub fn config(&self) -> &AsmResourcesConfig {
         &self.shared.config
     }
 
+    /// Returns the ASM services associated with these resources.
     pub fn asm_services(&self) -> &AsmServices {
         &self.asm_services
     }
 
+    /// Sets the stream source for the inputs stream.
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.shared
             .inputs_stream
@@ -267,6 +281,7 @@ impl AsmResources {
         Ok(())
     }
 
+    /// Starts the inputs stream.
     pub fn start_inputs_stream(&self) -> Result<()> {
         self.shared
             .inputs_stream
@@ -275,18 +290,22 @@ impl AsmResources {
             .start_stream()
     }
 
+    /// Checks if the inputs stream is initialized.
     pub fn is_inputs_stream_initialized(&self) -> bool {
         self.shared.inputs_stream.lock().map(|s| s.is_initialized()).unwrap_or(false)
     }
 
+    /// Writes input data to the inputs shared memory segment.
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
         self.shared.inputs_shmem_writer.write_input(&stdin.read_data())
     }
 
+    /// Appends raw input data to the inputs shared memory segment.
     pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
         self.shared.inputs_shmem_writer.append_input(bytes)
     }
 
+    /// Gets the current ASM shmem readers.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn readers(&self) -> &AsmShmemReaders {
         &self.shared.readers

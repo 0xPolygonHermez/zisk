@@ -1,3 +1,14 @@
+//! Executor crate: responsible for executing Zisk ROMs and collecting execution traces and metrics.
+//!
+//! This crate provides a unified interface for executing Zisk ROMs across different emulator
+//! backends, including an x86-64 assembly emulator and a Rust-based emulator.
+//! It collects execution traces, counters, and other relevant data during execution,
+//! which is used for proof generation.
+
+#![warn(missing_docs)] // ratchet up to deny once clean
+#![warn(rustdoc::all)] // broken intra-doc links, invalid HTML, bare URLs
+#![deny(rustdoc::all)]
+
 mod air_classifier;
 mod asm_resources;
 mod collector;
@@ -45,9 +56,8 @@ pub use static_data_bus_collect::*;
 use witness_generator::*;
 use witness_orchestrator::*;
 use zisk_core::ZiskRom;
-
-pub type DeviceMetricsList = Vec<DeviceMetricsByChunk>;
-pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
+/// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
+pub type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;
 
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
@@ -59,14 +69,21 @@ use anyhow::Result;
 
 use crate::pub_outs_collector::PubOutsCollector;
 
-pub type EmulatorResult = (
-    Vec<EmuTrace>,
-    NestedDeviceMetricsList,
-    Option<JoinHandle<Result<AsmRunnerMO>>>,
-    Option<JoinHandle<Result<AsmRunnerRH>>>,
-    u64,
-    PubOutsCollector,
-);
+/// Result of an emulator execution
+pub struct EmulatorResult {
+    /// Minimal traces produced by the emulator.
+    pub min_traces: Vec<EmuTrace>,
+    /// Device metrics for secondary devices.
+    pub counters: CountersChunkMetrics,
+    /// Join handle for the memory-only ASM runner (only applicable for ASM emulator).
+    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
+    /// Join handle for the ROM histogram runner (only applicable for ASM emulator).
+    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
+    /// Total number of steps executed by the emulator.
+    pub steps: u64,
+    /// Collected public outputs from the emulator execution.
+    pub pub_outs: PubOutsCollector,
+}
 
 /// Trait for unified execution across different emulator backends
 #[allow(clippy::too_many_arguments)]

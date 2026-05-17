@@ -11,7 +11,7 @@ use zisk_common::{EmuTrace, InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::AirClassifier;
-use crate::{NestedDeviceMetricsList, StaticSMBundle};
+use crate::{CountersChunkMetrics, StaticSMBundle};
 
 use anyhow::Result;
 
@@ -69,7 +69,7 @@ impl InstancePlanner {
     pub fn plan_secondary<F: PrimeField64>(
         &self,
         sm_bundle: &StaticSMBundle<F>,
-        counters: &mut NestedDeviceMetricsList,
+        counters: &mut CountersChunkMetrics,
         is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         sm_bundle.plan_sec(counters, is_asm_emulator)

@@ -17,6 +17,7 @@ use anyhow::Result;
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 
+/// Execution state for the ZisK executor.
 pub struct ExecutionState<F: PrimeField64> {
     /// ZisK ROM (ELF), can be changed between executions.
     pub zisk_rom: RwLock<Option<Arc<ZiskRom>>>,

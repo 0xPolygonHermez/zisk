@@ -1,8 +1,8 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::sync::Arc;
 
-use crate::{pub_outs_collector::PubOutsCollector, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{EmulatorResult, StaticSMBundle};
 use anyhow::Result;
-use asm_runner::{AsmRunnerMO, AsmRunnerRH, HintsShmem};
+use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
 
 use crate::AsmResources;
@@ -10,7 +10,7 @@ use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope,
+    AsmExecutionInfo, ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
 
@@ -22,7 +22,6 @@ impl EmulatorAsm {
         Self {}
     }
 
-    #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
@@ -33,14 +32,7 @@ impl EmulatorAsm {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<(
-        Vec<EmuTrace>,
-        NestedDeviceMetricsList,
-        Option<JoinHandle<Result<AsmRunnerMO>>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
-        u64,
-        PubOutsCollector,
-    )> {
+    ) -> Result<EmulatorResult> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 

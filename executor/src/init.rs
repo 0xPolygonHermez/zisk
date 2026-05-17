@@ -60,7 +60,7 @@ impl<F: PrimeField64> StateMachines<F> {
 
 pub struct StaticSMBundle<F: PrimeField64> {
     // Vec position is the SM's identity inside the bundle. External APIs
-    // that need a usize key (`NestedDeviceMetricsList`, planning map) use
+    // that need a usize key (`CountersChunkMetrics`, planning map) use
     // this position. Iteration order is insertion order.
     sm: Vec<SMType<F>>,
 
@@ -134,7 +134,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
 
     pub fn plan_sec(
         &self,
-        vec_counters: &mut crate::NestedDeviceMetricsList,
+        vec_counters: &mut crate::CountersChunkMetrics,
         is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();

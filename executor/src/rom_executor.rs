@@ -4,7 +4,9 @@
 //! the emulator backend and hints stream processing.
 
 use crate::pub_outs_collector::PubOutsCollector;
-use crate::{AsmResources, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{
+    AsmResources, CountersChunkMetrics, EmulatorAsm, EmulatorResult, EmulatorRust, StaticSMBundle,
+};
 use arc_swap::ArcSwap;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
@@ -22,7 +24,7 @@ pub struct RomExecutionOutput {
     /// Minimal traces collected during execution.
     pub min_traces: Vec<EmuTrace>,
     /// Device metrics for secondary state machines.
-    pub counters: NestedDeviceMetricsList,
+    pub counters: CountersChunkMetrics,
     /// Handle to memory operations thread (for ASM emulator).
     pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
@@ -118,7 +120,7 @@ impl RomExecutor {
         caller_stats_scope: &StatsScope,
     ) -> Result<RomExecutionOutput> {
         let stdin = self.stdin.load_full();
-        let (min_traces, counters, handle_mo, handle_rh, steps, pub_outs) =
+        let EmulatorResult { min_traces, counters, handle_mo, handle_rh, steps, pub_outs } =
             match self.is_asm_execution.load(Ordering::SeqCst) {
                 true => self.emulator_asm.execute(
                     zisk_rom,

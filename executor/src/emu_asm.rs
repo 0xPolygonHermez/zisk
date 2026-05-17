@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
-    thread::JoinHandle,
 };
 
 use crate::{
     pub_outs_collector::PubOutsCollector,
-    {AsmResources, StaticDataBus}, {NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS},
+    {AsmResources, StaticDataBus},
+    {CountersChunkMetrics, EmulatorResult, StaticSMBundle, MAX_NUM_STEPS},
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
@@ -165,13 +165,7 @@ impl EmulatorAsm {
     /// * `_caller_stats_id` - Identifier used to attribute collected statistics to the caller.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// * `Vec<EmuTrace>` - The computed minimal traces.
-    /// * `DeviceMetricsList` - Flat device metrics collected during execution.
-    /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
-    /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
-    /// * `u64` - Total number of steps.
-    #[allow(clippy::type_complexity)]
+    /// An [`EmulatorResult`]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
@@ -182,14 +176,7 @@ impl EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<(
-        Vec<EmuTrace>,
-        NestedDeviceMetricsList,
-        Option<JoinHandle<Result<AsmRunnerMO>>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
-        u64,
-        PubOutsCollector,
-    )> {
+    ) -> Result<EmulatorResult> {
         let asm_resources = self
             .asm_resources
             .read()
@@ -263,7 +250,14 @@ impl EmulatorAsm {
             Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
-                Ok((min_traces, counters, Some(handle_mo), handle_rh, steps, pub_outs))
+                Ok(EmulatorResult {
+                    min_traces,
+                    counters,
+                    handle_mo: Some(handle_mo),
+                    handle_rh,
+                    steps,
+                    pub_outs,
+                })
             }
             Err(e) => {
                 // MT already self-cleaned (signaled reset + joined its stdio
@@ -293,7 +287,7 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, PubOutsCollector)> {
+    ) -> Result<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());

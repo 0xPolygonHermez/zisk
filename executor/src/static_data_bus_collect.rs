@@ -38,30 +38,35 @@ use zisk_pil::ZISK_AIRGROUP_ID;
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
 pub struct StaticDataBusCollect<D, F: PrimeField64> {
-    /// Memory-related collectors (grouped for cache locality)
+    /// Memory-related collectors.
     pub mem_collector: Vec<(usize, MemModuleCollector)>,
+    /// Memory alignment collectors.
     pub mem_align_collector: Vec<(usize, MemAlignCollector)>,
-
-    /// Binary operation collectors (grouped for cache locality)
+    /// Binary operation collectors.
     pub binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
+    /// Binary add operation collectors.
     pub binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
+    /// Binary extension operation collectors.
     pub binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
-
-    /// Arithmetic collectors (grouped for cache locality)
+    /// Arithmetic collectors.
     pub arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
+    /// Arithmetic inputs generator.
     pub arith_inputs_generator: ArithCounterInputGen,
-
-    /// Per-precompile collectors + input generators (consolidated).
+    /// Per-precompile collectors + input generators.
     pub precompiles: PrecompileCollectors<F>,
 
-    /// Dma collectors
+    /// Dma collectors.
     pub dma_collector: Vec<(usize, DmaCollector)>,
+    /// Dma pre/post collectors.
     pub dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
+    /// Dma 64-aligned collectors.
     pub dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
+    /// Dma unaligned collectors.
     pub dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
+    /// Dma inputs generator.
     pub dma_inputs_generator: DmaCounterInputGen,
 
-    /// ROM collector
+    /// ROM collector.
     pub rom_collector: Vec<(usize, RomCollector)>,
 
     /// Queue of pending data transfers to be processed.

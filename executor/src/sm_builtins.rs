@@ -45,11 +45,17 @@ use zisk_pil::{
 /// is keyed by one of these.
 pub type SMAirType = Vec<(usize, usize)>;
 
+/// Built-in state machines.
 pub enum BuiltinSMs<F: PrimeField64> {
+    /// Rom state machine
     RomSM(Arc<RomSM>),
+    /// Memory-related state machines.
     MemSM(Arc<Mem<F>>),
+    /// Binary operation state machines.
     BinarySM(Arc<BinarySM<F>>),
+    /// Arithmetic operation state machines.
     ArithSM(Arc<ArithSM<F>>),
+    /// DMA-related state machines.
     DmaManager(Arc<DmaManager<F>>),
 }
 
@@ -156,9 +162,13 @@ fn dma_air_ids() -> SMAirType {
 /// `PrecompileCounters` on the precompile side; the two together
 /// populate `StaticDataBus`.
 pub struct BuiltinCounters {
+    /// Memory-related counters.
     pub mem: (usize, Option<MemCounters>),
+    /// Binary operation counters.
     pub binary: (usize, BinaryCounter),
+    /// Arithmetic operation counters.
     pub arith: (usize, ArithCounterInputGen),
+    /// DMA-related counters.
     pub dma: (usize, DmaCounterInputGen),
 }
 
@@ -209,18 +219,31 @@ impl BuiltinCounters {
 /// `PrecompileCollectors` on the precompile side; the two together
 /// populate `StaticDataBusCollect`.
 pub struct BuiltinCollectors<F: PrimeField64> {
+    /// Memory-related collectors.
     pub mem: Vec<(usize, MemModuleCollector)>,
+    /// Memory alignment-related collectors.
     pub mem_align: Vec<(usize, MemAlignCollector)>,
+    /// Binary basic operation collectors.
     pub binary_basic: Vec<(usize, BinaryBasicCollector<F>)>,
+    /// Binary add operation collectors.
     pub binary_add: Vec<(usize, BinaryAddCollector<F>)>,
+    /// Binary extension operation collectors.
     pub binary_extension: Vec<(usize, BinaryExtensionCollector<F>)>,
+    /// Arithmetic operation collectors.
     pub arith: Vec<(usize, ArithInstanceCollector<F>)>,
+    /// ROM operation collectors.
     pub rom: Vec<(usize, RomCollector)>,
+    /// DMA-related collectors.
     pub dma: Vec<(usize, DmaCollector)>,
+    /// DMA pre/post operation collectors.
     pub dma_pre_post: Vec<(usize, DmaPrePostCollector)>,
+    /// DMA 64-bit aligned operation collectors.
     pub dma_64_aligned: Vec<(usize, Dma64AlignedCollector)>,
+    /// DMA unaligned operation collectors.
     pub dma_unaligned: Vec<(usize, DmaUnalignedCollector)>,
+    /// Arithmetic input generator.
     pub arith_inputs_generator: ArithCounterInputGen,
+    /// DMA input generator.
     pub dma_inputs_generator: DmaCounterInputGen,
 }
 

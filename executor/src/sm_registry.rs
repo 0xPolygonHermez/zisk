@@ -46,17 +46,32 @@ macro_rules! register_precompiles {
             $variant:ident [air: $air:expr] => $mgr:ty
         ),* $(,)?
     ) => {
+        /// Tagged union of every precompile state machine registered via
+        /// [`register_precompiles!`](crate::register_precompiles). One variant
+        /// per declaration.
         pub enum Precompiles<F: ::fields::PrimeField64> {
-            $( $variant(::std::sync::Arc<$mgr>), )*
+            $(
+                #[doc = concat!(
+                    "`", stringify!($variant),
+                    "` precompile, backed by `", stringify!($mgr), "`.",
+                )]
+                $variant(::std::sync::Arc<$mgr>),
+            )*
         }
 
         impl<F: ::fields::PrimeField64> Precompiles<F> {
+            /// Dispatches to the active variant's manager and returns its
+            /// [`Planner`](::zisk_common::Planner). See
+            /// [`ComponentBuilder::build_planner`](::common::component::component_builder::ComponentBuilder::build_planner).
             pub fn build_planner(&self) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
                 match self {
                     $( Self::$variant(sm) => (**sm).build_planner(), )*
                 }
             }
 
+            /// Dispatches to the active variant's manager to register its
+            /// instances on `pctx` for the supplied `plans`. See
+            /// [`ComponentBuilder::configure_instances`](::common::component::component_builder::ComponentBuilder::configure_instances).
             pub fn configure_instances(
                 &self,
                 pctx: &::proofman_common::ProofCtx<F>,
@@ -67,6 +82,9 @@ macro_rules! register_precompiles {
                 }
             }
 
+            /// Dispatches to the active variant's manager and returns the
+            /// witness [`Instance`](::zisk_common::Instance) for `ictx`. See
+            /// [`ComponentBuilder::build_instance`](::common::component::component_builder::ComponentBuilder::build_instance).
             pub fn build_instance(
                 &self,
                 ictx: ::zisk_common::InstanceCtx,
@@ -87,6 +105,11 @@ macro_rules! register_precompiles {
             /// `(bundle_position, counter_input_gen)`.
             pub struct PrecompileCounters<F: ::fields::PrimeField64> {
                 $(
+                    #[doc = concat!(
+                        "Counter for the `", stringify!($variant),
+                        "` precompile: `(bundle_position, ",
+                        stringify!($variant), "CounterInputGen<F>)`.",
+                    )]
                     pub [<$variant:snake>]: (
                         ::std::primitive::usize,
                         [<$variant CounterInputGen>]<F>,
@@ -168,10 +191,20 @@ macro_rules! register_precompiles {
             /// mem-ops on each operation message.
             pub struct PrecompileCollectors<F: ::fields::PrimeField64> {
                 $(
+                    #[doc = concat!(
+                        "Per-chunk collectors for the `", stringify!($variant),
+                        "` precompile, each tagged with the `global_idx` of the ",
+                        "instance it feeds. Populated by `try_push_collector`.",
+                    )]
                     pub [<$variant:snake _collector>]: ::std::vec::Vec<(
                         ::std::primitive::usize,
                         [<$variant Collector>],
                     )>,
+                    #[doc = concat!(
+                        "Input generator for the `", stringify!($variant),
+                        "` precompile. Used by the bus to emit derived mem-ops ",
+                        "on each matching operation message.",
+                    )]
                     pub [<$variant:snake _inputs_generator>]: [<$variant CounterInputGen>]<F>,
                 )*
             }

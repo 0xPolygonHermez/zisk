@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    pub_outs_collector::PubOutsCollector, EmulatorResult, NestedDeviceMetricsList, StaticDataBus,
+    pub_outs_collector::PubOutsCollector, CountersChunkMetrics, EmulatorResult, StaticDataBus,
     StaticSMBundle, MAX_NUM_STEPS,
 };
 use data_bus::DataBusTrait;
@@ -42,14 +42,7 @@ impl EmulatorRust {
     /// * `_caller_stats_scope` - Stats scope used to associate collected statistics with the caller.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// * `Vec<EmuTrace>` - The minimal traces produced by the emulator.
-    /// * `NestedDeviceMetricsList` - Metrics for secondary/nested devices.
-    /// * `None` - Placeholder for optional `AsmRunnerMO` join handle (not used in this implementation).
-    /// * `None` - Placeholder for optional `AsmRunnerRH` join handle (not used in this implementation).
-    /// * `u64` - Total number of steps.
-    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
-    #[allow(clippy::type_complexity)]
+    /// An [`EmulatorResult`]
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -65,7 +58,14 @@ impl EmulatorRust {
         let (counters, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
         timer_stop_and_log_info!(COUNT);
 
-        Ok((min_traces, counters, None, None, steps, pub_outs))
+        Ok(EmulatorResult {
+            min_traces,
+            counters,
+            handle_mo: None,
+            handle_rh: None,
+            steps,
+            pub_outs,
+        })
     }
 
     fn run_emulator(
@@ -103,7 +103,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<(NestedDeviceMetricsList, PubOutsCollector)> {
+    ) -> Result<(CountersChunkMetrics, PubOutsCollector)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
