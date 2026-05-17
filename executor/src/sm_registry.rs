@@ -161,12 +161,13 @@ macro_rules! register_precompiles {
 
             impl<F: ::fields::PrimeField64> PrecompileCounters<F> {
                 /// Iterates the bundle once, building each precompile's
-                /// counter via its `build_*_counter(is_asm_emulator)`
-                /// method.
+                /// counter via its `build_*_counter(is_asm)` method.
+                /// `is_asm` is sourced from `bundle.is_asm()`, the same
+                /// value the bundle was constructed with.
                 pub fn from_bundle(
                     bundle: &$crate::StaticSMBundle<F>,
-                    is_asm_emulator: ::std::primitive::bool,
                 ) -> ::anyhow::Result<Self> {
+                    let is_asm_emulator = bundle.is_asm();
                     $( let mut [<$variant:snake>] = ::std::option::Option::None; )*
 
                     for (pos, (_, sm)) in bundle.entries().iter().enumerate() {

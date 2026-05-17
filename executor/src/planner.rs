@@ -70,9 +70,8 @@ impl InstancePlanner {
         &self,
         sm_bundle: &StaticSMBundle<F>,
         counters: &mut CountersChunkMetrics,
-        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
-        sm_bundle.plan_sec(counters, is_asm_emulator)
+        sm_bundle.plan_sec(counters)
     }
 
     /// Assigns ROM instance to the proof context.

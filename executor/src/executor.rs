@@ -224,11 +224,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         stats_begin!(self.state.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut counters = output.counters;
-        let mut secn_planning = self.planner.plan_secondary(
-            self.registry.sm_bundle(),
-            &mut counters,
-            self.rom_executor.is_asm_emulator(),
-        );
+        let mut secn_planning =
+            self.planner.plan_secondary(self.registry.sm_bundle(), &mut counters);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);

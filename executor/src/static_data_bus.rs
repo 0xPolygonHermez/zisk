@@ -58,8 +58,8 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     /// `PrecompileCounters`, then wires their slots into `new`.
     /// Mirrors the `from_bundle` constructors on the wrapper types.
     pub fn from_bundle(bundle: &StaticSMBundle<F>, is_asm_emulator: bool) -> Result<Self> {
-        let builtins = BuiltinCounters::from_bundle(bundle, is_asm_emulator)?;
-        let precompiles = PrecompileCounters::from_bundle(bundle, is_asm_emulator)?;
+        let builtins = BuiltinCounters::from_bundle(bundle)?;
+        let precompiles = PrecompileCounters::from_bundle(bundle)?;
 
         Ok(Self::new(
             is_asm_emulator,

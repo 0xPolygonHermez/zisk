@@ -174,11 +174,11 @@ pub struct BuiltinCounters {
 
 impl BuiltinCounters {
     /// Walks the bundle once, pulling each built-in SM's counter.
-    /// `RomSM` has no bus-side counter and is skipped.
-    pub(crate) fn from_bundle<F: PrimeField64>(
-        bundle: &StaticSMBundle<F>,
-        is_asm_emulator: bool,
-    ) -> Result<Self> {
+    /// `RomSM` has no bus-side counter and is skipped. The ASM/native
+    /// switch comes from `bundle.is_asm()` — same value the bundle was
+    /// constructed with, no longer threaded through this signature.
+    pub(crate) fn from_bundle<F: PrimeField64>(bundle: &StaticSMBundle<F>) -> Result<Self> {
+        let is_asm = bundle.is_asm();
         let mut mem = None;
         let mut binary = None;
         let mut arith = None;
@@ -189,7 +189,7 @@ impl BuiltinCounters {
                 match b {
                     BuiltinSMs::MemSM(mem_sm) => {
                         let counter =
-                            if is_asm_emulator { None } else { Some(mem_sm.build_mem_counter()) };
+                            if is_asm { None } else { Some(mem_sm.build_mem_counter()) };
                         mem = Some((pos, counter));
                     }
                     BuiltinSMs::BinarySM(binary_sm) => {
@@ -199,7 +199,7 @@ impl BuiltinCounters {
                         arith = Some((pos, arith_sm.build_arith_counter()));
                     }
                     BuiltinSMs::DmaManager(dma_sm) => {
-                        dma = Some((pos, dma_sm.build_dma_counter(is_asm_emulator)));
+                        dma = Some((pos, dma_sm.build_dma_counter(is_asm)));
                     }
                     BuiltinSMs::RomSM(_) => {}
                 }

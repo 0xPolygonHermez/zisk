@@ -157,13 +157,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut crate::CountersChunkMetrics,
-        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();
 
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
             if let Some(counters) = vec_counters.remove(&pos) {
-                plans.insert(pos, sm.build_planner(is_asm_emulator).plan(counters));
+                plans.insert(pos, sm.build_planner(self.is_asm).plan(counters));
             }
         }
 
