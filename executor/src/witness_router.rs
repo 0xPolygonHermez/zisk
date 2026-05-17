@@ -1,19 +1,16 @@
 //! [`WitnessRouter`] — phase-4 actor that dispatches witness
-//! computation per global id.
+//! computation per global id to the right per-category handler in
+//! [`crate::witness_handlers`].
 //!
-//! Replaces the old `WitnessOrchestrator`. The substantive
-//! behaviour is identical, but:
-//!   * `is_asm_emulator` is **baked at construction** via
-//!     [`Self::new_asm`] / [`Self::new_native`] instead of being passed
-//!     per call. The witness-side never branches on backend at
-//!     dispatch time — the ROM path is the right one for the bundle
-//!     this router was built for.
-//!   * The public entry-point is now [`Self::dispatch`].
+//! Step 4.3: the per-category compute logic that used to live inline
+//! in `compute_main_witness` / `compute_secondary_witness` is now
+//! five focused handler modules, each in its own file. The router
+//! classifies the air id (and, for secondary, the `InstanceType` and
+//! ROM-ness) and forwards to the matching handler.
 //!
-//! Step 4.2 will replace the `&ProofCtx<F>` borrows that still flow
-//! through here with `&dyn ProofRegistry` + `&dyn SetupAccess`, at
-//! which point the per-category handlers become unit-testable. For
-//! now this is a faithful lift.
+//! Construction-time `new_asm` / `new_native` still pick the ROM
+//! handler once per executor; the dispatch path has no per-call
+//! backend branching beyond the ROM cases.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -23,11 +20,15 @@ use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
-use zisk_common::{BusDevice, Instance, InstanceType, Stats, StatsScope};
+use zisk_common::{Instance, InstanceType, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
 use crate::ports::{GlobalId, WitnessRegistry};
+use crate::witness_handlers::{
+    common::register_empty_collector, MainWitnessHandler, RomAsmWitnessHandler,
+    RomNativeWitnessHandler, SecondaryWitnessHandler, TableWitnessHandler,
+};
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
@@ -40,14 +41,11 @@ type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a Box<dyn Instance<F>>>;
 
 /// Context for witness computation operations.
 ///
-/// `is_asm_emulator` is **not** carried here any more — the router
-/// itself knows which backend it was built for.
-///
 /// `registry` is the ACL surface for `pctx` lookups
 /// ([`crate::ports::Dctx`] / [`WitnessRegistry`]); `pctx` itself is
 /// still kept because the downstream `WitnessGenerator` and
 /// `ChunkDataCollector` call sites take `&ProofCtx<F>` directly
-/// (cross-crate, library-coupled — out of scope for step 4.2).
+/// (cross-crate, library-coupled).
 pub struct WitnessContext<'a, F: PrimeField64> {
     /// Proof context (used by witness_generator / collector).
     pub pctx: &'a ProofCtx<F>,
@@ -91,37 +89,34 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
     }
 }
 
-/// Phase-4 actor — dispatches witness computation per global id to
-/// the right category-specific path (main / ROM-asm / ROM-native /
-/// secondary / table).
-///
-/// The ASM-vs-native ROM choice is set once at construction via
-/// [`Self::new_asm`] / [`Self::new_native`]; the dispatch then has no
-/// per-call backend branching, only an air-id classification.
+/// Phase-4 actor — classifies each global id and dispatches to one
+/// of five [`crate::witness_handlers`] modules.
 pub struct WitnessRouter<F: PrimeField64> {
-    /// Chunk data collector for secondary instances.
+    /// Chunk data collector for secondary instances. Shared by the
+    /// secondary + rom_native handlers (passed by reference).
     collector: ChunkDataCollector<F>,
 
     /// Witness computer for all instance types.
     witness_generator: WitnessGenerator,
 
-    /// Reusable ROM trace buffer (single allocation across runs).
+    /// Reusable ROM trace buffer (single allocation across runs),
+    /// shared by both ROM handlers.
     trace_buffer_rom: Mutex<Vec<F>>,
 
-    /// Backend the bundle was built for. ROM dispatch reads this.
+    /// Backend the bundle was built for. Picks ROM-asm vs ROM-native
+    /// handler at dispatch.
     is_asm: bool,
 }
 
 impl<F: PrimeField64> WitnessRouter<F> {
     /// Construct a router bound to the **ASM** backend.
-    /// ROM dispatch skips collection (RH service supplies the data
-    /// out-of-band) and registers an empty collector.
+    /// ROM dispatch routes to [`RomAsmWitnessHandler`].
     pub fn new_asm(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         Self::new(chunk_size, sm_bundle, true)
     }
 
     /// Construct a router bound to the **native (Rust)** backend.
-    /// ROM dispatch runs normal collection.
+    /// ROM dispatch routes to [`RomNativeWitnessHandler`].
     pub fn new_native(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         Self::new(chunk_size, sm_bundle, false)
     }
@@ -161,177 +156,93 @@ impl<F: PrimeField64> WitnessRouter<F> {
 
     /// Dispatches witness computation for a single global ID.
     ///
-    /// Routes by air-id classification:
-    ///   * **main** → `compute_main_witness`
-    ///   * **secondary** (any other) → `compute_secondary_witness`
-    ///     (which further branches on ROM + ASM vs native vs table).
+    /// Classification ladder:
+    ///   1. `is_main(air_id)` → [`MainWitnessHandler`]
+    ///   2. Otherwise look up the secondary instance:
+    ///      * `Table` → [`TableWitnessHandler`]
+    ///      * `Instance` + `is_rom(air_id)` →
+    ///        [`RomAsmWitnessHandler`] (if `self.is_asm`) or
+    ///        [`RomNativeWitnessHandler`] (otherwise)
+    ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
     pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> Result<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
+        let stats_scope_id = ctx.stats_scope.id();
 
         if AirClassifier::is_main(air_id) {
-            self.compute_main_witness(
-                ctx.pctx,
+            return MainWitnessHandler::dispatch(
+                &self.witness_generator,
                 ctx.state,
+                ctx.pctx,
                 global_id,
                 ctx.buffer_pool,
-                ctx.stats_scope,
-            )
-        } else {
-            self.compute_secondary_witness(
-                ctx.pctx,
-                ctx.sctx,
-                ctx.state,
-                global_id,
-                airgroup_id,
-                air_id,
-                ctx.buffer_pool,
-                ctx.stats_scope,
-            )
+                stats_scope_id,
+            );
         }
-    }
 
-    /// Computes witness for a main instance.
-    fn compute_main_witness(
-        &self,
-        pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
-        global_id: usize,
-        buffer_pool: &dyn BufferPool<F>,
-        stats_scope: &StatsScope,
-    ) -> Result<()> {
-        let main_instances =
-            state.instance_set.main_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let main_instance = main_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
-
-        self.witness_generator.compute_main_witness(
-            pctx,
-            state,
-            main_instance,
-            buffer_pool.take_buffer(),
-            stats_scope.id(),
-        )
-    }
-
-    /// Computes witness for a secondary instance.
-    ///
-    /// Reads `self.is_asm` for the ROM-collection branch (ASM skips
-    /// collection, native collects normally).
-    #[allow(clippy::too_many_arguments)]
-    fn compute_secondary_witness(
-        &self,
-        pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
-        state: &ExecutionState<F>,
-        global_id: usize,
-        airgroup_id: usize,
-        air_id: usize,
-        buffer_pool: &dyn BufferPool<F>,
-        stats_scope: &StatsScope,
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
-
-        if secn_instance.instance_type() == InstanceType::Instance {
-            let needs_collection = !state
-                .collector_store
-                .inner
+        // Secondary path: look up the instance's `InstanceType` (so we
+        // can route Table separately from Instance) without holding the
+        // read guard across the handler call.
+        let instance_type = {
+            let secn = ctx
+                .state
+                .instance_set
+                .secn_instances
                 .read()
-                .map_err(|e| anyhow::anyhow!("{e}"))?
-                .contains_key(&global_id);
-
-            if needs_collection {
-                if AirClassifier::is_rom(air_id) && self.is_asm {
-                    // ROM with ASM emulator: skip collection
-                    self.register_empty_collector(state, global_id, airgroup_id, air_id)?;
-                } else {
-                    // Collect data for this instance
-                    self.collector
-                        .collect_single(pctx, state, global_id, secn_instance)
-                        .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
-                }
-            }
-        }
-
-        let instance = &**secn_instance;
-        let collectors =
-            Self::take_collectors_for_instance(state, global_id, instance.instance_type())?;
-
-        let trace_buffer = match AirClassifier::is_rom(air_id) {
-            true => std::mem::take(
-                &mut *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?,
-            ),
-            false => buffer_pool.take_buffer(),
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            secn.get(&global_id)
+                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?
+                .instance_type()
         };
 
-        self.witness_generator.compute_secn_witness(
-            pctx,
-            sctx,
-            state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope.id(),
-        )
-    }
-
-    /// Registers an empty collector for instances that skip collection.
-    fn register_empty_collector(
-        &self,
-        state: &ExecutionState<F>,
-        global_id: usize,
-        airgroup_id: usize,
-        air_id: usize,
-    ) -> Result<()> {
-        let stats = Stats::new_no_collection(airgroup_id, air_id);
-
-        state
-            .collector_store
-            .inner
-            .write()
-            .map_err(|e| anyhow::anyhow!("{e}"))?
-            .insert(global_id, Vec::new());
-        state.stats.insert_witness_stats(global_id, stats);
-
-        Ok(())
-    }
-
-    /// Extracts collectors from state, returning an empty list for table instances.
-    #[allow(clippy::type_complexity)]
-    fn take_collectors_for_instance(
-        state: &ExecutionState<F>,
-        global_id: usize,
-        instance_type: InstanceType,
-    ) -> Result<Vec<(usize, Box<dyn BusDevice<u64>>)>> {
         match instance_type {
+            InstanceType::Table => TableWitnessHandler::dispatch(
+                &self.witness_generator,
+                ctx.state,
+                ctx.pctx,
+                ctx.sctx,
+                global_id,
+                ctx.buffer_pool,
+                stats_scope_id,
+            ),
             InstanceType::Instance => {
-                let mut guard =
-                    state.collector_store.inner.write().map_err(|e| anyhow::anyhow!("{e}"))?;
-
-                let collectors = guard.remove(&global_id).ok_or_else(|| {
-                    anyhow::anyhow!("Missing collectors for global_id {global_id}")
-                })?;
-
-                let result = collectors
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, opt)| {
-                        opt.ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Collector at index {idx} for global_id {global_id} is None"
-                            )
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                Ok(result)
+                if AirClassifier::is_rom(air_id) {
+                    if self.is_asm {
+                        RomAsmWitnessHandler::dispatch(
+                            &self.witness_generator,
+                            &self.trace_buffer_rom,
+                            ctx.state,
+                            ctx.pctx,
+                            ctx.sctx,
+                            global_id,
+                            airgroup_id,
+                            air_id,
+                            stats_scope_id,
+                        )
+                    } else {
+                        RomNativeWitnessHandler::dispatch(
+                            &self.witness_generator,
+                            &self.collector,
+                            &self.trace_buffer_rom,
+                            ctx.state,
+                            ctx.pctx,
+                            ctx.sctx,
+                            global_id,
+                            stats_scope_id,
+                        )
+                    }
+                } else {
+                    SecondaryWitnessHandler::dispatch(
+                        &self.witness_generator,
+                        &self.collector,
+                        ctx.state,
+                        ctx.pctx,
+                        ctx.sctx,
+                        global_id,
+                        ctx.buffer_pool,
+                        stats_scope_id,
+                    )
+                }
             }
-            InstanceType::Table => Ok(vec![]),
         }
     }
 
@@ -340,9 +251,9 @@ impl<F: PrimeField64> WitnessRouter<F> {
     /// Reads `self.is_asm` for the ROM pre-calc branch.
     ///
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
-    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled — out
-    /// of scope for step 4.2). All other `pctx`-equivalent lookups
-    /// (`instance_info`, `set_witness_ready`) route through `registry`.
+    /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
+    /// All other `pctx`-equivalent lookups (`instance_info`,
+    /// `set_witness_ready`) route through `registry`.
     pub fn pre_calculate(
         &self,
         pctx: &ProofCtx<F>,
@@ -416,7 +327,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
                 })?;
 
             if rom_instance.skip_collector() {
-                self.register_empty_collector(state, global_id, airgroup_id, air_id)?;
+                register_empty_collector(state, global_id, airgroup_id, air_id)?;
                 registry.set_witness_ready(gid, true);
             } else {
                 instances_to_collect.insert(global_id, secn_instance);

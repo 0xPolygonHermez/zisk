@@ -43,6 +43,7 @@ mod trace_output;
 mod trace_phase;
 
 mod witness_generator;
+mod witness_handlers;
 mod witness_router;
 
 pub use adapters::*;
@@ -76,6 +77,7 @@ pub use static_data_bus_collect::*;
 pub use trace_output::*;
 pub use trace_phase::*;
 use witness_generator::*;
+pub use witness_handlers::*;
 use witness_router::*;
 use zisk_core::ZiskRom;
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
