@@ -20,7 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    BackendArtifacts, EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
     WitnessOrchestrator,
 };
 use fields::PrimeField64;
@@ -193,14 +193,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.state.stats,
             &_exec_scope,
         )?;
-        // Take the RH handle out of the backend without consuming the
-        // whole enum — `output.backend` must stay alive for the
-        // `await_mem_plans()` call below. Step 1.4 will replace this
-        // extraction with `output.backend.await_rom_histogram()`.
-        let handle_rh = match &mut output.backend {
-            BackendArtifacts::Asm { rh, .. } => rh.take(),
-            BackendArtifacts::Rust => None,
-        };
 
         let execution_duration = start_partial.elapsed();
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
@@ -260,17 +252,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let count_and_plan_mo_duration = start_partial.elapsed();
         timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
 
-        if let Some(handle_rh) = handle_rh {
-            timer_start_info!(WAIT_ASM_RH);
-            let rh_data = handle_rh
-                .join()
-                .map_err(|_| anyhow::anyhow!("ROM Histogram thread panicked"))?
-                .map_err(|e| anyhow::anyhow!("ROM Histogram execution failed: {e}"))?;
-
+        // Wait for the ASM ROM Histogram runner (if any) and hand its
+        // output to the orchestrator. `await_rom_histogram()` returns
+        // `Ok(None)` on the Rust path and on non-first ASM ranks.
+        timer_start_info!(WAIT_ASM_RH);
+        if let Some(rh_data) = output.backend.await_rom_histogram()? {
             self.orchestrator.set_rh_data(rh_data)?;
-
-            timer_stop_and_log_info!(WAIT_ASM_RH);
         }
+        timer_stop_and_log_info!(WAIT_ASM_RH);
 
         // Phase 4: Configure and assign secondary instances
         stats_begin!(self.state.stats, &_exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
