@@ -185,7 +185,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let start_partial = Instant::now();
 
         let zisk_rom = self.state.get_rom()?;
-        let output = self.rom_executor.execute(
+        let mut output = self.rom_executor.execute(
             &zisk_rom,
             &pctx,
             self.registry.sm_bundle(),
@@ -193,13 +193,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.state.stats,
             &_exec_scope,
         )?;
-        // Decompose backend-specific async artifacts into the local
-        // `handle_mo` / `handle_rh` variables today's downstream code uses.
-        // Steps 1.3 / 1.4 replace these `if let Some(...)` blocks with
-        // `output.backend.await_mem_plans()` / `await_rom_histogram()`.
-        let (handle_mo, handle_rh) = match output.backend {
-            BackendArtifacts::Asm { mo, rh } => (mo, rh),
-            BackendArtifacts::Rust => (None, None),
+        // Take the RH handle out of the backend without consuming the
+        // whole enum — `output.backend` must stay alive for the
+        // `await_mem_plans()` call below. Step 1.4 will replace this
+        // extraction with `output.backend.await_rom_histogram()`.
+        let handle_rh = match &mut output.backend {
+            BackendArtifacts::Asm { rh, .. } => rh.take(),
+            BackendArtifacts::Rust => None,
         };
 
         let execution_duration = start_partial.elapsed();
@@ -245,22 +245,17 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         stats_end!(self.state.stats, &_secn_plan_scope);
         let start_partial = Instant::now();
 
-        // Handle memory operations from ASM runner
-        if let Some(handle_mo) = handle_mo {
-            stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
+        // Wait for the ASM Memory Operations runner (if any) and merge its
+        // plans into the secondary planning. On the Rust path
+        // `await_mem_plans()` returns an empty `Vec` immediately, so this
+        // is unconditional and the stats scopes fire with ~0ms duration.
+        stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
+        let mem_plans = output.backend.await_mem_plans()?;
+        stats_end!(self.state.stats, &_mo_wait_scope);
 
-            let asm_runner_mo = handle_mo
-                .join()
-                .map_err(|_| anyhow::anyhow!("Assembly Memory Operations thread panicked"))?
-                .map_err(|e| anyhow::anyhow!("Assembly Memory Operations execution failed: {e}"))?;
-
-            stats_end!(self.state.stats, &_mo_wait_scope);
-            stats_begin!(self.state.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
-
-            self.registry.sm_bundle().extend_mem_plans(&mut secn_planning, asm_runner_mo.plans);
-
-            stats_end!(self.state.stats, &_mo_add_scope);
-        }
+        stats_begin!(self.state.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
+        self.registry.sm_bundle().extend_mem_plans(&mut secn_planning, mem_plans);
+        stats_end!(self.state.stats, &_mo_add_scope);
 
         let count_and_plan_mo_duration = start_partial.elapsed();
         timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
