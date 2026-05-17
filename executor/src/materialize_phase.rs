@@ -44,7 +44,7 @@ use zisk_pil::{
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::{
     state::ExecutionState, InstancePlanner, InstanceRegistry, PlanPhase, TraceOutput,
-    WitnessOrchestrator,
+    WitnessRouter,
 };
 
 /// Side-information emitted by [`MaterializePhase::run`] for the caller
@@ -104,7 +104,7 @@ impl MaterializePhase {
         plan: &PlanPhase,
         planner: &InstancePlanner,
         registry: &InstanceRegistry<F>,
-        orchestrator: &WitnessOrchestrator<F>,
+        router: &WitnessRouter<F>,
         state: &ExecutionState<F>,
         proof_registry: &dyn ProofRegistry,
         pctx: &ProofCtx<F>,
@@ -174,7 +174,7 @@ impl MaterializePhase {
         // `Ok(None)` on the Rust path and on non-first ASM ranks.
         timer_start_info!(WAIT_ASM_RH);
         if let Some(rh_data) = backend.await_rom_histogram()? {
-            orchestrator.set_rh_data(rh_data)?;
+            router.set_rh_data(rh_data)?;
         }
         timer_stop_and_log_info!(WAIT_ASM_RH);
 

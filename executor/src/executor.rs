@@ -19,9 +19,9 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
+    state::ExecutionState, witness_router::WitnessContext, AirClassifier, AsmResources,
     EmulatorAsm, InstancePlanner, InstanceRegistry, MaterializePhase, PlanPhase, ProofmanAdapter,
-    StaticSMBundle, TracePhase, WitnessOrchestrator,
+    StaticSMBundle, TracePhase, WitnessRouter,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -60,8 +60,8 @@ pub struct ZiskExecutor<F: PrimeField64> {
     planner: InstancePlanner,
     /// Instance registry component.
     registry: InstanceRegistry<F>,
-    /// Witness orchestrator component.
-    orchestrator: WitnessOrchestrator<F>,
+    /// Phase-4 actor: routes witness computation per global id.
+    router: WitnessRouter<F>,
 }
 
 impl<F: PrimeField64> ZiskExecutor<F> {
@@ -87,7 +87,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             materialize: MaterializePhase::new(),
             planner: InstancePlanner::new(),
             registry: InstanceRegistry::new(sm_bundle.clone()),
-            orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
+            // Backend-flavored ROM handler baked at construction; no
+            // per-call `is_asm_emulator` branching during dispatch.
+            router: if is_asm {
+                WitnessRouter::new_asm(chunk_size, sm_bundle)
+            } else {
+                WitnessRouter::new_native(chunk_size, sm_bundle)
+            },
         }
     }
 
@@ -132,12 +138,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `zisk_rom` - The ZisK ROM to execute.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) -> Result<()> {
         self.state.set_rom(zisk_rom.clone(), use_hints);
-        self.orchestrator.set_rom(zisk_rom)
+        self.router.set_rom(zisk_rom)
     }
 
     /// Sets whether to use packed representation for witness computation.
     pub fn set_packed(&self, packed: bool) {
-        self.orchestrator.set_packed(packed);
+        self.router.set_packed(packed);
     }
 
     /// Sets the standard input for execution.
@@ -178,7 +184,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ) -> Result<()> {
         let start_total = Instant::now();
         self.state.reset();
-        self.orchestrator.reset()?;
+        self.router.reset()?;
 
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
 
@@ -212,7 +218,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.plan,
             &self.planner,
             &self.registry,
-            &self.orchestrator,
+            &self.router,
             &self.state,
             &proof_registry,
             &pctx,
@@ -269,10 +275,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 &self.state,
                 buffer_pool,
                 &_witness_scope,
-                self.trace.is_asm(),
             );
             for &global_id in global_ids {
-                self.orchestrator.compute_witness_for_instance(&ctx, global_id)?;
+                self.router.dispatch(&ctx, global_id)?;
             }
             Ok(())
         })?;
@@ -300,14 +305,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let pool = create_pool(n_cores);
 
-        pool.install(|| {
-            self.orchestrator.pre_calculate(
-                &pctx,
-                &self.state,
-                global_ids,
-                self.trace.is_asm(),
-            )
-        })?;
+        pool.install(|| self.router.pre_calculate(&pctx, &self.state, global_ids))?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())

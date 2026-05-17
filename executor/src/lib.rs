@@ -43,7 +43,7 @@ mod trace_output;
 mod trace_phase;
 
 mod witness_generator;
-mod witness_orchestrator;
+mod witness_router;
 
 pub use adapters::*;
 use air_classifier::*;
@@ -76,7 +76,7 @@ pub use static_data_bus_collect::*;
 pub use trace_output::*;
 pub use trace_phase::*;
 use witness_generator::*;
-use witness_orchestrator::*;
+use witness_router::*;
 use zisk_core::ZiskRom;
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
 pub type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;
