@@ -6,7 +6,7 @@ use std::{
 use crate::{
     pub_outs_collector::PubOutsCollector,
     {AsmResources, StaticDataBus},
-    {CountersChunkMetrics, EmulatorResult, StaticSMBundle, MAX_NUM_STEPS},
+    {BackendArtifacts, CountersChunkMetrics, StaticSMBundle, TraceOutput, MAX_NUM_STEPS},
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
@@ -165,7 +165,8 @@ impl EmulatorAsm {
     /// * `_caller_stats_id` - Identifier used to attribute collected statistics to the caller.
     ///
     /// # Returns
-    /// An [`EmulatorResult`]
+    /// A [`TraceOutput`] whose `backend` field is the `Asm` variant carrying
+    /// the spawned MO + (optionally) RH join handles.
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
@@ -176,7 +177,7 @@ impl EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<EmulatorResult> {
+    ) -> Result<TraceOutput> {
         let asm_resources = self
             .asm_resources
             .read()
@@ -250,13 +251,15 @@ impl EmulatorAsm {
             Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
-                Ok(EmulatorResult {
+                Ok(TraceOutput {
                     min_traces,
                     counters,
-                    handle_mo: Some(handle_mo),
-                    handle_rh,
-                    steps,
                     pub_outs,
+                    steps,
+                    backend: BackendArtifacts::Asm {
+                        mo: Some(handle_mo),
+                        rh: handle_rh,
+                    },
                 })
             }
             Err(e) => {
@@ -440,7 +443,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<crate::EmulatorResult> {
+    ) -> Result<crate::TraceOutput> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
     }
 }

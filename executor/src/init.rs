@@ -26,7 +26,9 @@ use proofman_common::ProofCtx;
 use zisk_common::{Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
-use crate::{AsmRunnerRH, BuiltinSMs, Precompiles, SMAirType, ZiskRom};
+use asm_runner::AsmRunnerRH;
+
+use crate::{BuiltinSMs, Precompiles, SMAirType, ZiskRom};
 
 pub type SMType<F> = (SMAirType, StateMachines<F>);
 

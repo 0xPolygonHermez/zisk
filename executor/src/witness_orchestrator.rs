@@ -3,7 +3,7 @@
 //! This module handles the logic for witness computation, coordinating between collectors and
 //! witness generators
 
-use crate::AsmRunnerRH;
+use asm_runner::AsmRunnerRH;
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };

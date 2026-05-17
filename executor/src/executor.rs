@@ -20,7 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
+    BackendArtifacts, EmulatorAsm, InstancePlanner, InstanceRegistry, RomExecutor, StaticSMBundle,
     WitnessOrchestrator,
 };
 use fields::PrimeField64;
@@ -193,6 +193,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.state.stats,
             &_exec_scope,
         )?;
+        // Decompose backend-specific async artifacts into the local
+        // `handle_mo` / `handle_rh` variables today's downstream code uses.
+        // Steps 1.3 / 1.4 replace these `if let Some(...)` blocks with
+        // `output.backend.await_mem_plans()` / `await_rom_histogram()`.
+        let (handle_mo, handle_rh) = match output.backend {
+            BackendArtifacts::Asm { mo, rh } => (mo, rh),
+            BackendArtifacts::Rust => (None, None),
+        };
 
         let execution_duration = start_partial.elapsed();
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
@@ -238,7 +246,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let start_partial = Instant::now();
 
         // Handle memory operations from ASM runner
-        if let Some(handle_mo) = output.handle_mo {
+        if let Some(handle_mo) = handle_mo {
             stats_begin!(self.state.stats, &_exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
 
             let asm_runner_mo = handle_mo
@@ -257,7 +265,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let count_and_plan_mo_duration = start_partial.elapsed();
         timer_stop_and_log_info!(WAIT_PLAN_MEM_CPP);
 
-        if let Some(handle_rh) = output.handle_rh {
+        if let Some(handle_rh) = handle_rh {
             timer_start_info!(WAIT_ASM_RH);
             let rh_data = handle_rh
                 .join()

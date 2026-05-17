@@ -3,37 +3,16 @@
 //! This module handles the execution of a ZisK ROM program, coordinating
 //! the emulator backend and hints stream processing.
 
-use crate::pub_outs_collector::PubOutsCollector;
-use crate::{
-    AsmResources, CountersChunkMetrics, EmulatorAsm, EmulatorResult, EmulatorRust, StaticSMBundle,
-};
+use crate::{AsmResources, EmulatorAsm, EmulatorRust, StaticSMBundle, TraceOutput};
 use arc_swap::ArcSwap;
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread::JoinHandle;
-use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
+use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
 use anyhow::Result;
-
-/// Output from ROM execution.
-pub struct RomExecutionOutput {
-    /// Minimal traces collected during execution.
-    pub min_traces: Vec<EmuTrace>,
-    /// Device metrics for secondary state machines.
-    pub counters: CountersChunkMetrics,
-    /// Handle to memory operations thread (for ASM emulator).
-    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
-    /// Handle to hints runner thread (for ASM emulator).
-    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
-    /// Execution result with step counts.
-    pub steps: u64,
-    /// Public outputs accumulated during execution (low/high 32-bit halves).
-    pub pub_outs: PubOutsCollector,
-}
 
 pub struct RomExecutor {
     // Emulator backend for executing the ROM program in ASM.
@@ -109,7 +88,8 @@ impl RomExecutor {
     /// * `caller_stats_scope` - Parent statistics scope.
     ///
     /// # Returns
-    /// Execution output containing traces, metrics, and results.
+    /// A [`TraceOutput`] whose `backend` field reflects the chosen emulator
+    /// path (ASM = parallel MO/RH runner handles; Rust = unit variant).
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -118,22 +98,19 @@ impl RomExecutor {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<RomExecutionOutput> {
+    ) -> Result<TraceOutput> {
         let stdin = self.stdin.load_full();
-        let EmulatorResult { min_traces, counters, handle_mo, handle_rh, steps, pub_outs } =
-            match self.is_asm_execution.load(Ordering::SeqCst) {
-                true => self.emulator_asm.execute(
-                    zisk_rom,
-                    &stdin,
-                    pctx,
-                    sm_bundle,
-                    use_hints,
-                    stats,
-                    caller_stats_scope,
-                )?,
-                false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle)?,
-            };
-
-        Ok(RomExecutionOutput { min_traces, counters, handle_mo, handle_rh, steps, pub_outs })
+        match self.is_asm_execution.load(Ordering::SeqCst) {
+            true => self.emulator_asm.execute(
+                zisk_rom,
+                &stdin,
+                pctx,
+                sm_bundle,
+                use_hints,
+                stats,
+                caller_stats_scope,
+            ),
+            false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle),
+        }
     }
 }

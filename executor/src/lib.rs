@@ -32,6 +32,7 @@ mod sm_registry;
 mod state;
 mod static_data_bus;
 mod static_data_bus_collect;
+mod trace_output;
 
 mod witness_generator;
 mod witness_orchestrator;
@@ -57,41 +58,27 @@ pub use sm_precompiles::*;
 pub use state::*;
 pub use static_data_bus::*;
 pub use static_data_bus_collect::*;
+pub use trace_output::*;
 use witness_generator::*;
 use witness_orchestrator::*;
 use zisk_core::ZiskRom;
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
 pub type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;
 
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use std::{collections::HashMap, thread::JoinHandle};
-use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
+use std::collections::HashMap;
+use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsScope};
 
 use anyhow::Result;
 
-use crate::pub_outs_collector::PubOutsCollector;
-
-/// Result of an emulator execution
-pub struct EmulatorResult {
-    /// Minimal traces produced by the emulator.
-    pub min_traces: Vec<EmuTrace>,
-    /// Device metrics for secondary devices.
-    pub counters: CountersChunkMetrics,
-    /// Join handle for the memory-only ASM runner (only applicable for ASM emulator).
-    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
-    /// Join handle for the ROM histogram runner (only applicable for ASM emulator).
-    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
-    /// Total number of steps executed by the emulator.
-    pub steps: u64,
-    /// Collected public outputs from the emulator execution.
-    pub pub_outs: PubOutsCollector,
-}
-
-/// Trait for unified execution across different emulator backends
+/// Trait for unified execution across different emulator backends.
+///
+/// Both backends return a uniform [`TraceOutput`]; backend-specific
+/// async work (ASM-only MO + RH handles) is encapsulated in
+/// [`TraceOutput::backend`] and exposed via the `await_*` methods on
+/// [`BackendArtifacts`].
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
 pub trait Emulator<F: PrimeField64>: Send + Sync {
     /// Execute the emulator
     fn execute(
@@ -103,5 +90,5 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<EmulatorResult>;
+    ) -> Result<TraceOutput>;
 }

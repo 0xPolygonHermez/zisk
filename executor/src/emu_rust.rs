@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    pub_outs_collector::PubOutsCollector, CountersChunkMetrics, EmulatorResult, StaticDataBus,
-    StaticSMBundle, MAX_NUM_STEPS,
+    pub_outs_collector::PubOutsCollector, BackendArtifacts, CountersChunkMetrics, StaticDataBus,
+    StaticSMBundle, TraceOutput, MAX_NUM_STEPS,
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -42,13 +42,14 @@ impl EmulatorRust {
     /// * `_caller_stats_scope` - Stats scope used to associate collected statistics with the caller.
     ///
     /// # Returns
-    /// An [`EmulatorResult`]
+    /// A [`TraceOutput`] whose `backend` is [`BackendArtifacts::Rust`] —
+    /// no async runners on the native path.
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<EmulatorResult> {
+    ) -> Result<TraceOutput> {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin)?;
 
         // Store execute steps
@@ -58,13 +59,12 @@ impl EmulatorRust {
         let (counters, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
         timer_stop_and_log_info!(COUNT);
 
-        Ok(EmulatorResult {
+        Ok(TraceOutput {
             min_traces,
             counters,
-            handle_mo: None,
-            handle_rh: None,
-            steps,
             pub_outs,
+            steps,
+            backend: BackendArtifacts::Rust,
         })
     }
 
@@ -160,7 +160,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &zisk_common::StatsScope,
-    ) -> Result<EmulatorResult> {
+    ) -> Result<TraceOutput> {
         self.execute(zisk_rom, stdin, sm_bundle)
     }
 }
