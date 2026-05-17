@@ -1,77 +1,35 @@
-//! Instance planning component.
+//! Instance-to-`ProofCtx` assignment helpers.
 //!
-//! This module handles the planning and assignment of main and secondary
-//! state machine instances to the proof context.
+//! After step 2.5, this module is the **assignment-only** half of the
+//! old `InstancePlanner` — the pure planning surface (`plan_main`,
+//! `plan_secondary`) has moved to [`crate::PlanPhase`]. What stays
+//! here is exclusively `pctx`-mutating: registering instances with the
+//! proof context and stamping global IDs back onto the plans.
+//!
+//! Future steps relocate these into `MaterializePhase`; for now the
+//! struct keeps its name to minimise call-site churn at the executor.
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_main::{MainPlanner, MainSmError};
-use std::{collections::BTreeMap, sync::RwLock};
-use zisk_common::{EmuTrace, InstanceType, Plan};
+use std::sync::RwLock;
+use zisk_common::{InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::AirClassifier;
-use crate::{CountersChunkMetrics, StaticSMBundle};
 
 use anyhow::Result;
 
-/// Output from main planning.
-pub struct MainPlanningOutput {
-    /// Plans for main instances.
-    pub plans: Vec<Plan>,
-}
-
-/// Component responsible for instance planning.
+/// Assigner of state-machine instances to the proof context.
 ///
-/// Handles the strategic planning of main and secondary state machine
-/// instances based on execution metrics. Planning determines:
-/// - How many instances of each state machine type are needed
-/// - How work is distributed across instances
-/// - Global ID assignments for proof context registration
-pub struct InstancePlanner {
-    /// Chunk size for dividing execution into manageable pieces.
-    chunk_size: u64,
-}
+/// Stateless — the field-free struct is kept to preserve today's
+/// `self.planner.assign_*` call sites until M3 folds these into
+/// `MaterializePhase`.
+pub struct InstancePlanner;
 
 impl InstancePlanner {
     /// Creates a new `InstancePlanner`.
-    ///
-    /// # Arguments
-    /// * `chunk_size` - The chunk size for processing.
-    pub fn new(chunk_size: u64) -> Self {
-        Self { chunk_size }
-    }
-
-    /// Plans main state machine instances.
-    ///
-    /// # Arguments
-    /// * `min_traces` - Minimal traces from execution.
-    ///
-    /// # Returns
-    /// Planning output containing the main-instance plans, or a `MainSmError`
-    /// if the planner rejects the configuration.
-    pub fn plan_main(
-        &self,
-        min_traces: &[EmuTrace],
-    ) -> std::result::Result<MainPlanningOutput, MainSmError> {
-        let plans = MainPlanner::plan(min_traces, self.chunk_size)?;
-        Ok(MainPlanningOutput { plans })
-    }
-
-    /// Plans secondary state machine instances.
-    ///
-    /// # Arguments
-    /// * `sm_bundle` - State machine bundle.
-    /// * `counters` - Device metrics for secondary instances.
-    ///
-    /// # Returns
-    /// BTreeMap of SM type ID to plans.
-    pub fn plan_secondary<F: PrimeField64>(
-        &self,
-        sm_bundle: &StaticSMBundle<F>,
-        counters: &mut CountersChunkMetrics,
-    ) -> BTreeMap<usize, Vec<Plan>> {
-        sm_bundle.plan_sec(counters)
+    pub fn new() -> Self {
+        Self
     }
 
     /// Assigns ROM instance to the proof context.
@@ -146,5 +104,11 @@ impl InstancePlanner {
         }
 
         Ok(())
+    }
+}
+
+impl Default for InstancePlanner {
+    fn default() -> Self {
+        Self::new()
     }
 }

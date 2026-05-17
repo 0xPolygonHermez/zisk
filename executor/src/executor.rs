@@ -20,7 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_orchestrator::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, StaticSMBundle, TracePhase,
+    EmulatorAsm, InstancePlanner, InstanceRegistry, PlanPhase, StaticSMBundle, TracePhase,
     WitnessOrchestrator,
 };
 use fields::PrimeField64;
@@ -57,7 +57,9 @@ pub struct ZiskExecutor<F: PrimeField64> {
     state: ExecutionState<F>,
     /// Phase-1 actor: runs the chosen emulator and produces a `TraceOutput`.
     trace: TracePhase,
-    /// Instance planner component.
+    /// Phase-2 actor: pure planning from the trace ingredients.
+    plan: PlanPhase,
+    /// `ProofCtx` assignment for already-planned instances.
     planner: InstancePlanner,
     /// Instance registry component.
     registry: InstanceRegistry<F>,
@@ -84,7 +86,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             // `is_asm` flag — agrees with the SM-counter set the bundle
             // was built for. No runtime AtomicBool flip needed.
             trace: TracePhase::new(chunk_size, is_asm),
-            planner: InstancePlanner::new(chunk_size),
+            plan: PlanPhase::new(chunk_size),
+            planner: InstancePlanner::new(),
             registry: InstanceRegistry::new(sm_bundle.clone()),
             orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
         }
@@ -209,7 +212,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         self.planner.assign_rom_instance(&pctx)?;
 
-        let main_output = self.planner.plan_main(&output.min_traces)?;
+        let main_plans = self.plan.plan_main(&output.min_traces)?;
         *self
             .state
             .min_traces
@@ -218,7 +221,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             Some(output.min_traces);
 
         let main_assignments =
-            self.planner.assign_main_instances(&pctx, global_ids, main_output.plans)?;
+            self.planner.assign_main_instances(&pctx, global_ids, main_plans)?;
         let main_instances_count = main_assignments.len();
         self.registry.populate_main_instances(&pctx, &self.state, main_assignments)?;
 
@@ -229,7 +232,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let mut counters = output.counters;
         let mut secn_planning =
-            self.planner.plan_secondary(self.registry.sm_bundle(), &mut counters);
+            self.plan.plan_secondary(&mut counters, self.registry.sm_bundle());
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);
