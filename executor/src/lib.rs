@@ -9,6 +9,7 @@
 #![warn(rustdoc::all)] // broken intra-doc links, invalid HTML, bare URLs
 #![deny(rustdoc::all)]
 
+mod adapters;
 mod air_classifier;
 mod asm_resources;
 mod collector;
@@ -21,6 +22,7 @@ mod emu_rust;
 mod executor;
 mod init;
 mod planner;
+mod ports;
 mod pub_outs_collector;
 mod registry;
 mod rom_executor;
@@ -34,6 +36,7 @@ mod static_data_bus_collect;
 mod witness_generator;
 mod witness_orchestrator;
 
+pub use adapters::*;
 use air_classifier::*;
 pub use asm_resources::*;
 use collector::*;
@@ -46,6 +49,7 @@ pub use emu_rust::*;
 pub use executor::*;
 pub use init::*;
 use planner::*;
+pub use ports::*;
 use registry::*;
 use rom_executor::*;
 pub use sm_builtins::*;
