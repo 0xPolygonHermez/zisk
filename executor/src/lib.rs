@@ -12,6 +12,7 @@
 mod adapters;
 mod air_classifier;
 mod asm_resources;
+mod asm_transport;
 mod collector;
 mod dummy_counter;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -40,6 +41,7 @@ mod witness_orchestrator;
 pub use adapters::*;
 use air_classifier::*;
 pub use asm_resources::*;
+pub use asm_transport::*;
 use collector::*;
 pub use dummy_counter::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

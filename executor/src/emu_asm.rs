@@ -1,11 +1,11 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use crate::{
     pub_outs_collector::PubOutsCollector,
-    {AsmResources, StaticDataBus},
+    {AsmResources, AsmTransport, StaticDataBus},
     {BackendArtifacts, CountersChunkMetrics, StaticSMBundle, TraceOutput, MAX_NUM_STEPS},
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
@@ -26,8 +26,10 @@ pub struct EmulatorAsm {
     /// Chunk size for processing.
     chunk_size: u64,
 
-    /// Assembly resources including shared memory and hints stream.
-    asm_resources: RwLock<Option<Arc<AsmResources>>>,
+    /// Facade over the worker-supplied [`AsmResources`]. Owns the
+    /// "may not be installed yet" state and exposes every per-resource
+    /// operation as a thin forwarding method.
+    transport: AsmTransport,
 
     asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
@@ -35,7 +37,11 @@ pub struct EmulatorAsm {
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(chunk_size: u64) -> Self {
-        Self { chunk_size, asm_resources: RwLock::new(None), asm_execution_info: Mutex::new(None) }
+        Self {
+            chunk_size,
+            transport: AsmTransport::new(),
+            asm_execution_info: Mutex::new(None),
+        }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
@@ -50,26 +56,21 @@ impl EmulatorAsm {
             .clone())
     }
 
+    /// Borrows the inner [`AsmTransport`]. The worker / coordinator
+    /// uses this when it wants to drive only the resource-facade
+    /// surface (streams, hints, cancellation) without reaching for
+    /// threading / MT-chunk APIs.
+    pub fn transport(&self) -> &AsmTransport {
+        &self.transport
+    }
+
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
-        *self
-            .asm_resources
-            .write()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? =
-            Some(asm_resources);
-        Ok(())
+        self.transport.set_asm_resources(asm_resources)
     }
 
     /// Resets the hints stream pipeline and the input shmem writer for the next job.
     pub fn reset(&self) -> Result<()> {
-        if let Some(resources) = self
-            .asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-        {
-            resources.reset();
-        }
-        Ok(())
+        self.transport.reset()
     }
 
     /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
@@ -77,55 +78,23 @@ impl EmulatorAsm {
     /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
     /// cancel time so a stuck `execute` returns Err promptly.
     pub fn signal_cancellation(&self) -> Result<()> {
-        if let Some(resources) = self
-            .asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-        {
-            resources.signal_cancellation()?;
-        }
-        Ok(())
+        self.transport.signal_cancellation()
     }
 
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
-        self.asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .get_hints_processor()
+        self.transport.get_hints_processor()
     }
 
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        if let Some(resources) = self
-            .asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-        {
-            resources.set_active_services(is_first_partition)
-        } else {
-            Ok(())
-        }
+        self.transport.set_active_services(is_first_partition)
     }
 
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .set_hints_stream_src(stream)
+        self.transport.set_hints_stream_src(stream)
     }
 
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
-        self.asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .set_inputs_stream_src(stream)
+        self.transport.set_inputs_stream_src(stream)
     }
 
     /// Submits hint data directly to the shmem sink, bypassing the `ZiskStream` pipeline.
@@ -133,12 +102,7 @@ impl EmulatorAsm {
     /// Used in the gRPC streaming path where hint ordering is handled externally by the
     /// coordinator before data arrives here.
     pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
-        self.asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .submit_hint_direct(data)
+        self.transport.submit_hint_direct(data)
     }
 
     /// Appends a raw byte chunk to the input shmem writer.
@@ -147,12 +111,7 @@ impl EmulatorAsm {
     /// `write_input` (which writes the full stdin at once for local execution), this
     /// appends incrementally as chunks arrive over the wire.
     pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
-        self.asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .append_raw_input(bytes)
+        self.transport.append_raw_input(bytes)
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -178,13 +137,7 @@ impl EmulatorAsm {
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
     ) -> Result<TraceOutput> {
-        let asm_resources = self
-            .asm_resources
-            .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-            .clone();
+        let asm_resources = self.transport.resources()?;
 
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
@@ -346,13 +299,7 @@ impl EmulatorAsm {
                 });
             };
 
-            let asm_resources = self
-                .asm_resources
-                .read()
-                .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
-                .clone();
+            let asm_resources = self.transport.resources()?;
             let mt_shmem = &mut asm_resources
                 .readers()
                 .mt
