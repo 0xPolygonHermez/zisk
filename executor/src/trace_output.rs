@@ -54,6 +54,11 @@ pub struct TraceOutput {
 /// - [`BackendArtifacts::Rust`] is a unit variant — the Rust emulator
 ///   has no async work, so the `await_*` methods return empty results
 ///   immediately.
+///
+/// Marked `#[non_exhaustive]` so adding a future backend (e.g. a
+/// distributed/remote emulator) is a non-breaking change for downstream
+/// matches. Pattern matches on this enum must include `_ => ...`.
+#[non_exhaustive]
 pub enum BackendArtifacts {
     /// ASM backend: parallel MO + optional RH runners.
     Asm {

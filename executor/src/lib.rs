@@ -1,9 +1,89 @@
-//! Executor crate: responsible for executing Zisk ROMs and collecting execution traces and metrics.
+//! Executor crate: runs ZisK ROMs across multiple emulator backends and
+//! drives every step needed to hand a populated proof context to the
+//! witness side.
 //!
-//! This crate provides a unified interface for executing Zisk ROMs across different emulator
-//! backends, including an x86-64 assembly emulator and a Rust-based emulator.
-//! It collects execution traces, counters, and other relevant data during execution,
-//! which is used for proof generation.
+//! # Architecture overview
+//!
+//! The executor pipeline is split into four phase actors, each owning a
+//! distinct responsibility. Data flows downstream as typed phase
+//! outputs:
+//!
+//! ```text
+//! ZiskExecutor::execute
+//!   │
+//!   ├── TracePhase           → produces a uniform TraceOutput
+//!   │     (chooses EmulatorAsm or EmulatorRust at construction)
+//!   │
+//!   └── MaterializePhase     → consumes the TraceOutput
+//!         │  (replaces phases 2–4 of the old monolithic execute)
+//!         ├── PlanPhase (called internally)
+//!         │     ├── plan_main  (pure, unit-testable)
+//!         │     └── plan_secondary (drains counters into per-SM plans)
+//!         │
+//!         ├── InstancePlanner (ROM/main/secn global-id assignment)
+//!         ├── InstanceRegistry / InstanceFactory
+//!         │     → fills InstanceSet + checkpoints
+//!         └── returns MaterializeOutput
+//!               (timings + cost_per_type)
+//!
+//! ZiskExecutor::calculate_witness
+//!   │
+//!   └── WitnessRouter::dispatch
+//!         │  (router has its backend baked at construction via
+//!         │   `new_asm` / `new_native`)
+//!         ├── MainWitnessHandler
+//!         ├── SecondaryWitnessHandler
+//!         ├── RomNativeWitnessHandler
+//!         ├── RomAsmWitnessHandler
+//!         └── TableWitnessHandler
+//! ```
+//!
+//! # Backend abstraction
+//!
+//! The ASM / Rust split lives behind the [`Emulator<F>`] trait. Both
+//! impls return [`TraceOutput`]; backend-specific async work (the
+//! ASM MO + RH runner handles) is encapsulated in [`BackendArtifacts`],
+//! exposed only through `await_*` methods. **No phase signature
+//! mentions `is_asm`, `JoinHandle`, or `AsmRunner*`** — the backend
+//! choice is invisible past `TracePhase`.
+//!
+//! # Anti-corruption layer (ACL)
+//!
+//! `ProofCtx<F>` is consumed inside the executor through three port
+//! traits:
+//!
+//! * [`Dctx`] — instance info, rank ownership, witness-ready flag.
+//! * [`ProofRegistry`] — extends [`Dctx`] with `add_instance*` /
+//!   `add_table` / `find_instance_id` / `set_chunks` / `write_pub_outs`,
+//!   used by `MaterializePhase`.
+//! * [`WitnessRegistry<F>`] — extends [`Dctx`] with `add_air_instance`,
+//!   used by the witness handlers.
+//!
+//! [`ProofmanAdapter`] is the concrete adapter wrapping `&ProofCtx<F>`.
+//!
+//! # Testability
+//!
+//! After the M0–M4 refactor:
+//!
+//! | Component                  | Test surface                                  |
+//! |----------------------------|-----------------------------------------------|
+//! | `AirClassifier`            | Pure functions (no setup)                     |
+//! | `PubOutsCollector`         | Pure functions (no setup)                     |
+//! | [`BackendArtifacts`]       | Synthetic `JoinHandle`s, fake threads         |
+//! | [`PlanPhase`] `::plan_main`| Synthetic `EmuTrace` array (no `ProofCtx`)    |
+//! | `InstancePlanner`          | `FakeProofRegistry` records call sequences    |
+//! | [`AsmRunnerSupervisor`]    | Fake `JoinHandle`s, failure-path tests        |
+//! | [`MtChunkProcessor`]       | Synthetic chunk plumbing                      |
+//! | [`InstanceSet`] / [`ChunkCollectorStore`] | Construct + reset / is_empty   |
+//! | [`TracePhase`]             | Rust-backend construction (no ASM bring-up)   |
+//! | [`AsmTransport`]           | Uninstalled-resource error paths              |
+//! | [`MaterializePhase`]       | **Integration only** — needs real `ProofCtx`  |
+//! | Witness handlers           | **Integration only** — `WitnessGenerator` / `ChunkDataCollector` still take `&ProofCtx<F>` |
+//!
+//! Adding unit-level coverage to the integration-only rows means
+//! pushing the ACL through `WitnessGenerator` + `ChunkDataCollector`
+//! (which currently take `&ProofCtx<F>` directly) — a deferred
+//! follow-up, not blocking.
 
 #![warn(missing_docs)] // ratchet up to deny once clean
 #![warn(rustdoc::all)] // broken intra-doc links, invalid HTML, bare URLs

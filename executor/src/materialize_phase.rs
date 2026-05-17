@@ -50,6 +50,11 @@ use crate::{
 /// Side-information emitted by [`MaterializePhase::run`] for the caller
 /// to fold into [`zisk_common::ZiskExecutorTime`] /
 /// [`zisk_common::ZiskExecutorSummary`].
+///
+/// Marked `#[non_exhaustive]` because future restructuring may move
+/// additional phase artifacts (e.g. `min_traces`, owned `InstanceSet`)
+/// into this struct rather than into `ExecutionState`.
+#[non_exhaustive]
 pub struct MaterializeOutput {
     /// Wall-clock time spent counting + planning (covers main planning
     /// through secondary planning, before the MO merge wait).
