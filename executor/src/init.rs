@@ -68,6 +68,14 @@ pub struct StaticSMBundle<F: PrimeField64> {
     /// so `extend_mem_plans` doesn't have to scan or hardcode a number.
     mem_position: usize,
 
+    /// `true` when the bundle was built for the ASM emulator path
+    /// (memory ops accounted out-of-band; ROM histogram via the RH service).
+    /// Set once in [`Self::new`] from the `is_asm_emulator` argument;
+    /// surfaces the value already threaded through `BuiltinSMs::all` so
+    /// callers can read it via [`Self::is_asm`] instead of plumbing the
+    /// same bool through every per-call API.
+    is_asm: bool,
+
     std: Arc<Std<F>>,
 }
 
@@ -92,7 +100,19 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::MemSM(_))))
             .expect("MemSM must be in the bundle (constructed above)");
 
-        Self { sm, mem_position, std }
+        Self { sm, mem_position, is_asm: is_asm_emulator, std }
+    }
+
+    /// Returns `true` if the bundle was constructed for the ASM emulator
+    /// path. Mirrors the `is_asm_emulator` argument passed to [`Self::new`].
+    ///
+    /// Used to remove the redundant `is_asm_emulator` parameter from
+    /// non-hot-path APIs (`plan_sec`, `build_planner`, `from_bundle`) in
+    /// later steps; the hot-path `StaticDataBus::from_bundle` keeps its
+    /// explicit `bool` argument to avoid any codegen change.
+    #[inline]
+    pub fn is_asm(&self) -> bool {
+        self.is_asm
     }
 
     /// Read-only view of all registered SMs in insertion order. Used
