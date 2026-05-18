@@ -50,10 +50,6 @@ pub(crate) type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a Box<dyn Instance<
 /// via `new_asm` / `new_native` — so both the dispatch and pre-calculate
 /// paths route through the same instance without any per-call backend
 /// branching. The two impls live in [`rom_asm`] and [`rom_native`].
-//
-// `pre_calculate` is wired in C.2 (router still calls its inline helper
-// for now). `#[allow(dead_code)]` covers the gap.
-#[allow(dead_code)]
 pub(crate) trait RomWitnessHandler<F: PrimeField64>: Send + Sync {
     /// Compute the witness for a ROM global id. Takes the union of the
     /// two backends' arguments — the ASM impl ignores `collector`; the

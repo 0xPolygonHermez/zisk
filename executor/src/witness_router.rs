@@ -19,16 +19,14 @@ use anyhow::Result;
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
-use sm_rom::RomInstance;
 use zisk_common::{InstanceType, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
 use crate::ports::{GlobalId, WitnessRegistry};
 use crate::witness_handlers::{
-    common::register_empty_collector, MainWitnessHandler, RomAsmWitnessHandler,
-    RomNativeWitnessHandler, RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef,
-    SecondaryWitnessHandler, TableWitnessHandler,
+    MainWitnessHandler, RomAsmWitnessHandler, RomNativeWitnessHandler, RomWitnessHandler,
+    SecnInstanceMap, SecnInstanceMapRef, SecondaryWitnessHandler, TableWitnessHandler,
 };
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
@@ -98,36 +96,35 @@ pub struct WitnessRouter<F: PrimeField64> {
     /// shared by both ROM handlers.
     trace_buffer_rom: Mutex<Vec<F>>,
 
-    /// Backend the bundle was built for. Picks ROM-asm vs ROM-native
-    /// handler at dispatch.
-    is_asm: bool,
+    /// Backend-flavoured ROM strategy chosen once at construction by
+    /// `new_asm` / `new_native`. Drives both the dispatch and
+    /// pre-calculate paths; the router holds no `is_asm` flag.
+    rom_handler: Box<dyn RomWitnessHandler<F>>,
 }
 
 impl<F: PrimeField64> WitnessRouter<F> {
     /// Construct a router bound to the **ASM** backend.
     /// ROM dispatch routes to [`RomAsmWitnessHandler`].
     pub fn new_asm(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
-        Self::new(chunk_size, sm_bundle, true)
+        Self::new(chunk_size, sm_bundle, Box::new(RomAsmWitnessHandler))
     }
 
     /// Construct a router bound to the **native (Rust)** backend.
     /// ROM dispatch routes to [`RomNativeWitnessHandler`].
     pub fn new_native(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
-        Self::new(chunk_size, sm_bundle, false)
+        Self::new(chunk_size, sm_bundle, Box::new(RomNativeWitnessHandler))
     }
 
     /// Internal constructor used by the two public flavours.
-    fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>, is_asm: bool) -> Self {
+    fn new(
+        chunk_size: u64,
+        sm_bundle: Arc<StaticSMBundle<F>>,
+        rom_handler: Box<dyn RomWitnessHandler<F>>,
+    ) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
-        Self { collector, witness_generator, trace_buffer_rom, is_asm }
-    }
-
-    /// Returns `true` if the router was built for the ASM backend.
-    #[inline]
-    pub fn is_asm(&self) -> bool {
-        self.is_asm
+        Self { collector, witness_generator, trace_buffer_rom, rom_handler }
     }
 
     pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
@@ -155,9 +152,8 @@ impl<F: PrimeField64> WitnessRouter<F> {
     ///   1. `is_main(air_id)` → [`MainWitnessHandler`]
     ///   2. Otherwise look up the secondary instance:
     ///      * `Table` → [`TableWitnessHandler`]
-    ///      * `Instance` + `is_rom(air_id)` →
-    ///        [`RomAsmWitnessHandler`] (if `self.is_asm`) or
-    ///        [`RomNativeWitnessHandler`] (otherwise)
+    ///      * `Instance` + `is_rom(air_id)` → `self.rom_handler`
+    ///        (the strategy baked at construction)
     ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
     pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> Result<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
@@ -197,15 +193,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
             ),
             InstanceType::Instance => {
                 if AirClassifier::is_rom(air_id) {
-                    // Both handlers implement `RomWitnessHandler<F>` with a
-                    // unified signature; C.2 will collapse this branch into
-                    // a single boxed-handler call held on the router.
-                    let handler: &dyn RomWitnessHandler<F> = if self.is_asm {
-                        &RomAsmWitnessHandler
-                    } else {
-                        &RomNativeWitnessHandler
-                    };
-                    handler.dispatch(
+                    self.rom_handler.dispatch(
                         &self.witness_generator,
                         &self.collector,
                         &self.trace_buffer_rom,
@@ -235,7 +223,8 @@ impl<F: PrimeField64> WitnessRouter<F> {
 
     /// Pre-calculates witnesses by determining which instances need collection.
     ///
-    /// Reads `self.is_asm` for the ROM pre-calc branch.
+    /// ROM-id pre-calc delegates to `self.rom_handler` (the strategy
+    /// baked at construction), mirroring the dispatch path.
     ///
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
     /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
@@ -259,7 +248,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
             if AirClassifier::is_main(info.air_id) {
                 registry.set_witness_ready(GlobalId(global_id), false);
             } else if AirClassifier::is_rom(info.air_id) {
-                self.handle_rom_pre_calculate(
+                self.rom_handler.pre_calculate(
                     registry,
                     state,
                     &secn_instances_guard,
@@ -284,41 +273,6 @@ impl<F: PrimeField64> WitnessRouter<F> {
             self.collector
                 .collect(pctx, state, instances_to_collect)
                 .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
-        }
-
-        Ok(())
-    }
-
-    /// Handles ROM instance pre-calculation. Branches on `self.is_asm`.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_rom_pre_calculate<'a>(
-        &self,
-        registry: &dyn WitnessRegistry<F>,
-        state: &ExecutionState<F>,
-        secn_instances: &'a SecnInstanceMap<F>,
-        instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
-        global_id: usize,
-        airgroup_id: usize,
-        air_id: usize,
-    ) -> Result<()> {
-        let gid = GlobalId(global_id);
-        if self.is_asm {
-            registry.set_witness_ready(gid, false);
-        } else {
-            let secn_instance = secn_instances
-                .get(&global_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
-            let rom_instance =
-                secn_instance.as_any().downcast_ref::<RomInstance>().ok_or_else(|| {
-                    anyhow::anyhow!("Downcast failed: instance {global_id} to RomInstance")
-                })?;
-
-            if rom_instance.skip_collector() {
-                register_empty_collector(state, global_id, airgroup_id, air_id)?;
-                registry.set_witness_ready(gid, true);
-            } else {
-                instances_to_collect.insert(global_id, secn_instance);
-            }
         }
 
         Ok(())
