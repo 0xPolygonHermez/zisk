@@ -6,7 +6,7 @@
 //!   operations.
 //! - Methods for proving instances and computing traces from the ROM data.
 //! - `ComponentBuilder` trait implementations for creating counters, planners, and input
-//!   collectors.
+//!   collectors.rm
 
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
@@ -17,9 +17,7 @@ use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
-use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
-};
+use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_EXIT, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 use anyhow::Result;
@@ -29,11 +27,8 @@ pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Arc<Vec<AtomicU64>>,
-
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Arc<Vec<AtomicU64>>,
+    inst_count: Arc<Vec<AtomicU64>>,
 
     rh_data: Mutex<Option<AsmRunnerRH>>,
 }
@@ -41,25 +36,12 @@ pub struct RomSM {
 impl RomSM {
     /// Creates a new instance of the `RomSM` state machine.
     ///
-    /// # Arguments
-    /// * `zisk_rom` - The Zisk ROM representation.
-    ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new(is_asm_emulator: bool) -> Arc<Self> {
-        let (bios_inst_count, prog_inst_count) = if is_asm_emulator {
-            (vec![], vec![])
-        } else {
-            (
-                create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2), // No atomics, we can divide by 4
-                create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize), // Cannot be dividede by 4
-            )
-        };
-
+    pub fn new<F: PrimeField64>() -> Arc<Self> {
         Arc::new(Self {
             zisk_rom: Mutex::new(None),
-            bios_inst_count: Arc::new(bios_inst_count),
-            prog_inst_count: Arc::new(prog_inst_count),
+            inst_count: Arc::new(create_atomic_vec((RomTrace::<F>::NUM_ROWS) as usize)),
             rh_data: Mutex::new(None),
         })
     }
@@ -101,30 +83,13 @@ impl RomSM {
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
             let mut multiplicity: u64;
-            if inst.paddr < ROM_ADDR {
-                if counter_stats.bios_inst_count.is_empty() {
-                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-                } else {
-                    multiplicity = counter_stats.bios_inst_count
-                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                        .load(std::sync::atomic::Ordering::Relaxed);
-
-                    if multiplicity == 0 {
-                        continue;
-                    }
-                    if inst.paddr == counter_stats.end_pc {
-                        multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                    }
-                }
-            } else {
-                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                if multiplicity == 0 {
-                    continue;
-                }
-                if inst.paddr == counter_stats.end_pc {
-                    multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                }
+            multiplicity = counter_stats.inst_count[inst.index as usize]
+                .load(std::sync::atomic::Ordering::Relaxed);
+            if multiplicity == 0 {
+                continue;
+            }
+            if inst.paddr == counter_stats.end_pc {
+                multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
             }
 
             let index = inst.index as usize;
@@ -338,8 +303,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
         Box::new(RomInstance::new(
             self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
             ictx,
-            self.bios_inst_count.clone(),
-            self.prog_inst_count.clone(),
+            self.inst_count.clone(),
             self.rh_data.lock().unwrap().take(),
         ))
     }

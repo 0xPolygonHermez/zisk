@@ -323,7 +323,7 @@ impl EmuCoreProver {
         }
 
         let executor =
-            initialize_executor(options.verbose_mode, shared_tables, false, &proofman.get_wcm())?;
+            initialize_executor(options.verbose_mode, shared_tables, &proofman.get_wcm())?;
 
         executor.set_packed(options.packed);
 
