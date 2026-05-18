@@ -11,7 +11,7 @@ use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 
-use crate::ports::{GlobalId, WitnessRegistry};
+use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
 use crate::witness_handlers::common::{register_empty_collector, take_collectors_for_instance};
 use crate::witness_handlers::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
@@ -81,7 +81,7 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomAsmWitnessHandler {
     /// out-of-band, so there is nothing to enqueue or downcast here.
     fn pre_calculate<'a>(
         &self,
-        registry: &dyn WitnessRegistry<F>,
+        registry: &dyn Dctx,
         _state: &ExecutionState<F>,
         _secn_instances: &'a SecnInstanceMap<F>,
         _instances_to_collect: &mut SecnInstanceMapRef<'a, F>,

@@ -44,8 +44,9 @@ impl ChunkCollectorStore {
     }
 
     /// Returns `true` when no collectors are recorded. Useful as a
-    /// post-`MaterializePhase` assertion (collectors only fill
-    /// during the subsequent witness phase).
+    /// post-`PlanPhase` assertion (collectors only fill during the
+    /// subsequent witness phase).
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.inner.read().map(|g| g.is_empty()).unwrap_or(true)
     }

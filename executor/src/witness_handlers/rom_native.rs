@@ -13,7 +13,7 @@ use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 
-use crate::ports::{GlobalId, WitnessRegistry};
+use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
 use crate::witness_handlers::common::{register_empty_collector, take_collectors_for_instance};
 use crate::witness_handlers::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
@@ -84,7 +84,7 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
     /// the instance for per-chunk collection.
     fn pre_calculate<'a>(
         &self,
-        registry: &dyn WitnessRegistry<F>,
+        registry: &dyn Dctx,
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,

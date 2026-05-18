@@ -32,7 +32,7 @@ use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use zisk_common::Instance;
 
-use crate::ports::WitnessRegistry;
+use crate::ports::Dctx;
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
@@ -76,7 +76,7 @@ pub(crate) trait RomWitnessHandler<F: PrimeField64>: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn pre_calculate<'a>(
         &self,
-        registry: &dyn WitnessRegistry<F>,
+        registry: &dyn Dctx,
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,

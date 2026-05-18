@@ -51,11 +51,10 @@
 //! traits:
 //!
 //! * [`Dctx`] — instance info, rank ownership, witness-ready flag.
+//!   Used by the witness handlers via trait object.
 //! * [`ProofRegistry`] — extends [`Dctx`] with `add_instance*` /
 //!   `add_table` / `find_instance_id` / `set_chunks` / `write_pub_outs`,
 //!   used by `PlanPhase`.
-//! * [`WitnessRegistry<F>`] — extends [`Dctx`] with `add_air_instance`,
-//!   used by the witness handlers.
 //!
 //! [`ProofmanAdapter`] is the concrete adapter wrapping `&ProofCtx<F>`.
 //!
@@ -121,37 +120,38 @@ mod witness_generator;
 mod witness_handlers;
 mod witness_router;
 
-pub use adapters::*;
-use air_classifier::*;
-pub use asm_resources::*;
-pub use asm_runner_supervisor::*;
-pub use asm_transport::*;
-pub use chunk_collector_store::*;
-use collector::*;
-pub use dummy_counter::*;
+// External API: only these 4 items are consumed outside the executor
+// crate (verified by workspace grep). Everything else is crate-internal.
+pub use asm_resources::*; // AsmResources, AsmSharedResources
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub use emu_asm::*;
+pub use emu_asm::*; // EmulatorAsm
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use emu_asm_stub::*;
-pub use emu_rust::*;
-pub use executor::*;
-pub use init::*;
-pub use instance_factory::*;
-pub use instance_set::*;
-pub use mt_chunk_processor::*;
-pub use plan_phase::*;
+pub use executor::*; // ZiskExecutor
+
+use adapters::*;
+use air_classifier::*;
+use asm_runner_supervisor::*;
+use asm_transport::*;
+use chunk_collector_store::*;
+use collector::*;
+use dummy_counter::*;
+use emu_rust::*;
+use init::*;
+use instance_factory::*;
+use instance_set::*;
+use mt_chunk_processor::*;
+use plan_phase::*;
 use planner::*;
-pub use ports::*;
 use registry::*;
-pub use sm_builtins::*;
-pub use sm_precompiles::*;
-pub use state::*;
-pub use static_data_bus::*;
-pub use static_data_bus_collect::*;
-pub use trace_output::*;
-pub use trace_phase::*;
+use sm_builtins::*;
+use sm_precompiles::*;
+use state::*;
+use static_data_bus::*;
+use static_data_bus_collect::*;
+use trace_output::*;
+use trace_phase::*;
 use witness_generator::*;
-pub use witness_handlers::*;
 use witness_router::*;
 use zisk_core::ZiskRom;
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.

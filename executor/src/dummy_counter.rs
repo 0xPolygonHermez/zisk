@@ -15,12 +15,6 @@ use zisk_common::{BusDevice, Metrics};
 #[derive(Default)]
 pub struct DummyCounter {}
 
-impl DummyCounter {
-    #[inline(always)]
-    pub fn process_data(&mut self) -> bool {
-        true
-    }
-}
 impl Metrics for DummyCounter {
     /// Does nothing when tracking activity on the bus.
     ///

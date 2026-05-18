@@ -110,12 +110,6 @@ impl<F: PrimeField64> PlanPhase<F> {
         }
     }
 
-    /// Returns the chunk size this phase was constructed with.
-    #[inline]
-    pub fn chunk_size(&self) -> u64 {
-        self.chunk_size
-    }
-
     /// Borrows the shared SM bundle. Exposed so the trace phase can
     /// hand it into the per-chunk counter set.
     #[inline]

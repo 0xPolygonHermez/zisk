@@ -23,7 +23,7 @@ use zisk_common::{InstanceType, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
-use crate::ports::{GlobalId, WitnessRegistry};
+use crate::ports::{Dctx, GlobalId};
 use crate::witness_handlers::{
     MainWitnessHandler, RomAsmWitnessHandler, RomNativeWitnessHandler, RomWitnessHandler,
     SecnInstanceMap, SecnInstanceMapRef, SecondaryWitnessHandler, TableWitnessHandler,
@@ -35,10 +35,9 @@ use crate::{
 /// Context for witness computation operations.
 ///
 /// `registry` is the ACL surface for `pctx` lookups
-/// ([`crate::ports::Dctx`] / [`WitnessRegistry`]); `pctx` itself is
-/// still kept because the downstream `WitnessGenerator` and
-/// `ChunkDataCollector` call sites take `&ProofCtx<F>` directly
-/// (cross-crate, library-coupled).
+/// ([`crate::ports::Dctx`]); `pctx` itself is still kept because the
+/// downstream `WitnessGenerator` and `ChunkDataCollector` call sites
+/// take `&ProofCtx<F>` directly (cross-crate, library-coupled).
 pub struct WitnessContext<'a, F: PrimeField64> {
     /// Proof context (used by witness_generator / collector).
     pub pctx: &'a ProofCtx<F>,
@@ -57,7 +56,7 @@ pub struct WitnessContext<'a, F: PrimeField64> {
 
     /// ACL surface used by the router's own pctx-equivalent lookups
     /// (instance_info, set_witness_ready, is_my_process_instance, ...).
-    pub registry: &'a dyn WitnessRegistry<F>,
+    pub registry: &'a dyn Dctx,
 }
 
 impl<'a, F: PrimeField64> WitnessContext<'a, F> {
@@ -68,14 +67,13 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
         state: &'a ExecutionState<F>,
         buffer_pool: &'a dyn BufferPool<F>,
         stats_scope: &'a StatsScope,
-        registry: &'a dyn WitnessRegistry<F>,
+        registry: &'a dyn Dctx,
     ) -> Self {
         Self { pctx, sctx, state, buffer_pool, stats_scope, registry }
     }
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
-    /// Routed via [`WitnessRegistry`] (which inherits from
-    /// [`crate::ports::Dctx`]) — never touches `pctx` directly.
+    /// Routed via [`crate::ports::Dctx`] — never touches `pctx` directly.
     pub fn get_instance_info(&self, global_id: usize) -> Result<(usize, usize)> {
         let info = self.registry.instance_info(GlobalId(global_id))?;
         Ok((info.airgroup_id, info.air_id))
@@ -233,7 +231,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
     pub fn pre_calculate(
         &self,
         pctx: &ProofCtx<F>,
-        registry: &dyn WitnessRegistry<F>,
+        registry: &dyn Dctx,
         state: &ExecutionState<F>,
         global_ids: &[usize],
     ) -> Result<()> {
@@ -281,7 +279,7 @@ impl<F: PrimeField64> WitnessRouter<F> {
     /// Handles secondary instance pre-calculation.
     fn handle_secondary_pre_calculate<'a>(
         &self,
-        registry: &dyn WitnessRegistry<F>,
+        registry: &dyn Dctx,
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,

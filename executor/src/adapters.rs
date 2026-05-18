@@ -1,24 +1,17 @@
 //! Concrete adapters bridging external library types to the executor's
 //! port traits in [`crate::ports`].
 //!
-//! Today the only adapter is for `proofman_common` ([`ProofmanAdapter`]
-//! wrapping `ProofCtx<F>`, [`ProofmanSetupAdapter`] wrapping `SetupCtx<F>`).
-//! If a second adapter (e.g. a remote-proof backend) appears, split this
-//! file into a directory module.
-//!
-//! Step 0.3 of the executor refactor — adapters are introduced but not
-//! yet used by any call site. Later steps (3.3, 4.2) flip the phases to
-//! consume `&dyn ProofRegistry` / `&dyn WitnessRegistry` via these
-//! adapters.
+//! Today the only adapter is [`ProofmanAdapter`] wrapping
+//! `proofman_common::ProofCtx<F>`. If a second adapter (e.g. a
+//! remote-proof backend) appears, split this file into a directory
+//! module.
 
 use anyhow::Result;
 use fields::PrimeField64;
-use proofman_common::{AirInstance, ProofCtx, SetupCtx};
+use proofman_common::ProofCtx;
 use zisk_pil::ZiskPublicValues;
 
-use crate::ports::{
-    CostDims, Dctx, GlobalId, InstanceInfo, ProofRegistry, SetupAccess, WitnessRegistry,
-};
+use crate::ports::{Dctx, GlobalId, InstanceInfo, ProofRegistry};
 
 /// Adapter wrapping `ProofCtx<F>` for use through the port traits.
 ///
@@ -34,13 +27,6 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     pub fn new(pctx: &'a ProofCtx<F>) -> Self {
         Self { pctx }
     }
-
-    /// Returns the wrapped `ProofCtx<F>`. Provided as an escape hatch for
-    /// transitional call sites still using the concrete type.
-    #[inline]
-    pub fn inner(&self) -> &ProofCtx<F> {
-        self.pctx
-    }
 }
 
 impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
@@ -51,10 +37,6 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
 
     fn is_my_process_instance(&self, gid: GlobalId) -> Result<bool> {
         Ok(self.pctx.dctx_is_my_process_instance(gid.0)?)
-    }
-
-    fn is_first_process(&self) -> bool {
-        self.pctx.dctx_is_first_process()
     }
 
     fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
@@ -94,45 +76,5 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
         for &(index, value) in pub_outs {
             publics.inputs[index as usize] = F::from_u32(value);
         }
-    }
-}
-
-impl<F: PrimeField64> WitnessRegistry<F> for ProofmanAdapter<'_, F> {
-    fn add_air_instance(&self, air_instance: AirInstance<F>, gid: GlobalId) {
-        self.pctx.add_air_instance(air_instance, gid.0);
-    }
-}
-
-/// Adapter wrapping `SetupCtx<F>` for use through [`SetupAccess`].
-pub struct ProofmanSetupAdapter<'a, F: PrimeField64> {
-    sctx: &'a SetupCtx<F>,
-}
-
-impl<'a, F: PrimeField64> ProofmanSetupAdapter<'a, F> {
-    /// Wrap a borrowed `SetupCtx<F>`.
-    #[inline]
-    pub fn new(sctx: &'a SetupCtx<F>) -> Self {
-        Self { sctx }
-    }
-
-    /// Returns the wrapped `SetupCtx<F>`.
-    #[inline]
-    pub fn inner(&self) -> &SetupCtx<F> {
-        self.sctx
-    }
-}
-
-impl<F: PrimeField64> SetupAccess for ProofmanSetupAdapter<'_, F> {
-    fn cost_dimensions(&self, info: InstanceInfo) -> Result<CostDims> {
-        let setup = self.sctx.get_setup(info.airgroup_id, info.air_id)?;
-        let n_bits = setup.stark_info.stark_struct.n_bits;
-        let total_cols: u64 = setup
-            .stark_info
-            .map_sections_n
-            .iter()
-            .filter(|(key, _)| *key != "const")
-            .map(|(_, value)| *value)
-            .sum();
-        Ok(CostDims { n_bits, total_cols })
     }
 }

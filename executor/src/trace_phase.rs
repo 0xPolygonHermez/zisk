@@ -61,6 +61,7 @@ impl TracePhase {
     }
 
     /// Returns `true` if the ASM backend was chosen at construction.
+    #[cfg(test)]
     #[inline]
     pub fn is_asm(&self) -> bool {
         matches!(self.emulator, EmulatorBackend::Asm(_))

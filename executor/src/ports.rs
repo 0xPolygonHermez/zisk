@@ -13,9 +13,6 @@
 //! - [`ProofRegistry`] (`: Dctx`) — adds the pctx-mutating operations
 //!   used by `MaterializePhase`: instance/table assignment, chunk
 //!   configuration, public-output injection.
-//! - [`WitnessRegistry<F>`] (`: Dctx`) — adds the operation used by
-//!   `WitnessRouter`: pushing a computed `AirInstance<F>` to the proof
-//!   context.
 //! - [`SetupAccess`] — narrow surface over `SetupCtx`: per-AIR proving
 //!   cost dimensions only.
 //!
@@ -23,7 +20,6 @@
 //! surface; no call sites use it yet.
 
 use anyhow::Result;
-use fields::PrimeField64;
 
 /// Newtype around a global instance ID assigned by the proof context.
 ///
@@ -85,25 +81,6 @@ impl From<InstanceInfo> for (usize, usize) {
     }
 }
 
-/// Proving-cost dimensions for an AIR's setup. Returned by
-/// [`SetupAccess::cost_dimensions`] for accumulation into
-/// `StatsCostPerType`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CostDims {
-    /// `stark_struct.n_bits` — log2 of the trace row count.
-    pub n_bits: u64,
-    /// Sum of non-`const` column counts in the AIR's `map_sections_n`.
-    pub total_cols: u64,
-}
-
-impl CostDims {
-    /// Proving cost contribution: `2^n_bits * total_cols`.
-    #[inline]
-    pub fn proving_cost(self) -> u64 {
-        (1u64 << self.n_bits) * self.total_cols
-    }
-}
-
 /// Distribution-context bits shared by every pctx-touching component.
 ///
 /// Implementations exist on [`crate::adapters::ProofmanAdapter`] (real
@@ -114,9 +91,6 @@ pub trait Dctx {
 
     /// Returns `true` if the local rank owns the instance `gid`.
     fn is_my_process_instance(&self, gid: GlobalId) -> Result<bool>;
-
-    /// Returns `true` if the local rank is the first process (rank 0).
-    fn is_first_process(&self) -> bool;
 
     /// Marks the witness for `gid` as ready (`true`) or not-ready
     /// (`false`).
@@ -156,21 +130,6 @@ pub trait ProofRegistry: Dctx {
     fn write_pub_outs(&self, pub_outs: &[(u64, u32)]);
 }
 
-/// Operations `WitnessRouter` needs from the proof context.
-///
-/// Inherits [`Dctx`] for the shared distribution queries.
-pub trait WitnessRegistry<F: PrimeField64>: Dctx {
-    /// Pushes a computed `AirInstance<F>` to the proof context.
-    fn add_air_instance(&self, air_instance: proofman_common::AirInstance<F>, gid: GlobalId);
-}
-
-/// Narrow surface over `SetupCtx`: just the per-AIR dimensions used to
-/// compute proving cost.
-pub trait SetupAccess {
-    /// Returns `n_bits` + sum of non-`const` columns for the AIR.
-    fn cost_dimensions(&self, info: InstanceInfo) -> Result<CostDims>;
-}
-
 // ────────────────────────────────────────────────────────────────────
 // In-crate test fixtures. Compiled only under `cfg(test)`.
 // ────────────────────────────────────────────────────────────────────
@@ -205,8 +164,8 @@ pub(crate) mod fakes {
     /// In-memory implementation of [`ProofRegistry`] / [`Dctx`] for unit
     /// tests. Records every call so tests can assert on the sequence.
     ///
-    /// Defaults: `is_first_process` = `true`; `is_my_process_instance` =
-    /// `true` for any gid. Override via the configuration fields.
+    /// Defaults: `is_my_process_instance` = `true` for any gid. Override
+    /// via the configuration fields.
     pub struct FakeProofRegistry {
         next_id: RefCell<usize>,
         /// Sequence of `add_*` calls, in order.
@@ -219,12 +178,6 @@ pub(crate) mod fakes {
         pub pub_outs: RefCell<Vec<(u64, u32)>>,
         /// Per-gid ownership override. Missing key = owned (`true`).
         pub ownership: RefCell<HashMap<GlobalId, bool>>,
-        /// `is_first_process()` return value.
-        pub first_process: bool,
-        /// Sequence of gids passed to `add_air_instance`, in order. The
-        /// `AirInstance<F>` payload is dropped — tests only assert which
-        /// gid received an air instance, not the field content.
-        pub air_instances: RefCell<Vec<GlobalId>>,
     }
 
     impl Default for FakeProofRegistry {
@@ -236,8 +189,6 @@ pub(crate) mod fakes {
                 set_chunks_calls: RefCell::default(),
                 pub_outs: RefCell::default(),
                 ownership: RefCell::default(),
-                first_process: true,
-                air_instances: RefCell::default(),
             }
         }
     }
@@ -271,10 +222,6 @@ pub(crate) mod fakes {
             Ok(self.ownership.borrow().get(&gid).copied().unwrap_or(true))
         }
 
-        fn is_first_process(&self) -> bool {
-            self.first_process
-        }
-
         fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
             self.witness_ready.borrow_mut().insert(gid, ready);
         }
@@ -305,16 +252,6 @@ pub(crate) mod fakes {
             self.pub_outs.borrow_mut().extend_from_slice(pub_outs);
         }
     }
-
-    impl<F: PrimeField64> WitnessRegistry<F> for FakeProofRegistry {
-        fn add_air_instance(
-            &self,
-            _air_instance: proofman_common::AirInstance<F>,
-            gid: GlobalId,
-        ) {
-            self.air_instances.borrow_mut().push(gid);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -337,11 +274,6 @@ mod tests {
         assert_eq!(back, (3, 7));
         assert_eq!(info.airgroup_id, 3);
         assert_eq!(info.air_id, 7);
-    }
-
-    #[test]
-    fn cost_dims_proving_cost() {
-        assert_eq!(CostDims { n_bits: 3, total_cols: 5 }.proving_cost(), 8 * 5);
     }
 
     #[test]

@@ -28,10 +28,6 @@ impl EmulatorRust {
         Self { chunk_size }
     }
 
-    pub fn get_chunk_size(&self) -> u64 {
-        self.chunk_size
-    }
-
     /// Computes minimal traces by processing the ZisK ROM with the given public inputs.
     ///
     /// # Arguments

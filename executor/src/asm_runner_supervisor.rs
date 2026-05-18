@@ -46,6 +46,7 @@ impl AsmRunnerSupervisor {
     /// Construct from already-spawned handles. The testing seam — tests
     /// pass canned `std::thread::spawn(|| Ok(canned_runner))` handles
     /// without needing real shmem.
+    #[cfg(test)]
     pub fn new(
         handle_mo: JoinHandle<Result<AsmRunnerMO>>,
         handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,

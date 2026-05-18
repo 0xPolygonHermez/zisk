@@ -53,6 +53,7 @@ impl<F: PrimeField64> InstanceSet<F> {
     }
 
     /// Returns `true` when neither map has any entry.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         let main_empty = self.main_instances.read().map(|m| m.is_empty()).unwrap_or(true);
         let secn_empty = self.secn_instances.read().map(|m| m.is_empty()).unwrap_or(true);
