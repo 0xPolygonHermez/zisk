@@ -38,50 +38,42 @@
 //!
 //! # Backend abstraction
 //!
-//! The ASM / Rust split lives behind the [`Emulator<F>`] trait. Both
-//! impls return [`ExecutionOutput`]; backend-specific async work (the
-//! ASM MO + RH runner handles) is encapsulated in [`BackendArtifacts`],
+//! The ASM / Rust split lives behind the `Emulator<F>` trait. Both
+//! impls return `ExecutionOutput`; backend-specific async work (the
+//! ASM MO + RH runner handles) is encapsulated in `BackendArtifacts`,
 //! exposed only through `await_*` methods. **No phase signature
 //! mentions `is_asm`, `JoinHandle`, or `AsmRunner*`** — the backend
 //! choice is invisible past `TracePhase`.
 //!
 //! # Anti-corruption layer (ACL)
 //!
-//! `ProofCtx<F>` is consumed inside the executor through three port
+//! `ProofCtx<F>` is consumed inside the executor through two port
 //! traits:
 //!
-//! * [`Dctx`] — instance info, rank ownership, witness-ready flag.
+//! * `Dctx` — instance info, rank ownership, witness-ready flag.
 //!   Used by the witness handlers via trait object.
-//! * [`ProofRegistry`] — extends [`Dctx`] with `add_instance*` /
+//! * `ProofRegistry` — extends `Dctx` with `add_instance*` /
 //!   `add_table` / `find_instance_id` / `set_chunks` / `write_pub_outs`,
 //!   used by `PlanPhase`.
 //!
-//! [`ProofmanAdapter`] is the concrete adapter wrapping `&ProofCtx<F>`.
+//! `ProofmanAdapter` is the concrete adapter wrapping `&ProofCtx<F>`.
 //!
 //! # Testability
 //!
-//! After the M0–M4 refactor:
-//!
 //! | Component                  | Test surface                                  |
 //! |----------------------------|-----------------------------------------------|
-//! | [`BackendArtifacts`]       | Synthetic `JoinHandle`s, fake threads         |
-//! | [`PlanPhase`] `::plan_main`| Synthetic `EmuTrace` array (no `ProofCtx`)    |
+//! | `BackendArtifacts`         | Synthetic `JoinHandle`s, fake threads         |
+//! | `PlanPhase::plan_main`     | Synthetic `EmuTrace` array (no `ProofCtx`)    |
 //! | `InstancePlanner`          | `FakeProofRegistry` records call sequences    |
-//! | [`AsmRunnerSupervisor`]    | Fake `JoinHandle`s, failure-path tests        |
-//! | [`MtChunkProcessor`]       | Synthetic chunk plumbing                      |
-//! | [`InstanceSet`] / [`ChunkCollectorStore`] | Construct + reset / is_empty   |
-//! | [`TracePhase`]             | Rust-backend construction (no ASM bring-up)   |
-//! | [`AsmTransport`]           | Uninstalled-resource error paths              |
-//! | [`PlanPhase`] `::run`      | **Integration only** — needs real `SetupCtx`  |
+//! | `AsmRunnerSupervisor`      | Fake `JoinHandle`s, failure-path tests        |
+//! | `MtChunkProcessor`         | Synthetic chunk plumbing                      |
+//! | `InstanceSet` / `ChunkCollectorStore` | Construct + reset / is_empty       |
+//! | `TracePhase`               | Rust-backend construction (no ASM bring-up)   |
+//! | `AsmTransport`             | Uninstalled-resource error paths              |
+//! | `PlanPhase::run`           | **Integration only** — needs real `SetupCtx`  |
 //! | Witness handlers           | **Integration only** — `WitnessGenerator` / `ChunkDataCollector` still take `&ProofCtx<F>` |
-//!
-//! Adding unit-level coverage to the integration-only rows means
-//! pushing the ACL through `WitnessGenerator` + `ChunkDataCollector`
-//! (which currently take `&ProofCtx<F>` directly) — a deferred
-//! follow-up, not blocking.
 
-#![warn(missing_docs)] // ratchet up to deny once clean
-#![warn(rustdoc::all)] // broken intra-doc links, invalid HTML, bare URLs
+#![deny(missing_docs)]
 #![deny(rustdoc::all)]
 
 mod adapters;
@@ -166,10 +158,10 @@ use anyhow::Result;
 
 /// Trait for unified execution across different emulator backends.
 ///
-/// Both backends return a uniform [`ExecutionOutput`]; backend-specific
+/// Both backends return a uniform `ExecutionOutput`; backend-specific
 /// async work (ASM-only MO + RH handles) is encapsulated in
-/// [`ExecutionOutput::backend`] and exposed via the `await_*` methods on
-/// [`BackendArtifacts`].
+/// `ExecutionOutput::backend` and exposed via the `await_*` methods on
+/// `BackendArtifacts`.
 #[allow(clippy::too_many_arguments)]
 pub trait Emulator<F: PrimeField64>: Send + Sync {
     /// Execute the emulator

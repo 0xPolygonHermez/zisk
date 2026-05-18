@@ -1,11 +1,10 @@
 //! Instance assignment helpers — the `pctx`-mutating half of the old
 //! `InstancePlanner` API.
 //!
-//! Step 3.3: every `pctx.…` call has been routed through
-//! [`crate::ProofRegistry`] (the executor's anti-corruption layer over
-//! `ProofCtx<F>`). `InstancePlanner` is now field-erased over `F` and
-//! mockable in unit tests via `crate::ports::fakes::FakeProofRegistry`
-//! (test-only fake).
+//! Every `pctx.…` call is routed through `crate::ports::ProofRegistry`
+//! (the executor's anti-corruption layer over `ProofCtx<F>`).
+//! `InstancePlanner` is field-erased over `F` and mockable in unit
+//! tests via `crate::ports::fakes::FakeProofRegistry` (test-only fake).
 
 use anyhow::Result;
 use std::sync::RwLock;

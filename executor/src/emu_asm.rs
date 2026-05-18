@@ -17,6 +17,9 @@ use zisk_core::ZiskRom;
 
 use anyhow::Result;
 
+/// ASM-backend emulator. Wraps an `AsmTransport` for resource access
+/// and threads MT/MO/RH runner lifecycles through `AsmRunnerSupervisor`
+/// during `execute`.
 pub struct EmulatorAsm {
     /// Chunk size for processing.
     chunk_size: u64,
@@ -30,15 +33,21 @@ pub struct EmulatorAsm {
 }
 
 impl EmulatorAsm {
-    #[allow(clippy::too_many_arguments)]
+    /// Construct an emulator that will process traces in `chunk_size`-row
+    /// segments. The transport starts uninstalled — call
+    /// [`Self::set_asm_resources`] before [`Self::execute`].
     pub fn new(chunk_size: u64) -> Self {
         Self { chunk_size, transport: AsmTransport::new(), asm_execution_info: Mutex::new(None) }
     }
 
+    /// Returns the chunk size this emulator was constructed with.
     pub fn get_chunk_size(&self) -> u64 {
         self.chunk_size
     }
 
+    /// Returns a clone of the [`AsmExecutionInfo`] captured by the
+    /// most recent successful `execute` call, or `None` if no
+    /// execution has completed yet.
     pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         Ok(self
             .asm_execution_info
@@ -47,7 +56,7 @@ impl EmulatorAsm {
             .clone())
     }
 
-    /// Borrows the inner [`AsmTransport`]. The worker / coordinator
+    /// Borrows the inner `AsmTransport`. The worker / coordinator
     /// uses this when it wants to drive only the resource-facade
     /// surface (streams, hints, cancellation) without reaching for
     /// threading / MT-chunk APIs.
@@ -55,6 +64,8 @@ impl EmulatorAsm {
         &self.transport
     }
 
+    /// Installs the worker-supplied [`AsmResources`] handle on the
+    /// transport. Must be called before [`Self::execute`].
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.transport.set_asm_resources(asm_resources)
     }
@@ -72,18 +83,27 @@ impl EmulatorAsm {
         self.transport.signal_cancellation()
     }
 
+    /// Returns the [`HintsProcessor`] installed on the transport (for
+    /// hint-stream wiring at the worker layer).
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.transport.get_hints_processor()
     }
 
+    /// Toggles which ASM services participate in the next execution.
+    /// `is_first_partition = true` enables the ROM-histogram service
+    /// (only the first MPI rank computes it).
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
         self.transport.set_active_services(is_first_partition)
     }
 
+    /// Replace the hints stream source. Used by the worker to swap in
+    /// a fresh stream between jobs.
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.transport.set_hints_stream_src(stream)
     }
 
+    /// Replace the inputs stream source. Used by the worker to swap in
+    /// a fresh stream between jobs.
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.transport.set_inputs_stream_src(stream)
     }
@@ -115,7 +135,7 @@ impl EmulatorAsm {
     /// * `_caller_stats_id` - Identifier used to attribute collected statistics to the caller.
     ///
     /// # Returns
-    /// A [`ExecutionOutput`] whose `backend` field is the `Asm` variant carrying
+    /// An `ExecutionOutput` whose `backend` field is the `Asm` variant carrying
     /// the spawned MO + (optionally) RH join handles.
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(

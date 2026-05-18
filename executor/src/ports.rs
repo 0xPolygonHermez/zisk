@@ -11,13 +11,8 @@
 //!   pctx-touching component: instance info, rank ownership, witness
 //!   readiness flag.
 //! - [`ProofRegistry`] (`: Dctx`) — adds the pctx-mutating operations
-//!   used by `MaterializePhase`: instance/table assignment, chunk
+//!   used by `PlanPhase`: instance/table assignment, chunk
 //!   configuration, public-output injection.
-//! - [`SetupAccess`] — narrow surface over `SetupCtx`: per-AIR proving
-//!   cost dimensions only.
-//!
-//! Step 0.3 of the executor refactor — this module introduces the
-//! surface; no call sites use it yet.
 
 use anyhow::Result;
 

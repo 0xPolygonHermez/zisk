@@ -12,13 +12,13 @@
 //!     MT-failure path is a caller-supplied closure, decoupling the
 //!     supervisor from the resource type and making it trivial to
 //!     fake in tests.
-//!   * Construction has two flavours: [`AsmRunnerSupervisor::new`] takes
+//!   * Construction has two flavours: `AsmRunnerSupervisor::new` takes
 //!     pre-spawned handles (the testing seam);
 //!     [`AsmRunnerSupervisor::spawn_on`] is the production convenience
 //!     that spawns both runners against an [`crate::AsmResources`].
 //!   * On MT success the caller asks the supervisor for its handles
 //!     via [`AsmRunnerSupervisor::into_handles`] and embeds them in
-//!     [`crate::BackendArtifacts::Asm`].
+//!     `BackendArtifacts::Asm`.
 //!   * On MT failure the caller calls
 //!     [`AsmRunnerSupervisor::cleanup_after_mt_failure`] with a
 //!     cancellation closure; the supervisor signals cancel,
@@ -65,7 +65,7 @@ impl AsmRunnerSupervisor {
     ///
     /// Linux x86_64 only — `AsmResources::readers()` (which sources the
     /// shmem readers for both spawns) is gated to that target. On other
-    /// platforms construct the supervisor directly via [`Self::new`].
+    /// platforms construct the supervisor directly via `Self::new`.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn spawn_on(
         resources: &AsmResources,

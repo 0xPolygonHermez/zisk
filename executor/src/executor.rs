@@ -39,7 +39,9 @@ use zisk_core::{ZiskRom, CHUNK_SIZE};
 
 use anyhow::Result;
 
-pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>); // (chunk_id, metrics)
+/// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
+/// produced by counter-phase processing.
+pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>);
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
 pub const MAX_NUM_STEPS: u64 = 1 << 36;
