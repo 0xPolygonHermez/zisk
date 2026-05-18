@@ -1,5 +1,7 @@
 use anyhow::Result;
-use pil2_stark_setup::commands::setup_compressed_final::{run_setup_compressed_final, SetupCompressedFinalOptions};
+use pil2_stark_setup::commands::setup_compressed_final::{
+    run_setup_compressed_final, SetupCompressedFinalOptions,
+};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 

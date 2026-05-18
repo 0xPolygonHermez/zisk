@@ -114,9 +114,8 @@ impl ZiskExportSolidityCalldata {
                 format!("failed to create parent directory for {}", self.output.display())
             })?;
         }
-        let file = std::fs::File::create(&self.output).with_context(|| {
-            format!("failed to create fixture file {}", self.output.display())
-        })?;
+        let file = std::fs::File::create(&self.output)
+            .with_context(|| format!("failed to create fixture file {}", self.output.display()))?;
         serde_json::to_writer_pretty(file, &fixture).with_context(|| {
             format!("failed to write fixture JSON to {}", self.output.display())
         })?;

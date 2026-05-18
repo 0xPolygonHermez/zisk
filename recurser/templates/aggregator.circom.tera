@@ -1,0 +1,138 @@
+pragma circom 2.1.0;
+pragma custom_templates;
+
+include "{{ verifier_filename }}";
+include "mux1.circom";
+include "iszero.circom";
+include "publics_helpers.circom";
+
+{{ check_publics_template }}
+
+{{ aggregate_publics_template }}
+
+{{ prepare_publics_template }}
+
+// Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
+template IsEqualVK() {
+    signal input a[4];
+    signal input b[4];
+    signal output {binary} out;
+
+    signal {binary} eq[4];
+    for (var i = 0; i < 4; i++) {
+        eq[i] <== IsZero()(a[i] - b[i]);
+    }
+    signal {binary} eq01 <== eq[0] * eq[1];
+    signal {binary} eq23 <== eq[2] * eq[3];
+    out <== eq01 * eq23;
+}
+
+template Main(nPublics, nPrivateInputs, nPrograms) {
+    signal output aggregatedPublics[nPublics + 4];
+
+{{ define_stark_inputs_a }}
+
+{{ define_stark_inputs_b }}
+
+    signal input privateInputs[nPrivateInputs];
+
+    signal input rootCRecurserAgg[4];
+
+    var rootCVadcopFinalZisk[4] = [{% for v in root_c_vadcop_final_zisk %}{{ v }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+    var programVKs[nPrograms][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
+
+    // -- Extract programVK from each proof's publics
+    signal programVK_A[4];
+    signal programVK_B[4];
+    for (var i = 0; i < 4; i++) {
+        programVK_A[i] <== a_sv_publics[nPublics + i];
+        programVK_B[i] <== b_sv_publics[nPublics + i];
+    }
+
+    // Membership check: 1 - ∏(1 - eq[k]) instead of Σ eq[k] so circom 2.1's
+    // {binary} tag survives to the MultiMux1/Mux1 selectors (addition strips
+    // the tag, multiplication preserves it). Same reason we seed noMatch[0]
+    // from (1 - eq[0]) instead of a literal 1. Soundness assumes no
+    // duplicates in programVKs[] (enforced upstream) and nPrograms >= 1.
+    signal {binary} eqA[nPrograms];
+    signal {binary} eqB[nPrograms];
+    signal {binary} noMatchA[nPrograms];
+    signal {binary} noMatchB[nPrograms];
+    for (var k = 0; k < nPrograms; k++) {
+        eqA[k] <== IsEqualVK()(programVK_A, programVKs[k]);
+        eqB[k] <== IsEqualVK()(programVK_B, programVKs[k]);
+    }
+    noMatchA[0] <== 1 - eqA[0];
+    noMatchB[0] <== 1 - eqB[0];
+    for (var k = 1; k < nPrograms; k++) {
+        noMatchA[k] <== noMatchA[k - 1] * (1 - eqA[k]);
+        noMatchB[k] <== noMatchB[k - 1] * (1 - eqB[k]);
+    }
+
+    signal {binary} isRegisteredProgramA <== 1 - noMatchA[nPrograms - 1];
+    signal {binary} isRegisteredProgramB <== 1 - noMatchB[nPrograms - 1];
+
+{{ assign_stark_inputs_a }}
+{{ assign_stark_inputs_b }}
+
+    // -- rootC: leaf (isRegisteredProgram=1) -> rootCVadcopFinalZisk; aggregated (isRegisteredProgram=0) -> programVK.
+    vA.rootC <== MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isRegisteredProgramA);
+    vB.rootC <== MultiMux1(4)([programVK_B, rootCVadcopFinalZisk], isRegisteredProgramB);
+
+    // -- Strip the VK slot from each proof's publics (nPublics non-VK entries).
+    signal aPublics[nPublics];
+    signal bPublics[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        aPublics[i] <== a_sv_publics[i];
+        bPublics[i] <== b_sv_publics[i];
+    }
+
+    // -- PreparePublics + mux: apply preparation to leaf inputs, pass aggregated inputs through unchanged.
+    signal aPublicsPrepared[nPublics] <== PreparePublics(nPublics, nPrivateInputs)(aPublics, privateInputs);
+    signal bPublicsPrepared[nPublics] <== PreparePublics(nPublics, nPrivateInputs)(bPublics, privateInputs);
+
+    signal ziskPublicsA[nPublics];
+    signal ziskPublicsB[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        ziskPublicsA[i] <== Mux1()([aPublics[i], aPublicsPrepared[i]], isRegisteredProgramA);
+        ziskPublicsB[i] <== Mux1()([bPublics[i], bPublicsPrepared[i]], isRegisteredProgramB);
+    }
+
+    // -- Consistency + aggregation (VK-agnostic).
+    CheckPublics(nPublics, nPrivateInputs)(ziskPublicsA, ziskPublicsB, privateInputs);
+    signal aggPublics[nPublics] <== AggregatePublics(nPublics, nPrivateInputs)(ziskPublicsA, ziskPublicsB, privateInputs);
+
+    for (var i = 0; i < nPublics; i++) {
+        aggregatedPublics[i] <== aggPublics[i];
+    }
+
+    // -- When both proofs are aggregated, their programVKs must match (committed invariant).
+    signal bothAggregated <== (1 - isRegisteredProgramA) * (1 - isRegisteredProgramB);
+    for (var i = 0; i < 4; i++) {
+        bothAggregated * (programVK_A[i] - programVK_B[i]) === 0;
+    }
+
+    // -- Output programVK selection:
+    //      both leaves          -> rootCRecurserAgg (this aggregator's free input)
+    //      A aggregated         -> programVK_A (covers "A agg, B leaf" and "both agg")
+    //      A leaf, B aggregated -> programVK_B
+    //    Selectors are mutually exclusive and sum to 1.
+    signal selectAgg <== isRegisteredProgramA * isRegisteredProgramB;
+    signal selectAVK <== 1 - isRegisteredProgramA;
+    signal selectBVK <== isRegisteredProgramA * (1 - isRegisteredProgramB);
+
+    // R1CS shape is A*B=C (one product), so we can't sum three selector*vk
+    // products in one <==. Materialize each, sum linearly.
+    signal aggTerm[4];
+    signal aTerm[4];
+    signal bTerm[4];
+    for (var i = 0; i < 4; i++) {
+        aggTerm[i] <== selectAgg * rootCRecurserAgg[i];
+        aTerm[i]   <== selectAVK * programVK_A[i];
+        bTerm[i]   <== selectBVK * programVK_B[i];
+        aggregatedPublics[nPublics + i] <== aggTerm[i] + aTerm[i] + bTerm[i];
+    }
+}
+
+component main = Main(64, {{ n_private_inputs }}, {{ n_programs }});

@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
     ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskExportSolidityCalldata, ZiskNew,
-    ZiskProgramSetup, ZiskProofmanSetup, ZiskProve, ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils,
-    ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
+    ZiskProgramSetup, ZiskProofmanSetup, ZiskProve, ZiskProveRecurserAggregator, ZiskRun,
+    ZiskSetupRecurserAggregator, ZiskStats, ZiskToolchain, ZiskUtils, ZiskVerify,
+    ZiskVerifyConstraints, ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -26,9 +27,11 @@ pub enum Cargo {
     New(ZiskNew),
     WrapProof(ZiskWrap),
     Prove(ZiskProve),
+    ProveRecurserAggregator(ZiskProveRecurserAggregator),
     ProgramSetup(ZiskProgramSetup),
     ProofmanSetup(ZiskProofmanSetup),
     Run(ZiskRun),
+    SetupRecurserAggregator(ZiskSetupRecurserAggregator),
     #[command(hide = true)]
     Stats(ZiskStats),
     Toolchain(ZiskToolchain),
@@ -58,6 +61,9 @@ fn main() -> Result<()> {
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
+        Cargo::ProveRecurserAggregator(cmd) => {
+            cmd.run().context("Error executing ProveRecurserAggregator command")?;
+        }
         Cargo::WrapProof(cmd) => {
             cmd.run().context("Error executing WrapProof command")?;
         }
@@ -69,6 +75,9 @@ fn main() -> Result<()> {
         }
         Cargo::Run(cmd) => {
             cmd.run().context("Error executing Run command")?;
+        }
+        Cargo::SetupRecurserAggregator(cmd) => {
+            cmd.run().context("Error executing SetupRecurserAggregator command")?;
         }
         Cargo::Stats(mut cmd) => {
             cmd.run().context("Error executing Stats command")?;
