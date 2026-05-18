@@ -9,13 +9,24 @@
 //! exposes a single [`ExecutionPhase::run`] entry point that returns
 //! the backend-uniform [`ExecutionOutput`].
 //!
+//! Backends: both [`asm::EmulatorAsm`] and [`rust::EmulatorRust`]
+//! expose an inherent `execute` method that returns a uniform
+//! [`output::ExecutionOutput`]; backend-specific async work (ASM-only
+//! MO + RH handles) is encapsulated in [`output::BackendArtifacts`].
+//! Dispatch is via the `EmulatorBackend` enum inside `ExecutionPhase`,
+//! not via dyn trait. `EmulatorAsm` is provided uniformly on every
+//! target — real on Linux x86_64, stub elsewhere — so this module
+//! stays platform-agnostic.
+//!
 //! See `.claude/executor_refactor_plan.md` step 2.1 for context.
 
-pub mod emulator;
+pub mod asm;
 pub mod output;
+pub mod rust;
 
-pub use emulator::*;
+pub use asm::*;
 pub use output::*;
+pub use rust::*;
 
 use std::sync::Arc;
 
