@@ -14,17 +14,15 @@
 //!   ├── TracePhase           → produces a uniform ExecutionOutput
 //!   │     (chooses EmulatorAsm or EmulatorRust at construction)
 //!   │
-//!   └── MaterializePhase     → consumes the ExecutionOutput
-//!         │  (replaces phases 2–4 of the old monolithic execute)
-//!         ├── PlanPhase (called internally)
-//!         │     ├── plan_main  (pure, unit-testable)
-//!         │     └── plan_secondary (drains counters into per-SM plans)
-//!         │
-//!         ├── InstancePlanner (ROM/main/secn global-id assignment)
+//!   └── PlanPhase            → consumes the ExecutionOutput
+//!         │  (plan + materialize; one phase actor)
+//!         ├── plan_main           (pure, unit-testable)
+//!         ├── plan_secondary      (drains counters into per-SM plans)
+//!         ├── InstancePlanner     (ROM/main/secn global-id assignment)
 //!         ├── InstanceRegistry / InstanceFactory
 //!         │     → fills InstanceSet + checkpoints
-//!         └── returns MaterializeOutput
-//!               (timings + cost_per_type)
+//!         └── returns PlanOutput
+//!               (instance data + timings + cost_per_type)
 //!
 //! ZiskExecutor::calculate_witness
 //!   │
@@ -55,7 +53,7 @@
 //! * [`Dctx`] — instance info, rank ownership, witness-ready flag.
 //! * [`ProofRegistry`] — extends [`Dctx`] with `add_instance*` /
 //!   `add_table` / `find_instance_id` / `set_chunks` / `write_pub_outs`,
-//!   used by `MaterializePhase`.
+//!   used by `PlanPhase`.
 //! * [`WitnessRegistry<F>`] — extends [`Dctx`] with `add_air_instance`,
 //!   used by the witness handlers.
 //!
@@ -75,7 +73,7 @@
 //! | [`InstanceSet`] / [`ChunkCollectorStore`] | Construct + reset / is_empty   |
 //! | [`TracePhase`]             | Rust-backend construction (no ASM bring-up)   |
 //! | [`AsmTransport`]           | Uninstalled-resource error paths              |
-//! | [`MaterializePhase`]       | **Integration only** — needs real `SetupCtx`  |
+//! | [`PlanPhase`] `::run`      | **Integration only** — needs real `SetupCtx`  |
 //! | Witness handlers           | **Integration only** — `WitnessGenerator` / `ChunkDataCollector` still take `&ProofCtx<F>` |
 //!
 //! Adding unit-level coverage to the integration-only rows means
@@ -104,7 +102,6 @@ mod executor;
 mod init;
 mod instance_factory;
 mod instance_set;
-mod materialize_phase;
 mod mt_chunk_processor;
 mod plan_phase;
 mod planner;
@@ -141,7 +138,6 @@ pub use executor::*;
 pub use init::*;
 pub use instance_factory::*;
 pub use instance_set::*;
-pub use materialize_phase::*;
 pub use mt_chunk_processor::*;
 pub use plan_phase::*;
 use planner::*;

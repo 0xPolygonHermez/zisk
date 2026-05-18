@@ -10,7 +10,7 @@ use zisk_core::ZiskRom;
 
 use anyhow::Result;
 
-use crate::{ChunkCollectorStore, InstanceSet, MaterializeArtifacts};
+use crate::{ChunkCollectorStore, InstanceSet, PlanOutput};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
@@ -33,12 +33,12 @@ pub struct ExecutionState<F: PrimeField64> {
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
 
     /// Main + secondary instance maps populated by `MaterializePhase`.
-    /// `Arc` so [`MaterializeArtifacts`] can share the same handle (B.1).
+    /// `Arc` so [`PlanOutput`] can share the same handle (B.1).
     pub instance_set: Arc<InstanceSet<F>>,
 
     /// Per-instance chunk collectors. Lock-contested during the
     /// witness phase.
-    /// `Arc` so [`MaterializeArtifacts`] can share the same handle (B.1).
+    /// `Arc` so [`PlanOutput`] can share the same handle (B.1).
     pub collector_store: Arc<ChunkCollectorStore>,
 
     /// Per-execution artifacts produced by [`crate::MaterializePhase::run`]
@@ -49,7 +49,7 @@ pub struct ExecutionState<F: PrimeField64> {
     /// `min_traces` / `instance_set` / `collector_store` fields (they
     /// share Arc handles); B.2 will migrate readers off the legacy
     /// fields and delete them.
-    pub artifacts: RwLock<Option<MaterializeArtifacts<F>>>,
+    pub artifacts: RwLock<Option<PlanOutput<F>>>,
 
     /// Execution result, including the number of executed steps.
     pub execution_result: Mutex<ZiskExecutorSummary>,

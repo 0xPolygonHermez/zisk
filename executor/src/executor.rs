@@ -20,8 +20,7 @@
 
 use crate::{
     state::ExecutionState, witness_router::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, InstancePlanner, InstanceRegistry, MaterializePhase, PlanPhase, ProofmanAdapter,
-    StaticSMBundle, TracePhase, WitnessRouter,
+    EmulatorAsm, PlanPhase, ProofmanAdapter, StaticSMBundle, TracePhase, WitnessRouter,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -50,17 +49,12 @@ pub const MAX_NUM_STEPS: u64 = 1 << 36;
 pub struct ZiskExecutor<F: PrimeField64> {
     /// Shared execution state.
     state: ExecutionState<F>,
-    /// Phase-1 actor: runs the chosen emulator and produces a `ExecutionOutput`.
+    /// Phase-1 actor: runs the chosen emulator and produces an `ExecutionOutput`.
     trace: TracePhase,
-    /// Phase-2 actor: pure planning from the trace ingredients.
-    plan: PlanPhase,
-    /// Phase-3 actor: pctx-mutating instance materialization + cost accumulation.
-    materialize: MaterializePhase,
-    /// `ProofCtx` assignment for already-planned instances.
-    planner: InstancePlanner,
-    /// Instance registry component.
-    registry: InstanceRegistry<F>,
-    /// Phase-4 actor: routes witness computation per global id.
+    /// Phase-2 actor: plans, registers, and populates instances. Owns
+    /// its own `InstancePlanner` + `InstanceRegistry`.
+    plan: PlanPhase<F>,
+    /// Phase-3 actor: routes witness computation per global id.
     router: WitnessRouter<F>,
 }
 
@@ -83,10 +77,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             // `is_asm` flag — agrees with the SM-counter set the bundle
             // was built for. No runtime AtomicBool flip needed.
             trace: TracePhase::new(chunk_size, is_asm),
-            plan: PlanPhase::new(chunk_size),
-            materialize: MaterializePhase::new(),
-            planner: InstancePlanner::new(),
-            registry: InstanceRegistry::new(sm_bundle.clone()),
+            plan: PlanPhase::new(chunk_size, sm_bundle.clone()),
             // Backend-flavored ROM handler baked at construction; no
             // per-call `is_asm_emulator` branching during dispatch.
             router: if is_asm {
@@ -199,7 +190,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.trace.run(
             &zisk_rom,
             &pctx,
-            self.registry.sm_bundle(),
+            self.plan.sm_bundle(),
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
@@ -213,11 +204,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // pctx mutations route through `ProofmanAdapter` since step 3.3.
         let steps = output.steps;
         let proof_registry = ProofmanAdapter::new(&pctx);
-        let (mat_output, artifacts) = self.materialize.run(
+        let artifacts = self.plan.run(
             output,
-            &self.plan,
-            &self.planner,
-            &self.registry,
             &self.router,
             &self.state,
             &proof_registry,
@@ -228,9 +216,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &_exec_scope,
         )?;
 
+        // Read timings and costs before moving the artifacts into state.
+        let count_and_plan_duration = artifacts.count_and_plan_duration;
+        let count_and_plan_mo_duration = artifacts.count_and_plan_mo_duration;
+        let cost_per_type = artifacts.cost_per_type.clone();
+
         // Stash the per-execution artifacts so `calculate_witness` can
-        // drain them (B.2 will migrate readers off the legacy state
-        // fields and use this slot exclusively).
+        // drain them.
         *self.state.artifacts.write().unwrap_or_else(std::sync::PoisonError::into_inner) =
             Some(artifacts);
 
@@ -242,14 +234,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_execution_time = ZiskExecutorTime {
             execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: mat_output.count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: mat_output.count_and_plan_mo_duration.as_millis() as u64,
+            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.trace.get_asm_execution_info()?,
         };
         // Store the execution result
         let execution_result =
-            ZiskExecutorSummary::new(steps, zisk_execution_time, mat_output.cost_per_type);
+            ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
 
         // Store the execution result
         self.state.set_execution_result(execution_result);
