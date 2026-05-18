@@ -26,7 +26,7 @@
 //!
 //! See `.claude/executor_refactor_plan.md` step 3.2 for context.
 
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -34,7 +34,7 @@ use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use zisk_common::{
-    stats_begin, stats_end, ExecutorStatsHandle, StatsCostPerType, StatsScope, StatsType,
+    stats_begin, stats_end, EmuTrace, ExecutorStatsHandle, StatsCostPerType, StatsScope, StatsType,
 };
 use zisk_pil::{
     MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
@@ -43,9 +43,30 @@ use zisk_pil::{
 
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::{
-    state::ExecutionState, ExecutionOutput, InstancePlanner, InstanceRegistry, PlanPhase,
-    WitnessRouter,
+    state::ExecutionState, ChunkCollectorStore, ExecutionOutput, InstancePlanner, InstanceRegistry,
+    InstanceSet, PlanPhase, WitnessRouter,
 };
+
+/// Per-execution data produced by [`MaterializePhase::run`] and
+/// consumed during `calculate_witness`.
+///
+/// The three fields share `Arc` handles with `ExecutionState` during
+/// the B.1 step — both the legacy state fields and these artifacts
+/// point at the same backing data. B.2 will migrate witness-side
+/// readers off the legacy state fields and delete the duplication.
+///
+/// Lifetime: populated at the end of `execute`, drained during
+/// `calculate_witness`, dropped on the next `state.reset()`.
+pub struct MaterializeArtifacts<F: PrimeField64> {
+    /// Minimal traces from emulation. Shared handle.
+    pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
+    /// Populated main + secondary instance maps. Shared handle.
+    pub instance_set: Arc<InstanceSet<F>>,
+    /// Per-instance chunk collectors. Shared handle. Empty
+    /// immediately post-materialize; collectors fill during
+    /// `calculate_witness`.
+    pub collector_store: Arc<ChunkCollectorStore>,
+}
 
 /// Side-information emitted by [`MaterializePhase::run`] for the caller
 /// to fold into [`zisk_common::ZiskExecutorTime`] /
@@ -112,7 +133,7 @@ impl MaterializePhase {
         global_ids: &RwLock<Vec<usize>>,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
-    ) -> Result<MaterializeOutput> {
+    ) -> Result<(MaterializeOutput, MaterializeArtifacts<F>)> {
         // ────────────────────────────────────────────────────────────
         // Phase 2: plan + register + populate main instances
         // ────────────────────────────────────────────────────────────
@@ -266,7 +287,16 @@ impl MaterializePhase {
             cost_per_type.add_cost(StatsType::Tables, cost);
         }
 
-        Ok(MaterializeOutput { count_and_plan_duration, count_and_plan_mo_duration, cost_per_type })
+        let artifacts = MaterializeArtifacts {
+            min_traces: state.min_traces.clone(),
+            instance_set: state.instance_set.clone(),
+            collector_store: state.collector_store.clone(),
+        };
+
+        Ok((
+            MaterializeOutput { count_and_plan_duration, count_and_plan_mo_duration, cost_per_type },
+            artifacts,
+        ))
     }
 }
 

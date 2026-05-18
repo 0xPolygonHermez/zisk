@@ -10,7 +10,7 @@ use zisk_core::ZiskRom;
 
 use anyhow::Result;
 
-use crate::{ChunkCollectorStore, InstanceSet};
+use crate::{ChunkCollectorStore, InstanceSet, MaterializeArtifacts};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
@@ -33,11 +33,23 @@ pub struct ExecutionState<F: PrimeField64> {
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
 
     /// Main + secondary instance maps populated by `MaterializePhase`.
-    pub instance_set: InstanceSet<F>,
+    /// `Arc` so [`MaterializeArtifacts`] can share the same handle (B.1).
+    pub instance_set: Arc<InstanceSet<F>>,
 
     /// Per-instance chunk collectors. Lock-contested during the
     /// witness phase.
-    pub collector_store: ChunkCollectorStore,
+    /// `Arc` so [`MaterializeArtifacts`] can share the same handle (B.1).
+    pub collector_store: Arc<ChunkCollectorStore>,
+
+    /// Per-execution artifacts produced by [`crate::MaterializePhase::run`]
+    /// and consumed during `calculate_witness`. Set to `Some` at the end
+    /// of `execute`; reset to `None` on the next `reset()`.
+    ///
+    /// During the B.1 step this is populated *alongside* the legacy
+    /// `min_traces` / `instance_set` / `collector_store` fields (they
+    /// share Arc handles); B.2 will migrate readers off the legacy
+    /// fields and delete them.
+    pub artifacts: RwLock<Option<MaterializeArtifacts<F>>>,
 
     /// Execution result, including the number of executed steps.
     pub execution_result: Mutex<ZiskExecutorSummary>,
@@ -58,8 +70,9 @@ impl<F: PrimeField64> ExecutionState<F> {
         Self {
             zisk_rom: RwLock::new(None),
             min_traces: Arc::new(RwLock::new(None)),
-            instance_set: InstanceSet::new(),
-            collector_store: ChunkCollectorStore::new(),
+            instance_set: Arc::new(InstanceSet::new()),
+            collector_store: Arc::new(ChunkCollectorStore::new()),
+            artifacts: RwLock::new(None),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
             stats: ExecutorStatsHandle::new(),
             is_rom_initialized: AtomicBool::new(false),
@@ -102,6 +115,7 @@ impl<F: PrimeField64> ExecutionState<F> {
         *self.execution_result.lock().unwrap_or_else(PoisonError::into_inner) =
             ZiskExecutorSummary::default();
         *self.min_traces.write().unwrap_or_else(PoisonError::into_inner) = None;
+        *self.artifacts.write().unwrap_or_else(PoisonError::into_inner) = None;
         self.instance_set.reset();
         self.collector_store.reset();
         self.stats.reset();

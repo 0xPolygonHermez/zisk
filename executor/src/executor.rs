@@ -213,7 +213,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // pctx mutations route through `ProofmanAdapter` since step 3.3.
         let steps = output.steps;
         let proof_registry = ProofmanAdapter::new(&pctx);
-        let mat_output = self.materialize.run(
+        let (mat_output, artifacts) = self.materialize.run(
             output,
             &self.plan,
             &self.planner,
@@ -227,6 +227,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.state.stats,
             &_exec_scope,
         )?;
+
+        // Stash the per-execution artifacts so `calculate_witness` can
+        // drain them (B.2 will migrate readers off the legacy state
+        // fields and use this slot exclusively).
+        *self.state.artifacts.write().unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(artifacts);
 
         // Reset hints stream and input shmem after the ASM
         // backend-specific await calls have drained the runners.
