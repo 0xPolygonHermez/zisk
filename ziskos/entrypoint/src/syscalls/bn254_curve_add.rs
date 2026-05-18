@@ -1,9 +1,9 @@
 //! syscall_bn254_curve_add system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::point::SyscallPoint256;
@@ -38,9 +38,9 @@ pub extern "C" fn syscall_bn254_curve_add(
     params: &mut SyscallBn254CurveAddParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BN254_CURVE_ADD_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let p1 = [params.p1.x, params.p1.y].concat().try_into().unwrap();
         let p2 = [params.p2.x, params.p2.y].concat().try_into().unwrap();
