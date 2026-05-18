@@ -1,3 +1,6 @@
+#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), no_std)]
+#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), feature(core_intrinsics))]
+#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), allow(internal_features))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -10,6 +13,13 @@ mod fcall;
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod alloc;
+
+// Link the `alloc` crate under an alias to avoid conflict with `mod alloc` above.
+// Exposed as `crate::alloc_crate` so submodules can use `use crate::alloc_crate::vec::Vec;`
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+extern crate alloc as alloc_crate;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+pub(crate) use alloc_crate as alloc_extern;
 
 mod profile;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
@@ -61,7 +71,7 @@ pub extern "C" fn zkvm_init() {
     #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
     {
         read_input_reset();
-        crate::io::write_output_reset();
+        crate::zisklib::zkvm_io::reset();
     }
 
     #[cfg(all(
@@ -123,12 +133,12 @@ use crate::ziskos_definitions::ziskos_config::*;
 /// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
 /// native: 0 bytes offset (file starts at position 0)
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-const INPUT_INITIAL_OFFSET: usize = 8;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 8;
 #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-const INPUT_INITIAL_OFFSET: usize = 0;
+pub(crate) const INPUT_INITIAL_OFFSET: usize = 0;
 
 /// Pointer to the current position in the input buffer/file.
-static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
+pub(crate) static mut INPUT_POS: usize = INPUT_INITIAL_OFFSET;
 
 /// Reset the input position to the beginning.
 pub fn read_input_reset() {
@@ -257,7 +267,7 @@ pub(crate) fn read_input() -> Vec<u8> {
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 pub(crate) fn set_output(id: usize, value: u32) {
-    use std::arch::asm;
+    use core::arch::asm;
     let addr_v: *mut u32;
     let arch_id_zisk: usize;
 
@@ -385,25 +395,22 @@ pub mod ziskos {
             }
         }
     }
-    use lazy_static::lazy_static;
-    use std::sync::Mutex;
-    const PRNG_SEED: u64 = 0x123456789abcdef0;
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+    use spin::Mutex;
 
-    lazy_static! {
-        /// A lazy static to generate a global random number generator.
-        static ref RNG: Mutex<StdRng> = Mutex::new(StdRng::seed_from_u64(PRNG_SEED));
-    }
-
-    /// A lazy static to print a warning once for using the `sys_rand` system call.
-    static SYS_RAND_WARNING: std::sync::Once = std::sync::Once::new();
+    static RNG: Mutex<Option<SmallRng>> = Mutex::new(None);
+    static SYS_RAND_WARNING: AtomicBool = AtomicBool::new(false);
 
     #[no_mangle]
     unsafe extern "C" fn sys_rand(recv_buf: *mut u8, words: usize) {
-        SYS_RAND_WARNING.call_once(|| {
-            println!("WARNING: Using insecure random number generator.");
-        });
-        let mut rng = RNG.lock().unwrap();
+        if !SYS_RAND_WARNING.swap(true, Ordering::Relaxed) {
+            let msg = b"WARNING: Using insecure random number generator.\n";
+            sys_write(1, msg.as_ptr(), msg.len());
+        }
+        let mut rng_guard = RNG.lock();
+        let rng = rng_guard.get_or_insert_with(|| SmallRng::seed_from_u64(0x123456789abcdef0));
         for i in 0..words {
             let element = recv_buf.add(i);
             *element = rng.gen();

@@ -1,8 +1,10 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-extern crate alloc;
-use alloc::vec;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bin_decomp;
 
@@ -268,9 +270,9 @@ pub(crate) unsafe fn modexp_bytes_c(
     result_ptr: *mut u8,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> usize {
-    let base_bytes = std::slice::from_raw_parts(base_ptr, base_len);
-    let exp_bytes = std::slice::from_raw_parts(exp_ptr, exp_len);
-    let modulus_bytes = std::slice::from_raw_parts(modulus_ptr, modulus_len);
+    let base_bytes = core::slice::from_raw_parts(base_ptr, base_len);
+    let exp_bytes = core::slice::from_raw_parts(exp_ptr, exp_len);
+    let modulus_bytes = core::slice::from_raw_parts(modulus_ptr, modulus_len);
 
     // Convert from big-endian bytes to little-endian u64/U256 arrays
     let base_u256 = bytes_be_to_u256_le(base_bytes);
@@ -286,7 +288,7 @@ pub(crate) unsafe fn modexp_bytes_c(
     );
 
     // Convert result back to big-endian bytes with proper length
-    let result = std::slice::from_raw_parts_mut(result_ptr, modulus_len);
+    let result = core::slice::from_raw_parts_mut(result_ptr, modulus_len);
     u256_le_to_bytes_be(&result_u256, result);
 
     modulus_len
@@ -344,7 +346,7 @@ pub unsafe extern "C" fn modexp_u64_c(
     let result_len = result_slice.len();
 
     // Convert result back to u64 array
-    let result = std::slice::from_raw_parts_mut(result_ptr, modulus_len);
+    let result = core::slice::from_raw_parts_mut(result_ptr, modulus_len);
     result[..result_len].copy_from_slice(result_slice);
 
     result_len

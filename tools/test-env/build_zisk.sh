@@ -38,11 +38,7 @@ main() {
             # Remove existing directory if it exists
             rm -rf pil2-proofman
             # Clone pil2-proofman repository
-            ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-            cd pil2-proofman
-            info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-            cd ..
+            ensure git clone --branch "$PIL2_PROOFMAN_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
         fi
     else
         info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
@@ -65,11 +61,8 @@ main() {
                 # Remove existing directory if it exists
                 rm -rf zisk
                 # Clone ZisK repository
-                ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+                ensure git clone --branch "$ZISK_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk.git || return 1
                 ensure cd zisk
-                # Check out the branch
-                info "Checking out branch '$ZISK_BRANCH'..."
-                ensure git checkout "$ZISK_BRANCH" || return 1
             fi
         else
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
@@ -118,7 +111,7 @@ main() {
 
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
-    if [[ "${BUILD_ONLY_CPU}" == "1" ]]; then
+    if [[ "${ONLY_CPU}" == "1" ]]; then
         FEATURES+=("cpu-only")
         warn "Building with CPU only..."
     fi
@@ -161,7 +154,7 @@ main() {
     ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/ziskemu "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
-    # ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-worker "${ZISK_BIN_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then

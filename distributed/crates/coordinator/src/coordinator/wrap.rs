@@ -95,8 +95,10 @@ impl Coordinator {
         let job_id = &execute_task_response.job_id;
         let worker_id = &execute_task_response.worker_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
         let mut job = job_entry.write().await;
 
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
@@ -109,7 +111,7 @@ impl Coordinator {
             return Err(CoordinatorError::Internal(format!("Wrap task failed: {}", reason)));
         }
 
-        let ExecuteTaskResponseResultDataDto::WrapResult(wrap_result) =
+        let Some(ExecuteTaskResponseResultDataDto::WrapResult(wrap_result)) =
             execute_task_response.result_data
         else {
             return Err(CoordinatorError::Internal(
@@ -117,7 +119,12 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = bincode::deserialize::<Proof>(&wrap_result.proof_data).map_err(|e| {
+        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
+            &wrap_result.proof_data,
+            bincode::config::standard(),
+        )
+        .map(|(v, _)| v)
+        .map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
         })?;
         job.proof = Some(zisk_proof);

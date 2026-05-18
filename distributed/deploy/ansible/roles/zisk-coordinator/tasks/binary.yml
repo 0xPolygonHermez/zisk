@@ -1,0 +1,35 @@
+---
+- name: Install zisk-coordinator binary
+  ansible.builtin.copy:
+    src: "{{ zisk_coordinator_binary_src }}"
+    dest: "{{ zisk_coordinator_binary_dst }}"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: restart zisk-coordinator
+
+- name: Ensure config directory exists
+  ansible.builtin.file:
+    path: "{{ zisk_coordinator_config_dir }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Install operator-supplied coordinator.toml
+  ansible.builtin.copy:
+    src: "{{ zisk_coordinator_config_src }}"
+    dest: "{{ zisk_coordinator_config_dst }}"
+    mode: "0640"
+    owner: root
+    group: "{{ zisk_coordinator_group }}"
+  when: zisk_coordinator_config_src | length > 0
+  notify: restart zisk-coordinator
+
+- name: Ensure working directory exists
+  ansible.builtin.file:
+    path: "{{ zisk_coordinator_work_dir }}"
+    state: directory
+    owner: "{{ zisk_coordinator_user }}"
+    group: "{{ zisk_coordinator_group }}"
+    mode: "0755"

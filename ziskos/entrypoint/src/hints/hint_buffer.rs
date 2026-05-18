@@ -1,6 +1,8 @@
 use bytes::{Bytes, BytesMut};
 use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::thread;
+use std::time::Duration;
 use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
@@ -136,18 +138,76 @@ impl HintBuffer {
         W: Write + ?Sized,
         D: Write + ?Sized,
     {
+        fn write_with_retries<W: Write + ?Sized>(
+            writer: &mut W,
+            buf: &[u8],
+            retries: usize,
+            base_delay: Duration,
+        ) -> io::Result<()> {
+            let mut written = 0;
+            let mut attempt = 0;
+            while written < buf.len() {
+                match writer.write(&buf[written..]) {
+                    Ok(0) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "write_with_retries: write returned 0 bytes",
+                        ));
+                    }
+                    Ok(n) => {
+                        written += n;
+                        if attempt > 0 {
+                            println!(
+                                "write_with_retries: write succeeded after {} attempts",
+                                attempt
+                            );
+                        }
+                        attempt = 0;
+                    }
+
+                    // Any error: retry with backoff.
+                    Err(e) => {
+                        if attempt >= retries {
+                            return Err(io::Error::new(
+                                e.kind(),
+                                format!(
+                                    "write_with_retries: max retries ({}) reached, kind={:?}, os_error={:?}: {}",
+                                    retries,
+                                    e.kind(),
+                                    e.raw_os_error(),
+                                    e
+                                ),
+                            ));
+                        }
+                        if attempt == 0 {
+                            println!(
+                                "write_with_retries: transient error kind={:?}, os_error={:?}: {}, retrying",
+                                e.kind(),
+                                e.raw_os_error(),
+                                e
+                            );
+                        }
+                        let delay = base_delay * (attempt as u32 + 1);
+                        thread::sleep(delay);
+                        attempt += 1;
+                    }
+                }
+            }
+            Ok(())
+        }
+
         // Write hints from the buffer to the writer and optionally to a debug writer
         let mut write_all = |buf: &[u8]| -> io::Result<()> {
-            writer.write_all(buf)?;
+            write_with_retries(writer, buf, 10, Duration::from_millis(50))?;
 
             if let Some(debug_writer) = debug_writer.as_deref_mut() {
-                debug_writer.write_all(buf)?;
+                write_with_retries(debug_writer, buf, 10, Duration::from_millis(50))?;
             }
 
             Ok(())
         };
 
-        fn flush_write_buf<F>(write_all: &mut F, buf: &mut Vec<u8>) -> io::Result<()>
+        fn write_buf<F>(write_all: &mut F, buf: &mut Vec<u8>) -> io::Result<()>
         where
             F: FnMut(&[u8]) -> io::Result<()>,
         {
@@ -162,10 +222,55 @@ impl HintBuffer {
             Ok(())
         }
 
+        fn flush_with_retries<W: Write + ?Sized>(
+            writer: &mut W,
+            retries: usize,
+            base_delay: Duration,
+        ) -> io::Result<()> {
+            let mut attempt = 0;
+            loop {
+                match writer.flush() {
+                    Ok(()) => {
+                        if attempt > 0 {
+                            println!("flush_with_retries: succeeded after {} attempts", attempt);
+                        }
+                        return Ok(());
+                    }
+
+                    // Any error: retry with backoff.
+                    Err(e) => {
+                        if attempt >= retries {
+                            return Err(io::Error::new(
+                                e.kind(),
+                                format!(
+                                    "flush_with_retries: max retries ({}) reached, kind={:?}, os_error={:?}: {}",
+                                    retries,
+                                    e.kind(),
+                                    e.raw_os_error(),
+                                    e
+                                ),
+                            ));
+                        }
+                        if attempt == 0 {
+                            println!(
+                                "flush_with_retries: transient error kind={:?}, os_error={:?}: {}, retrying",
+                                e.kind(),
+                                e.raw_os_error(),
+                                e
+                            );
+                        }
+                        let delay = base_delay * (attempt as u32 + 1);
+                        thread::sleep(delay);
+                        attempt += 1;
+                    }
+                }
+            }
+        }
+
         let mut flush_threshold = std::cmp::min(write_flush_threshold, MAX_WRITER_LEN);
         flush_threshold = flush_threshold.max(1);
 
-        let mut write_buf = Vec::with_capacity(flush_threshold);
+        let mut buf = Vec::with_capacity(flush_threshold);
         'drain: loop {
             // Get chunk of hints to write from HintBuffer (under lock)
             let chunk: Bytes = loop {
@@ -224,7 +329,9 @@ impl HintBuffer {
 
                 // If single hint exceeds MAX_WRITER_LEN, write it in chunks directly
                 if hint_len > MAX_WRITER_LEN {
-                    flush_write_buf(&mut write_all, &mut write_buf)?;
+                    write_buf(&mut write_all, &mut buf).map_err(|e| {
+                        io::Error::new(e.kind(), format!("write_buf before oversized hint: {}", e))
+                    })?;
 
                     let mut hint_pos = 0usize;
                     while hint_pos < hint_len {
@@ -248,26 +355,34 @@ impl HintBuffer {
                 let hint_bytes: &[u8] =
                     unsafe { core::slice::from_raw_parts(chunk_base.add(chunk_pos), hint_len) };
 
-                if write_buf.len() + hint_len > MAX_WRITER_LEN {
-                    flush_write_buf(&mut write_all, &mut write_buf)?;
+                if buf.len() + hint_len > MAX_WRITER_LEN {
+                    write_buf(&mut write_all, &mut buf).map_err(|e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!("write_buf on buffer full before hint: {}", e),
+                        )
+                    })?;
                 }
 
-                write_buf.extend_from_slice(hint_bytes);
+                buf.extend_from_slice(hint_bytes);
 
                 chunk_pos += hint_len;
             }
 
-            if write_buf.len() >= flush_threshold {
-                flush_write_buf(&mut write_all, &mut write_buf)?;
+            if buf.len() >= flush_threshold {
+                write_buf(&mut write_all, &mut buf).map_err(|e| {
+                    io::Error::new(e.kind(), format!("write_buf on flush threshold: {}", e))
+                })?;
             }
         }
 
-        flush_write_buf(&mut write_all, &mut write_buf)?;
+        write_buf(&mut write_all, &mut buf)
+            .map_err(|e| io::Error::new(e.kind(), format!("write_buf final drain: {}", e)))?;
 
         // Flush the writer and debug writer at the end
-        writer.flush()?;
+        flush_with_retries(writer, 10, Duration::from_millis(50))?;
         if let Some(debug_writer) = debug_writer.as_deref_mut() {
-            debug_writer.flush()?;
+            flush_with_retries(debug_writer, 10, Duration::from_millis(50))?;
         }
 
         Ok(())

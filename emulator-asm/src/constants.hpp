@@ -106,7 +106,7 @@
 
 // Maximum precompile results share memory size
 // It is a circular buffer
-#define MAX_PRECOMPILE_SIZE (uint64_t)0x400000 // 4MB
+#define MAX_PRECOMPILE_SIZE (uint64_t)0x8000000 // 128MB
 
 // Maximum chunk mask for zip generation method, which indicates which chunks are included in the trace,
 // and must be between 0 and 7 (inclusive), as it is used to generate a mask of 8 bits where each

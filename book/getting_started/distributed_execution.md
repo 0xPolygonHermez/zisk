@@ -3,7 +3,7 @@
 Generating a ZisK proof means proving the full execution trace of a
 program. For real workloads, that trace is too large and too slow to
 prove on a single machine. A ZisK cluster splits the trace into
-**segments**, proves each segment in parallel on separate machines,
+pieces, proves each in parallel on separate machines,
 and aggregates the results into a single final proof. Throughput and
 latency scale with the number of machines you give it.
 
@@ -19,29 +19,48 @@ deploys the same binaries on bare Linux hosts with systemd.
 A ZisK cluster is two binaries: a single `zisk-coordinator` and one
 or more `zisk-worker` instances.
 
-```mermaid
-flowchart TB
-    Host(["Host application<br/>RemoteClient"])
-
-    subgraph Cluster["ZisK cluster"]
-        Coord["zisk-coordinator<br/>:7000  :50051  :9090"]
-        W1[zisk-worker 1]
-        W2[zisk-worker 2]
-        W3[zisk-worker 3]
-        Agg[Aggregation tree]
-    end
-
-    Out(["Final proof"])
-
-    Host -->|"gRPC :7000 prove request"| Coord
-    Coord -->|assign segments| W1
-    Coord -->|assign segments| W2
-    Coord -->|assign segments| W3
-    W1 -->|segment proof| Agg
-    W2 -->|segment proof| Agg
-    W3 -->|segment proof| Agg
-    Agg --> Out
-    Out -->|return proof| Host
+```
+                    ┌─────────────────────────┐
+                    │    Host application     │
+                    │     (RemoteClient)      │
+                    └────────────┬────────────┘
+                                 │
+                                 │ gRPC :7000
+                                 │ prove request
+                                 ▼
+    ╔════════════════════════════════════════════════════════╗
+    ║                    ZisK cluster                        ║
+    ║                                                        ║
+    ║         ┌──────────────────────────────────┐           ║
+    ║         │        zisk-coordinator          │           ║
+    ║         │     :7000   :50051   :9090       │           ║
+    ║         └───┬──────────┬──────────┬────────┘           ║
+    ║             │          │          │                    ║
+    ║      assign │   assign │   assign │                    ║
+    ║    segments │ segments │ segments │                    ║
+    ║             ▼          ▼          ▼                    ║
+    ║      ┌──────────┐ ┌──────────┐ ┌──────────┐            ║
+    ║      │ worker 1 │ │ worker 2 │ │ worker 3 │            ║
+    ║      └─────┬────┘ └─────┬────┘ └─────┬────┘            ║
+    ║            │            │            │                 ║
+    ║    segment │    segment │    segment │                 ║
+    ║      proof │      proof │      proof │                 ║
+    ║            ▼            ▼            ▼                 ║
+    ║         ┌──────────────────────────────┐               ║
+    ║         │      Aggregation tree        │               ║
+    ║         └──────────────┬───────────────┘               ║
+    ╚════════════════════════│═══════════════════════════════╝
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │   Final proof   │
+                    └────────┬────────┘
+                             │
+                             │ return proof
+                             ▼
+                    ┌─────────────────────────┐
+                    │    Host application     │
+                    └─────────────────────────┘
 ```
 
 ### The coordinator
@@ -60,7 +79,7 @@ jobs for the same program skip the expensive setup step.
 ### Workers
 
 Workers are the proving processes. Each worker connects outbound to
-the coordinator and waits for segment assignments. Workers are
+the coordinator and waits for proof assignments. Workers are
 stateless across jobs, holding only the segments they are currently
 proving. You can add, remove, or restart them without touching the
 coordinator or losing cluster state.
@@ -81,32 +100,50 @@ available pool and runs three phases:
 2. **Prove.** The coordinator broadcasts the global challenge to all
    workers. Each worker computes its partial proofs and returns
    them.
-3. **Aggregation.** As partial proofs arrive, the coordinator builds
-   an opportunistic binary aggregation tree, folding proofs in as
-   they land. The first worker to deliver its partial proof is
-   promoted to aggregator and assembles the final proof.
+3. **Aggregation.** The first worker to deliver its partial proof is
+   promoted to aggregator and builds a binary aggregation tree,
+   folding the remaining partial proofs in as they land and
+   returning the final proof to the coordinator.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant Coord as Coordinator
-    participant W as Workers
-
-    C->>Coord: prove(request)
-    Coord->>W: assign segments
-
-    Note over Coord,W: Phase 1: Partial contributions
-    W->>Coord: partial challenges
-
-    Note over Coord,W: Phase 2: Prove
-    Coord->>W: global challenge
-    W->>Coord: partial proofs
-
-    Note over Coord,W: Phase 3: Aggregation
-    Note over W: First worker to reply<br/>becomes aggregator
-    Coord->>W: aggregate
-    W->>Coord: final proof
-    Coord->>C: return proof
+```
+Client            Coordinator            Workers
+     │                    │                    │
+     │  prove(request)    │                    │
+     ├───────────────────>│                    │
+     │                    │  assign segments   │
+     │                    ├───────────────────>│
+     │                    │                    │
+     │       ╔════════════╧════════════════════╧════════════╗
+     │       ║   Phase 1: Partial contributions             ║
+     │       ╚════════════╤════════════════════╤════════════╝
+     │                    │ partial challenges │
+     │                    │<───────────────────┤
+     │                    │                    │
+     │       ╔════════════╧════════════════════╧════════════╗
+     │       ║   Phase 2: Prove                             ║
+     │       ╚════════════╤════════════════════╤════════════╝
+     │                    │  global challenge  │
+     │                    ├───────────────────>│
+     │                    │                    │
+     │                    │   partial proofs   │
+     │                    │<───────────────────┤
+     │                    │                    │
+     │       ╔════════════╧════════════════════╧════════════╗
+     │       ║   Phase 3: Aggregation                       ║
+     │       ║   ┌──────────────────────────────┐           ║
+     │       ║   │  First worker to reply       │           ║
+     │       ║   │  becomes aggregator          │           ║
+     │       ║   └──────────────────────────────┘           ║
+     │       ╚════════════╤════════════════════╤════════════╝
+     │                    │     aggregate      │
+     │                    ├───────────────────>│
+     │                    │                    │
+     │                    │    final proof     │
+     │                    │<───────────────────┤
+     │   return proof     │                    │
+     │<───────────────────┤                    │
+     │                    │                    │
+     ▼                    ▼                    ▼
 ```
 
 ---
@@ -119,9 +156,9 @@ exercises the production binaries end-to-end.
 
 ### Prerequisites
 
-- Linux x86_64
 - Rust toolchain (`cargo --version` should work)
 - ~32 GB free RAM (Assembly emulator preallocates large shared regions)
+- Zisk installed. Follow installation guide.
 
 Clone the repo:
 
@@ -129,26 +166,10 @@ Clone the repo:
 git clone https://github.com/0xPolygonHermez/zisk.git
 cd zisk
 ```
-
-### Build the binaries
-
-```bash
-cargo build --release --bin zisk-coordinator --bin zisk-worker
-```
-
-The first build takes several minutes. The output binaries land at:
-
-```
-target/release/zisk-coordinator
-target/release/zisk-worker
-```
-
-These are the same binaries used in every later deployment.
-
 ### Start the coordinator
 
 ```bash
-cargo run --release --bin zisk-coordinator
+zisk-coordinator
 ```
 
 The coordinator binds three default ports on startup:
@@ -163,8 +184,7 @@ If the coordinator exits with `Address already in use`, override the
 offending port:
 
 ```bash
-cargo run --release --bin zisk-coordinator -- \
-    --api-port 8000 --cluster-port 60000 --metrics-port 5245
+zisk-coordinator --api-port 8000 --cluster-port 60000 --metrics-port 5245
 ```
 
 ### Start a worker
@@ -172,18 +192,18 @@ cargo run --release --bin zisk-coordinator -- \
 In a second terminal:
 
 ```bash
-cargo run --release --bin zisk-worker -- \
-    --config distributed/deploy/config/worker.toml
+zisk-worker --config distributed/deploy/config/worker.toml
 ```
 
+If you built ZisK with CUDA support and want the worker to use the
+GPU, append `--gpu`.
+
 `worker.toml` points the worker at `http://127.0.0.1:50051`, advertises
-ten compute units, and sets the log level to debug. On a successful
+ten compute units, and sets the log level to info. On a successful
 handshake:
 
 ```
-INFO connecting to coordinator http://127.0.0.1:50051
 INFO registered as worker <random-uuid> (capacity 10)
-INFO heartbeat ok
 ```
 
 The coordinator logs the matching side:
@@ -215,59 +235,77 @@ cargo run --release --bin prove-remote
 The `prove-remote` binary builds a `ProverClient::remote("http://127.0.0.1:7000")`,
 uploads the guest ELF, and waits for the final proof. End-to-end:
 the coordinator splits the trace into segments and hands them to the
-worker, the worker produces STARK proofs, and the coordinator
-aggregates them into the final proof. Terminals 1 and 2 show the
+worker, the worker produces the STARK proofs. Terminals 1 and 2 show the
 matching coordinator and worker activity.
+
+### CLI references
+
+A handful of operational knobs are CLI-only and not exposed in the
+TOML:
+
+| Flag                            | Default               | Description                              |
+| ---                             | ---                   | ---                                      |
+| `--proving-key`                 | `~/.zisk/provingKey`  | Path to the proving-key folder           |
+| `--elf`                         | (none)                | Path to the ELF file                     |
+| `--shared-tables`               | `false`               | Share tables when running in a cluster   |
+| `--verify-constraints`          | `false`               | Verify constraints after witness gen     |
+| `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
+| `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
+| `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
+
+CLI flags override the config file for one-off testing:
+
+```bash
+zisk-coordinator --api-port 8000 --cluster-port 60000 --log-level debug
+zisk-worker --coordinator-url http://prod-coord:50051 --compute-capacity 32
+```
 
 ---
 
 ## Deployment with scripts
 
-This section deploys the same two binaries on bare Linux hosts under
+This section deploys the same two binaries on bare hosts under
 systemd, the canonical path for a ZisK cluster.
 
 ### Prerequisites
 
-- One Linux host with `sudo` for the coordinator
-- One or more Linux hosts with `sudo` for workers, each with 64 GB
-  RAM (Assembly emulator) or 32 GB (Rust emulator)
-- Every worker must reach the coordinator; keep all hosts on the
-  same private network for low coordinator/worker latency
-
-Clone the repo on every host:
-
-```bash
-git clone https://github.com/0xPolygonHermez/zisk.git
-cd zisk
-```
+- ~32 GB free RAM (for Assembly emulator to preallocate large shared regions)
 
 ### Install the coordinator
 
-On the coordinator host:
+On the coordinator host run:
 
 ```bash
-sudo distributed/deploy/scripts/coordinator/install.sh
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/coordinator/install.sh | sudo bash
 ```
 
 The script:
 
-- Creates the `zisk-coordinator` system user
-- Drops the binary at `/usr/local/bin/zisk-coordinator`
-- Writes the config at `/etc/zisk/coordinator.toml` (mode `640`)
-- Creates the working directory at `/var/lib/zisk`
-- Installs the systemd unit and runs `systemctl enable --now`
+- Creates the zisk system user and group (home /var/empty, no login)
+- Drops the zisk-coordinator-server binary at /usr/local/bin/
+- Writes the config to /etc/zisk/coordinator.toml (or installs the example if none provided)
+- Creates the working directory at /var/lib/zisk with a pre-made .zisk/cache subdir, owned by the service user
+- Writes a hardened systemd unit at /etc/systemd/system/zisk-coordinator.service (Linux) or a launchd plist at /Library/LaunchDaemons/ plus a newsyslog rotation rule (macOS)
+- Runs systemctl enable --now (or launchctl load) unless --no-start / --no-enable is passed
 
 Verify the service:
+
+* In Linux: 
 
 ```bash
 sudo systemctl status zisk-coordinator
 sudo journalctl -u zisk-coordinator -f
 ```
 
-You should see the same two "listening on" lines from the
-quickstart. If the service is `failed`, shows the
-underlying error (most often a port conflict or missing config
-field).
+* In macOS:
+
+```bash
+sudo launchctl print system/com.zisk.coordinator
+sudo tail -f /var/log/zisk/zisk-coordinator-server.log
+```
+
+If the service is `failed`, the logs above show the underlying
+error (most often a port conflict or a missing config field).
 
 #### Configure the coordinator
 
@@ -319,61 +357,79 @@ Edit `/etc/zisk/coordinator.toml`:
 
 After editing:
 
+* In Linux:
+
 ```bash
 sudo systemctl restart zisk-coordinator
 ```
 
+* In macOS:
+
+```bash
+sudo launchctl kickstart -k system/com.zisk.coordinator
+```
+
 ### Install workers
 
-Workers need the proving keys on local disk before they can start.
-On each worker host, download and extract them first:
+Run the installer, with the following command:
+
+* In Linux:
 
 ```bash
-wget https://storage.googleapis.com/zisk-setup/zisk-provingkey-0.16.0.tar.gz
-tar -xzf zisk-provingkey-0.16.0.tar.gz
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/worker/install.sh | sudo bash
 ```
 
-Then run the installer, pointing it at the extracted directory:
+* In macOS:
 
 ```bash
-sudo distributed/deploy/scripts/worker/install.sh \
-    --proving-key /path/to/provingKey --gpu
+curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/refs/heads/main/distributed/deploy/scripts/worker/install.sh | sudo bash -s -- --no-mpi
 ```
 
-If you skip `--proving-key`, the installer falls back to
-`/var/lib/zisk-worker/provingKey`; place (or symlink) the extracted
-keys there if you prefer the default. The --gpu flag can be ommited 
-if want to work with cpu.
+This script: 
 
-The worker starts immediately, but its default coordinator URL
-(`http://127.0.0.1:50051`) points at localhost — it will keep retrying
-this address until you redirect it to your real coordinator.
+- Creates the zisk system user and group (home /var/empty, no login)
+- Drops the zisk-worker binary at /usr/local/bin/
+- Writes the config to /etc/zisk/worker.toml (or installs the example if none provided)
+- Creates the working directory at /var/lib/zisk with a pre-made .zisk/cache subdir, owned by the service user
+- Writes a hardened systemd unit at /etc/systemd/system/zisk-worker.service (Linux) or a launchd plist at /Library/LaunchDaemons/ plus a newsyslog rotation rule (macOS)
+- Runs systemctl enable --now (or launchctl load) unless --no-start / --no-enable is passed
 
-#### Point the worker at the coordinator
+Verify the service:
 
-Edit `/etc/zisk/worker.toml` and set the coordinator URL:
-
-```toml
-[coordinator]
-url = "http://<coordinator-host>:50051"
-```
+* In Linux: 
 
 ```bash
-sudo systemctl restart zisk-worker
+sudo systemctl status zisk-worker
 sudo journalctl -u zisk-worker -f
 ```
 
-Workers retry the connection every `reconnect_interval_seconds`
-(default 5) until the coordinator answers. Start order does not
-matter.
+* In macOS:
+
+```bash
+sudo launchctl print system/com.zisk.worker
+sudo tail -f /var/log/zisk/zisk-worker-server.log
+```
+
+The worker starts immediately and uses its default coordinator URL
+(`http://127.0.0.1:50051`).
+
+> **Note:** the default URL only works when the worker runs on the
+> same host as the coordinator. When deploying workers on separate
+> hosts, edit `[coordinator].url` in `/etc/zisk/worker.toml` to point
+> at the coordinator's worker-facing port (`50051` by default), then
+> restart the service. Confirm registration in the coordinator log:
+>
+> ```
+> INFO worker registered: <random-uuid> capacity=10
+> ```
 
 #### Configure the worker
 
-Annotated example: `distributed/crates/worker/config/prod.toml`.
+Every setting is optional; the binary falls back to a built-in
+default for anything you leave out.
 
-Override precedence: built-in defaults → config file →
-`ZISK_WORKER__*` environment variables (double underscore as table
-separator) → CLI flags.
+Override precedence (later wins): built-in defaults → config file →
+`ZISK_WORKER_*` environment variables → CLI flags.
 
 Edit `/etc/zisk/worker.toml`:
 
@@ -410,58 +466,47 @@ After editing:
 sudo systemctl restart zisk-worker
 ```
 
+* In macOS:
+
+```bash
+sudo launchctl kickstart -k system/com.zisk.worker
+```
+
 ### Add more workers
 
 Run the install script on as many hosts as you want. All workers
 register against the same coordinator and receive work proportional
 to their advertised capacity.
 
-```mermaid
-flowchart TB
-    subgraph App["Application host"]
-        AP["host program<br/>RemoteClient"]
-    end
-
-    subgraph H1["Coordinator host"]
-        C["zisk-coordinator<br/>:7000  :50051  :9090"]
-    end
-
-    subgraph H2["Worker host A (32 units)"]
-        WA[zisk-worker]
-    end
-
-    subgraph H3["Worker host B (32 units)"]
-        WB[zisk-worker]
-    end
-
-    subgraph H4["Worker host C (16 units)"]
-        WC[zisk-worker]
-    end
-
-    AP -->|":7000"| C
-    WA -->|":50051"| C
-    WB -->|":50051"| C
-    WC -->|":50051"| C
 ```
-
-### CLI references
-
-A handful of operational knobs are CLI-only and not exposed in the
-TOML:
-
-| Flag                            | Default               | Description                              |
-| ---                             | ---                   | ---                                      |
-| `--proving-key`                 | `~/.zisk/provingKey`  | Path to the proving-key folder           |
-| `--elf`                         | (none)                | Path to the ELF file                     |
-| `--shared-tables`               | `false`               | Share tables when running in a cluster   |
-| `--verify-constraints`          | `false`               | Verify constraints after witness gen     |
-| `-n`, `--number-threads-witness`| (none)                | Threads for witness computation          |
-| `-g`, `--gpu`                   | `false`               | Enable GPU mode (CUDA build only)        |
-| `-t`, `--max-streams`           | (none)                | Maximum GPU streams                      |
-
-CLI flags override the config file for one-off testing:
-
-```bash
-zisk-coordinator --api-port 8000 --cluster-port 60000 --log-level debug
-zisk-worker --coordinator-url http://prod-coord:50051 --compute-capacity 32
+   ┌──────────────────────────────┐
+   │      Application host        │
+   │  ┌────────────────────────┐  │
+   │  │     host program       │  │
+   │  │     (RemoteClient)     │  │
+   │  └───────────┬────────────┘  │
+   └──────────────│───────────────┘
+                  │
+                  │ :7000
+                  ▼
+   ┌──────────────────────────────┐
+   │      Coordinator host        │
+   │  ┌────────────────────────┐  │
+   │  │    zisk-coordinator    │  │
+   │  │  :7000  :50051  :9090  │  │
+   │  └───────────▲────────────┘  │
+   └──────────────│───────────────┘
+                  │
+        ┌─────────┼─────────┐
+        │ :50051  │ :50051  │ :50051
+        │         │         │
+   ┌────┴────┐┌───┴─────┐┌──┴──────┐
+   │ Worker  ││ Worker  ││ Worker  │
+   │ host A  ││ host B  ││ host C  │
+   │(32 unit)││(32 unit)││(16 unit)│
+   │┌───────┐││┌───────┐││┌───────┐│
+   ││zisk-  ││││zisk-  ││││zisk-  ││
+   ││worker ││││worker ││││worker ││
+   │└───────┘││└───────┘││└───────┘│
+   └─────────┘└─────────┘└─────────┘
 ```

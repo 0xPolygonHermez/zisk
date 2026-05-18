@@ -18,7 +18,6 @@ zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }
 
-cargo-zisk = { workspace = true }
 zisk-common = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }

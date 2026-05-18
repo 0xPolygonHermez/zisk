@@ -51,6 +51,74 @@ need_root() {
     fi
 }
 
+# bundle_dir_for_os
+# Echoes the platform-specific install root for the read-only ZisK bundle:
+#   Linux  → /opt/zisk
+#   Darwin → /Library/Application Support/ZisK
+# This is the path ziskup --system writes to, where worker (and future
+# coordinator bundle consumers) read bin/, zisk/, provingKey/ from.
+bundle_dir_for_os() {
+    case "$OS_NAME" in
+        Linux)  echo "/opt/zisk" ;;
+        Darwin) echo "/Library/Application Support/ZisK" ;;
+        *)      die "bundle_dir_for_os: unsupported OS '${OS_NAME}'" ;;
+    esac
+}
+
+# ensure_zisk_user_group BUNDLE_DIR
+# Creates the shared 'zisk' system user and group if missing. Sets the user's
+# home dir to BUNDLE_DIR. Idempotent. Branches Linux/Darwin.
+ensure_zisk_user_group() {
+    local bundle="$1"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        local gid uid
+        if ! dscl . -read /Groups/zisk &>/dev/null; then
+            info "Creating system group 'zisk'..."
+            gid=$(( $(dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            dscl . -create /Groups/zisk
+            dscl . -create /Groups/zisk PrimaryGroupID "$gid"
+            dscl . -create /Groups/zisk RecordName    zisk
+        fi
+        if ! dscl . -read /Users/zisk &>/dev/null; then
+            info "Creating system user 'zisk'..."
+            uid=$(( $(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1) + 1 ))
+            gid=$(dscl . -read /Groups/zisk PrimaryGroupID | awk '{print $2}')
+            dscl . -create /Users/zisk
+            dscl . -create /Users/zisk UniqueID         "$uid"
+            dscl . -create /Users/zisk PrimaryGroupID   "$gid"
+            dscl . -create /Users/zisk UserShell        /usr/bin/false
+            dscl . -create /Users/zisk RealName         "ZisK Bundle"
+            dscl . -create /Users/zisk NFSHomeDirectory "${bundle}"
+        fi
+    else
+        if ! getent group zisk &>/dev/null; then
+            info "Creating system group 'zisk'..."
+            groupadd --system zisk
+        fi
+        if ! id zisk &>/dev/null; then
+            info "Creating system user 'zisk'..."
+            useradd --system --gid zisk -d "${bundle}" -s /usr/sbin/nologin zisk
+        fi
+    fi
+}
+
+# add_user_to_group USER GROUP
+# Adds an existing user to an existing supplementary group. Idempotent.
+add_user_to_group() {
+    local user="$1" group="$2"
+    if [[ "$OS_NAME" == "Darwin" ]]; then
+        if ! dseditgroup -o checkmember -m "$user" "$group" &>/dev/null; then
+            info "Adding ${user} to group ${group}..."
+            dseditgroup -o edit -a "$user" -t user "$group"
+        fi
+    else
+        if ! id -nG "$user" 2>/dev/null | tr ' ' '\n' | grep -qx "$group"; then
+            info "Adding ${user} to group ${group}..."
+            usermod -aG "$group" "$user"
+        fi
+    fi
+}
+
 # print_banner SERVICE
 # Identifies ZisK and the service being installed. Called at the top of each
 # install script so operators see what they're running and where to find the
@@ -96,39 +164,56 @@ load_env_file() {
     fi
 }
 
-# Validates that ${WORKSPACE_ROOT} points at a real ZisK workspace clone
-# (Cargo.toml present). Call from any branch that needs to read source-tree
-# files (cargo build, sample configs). Avoids confusing downstream errors
-# when the script is shipped standalone without the surrounding repo.
-require_workspace_root() {
-    [[ -f "${WORKSPACE_ROOT}/Cargo.toml" ]] || die \
-"workspace root not found at ${WORKSPACE_ROOT} (Cargo.toml missing).
-       This script expects to run from a clone of the ZisK repository.
-       To install from a standalone copy, pass --binary <path> and --config <path>."
+# resolve_service_binary
+# Resolves $BINARY_SRC for the install: prefer an explicit --binary path,
+# otherwise pick the one from the shared bundle (${BUNDLE_DIR}/bin/${BINARY_NAME})
+# which ziskup --system has populated by the time this runs.
+# Reads/writes globals: BINARY_NAME, BINARY_SRC, BUNDLE_DIR.
+resolve_service_binary() {
+    if [[ -z "${BINARY_SRC}" ]]; then
+        BINARY_SRC="${BUNDLE_DIR}/bin/${BINARY_NAME}"
+    fi
+    [[ -f "${BINARY_SRC}" ]] || die "binary not found at ${BINARY_SRC} \
+(populate the bundle via 'ziskup --system' first, or pass --binary <path>)"
 }
 
-# build_or_use_binary CARGO_PACKAGE
-# If $BINARY_SRC is unset, builds CARGO_PACKAGE from the workspace and assigns
-# the resulting binary path to $BINARY_SRC. Validates the binary exists.
-# Reads/writes globals: BINARY_NAME, BINARY_SRC, WORKSPACE_ROOT.
-build_or_use_binary() {
-    local pkg="$1"
-    if [[ -z "${BINARY_SRC}" ]]; then
-        require_workspace_root
-        # If invoked via sudo, run cargo as the original user so target/ and
-        # ~/.cargo stay user-owned. -H sets HOME to the user's home so the
-        # cargo registry/cache is read from the right place.
-        if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-            info "Building ${BINARY_NAME} as ${SUDO_USER} (target/ stays user-owned)..."
-            sudo -u "$SUDO_USER" -H cargo build --release -p "${pkg}" \
-                --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
-        else
-            info "Building ${BINARY_NAME} from source..."
-            cargo build --release -p "${pkg}" --manifest-path "${WORKSPACE_ROOT}/Cargo.toml"
-        fi
-        BINARY_SRC="${WORKSPACE_ROOT}/target/release/${BINARY_NAME}"
+# resolve_ziskup_bin
+# Locates the ziskup script via a 3-level fallback:
+#   1. ${WORKSPACE_ROOT}/ziskup/ziskup — workspace clone (dev case). Wins over
+#                                        PATH so a stale ~/.zisk/bin/ziskup
+#                                        from a prior user-mode install never
+#                                        overrides edits made in the workspace.
+#                                        install.sh self-bootstraps from
+#                                        GitHub when there's no workspace, so
+#                                        seeing one means "you're developing".
+#   2. ziskup on PATH                  — operator-installed ziskup on a server
+#                                        with no workspace clone (also lets
+#                                        tests inject a stub via PATH).
+#   3. ${BUNDLE_DIR}/bin/ziskup        — already-installed bundle (last resort;
+#                                        may lag this branch if the latest
+#                                        release predates new ziskup features)
+# Echoes the resolved path; dies if none found.
+resolve_ziskup_bin() {
+    if [[ -x "${WORKSPACE_ROOT}/ziskup/ziskup" ]]; then
+        echo "${WORKSPACE_ROOT}/ziskup/ziskup"
+    elif command -v ziskup >/dev/null 2>&1; then
+        command -v ziskup
+    elif [[ -x "${BUNDLE_DIR}/bin/ziskup" ]]; then
+        echo "${BUNDLE_DIR}/bin/ziskup"
+    else
+        die "ziskup not found at ${WORKSPACE_ROOT}/ziskup/ziskup, on PATH, or in ${BUNDLE_DIR}/bin/"
     fi
-    [[ -f "${BINARY_SRC}" ]] || die "binary not found at ${BINARY_SRC}"
+}
+
+# bundle_meta_get KEY [BUNDLE_DIR]
+# Read a single key=value field from ${BUNDLE_DIR}/.zisk-bundle. Echoes the
+# value (empty if file or key is absent). The bundle file is the public
+# metadata contract written by ziskup — see schema header in ziskup/ziskup.
+bundle_meta_get() {
+    local key="$1" bundle_dir="${2:-${BUNDLE_DIR}}"
+    local file="${bundle_dir}/.zisk-bundle"
+    [[ -f "$file" ]] || return 0
+    awk -F= -v k="$key" '$1 == k { sub(/^[^=]+=/, ""); print; exit }' "$file"
 }
 
 # install_config_or_sample CONFIG_SRC CONFIG_DST GROUP SAMPLE_PATH
@@ -142,12 +227,11 @@ install_config_or_sample() {
         info "Installing config from ${src}..."
         install -m 640 -o root -g "${group}" "${src}" "${dst}"
     elif [[ ! -f "${dst}" ]]; then
-        require_workspace_root
-        info "Installing sample config to ${dst}..."
         if [[ -f "${sample}" ]]; then
+            info "Installing sample config to ${dst}..."
             install -m 640 -o root -g "${group}" "${sample}" "${dst}"
         else
-            warn "sample config not found at ${sample}; skipping."
+            warn "sample config not found at ${sample}; pass --config or place a config at ${dst}."
         fi
     else
         info "Config already exists at ${dst}; leaving unchanged."
@@ -189,7 +273,9 @@ create_service_user() {
         fi
         if ! id "$user" &>/dev/null; then
             info "Creating system user '${user}'..."
-            useradd --system --gid "$group" --no-create-home --shell /usr/sbin/nologin "$user"
+            local useradd_args=(--system --gid "$group" --no-create-home --shell /usr/sbin/nologin)
+            [[ -n "$home" ]] && useradd_args+=(--home-dir "$home")
+            useradd "${useradd_args[@]}" "$user"
         fi
     fi
 }
@@ -223,8 +309,10 @@ resolve_mpi_config() {
     [[ -n "$MPI_THREADS" ]] && manual_count=$((manual_count + 1))
 
     if ! $MPI_ENABLED; then
-        [[ "$manual_count" -gt 0 ]] && die "--mpi-processes/--mpi-numa-ppr/--mpi-threads cannot be used with --no-mpi."
-        return
+        if [[ "$manual_count" -gt 0 ]]; then
+            die "--mpi-processes/--mpi-numa-ppr/--mpi-threads cannot be used with --no-mpi."
+        fi
+        return 0
     fi
 
     if [[ "$manual_count" -gt 0 && "$manual_count" -lt 3 ]]; then
@@ -252,7 +340,7 @@ resolve_mpi_config() {
 #   systemd: trailing "# zisk-coordinator:DATA_DIR=/var/lib/zisk-coordinator" lines
 #   launchd: trailing "<!-- zisk-coordinator:DATA_DIR=... -->" lines
 #
-# Set ASSUME_YES=true (e.g. via --yes / -y) to skip every prompt below.
+# Pass --yes / -y to skip that prompt and uninstall immediately.
 
 # confirm PROMPT [DEFAULT]
 # Y/N prompt. DEFAULT is "y" or "n" (default "n"). Returns 0 on yes, 1 on no.
@@ -284,29 +372,43 @@ read_unit_metadata() {
             'index($0,m) { s=index($0,m)+length(m); print substr($0,s,index($0,e)-s); exit }' \
             "$file"
     else
-        awk -v m="^# ${marker}" \
-            '$0 ~ m { sub(m,""); print; exit }' \
+        # Literal index() rather than `$0 ~ m`: BINARY_NAME is interpolated into
+        # the marker, so a future name with regex metachars (`. + * ( [`) would
+        # otherwise silently misparse this file at uninstall time.
+        awk -v m="# ${marker}" \
+            'index($0,m) == 1 { print substr($0, length(m) + 1); exit }' \
             "$file"
     fi
 }
 
-# prompt_remove_dir DIR LABEL
-# Prompts to remove DIR (default no). No-op if DIR doesn't exist.
-prompt_remove_dir() {
+# remove_dir DIR LABEL
+# Removes DIR. No-op if DIR doesn't exist.
+remove_dir() {
     local dir="$1" label="$2"
     [[ -n "$dir" && -d "$dir" ]] || return 0
-    if confirm "Remove ${label} '${dir}'?"; then
-        rm -rf "$dir"
-        info "Removed ${dir}."
+    rm -rf "$dir"
+    info "Removed ${label} ${dir}."
+}
+
+# remove_config_file FILE DIR
+# Removes a service's config file, then rmdirs DIR if it's now
+# empty (silent on non-empty — leaves sibling services' configs intact).
+# No-ops if FILE doesn't exist.
+remove_config_file() {
+    local file="$1" dir="$2"
+    [[ -n "$file" && -f "$file" ]] || return 0
+    rm -f "$file"
+    info "Removed ${file}."
+    if [[ -n "$dir" && -d "$dir" ]] && rmdir "$dir" 2>/dev/null; then
+        info "Removed empty ${dir}."
     fi
 }
 
-# prompt_remove_user_group USER GROUP
-# Prompts to remove a system user + group (default no). Branches on OS.
-prompt_remove_user_group() {
+# remove_user_group USER GROUP
+# Removes a system user + group. Branches on OS.
+remove_user_group() {
     local user="$1" group="$2"
     [[ -n "$user" && -n "$group" ]] || return 0
-    confirm "Remove system user '${user}' and group '${group}'?" || return 0
     if [[ "$OS_NAME" == "Darwin" ]]; then
         if dscl . -read "/Users/${user}" &>/dev/null; then
             dscl . -delete "/Users/${user}" && info "Removed user '${user}'."
@@ -355,15 +457,17 @@ uninstall_service() {
     [[ -f "$marker" ]] || die "${BINARY_NAME} is not installed (${marker} not found)."
     confirm "Uninstall ${BINARY_NAME}?" || { info "Cancelled."; exit 0; }
 
-    local data_dir log_dir config_dir svc_user svc_group
+    local data_dir log_dir config_dir config_file svc_user svc_group
     data_dir="$(read_unit_metadata "$marker" DATA_DIR)"
     log_dir="$(read_unit_metadata "$marker" LOG_DIR)"
     config_dir="$(read_unit_metadata "$marker" CONFIG_DIR)"
+    config_file="$(read_unit_metadata "$marker" CONFIG_FILE)"
     svc_user="$(read_unit_metadata "$marker" SVC_USER)"
     svc_group="$(read_unit_metadata "$marker" SVC_GROUP)"
     : "${data_dir:=$WORK_DIR}"
     : "${log_dir:=$LOG_DIR}"
     : "${config_dir:=$CONFIG_DIR}"
+    : "${config_file:=$CONFIG_DST}"
     : "${svc_user:=$SERVICE_USER}"
     : "${svc_group:=$SERVICE_GROUP}"
 
@@ -378,12 +482,28 @@ uninstall_service() {
         systemctl daemon-reload
     fi
 
-    prompt_remove_dir "${log_dir}" "log directory"
-    prompt_remove_dir "${data_dir}" "data directory"
-    prompt_remove_dir "${config_dir}" "config directory"
-    prompt_remove_user_group "${svc_user}" "${svc_group}"
+    # Drop the service user/group FIRST, then dirs. On macOS, dirs registered
+    # as a user's home (NFSHomeDirectory) acquire ACLs that block rm -rf until
+    # the dscl record is gone. Linux is order-insensitive.
+    remove_user_group "${svc_user}" "${svc_group}"
+    remove_dir "${log_dir}" "log directory"
+    remove_dir "${data_dir}" "data directory"
+    # config_dir is shared between services (worker + coordinator both keep
+    # their .toml under /etc/zisk). Remove only this service's own config
+    # file, then rmdir the parent — succeeds silently iff the dir is empty
+    # so a sibling service's config is never collateral damage.
+    remove_config_file "${config_file}" "${config_dir}"
 
     info "${BINARY_NAME} uninstalled."
+
+    # The shared ZisK bundle (/opt/zisk on Linux, /Library/Application Support/ZisK
+    # on macOS) and the 'zisk' system user/group are NOT touched here — they
+    # may still be in use by other ZisK services on this host. Tell the
+    # operator how to clean them up when they're truly done with ZisK.
+    echo
+    info "The shared ZisK bundle and 'zisk' system user remain on this host."
+    echo "  To remove them (only when no other ZisK service is installed):"
+    echo "    sudo ziskup --uninstall --system"
 }
 
 # activate_service
@@ -414,7 +534,14 @@ activate_service() {
             info "Service enabled but not started (--no-start)."
             info "To start: sudo systemctl start ${BINARY_NAME}"
         else
-            systemctl enable --now "${BINARY_NAME}"
+            # `enable + restart` (not `enable --now`): on a re-install the unit
+            # is already active and `--now`'s implicit `start` is a no-op, so
+            # the running process keeps the old text segment from the prior
+            # /usr/local/bin/<binary>. `restart` reloads the just-installed
+            # binary unconditionally; on a fresh install it's equivalent to
+            # `start`.
+            systemctl enable "${BINARY_NAME}"
+            systemctl restart "${BINARY_NAME}"
             SHOW_HINTS=true
         fi
     fi

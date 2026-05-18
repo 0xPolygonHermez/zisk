@@ -365,10 +365,16 @@ airtemplate ArithEq (const int N = 2**18) {
     //     1  ->  0     ZERO, POS
     //     1  ->  1     NEG
     //
-    // These tables are bigger than previous prime table.
-    // They has size of 2 * (2 * CHUNK_SIZE - 1) ≈ 2^18 rows, to avoid increment the degree or add
-    // extra column, we replicate this table for all chunks, total size is 2^18 * 2^4 = 2^22 rows.
-    // An extra column here is "pay" for each instance, but in a table is paid once.
+    // In the case of the last clock, only rows with borrow = 1 are valid; for this reason
+    // the table only includes the valid combinations
+    //
+    // 'borrow  borrow  valid values
+    // -------  ------  ------------
+    //     0  ->  1     NEG
+    //     1  ->  1     NEG
+    //
+    // Originally the table had 2^18 rows, but now has 2^18 rows for the first clock, 2^17 rows for
+    // the last clock, and 2^18 rows for middle clocks, for a total size of 2^19 + 2^17 rows
 
     col witness bits(1) x3_lt;
     col witness bits(1) y3_lt;
@@ -382,11 +388,20 @@ airtemplate ArithEq (const int N = 2**18) {
                           + clk_cte_selector(bn254_complex_sub_clk0, BN254_PRIME)
                           + clk_cte_selector(bn254_complex_mul_clk0, BN254_PRIME)
                           + clk_cte_selector(secp256r1_clk0, SECP256R1_PRIME);
-    const expr delta_x3 = x3 - y2 * sel_arith256_mod - lt_cte;
-    const expr delta_y3 = y3 - lt_cte;
+    
+    col witness bits(64, signed) delta_x3;
+    col witness bits(64, signed) delta_y3;                          
+    
+    delta_x3 <== x3 - y2 * sel_arith256_mod - lt_cte;
+    delta_y3 <== y3 - lt_cte;
 
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'x3_lt * (1 - CLK_0) + x3_lt, delta_x3], sel: sel_check_x_lt_prime);
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [2 * 'y3_lt * (1 - CLK_0) + y3_lt, delta_y3], sel: sel_check_y_lt_prime);
+    // CLK_LT_SELECTOR
+    // 0 - middle clocks
+    // 1 - first clock
+    // 2 - last clock
+    const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime);
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
 

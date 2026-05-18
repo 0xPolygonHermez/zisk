@@ -222,10 +222,10 @@ impl ZiskProve {
             self.run_asm(stdin, hints_stream, prover_options)?
         };
 
-        if !result.get_proof().proof_bytes.is_empty() {
+        if !result.get_proof().is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
-            let output_file: PathBuf = match result.get_proof().proof_kind {
+            let output_file: PathBuf = match result.get_proof().kind() {
                 ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
                     self.output.clone().unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin"))
                 }

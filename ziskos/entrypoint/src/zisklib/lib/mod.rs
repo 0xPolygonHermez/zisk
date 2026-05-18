@@ -23,7 +23,9 @@ mod sha256;
 mod sw_impl;
 mod uint256;
 mod utils;
+mod zisk_verifier;
 pub mod zkvm_accelerators;
+pub mod zkvm_io;
 
 // For public consumption
 pub use bigint::*;
@@ -38,3 +40,4 @@ pub use secp256r1::*;
 pub use sha256::*;
 pub use uint256::*;
 pub use utils::*;
+pub use zisk_verifier::*;

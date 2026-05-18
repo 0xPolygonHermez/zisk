@@ -15,7 +15,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
+use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
@@ -25,7 +25,7 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -116,10 +116,7 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
-            .join(DEFAULT_CACHE_PATH);
+        let default_cache_path = &ZiskPaths::global().cache;
         let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
@@ -153,13 +150,14 @@ impl AsmProver {
             .with_unlock_mapped_memory(unlock_mapped_memory)
             .with_asm_out_file(asm_out_file);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints && world_rank == 0)
+            .then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
         let init_rom = !is_distributed && world_rank == 0;
 
@@ -409,16 +407,14 @@ impl ProverEngine for AsmProver {
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof_bytes, publics, vk)
-            }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof_bytes, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -459,7 +455,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    fn notify_cluster_cancellation(&self) {
+        self.core_prover.backend.notify_cluster_cancellation();
+    }
+
+    fn cluster_barrier(&self) {
+        self.core_prover.backend.cluster_barrier();
+    }
+
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
@@ -495,12 +499,19 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_active_services(is_first_partition)
     }
 
-    fn reset_resources(&self) -> Result<()> {
-        self.core_prover.backend.reset_resources()
+    fn reset(&self) -> Result<()> {
+        self.core_prover.backend.reset()
     }
 
-    fn cancel(&self) {
+    fn cancel(&self) -> Result<()> {
+        // Order matters: set proofman's cancel flag first so when the executor
+        // unwinds (after the ASM children wake), proofman already knows to bail.
         self.core_prover.backend.cancel();
+        self.core_prover.backend.signal_cancellation()
+    }
+
+    fn wait_until_proofman_ready(&self) {
+        self.core_prover.backend.wait_until_proofman_ready();
     }
 }
 

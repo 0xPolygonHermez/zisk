@@ -1,5 +1,8 @@
 //! Pairing over BN254
 
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::lib::utils::{eq, is_one, lt};
 
 use super::{
