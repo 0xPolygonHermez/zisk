@@ -4,8 +4,8 @@
 
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
-    ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    ZiskInst, ZiskRom, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND,
+    SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -245,9 +245,13 @@ impl ZiskInstBuilder {
     }
 
     /// Called when the instruction has been built
-    pub fn build(&mut self, build_counter: u64) {
+    pub fn build(&mut self, rom: &mut ZiskRom) {
         // Set the instruction index to the current value of the ZiskRom build counter
-        self.i.index = build_counter;
+        self.i.index = rom.build_counter;
+        rom.build_counter += 1;
+
+        // Insert the instruction in the rom instructions map, using the instruction pc as key
+        rom.insts.insert(self.i.paddr, self.clone());
 
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
