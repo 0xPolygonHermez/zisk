@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{StaticSMBundle, TraceOutput};
+use crate::{ExecutionOutput, StaticSMBundle};
 use anyhow::Result;
 use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
@@ -32,7 +32,7 @@ impl EmulatorAsm {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<TraceOutput> {
+    ) -> Result<ExecutionOutput> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
 

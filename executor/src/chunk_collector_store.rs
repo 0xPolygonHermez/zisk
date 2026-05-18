@@ -15,7 +15,7 @@
 //! is the contract.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
 use crate::state::ChunkCollector;
 
@@ -40,7 +40,7 @@ impl ChunkCollectorStore {
     /// Drop every recorded collector. Called by
     /// [`crate::ExecutionState::reset`] between executions.
     pub fn reset(&self) {
-        self.inner.write().unwrap().clear();
+        self.inner.write().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
     /// Returns `true` when no collectors are recorded. Useful as a
@@ -78,6 +78,21 @@ mod tests {
         let store = ChunkCollectorStore::new();
         store.inner.write().unwrap().insert(7, vec![None, None]);
         assert!(!store.is_empty());
+        store.reset();
+        assert!(store.is_empty());
+    }
+
+    #[test]
+    fn reset_recovers_from_poisoned_inner() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let store = Arc::new(ChunkCollectorStore::new());
+        let store_for_panic = store.clone();
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = store_for_panic.inner.write().unwrap();
+            panic!("intentional poison");
+        }));
+        assert!(store.inner.is_poisoned());
         store.reset();
         assert!(store.is_empty());
     }

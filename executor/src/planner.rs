@@ -53,7 +53,8 @@ impl InstancePlanner {
         let mut assignments = Vec::with_capacity(plans.len());
 
         for mut plan in plans {
-            let gid = registry.add_instance_assign(InstanceInfo::new(plan.airgroup_id, plan.air_id))?;
+            let gid =
+                registry.add_instance_assign(InstanceInfo::new(plan.airgroup_id, plan.air_id))?;
             plan.set_global_id(gid.0);
             global_ids.write().map_err(|e| anyhow::anyhow!("{e}"))?.push(gid.0);
             assignments.push((gid.0, plan));
@@ -141,9 +142,7 @@ mod tests {
             Plan::new(7, 101, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
         ];
 
-        let assignments = planner
-            .assign_main_instances(&registry, &global_ids, plans)
-            .expect("ok");
+        let assignments = planner.assign_main_instances(&registry, &global_ids, plans).expect("ok");
 
         assert_eq!(assignments.len(), 2);
         let calls = registry.additions.borrow();

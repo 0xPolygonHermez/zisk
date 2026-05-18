@@ -123,7 +123,8 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         state: &ExecutionState<F>,
         global_ids: &[usize],
     ) -> Result<()> {
-        let secn_instances = state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let secn_instances =
+            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
 
         for &global_id in global_ids {
             let instance = secn_instances

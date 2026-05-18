@@ -188,8 +188,7 @@ impl BuiltinCounters {
             if let StateMachines::Builtin(b) = sm {
                 match b {
                     BuiltinSMs::MemSM(mem_sm) => {
-                        let counter =
-                            if is_asm { None } else { Some(mem_sm.build_mem_counter()) };
+                        let counter = if is_asm { None } else { Some(mem_sm.build_mem_counter()) };
                         mem = Some((pos, counter));
                     }
                     BuiltinSMs::BinarySM(binary_sm) => {

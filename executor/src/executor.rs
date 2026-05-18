@@ -50,7 +50,7 @@ pub const MAX_NUM_STEPS: u64 = 1 << 36;
 pub struct ZiskExecutor<F: PrimeField64> {
     /// Shared execution state.
     state: ExecutionState<F>,
-    /// Phase-1 actor: runs the chosen emulator and produces a `TraceOutput`.
+    /// Phase-1 actor: runs the chosen emulator and produces a `ExecutionOutput`.
     trace: TracePhase,
     /// Phase-2 actor: pure planning from the trace ingredients.
     plan: PlanPhase,
@@ -367,9 +367,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             if AirClassifier::is_main(air_id) {
                 MainSM::debug(&pctx, &sctx);
             } else {
-                let secn_instances = self.state.instance_set.secn_instances.read().map_err(|e| {
-                    ProofmanError::InvalidSetup(format!("secn_instances lock poisoned: {e}"))
-                })?;
+                let secn_instances =
+                    self.state.instance_set.secn_instances.read().map_err(|e| {
+                        ProofmanError::InvalidSetup(format!("secn_instances lock poisoned: {e}"))
+                    })?;
                 let secn_instance = secn_instances.get(&global_id).ok_or_else(|| {
                     ProofmanError::InvalidSetup(format!(
                         "Instance not found for global_id {global_id}"

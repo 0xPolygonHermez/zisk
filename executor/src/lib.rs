@@ -11,10 +11,10 @@
 //! ```text
 //! ZiskExecutor::execute
 //!   │
-//!   ├── TracePhase           → produces a uniform TraceOutput
+//!   ├── TracePhase           → produces a uniform ExecutionOutput
 //!   │     (chooses EmulatorAsm or EmulatorRust at construction)
 //!   │
-//!   └── MaterializePhase     → consumes the TraceOutput
+//!   └── MaterializePhase     → consumes the ExecutionOutput
 //!         │  (replaces phases 2–4 of the old monolithic execute)
 //!         ├── PlanPhase (called internally)
 //!         │     ├── plan_main  (pure, unit-testable)
@@ -41,7 +41,7 @@
 //! # Backend abstraction
 //!
 //! The ASM / Rust split lives behind the [`Emulator<F>`] trait. Both
-//! impls return [`TraceOutput`]; backend-specific async work (the
+//! impls return [`ExecutionOutput`]; backend-specific async work (the
 //! ASM MO + RH runner handles) is encapsulated in [`BackendArtifacts`],
 //! exposed only through `await_*` methods. **No phase signature
 //! mentions `is_asm`, `JoinHandle`, or `AsmRunner*`** — the backend
@@ -170,9 +170,9 @@ use anyhow::Result;
 
 /// Trait for unified execution across different emulator backends.
 ///
-/// Both backends return a uniform [`TraceOutput`]; backend-specific
+/// Both backends return a uniform [`ExecutionOutput`]; backend-specific
 /// async work (ASM-only MO + RH handles) is encapsulated in
-/// [`TraceOutput::backend`] and exposed via the `await_*` methods on
+/// [`ExecutionOutput::backend`] and exposed via the `await_*` methods on
 /// [`BackendArtifacts`].
 #[allow(clippy::too_many_arguments)]
 pub trait Emulator<F: PrimeField64>: Send + Sync {
@@ -186,5 +186,5 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<TraceOutput>;
+    ) -> Result<ExecutionOutput>;
 }

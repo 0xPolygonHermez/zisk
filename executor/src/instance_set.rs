@@ -15,7 +15,7 @@
 //! witness phase.
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{PoisonError, RwLock};
 
 use fields::PrimeField64;
 use sm_main::MainInstance;
@@ -48,16 +48,14 @@ impl<F: PrimeField64> InstanceSet<F> {
     /// [`crate::ExecutionState::reset`] between executions so the
     /// next proof starts from a clean slate.
     pub fn reset(&self) {
-        self.main_instances.write().unwrap().clear();
-        self.secn_instances.write().unwrap().clear();
+        self.main_instances.write().unwrap_or_else(PoisonError::into_inner).clear();
+        self.secn_instances.write().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
     /// Returns `true` when neither map has any entry.
     pub fn is_empty(&self) -> bool {
-        let main_empty =
-            self.main_instances.read().map(|m| m.is_empty()).unwrap_or(true);
-        let secn_empty =
-            self.secn_instances.read().map(|m| m.is_empty()).unwrap_or(true);
+        let main_empty = self.main_instances.read().map(|m| m.is_empty()).unwrap_or(true);
+        let secn_empty = self.secn_instances.read().map(|m| m.is_empty()).unwrap_or(true);
         main_empty && secn_empty
     }
 }
@@ -94,6 +92,22 @@ mod tests {
         // the two locks so the caller can populate them; the contract
         // here is that `reset` blanks both regardless of how they got
         // their entries.
+        set.reset();
+        assert!(set.is_empty());
+    }
+
+    #[test]
+    fn reset_recovers_from_poisoned_main_instances() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::Arc;
+
+        let set: Arc<InstanceSet<F>> = Arc::new(InstanceSet::new());
+        let set_for_panic = set.clone();
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = set_for_panic.main_instances.write().unwrap();
+            panic!("intentional poison");
+        }));
+        assert!(set.main_instances.is_poisoned());
         set.reset();
         assert!(set.is_empty());
     }

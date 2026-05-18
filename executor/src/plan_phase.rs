@@ -20,7 +20,7 @@ use zisk_common::{EmuTrace, Plan};
 
 use crate::{CountersChunkMetrics, StaticSMBundle};
 
-/// Phase-2 actor: pure planning from `TraceOutput` ingredients.
+/// Phase-2 actor: pure planning from `ExecutionOutput` ingredients.
 ///
 /// Holds the chunk size (used by [`MainPlanner`] to lay out main
 /// instances). No state otherwise — each call is functional.

@@ -33,8 +33,8 @@ use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
-use asm_runner::AsmRunnerRH;
 use crate::{state::ChunkCollector, ExecutionState, StaticSMBundle};
+use asm_runner::AsmRunnerRH;
 
 pub struct ChunkDataCollector<F: PrimeField64> {
     /// State machine bundle for building data buses.

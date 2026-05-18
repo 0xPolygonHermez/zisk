@@ -149,12 +149,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                     data_ext,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
-                op => self.precompiles.dispatch_op(
-                    op,
-                    &bus_id,
-                    data,
-                    self.mem_counter.1.as_mut(),
-                ),
+                op => self.precompiles.dispatch_op(op, &bus_id, data, self.mem_counter.1.as_mut()),
             },
             _ => true,
         }

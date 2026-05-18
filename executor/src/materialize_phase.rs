@@ -1,6 +1,6 @@
 //! [`MaterializePhase`] — phases 2–4 of the executor pipeline.
 //!
-//! Consumes the [`crate::TraceOutput`] produced by [`crate::TracePhase`]
+//! Consumes the [`crate::ExecutionOutput`] produced by [`crate::TracePhase`]
 //! and runs every `ProofCtx`-mutating step that the executor needs
 //! before witness computation can start:
 //!
@@ -43,18 +43,13 @@ use zisk_pil::{
 
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::{
-    state::ExecutionState, InstancePlanner, InstanceRegistry, PlanPhase, TraceOutput,
+    state::ExecutionState, ExecutionOutput, InstancePlanner, InstanceRegistry, PlanPhase,
     WitnessRouter,
 };
 
 /// Side-information emitted by [`MaterializePhase::run`] for the caller
 /// to fold into [`zisk_common::ZiskExecutorTime`] /
 /// [`zisk_common::ZiskExecutorSummary`].
-///
-/// Marked `#[non_exhaustive]` because future restructuring may move
-/// additional phase artifacts (e.g. `min_traces`, owned `InstanceSet`)
-/// into this struct rather than into `ExecutionState`.
-#[non_exhaustive]
 pub struct MaterializeOutput {
     /// Wall-clock time spent counting + planning (covers main planning
     /// through secondary planning, before the MO merge wait).
@@ -105,7 +100,7 @@ impl MaterializePhase {
     #[allow(unused_variables)]
     pub fn run<F: PrimeField64>(
         &self,
-        trace: TraceOutput,
+        trace: ExecutionOutput,
         plan: &PlanPhase,
         planner: &InstancePlanner,
         registry: &InstanceRegistry<F>,
@@ -271,11 +266,7 @@ impl MaterializePhase {
             cost_per_type.add_cost(StatsType::Tables, cost);
         }
 
-        Ok(MaterializeOutput {
-            count_and_plan_duration,
-            count_and_plan_mo_duration,
-            cost_per_type,
-        })
+        Ok(MaterializeOutput { count_and_plan_duration, count_and_plan_mo_duration, cost_per_type })
     }
 }
 

@@ -183,12 +183,8 @@ impl<F: PrimeField64> WitnessRouter<F> {
         // can route Table separately from Instance) without holding the
         // read guard across the handler call.
         let instance_type = {
-            let secn = ctx
-                .state
-                .instance_set
-                .secn_instances
-                .read()
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let secn =
+                ctx.state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
             secn.get(&global_id)
                 .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?
                 .instance_type()

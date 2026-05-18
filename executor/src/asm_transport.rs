@@ -150,9 +150,7 @@ impl AsmTransport {
     /// Read-only borrow on the install slot, surfacing the
     /// `Option<&Arc<AsmResources>>` for methods that want to no-op
     /// when uninstalled.
-    fn installed_resources_ref(
-        &self,
-    ) -> Result<Option<Arc<AsmResources>>> {
+    fn installed_resources_ref(&self) -> Result<Option<Arc<AsmResources>>> {
         Ok(self
             .asm_resources
             .read()

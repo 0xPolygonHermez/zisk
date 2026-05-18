@@ -108,13 +108,10 @@ impl AsmRunnerSupervisor {
 
     /// Hand the supervisor's handles back to the caller. Used on the
     /// MT-success path: caller wraps them in
-    /// [`crate::BackendArtifacts::Asm`] for [`crate::TraceOutput`].
+    /// [`crate::BackendArtifacts::Asm`] for [`crate::ExecutionOutput`].
     pub fn into_handles(
         self,
-    ) -> (
-        JoinHandle<Result<AsmRunnerMO>>,
-        Option<JoinHandle<Result<AsmRunnerRH>>>,
-    ) {
+    ) -> (JoinHandle<Result<AsmRunnerMO>>, Option<JoinHandle<Result<AsmRunnerRH>>>) {
         (self.handle_mo, self.handle_rh)
     }
 
@@ -127,14 +124,9 @@ impl AsmRunnerSupervisor {
     /// (not propagated) — the original MT error is what the caller
     /// will return, and a cancellation that itself fails is a
     /// secondary observability signal, not a new error mode.
-    pub fn cleanup_after_mt_failure(
-        self,
-        signal_cancellation: impl FnOnce() -> Result<()>,
-    ) {
+    pub fn cleanup_after_mt_failure(self, signal_cancellation: impl FnOnce() -> Result<()>) {
         if let Err(reset_err) = signal_cancellation() {
-            tracing::error!(
-                "AsmRunnerSupervisor: signal_cancellation failed: {reset_err:#}"
-            );
+            tracing::error!("AsmRunnerSupervisor: signal_cancellation failed: {reset_err:#}");
         }
         join_runner_during_cleanup("MO", self.handle_mo);
         if let Some(h) = self.handle_rh {
@@ -151,9 +143,7 @@ fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<Result<T>>) {
     match handle.join() {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
-            tracing::warn!(
-                "{label} runner returned error during MT-failure cleanup: {err:#}"
-            );
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
         }
         Err(_) => {
             tracing::warn!("{label} runner thread panicked during MT-failure cleanup")
@@ -224,9 +214,8 @@ mod tests {
         // The MO runner thread panics. cleanup_after_mt_failure must
         // join it (observing the JoinHandle's Err(panic)) and log a
         // warning, but must NOT itself panic.
-        let panicking_mo = std::thread::spawn(|| -> Result<AsmRunnerMO> {
-            panic!("simulated runner panic")
-        });
+        let panicking_mo =
+            std::thread::spawn(|| -> Result<AsmRunnerMO> { panic!("simulated runner panic") });
         let sup = AsmRunnerSupervisor::new(panicking_mo, None);
         sup.cleanup_after_mt_failure(|| Ok(()));
     }

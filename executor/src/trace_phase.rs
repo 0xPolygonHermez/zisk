@@ -7,7 +7,7 @@
 //!
 //! Owns the per-execution standard input (settable between runs) and
 //! exposes a single [`Self::run`] entry point that returns the
-//! backend-uniform [`crate::TraceOutput`].
+//! backend-uniform [`crate::ExecutionOutput`].
 //!
 //! See `.claude/executor_refactor_plan.md` step 2.1 for context.
 
@@ -20,9 +20,7 @@ use proofman_common::ProofCtx;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
-use crate::{
-    AsmResources, EmulatorAsm, EmulatorRust, StaticSMBundle, TraceOutput,
-};
+use crate::{AsmResources, EmulatorAsm, EmulatorRust, ExecutionOutput, StaticSMBundle};
 
 /// Single emulator backend chosen at construction. The variants hold
 /// the concrete emulator type so the executor can still expose
@@ -36,7 +34,7 @@ enum EmulatorBackend {
 }
 
 /// Phase-1 actor: runs the chosen emulator backend, returns a uniform
-/// [`TraceOutput`] regardless of which backend ran.
+/// [`ExecutionOutput`] regardless of which backend ran.
 ///
 /// Construction is parameterised by the bundle's `is_asm()` flag, so
 /// the backend choice agrees with the SM-counter set the bundle was
@@ -91,9 +89,7 @@ impl TracePhase {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
             EmulatorBackend::Rust(_) => {
-                anyhow::bail!(
-                    "TracePhase::set_asm_resources called on a Rust-backed trace phase"
-                )
+                anyhow::bail!("TracePhase::set_asm_resources called on a Rust-backed trace phase")
             }
         }
     }
@@ -116,7 +112,7 @@ impl TracePhase {
         }
     }
 
-    /// Runs the chosen emulator and returns its [`TraceOutput`].
+    /// Runs the chosen emulator and returns its [`ExecutionOutput`].
     ///
     /// Non-ASM arguments (`pctx`, `use_hints`, `stats`,
     /// `caller_stats_scope`) are forwarded to the ASM backend and
@@ -131,18 +127,12 @@ impl TracePhase {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<TraceOutput> {
+    ) -> Result<ExecutionOutput> {
         let stdin = self.stdin.load_full();
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.execute(
-                zisk_rom,
-                &stdin,
-                pctx,
-                sm_bundle,
-                use_hints,
-                stats,
-                caller_stats_scope,
-            ),
+            EmulatorBackend::Asm(asm) => {
+                asm.execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+            }
             EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, &stdin, sm_bundle),
         }
     }

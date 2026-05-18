@@ -1,6 +1,6 @@
 //! Uniform output from any [`crate::Emulator<F>`] backend.
 //!
-//! Both `EmulatorAsm` and `EmulatorRust` return a [`TraceOutput`].
+//! Both `EmulatorAsm` and `EmulatorRust` return a [`ExecutionOutput`].
 //! Sync data (`min_traces`, `counters`, `pub_outs`, `steps`) has the
 //! same shape on both paths. Backend-specific artifacts — the
 //! asynchronous MO and RH join handles produced only by the ASM
@@ -28,10 +28,7 @@ use crate::pub_outs_collector::PubOutsCollector;
 use crate::CountersChunkMetrics;
 
 /// Uniform return type for all `Emulator<F>` impls.
-///
-/// Sync fields are identical across backends; backend-specific
-/// async work is encapsulated in [`Self::backend`].
-pub struct TraceOutput {
+pub struct ExecutionOutput {
     /// Minimal traces produced by the emulator.
     pub min_traces: Vec<EmuTrace>,
     /// Device metrics for secondary devices (counter-phase output).
@@ -54,11 +51,6 @@ pub struct TraceOutput {
 /// - [`BackendArtifacts::Rust`] is a unit variant — the Rust emulator
 ///   has no async work, so the `await_*` methods return empty results
 ///   immediately.
-///
-/// Marked `#[non_exhaustive]` so adding a future backend (e.g. a
-/// distributed/remote emulator) is a non-breaking change for downstream
-/// matches.
-#[non_exhaustive]
 pub enum BackendArtifacts {
     /// ASM backend: parallel MO + optional RH runners.
     Asm {
@@ -175,9 +167,8 @@ mod tests {
 
     #[test]
     fn asm_await_rom_histogram_returns_some_after_join() {
-        let rh_handle = std::thread::spawn(|| {
-            Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new())))
-        });
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         // `mo` is None to assert that await_rom_histogram doesn't touch the mo slot.
         let rh = backend.await_rom_histogram().expect("await_rom_histogram on Asm");
@@ -195,9 +186,8 @@ mod tests {
 
     #[test]
     fn asm_await_rom_histogram_double_take_yields_none() {
-        let rh_handle = std::thread::spawn(|| {
-            Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new())))
-        });
+        let rh_handle =
+            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         backend.await_rom_histogram().expect("first call OK");
         let second = backend.await_rom_histogram().expect("second call OK (None)");

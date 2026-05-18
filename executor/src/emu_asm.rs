@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::{
     pub_outs_collector::PubOutsCollector,
     {AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor},
-    {BackendArtifacts, CountersChunkMetrics, StaticSMBundle, TraceOutput, MAX_NUM_STEPS},
+    {BackendArtifacts, CountersChunkMetrics, ExecutionOutput, StaticSMBundle, MAX_NUM_STEPS},
 };
 use asm_runner::{AsmRunnerMT, HintsShmem};
 use fields::PrimeField64;
@@ -32,11 +32,7 @@ pub struct EmulatorAsm {
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
     pub fn new(chunk_size: u64) -> Self {
-        Self {
-            chunk_size,
-            transport: AsmTransport::new(),
-            asm_execution_info: Mutex::new(None),
-        }
+        Self { chunk_size, transport: AsmTransport::new(), asm_execution_info: Mutex::new(None) }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
@@ -119,7 +115,7 @@ impl EmulatorAsm {
     /// * `_caller_stats_id` - Identifier used to attribute collected statistics to the caller.
     ///
     /// # Returns
-    /// A [`TraceOutput`] whose `backend` field is the `Asm` variant carrying
+    /// A [`ExecutionOutput`] whose `backend` field is the `Asm` variant carrying
     /// the spawned MO + (optionally) RH join handles.
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
@@ -131,7 +127,7 @@ impl EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<TraceOutput> {
+    ) -> Result<ExecutionOutput> {
         let asm_resources = self.transport.resources()?;
 
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
@@ -164,7 +160,7 @@ impl EmulatorAsm {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
                 let (handle_mo, handle_rh) = supervisor.into_handles();
-                Ok(TraceOutput {
+                Ok(ExecutionOutput {
                     min_traces,
                     counters,
                     pub_outs,
@@ -273,7 +269,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<crate::TraceOutput> {
+    ) -> Result<crate::ExecutionOutput> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
     }
 }

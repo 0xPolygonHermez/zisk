@@ -161,11 +161,7 @@ pub trait ProofRegistry: Dctx {
 /// Inherits [`Dctx`] for the shared distribution queries.
 pub trait WitnessRegistry<F: PrimeField64>: Dctx {
     /// Pushes a computed `AirInstance<F>` to the proof context.
-    fn add_air_instance(
-        &self,
-        air_instance: proofman_common::AirInstance<F>,
-        gid: GlobalId,
-    );
+    fn add_air_instance(&self, air_instance: proofman_common::AirInstance<F>, gid: GlobalId);
 }
 
 /// Narrow surface over `SetupCtx`: just the per-AIR dimensions used to

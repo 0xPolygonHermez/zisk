@@ -3,7 +3,7 @@
 use fields::PrimeField64;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, Mutex, RwLock,
+    Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
@@ -92,9 +92,16 @@ impl<F: PrimeField64> ExecutionState<F> {
     }
 
     /// Resets all internal state to default values.
+    ///
+    /// Poison-tolerant: every lock here is unwrapped via
+    /// `PoisonError::into_inner` so a prior-execution panic does not
+    /// cascade and leave later fields un-reset. Sound only because each
+    /// lock's contents is overwritten — do NOT copy this pattern to
+    /// non-reset call sites.
     pub fn reset(&self) {
-        *self.execution_result.lock().unwrap() = ZiskExecutorSummary::default();
-        *self.min_traces.write().unwrap() = None;
+        *self.execution_result.lock().unwrap_or_else(PoisonError::into_inner) =
+            ZiskExecutorSummary::default();
+        *self.min_traces.write().unwrap_or_else(PoisonError::into_inner) = None;
         self.instance_set.reset();
         self.collector_store.reset();
         self.stats.reset();
