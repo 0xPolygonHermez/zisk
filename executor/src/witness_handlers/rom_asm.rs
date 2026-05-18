@@ -11,20 +11,25 @@ use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 
+use crate::ports::{GlobalId, WitnessRegistry};
 use crate::state::ExecutionState;
 use crate::witness_handlers::common::{register_empty_collector, take_collectors_for_instance};
-use crate::WitnessGenerator;
+use crate::witness_handlers::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use crate::{ChunkDataCollector, WitnessGenerator};
 
-/// Static-namespace handler for the ASM-backend ROM witness path.
+/// Strategy implementor for the ASM-backend ROM witness path.
 pub struct RomAsmWitnessHandler;
 
-impl RomAsmWitnessHandler {
+impl<F: PrimeField64> RomWitnessHandler<F> for RomAsmWitnessHandler {
     /// Compute the witness for the ROM global id under the ASM
     /// backend: register an empty per-chunk collector slot, then call
     /// into the witness generator with the shared ROM trace buffer.
-    #[allow(clippy::too_many_arguments)]
-    pub fn dispatch<F: PrimeField64>(
+    /// The `_collector` argument is unused — the ASM RH service supplies
+    /// ROM histogram data out-of-band.
+    fn dispatch(
+        &self,
         generator: &WitnessGenerator,
+        _collector: &ChunkDataCollector<F>,
         trace_buffer_rom: &Mutex<Vec<F>>,
         state: &ExecutionState<F>,
         pctx: &ProofCtx<F>,
@@ -69,5 +74,56 @@ impl RomAsmWitnessHandler {
             trace_buffer,
             stats_scope_id,
         )
+    }
+
+    /// Pre-calculate hook for ASM ROM: unconditionally flag the gid not-ready.
+    /// All other args are unused — the ASM RH service handles collection
+    /// out-of-band, so there is nothing to enqueue or downcast here.
+    fn pre_calculate<'a>(
+        &self,
+        registry: &dyn WitnessRegistry<F>,
+        _state: &ExecutionState<F>,
+        _secn_instances: &'a SecnInstanceMap<F>,
+        _instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
+        global_id: usize,
+        _airgroup_id: usize,
+        _air_id: usize,
+    ) -> Result<()> {
+        registry.set_witness_ready(GlobalId(global_id), false);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ports::fakes::FakeProofRegistry;
+    use fields::Goldilocks;
+    use std::collections::HashMap;
+
+    type F = Goldilocks;
+
+    #[test]
+    fn pre_calculate_marks_gid_not_ready_unconditionally() {
+        let registry = FakeProofRegistry::new();
+        let state: ExecutionState<F> = ExecutionState::new();
+        let secn_instances: SecnInstanceMap<F> = HashMap::new();
+        let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
+
+        <RomAsmWitnessHandler as RomWitnessHandler<F>>::pre_calculate(
+            &RomAsmWitnessHandler,
+            &registry,
+            &state,
+            &secn_instances,
+            &mut instances_to_collect,
+            42,
+            7,
+            13,
+        )
+        .expect("pre_calculate must not error on empty inputs");
+
+        // ASM path never enqueues; flips the gid not-ready.
+        assert!(instances_to_collect.is_empty());
+        assert_eq!(registry.witness_ready.borrow().get(&GlobalId(42)), Some(&false));
     }
 }

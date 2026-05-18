@@ -221,6 +221,10 @@ pub(crate) mod fakes {
         pub ownership: RefCell<HashMap<GlobalId, bool>>,
         /// `is_first_process()` return value.
         pub first_process: bool,
+        /// Sequence of gids passed to `add_air_instance`, in order. The
+        /// `AirInstance<F>` payload is dropped — tests only assert which
+        /// gid received an air instance, not the field content.
+        pub air_instances: RefCell<Vec<GlobalId>>,
     }
 
     impl Default for FakeProofRegistry {
@@ -233,6 +237,7 @@ pub(crate) mod fakes {
                 pub_outs: RefCell::default(),
                 ownership: RefCell::default(),
                 first_process: true,
+                air_instances: RefCell::default(),
             }
         }
     }
@@ -298,6 +303,16 @@ pub(crate) mod fakes {
         }
         fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) {
             self.pub_outs.borrow_mut().extend_from_slice(pub_outs);
+        }
+    }
+
+    impl<F: PrimeField64> WitnessRegistry<F> for FakeProofRegistry {
+        fn add_air_instance(
+            &self,
+            _air_instance: proofman_common::AirInstance<F>,
+            gid: GlobalId,
+        ) {
+            self.air_instances.borrow_mut().push(gid);
         }
     }
 }

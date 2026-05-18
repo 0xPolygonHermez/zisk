@@ -20,24 +20,19 @@ use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
-use zisk_common::{Instance, InstanceType, StatsScope};
+use zisk_common::{InstanceType, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
 use crate::ports::{GlobalId, WitnessRegistry};
 use crate::witness_handlers::{
     common::register_empty_collector, MainWitnessHandler, RomAsmWitnessHandler,
-    RomNativeWitnessHandler, SecondaryWitnessHandler, TableWitnessHandler,
+    RomNativeWitnessHandler, RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef,
+    SecondaryWitnessHandler, TableWitnessHandler,
 };
 use crate::{
     state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
 };
-
-/// Type alias for the secondary instances map (owned).
-type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
-
-/// Type alias for the secondary instances map (borrowed).
-type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a Box<dyn Instance<F>>>;
 
 /// Context for witness computation operations.
 ///
@@ -202,30 +197,26 @@ impl<F: PrimeField64> WitnessRouter<F> {
             ),
             InstanceType::Instance => {
                 if AirClassifier::is_rom(air_id) {
-                    if self.is_asm {
-                        RomAsmWitnessHandler::dispatch(
-                            &self.witness_generator,
-                            &self.trace_buffer_rom,
-                            ctx.state,
-                            ctx.pctx,
-                            ctx.sctx,
-                            global_id,
-                            airgroup_id,
-                            air_id,
-                            stats_scope_id,
-                        )
+                    // Both handlers implement `RomWitnessHandler<F>` with a
+                    // unified signature; C.2 will collapse this branch into
+                    // a single boxed-handler call held on the router.
+                    let handler: &dyn RomWitnessHandler<F> = if self.is_asm {
+                        &RomAsmWitnessHandler
                     } else {
-                        RomNativeWitnessHandler::dispatch(
-                            &self.witness_generator,
-                            &self.collector,
-                            &self.trace_buffer_rom,
-                            ctx.state,
-                            ctx.pctx,
-                            ctx.sctx,
-                            global_id,
-                            stats_scope_id,
-                        )
-                    }
+                        &RomNativeWitnessHandler
+                    };
+                    handler.dispatch(
+                        &self.witness_generator,
+                        &self.collector,
+                        &self.trace_buffer_rom,
+                        ctx.state,
+                        ctx.pctx,
+                        ctx.sctx,
+                        global_id,
+                        airgroup_id,
+                        air_id,
+                        stats_scope_id,
+                    )
                 } else {
                     SecondaryWitnessHandler::dispatch(
                         &self.witness_generator,
