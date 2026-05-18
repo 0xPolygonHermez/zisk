@@ -825,9 +825,9 @@ void server_run (void)
 
     // Call emulator assembly code
     gettimeofday(&start_time,NULL);
-    if (verbose) asm_printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
-    emulator_start();
-    if (verbose) asm_printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("Before calling emu_start() trace_address=%lx\n", trace_address);
+    emu_start();
+    if (verbose) asm_printf("After calling emu_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 

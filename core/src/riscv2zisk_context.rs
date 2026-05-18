@@ -188,7 +188,7 @@ impl Riscv2ZiskContext<'_> {
             "srai" => self.immediate_op(riscv_instruction, "sra", 4),
             "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
             "andi" => self.immediate_op(riscv_instruction, "and", 4),
-            "auipc" => self.auipc(riscv_instruction),
+            "auipc" => self.auipc(riscv_instruction, next_instructions),
             "addiw" => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
@@ -937,7 +937,52 @@ impl Riscv2ZiskContext<'_> {
     // auipc rd, upimm
     //     flag(0,0), j(pc+upimm<<12, pc+4) -> [%rd]    // 4 goes to jmp_offset2 and upimm << 12 to
     // jmp_offset1
-    pub fn auipc(&mut self, i: &RiscvInstruction) {
+    pub fn auipc(&mut self, i: &RiscvInstruction, next_instructions: &[RiscvInstruction]) {
+        // If the auipc is immediately followed by a jalr that uses the value of rd, we can directly
+        // store the result of auipc in the register and statically jump to the target of auipc,
+        // without needing to compute the target of auipc in the Zisk code and store it in rd, and
+        // then dynamically jump to it in the next instruction. This optimization allows us to save one instruction in the
+        // common case of auipc + jalr used for function calls, which is a common pattern in RISC-V
+        // code.
+        if next_instructions.len() >= 1
+            && next_instructions[0].inst == "jalr"
+            && next_instructions[0].rs1 == i.rd
+            && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
+        {
+            // return to this pc: rd = PC + 8
+            // jump to pc: PC + (i.imm << 12) + next_instructions[0].imm
+            let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
+            let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
+            let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
+            let jump_pc = i.rom_address as i64
+                + ((i.imm as i64)/*  << 12*/)
+                + next_instructions[0].imm as i64;
+
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", return_pc, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", i.rd as i64, false, false);
+            zib.j(1 as i64, 1);
+            zib.verbose(&format!("auipc r{}, 0x{:x} + jalr (1) pc=0x{:x}", i.rd, i.imm, jump_pc));
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
+            self.insts.insert(i.rom_address, zib);
+
+            let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address + 1, i.inst.clone());
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", jump_pc as u64, false);
+            zib.op("copyb").unwrap();
+            zib.set_pc();
+            zib.j(0 as i64, 0);
+            zib.verbose(&format!("auipc r{}, 0x{:x} + jalr (2) pc=0x{:x}", i.rd, i.imm, jump_pc));
+            zib.build(*self.build_counter);
+            *self.build_counter += 1;
+            self.insts.insert(i.rom_address + 1, zib);
+
+            return;
+        }
+
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);

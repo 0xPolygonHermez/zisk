@@ -196,10 +196,6 @@ impl ZiskAsmContext {
     pub fn chunk_player_mem_reads_collect_main(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain
     }
-    pub fn jump_to_unaligned_pc(&self) -> bool {
-        //ctx.chunk_player_mem_reads_collect_main() || ctx.chunk_player_mt_collect_mem()
-        true
-    }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
     pub fn comment(&self, c: String) -> String {
@@ -774,8 +770,8 @@ impl ZiskRom2Asm {
         *code += "\tret\n\n";
 
         // Externally callable function label
-        *code += ".global emulator_start\n";
-        *code += "emulator_start:\n";
+        *code += ".global emu_start\n";
+        *code += "emu_start:\n";
 
         Self::push_external_registers(&mut ctx, code);
 
@@ -3452,14 +3448,14 @@ impl ZiskRom2Asm {
                     if ctx.chunk_player_mt_collect_mem()
                         || ctx.chunk_player_mem_reads_collect_main()
                     {
-                        *code += "\tjz execute_end\n";
+                        *code += "\tjz emu_end\n";
                     } else {
                         *code += "\tcall chunk_end\n";
                     }
                 } else if ctx.chunk_player_mt_collect_mem()
                     || ctx.chunk_player_mem_reads_collect_main()
                 {
-                    *code += "\tjz execute_end\n";
+                    *code += "\tjz emu_end\n";
                     Self::set_pc(&mut ctx, instruction, code, "nz", rom);
                 } else {
                     *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
@@ -3477,7 +3473,7 @@ impl ZiskRom2Asm {
                         REG_VALUE,
                         ctx.comment_str("step ?= max_steps")
                     );
-                    unusual_code += "\tjae execute_end\n";
+                    unusual_code += "\tjae emu_end\n";
                     unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
                     Self::set_pc(&mut ctx, instruction, code, "nz", rom);
                     *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
@@ -3536,7 +3532,7 @@ impl ZiskRom2Asm {
 
             // Jump to new pc, if not the next one
             if instruction.end {
-                *code += "\tjmp execute_end\n";
+                *code += "\tjmp emu_end\n";
             } else if !ctx.jump_to_static_pc.is_empty() {
                 *code += ctx.jump_to_static_pc.as_str();
             } else if ctx.jump_to_dynamic_pc {
@@ -3550,7 +3546,7 @@ impl ZiskRom2Asm {
         Self::pop_internal_registers(&mut ctx, code, false);
         *code += "\n";
 
-        *code += "execute_end:\n";
+        *code += "emu_end:\n";
 
         // Update step memory variable with the content of the step register, to make it accessible
         // to the caller
@@ -3675,46 +3671,33 @@ impl ZiskRom2Asm {
         // Init previous key to the first ROM entry
         let mut previous_key: u64 = ROM_ENTRY;
         for key in &rom.sorted_pc_list {
-            if ctx.jump_to_unaligned_pc() {
-                // When in chunk player mode, we need to resume the chunk at any address,
-                // including internal addresses not aligned to 4B.  We need to fill all the gaps
-                // between alligned addresses to make the distance between addresses constant and
-                // allow jumping to the proper branch using pc - ROM_ADDR as an increment
-                //
-                // 4N
-                //   4N + 1
-                //   4N + 2   <--  We want to be able to dynamically start a chunk at this pc
-                //   4N + 3
-                // 4(N+1)
-                //   ...
-                if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
-                {
-                    for _ in previous_key + 1..*key {
-                        *code += "\t.quad 0\n";
-                    }
-                }
-            } else if (key & 0x3) != 0 {
-                // Skip internal, unaligned instructions, since we never jump directly to them,
-                // except when in chunk player mode, since we need to resume a chunk at any pc
-                //
-                // 4N
-                // 4(N+1)  <--  We only need to dynamically jump to an alligned pc
-                // 4(N+2)
-                //   ...
+            // When in chunk player mode, we need to resume the chunk at any address,
+            // including internal, odd addresses not aligned to 2B.  We need to fill all the
+            // gaps between alligned addresses to make the distance between addresses constant
+            // and allow jumping to the proper branch using pc - ROM_ADDR as an increment
+            //
+            // 4N
+            //   4N + 1   <--  We want to be able to dynamically start a chunk at this pc
+            //   4N + 2
+            //   4N + 3
+            // 4(N+1)
+
+            // If not in chunk player mode, we can skip all odd, internal addresses
+            if !ctx.chunk_player_mem_reads_collect_main()
+                && !ctx.chunk_player_mt_collect_mem()
+                && key & 0x1 != 0
+            {
                 continue;
             }
 
-            // Map fixed-length pc labels to real variable-length instruction labels
-            // This is used to implement dynamic jumps, i.e. to jump to an address that is not
-            // a constant in the instruction, but dynamically built as part of the emulation
-
-            // Only use labels in boundary pc addresses
-            // match key {
-            //     0x1000 | 0x80000000 => {
-            //         *code += &format!("\nmap_pc_{:x}: \t.quad pc_{:x}", key, key)
-            //     }
-            //     _ => *code += &format!(", pc_{:x}", key),
-            // }
+            // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
+            // the distance between labels constant and allow jumping to the proper branch using
+            // pc - ROM_ADDR as an increment
+            if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR)) {
+                for _ in previous_key + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
 
             // Use labels always
             *code += &format!("map_pc_{key:x}: \t.quad pc_{key:x}\n");
@@ -7711,7 +7694,8 @@ impl ZiskRom2Asm {
             }
         } else {
             *code += &ctx.full_line_comment("pc = f(flag)".to_string());
-            // Calculate the new pc
+
+            // Calculate the new pc if flag == 1
             *code += &format!("\tcmp {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag == 1 ?"));
             *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
             *code += &format!(
@@ -7720,7 +7704,13 @@ impl ZiskRom2Asm {
                 (ctx.pc as i64 + instruction.jmp_offset1) as u64,
                 ctx.comment_str("pc += i.jmp_offset1")
             );
-            *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
+            *code += &format!(
+                "\tjmp pc_{:x} {}\n",
+                (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                ctx.comment_str("jump to static pc")
+            );
+
+            // Calculate the new pc if flag == 0
             *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
             *code += &format!(
                 "\tmov {}, 0x{:x} {}\n",
@@ -7728,8 +7718,11 @@ impl ZiskRom2Asm {
                 (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                 ctx.comment_str("pc += i.jmp_offset2")
             );
-            *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
-            ctx.jump_to_dynamic_pc = true;
+            *code += &format!(
+                "\tjmp pc_{:x} {}\n",
+                (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                ctx.comment_str("jump to static pc")
+            );
         }
     }
 
@@ -7763,11 +7756,10 @@ impl ZiskRom2Asm {
             ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
         );
         *code += &format!(
-            "\tmov {}, [{} + {}*{}] {}\n",
+            "\tmov {}, [{} + {}*8] {}\n",
             REG_ADDRESS,
             REG_ADDRESS,
             REG_PC,
-            if ctx.jump_to_unaligned_pc() { 8 } else { 2 },
             ctx.comment_str("address = map[pc]")
         );
         *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
