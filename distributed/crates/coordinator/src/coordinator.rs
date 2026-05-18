@@ -1996,36 +1996,6 @@ mod tests {
         }
     }
 
-    /// `setup_program` must still refuse a NEW (uncached) program while
-    /// any worker is `Computing(_)` — the worker side's `run_setup` would
-    /// race against the in-flight task.
-    #[tokio::test]
-    async fn test_setup_program_refuses_new_program_while_computing() {
-        use std::fs;
-
-        let (coordinator, workers, _job_id) =
-            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
-        let w0_id = workers[0].0.clone();
-        assert!(matches!(
-            coordinator.workers_pool.worker_state(&w0_id).await,
-            Some(WorkerState::Computing(_))
-        ));
-
-        // A NEW program (not in active_setups).
-        let elf_bytes = b"new-elf".to_vec();
-        let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
-        assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
-
-        let err = coordinator
-            .setup_program(&hash_id, "new-program".to_string(), false)
-            .await
-            .expect_err("setup_program must refuse a new program while workers are Computing");
-        assert!(
-            matches!(err, CoordinatorError::InvalidRequest(_)),
-            "expected InvalidRequest, got {err:?}"
-        );
-    }
-
     /// `setup_program` must refuse if any worker is `Computing(_)`. The
     /// worker side's `run_setup` uses the same prover as in-flight tasks;
     /// running both concurrently corrupts the job.
