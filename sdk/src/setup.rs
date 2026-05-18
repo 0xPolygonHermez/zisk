@@ -55,7 +55,6 @@ impl<'a, C: Client> SetupRequest<'a, C> {
     }
 
     /// Generate setup for emulator only (skips ASM service startup).
-    /// Programs set up this way support `execute` but not `prove`.
     #[must_use]
     pub fn emulator_only(mut self) -> Self {
         self.emulator_only = true;

@@ -299,7 +299,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {   
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         Box::new(RomInstance::new(
             self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
             ictx,
