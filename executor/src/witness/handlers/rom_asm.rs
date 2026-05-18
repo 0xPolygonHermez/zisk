@@ -11,10 +11,10 @@ use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 
-use crate::ports::{Dctx, GlobalId};
-use crate::state::ExecutionState;
 use super::common::{register_empty_collector, take_collectors_for_instance};
 use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use crate::ports::{Dctx, GlobalId};
+use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Strategy implementor for the ASM-backend ROM witness path.

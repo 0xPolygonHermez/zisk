@@ -475,18 +475,13 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     } else {
                         push_error(
                             ctx.errors,
-                            anyhow::anyhow!(
-                                "global_id {global_id} not in collectors_by_instance"
-                            ),
+                            anyhow::anyhow!("global_id {global_id} not in collectors_by_instance"),
                         );
                     }
                 }
             }
             Err(_) => {
-                push_error(
-                    ctx.errors,
-                    anyhow::anyhow!("collectors_by_instance lock poisoned"),
-                );
+                push_error(ctx.errors, anyhow::anyhow!("collectors_by_instance lock poisoned"));
             }
         }
 
@@ -529,9 +524,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             (Err(e), _) => {
                 push_error(
                     ctx.errors,
-                    anyhow::anyhow!(
-                        "Failed to get instance info for global_id {global_id}: {e}"
-                    ),
+                    anyhow::anyhow!("Failed to get instance info for global_id {global_id}: {e}"),
                 );
             }
             (Ok(_), None) => {

@@ -13,10 +13,10 @@ use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 
-use crate::ports::{Dctx, GlobalId};
-use crate::state::ExecutionState;
 use super::common::{register_empty_collector, take_collectors_for_instance};
 use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use crate::ports::{Dctx, GlobalId};
+use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Strategy implementor for the native-backend ROM witness path.
@@ -130,14 +130,8 @@ mod tests {
     const AIR_ID: usize = 13;
 
     fn make_rom_instance(rh_data: Option<AsmRunnerRH>) -> Box<dyn Instance<F>> {
-        let plan = Plan::new(
-            AIRGROUP_ID,
-            AIR_ID,
-            None,
-            InstanceType::Instance,
-            CheckPoint::None,
-            None,
-        );
+        let plan =
+            Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
         let ictx = InstanceCtx::new(GID, plan);
         Box::new(RomInstance::new(
             Arc::new(ZiskRom::default()),

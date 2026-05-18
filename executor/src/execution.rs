@@ -107,7 +107,9 @@ impl ExecutionPhase {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
             EmulatorBackend::Rust(_) => {
-                anyhow::bail!("ExecutionPhase::set_asm_resources called on a Rust-backed trace phase")
+                anyhow::bail!(
+                    "ExecutionPhase::set_asm_resources called on a Rust-backed trace phase"
+                )
             }
         }
     }
