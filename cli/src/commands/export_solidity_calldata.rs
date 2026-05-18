@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::{Proof, ProofKind, ZISK_PUBLICS};
+use zisk_common::{Proof, ProofBody, ZISK_PUBLICS};
 use zisk_prover_backend::setup_logger;
 
 use crate::ux::{print_banner, print_banner_command};
@@ -49,32 +49,27 @@ impl ZiskExportSolidityCalldata {
             anyhow!("Failed to load Proof from file {}: {}", self.proof.display(), e)
         })?;
 
-        if proof.proof_kind != ProofKind::Plonk {
+        let (proof_bytes, vadcop_vk) = match &proof.body {
+            ProofBody::Plonk { proof_bytes, plonk_vk } => {
+                (proof_bytes.as_slice(), plonk_vk.vadcop_vk.as_slice())
+            }
+            _ => {
+                return Err(anyhow!(
+                    "Expected a Plonk-wrapped proof; got {:?}. Run `cargo-zisk wrap-proof --plonk` first.",
+                    proof.kind()
+                ));
+            }
+        };
+        if proof.program_vk.vk.len() != 4 {
             return Err(anyhow!(
-                "Expected a Plonk-wrapped proof; got {:?}. Run `cargo-zisk wrap-proof --plonk` first.",
-                proof.proof_kind
-            ));
-        }
-
-        if proof.program_vk.vk.len() != 32 {
-            return Err(anyhow!(
-                "program_vk has unexpected length {} (expected 32 bytes)",
+                "program_vk has unexpected length {} (expected 4 u64s)",
                 proof.program_vk.vk.len()
             ));
         }
 
-        // Parse the zisk_vk blob: [vk_len: u32 LE][vadcop_vk_bytes][plonk_vkey_json]
-        if proof.zisk_vk.len() < 4 {
-            return Err(anyhow!("zisk_vk too short for Plonk proof"));
-        }
-        let vk_len = u32::from_le_bytes(proof.zisk_vk[0..4].try_into().unwrap()) as usize;
-        if proof.zisk_vk.len() < 4 + vk_len {
-            return Err(anyhow!("zisk_vk truncated: declared len {} > remaining bytes", vk_len));
-        }
-        let vadcop_vk = &proof.zisk_vk[4..4 + vk_len];
-        if vadcop_vk.len() != 32 {
+        if vadcop_vk.len() != 4 {
             return Err(anyhow!(
-                "vadcop_vk has unexpected length {} (expected 32 bytes)",
+                "vadcop_vk has unexpected length {} (expected 4 u64s)",
                 vadcop_vk.len()
             ));
         }
@@ -96,14 +91,14 @@ impl ZiskExportSolidityCalldata {
         let publics_bytes = &canonical[32..32 + publics_data_len];
         let root_c_bytes: [u8; 32] = canonical[32 + publics_data_len..].try_into().unwrap();
 
-        // Sanity check: the prefix/suffix should be the LE→BE u64 transform of program_vk and
-        // vadcop_vk respectively. Recompute them independently and bail on any drift —
+        // Sanity check: the prefix/suffix should be the BE-byte encoding of the program_vk and
+        // vadcop_vk u64 chunks. Recompute them independently and bail on any drift —
         // catches a divergence in `bytes_solidity` before the Hardhat test reverts.
-        let independent_prefix = u64_chunks_le_to_be(&proof.program_vk.vk);
-        let independent_suffix = u64_chunks_le_to_be(vadcop_vk);
+        let independent_prefix = u64_chunks_to_be(&proof.program_vk.vk);
+        let independent_suffix = u64_chunks_to_be(vadcop_vk);
         if independent_prefix != program_vk_bytes || independent_suffix != root_c_bytes {
             return Err(anyhow!(
-                "internal: bytes_solidity prefix/suffix diverge from independent LE->BE encoding"
+                "internal: bytes_solidity prefix/suffix diverge from independent BE encoding"
             ));
         }
 
@@ -111,7 +106,7 @@ impl ZiskExportSolidityCalldata {
             program_vk: format!("0x{}", hex::encode(program_vk_bytes)),
             root_c_vadcop_final: format!("0x{}", hex::encode(root_c_bytes)),
             public_values: format!("0x{}", hex::encode(publics_bytes)),
-            proof_bytes: format!("0x{}", hex::encode(&proof.proof_bytes)),
+            proof_bytes: format!("0x{}", hex::encode(proof_bytes)),
         };
 
         if let Some(parent) = self.output.parent() {
@@ -131,10 +126,9 @@ impl ZiskExportSolidityCalldata {
     }
 }
 
-fn u64_chunks_le_to_be(bytes: &[u8]) -> [u8; 32] {
+fn u64_chunks_to_be(values: &[u64]) -> [u8; 32] {
     let mut out = [0u8; 32];
-    for (i, chunk) in bytes.chunks_exact(8).enumerate() {
-        let val = u64::from_le_bytes(chunk.try_into().unwrap());
+    for (i, val) in values.iter().enumerate() {
         out[i * 8..(i + 1) * 8].copy_from_slice(&val.to_be_bytes());
     }
     out
