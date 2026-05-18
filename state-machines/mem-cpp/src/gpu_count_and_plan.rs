@@ -12,29 +12,34 @@ pub use crate::gpu_bindings::{
     GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta, MemOp as GpuMemOp,
 };
 
-/// Safe Rust wrapper around the GPU `CountAndPlan` C++ class.
+/// Safe Rust wrapper around the C++ `CountAndPlan` GPU pipeline.
 ///
-/// Mirrors the shape of [`crate::MemPlanner`] (CPU) so call-sites can be
-/// switched between backends with minimal churn. Lifecycle:
+/// NOT an alternative to [`crate::MemPlanner`]. This is a *segment
+/// producer*: it computes the planner `InstanceMeta[]` (and per-chunk
+/// mem-align counters) on the GPU; the caller injects those into a
+/// `MemPlanner`, which remains the owner of the segment table and the
+/// final plan collector. Lifecycle:
 ///   1. `new()`            — allocates the GPU class
 ///   2. `setup(...)`       — initialize buffers / pick worker slice
 ///   3. `add_chunk(...)`   — feed memops, one chunk at a time
 ///   4. `run()`            — drains streams, returns borrowed metas
-///   5. drop               — destroys the GPU class
-pub struct GpuMemPlanner {
+///   5. `reset()`          — reused across blocks; never recreated
+///                           (recreation is ~240 ms of CUDA churn)
+///   6. drop               — destroys the GPU class
+pub struct GpuCountAndPlan {
     inner: *mut gpu_bindings::CountAndPlanHandle,
 }
 
-unsafe impl Send for GpuMemPlanner {}
-unsafe impl Sync for GpuMemPlanner {}
+unsafe impl Send for GpuCountAndPlan {}
+unsafe impl Sync for GpuCountAndPlan {}
 
-impl Default for GpuMemPlanner {
+impl Default for GpuCountAndPlan {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl GpuMemPlanner {
+impl GpuCountAndPlan {
     pub fn new() -> Self {
         let ptr = unsafe { gpu_bindings::count_and_plan_create() };
         assert!(!ptr.is_null(), "count_and_plan_create returned null");
@@ -122,7 +127,7 @@ impl GpuMemPlanner {
     }
 }
 
-impl Drop for GpuMemPlanner {
+impl Drop for GpuCountAndPlan {
     fn drop(&mut self) {
         unsafe { gpu_bindings::count_and_plan_destroy(self.inner) };
     }

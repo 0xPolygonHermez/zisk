@@ -13,6 +13,7 @@ use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
+use proofman_starks_lib_c::unified_buffer_acquire_c;
 use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
@@ -207,6 +208,14 @@ impl EmulatorAsm {
         let chunk_size = self.chunk_size;
 
         let _stats = stats.clone();
+
+        // Reserve proofman's borrowed GPU unified buffer for the entire
+        // memory-ops count-and-plan window. The MO runner thread spawned just
+        // below rune the GPU count-and-plan kernels on
+        // proofman's single cudaMalloc'd buffer.
+        if pctx.gpu {
+            unified_buffer_acquire_c(pctx.get_device_buffers_ptr());
+        }
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({

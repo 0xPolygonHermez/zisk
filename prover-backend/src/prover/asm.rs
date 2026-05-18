@@ -187,9 +187,8 @@ impl AsmProver {
             asm_runner_options,
         )?;
 
-        // Borrow proofman's already-allocated unified GPU buffer (idle during
-        // count-and-plan, used later for proving). Zero values when CUDA is
-        // unavailable; downstream consumers no-op on (0, 0).
+        // Borrow proofman's already-allocated unified GPU buffer. 
+        // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
         let device_buffers_ptr = pctx.get_device_buffers_ptr();
         let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
         let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);

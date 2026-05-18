@@ -25,6 +25,7 @@ use crate::{
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_starks_lib_c::unified_buffer_release_c;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_main::MainSM;
 use std::{
@@ -246,6 +247,13 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
                 .extend(asm_runner_mo.plans);
 
             stats_end!(self.state.stats, &_mo_add_scope);
+
+            // Release proofman's borrowed unified buffer: the MO
+            // count-and-plan GPU work is now done (handle_mo joined
+            // just above). 
+            if pctx.gpu {
+                unified_buffer_release_c(pctx.get_device_buffers_ptr());
+            }
         }
 
         let count_and_plan_mo_duration = start_partial.elapsed();

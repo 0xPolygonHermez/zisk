@@ -16,7 +16,7 @@ use crate::{
 };
 use mem_planner_cpp::MemPlanner;
 #[cfg(gpu)]
-use mem_planner_cpp::{GpuMemOp, GpuMemPlanner};
+use mem_planner_cpp::{GpuCountAndPlan, GpuMemOp};
 
 use anyhow::{Context, Result};
 
@@ -28,7 +28,7 @@ pub struct MOShMemReader {
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
     #[cfg(gpu)]
-    gpu_planner: Option<GpuMemPlanner>,
+    gpu_count_and_plan: Option<GpuCountAndPlan>,
 }
 
 impl MOShMemReader {
@@ -49,7 +49,7 @@ impl MOShMemReader {
         )?;
 
         #[cfg(gpu)]
-        let gpu_planner = setup_gpu_planner(gpu_buf_ptr, gpu_buf_size);
+        let gpu_count_and_plan = setup_gpu_count_and_plan(gpu_buf_ptr, gpu_buf_size);
         #[cfg(not(gpu))]
         let _ = (gpu_buf_ptr, gpu_buf_size);
 
@@ -58,29 +58,29 @@ impl MOShMemReader {
             mem_planner: Some(MemPlanner::new()),
             handle_mo: None,
             #[cfg(gpu)]
-            gpu_planner,
+            gpu_count_and_plan,
         })
     }
 }
 
 #[cfg(gpu)]
-fn setup_gpu_planner(gpu_buf_ptr: usize, gpu_buf_size: u64) -> Option<GpuMemPlanner> {
+fn setup_gpu_count_and_plan(gpu_buf_ptr: usize, gpu_buf_size: u64) -> Option<GpuCountAndPlan> {
     if gpu_buf_ptr == 0 || gpu_buf_size == 0 {
         tracing::info!(
             "[gpu] no borrowed buffer (--gpu not set at runtime); using CPU mem_planner path"
         );
         return None;
     }
-    let gp = GpuMemPlanner::new();
+    let gp = GpuCountAndPlan::new();
     if !gp.setup(gpu_buf_ptr as *mut c_void, gpu_buf_size as usize, 1, 0) {
         tracing::error!(
-            "[gpu] GpuMemPlanner::setup returned false (size={} bytes); falling back to CPU",
+            "[gpu] GpuCountAndPlan::setup returned false (size={} bytes); falling back to CPU",
             gpu_buf_size,
         );
         return None;
     }
     tracing::info!(
-        "[gpu] GpuMemPlanner set up (borrowed {:.3} GB)",
+        "[gpu] GpuCountAndPlan set up (borrowed {:.3} GB)",
         gpu_buf_size as f64 / (1024.0 * 1024.0 * 1024.0),
     );
     Some(gp)
@@ -157,11 +157,16 @@ impl AsmRunnerMO {
 
         // Take the optional GPU planner for this block.
         #[cfg(gpu)]
-        let gpu_planner: Option<GpuMemPlanner> = preloaded.gpu_planner.take();
+        let gpu_count_and_plan: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
+
+        #[cfg(gpu)]
+        if let Some(ref gp) = gpu_count_and_plan {
+            gp.reset();
+        }
 
         // CPU workers are only spawned when no GPU planner is active.
         #[cfg(gpu)]
-        if gpu_planner.is_none() {
+        if gpu_count_and_plan.is_none() {
             mem_planner.execute();
         }
         #[cfg(not(gpu))]
@@ -221,7 +226,7 @@ impl AsmRunnerMO {
                     // {u32 addr; u32 flags;} __packed — byte-identical to
                     // both `MemCountersBusData` (CPU) and `GpuMemOp` (GPU).
                     #[cfg(gpu)]
-                    if let Some(ref gp) = gpu_planner {
+                    if let Some(ref gp) = gpu_count_and_plan {
                         let memops = unsafe {
                             std::slice::from_raw_parts(
                                 data_ptr as *const GpuMemOp,
@@ -257,29 +262,31 @@ impl AsmRunnerMO {
             }
         };
 
+        // owner: close the C++ context (no-op for the GPU producer)
         mem_planner.set_completed();
 
         // GPU path: drain the pipeline. Pointer into pinned host memory owned
         // by the planner; valid until the planner is reset below.
         #[cfg(gpu)]
-        let gpu_metas_view: Option<(*const c_void, u32)> = gpu_planner
+        let gpu_metas_view: Option<(*const c_void, u32)> = gpu_count_and_plan
             .as_ref()
             .and_then(|gp| gp.run())
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
         #[cfg(not(gpu))]
         let gpu_metas_view: Option<(*const c_void, u32)> = None;
 
+        // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
 
         // GPU path: build align plans BEFORE `reset()` zeroes `n_chunks_`.
         #[cfg(gpu)]
         let gpu_align_plans: Option<Vec<Plan>> =
-            gpu_planner.as_ref().map(|gp| gp.build_align_plans());
+            gpu_count_and_plan.as_ref().map(|gp| gp.build_align_plans());
         #[cfg(not(gpu))]
         let gpu_align_plans: Option<Vec<Plan>> = None;
 
-        // Inject GPU-produced metas into `mcp->segments[]`. No-op on the CPU
-        // path (where `gpu_metas_view` is `None`).
+        // owner: hand GPU-produced segments to the C++ segment table
+        // (`mcp->segments[]`). No-op on the CPU path (gpu_metas_view None).
         if let Some((ptr, n)) = gpu_metas_view {
             let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
             if !ok {
@@ -287,11 +294,13 @@ impl AsmRunnerMO {
             }
         }
 
-        // Reset GPU planner and stash for the next block.
+        // Stash the GPU planner for the next block. NOTE: no reset() here —
+        // it is done at the START of the next run() (see above), because
+        // proofman owns the borrowed buffer between blocks and clearing it
+        // now would not survive until the next block uses it.
         #[cfg(gpu)]
-        if let Some(gp) = gpu_planner {
-            gp.reset();
-            preloaded.gpu_planner = Some(gp);
+        if let Some(gp) = gpu_count_and_plan {
+            preloaded.gpu_count_and_plan = Some(gp);
         }
 
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
