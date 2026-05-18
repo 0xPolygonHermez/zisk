@@ -8,7 +8,7 @@
 //! - `ComponentBuilder` trait implementations for creating counters, planners, and input
 //!   collectors.rm
 
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex, OnceLock};
 
 use crate::{RomInstance, RomPlanner};
 use asm_runner::AsmRunnerRH;
@@ -17,16 +17,15 @@ use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx, Pl
 use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 
-use anyhow::Result;
-
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
-    /// Zisk Rom
-    zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
+    /// Zisk Rom, set once via [`set_rom`](Self::set_rom) before the first `build_instance` call.
+    zisk_rom: OnceLock<Arc<ZiskRom>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
     inst_count: Arc<Vec<AtomicU64>>,
 
+    /// ASM-runner ROM histogram, set via [`set_rh_data`](Self::set_rh_data) when running in ASM mode.
     rh_data: Mutex<Option<AsmRunnerRH>>,
 }
 
@@ -37,22 +36,27 @@ impl RomSM {
     /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new<F: PrimeField64>() -> Arc<Self> {
         Arc::new(Self {
-            zisk_rom: Mutex::new(None),
+            zisk_rom: OnceLock::new(),
             inst_count: Arc::new(create_atomic_vec(RomTrace::<F>::NUM_ROWS)),
             rh_data: Mutex::new(None),
         })
     }
 
-    pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
-        *self.rh_data.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
-            Some(handler);
-        Ok(())
+    /// Provides the ASM-runner ROM histogram. Must be called before `build_instance`
+    /// when running in ASM mode; in Rust mode it is not called at all.
+    pub fn set_rh_data(&self, handler: AsmRunnerRH) {
+        *self.rh_data.lock().expect("RomSM rh_data mutex poisoned") = Some(handler);
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
-        *self.zisk_rom.lock().map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))? =
-            Some(zisk_rom);
-        Ok(())
+    /// Provides the parsed Zisk ROM. Must be called exactly once before `build_instance`.
+    ///
+    /// # Panics
+    /// Panics if called more than once.
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) {
+        self.zisk_rom
+            .set(zisk_rom)
+            .map_err(|_| ())
+            .expect("RomSM::set_rom called more than once");
     }
 
     /// Computes the ROM trace based on the ROM instructions.
@@ -75,39 +79,12 @@ impl RomSM {
                 RomRomTrace::<F>::NUM_ROWS
             );
 
-            // Convert the i64 offsets to F
-            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-                F::from_u64(inst.jmp_offset1 as u64)
-            } else {
-                F::neg(F::from_u64((-inst.jmp_offset1) as u64))
-            };
-            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-                F::from_u64(inst.jmp_offset2 as u64)
-            } else {
-                F::neg(F::from_u64((-inst.jmp_offset2) as u64))
-            };
-            let store_offset = if inst.store_offset >= 0 {
-                F::from_u64(inst.store_offset as u64)
-            } else {
-                F::neg(F::from_u64((-inst.store_offset) as u64))
-            };
-            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-                F::from_u64(inst.a_offset_imm0)
-            } else {
-                F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64))
-            };
-            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                F::from_u64(inst.b_offset_imm0)
-            } else {
-                F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64))
-            };
-
             // Fill the rom trace row fields
             rom_custom_trace[index].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-            rom_custom_trace[index].a_offset_imm0 = a_offset_imm0;
+            rom_custom_trace[index].a_offset_imm0 = signed_to_field(inst.a_offset_imm0 as i64);
             rom_custom_trace[index].a_imm1 =
                 F::from_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-            rom_custom_trace[index].b_offset_imm0 = b_offset_imm0;
+            rom_custom_trace[index].b_offset_imm0 = signed_to_field(inst.b_offset_imm0 as i64);
             rom_custom_trace[index].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
             rom_custom_trace[index].ind_width = F::from_u64(inst.ind_width);
@@ -121,9 +98,9 @@ impl RomSM {
             } else {
                 F::from_u8(inst.op)
             };
-            rom_custom_trace[index].store_offset = store_offset;
-            rom_custom_trace[index].jmp_offset1 = jmp_offset1;
-            rom_custom_trace[index].jmp_offset2 = jmp_offset2;
+            rom_custom_trace[index].store_offset = signed_to_field(inst.store_offset);
+            rom_custom_trace[index].jmp_offset1 = signed_to_field(inst.jmp_offset1);
+            rom_custom_trace[index].jmp_offset2 = signed_to_field(inst.jmp_offset2);
             rom_custom_trace[index].flags = F::from_u64(inst.get_flags());
         }
 
@@ -134,11 +111,11 @@ impl RomSM {
         }
     }
 
-    /// Computes a custom trace ROM from the given ELF file.
+    /// Computes a custom trace ROM from the given ELF bytes.
     ///
     /// # Arguments
-    /// * `rom_path` - The path to the ELF file.
-    /// * `rom_custom_trace` - Reference to the custom ROM trace.
+    /// * `elf` - The ELF bytes.
+    /// * `rom_custom_trace` - Reference to the custom ROM trace to populate.
     pub fn compute_custom_trace_rom<F: PrimeField64>(
         elf: &[u8],
         rom_custom_trace: &mut RomRomTrace<F>,
@@ -151,7 +128,9 @@ impl RomSM {
         let riscv2zisk = Riscv2zisk::new(elf);
 
         // Convert program to rom
-        let rom = riscv2zisk.run().expect("RomSM::prover() failed converting elf to rom");
+        let rom = riscv2zisk
+            .run()
+            .expect("RomSM::compute_custom_trace_rom failed converting elf to rom");
 
         let rom_len = rom.insts.len();
         let air_rom_len = RomTrace::<F>::NUM_ROWS;
@@ -163,6 +142,16 @@ impl RomSM {
         }
 
         Self::compute_trace_rom(&rom, rom_custom_trace);
+    }
+}
+
+/// Converts a signed integer to a field element, mapping negatives through `F::neg`.
+#[inline]
+fn signed_to_field<F: PrimeField64>(v: i64) -> F {
+    if v >= 0 {
+        F::from_u64(v as u64)
+    } else {
+        F::neg(F::from_u64((-v) as u64))
     }
 }
 
@@ -183,19 +172,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+        let zisk_rom = self
+            .zisk_rom
+            .get()
+            .expect("RomSM::build_instance called before set_rom")
+            .clone();
         if let Some(rh_data) = self.rh_data.lock().unwrap().take() {
-            Box::new(RomInstance::new_asm(
-                self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
-                ictx,
-                self.inst_count.clone(),
-                rh_data,
-            ))
+            Box::new(RomInstance::new_asm(zisk_rom, ictx, rh_data))
         } else {
-            Box::new(RomInstance::new_rust(
-                self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
-                ictx,
-                self.inst_count.clone(),
-            ))
+            Box::new(RomInstance::new_rust(zisk_rom, ictx, self.inst_count.clone()))
         }
     }
 }
