@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Dev orchestrator: drive compile-pil, setup, setup-snark, and stats from a
-# single entry point. Talks to gs://zisk-setup/ for the cache lookup only.
+# single entry point. Reads https://storage.googleapis.com/zisk-setup/
+#  over plain HTTPS for the cache lookup only
 # Uploads are done by package-proving-key.sh.
 #
 # Modes (mutually exclusive)
@@ -43,7 +44,7 @@
 #                   (~/.cargo/git/checkouts/pil2-proofman-*/<rev>/).
 #   OUT_DIR         where to extract on cache hit (default: $HOME/.zisk)
 #
-# gs://zisk-setup/ is public-read — no auth needed for cache lookups/downloads.
+# https://storage.googleapis.com/zisk-setup/ is public-read — fetched over HTTPS
 # Uploads (publishing) are done from package-proving-key.sh, which does require auth.
 
 set -euo pipefail
@@ -143,7 +144,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 OUT_DIR="${OUT_DIR:-$HOME/.zisk}"
-BUCKET="gs://zisk-setup"
+BUCKET="https://storage.googleapis.com/zisk-setup"
 
 command -v jq >/dev/null || { echo "jq not on PATH" >&2; exit 1; }
 
@@ -202,7 +203,7 @@ SNARKJS_PATH_DIR="$PROOFMAN_DIR/node_modules/snarkjs"
 export SNARKJS_PATH="$SNARKJS_PATH_DIR"
 
 if [ $USE_BUCKET -eq 1 ]; then
-  command -v gsutil >/dev/null || { echo "gsutil not on PATH" >&2; exit 1; }
+  command -v curl >/dev/null || { echo "curl not on PATH" >&2; exit 1; }
 fi
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
@@ -333,7 +334,7 @@ case "$MODE" in
 
       remote_hash_tmp=$(mktemp)
       remote_hash=""
-      if gsutil cp "${BUCKET}/${HASH_NAME}" "$remote_hash_tmp" 2>/dev/null; then
+      if curl -fsSL "${BUCKET}/${HASH_NAME}" -o "$remote_hash_tmp" 2>/dev/null; then
         remote_hash="$(awk '{print $1}' "$remote_hash_tmp")"
       fi
       rm -f "$remote_hash_tmp"
@@ -347,7 +348,7 @@ case "$MODE" in
       echo "cache hit — downloading ${PK_NAME} into $BUILD_DIR/"
       mkdir -p "$BUILD_DIR"
       tarball="$(mktemp --suffix=.tar.gz)"
-      gsutil cp "${BUCKET}/${PK_NAME}" "$tarball"
+      curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
       rm -rf "$BUILD_DIR/provingKey"
       tar -xzf "$tarball" -C "$BUILD_DIR"
       rm -f "$tarball"
@@ -392,7 +393,7 @@ esac
 if [ "$MODE" = "build" ]; then
   remote_hash_tmp=$(mktemp)
   remote_hash=""
-  if gsutil cp "${BUCKET}/${HASH_NAME}" "$remote_hash_tmp" 2>/dev/null; then
+  if curl -fsSL "${BUCKET}/${HASH_NAME}" -o "$remote_hash_tmp" 2>/dev/null; then
     remote_hash="$(awk '{print $1}' "$remote_hash_tmp")"
   fi
   rm -f "$remote_hash_tmp"
@@ -401,7 +402,7 @@ if [ "$MODE" = "build" ]; then
     echo "cache hit — downloading ${PK_NAME}"
     mkdir -p "$OUT_DIR"
     tarball="$(mktemp --suffix=.tar.gz)"
-    gsutil cp "${BUCKET}/${PK_NAME}" "$tarball"
+    curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
     rm -rf "$OUT_DIR/provingKey"
     tar -xzf "$tarball" -C "$OUT_DIR"
     rm -f "$tarball"
