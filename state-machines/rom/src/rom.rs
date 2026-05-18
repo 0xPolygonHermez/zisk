@@ -6,9 +6,9 @@
 //!   operations.
 //! - Methods for proving instances and computing traces from the ROM data.
 //! - `ComponentBuilder` trait implementations for creating counters, planners, and input
-//!   collectors.
+//!   collectors.rm
 
-use std::sync::{atomic::AtomicU64, Arc, Mutex, OnceLock};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
@@ -17,9 +17,7 @@ use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
 };
-use zisk_core::{
-    zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT, SRC_IMM,
-};
+use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_EXIT, SRC_IMM};
 use zisk_pil::{MainTrace, RomRomTrace, RomRomTraceRow, RomTrace};
 
 use anyhow::Result;
@@ -29,14 +27,8 @@ pub struct RomSM {
     /// Zisk Rom
     zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
-    /// Shared bios instruction counter for monitoring ROM operations.
-    /// Lazy-allocated on first emulator-mode `build_instance` call so that
-    /// pure-ASM workflows don't pay the memory cost.
-    bios_inst_count: OnceLock<Arc<Vec<AtomicU64>>>,
-
     /// Shared program instruction counter for monitoring ROM operations.
-    /// Lazy-allocated alongside `bios_inst_count`.
-    prog_inst_count: OnceLock<Arc<Vec<AtomicU64>>>,
+    inst_count: Arc<Vec<AtomicU64>>,
 
     rh_data: Mutex<Option<AsmRunnerRH>>,
 }
@@ -46,28 +38,12 @@ impl RomSM {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `RomSM`.
-    pub fn new() -> Arc<Self> {
+    pub fn new<F: PrimeField64>() -> Arc<Self> {
         Arc::new(Self {
             zisk_rom: Mutex::new(None),
-            bios_inst_count: OnceLock::new(),
-            prog_inst_count: OnceLock::new(),
+            inst_count: Arc::new(create_atomic_vec((RomTrace::<F>::NUM_ROWS) as usize)),
             rh_data: Mutex::new(None),
         })
-    }
-
-    /// Allocates the shared inst-count vectors on first use; returns Arc clones.
-    /// Called from `build_instance` only when an emulator-mode (non-ASM) run is
-    /// about to need them.
-    fn ensure_inst_counts(&self) -> (Arc<Vec<AtomicU64>>, Arc<Vec<AtomicU64>>) {
-        let bios = self
-            .bios_inst_count
-            .get_or_init(|| Arc::new(create_atomic_vec(((ROM_ADDR - ROM_ENTRY) as usize) >> 2)))
-            .clone();
-        let prog = self
-            .prog_inst_count
-            .get_or_init(|| Arc::new(create_atomic_vec((ROM_ADDR_MAX - ROM_ADDR) as usize)))
-            .clone();
-        (bios, prog)
     }
 
     pub fn set_rh_data(&self, handler: AsmRunnerRH) -> Result<()> {
@@ -107,30 +83,13 @@ impl RomSM {
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
             let mut multiplicity: u64;
-            if inst.paddr < ROM_ADDR {
-                if counter_stats.bios_inst_count.is_empty() {
-                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-                } else {
-                    multiplicity = counter_stats.bios_inst_count
-                        [((inst.paddr - ROM_ENTRY) as usize) >> 2]
-                        .load(std::sync::atomic::Ordering::Relaxed);
-
-                    if multiplicity == 0 {
-                        continue;
-                    }
-                    if inst.paddr == counter_stats.end_pc {
-                        multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                    }
-                }
-            } else {
-                multiplicity = counter_stats.prog_inst_count[(inst.paddr - ROM_ADDR) as usize]
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                if multiplicity == 0 {
-                    continue;
-                }
-                if inst.paddr == counter_stats.end_pc {
-                    multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
-                }
+            multiplicity = counter_stats.inst_count[inst.index as usize]
+                .load(std::sync::atomic::Ordering::Relaxed);
+            if multiplicity == 0 {
+                continue;
+            }
+            if inst.paddr == counter_stats.end_pc {
+                multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
             }
 
             let index = inst.index as usize;
@@ -340,23 +299,12 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     ///
     /// # Returns
     /// A boxed implementation of `RomInstance`.
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        let rh_data = self.rh_data.lock().unwrap().take();
-        let (bios_inst_count, prog_inst_count) = if rh_data.is_some() {
-            // ASM mode for this run: RomInstance routes to compute_witness_from_asm,
-            // never reading these vecs. Pass empty Arcs to avoid the lazy allocation.
-            (Arc::new(Vec::new()), Arc::new(Vec::new()))
-        } else {
-            // Emulator mode: allocate on first need; subsequent emulator-mode runs reuse
-            // (RomInstance::reset zeroes them between executions).
-            self.ensure_inst_counts()
-        };
+    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {   
         Box::new(RomInstance::new(
             self.zisk_rom.lock().unwrap().as_ref().unwrap().clone(),
             ictx,
-            bios_inst_count,
-            prog_inst_count,
-            rh_data,
+            self.inst_count.clone(),
+            self.rh_data.lock().unwrap().take(),
         ))
     }
 }

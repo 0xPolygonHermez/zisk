@@ -8,6 +8,7 @@ use crate::{rom_counter::RomCounter, RomSM};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use rayon::prelude::*;
 use std::sync::Mutex;
 use zisk_common::StatsType;
 use zisk_common::{
@@ -28,11 +29,8 @@ pub struct RomInstance {
     /// The instance context.
     ictx: InstanceCtx,
 
-    /// Shared biod instruction counter for monitoring ROM operations.
-    bios_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
-
     /// Shared program instruction counter for monitoring ROM operations.
-    prog_inst_count: Mutex<Arc<Vec<AtomicU64>>>,
+    inst_count: Mutex<Arc<Vec<AtomicU64>>>,
 
     /// Execution statistics counter for ROM instructions.
     counter_stats: Mutex<Option<CounterStats>>,
@@ -56,15 +54,13 @@ impl RomInstance {
     pub fn new(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
-        bios_inst_count: Arc<Vec<AtomicU64>>,
-        prog_inst_count: Arc<Vec<AtomicU64>>,
+        inst_count: Arc<Vec<AtomicU64>>,
         rh_data: Option<AsmRunnerRH>,
     ) -> Self {
         Self {
             zisk_rom,
             ictx,
-            bios_inst_count: Mutex::new(bios_inst_count),
-            prog_inst_count: Mutex::new(prog_inst_count),
+            inst_count: Mutex::new(inst_count),
             counter_stats: Mutex::new(None),
             rh_data: Mutex::new(rh_data),
             asm_result: Mutex::new(None),
@@ -86,8 +82,7 @@ impl RomInstance {
 
         Some(RomCollector::new(
             self.counter_stats.lock().unwrap().is_some(),
-            self.bios_inst_count.lock().unwrap().clone(),
-            self.prog_inst_count.lock().unwrap().clone(),
+            self.inst_count.lock().unwrap().clone(),
         ))
     }
 }
@@ -142,10 +137,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
                 .map(|(_, collector)| collector.as_any().downcast::<RomCollector>().unwrap())
                 .collect();
 
-            let mut counter_stats = CounterStats::new(
-                self.bios_inst_count.lock().unwrap().clone(),
-                self.prog_inst_count.lock().unwrap().clone(),
-            );
+            let mut counter_stats = CounterStats::new(self.inst_count.lock().unwrap().clone());
 
             for collector in collectors {
                 counter_stats += &collector.rom_counter.counter_stats;
@@ -166,23 +158,9 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
         *self.counter_stats.lock().unwrap() = None;
         *self.asm_result.lock().unwrap() = None;
 
-        let bios_counts = self.bios_inst_count.lock().unwrap().clone();
-        let prog_counts = self.prog_inst_count.lock().unwrap().clone();
+        let prog_counts = self.inst_count.lock().unwrap().clone();
 
-        rayon::join(
-            || {
-                use rayon::prelude::*;
-                bios_counts
-                    .par_iter()
-                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
-            },
-            || {
-                use rayon::prelude::*;
-                prog_counts
-                    .par_iter()
-                    .for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
-            },
-        );
+        prog_counts.par_iter().for_each(|i| i.store(0, std::sync::atomic::Ordering::Relaxed));
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -219,8 +197,7 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
 
         Some(Box::new(RomCollector::new(
             self.counter_stats.lock().unwrap().is_some(),
-            self.bios_inst_count.lock().unwrap().clone(),
-            self.prog_inst_count.lock().unwrap().clone(),
+            self.inst_count.lock().unwrap().clone(),
         )))
     }
 
@@ -242,12 +219,8 @@ impl RomCollector {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(
-        computed: bool,
-        bios_inst_count: Arc<Vec<AtomicU64>>,
-        prog_inst_count: Arc<Vec<AtomicU64>>,
-    ) -> Self {
-        let rom_counter = RomCounter::new(bios_inst_count, prog_inst_count);
+    pub fn new(computed: bool, inst_count: Arc<Vec<AtomicU64>>) -> Self {
+        let rom_counter = RomCounter::new(inst_count);
         Self { already_computed: computed, rom_counter }
     }
 

@@ -13,7 +13,7 @@ default = ["panic-handler"]
 panic-handler = []
 
 [dependencies]
-ziskos = { path = "../ziskos/entrypoint", default-features = false }
+ziskos = { path = "../ziskos/entrypoint" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
