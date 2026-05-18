@@ -388,9 +388,11 @@ impl Coordinator {
         // Fire a synthetic Completed event with the recorded VK and skip
         // worker reservation entirely — safe to call even while a Prove
         // job is running.
-        if let Some(setup) =
-            self.active_setups.read().await.get(&SetupKey::new(hash_id.to_string(), with_hints))
-        {
+        if let Some(setup) = self.active_setups.read().await.get(&SetupKey::new(
+            hash_id.to_string(),
+            with_hints,
+            emulator_only,
+        )) {
             let vk = setup.vk.clone();
             self.alloc_job_events(&job_id).await;
             self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
@@ -484,7 +486,7 @@ impl Coordinator {
     async fn read_all_setup_dtos(&self) -> Vec<SetupProgramDto> {
         let setups = self.active_setups.read().await.clone();
         let mut result = Vec::with_capacity(setups.len());
-        for (key, program_name) in setups {
+        for (key, setup) in setups {
             let (hash_id, with_hints, emulator_only) =
                 (key.hash_id, key.with_hints, key.emulator_only);
             let path = ZiskPaths::global().elf_cache(&hash_id);
@@ -1966,14 +1968,14 @@ mod tests {
         let hash_id = "cached-hash";
         let cached_vk = vec![0xA, 0xB, 0xC];
         coordinator.active_setups.write().await.insert(
-            SetupKey::new(hash_id.to_string(), false),
+            SetupKey::new(hash_id.to_string(), false, false),
             ActiveSetup { program_name: "p".into(), vk: cached_vk.clone() },
         );
 
         // setup_program for the SAME (hash_id, with_hints) must succeed
         // without touching the worker — even though the worker is Computing.
         let job_id = coordinator
-            .setup_program(hash_id, "p".to_string(), false)
+            .setup_program(hash_id, "p".to_string(), false, false)
             .await
             .expect("idempotent setup_program must succeed");
 
@@ -2020,7 +2022,7 @@ mod tests {
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
         let err = coordinator
-            .setup_program(&hash_id, "test-program".to_string(), false)
+            .setup_program(&hash_id, "test-program".to_string(), false, false)
             .await
             .expect_err("setup_program must refuse while a worker is Computing");
         assert!(
@@ -2083,7 +2085,7 @@ mod tests {
         };
 
         let setup_task = tokio::spawn(async move {
-            coord_a.setup_program(&hash_id_a, "race-program".to_string(), false).await
+            coord_a.setup_program(&hash_id_a, "race-program".to_string(), false, false).await
         });
         let prove_task = tokio::spawn(async move { coord_b.launch_proof(prove_req).await });
         let (setup_res, prove_res) = tokio::join!(setup_task, prove_task);
@@ -2148,7 +2150,7 @@ mod tests {
         assert!(fs::metadata(zisk_common::ZiskPaths::global().elf_cache(&hash_id)).is_ok());
 
         let err = coordinator
-            .setup_program(&hash_id, "test-program".to_string(), false)
+            .setup_program(&hash_id, "test-program".to_string(), false, false)
             .await
             .expect_err("setup_program must refuse while a worker is in pending_recovery");
         assert!(
@@ -2669,6 +2671,7 @@ mod tests {
                 hash_id: "h".into(),
                 program_name: "p".into(),
                 with_hints: false,
+                emulator_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -2740,6 +2743,7 @@ mod tests {
                 hash_id: "h".into(),
                 program_name: "p".into(),
                 with_hints: false,
+                emulator_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
@@ -2924,6 +2928,7 @@ mod tests {
                 hash_id: "h".into(),
                 program_name: "p".into(),
                 with_hints: false,
+                emulator_only: false,
             },
         );
         coordinator.alloc_job_events(&setup_job).await;
