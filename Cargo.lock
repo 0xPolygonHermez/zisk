@@ -5327,7 +5327,7 @@ dependencies = [
 
 [[package]]
 name = "sha_hasher_common"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "alloy-sol-types",
 ]
@@ -5773,7 +5773,7 @@ dependencies = [
 
 [[package]]
 name = "test-artifacts"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "sha_hasher_common",
  "zisk-sdk",
