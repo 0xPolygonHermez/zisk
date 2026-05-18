@@ -90,8 +90,7 @@ mod witness;
 // External API: only items re-exported here are consumed outside the
 // executor crate (verified by workspace grep). Everything else is
 // crate-internal.
-pub use execution::emulator::{AsmResources, AsmSharedResources};
-pub use execution::emulator::EmulatorAsm; // (Linux x86_64) / stub elsewhere
+pub use execution::emulator::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
 
 pub(crate) use adapters::*;

@@ -1,12 +1,9 @@
-mod mt_chunk;
-mod resources;
-mod supervisor;
-mod transport;
-
-pub use mt_chunk::*;
-pub use resources::*;
-pub use supervisor::*;
-pub use transport::*;
+//! [`EmulatorAsm`] — x86_64-only ASM-backed emulator.
+//!
+//! On non-x86_64 the sibling `stub` module exposes a stub struct of the
+//! same name so [`crate::execution::ExecutionPhase`] stays
+//! platform-agnostic; the stub panics with a clear message if anyone
+//! actually tries to use it.
 
 use std::sync::{Arc, Mutex};
 
@@ -14,6 +11,8 @@ use crate::execution::output::{BackendArtifacts, ExecutionOutput};
 use crate::sm::StaticSMBundle;
 use crate::witness::pub_outs_collector::PubOutsCollector;
 use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
+
+use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
 use asm_runner::{AsmRunnerMT, HintsShmem};
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
@@ -49,11 +48,6 @@ impl EmulatorAsm {
         Self { chunk_size, transport: AsmTransport::new(), asm_execution_info: Mutex::new(None) }
     }
 
-    /// Returns the chunk size this emulator was constructed with.
-    pub fn get_chunk_size(&self) -> u64 {
-        self.chunk_size
-    }
-
     /// Returns a clone of the [`AsmExecutionInfo`] captured by the
     /// most recent successful `execute` call, or `None` if no
     /// execution has completed yet.
@@ -65,67 +59,52 @@ impl EmulatorAsm {
             .clone())
     }
 
-    /// Borrows the inner `AsmTransport`. The worker / coordinator
-    /// uses this when it wants to drive only the resource-facade
-    /// surface (streams, hints, cancellation) without reaching for
-    /// threading / MT-chunk APIs.
-    pub fn transport(&self) -> &AsmTransport {
-        &self.transport
-    }
-
     /// Installs the worker-supplied [`AsmResources`] handle on the
     /// transport. Must be called before [`Self::execute`].
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.transport.set_asm_resources(asm_resources)
     }
 
-    /// Resets the hints stream pipeline and the input shmem writer for the next job.
+    /// Reset the hints stream pipeline and the input shmem writer.
     pub fn reset(&self) -> Result<()> {
         self.transport.reset()
     }
 
-    /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
-    /// so any child currently blocked in `_wait_for_input_avail` /
-    /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
-    /// cancel time so a stuck `execute` returns Err promptly.
+    /// Poke the ASM children so any thread blocked on shmem semaphores
+    /// unwinds promptly.
     pub fn signal_cancellation(&self) -> Result<()> {
         self.transport.signal_cancellation()
     }
 
-    /// Returns the [`HintsProcessor`] installed on the transport (for
-    /// hint-stream wiring at the worker layer).
+    /// Returns the `HintsProcessor` installed on the transport.
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.transport.get_hints_processor()
     }
 
-    /// Toggles which ASM services participate in the next execution.
-    /// `is_first_partition = true` enables the ROM-histogram service
-    /// (only the first MPI rank computes it).
+    /// Toggle which ASM services participate in the next execution.
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
         self.transport.set_active_services(is_first_partition)
     }
 
-    /// Replace the hints stream source. Used by the worker to swap in
-    /// a fresh stream between jobs.
+    /// Replace the hints stream source to swap in a fresh stream.
     pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.transport.set_hints_stream_src(stream)
     }
 
-    /// Replace the inputs stream source. Used by the worker to swap in
-    /// a fresh stream between jobs.
+    /// Replace the inputs stream source to swap in a fresh stream.
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
         self.transport.set_inputs_stream_src(stream)
     }
 
-    /// Submits hint data directly to the shmem sink, bypassing the `ZiskStream` pipeline.
-    ///
+    /// Submit a hint payload directly to the shmem sink, bypassing the
+    /// `ZiskStream` pipeline.
     /// Used in the gRPC streaming path where hint ordering is handled externally by the
     /// coordinator before data arrives here.
     pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
         self.transport.submit_hint_direct(data)
     }
 
-    /// Appends a raw byte chunk to the input shmem writer.
+    /// Append a raw byte chunk to the input shmem writer.
     ///
     /// Used in the gRPC streaming path where input data arrives in chunks. Unlike
     /// `write_input` (which writes the full stdin at once for local execution), this

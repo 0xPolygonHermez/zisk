@@ -123,8 +123,7 @@ impl ExecutionPhase {
     ///
     /// Non-ASM arguments (`pctx`, `use_hints`, `stats`,
     /// `caller_stats_scope`) are forwarded to the ASM backend and
-    /// ignored by the Rust backend, mirroring today's
-    /// [`crate::Emulator::execute`] contract.
+    /// ignored by the Rust backend.
     #[allow(clippy::too_many_arguments)]
     pub fn run<F: PrimeField64>(
         &self,

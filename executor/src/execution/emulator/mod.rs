@@ -5,17 +5,15 @@
 //! work (ASM-only MO + RH handles) is encapsulated in
 //! [`crate::execution::output::BackendArtifacts`]. Dispatch is via the
 //! `EmulatorBackend` enum inside `ExecutionPhase`, not via dyn trait.
+//!
+//! Cross-platform shape: `EmulatorAsm` is provided uniformly on every
+//! target. On Linux x86_64 it's the real ASM-backed implementation; on
+//! other targets a sibling stub of the same name panics with a clear
+//! message if any of its methods is actually invoked. This keeps
+//! `ExecutionPhase` platform-agnostic.
 
+pub mod asm;
 pub mod rust;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub mod asm;
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-pub mod asm_stub;
-
-pub use rust::*;
-
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm::*;
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-pub use asm_stub::*;
+pub use rust::*;

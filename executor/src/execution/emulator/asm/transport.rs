@@ -24,7 +24,7 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
-use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::io::StreamSource;
 
 use crate::AsmResources;
 
@@ -56,11 +56,6 @@ impl AsmTransport {
             .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? =
             Some(asm_resources);
         Ok(())
-    }
-
-    /// Returns `true` once [`Self::set_asm_resources`] has been called.
-    pub fn is_initialized(&self) -> bool {
-        self.asm_resources.read().map(|g| g.is_some()).unwrap_or(false)
     }
 
     /// Clone the currently-installed `Arc<AsmResources>`, or err if
@@ -140,13 +135,6 @@ impl AsmTransport {
         Ok(())
     }
 
-    /// Writes the full stdin payload to the inputs shmem segment.
-    /// Equivalent to today's `EmulatorAsm` calling `write_input` on
-    /// the resources inside its execute body.
-    pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
-        self.resources()?.write_input(stdin)
-    }
-
     /// Read-only borrow on the install slot, surfacing the
     /// `Option<&Arc<AsmResources>>` for methods that want to no-op
     /// when uninstalled.
@@ -171,12 +159,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_is_uninitialized() {
-        let t = AsmTransport::new();
-        assert!(!t.is_initialized());
-    }
-
-    #[test]
     fn resources_errs_before_install() {
         let t = AsmTransport::new();
         let err = t.resources().expect_err("must err when uninstalled");
@@ -192,19 +174,6 @@ mod tests {
             Ok(_) => panic!("must err when uninstalled"),
             Err(err) => assert!(err.to_string().contains("AsmResources not initialized")),
         }
-    }
-
-    #[test]
-    fn set_hints_stream_src_errs_before_install() {
-        let t = AsmTransport::new();
-        // We can't construct a StreamSource without infrastructure; the
-        // method's pre-resources guard fails *before* the param is
-        // touched, so this test only covers the install-check path.
-        // Compile-only would do, but a runtime assertion via an empty
-        // stream source isn't worth the bring-up. The error-on-empty
-        // contract is exercised by `resources()` and
-        // `get_hints_processor()` above.
-        assert!(!t.is_initialized());
     }
 
     #[test]
