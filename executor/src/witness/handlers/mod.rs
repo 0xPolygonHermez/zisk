@@ -14,13 +14,13 @@
 pub(crate) mod common;
 pub mod main;
 pub mod rom_asm;
-pub mod rom_native;
+pub mod rom_rust;
 pub mod secondary;
 pub mod table;
 
 pub use main::MainWitnessHandler;
 pub use rom_asm::RomAsmWitnessHandler;
-pub use rom_native::RomNativeWitnessHandler;
+pub use rom_rust::RomNativeWitnessHandler;
 pub use secondary::SecondaryWitnessHandler;
 pub use table::TableWitnessHandler;
 
