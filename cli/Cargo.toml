@@ -37,6 +37,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 hex = { workspace = true }
 rayon = { workspace = true }
+rand = { workspace = true }
 
 clap = { workspace = true }
 dirs = "6"

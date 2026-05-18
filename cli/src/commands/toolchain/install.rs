@@ -1,6 +1,6 @@
 use crate::download_file;
 use anyhow::Result;
-use rand::{distr::Alphanumeric, Rng};
+use rand::{distributions::Alphanumeric, Rng};
 use reqwest::Client;
 use std::{
     fs::{self},
@@ -136,7 +136,7 @@ impl ZiskInstallToolchain {
         let toolchains_dir = zisk_common::ZiskPaths::global().toolchains.clone();
         fs::create_dir_all(&toolchains_dir)?;
         let random_string: String =
-            rand::rng().sample_iter(&Alphanumeric).take(10).map(char::from).collect();
+            rand::thread_rng().sample_iter(&Alphanumeric).take(10).map(char::from).collect();
         let new_toolchain_dir = toolchains_dir.join(random_string);
         fs::rename(&toolchain_dir, &new_toolchain_dir)?;
 

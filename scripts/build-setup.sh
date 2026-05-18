@@ -13,8 +13,15 @@
 #   --snark            run setup-snark on top of an existing provingKey/.
 #                      Uses local build/provingKey if present; otherwise
 #                      requires a cache hit.
+#   --compile-pil      run only frops + compile-pil + regenerate
+#                      pil/src/pil_helpers/traces.rs. No setup, no bucket.
 #   --stats            run frops + compile-pil + proofman-setup stats.
 #                      No bucket interaction.
+#
+# pil-helpers (pil/src/pil_helpers/traces.rs) is regenerated as the last step
+# of compile-pil in every mode that compiles the PIL, so traces.rs stays in
+# sync with the freshly built pil/zisk.pilout. --skip-compile-pil skips both
+# steps together (the on-disk traces.rs is assumed to match the reused pilout).
 #
 # Cache key
 # ---------
@@ -44,7 +51,8 @@ set -euo pipefail
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [--no-aggregation | --snark | --compressed-final | --stats]
+         [--skip-compile-pil]
+         [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
                          output and by --snark / --compressed-final as input.
@@ -55,11 +63,14 @@ usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
                          Default 1. Cheaper per job than --recursive-jobs.
                          Also settable via SETUP_JOBS env var.
   --skip-compile-pil     Reuse the existing pil/zisk.pilout instead of
-                         recompiling. Faster local iteration. The
-                         <build-dir>/.input-hash sidecar is NOT written
-                         (cache hash would not match the reused pilout),
-                         so a follow-up package-proving-key.sh will skip
-                         the sidecar upload.
+                         recompiling. Also skips the pil-helpers regen step.
+                         Faster local iteration. The <build-dir>/.input-hash
+                         sidecar is NOT written (cache hash would not match
+                         the reused pilout), so a follow-up
+                         package-proving-key.sh will skip the sidecar upload.
+  --compile-pil          Run only frops + compile-pil + pil-helpers regen
+                         (writes pil/zisk.pilout and pil/src/pil_helpers/).
+                         No setup, no bucket.
   --no-aggregation       Setup without -r. Bypasses the bucket entirely.
   --snark                Run setup-snark on top of an existing <build-dir>/provingKey/.
   --compressed-final     Re-run only vadcop_final_compressed on top of an
@@ -73,7 +84,7 @@ EOF
   exit 1
 }
 
-MODE="build"   # build | no_aggregation | snark | compressed_final | stats
+MODE="build"   # build | no_aggregation | snark | compressed_final | stats | compile_pil
 BUILD_DIR="build"
 RECURSIVE_JOBS_ARG=""
 SETUP_JOBS_ARG=""
@@ -81,7 +92,7 @@ SKIP_COMPILE_PIL=0
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
-    echo "error: only one of --no-aggregation, --snark, --compressed-final, --stats may be passed" >&2
+    echo "error: only one of --compile-pil, --no-aggregation, --snark, --compressed-final, --stats may be passed" >&2
     exit 1
   fi
   MODE="$1"
@@ -93,6 +104,7 @@ while [ $# -gt 0 ]; do
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
+    --compile-pil)       set_mode compile_pil;       shift ;;
     --no-aggregation)    set_mode no_aggregation;    shift ;;
     --snark)             set_mode snark;             shift ;;
     --compressed-final)  set_mode compressed_final;  shift ;;
@@ -101,6 +113,11 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; usage ;;
   esac
 done
+
+if [ "$MODE" = "compile_pil" ] && [ $SKIP_COMPILE_PIL -eq 1 ]; then
+  echo "error: --compile-pil and --skip-compile-pil are contradictory" >&2
+  exit 1
+fi
 
 # Bucket is only relevant in build (cache lookup) and snark (cache check) modes.
 # Reads are anonymous (zisk-setup is public-read), so no auth check needed —
@@ -232,7 +249,7 @@ compute_input_hash() {
 run_compile_pil() {
   if [ $SKIP_COMPILE_PIL -eq 1 ]; then
     [ -f pil/zisk.pilout ] || { echo "--skip-compile-pil set but pil/zisk.pilout is missing" >&2; exit 1; }
-    echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout)"
+    echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
   echo "==> compile-pil"
@@ -246,11 +263,33 @@ run_compile_pil() {
     --fixed-dir tmp/fixed \
     --fixed-to-file \
     --no-proto-fixed-data
+
+  run_pil_helpers
+}
+
+# Regenerate pil/src/pil_helpers/{mod.rs,traces.rs} from the freshly compiled
+# pilout. Invokes proofman-cli (from $PROOFMAN_DIR) — it's not in the zisk
+# workspace, so we point cargo at its manifest explicitly. The -o flag
+# overwrites the existing pil_helpers/ directory (it's always present in tree).
+run_pil_helpers() {
+  echo "==> pil-helpers (regenerating pil/src/pil_helpers/traces.rs)"
+  cargo run --release --manifest-path "$PROOFMAN_DIR/Cargo.toml" -p proofman-cli -- \
+    pil-helpers \
+      --pilout pil/zisk.pilout \
+      --path pil/src \
+      -o
 }
 
 # ----- mode dispatch ---------------------------------------------------------
 
 case "$MODE" in
+
+  compile_pil)
+    generate_frops
+    run_compile_pil
+    echo "done. pil/zisk.pilout and pil/src/pil_helpers/ regenerated."
+    exit 0
+    ;;
 
   stats)
     generate_frops

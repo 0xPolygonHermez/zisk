@@ -1024,6 +1024,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "proofman-util",
+ "rand 0.8.6",
  "rayon",
  "reqwest",
  "rom-setup",
