@@ -3,27 +3,69 @@ require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 
-airtemplate BinaryAdd(const int N = 2**21, const int RC = 2) {
-    col witness bits(32) a[RC];
-    col witness bits(32) b[RC];
-    col witness bits(16) c_chunks[RC*2];
-    col witness bits(1) cout[RC];
-    const expr c[RC];
+/*
+    BinaryAdd: 64-bit addition over the Operation Bus.
 
-    for (int i = 0; i < RC; i++) {
-        cout[i] * (1 - cout[i]) === 0;
-        expr left = a[i] + b[i];
-        if (i > 0) {
-            left = left + cout[i-1];
-        }
-        left === cout[i] * 2 ** 32 + c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
-        c[i] = c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
-        range_check(expression: c_chunks[i * 2], min: 0, max: 2**16 - 1);
-        range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
+    CONSTRAINTS:
+        For each row, proves c = (a + b) mod 2^64 for two little-endian
+        32-bit limbs, with the low-limb carry propagated into the high limb.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - a[0], a[1], b[0], and b[1] are each in [0, 2^32 - 1], unless this
+          template is changed to enforce those ranges internally.
+        - Each real ADD query has one matching BinaryAdd row, or an equivalent
+          provider row on the same Operation Bus.
+
+    POST-CONDITIONS (what the template guarantees):
+        - c[0] and c[1] are each reconstructed from two 16-bit range-checked chunks.
+        - c = (a + b) mod 2^64, provided the input-limb precondition holds.
+        - flag = main_step = extended_arg = extra_args[0] = 0 on the Operation Bus tuple.
+
+    BUSES:
+        - OPERATION_BUS_ID (proves): [OP_ADD, a[0], a[1], b[0], b[1],
+          c[0], c[1], flag=0, main_step=0, extended_arg=0, extra_args[0]=0]
+        - OPERATION_BUS_ID (direct assumes): padding_size copies of the all-zero
+          ADD tuple [OP_ADD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0].
+        - Range Check (assumes): each 16-bit output chunk.
+*/
+airtemplate BinaryAdd(const int N = 2**21, const int RC = 2) {
+    if (RC != 2) {
+        error(`Currently only RC=2 is supported, got RC=${RC}`);
     }
 
+    col witness bits(32) a[RC]; // First input
+    col witness bits(32) b[RC]; // Second input
+    col witness bits(16) c_chunks[RC*2]; // Output
+    col witness bits(1) cout[RC]; // Output carry
+    
+    const expr c[RC];
+    for (int i = 0; i < RC; i++) {
+        // Compute the sum directly
+        expr lhs = a[i] + b[i];
+        if (i > 0) {
+            lhs = lhs + cout[i-1];
+        }
+
+        // Check the output carry is boolean
+        cout[i] * (1 - cout[i]) === 0;
+
+        // Check the chunk values are in range
+        range_check(expression: c_chunks[i * 2], min: 0, max: 2**16 - 1);
+        range_check(expression: c_chunks[i * 2 + 1], min: 0, max: 2**16 - 1);
+
+        // Check the sum is correctly represented by the output chunks and carry
+        lhs === cout[i] * 2 ** 32 + c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
+
+        // Assign the output
+        c[i] = c_chunks[i * 2 + 1] * 2 ** 16 + c_chunks[i * 2];
+    }
+
+    // Prove the operation
     proves_operation(op: OP_ADD, a:, b:, c:);
 
+    // Padding: 
+    // Rows beyond the actual ADD count are forced to the tuple 
+    //       [OP_ADD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     airval padding_size;
     assumes_padding_operation(op: OP_ADD, padding_size:);
 }

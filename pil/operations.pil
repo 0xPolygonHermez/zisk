@@ -141,8 +141,7 @@ function assumes_operation (const expr op, const expr a[] = [0,0], const expr b[
                             const expr extra_args[] = [0]) 
 {
     assert(length(extra_args) == 1);
-    lookup_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], 
-                   sel:);
+    lookup_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], sel:);
 }                              
 
 function proves_operation (const expr op, const expr a[] = [0, 0], const expr b[] = [0, 0], const expr c[] = [0, 0], 
@@ -164,5 +163,5 @@ function assumes_padding_operation (const expr op, const expr a[] = [0,0], const
                                const expr padding_size = 1)
 {
     assert(length(extra_args) == 1);
-    direct_update_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], sel:padding_size);
+    direct_update_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], sel: padding_size);
 }                              

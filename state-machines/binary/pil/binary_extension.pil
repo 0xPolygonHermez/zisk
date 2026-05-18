@@ -4,70 +4,118 @@ require "operations.pil"
 require "opids.pil"
 require "binary_extension_table.pil"
 
-// Coprocessor in charge of performing standard RISCV binary operations
-
 /*
-List:
-    ┼──────────┼────────┼──────────┼
-    │  name    │  bits  │   op     │
-    ┼──────────┼────────┼──────────┼
-    │  SLL     │   64   │   0x21   │
-    │  SRL     │   64   │   0x22   │
-    │  SRA     │   64   │   0x23   │
-    │  SLL_W   │   32   │   0x24   │
-    │  SRL_W   │   32   │   0x25   │
-    │  SRA_W   │   32   │   0x26   │
-    │  SEXT_B  │   32   │   0x27   │
-    │  SEXT_H  │   32   │   0x28   │
-    │  SEXT_W  │   32   │   0x29   │
-    ┼──────────┼────────┼──────────┼
 
-Examples:
-=======================================
+    BinaryExtension: 64-bit and 32-bit shift and sign-extension operations over the Operation Bus. 
+    
+    Supported operations are listed below.
 
-SLL 28
-x    in1[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0x11      0x10000000    0x00000001
-1    0x22      0x00000000    0x00000220
-2    0x33      0x00000000    0x00033000
-3    0x44      0x00000000    0x04400000
-4    0x55      0x00000000    0x50000000
-5    0x66      0x00000000    0x00000000
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0x10000000    0x54433221
+    ┼──────────┼─────────┼────────┼──────────┼
+    │  name    │ ZisK OP │  bits  │   op     │
+    ┼──────────┼─────────┼────────┼──────────┼
+    │  SLL     │    X    │   64   │   0x21   │
+    │  SRL     │    X    │   64   │   0x22   │
+    │  SRA     │    X    │   64   │   0x23   │
+    │  SLL_W   │    X    │   32   │   0x24   │
+    │  SRL_W   │    X    │   32   │   0x25   │
+    │  SRA_W   │    X    │   32   │   0x26   │
+    │  SEXT_B  │    X    │   32   │   0x27   │
+    │  SEXT_H  │    X    │   32   │   0x28   │
+    │  SEXT_W  │    X    │   32   │   0x29   │
+    ┼──────────┼─────────┼────────┼──────────┼
 
-SLL_W 8
-x    in1[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0x11      0x00001100    0x00000000
-1    0x22      0x00220000    0x00000000
-2    0x33      0x33000000    0x00000000
-3    0x44      0x00000000    0x00000044
-4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
-5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0x33221100    0x00000000
+    CONSTRAINTS:
+            Each row proves one 64-bit binary-extension Operation Bus tuple by
+            decomposing the effective input into eight little-endian bytes and
+            checking each byte contribution against BINARY_EXTENSION_TABLE_ID.
+            Shift rows constrain the low shift byte through the table and the next
+            24 shift bits through a range check, then sum eight table outputs into
+            the two 32-bit result limbs.
+            Sign-extension rows constrain the source bytes through the table and
+            sum the relevant sign-extended byte contributions into the result.
 
-SEXT_H
-x    in2[x]    out[x][0]     out[x][1]
----------------------------------------
-0    0xbc      0x000000bc    0x00000000
-1    0x8a      0xFFFF8a00    0xFFFFFFFF (since 0x8a & 0x80 = 0x80, we stop here and set the remaining bytes to 0xFF)
-2    0x33      0x00000000    0x00000000 (bytes of in2 are ignored from here)
-3    0x44      0x00000000    0x00000000
-4    0x55      0x00000000    0x00000000
-5    0x66      0x00000000    0x00000000
-6    0x77      0x00000000    0x00000000
-7    0x88      0x00000000    0x00000000
----------------------------------------
-Result:        0xFFFF8abc    0xFFFFFFFF
+    Examples:
+
+    SLL 28
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x10000000    0x00000001
+    1    0x22      0x00000000    0x00000220
+    2    0x33      0x00000000    0x00033000
+    3    0x44      0x00000000    0x04400000
+    4    0x55      0x00000000    0x50000000
+    5    0x66      0x00000000    0x00000000
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x10000000    0x54433221
+
+    SLL_W 8
+    x    in1[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0x11      0x00001100    0x00000000
+    1    0x22      0x00220000    0x00000000
+    2    0x33      0x33000000    0x00000000
+    3    0x44      0x00000000    0x00000044
+    4    0x55      0x00000000    0x00000000 (since 0x44 & 0x80 = 0, we stop here and set the remaining bytes to 0x00)
+    5    0x66      0x00000000    0x00000000 (bytes of in1 are ignored from here)
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0x33221100    0x00000000
+
+    SEXT_H
+    x    in2[x]    out[x][0]     out[x][1]
+    ---------------------------------------
+    0    0xbc      0x000000bc    0x00000000
+    1    0x8a      0xFFFF8a00    0xFFFFFFFF (since 0x8a & 0x80 = 0x80, we stop here and set the remaining bytes to 0xFF)
+    2    0x33      0x00000000    0x00000000 (bytes of in2 are ignored from here)
+    3    0x44      0x00000000    0x00000000
+    4    0x55      0x00000000    0x00000000
+    5    0x66      0x00000000    0x00000000
+    6    0x77      0x00000000    0x00000000
+    7    0x88      0x00000000    0x00000000
+    ---------------------------------------
+    Result:        0xFFFF8abc    0xFFFFFFFF
+
+    PRE-CONDITIONS (caller responsibilities):
+            - Operation Bus callers use only the supported opcodes OP_SLL, OP_SRL,
+                OP_SRA, OP_SLL_W, OP_SRL_W, OP_SRA_W, OP_SEXT_B, OP_SEXT_H, and
+                OP_SEXT_W for this provider family.
+            - For shift rows, callers provide canonical 32-bit Operation Bus limbs;
+                this template locally enforces the low shift limb but does not range-
+                check the high shift limb b[1].
+            - For sign-extension rows, the semantically relevant source is the
+                Operation Bus b operand. The Operation Bus a operand is passed through
+                and is either ignored by the opcode semantics or must be canonical by
+                caller-side invariant.
+            - If frequent-op routing is enabled, matching frequent tuples may be
+                provided by BinaryExtensionFrops instead of this row table.
+
+    POST-CONDITIONS (what the template guarantees):
+            - For shift operations, c = shift(a, b) with the RISC-V low-bit shift
+                mask: 6 bits for 64-bit shifts and 5 bits for W shifts.
+            - For SEXT_B, SEXT_H, and SEXT_W, c is the sign extension of the low
+                8, 16, or 32 bits of the Operation Bus b operand respectively.
+            - The effective input bytes and the result limbs published by this
+                template are canonical 32-bit limb reconstructions from table values.
+            - flag, main_step, extended_arg, and extra_args[0] are published as 0
+                through the default proves_operation arguments.
+
+    BUSES:
+            - BINARY_EXTENSION_TABLE_ID (assumes):
+                [op, offset, input_byte, low_shift_byte_or_0, c0_part, c1_part,
+                    op_is_shift] for each offset 0..7.
+            - OPERATION_BUS_ID (proves):
+                [op, a[0], a[1], b[0], b[1], c[0], c[1], flag=0,
+                    main_step=0, extended_arg=0, extra_args[0]=0], with operands routed
+                so shifts use Operation Bus a as the shifted value and sign-extension
+                ops use Operation Bus b as the source value.
+            - OPERATION_BUS_ID (direct assumes):
+                padding_size copies of the all-zero OP_SEXT_B tuple.
+            - Range Check (assumes):
+                b[0] in [0, 2^24 - 1] on shift rows.
 */
-
 airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     if (bits != 64) {
         error(`Currently only bits=64 is supported, got bits=${bits}`);
@@ -89,7 +137,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
 
     // Constraints to check the correctness of each binary operation
     for (int j = 0; j < BYTES; j++) {
-       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1], op_is_shift]);
+         binary_extension_table_assumes(op, j, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1], op_is_shift);
     }
 
     // Constraints to make sure that this component is called from the main component

@@ -2,9 +2,37 @@ require "std_lookup.pil"
 require "operations.pil"
 require "opids.pil"
 
-airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
+const int ARITH_TABLE_SIZE = 74;
 
-    // N = 74
+/*
+    ArithTable: fixed table of valid arithmetic opcode/flag/range-selector tuples.
+
+    CONSTRAINTS:
+        This is a fixed lookup table air: it publishes precomputed tuples and has
+        no per-row polynomial constraints other than bus balance through multiplicity.
+        The constructor enumerates the valid flag combinations for the supported
+        arithmetic opcodes and derives the range selector ids consumed by Arith.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Callers must pack flags in the exact order used by `arith_table_assumes`.
+        - Callers must use the returned `range_ab` and `range_cd` ids with the
+          offset convention expected by ArithRangeTable.
+
+    POST-CONDITIONS (what the template guarantees):
+        - Every published non-padding tuple is one of the supported arithmetic
+          opcode/flag/range combinations.
+        - Invalid combinations such as non-division div-by-zero, non-signed
+          overflow, non-word sign extension, and impossible sign cases are absent.
+        - Padding repeats the first valid tuple and does not introduce new semantics.
+
+    BUSES:
+        - ARITH_TABLE_ID (proves): [OP, FLAGS, RANGE_AB, RANGE_CD] with witness
+          multiplicity.
+*/
+airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
+    if (N < ARITH_TABLE_SIZE) {
+        error(`N must be at least ${ARITH_TABLE_SIZE}, but N=${N} was provided`);
+    }
 
     // div m32 sa  sb  primary  secondary  opcodes             na   nb   np   nr   sext(c)
     // -----------------------------------------------------------------------------------
@@ -24,92 +52,81 @@ airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
     col fixed FLAGS;
     col fixed RANGE_AB;
     col fixed RANGE_CD;
-    string code = "";
 
-    int index = 0;
-    int aborted = 0;
+    const int OPCODE_COUNT = 14;
+    const int OPS[OPCODE_COUNT] = [OP_MULU, OP_MULUH, OP_MULSUH, OP_MUL, OP_MULH, OP_MUL_W,
+                                   OP_DIVU, OP_REMU, OP_DIV, OP_REM,
+                                   OP_DIVU_W, OP_REMU_W, OP_DIV_W, OP_REM_W];
 
     if (generate_table) {
+        string air.code = "";
+
         int air.op2row[2048];
         for (int i = 0; i < 2048; ++i) {
             op2row[i] = 255;
         }
     }
 
-    const int OPS[14] = [OP_MULU, OP_MULUH, OP_MULSUH, OP_MUL, OP_MULH, OP_MUL_W,
-                         OP_DIVU, OP_REMU, OP_DIV, OP_REM,
-                         OP_DIVU_W, OP_REMU_W, OP_DIV_W, OP_REM_W];
-    for (int iop = 0; iop < 14; ++iop) {
+    int index = 0;
+    for (int iop = 0; iop < OPCODE_COUNT; ++iop) {
         const int opcode = OPS[iop];
-        int m32 = 0;    // 32 bits operation
-        int div = 0;    // division operation (div,rem)
+        int m32 = 0;    // 32-bit operation.
+        int div = 0;    // Division operation (div/rem).
         int sa = 0;
         int sb = 0;
         int main_mul = 0;
         int main_div = 0;
-        string opname = "";
         switch (opcode) {
             case OP_MULU:
-                opname = "mulu";
                 main_mul = 1;
             case OP_MULUH:
-                opname = "mulh";
+                main_mul = 0; // Dummy assign
             case OP_MULSUH:
-                opname = "mulsuh";
                 sa = 1;
             case OP_MUL:
-                opname = "mul";
                 sa = 1;
                 sb = 1;
                 main_mul = 1;
             case OP_MULH:
-                opname = "mulh";
                 sa = 1;
                 sb = 1;
             case OP_MUL_W:
-                opname = "mul_w";
                 m32 = 1;
                 main_mul = 1;
             case OP_DIVU:
-                opname = "divu";
                 div = 1;
                 main_div = 1;
             case OP_REMU:
-                opname = "remu";
                 div = 1;
             case OP_DIV:
-                opname = "div";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 main_div = 1;
             case OP_REM:
-                opname = "rem";
                 sa = 1;
                 sb = 1;
                 div = 1;
             case OP_DIVU_W:
-                opname = "divu_w";
                 div = 1;
                 m32 = 1;
                 main_div = 1;
             case OP_REMU_W:
-                opname = "remu_w";
                 div = 1;
                 m32 = 1;
             case OP_DIV_W:
-                opname = "div_w";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 m32 = 1;
                 main_div = 1;
             case OP_REM_W:
-                opname = "rem_w";
                 sa = 1;
                 sb = 1;
                 div = 1;
                 m32 = 1;
+            default:
+                error(`Unsupported arithmetic opcode ${opcode}`);
         }
 
         for (int icase = 0; icase < 128; ++icase) {
@@ -123,28 +140,28 @@ airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
 
             const int signed = (sa || sb) ? 1 : 0;
 
-            // division by zero (dividend: x, divisor: 0)
+            // Division by zero (dividend: x, divisor: 0).
             //
             // DIV,DIVU         0xFFFF_FFFF_FFFF_FFFF
             // REM,REMU         x
             // DIV_W,DIVU_W     0xFFFF_FFFF_FFFF_FFFF
             // REM_W,REMU_W     x
 
-            // division overflow 64 (divend: 0x8000_0000_0000_0000, divisor: 0xFFFF_FFFF_FFFF_FFFF)
+            // 64-bit division overflow (dividend: 0x8000_0000_0000_0000, divisor: 0xFFFF_FFFF_FFFF_FFFF).
             //
             // DIV          0x8000_0000_0000_0000
             // REM          0
 
-            // division overflow 32 (divend: 0x8000_0000, divisor: 0xFFFF_FFFF)
+            // 32-bit division overflow (dividend: 0x8000_0000, divisor: 0xFFFF_FFFF).
             //
             // DIV_W        0xFFFF_FFFF_8000_0000
             // REM_W        0
 
-            // div_by_zero
+            // div_by_zero cases:
             //      signed:1 => na:1 nb:0 np = nr (0,1)
             //      signed:0 => na:0 nb:0 np:0 nr:0
 
-            // div_overflow
+            // div_overflow cases:
             //      signed:1 => na:1 nb:1 np:1 nr:0 sext:0
 
             if (div_by_zero && (!div || nb || np != nr || signed != na)) continue;
@@ -238,7 +255,7 @@ airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
     }
     const int size = index;
 
-    println("ARITH_TABLE SIZE: ", size);
+    assert(size == ARITH_TABLE_SIZE);
     assert(size < 256);
 
     if (generate_table) {
@@ -252,21 +269,19 @@ airtemplate ArithTable(const int N = 2**7, const int generate_table = 0) {
         println(`pub static ARITH_TABLE: [[u16; 4]; ROWS] = [${code}];`);
     }
 
-    // padding repeat first row
-
+    // Padding repeats the first row.
     const int padding_op = OP[0];
     const int padding_flags = FLAGS[0];
     const int padding_range_ab = RANGE_AB[0];
     const int padding_range_cd = RANGE_CD[0];
-
     for (index = size; index < N; ++index) {
         OP[index] = padding_op;
         FLAGS[index] = padding_flags;
         RANGE_AB[index] = padding_range_ab;
         RANGE_CD[index] = padding_range_cd;
     }
-    col witness multiplicity;
 
+    col witness multiplicity;
     lookup_proves(ARITH_TABLE_ID, mul: multiplicity, expressions: [OP, FLAGS, RANGE_AB, RANGE_CD]);
 }
 
@@ -274,11 +289,11 @@ function arith_table_assumes( const expr op, const expr flag_m32, const expr fla
                               const expr flag_nb, const expr flag_np, const expr flag_nr, const expr flag_sext,
                               const expr flag_div_by_zero, const expr flag_div_overflow,
                               const expr flag_main_mul, const expr flag_main_div, const expr flag_signed,
-                              const expr range_ab, const expr range_cd) {
+                              const expr range_ab, const expr range_cd, const expr sel = 1) {
 
     lookup_assumes(ARITH_TABLE_ID, expressions: [ op, flag_m32 + 2 * flag_div + 4 * flag_na + 8 * flag_nb +
                                            16 * flag_np + 32 * flag_nr + 64 * flag_sext +
                                            128 * flag_div_by_zero + 256 * flag_div_overflow +
                                            512 * flag_main_mul + 1024 * flag_main_div + 2048 * flag_signed,
-                                           range_ab, range_cd]);
+                                           range_ab, range_cd], sel:);
 }

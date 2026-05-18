@@ -73,9 +73,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
         trace[4].set_step_addr(state_addr as u64); // ADDR_IND_0
         trace[5].set_step_addr(input_addr as u64); // ADDR_IND_1
 
-        // Activate the clk_0 selector
-        trace[0].set_in_use_clk_0(true);
-
         // Activate the in_use selector
         for r in trace.iter_mut().take(18) {
             r.set_in_use(true);

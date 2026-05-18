@@ -152,7 +152,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Set mode32
         let mode32 = Self::opcode_is_32_bits(opcode);
-        let mode64 = !mode32;
         row.set_mode32(mode32);
 
         // Set c_filtered
@@ -845,18 +844,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         // Set b_op
         row.set_b_op(binary_basic_table_op as u8);
 
-        // Set b_op_or_sext
-        row.set_b_op_or_sext(if mode64 {
-            binary_basic_table_op as u16
-        } else if c_is_signed == 1 {
-            BinaryBasicTableOp::SextFF as u16
-        } else {
-            BinaryBasicTableOp::Sext00 as u16
-        });
-
-        // Set mode32_and_c_is_signed
-        row.set_mode32_and_c_is_signed(mode32 && row.get_c_is_signed());
-
         row
     }
 
@@ -900,7 +887,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         if padding_size > 0 {
             let mut padding_row = R::default();
             padding_row.set_b_op(ADD_OP);
-            padding_row.set_b_op_or_sext(ADD_OP as u16);
+
             trace.buffer[total_inputs..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding_row);

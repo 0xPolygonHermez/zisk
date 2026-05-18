@@ -3,8 +3,15 @@ require "std_lookup.pil"
 require "operations.pil"
 require "opids.pil"
 
-/* PIL Binary Operations Table used by Binary Extension
+const int BINARY_EXTENSION_TABLE_SIZE = P2_21 + P2_20 + P2_12 + P2_11;
+
+/*
+    BinaryExtensionTable: Fixed byte-contribution table for BinaryExtension.
+
+    Supported operations are listed below.
+
                                                        Running Total
+    --------------------------------------------------------------------------------------------
     SLL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
     SRL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20
     SRA      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
@@ -14,10 +21,34 @@ require "opids.pil"
     SEXT_B   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20               + 2^11
     SEXT_H   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12
     SEXT_W   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12 + 2^11 => 2^22
+    --------------------------------------------------------------------------------------------
+
+    CONSTRAINTS:
+        The fixed table enumerates every valid tuple for each supported
+        binary-extension opcode, byte offset, input byte, and low shift byte.
+        For shift operations, the table returns the 64-bit contribution of one
+        input byte to the final shifted result, split into two 32-bit chunks.
+        For sign-extension operations, the table returns the relevant byte or
+        sign-extension contribution and forces the unused low-shift byte to 0.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Instantiate the virtual table with N >= BINARY_EXTENSION_TABLE_SIZE.
+        - Assumers must provide offsets in 0..7 and query the same 7-column
+            tuple shape documented below.
+
+    POST-CONDITIONS (what the template guarantees):
+        - Any matched table row has OP in the supported binary-extension opcode
+            set, OFFSET in 0..7, A in 0..255, and B in 0..255 for shift rows or
+            B = 0 for sign-extension rows.
+        - C0 and C1 are the low and high 32-bit chunks of the per-byte result
+            contribution for the requested operation.
+        - FLAGS is 1 exactly for shift operations and 0 for sign-extension
+            operations.
+
+    BUSES:
+        - BINARY_EXTENSION_TABLE_ID (proves):
+            [OP, OFFSET, A, B, C0, C1, FLAGS] with witness multiplicity.
 */
-
-const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 6 + P2_11 * 3;
-
 airtemplate BinaryExtensionTable(const int N = 2**22) {
     if (N < BINARY_EXTENSION_TABLE_SIZE) {
         error(`N must be at least ${BINARY_EXTENSION_TABLE_SIZE}, but N=${N} was provided`);
@@ -54,7 +85,7 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
     col fixed C1; // Output C1  (32 bits)
     col fixed FLAGS; // Flags (1 bit): op_is_shift
 
-    #pragma transpile
+    #pragma transpile logfile:/tmp/binary_extension_table.txt
     for (int i = 0; i < N; i++) {
         int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
         int out = 0;
@@ -81,13 +112,13 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 // Shifts value right by B positions, preserves sign bit
                 // Example: SRA(0x80, offset=7, B=8) = 0xFF80000000000000 (sign extends)
                 // Example: SRA(0x7F, offset=7, B=1) = 0x3F80000000000000 (no sign extend)
-                const int _b = b & LS_6_BITS;
-                out = a_pos >> _b;
+                const int shift = b & LS_6_BITS;
+                out = a_pos >> shift;
                 if (offset == 7) {
                     // most significant bit of most significant byte define if negative or not
                     // if negative then add b bits one on the left
                     if (a & SIGN_BYTE) {
-                        out = out | (MASK_64 << (64 - _b));
+                        out = out | (MASK_64 << (64 - shift));
                     }
                 }
 
@@ -133,13 +164,13 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                     // last most significant bytes are ignored because it's 32-bit operation
                     out = 0;
                 } else {
-                    const int _b = b & LS_5_BITS;
-                    out = a_pos >> _b;
+                    const int shift = b & LS_5_BITS;
+                    out = a_pos >> shift;
                     if (offset == 3) {
                         // most significant bit of most significant byte define if negative or not
                         // if negative then add b bits one on the left
                         if (a & SIGN_BYTE) {
-                            out = out | (MASK_64 << (32 - _b));
+                            out = out | (MASK_64 << (32 - shift));
                         }
                     }
                 }
@@ -192,15 +223,27 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 error(`Invalid operation opcode: ${op} at row ${i}`);
         }
 
+        // Set output
         const int c0 = out & MASK_32;
         const int c1 = (out >> 32) & MASK_32;
         C0[i] = c0;
         C1[i] = c1;
+
+        // Set flags
         const int flags = op_is_shift;
         FLAGS[i] = flags;
+
+        // Log the generated row for debugging
         log(`T[${i}] = [${op}, ${offset}, ${a}, ${b}, ${c0}, ${c1}, ${flags}]`);
     }
 
     col witness multiplicity;
     lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, FLAGS], multiplicity);
+}
+
+function binary_extension_table_assumes(const expr op, const expr offset, const expr a, const expr b,
+                                        const expr c0, const expr c1, const expr flag_op_is_shift, 
+                                        const expr sel = 1) {
+
+    lookup_assumes(BINARY_EXTENSION_TABLE_ID, expressions: [op, offset, a, b, c0, c1, flag_op_is_shift], sel:);
 }

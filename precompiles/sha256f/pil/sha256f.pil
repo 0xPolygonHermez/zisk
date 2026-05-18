@@ -5,12 +5,50 @@ require "std_connection.pil"
 require "operations.pil"
 require "opids.pil"
 
-// Precompile in charge of performing the SHA2-256 permutation (named here Sha256-f). 
-// For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
-// The SHA2-256 permutation arithmetization is based on RISC0's one: https://github.com/risc0/zirgen/blob/main/zirgen/circuit/rv32im/v2/dsl/sha2.zir
+/*
+    Sha256f: SHA2-256 compression permutation.
+    For reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
 
-// Note: We use little endian representation.
+    The SHA2-256 permutation arithmetization is based on RISC0's one: https://github.com/risc0/zirgen/blob/main/zirgen/circuit/rv32im/v2/dsl/sha2.zir
 
+    Note: We use little endian representation.
+
+    CONSTRAINTS:
+        The template represents each SHA-256 operation as 72 clocked rows: 4 rows
+        load the 8 state words, 16 rows load message words, 48 rows extend and
+        mix the message schedule, and 4 rows write the updated state. The bit
+        columns `a`, `e`, and `w` are boolean and are packed into 32-bit words.
+        The transition constraints enforce the SHA-256 `T1`, `T2`, and message
+        schedule recurrences modulo 2^32 with explicit carry checks.
+
+    PRE-CONDITIONS (caller responsibilities):
+        - Main must query `OP_SHA256F` with `a = [0, 0]`, `b = [addr_op, 0]`,
+            `c = [0, 0]`, `flag = 0`, and `extended_arg = 0`.
+        - Memory must provide two 32-bit indirection values at `addr_op` and
+            `addr_op + 8`; these are constrained here to equal `ADDR_STATE` and
+            `ADDR_INPUT`, respectively.
+        - Memory values are 64-bit words represented as two 32-bit limbs. The
+            state words use the machine's little-endian u32 layout, while input
+            message words are byte-swapped before being packed into SHA words.
+
+    POST-CONDITIONS (what the template guarantees):
+        - Selected operation rows prove one `OP_SHA256F` Operation Bus tuple for
+            the corresponding Main step.
+        - Selected memory rows read four state words, read eight input words,
+            read the two indirection words, and write four updated state words.
+        - The written state equals the SHA-256 compression output obtained by
+            adding the final working variables to the initial state modulo 2^32.
+        - Rows not selected by `in_use_clk_0` emit no Operation Bus contribution;
+            rows outside the 18-row memory window emit no memory contribution.
+
+    BUSES:
+        - OPERATION_BUS_ID (proves):
+            [OP_SHA256F, 0, 0, addr_op, 0, 0, 0, 0, main_step, 0, 0].
+        - MEMORY_ID (assumes via precompiled_mem_op):
+            [MEMORY_LOAD_OP or MEMORY_STORE_OP, addr, derived_mem_step, 8,
+                value[0], value[1]] for the 18 memory-access rows.
+        - Range check (assumes): `new_a_carry_bits` and `new_e_carry_bits` in [0, 7].
+*/
 airtemplate Sha256f(const int N = 2**22) {
     /*
            ROW     a[0..32]      e[0..32]        w[0..32]             STAGE
@@ -116,10 +154,10 @@ airtemplate Sha256f(const int N = 2**22) {
     const expr new_w_packed = compute_w(old_w);
 
     // We should prove that the unpacking of the new a/e/w values is correct.
-    // For the new a/e values, we add 6 and 5 32-bit numbers, respectively, and this
-    // generates numbers of at most 35 bits, since 2^34 < 5*(2^32-1),6*(2^32-1) < 2^35
-    // Similarly, for the new w value, we add 3 32-bit numbers, and this generates
-    // a number of at most 34 bits, since 2^33 < 3*(2^32-1) < 2^34
+    // For the new a/e values, we add 7 and 6 32-bit numbers, respectively, and this
+    // generates numbers of at most 35 bits, since 2^34 < 6*(2^32-1),7*(2^32-1) < 2^35
+    // Similarly, for the new w value, we add 4 32-bit numbers, and this generates
+    // a number of at most 34 bits, since 2^33 < 4*(2^32-1) < 2^34
     // We use the following columns to store the carry bits
     col witness bits(8) new_a_carry_bits;
     col witness bits(8) new_e_carry_bits;
@@ -137,15 +175,15 @@ airtemplate Sha256f(const int N = 2**22) {
     const expr w_packed = pack(w);
     a_packed + new_a_carry_bits * P2_32
         - is_loading_state * a_packed
-        - (is_loading_input + is_mixing) * new_a_packed
+        - (is_loading_input + is_mixing) * new_a_packed // Degree 4
         - is_writing_state * ((CLOCKS_WRITE_STATE)'a_packed + (CLOCKS - CLOCKS_WRITE_STATE)'a_packed) === 0;
     e_packed + new_e_carry_bits * P2_32
         - is_loading_state * e_packed
-        - (is_loading_input + is_mixing) * new_e_packed 
+        - (is_loading_input + is_mixing) * new_e_packed  // Degree 4
         - is_writing_state * ((CLOCKS_WRITE_STATE)'e_packed + (CLOCKS - CLOCKS_WRITE_STATE)'e_packed) === 0;
     w_packed + new_w_carry_bits * P2_32
         - is_loading_input * w_packed
-        - is_mixing * new_w_packed === 0;
+        - is_mixing * new_w_packed === 0;  // Degree 4
 
     // --> Constraints to read inputs from memory and write outputs to memory
 
@@ -224,17 +262,11 @@ airtemplate Sha256f(const int N = 2**22) {
 
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17);
 
-    col witness bits(1) in_use_clk_0;
-    in_use_clk_0 * (1 - in_use_clk_0) === 0;
-    (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
-
     col witness bits(1) in_use;
     in_use * (1 - in_use) === 0;
+
     const expr in_use_active = clock_set(start: 1, end: 17);
     in_use_active * (in_use - 'in_use) === 0; // if activated, it must be activated while in use
-
-    // if in_use_clk_0 is active then so is in_use
-    CLK_0 * (in_use_clk_0 - in_use) === 0;
 
     const expr mem_is_write = clock_set(start: 12, end: 15);
 
@@ -249,9 +281,12 @@ airtemplate Sha256f(const int N = 2**22) {
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
 
     proves_operation(op: OP_SHA256F, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
 
+    // --> Helper functions
     function pack(const expr a[]): expr {
         const int len = length(a);
         expr packed = 0;
@@ -297,6 +332,12 @@ airtemplate Sha256f(const int N = 2**22) {
         return result;
     }
 
+    // Computes the algebraic generalization of boolean `xor` over two arrays of bits
+    //
+    // For boolean values a and b, we have a ^ b = a + b - 2*a*b, since:
+    //  - If a=b=0, then the result is 0
+    //  - If a=0,b=1 or a=1,b=0, then the result is 1
+    //  - If a=b=1, then the result is 0
     function xor(const expr a[], const expr b[]): expr[] {
         const int len = length(a);
         expr result[len];
@@ -332,6 +373,11 @@ airtemplate Sha256f(const int N = 2**22) {
         return result;
     }
 
+    // Computes the algebraic generalization of boolean `maj` (majority) over three arrays of bits
+    //
+    // For boolean values a, b, and c, we have maj(a, b, c) := (a & b) ^ (a & c) ^ (b & c) = a*b + a*c + b*c - 2*a*b*c, since:
+    //  - If at least two of a,b,c are 1, then the result is 1
+    //  - Otherwise, the result is 0
     function maj(const expr a[], const expr b[], const expr c[]): expr[] {
         const int len = length(a);
         expr result[len];
@@ -344,6 +390,11 @@ airtemplate Sha256f(const int N = 2**22) {
         return result;
     }
 
+    // Computes the algebraic generalization of boolean `ch` (choice) over three arrays of bits
+    //
+    // For boolean values a, b, and c, we have ch(a, b, c) := (a & b) ^ (~a & c) = a*b + (1-a)*c, since:
+    //  - If a=0, then the result is c
+    //  - If a=1, then the result is b
     function ch(const expr a[], const expr b[], const expr c[]): expr[] {
         const int len = length(a);
         expr result[len];

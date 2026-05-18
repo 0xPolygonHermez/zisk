@@ -120,7 +120,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             let mut row = R::default();
             let padding_opcode = ZiskOp::Muluh.code();
             row.set_op(padding_opcode);
-            row.set_fab(1);
 
             arith_trace.buffer[padding_offset..num_rows]
                 .par_iter_mut()
@@ -291,45 +290,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.div_by_zero,
             aop.div_overflow,
         );
-
-        let fab = if aop.na != aop.nb { F::ORDER_U64 - 1 } else { 1 };
-        row.set_fab(fab);
-
-        let na_fb = if aop.na {
-            if aop.nb {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        //  na * (1 - 2 * nb);
-        row.set_na_fb(na_fb);
-        let nb_fa = if aop.nb {
-            if aop.na {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        row.set_nb_fa(nb_fa);
-
-        let bus_res1 = if aop.sext {
-            0xFFFFFFFF
-        } else if aop.m32 {
-            0
-        } else if aop.main_mul {
-            aop.c[2] + (aop.c[3] << 16)
-        } else if aop.main_div {
-            aop.a[2] + (aop.a[3] << 16)
-        } else {
-            aop.d[2] + (aop.d[3] << 16)
-        };
-
-        row.set_bus_res1(bus_res1 as u32);
 
         row
     }
