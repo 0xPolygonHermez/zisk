@@ -32,7 +32,7 @@ mod arith_eq_tests {
     use zisk_common::io::ZiskStdin;
 
     // Tests share a global lock (#[serial]) because each `run_emulation`
-    // allocates several GB; running 11 in parallel exceeds RAM and triggers OOM.
+    // allocates several GB; running them in parallel exceeds RAM.
 
     #[test]
     #[serial]

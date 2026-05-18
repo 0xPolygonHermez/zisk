@@ -1,9 +1,3 @@
-//! Zisklib guest-emulation tests. Lives in `tests/` (not `src/`) so it is not
-//! pulled into the `ziskos-hints` crate via the `src/core` symlink; that would
-//! create a dev-dependency cycle (test-artifacts -> zisk-sdk -> ... ->
-//! precompiles-hints -> ziskos-hints) that duplicates `ziskos-hints`'s
-//! `#[no_mangle]` C symbols at link time.
-
 use serial_test::serial;
 use test_artifacts::{
     ELF_BLS12_381, ELF_BN254, ELF_MODEXP, ELF_SECP256K1, ELF_SECP256R1, ELF_UINT256,
