@@ -104,4 +104,4 @@ pub(crate) use witness::*;
 use std::collections::HashMap;
 
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
-pub type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;
+pub(crate) type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;

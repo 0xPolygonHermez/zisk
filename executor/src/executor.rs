@@ -41,10 +41,10 @@ use anyhow::Result;
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
 /// produced by counter-phase processing.
-pub type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>);
+pub(crate) type DeviceMetricsByChunk = (ChunkId, Box<dyn BusDeviceMetrics>);
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
-pub const MAX_NUM_STEPS: u64 = 1 << 36;
+pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
