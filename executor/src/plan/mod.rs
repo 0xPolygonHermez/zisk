@@ -1,6 +1,6 @@
 //! [`PlanPhase`] — phase actor that plans, materializes, and accumulates cost.
 //!
-//! Consumes the [`crate::ExecutionOutput`] produced by [`crate::TracePhase`]
+//! Consumes the [`crate::ExecutionOutput`] produced by [`crate::ExecutionPhase`]
 //! and runs every `ProofCtx`-mutating step that the executor needs
 //! before witness computation can start:
 //!
@@ -21,6 +21,18 @@
 //! unit-testable on synthetic `EmuTrace` / counters input. The full
 //! `run` is integration-tested via the executor pipeline.
 
+mod chunk_collector_store;
+mod factory;
+mod instance_set;
+mod planner;
+mod registry;
+
+pub use chunk_collector_store::*;
+pub use factory::*;
+pub use instance_set::*;
+pub use planner::*;
+pub use registry::*;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -40,10 +52,8 @@ use zisk_pil::{
 };
 
 use crate::ports::{GlobalId, ProofRegistry};
-use crate::{
-    state::ExecutionState, CountersChunkMetrics, ExecutionOutput, InstancePlanner,
-    InstanceRegistry, StaticSMBundle, WitnessRouter,
-};
+use crate::state::ExecutionState;
+use crate::{CountersChunkMetrics, ExecutionOutput, StaticSMBundle, WitnessRouter};
 
 /// Telemetry returned from [`PlanPhase::run`] for the executor to fold
 /// into [`zisk_common::ZiskExecutorTime`] / [`zisk_common::ZiskExecutorSummary`].
@@ -118,7 +128,7 @@ impl<F: PrimeField64> PlanPhase<F> {
     }
 
     /// Run the full plan + materialize pipeline. Consumes the trace
-    /// output produced by [`crate::TracePhase`] and mutates the proof
+    /// output produced by [`crate::ExecutionPhase`] and mutates the proof
     /// context, execution state, and witness router accordingly.
     ///
     /// `proof_registry` is the executor's anti-corruption layer over

@@ -11,7 +11,7 @@
 //! ```text
 //! ZiskExecutor::execute
 //!   │
-//!   ├── TracePhase           → produces a uniform ExecutionOutput
+//!   ├── ExecutionPhase       → produces a uniform ExecutionOutput
 //!   │     (chooses EmulatorAsm or EmulatorRust at construction)
 //!   │
 //!   └── PlanPhase            → consumes the ExecutionOutput
@@ -38,12 +38,13 @@
 //!
 //! # Backend abstraction
 //!
-//! The ASM / Rust split lives behind the `Emulator<F>` trait. Both
-//! impls return `ExecutionOutput`; backend-specific async work (the
-//! ASM MO + RH runner handles) is encapsulated in `BackendArtifacts`,
-//! exposed only through `await_*` methods. **No phase signature
-//! mentions `is_asm`, `JoinHandle`, or `AsmRunner*`** — the backend
-//! choice is invisible past `TracePhase`.
+//! The ASM / Rust split is encapsulated by the `EmulatorBackend` enum
+//! inside `ExecutionPhase` (set once at construction, no runtime
+//! dispatch). Both backends return `ExecutionOutput`; backend-specific
+//! async work (the ASM MO + RH runner handles) lives in
+//! `BackendArtifacts`, exposed only through `await_*` methods. **No
+//! phase signature mentions `is_asm`, `JoinHandle`, or `AsmRunner*`**
+//! — the backend choice is invisible past `ExecutionPhase`.
 //!
 //! # Anti-corruption layer (ACL)
 //!
@@ -68,7 +69,7 @@
 //! | `AsmRunnerSupervisor`      | Fake `JoinHandle`s, failure-path tests        |
 //! | `MtChunkProcessor`         | Synthetic chunk plumbing                      |
 //! | `InstanceSet` / `ChunkCollectorStore` | Construct + reset / is_empty       |
-//! | `TracePhase`               | Rust-backend construction (no ASM bring-up)   |
+//! | `ExecutionPhase`           | Rust-backend construction (no ASM bring-up)   |
 //! | `AsmTransport`             | Uninstalled-resource error paths              |
 //! | `PlanPhase::run`           | **Integration only** — needs real `SetupCtx`  |
 //! | Witness handlers           | **Integration only** — `WitnessGenerator` / `ChunkDataCollector` still take `&ProofCtx<F>` |
@@ -77,102 +78,31 @@
 #![deny(rustdoc::all)]
 
 mod adapters;
-mod air_classifier;
-mod asm_resources;
-mod asm_runner_supervisor;
-mod asm_transport;
-mod chunk_collector_store;
-mod collector;
-mod dummy_counter;
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-mod emu_asm;
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-mod emu_asm_stub;
-mod emu_rust;
+mod bus;
+mod execution;
 mod executor;
-mod init;
-mod instance_factory;
-mod instance_set;
-mod mt_chunk_processor;
-mod plan_phase;
-mod planner;
+mod plan;
 mod ports;
-mod pub_outs_collector;
-mod registry;
-mod sm_builtins;
-mod sm_precompiles;
-mod sm_registry;
+mod sm;
 mod state;
-mod static_data_bus;
-mod static_data_bus_collect;
-mod trace_output;
-mod trace_phase;
+mod witness;
 
-mod witness_generator;
-mod witness_handlers;
-mod witness_router;
-
-// External API: only these 4 items are consumed outside the executor
-// crate (verified by workspace grep). Everything else is crate-internal.
-pub use asm_resources::*; // AsmResources, AsmSharedResources
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub use emu_asm::*; // EmulatorAsm
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-pub use emu_asm_stub::*;
+// External API: only items re-exported here are consumed outside the
+// executor crate (verified by workspace grep). Everything else is
+// crate-internal.
+pub use execution::emulator::{AsmResources, AsmSharedResources};
+pub use execution::emulator::EmulatorAsm; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
 
-use adapters::*;
-use air_classifier::*;
-use asm_runner_supervisor::*;
-use asm_transport::*;
-use chunk_collector_store::*;
-use collector::*;
-use dummy_counter::*;
-use emu_rust::*;
-use init::*;
-use instance_factory::*;
-use instance_set::*;
-use mt_chunk_processor::*;
-use plan_phase::*;
-use planner::*;
-use registry::*;
-use sm_builtins::*;
-use sm_precompiles::*;
-use state::*;
-use static_data_bus::*;
-use static_data_bus_collect::*;
-use trace_output::*;
-use trace_phase::*;
-use witness_generator::*;
-use witness_router::*;
-use zisk_core::ZiskRom;
+pub(crate) use adapters::*;
+pub(crate) use bus::*;
+pub(crate) use execution::*;
+pub(crate) use plan::*;
+pub(crate) use sm::*;
+pub(crate) use state::*;
+pub(crate) use witness::*;
+
+use std::collections::HashMap;
+
 /// Type alias for chunk counters, mapping SM type ID to a list of device metrics by chunk.
 pub type CountersChunkMetrics = HashMap<usize, Vec<DeviceMetricsByChunk>>;
-
-use fields::PrimeField64;
-use proofman_common::ProofCtx;
-use std::collections::HashMap;
-use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, StatsScope};
-
-use anyhow::Result;
-
-/// Trait for unified execution across different emulator backends.
-///
-/// Both backends return a uniform `ExecutionOutput`; backend-specific
-/// async work (ASM-only MO + RH handles) is encapsulated in
-/// `ExecutionOutput::backend` and exposed via the `await_*` methods on
-/// `BackendArtifacts`.
-#[allow(clippy::too_many_arguments)]
-pub trait Emulator<F: PrimeField64>: Send + Sync {
-    /// Execute the emulator
-    fn execute(
-        &self,
-        zisk_rom: &ZiskRom,
-        stdin: &ZiskStdin,
-        pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
-        use_hints: bool,
-        stats: &ExecutorStatsHandle,
-        caller_stats_scope: &StatsScope,
-    ) -> Result<ExecutionOutput>;
-}

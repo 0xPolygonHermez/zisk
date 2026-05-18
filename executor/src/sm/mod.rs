@@ -5,14 +5,23 @@
 //! built-in and precompile, indexed by Vec position. Per-side details:
 //!
 //! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` +
-//!   `BuiltinCollectors` live in `sm_builtins.rs`.
-//! * **Precompiles** — declarative registry in `sm_precompiles.rs`;
-//!   emits `Precompiles<F>` + `PrecompileCounters<F>` +
-//!   `PrecompileCollectors<F>` via the `register_precompiles!` macro.
+//!   `BuiltinCollectors` live in [`builtins`].
+//! * **Precompiles** — declarative registry in [`precompiles`]; emits
+//!   `Precompiles<F>` + `PrecompileCounters<F>` +
+//!   `PrecompileCollectors<F>` via the `register_precompiles!` macro
+//!   defined in [`registry`].
 //! * **Bus construction** — `StaticDataBus::from_bundle` /
 //!   `StaticDataBusCollect::for_chunk` consume a bundle to build the
 //!   per-phase data buses.
 //! * **Canonical entry point** — `ZiskExecutor::new` in `executor.rs`.
+
+mod builtins;
+mod precompiles;
+// `register_precompiles!` macro module; exported via `#[macro_export]`.
+mod registry;
+
+pub use builtins::*;
+pub use precompiles::*;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -26,7 +35,7 @@ use zisk_pil::ZISK_AIRGROUP_ID;
 
 use asm_runner::AsmRunnerRH;
 
-use crate::{BuiltinSMs, Precompiles, SMAirType, ZiskRom};
+use zisk_core::ZiskRom;
 
 pub type SMType<F> = (SMAirType, StateMachines<F>);
 

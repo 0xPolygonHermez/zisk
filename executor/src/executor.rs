@@ -19,8 +19,8 @@
 //! maintaining clarity and modularity in the computation process.
 
 use crate::{
-    state::ExecutionState, witness_router::WitnessContext, AirClassifier, AsmResources,
-    EmulatorAsm, PlanPhase, ProofmanAdapter, StaticSMBundle, TracePhase, WitnessRouter,
+    witness::WitnessContext, AirClassifier, AsmResources, EmulatorAsm, ExecutionPhase,
+    ExecutionState, PlanPhase, ProofmanAdapter, StaticSMBundle, WitnessRouter,
 };
 use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
@@ -52,7 +52,7 @@ pub struct ZiskExecutor<F: PrimeField64> {
     /// Shared execution state.
     state: ExecutionState<F>,
     /// Phase-1 actor: runs the chosen emulator and produces an `ExecutionOutput`.
-    trace: TracePhase,
+    trace: ExecutionPhase,
     /// Phase-2 actor: plans, registers, and populates instances. Owns
     /// its own `InstancePlanner` + `InstanceRegistry`.
     plan: PlanPhase<F>,
@@ -78,7 +78,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             // Backend chosen once, at construction, from the bundle's
             // `is_asm` flag — agrees with the SM-counter set the bundle
             // was built for. No runtime AtomicBool flip needed.
-            trace: TracePhase::new(chunk_size, is_asm),
+            trace: ExecutionPhase::new(chunk_size, is_asm),
             plan: PlanPhase::new(chunk_size, sm_bundle.clone()),
             // Backend-flavored ROM handler baked at construction; no
             // per-call `is_asm_emulator` branching during dispatch.

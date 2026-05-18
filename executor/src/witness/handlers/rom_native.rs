@@ -1,7 +1,7 @@
 //! [`RomNativeWitnessHandler`] — ROM witness compute on the **native**
 //! (Rust-emulator) backend.
 //!
-//! Mirrors [`crate::witness_handlers::secondary::SecondaryWitnessHandler`]
+//! Mirrors [`super::secondary::SecondaryWitnessHandler`]
 //! but uses the router's shared ROM trace buffer (single allocation
 //! reused across runs) instead of pulling a fresh buffer from the
 //! per-call pool.
@@ -15,8 +15,8 @@ use sm_rom::RomInstance;
 
 use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
-use crate::witness_handlers::common::{register_empty_collector, take_collectors_for_instance};
-use crate::witness_handlers::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use super::common::{register_empty_collector, take_collectors_for_instance};
+use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
 use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Strategy implementor for the native-backend ROM witness path.

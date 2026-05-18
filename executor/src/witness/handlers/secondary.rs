@@ -6,7 +6,7 @@ use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 
 use crate::state::ExecutionState;
-use crate::witness_handlers::common::take_collectors_for_instance;
+use super::common::take_collectors_for_instance;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Static-namespace handler for non-ROM secondary `Instance`s.

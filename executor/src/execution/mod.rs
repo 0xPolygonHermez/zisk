@@ -1,4 +1,4 @@
-//! [`TracePhase`] — the executor's emulator-front-end.
+//! [`ExecutionPhase`] — the executor's emulator-front-end.
 //!
 //! Replaces the old `RomExecutor` that branched on a runtime
 //! `AtomicBool` to pick between the ASM and Rust emulators. The backend
@@ -6,10 +6,16 @@
 //! [`StaticSMBundle::is_asm`] flag; no atomic, no runtime flip.
 //!
 //! Owns the per-execution standard input (settable between runs) and
-//! exposes a single [`TracePhase::run`] entry point that returns the
-//! backend-uniform [`crate::ExecutionOutput`].
+//! exposes a single [`ExecutionPhase::run`] entry point that returns
+//! the backend-uniform [`ExecutionOutput`].
 //!
 //! See `.claude/executor_refactor_plan.md` step 2.1 for context.
+
+pub mod emulator;
+pub mod output;
+
+pub use emulator::*;
+pub use output::*;
 
 use std::sync::Arc;
 
@@ -20,7 +26,7 @@ use proofman_common::ProofCtx;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
-use crate::{AsmResources, EmulatorAsm, EmulatorRust, ExecutionOutput, StaticSMBundle};
+use crate::sm::StaticSMBundle;
 
 /// Single emulator backend chosen at construction. The variants hold
 /// the concrete emulator type so the executor can still expose
@@ -39,7 +45,7 @@ enum EmulatorBackend {
 /// Construction is parameterised by the bundle's `is_asm()` flag, so
 /// the backend choice agrees with the SM-counter set the bundle was
 /// built for.
-pub struct TracePhase {
+pub struct ExecutionPhase {
     /// Concrete backend, set once at construction.
     emulator: EmulatorBackend,
     /// Standard input for the next run. Settable between executions
@@ -47,7 +53,7 @@ pub struct TracePhase {
     stdin: ArcSwap<ZiskStdin>,
 }
 
-impl TracePhase {
+impl ExecutionPhase {
     /// Construct the trace phase for the chosen backend. `is_asm`
     /// should mirror [`StaticSMBundle::is_asm`] so the bundle's
     /// counter layout matches the emulator that will populate it.
@@ -90,7 +96,7 @@ impl TracePhase {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
             EmulatorBackend::Rust(_) => {
-                anyhow::bail!("TracePhase::set_asm_resources called on a Rust-backed trace phase")
+                anyhow::bail!("ExecutionPhase::set_asm_resources called on a Rust-backed trace phase")
             }
         }
     }
@@ -145,20 +151,20 @@ mod tests {
 
     #[test]
     fn rust_phase_reports_not_asm() {
-        let phase = TracePhase::new(1024, false);
+        let phase = ExecutionPhase::new(1024, false);
         assert!(!phase.is_asm());
         assert!(phase.asm_emulator().is_none());
     }
 
     #[test]
     fn rust_phase_reset_is_noop() {
-        let phase = TracePhase::new(1024, false);
+        let phase = ExecutionPhase::new(1024, false);
         assert!(phase.reset().is_ok());
     }
 
     #[test]
     fn rust_phase_asm_execution_info_is_none() {
-        let phase = TracePhase::new(1024, false);
+        let phase = ExecutionPhase::new(1024, false);
         let info = phase.get_asm_execution_info().expect("ok");
         assert!(info.is_none());
     }
@@ -173,7 +179,7 @@ mod tests {
         // an Arc<AsmResources>). The behavior is locked by the
         // `EmulatorBackend::Rust(_) => bail!` arm above; verifying it
         // structurally is good enough at this level.
-        let phase = TracePhase::new(1024, false);
+        let phase = ExecutionPhase::new(1024, false);
         assert!(!phase.is_asm());
     }
 

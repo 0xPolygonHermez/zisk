@@ -32,8 +32,8 @@
 //! emits resolve correctly. The `op:` constants must also be in scope at
 //! the invocation site — typically `KECCAK_OP_TYPE_ID` etc. from `zisk_core`.
 //!
-//! Built-in SMs stay hand-written in [`sm_builtins.rs`](crate::sm_builtins)
-//! (their dispatch is irregular).
+//! Built-in SMs stay hand-written in [`super::builtins`] (their dispatch
+//! is irregular).
 
 /// Declarative registry for precompiles.
 ///

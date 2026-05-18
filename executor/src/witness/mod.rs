@@ -1,6 +1,6 @@
 //! [`WitnessRouter`] — phase-4 actor that dispatches witness
 //! computation per global id to the right per-category handler in
-//! [`crate::witness_handlers`].
+//! [`handlers`].
 //!
 //! Step 4.3: the per-category compute logic that used to live inline
 //! in `compute_main_witness` / `compute_secondary_witness` is now
@@ -11,6 +11,17 @@
 //! Construction-time `new_asm` / `new_native` still pick the ROM
 //! handler once per executor; the dispatch path has no per-call
 //! backend branching beyond the ROM cases.
+
+pub mod air_classifier;
+pub mod collector;
+pub mod generator;
+pub mod handlers;
+pub mod pub_outs_collector;
+
+pub use air_classifier::*;
+pub use collector::*;
+pub use generator::*;
+pub use handlers::*;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,13 +35,8 @@ use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
 use crate::ports::{Dctx, GlobalId};
-use crate::witness_handlers::{
-    MainWitnessHandler, RomAsmWitnessHandler, RomNativeWitnessHandler, RomWitnessHandler,
-    SecnInstanceMap, SecnInstanceMapRef, SecondaryWitnessHandler, TableWitnessHandler,
-};
-use crate::{
-    state::ExecutionState, AirClassifier, ChunkDataCollector, StaticSMBundle, WitnessGenerator,
-};
+use crate::sm::StaticSMBundle;
+use crate::state::ExecutionState;
 
 /// Context for witness computation operations.
 ///
@@ -81,7 +87,7 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 }
 
 /// Phase-4 actor — classifies each global id and dispatches to one
-/// of five [`crate::witness_handlers`] modules.
+/// of five [`handlers`] modules.
 pub struct WitnessRouter<F: PrimeField64> {
     /// Chunk data collector for secondary instances. Shared by the
     /// secondary + rom_native handlers (passed by reference).

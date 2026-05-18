@@ -1,10 +1,19 @@
+mod mt_chunk;
+mod resources;
+mod supervisor;
+mod transport;
+
+pub use mt_chunk::*;
+pub use resources::*;
+pub use supervisor::*;
+pub use transport::*;
+
 use std::sync::{Arc, Mutex};
 
-use crate::{
-    pub_outs_collector::PubOutsCollector,
-    {AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor},
-    {BackendArtifacts, CountersChunkMetrics, ExecutionOutput, StaticSMBundle, MAX_NUM_STEPS},
-};
+use crate::execution::output::{BackendArtifacts, ExecutionOutput};
+use crate::sm::StaticSMBundle;
+use crate::witness::pub_outs_collector::PubOutsCollector;
+use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
 use asm_runner::{AsmRunnerMT, HintsShmem};
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
@@ -276,20 +285,5 @@ impl EmulatorAsm {
 
         stats_end!(stats, &_mt_scope);
         Ok((emu_traces, counters, pub_outs))
-    }
-}
-
-impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
-    fn execute(
-        &self,
-        zisk_rom: &ZiskRom,
-        stdin: &ZiskStdin,
-        pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
-        use_hints: bool,
-        stats: &ExecutorStatsHandle,
-        caller_stats_scope: &StatsScope,
-    ) -> Result<crate::ExecutionOutput> {
-        self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
     }
 }

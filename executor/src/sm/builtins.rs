@@ -1,5 +1,5 @@
 //! Built-in state machines — the executor's hand-written counterparts
-//! to the macro-generated precompiles in `sm_precompiles.rs`.
+//! to the macro-generated precompiles in [`super::precompiles`].
 //!
 //! Exposes `BuiltinSMs<F>` (enum + dispatch), the bus-side wrapper
 //! structs `BuiltinCounters` / `BuiltinCollectors`, and the air-id

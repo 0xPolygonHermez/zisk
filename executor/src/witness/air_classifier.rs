@@ -7,7 +7,7 @@ use zisk_pil::{
     INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
-use crate::sm_precompiles::{PRECOMPILE_AIR_IDS, PRECOMPILE_RANK_ASSIGN};
+use crate::{PRECOMPILE_AIR_IDS, PRECOMPILE_RANK_ASSIGN};
 
 /// Helper for classifying AIR instances by their ID.
 ///

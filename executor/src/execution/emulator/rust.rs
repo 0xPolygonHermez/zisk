@@ -6,10 +6,9 @@ use crate::{
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
-use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle};
+use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
@@ -143,20 +142,5 @@ impl EmulatorRust {
         }
 
         Ok((counters, pub_outs))
-    }
-}
-
-impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
-    fn execute(
-        &self,
-        zisk_rom: &ZiskRom,
-        stdin: &ZiskStdin,
-        _pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
-        _use_hints: bool,
-        _stats: &ExecutorStatsHandle,
-        _caller_stats_scope: &zisk_common::StatsScope,
-    ) -> Result<ExecutionOutput> {
-        self.execute(zisk_rom, stdin, sm_bundle)
     }
 }

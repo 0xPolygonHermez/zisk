@@ -13,8 +13,8 @@ use proofman_common::{ProofCtx, SetupCtx};
 
 use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
-use crate::witness_handlers::common::{register_empty_collector, take_collectors_for_instance};
-use crate::witness_handlers::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use super::common::{register_empty_collector, take_collectors_for_instance};
+use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
 use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Strategy implementor for the ASM-backend ROM witness path.
