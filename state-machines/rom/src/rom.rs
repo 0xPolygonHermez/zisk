@@ -41,7 +41,7 @@ impl RomSM {
     pub fn new<F: PrimeField64>() -> Arc<Self> {
         Arc::new(Self {
             zisk_rom: Mutex::new(None),
-            inst_count: Arc::new(create_atomic_vec((RomTrace::<F>::NUM_ROWS) as usize)),
+            inst_count: Arc::new(create_atomic_vec(RomTrace::<F>::NUM_ROWS)),
             rh_data: Mutex::new(None),
         })
     }
