@@ -24,17 +24,60 @@ use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
     },
     time::Instant,
 };
 use tracing::error;
-use zisk_common::{CheckPoint, EmuTrace, Instance, Stats};
+use zisk_common::{CheckPoint, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
-use crate::{state::ChunkCollector, ExecutionState, StaticSMBundle};
+use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
 use asm_runner::AsmRunnerRH;
+
+/// Per-instance chunk-collector slot map. Same shape as
+/// [`crate::ChunkCollectorStore::inner`].
+type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
+
+/// Borrowed context handed to each rayon worker. Bundles the 14
+/// references the chunk-processing loop needs so signatures stay
+/// readable. Constructed once per `collect()` call.
+struct WorkerCtx<'a, F: PrimeField64> {
+    // ── Work feed ──
+    next_chunk: &'a AtomicUsize,
+    ordered_chunks: &'a [usize],
+    chunks_to_execute: &'a [Vec<usize>],
+    data_buses: &'a [Mutex<Option<StaticDataBusCollect<PayloadType, F>>>],
+
+    // ── Inputs ──
+    zisk_rom: &'a ZiskRom,
+    min_traces: &'a [EmuTrace],
+    pctx: &'a ProofCtx<F>,
+
+    // ── Output sinks ──
+    collectors_by_instance: &'a CollectorSlots,
+    n_chunks_left: &'a [AtomicUsize],
+    collect_start_times: &'a [AtomicCell<Option<Instant>>],
+    stats: &'a ExecutorStatsHandle,
+
+    // ── Indexing ──
+    global_ids_map: &'a HashMap<usize, usize>,
+    global_id_chunks: &'a HashMap<usize, Vec<usize>>,
+
+    // ── Error sink ──
+    errors: &'a Mutex<Vec<anyhow::Error>>,
+}
+
+/// Push an error into the shared error sink. Silently drops the error
+/// if the mutex is poisoned — used in worker code where panicking
+/// further would just compound failure.
+#[inline]
+fn push_error(errors: &Mutex<Vec<anyhow::Error>>, err: anyhow::Error) {
+    if let Ok(mut errs) = errors.lock() {
+        errs.push(err);
+    }
+}
 
 pub struct ChunkDataCollector<F: PrimeField64> {
     /// State machine bundle for building data buses.
@@ -269,142 +312,27 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let zisk_rom = state.get_rom()?;
         let errors: Mutex<Vec<anyhow::Error>> = Mutex::new(Vec::new());
 
+        let ctx = WorkerCtx {
+            next_chunk: &next_chunk,
+            ordered_chunks: &ordered_chunks,
+            chunks_to_execute: &chunks_to_execute,
+            data_buses: &data_buses,
+            zisk_rom: &zisk_rom,
+            min_traces,
+            pctx,
+            collectors_by_instance: &state.collector_store.inner,
+            n_chunks_left: &n_chunks_left,
+            collect_start_times: &collect_start_times,
+            stats: &state.stats,
+            global_ids_map: &global_ids_map,
+            global_id_chunks: &global_id_chunks,
+            errors: &errors,
+        };
+
         rayon::in_place_scope(|scope| {
             for _ in 0..rayon::current_num_threads() {
-                let next_chunk = &next_chunk;
-                let n_chunks_left = &n_chunks_left;
-                let collectors_by_instance = &state.collector_store.inner;
-                let collect_start_times = &collect_start_times;
-                let stats = &state.stats;
-                let min_traces = &min_traces;
-                let data_buses = &data_buses;
-                let zisk_rom = &zisk_rom;
-                let global_ids_map = &global_ids_map;
-                let global_id_chunks = &global_id_chunks;
-                let ordered_chunks = &ordered_chunks;
-                let chunks_to_execute = &chunks_to_execute;
-                let pctx = &pctx;
-                let errors = &errors;
-
-                scope.spawn(move |_| loop {
-                    let next_chunk_id = next_chunk.fetch_add(1, Ordering::Relaxed);
-                    if next_chunk_id >= ordered_chunks.len() {
-                        break;
-                    }
-                    let chunk_id = ordered_chunks[next_chunk_id];
-
-                    // Acquire lock and get data bus for this chunk
-                    if let Ok(mut lock) = data_buses[chunk_id].lock() {
-                        if let Some(mut data_bus) = lock.take() {
-                            drop(lock);
-
-                            // Mark collection start time for each affected instance
-                            let mut affected_globals: Vec<(usize, usize)> = Vec::new();
-                            for global_id in chunks_to_execute[chunk_id].iter() {
-                                if let Some(&global_id_idx) = global_ids_map.get(global_id) {
-                                    let start_time_cell = &collect_start_times[global_id_idx];
-                                    if start_time_cell.load().is_none() {
-                                        start_time_cell.store(Some(Instant::now()));
-                                    }
-                                    affected_globals.push((*global_id, global_id_idx));
-                                } else {
-                                    let _ = errors.lock().map(|mut errs| {
-                                        errs.push(anyhow::anyhow!("global_id {global_id} not in global_ids_map"));
-                                    });
-                                }
-                            }
-
-                            // Process emulator traces for this chunk
-                            ZiskEmulator::process_emu_traces::<F, _, _>(zisk_rom, min_traces, chunk_id, &mut data_bus);
-
-                            // Collect device results and build entries for all affected instances
-                            let devices = data_bus.into_devices(false);
-                            let mut entries: Vec<(usize, usize, Option<ChunkCollector>)> = Vec::new();
-
-                            for (global_id, collector) in devices {
-                                if let Some(global_id) = global_id {
-                                    if let Some(chunk_order) = global_id_chunks.get(&global_id) {
-                                        if let Some(position) = chunk_order.iter().position(|&id| id == chunk_id) {
-                                            if let Some(col) = collector {
-                                                entries.push((global_id, position, Some((chunk_id, col))));
-                                            } else {
-                                                let _ = errors.lock().map(|mut errs| {
-                                                    errs.push(anyhow::anyhow!("collector is None for global_id {global_id}"));
-                                                });
-                                            }
-                                        } else {
-                                            let _ = errors.lock().map(|mut errs| {
-                                                errs.push(anyhow::anyhow!("chunk_id {chunk_id} not in chunk_order for global_id {global_id}"));
-                                            });
-                                        }
-                                    } else {
-                                        let _ = errors.lock().map(|mut errs| {
-                                            errs.push(anyhow::anyhow!("global_id {global_id} not found in global_id_chunks"));
-                                        });
-                                    }
-                                }
-                            }
-
-                            // Update collectors: store collected data for each instance
-                            if let Ok(mut guard) = collectors_by_instance.write() {
-                                for (global_id, position, entry) in entries.into_iter() {
-                                    if let Some(vec) = guard.get_mut(&global_id) {
-                                        vec[position] = entry;
-                                    } else {
-                                        let _ = errors.lock().map(|mut errs| {
-                                            errs.push(anyhow::anyhow!("global_id {global_id} not in collectors_by_instance"));
-                                        });
-                                    }
-                                }
-                            } else {
-                                let _ = errors.lock().map(|mut errs| {
-                                    errs.push(anyhow::anyhow!("collectors_by_instance lock poisoned"));
-                                });
-                            }
-
-                            // Update atomic counters and mark ready instances
-                            for (global_id, global_id_idx) in affected_globals {
-                                if n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
-                                    pctx.set_witness_ready(global_id, true);
-
-                                    if let Some(collect_start_time) = collect_start_times[global_id_idx].load() {
-                                        let collect_duration = collect_start_time.elapsed().as_millis() as u64;
-                                        match (pctx.dctx_get_instance_info(global_id), global_id_chunks.get(&global_id)) {
-                                            (Ok((airgroup_id, air_id)), Some(chunks)) => {
-                                                let new_stats = Stats::new_with_collection(
-                                                    airgroup_id,
-                                                    air_id,
-                                                    chunks.len(),
-                                                    collect_start_time,
-                                                    collect_duration,
-                                                );
-                                                stats.insert_witness_stats(global_id, new_stats);
-                                            }
-                                            (Err(e), _) => {
-                                                let _ = errors.lock().map(|mut errs| {
-                                                    errs.push(anyhow::anyhow!("Failed to get instance info for global_id {global_id}: {e}"));
-                                                });
-                                            }
-                                            (Ok(_), None) => {
-                                                let _ = errors.lock().map(|mut errs| {
-                                                    errs.push(anyhow::anyhow!("global_id {global_id} not in global_id_chunks"));
-                                                });
-                                            }
-                                        }
-                                    } else {
-                                        let _ = errors.lock().map(|mut errs| {
-                                            errs.push(anyhow::anyhow!("collect_start_time not set for global_id {global_id}"));
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        let _ = errors.lock().map(|mut errs| {
-                            errs.push(anyhow::anyhow!("data_buses lock poisoned for chunk {chunk_id}"));
-                        });
-                    }
-                });
+                let ctx = &ctx;
+                scope.spawn(move |_| Self::worker_loop(ctx));
             }
         });
 
@@ -431,5 +359,187 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         }
 
         Ok(())
+    }
+
+    /// Rayon-spawned worker loop. Steals chunk IDs off the shared
+    /// counter; takes each chunk's data bus exactly once (subsequent
+    /// stealers see `None` and skip); processes via
+    /// [`Self::process_one_chunk`].
+    fn worker_loop(ctx: &WorkerCtx<'_, F>) {
+        loop {
+            let next_chunk_id = ctx.next_chunk.fetch_add(1, Ordering::Relaxed);
+            if next_chunk_id >= ctx.ordered_chunks.len() {
+                break;
+            }
+            let chunk_id = ctx.ordered_chunks[next_chunk_id];
+
+            let data_bus = match ctx.data_buses[chunk_id].lock() {
+                Ok(mut lock) => match lock.take() {
+                    Some(bus) => bus,
+                    // Another worker already processed this chunk —
+                    // shouldn't happen given `fetch_add` partitioning,
+                    // but defensive.
+                    None => continue,
+                },
+                Err(_) => {
+                    push_error(
+                        ctx.errors,
+                        anyhow::anyhow!("data_buses lock poisoned for chunk {chunk_id}"),
+                    );
+                    continue;
+                }
+            };
+
+            Self::process_one_chunk(chunk_id, data_bus, ctx);
+        }
+    }
+
+    /// Process a single chunk: replay its emu traces through the data
+    /// bus, drain device entries into per-instance collector slots,
+    /// advance witness-ready counters. On an instance's final chunk,
+    /// records witness stats via [`Self::record_completion_stats`].
+    fn process_one_chunk(
+        chunk_id: usize,
+        mut data_bus: StaticDataBusCollect<PayloadType, F>,
+        ctx: &WorkerCtx<'_, F>,
+    ) {
+        // Mark collection start time for each affected instance, and
+        // remember which globals this chunk feeds so we can advance
+        // their `n_chunks_left` counters once the bus output is stored.
+        let mut affected_globals: Vec<(usize, usize)> = Vec::new();
+        for global_id in ctx.chunks_to_execute[chunk_id].iter() {
+            match ctx.global_ids_map.get(global_id) {
+                Some(&global_id_idx) => {
+                    let start_time_cell = &ctx.collect_start_times[global_id_idx];
+                    if start_time_cell.load().is_none() {
+                        start_time_cell.store(Some(Instant::now()));
+                    }
+                    affected_globals.push((*global_id, global_id_idx));
+                }
+                None => {
+                    push_error(
+                        ctx.errors,
+                        anyhow::anyhow!("global_id {global_id} not in global_ids_map"),
+                    );
+                }
+            }
+        }
+
+        // Run the emulator over this chunk's traces.
+        ZiskEmulator::process_emu_traces::<F, _, _>(
+            ctx.zisk_rom,
+            ctx.min_traces,
+            chunk_id,
+            &mut data_bus,
+        );
+
+        // Drain device collectors and build per-instance entries.
+        let devices = data_bus.into_devices(false);
+        let mut entries: Vec<(usize, usize, Option<ChunkCollector>)> = Vec::new();
+        for (maybe_gid, collector) in devices {
+            let Some(global_id) = maybe_gid else { continue };
+            match (ctx.global_id_chunks.get(&global_id), collector) {
+                (Some(chunk_order), Some(col)) => {
+                    if let Some(position) = chunk_order.iter().position(|&id| id == chunk_id) {
+                        entries.push((global_id, position, Some((chunk_id, col))));
+                    } else {
+                        push_error(
+                            ctx.errors,
+                            anyhow::anyhow!(
+                                "chunk_id {chunk_id} not in chunk_order for global_id {global_id}"
+                            ),
+                        );
+                    }
+                }
+                (Some(_), None) => {
+                    push_error(
+                        ctx.errors,
+                        anyhow::anyhow!("collector is None for global_id {global_id}"),
+                    );
+                }
+                (None, _) => {
+                    push_error(
+                        ctx.errors,
+                        anyhow::anyhow!("global_id {global_id} not found in global_id_chunks"),
+                    );
+                }
+            }
+        }
+
+        // Store collected entries in the per-instance slot map.
+        match ctx.collectors_by_instance.write() {
+            Ok(mut guard) => {
+                for (global_id, position, entry) in entries {
+                    if let Some(vec) = guard.get_mut(&global_id) {
+                        vec[position] = entry;
+                    } else {
+                        push_error(
+                            ctx.errors,
+                            anyhow::anyhow!(
+                                "global_id {global_id} not in collectors_by_instance"
+                            ),
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                push_error(
+                    ctx.errors,
+                    anyhow::anyhow!("collectors_by_instance lock poisoned"),
+                );
+            }
+        }
+
+        // Advance counters; on the last chunk for an instance, flip its
+        // witness-ready flag and record completion stats.
+        for (global_id, global_id_idx) in affected_globals {
+            if ctx.n_chunks_left[global_id_idx].fetch_sub(1, Ordering::SeqCst) == 1 {
+                ctx.pctx.set_witness_ready(global_id, true);
+                Self::record_completion_stats(global_id, global_id_idx, ctx);
+            }
+        }
+    }
+
+    /// Called when an instance's *final* chunk has been collected:
+    /// reads the recorded start time, computes elapsed duration, and
+    /// publishes per-witness stats. Each error path delegates to
+    /// [`push_error`] so a failure here cannot abort other workers.
+    fn record_completion_stats(global_id: usize, global_id_idx: usize, ctx: &WorkerCtx<'_, F>) {
+        let Some(collect_start_time) = ctx.collect_start_times[global_id_idx].load() else {
+            push_error(
+                ctx.errors,
+                anyhow::anyhow!("collect_start_time not set for global_id {global_id}"),
+            );
+            return;
+        };
+
+        let collect_duration = collect_start_time.elapsed().as_millis() as u64;
+
+        match (ctx.pctx.dctx_get_instance_info(global_id), ctx.global_id_chunks.get(&global_id)) {
+            (Ok((airgroup_id, air_id)), Some(chunks)) => {
+                let new_stats = Stats::new_with_collection(
+                    airgroup_id,
+                    air_id,
+                    chunks.len(),
+                    collect_start_time,
+                    collect_duration,
+                );
+                ctx.stats.insert_witness_stats(global_id, new_stats);
+            }
+            (Err(e), _) => {
+                push_error(
+                    ctx.errors,
+                    anyhow::anyhow!(
+                        "Failed to get instance info for global_id {global_id}: {e}"
+                    ),
+                );
+            }
+            (Ok(_), None) => {
+                push_error(
+                    ctx.errors,
+                    anyhow::anyhow!("global_id {global_id} not in global_id_chunks"),
+                );
+            }
+        }
     }
 }
