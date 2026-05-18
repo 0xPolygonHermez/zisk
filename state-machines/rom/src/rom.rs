@@ -13,7 +13,6 @@ use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use crate::{RomInstance, RomPlanner};
 use asm_runner::{AsmRHData, AsmRunnerRH};
 use fields::PrimeField64;
-use itertools::Itertools;
 use proofman_common::{AirInstance, ProofmanResult, TraceInfo};
 use zisk_common::{
     create_atomic_vec, ComponentBuilder, CounterStats, Instance, InstanceCtx, Planner,
@@ -95,9 +94,9 @@ impl RomSM {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().enumerate() {
+        for zib in rom.insts.values() {
             // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
+            let inst = &zib.i;
 
             // Calculate the multiplicity, i.e. the number of times this pc is used in this
             // execution
@@ -127,7 +126,16 @@ impl RomSM {
                     multiplicity += main_trace_len - counter_stats.steps % main_trace_len;
                 }
             }
-            trace_buffer[i] = F::from_u64(multiplicity);
+
+            let index = inst.index as usize;
+            debug_assert!(
+                 index < trace_buffer.len(),
+                 "ROM trace index {} out of bounds for trace_buffer len {} (RomTrace::NUM_ROWS = {})",
+                 index,
+                 trace_buffer.len(),
+                 RomTrace::<F>::NUM_ROWS
+            );
+            trace_buffer[index] = F::from_u64(multiplicity);
         }
 
         Ok(AirInstance::new(TraceInfo::new(
@@ -148,42 +156,45 @@ impl RomSM {
     ) -> ProofmanResult<AirInstance<F>> {
         tracing::debug!("··· Creating Rom instance [{} rows]", RomTrace::<F>::NUM_ROWS);
 
-        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        // Check that the provided histogram has at most as many entries as the ROM trace
+        assert!(
+            asm_romh.inst_count.len() <= RomTrace::<F>::NUM_ROWS,
+            "The provided assembly histogram has {} entries, which exceeds the maximum supported by the Zisk PIL ROM trace ({} entries).  Please review zisk.pil and increase the ROM trace size accordingly.",
+            asm_romh.inst_count.len(),
+            RomTrace::<F>::NUM_ROWS
+        );
+        assert!(
+            asm_romh.inst_count.len() <= trace_buffer.len(),
+            "The provided assembly histogram has {} entries, but the trace buffer has only {} entries.",
+            asm_romh.inst_count.len(),
+            trace_buffer.len()
+        );
 
-        for (i, key) in rom.insts.keys().enumerate() {
-            // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
-
-            // Calculate the multiplicity, i.e. the number of times this pc is used in this
-            // execution
-            let mut multiplicity: u64;
-            if inst.paddr < ROM_ADDR {
-                if asm_romh.bios_inst_count.is_empty() {
-                    multiplicity = 1; // If the histogram is empty, we use 1 for all pc's
-                } else {
-                    let idx = ((inst.paddr - ROM_ENTRY) as usize) >> 2;
-
-                    multiplicity = asm_romh.bios_inst_count[idx];
-
-                    if multiplicity == 0 {
-                        continue;
-                    }
-
-                    if inst.paddr == ROM_EXIT {
-                        multiplicity += main_trace_len - asm_romh.steps % main_trace_len;
-                    }
-                }
-            } else {
-                let idx = (inst.paddr - ROM_ADDR) as usize;
-                multiplicity = asm_romh.prog_inst_count[idx];
-
-                if multiplicity == 0 {
-                    continue;
-                }
+        for (i, multiplicity) in asm_romh.inst_count.iter().enumerate() {
+            if *multiplicity == 0 {
+                continue;
             }
-
-            trace_buffer[i] = F::from_u64(multiplicity);
+            trace_buffer[i] = F::from_u64(*multiplicity);
         }
+
+        // Search for end instruction index
+        let index = rom.get_instruction(ROM_EXIT).index as usize;
+        assert!(
+            index < trace_buffer.len(),
+            "ROM trace index {} out of bounds for trace_buffer len {} (RomTrace::NUM_ROWS = {})",
+            index,
+            trace_buffer.len(),
+            RomTrace::<F>::NUM_ROWS
+        );
+        assert!(
+            F::is_one(&trace_buffer[index]),
+            "The exit instruction should have been executed once in the assembly execution"
+        );
+
+        // Increment it as if it was executed the number of times needed to reach the end of the
+        // main trace instance, i.e. we repeat the last instruction until the end of the instance
+        let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
+        trace_buffer[index] = F::from_u64(1 + main_trace_len - asm_romh.steps % main_trace_len);
 
         Ok(AirInstance::new(TraceInfo::new(
             RomTrace::<F>::AIRGROUP_ID,
@@ -203,9 +214,18 @@ impl RomSM {
     /// * `rom_custom_trace` - Reference to the custom ROM trace.
     fn compute_trace_rom<F: PrimeField64>(rom: &ZiskRom, rom_custom_trace: &mut RomRomTrace<F>) {
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (i, key) in rom.insts.keys().sorted().enumerate() {
-            // Get the Zisk instruction
-            let inst = &rom.insts[key].i;
+        for (_pc, zib) in rom.insts.iter() {
+            // Get the ZisK instruction
+            let inst = &zib.i;
+
+            // Get the ZisK instruction index
+            let index = inst.index as usize;
+            debug_assert!(
+                index < RomRomTrace::<F>::NUM_ROWS,
+                "ROM instruction index {} out of bounds for ROM trace with {} rows",
+                index,
+                RomRomTrace::<F>::NUM_ROWS
+            );
 
             // Convert the i64 offsets to F
             let jmp_offset1 = if inst.jmp_offset1 >= 0 {
@@ -235,17 +255,17 @@ impl RomSM {
             };
 
             // Fill the rom trace row fields
-            rom_custom_trace[i].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
-            rom_custom_trace[i].a_offset_imm0 = a_offset_imm0;
-            rom_custom_trace[i].a_imm1 =
+            rom_custom_trace[index].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
+            rom_custom_trace[index].a_offset_imm0 = a_offset_imm0;
+            rom_custom_trace[index].a_imm1 =
                 F::from_u64(if inst.a_src == SRC_IMM { inst.a_use_sp_imm1 } else { 0 });
-            rom_custom_trace[i].b_offset_imm0 = b_offset_imm0;
-            rom_custom_trace[i].b_imm1 =
+            rom_custom_trace[index].b_offset_imm0 = b_offset_imm0;
+            rom_custom_trace[index].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            rom_custom_trace[i].ind_width = F::from_u64(inst.ind_width);
+            rom_custom_trace[index].ind_width = F::from_u64(inst.ind_width);
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
-            rom_custom_trace[i].op = if inst.op == ZiskOp::Fcall.code()
+            rom_custom_trace[index].op = if inst.op == ZiskOp::Fcall.code()
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
@@ -253,10 +273,10 @@ impl RomSM {
             } else {
                 F::from_u8(inst.op)
             };
-            rom_custom_trace[i].store_offset = store_offset;
-            rom_custom_trace[i].jmp_offset1 = jmp_offset1;
-            rom_custom_trace[i].jmp_offset2 = jmp_offset2;
-            rom_custom_trace[i].flags = F::from_u64(inst.get_flags());
+            rom_custom_trace[index].store_offset = store_offset;
+            rom_custom_trace[index].jmp_offset1 = jmp_offset1;
+            rom_custom_trace[index].jmp_offset2 = jmp_offset2;
+            rom_custom_trace[index].flags = F::from_u64(inst.get_flags());
         }
 
         // Padd with zeroes
