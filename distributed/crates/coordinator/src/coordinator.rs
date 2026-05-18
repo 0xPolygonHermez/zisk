@@ -67,6 +67,7 @@ struct SetupPendingState {
     hash_id: String,
     program_name: String,
     with_hints: bool,
+    emulator_only: bool,
 }
 
 /// Per-job event channel: live broadcast sender plus a one-slot stash for the
@@ -325,6 +326,7 @@ impl Coordinator {
         hash_id: &str,
         program_name: String,
         with_hints: bool,
+        emulator_only: bool,
     ) -> CoordinatorResult<JobId> {
         let path = ZiskPaths::global().elf_cache(hash_id);
         let elf_bytes =
@@ -351,6 +353,7 @@ impl Coordinator {
                 hash_id: hash_id.to_string(),
                 program_name: program_name.clone(),
                 with_hints,
+                emulator_only,
             },
         );
 
@@ -361,6 +364,7 @@ impl Coordinator {
                 hash_id: hash_id.to_string(),
                 program_name: program_name.clone(),
                 with_hints,
+                emulator_only,
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
@@ -404,7 +408,8 @@ impl Coordinator {
         let setups = self.active_setups.read().await.clone();
         let mut result = Vec::with_capacity(setups.len());
         for (key, program_name) in setups {
-            let (hash_id, with_hints) = (key.hash_id, key.with_hints);
+            let (hash_id, with_hints, emulator_only) =
+                (key.hash_id, key.with_hints, key.emulator_only);
             let path = ZiskPaths::global().elf_cache(&hash_id);
             match fs::read(&path) {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
@@ -413,6 +418,7 @@ impl Coordinator {
                     hash_id,
                     program_name,
                     with_hints,
+                    emulator_only,
                 }),
                 Err(e) => warn!("[Setup] Failed to read cached ELF for {}: {}", hash_id, e),
             }
@@ -1592,6 +1598,7 @@ mod tests {
                 hash_id: "h".into(),
                 program_name: "p".into(),
                 with_hints: false,
+                emulator_only: false,
             },
         );
 

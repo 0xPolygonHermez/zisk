@@ -24,8 +24,8 @@ impl RomCounter {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(bios_inst_count: Arc<Vec<AtomicU64>>, prog_inst_count: Arc<Vec<AtomicU64>>) -> Self {
-        let counter_stats = CounterStats::new(bios_inst_count, prog_inst_count);
+    pub fn new(inst_count: Arc<Vec<AtomicU64>>) -> Self {
+        let counter_stats = CounterStats::new(inst_count);
         Self { counter_stats }
     }
 }
@@ -45,6 +45,7 @@ impl Metrics for RomCounter {
 
         self.counter_stats.update(
             RomBusData::get_pc(&data),
+            RomBusData::get_index(&data),
             RomBusData::get_step(&data),
             1,
             RomBusData::get_end(&data) == 1,

@@ -8,6 +8,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
+#[allow(clippy::assertions_on_constants)]
 fn main() {
     let input: u64 = ziskos::io::read();
 

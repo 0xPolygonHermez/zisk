@@ -185,6 +185,7 @@ message SetupRequest {
   string hash_id = 1;
   bool   with_hints = 2;
   string program_name = 3;
+  bool   emulator_only = 4;
 }
 
 message SetupResponse {

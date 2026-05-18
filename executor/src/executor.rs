@@ -116,6 +116,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.rom_executor.set_asm_resources(asm_resources)
     }
 
+    /// Clears the ASM-execution flag so execution routes through the Rust emulator.
+    pub fn clear_asm_resources(&self) {
+        self.rom_executor.clear_asm_resources();
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.rom_executor.asm_emulator()

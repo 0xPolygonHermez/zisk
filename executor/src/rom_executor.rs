@@ -77,6 +77,12 @@ impl RomExecutor {
         self.emulator_asm.set_asm_resources(asm_resources)
     }
 
+    /// Clears the ASM-execution flag so subsequent `execute` calls route through the
+    /// Rust emulator. Used when switching to a program that was set up emulator-only.
+    pub fn clear_asm_resources(&self) {
+        self.is_asm_execution.store(false, Ordering::SeqCst);
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
