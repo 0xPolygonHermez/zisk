@@ -77,8 +77,7 @@ macro_rules! register_precompiles {
 
         impl<F: ::fields::PrimeField64> Precompiles<F> {
             /// Dispatches to the active variant's manager and returns its
-            /// [`Planner`](::zisk_common::Planner). See
-            /// [`ComponentBuilder::build_planner`](::common::component::component_builder::ComponentBuilder::build_planner).
+            /// `Planner`. See `ComponentBuilder::build_planner`.
             pub fn build_planner(&self) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
                 match self {
                     $( Self::$variant(sm) => (**sm).build_planner(), )*
@@ -87,7 +86,7 @@ macro_rules! register_precompiles {
 
             /// Dispatches to the active variant's manager to register its
             /// instances on `pctx` for the supplied `plans`. See
-            /// [`ComponentBuilder::configure_instances`](::common::component::component_builder::ComponentBuilder::configure_instances).
+            /// `ComponentBuilder::configure_instances`.
             pub fn configure_instances(
                 &self,
                 pctx: &::proofman_common::ProofCtx<F>,
@@ -99,8 +98,8 @@ macro_rules! register_precompiles {
             }
 
             /// Dispatches to the active variant's manager and returns the
-            /// witness [`Instance`](::zisk_common::Instance) for `ictx`. See
-            /// [`ComponentBuilder::build_instance`](::common::component::component_builder::ComponentBuilder::build_instance).
+            /// witness `Instance` for `ictx`. See
+            /// `ComponentBuilder::build_instance`.
             pub fn build_instance(
                 &self,
                 ictx: ::zisk_common::InstanceCtx,

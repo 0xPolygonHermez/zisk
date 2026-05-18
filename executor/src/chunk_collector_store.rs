@@ -20,9 +20,9 @@ use std::sync::{Arc, PoisonError, RwLock};
 use crate::state::ChunkCollector;
 
 /// Map of `global_id → per-chunk collector vector`. Wrapped in an
-/// `Arc<RwLock<...>>` so the rayon scope inside
-/// [`crate::ChunkDataCollector::collect`] can clone the handle and
-/// have multiple worker threads write to it concurrently.
+/// `Arc<RwLock<...>>` so the rayon scope inside the executor's chunk
+/// data collector can clone the handle and have multiple worker
+/// threads write to it concurrently.
 pub struct ChunkCollectorStore {
     /// Backing map. Public because the rayon scope clones the `Arc`
     /// into worker tasks; encapsulating it further would require

@@ -6,7 +6,7 @@
 //! [`StaticSMBundle::is_asm`] flag; no atomic, no runtime flip.
 //!
 //! Owns the per-execution standard input (settable between runs) and
-//! exposes a single [`Self::run`] entry point that returns the
+//! exposes a single [`TracePhase::run`] entry point that returns the
 //! backend-uniform [`crate::ExecutionOutput`].
 //!
 //! See `.claude/executor_refactor_plan.md` step 2.1 for context.

@@ -12,15 +12,16 @@
 //!     MT-failure path is a caller-supplied closure, decoupling the
 //!     supervisor from the resource type and making it trivial to
 //!     fake in tests.
-//!   * Construction has two flavours: [`Self::new`] takes pre-spawned
-//!     handles (the testing seam); [`Self::spawn_on`] is the production
-//!     convenience that spawns both runners against an
-//!     [`crate::AsmResources`].
+//!   * Construction has two flavours: [`AsmRunnerSupervisor::new`] takes
+//!     pre-spawned handles (the testing seam);
+//!     [`AsmRunnerSupervisor::spawn_on`] is the production convenience
+//!     that spawns both runners against an [`crate::AsmResources`].
 //!   * On MT success the caller asks the supervisor for its handles
-//!     via [`Self::into_handles`] and embeds them in
+//!     via [`AsmRunnerSupervisor::into_handles`] and embeds them in
 //!     [`crate::BackendArtifacts::Asm`].
-//!   * On MT failure the caller calls [`Self::cleanup_after_mt_failure`]
-//!     with a cancellation closure; the supervisor signals cancel,
+//!   * On MT failure the caller calls
+//!     [`AsmRunnerSupervisor::cleanup_after_mt_failure`] with a
+//!     cancellation closure; the supervisor signals cancel,
 //!     joins the handles, and logs any runner panic or runner-side
 //!     error so observability isn't silently lost.
 //!

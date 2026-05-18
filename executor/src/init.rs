@@ -5,16 +5,14 @@
 //! built-in and precompile, indexed by Vec position. Per-side details:
 //!
 //! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` +
-//!   `BuiltinCollectors` live in [`sm_builtins.rs`](sm_builtins).
-//! * **Precompiles** — declarative registry in
-//!   [`sm_precompiles.rs`](sm_precompiles); emits `Precompiles<F>` +
-//!   `PrecompileCounters<F>` + `PrecompileCollectors<F>` via the
-//!   `register_precompiles!` macro.
+//!   `BuiltinCollectors` live in `sm_builtins.rs`.
+//! * **Precompiles** — declarative registry in `sm_precompiles.rs`;
+//!   emits `Precompiles<F>` + `PrecompileCounters<F>` +
+//!   `PrecompileCollectors<F>` via the `register_precompiles!` macro.
 //! * **Bus construction** — `StaticDataBus::from_bundle` /
 //!   `StaticDataBusCollect::for_chunk` consume a bundle to build the
 //!   per-phase data buses.
-//! * **Canonical entry point** — `ZiskExecutor::new` in
-//!   [`executor.rs`](executor).
+//! * **Canonical entry point** — `ZiskExecutor::new` in `executor.rs`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

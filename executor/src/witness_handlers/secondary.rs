@@ -11,10 +11,10 @@ use crate::{ChunkDataCollector, WitnessGenerator};
 
 /// Static-namespace handler for non-ROM secondary `Instance`s.
 ///
-/// Runs per-chunk collection via [`ChunkDataCollector::collect_single`]
+/// Runs per-chunk collection via the executor's `ChunkDataCollector`
 /// when the collector slot is empty, then drains the recorded
-/// collectors and forwards to
-/// [`WitnessGenerator::compute_secn_witness`].
+/// collectors and forwards to the witness generator's
+/// `compute_secn_witness`.
 pub struct SecondaryWitnessHandler;
 
 impl SecondaryWitnessHandler {

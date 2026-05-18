@@ -9,8 +9,8 @@ use crate::{state::ExecutionState, WitnessGenerator};
 /// Static-namespace handler for main-SM witness computation.
 ///
 /// Looks up the main instance from the executor's
-/// [`crate::InstanceSet`] and forwards to
-/// [`WitnessGenerator::compute_main_witness`].
+/// [`crate::InstanceSet`] and forwards to the witness generator's
+/// `compute_main_witness`.
 pub struct MainWitnessHandler;
 
 impl MainWitnessHandler {

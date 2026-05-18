@@ -65,9 +65,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `secn_instances` - Map of global ID to secondary instances.
     ///
     /// # Returns
-    /// Tuple of (chunks_to_execute, global_id_chunks) where:
-    /// - chunks_to_execute[chunk_id] = list of global_ids that need this chunk
-    /// - global_id_chunks[global_id] = list of chunk_ids this instance needs
+    /// Tuple of `(chunks_to_execute, global_id_chunks)` where:
+    /// - `chunks_to_execute[chunk_id]` = list of global_ids that need this chunk
+    /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
     #[allow(clippy::borrowed_box)]
     pub fn compute_chunks_to_execute(
         &self,

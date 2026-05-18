@@ -4,7 +4,8 @@
 //! Step 3.3: every `pctx.…` call has been routed through
 //! [`crate::ProofRegistry`] (the executor's anti-corruption layer over
 //! `ProofCtx<F>`). `InstancePlanner` is now field-erased over `F` and
-//! mockable in unit tests via [`crate::ports::fakes::FakeProofRegistry`].
+//! mockable in unit tests via `crate::ports::fakes::FakeProofRegistry`
+//! (test-only fake).
 
 use anyhow::Result;
 use std::sync::RwLock;
@@ -18,8 +19,8 @@ use crate::AirClassifier;
 ///
 /// Stateless and `F`-free — every method takes a
 /// `&dyn ProofRegistry`, so the assigner can be exercised in unit
-/// tests against [`crate::ports::fakes::FakeProofRegistry`] without
-/// any `ProofCtx<F>` setup.
+/// tests against `FakeProofRegistry` (test-only fake) without any
+/// `ProofCtx<F>` setup.
 pub struct InstancePlanner;
 
 impl InstancePlanner {

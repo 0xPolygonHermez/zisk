@@ -5,11 +5,11 @@
 //! before witness computation can start:
 //!
 //! 1. Register the ROM instance on `pctx` (`add_instance_assign`).
-//! 2. Plan main instances (via [`Self::plan_main`]), assign their global
+//! 2. Plan main instances (via [`plan_main`]), assign their global
 //!    ids, and populate them into `state.instance_set.main_instances`.
 //! 3. Stash `min_traces` in the execution state so the witness side can
 //!    read them.
-//! 4. Plan secondary instances (via [`Self::plan_secondary`]), await the
+//! 4. Plan secondary instances (via [`plan_secondary`]), await the
 //!    ASM Memory-Operations runner and merge its plans, await the ASM
 //!    ROM-Histogram runner and hand its data to the witness router.
 //! 5. Configure secondary SMs on `pctx`, flatten the per-SM plan map,

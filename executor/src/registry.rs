@@ -8,8 +8,9 @@
 //!
 //! The `swap_remove`-from-state lookup that used to live in
 //! `create_secn_instance_from_state` is gone — callers now pass plans
-//! directly to [`Self::populate_secn_instances`], removing the
-//! producer/consumer round-trip through `ExecutionState::secn_planning`.
+//! directly to [`InstanceRegistry::populate_secn_instances`], removing
+//! the producer/consumer round-trip through
+//! `ExecutionState::secn_planning`.
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
