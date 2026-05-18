@@ -10,6 +10,7 @@
 #include "mem_config.hpp"
 #include "mem_segment_hash_table.hpp"
 #include "mem_check_point.hpp"
+#include "instance_meta.hpp"
 class MemSegment {
     std::unordered_map<uint32_t, uint32_t> mapping;
     uint32_t chunks_count = 0;
@@ -17,12 +18,7 @@ class MemSegment {
 public:
     bool is_last_segment;
     uint32_t offsets_base_addr;
-    const uint32_t* page_starts;
-    const uint32_t* page_single_value;
-    const uint32_t* pages_dense;
-    uint32_t num_pages;
-    uint32_t present_count;
-    uint32_t addr_range_slots;
+    PagedOffsets offsets;
 
     MemSegment(const MemSegment&) = delete;
     MemSegment& operator=(const MemSegment&) = delete;
@@ -30,15 +26,13 @@ public:
 
     MemSegment()
         : is_last_segment(false), offsets_base_addr(0),
-          page_starts(nullptr), page_single_value(nullptr), pages_dense(nullptr),
-          num_pages(0), present_count(0), addr_range_slots(0) {
+          offsets{nullptr, nullptr, nullptr, 0, 0, 0} {
         chunks = nullptr;
         init();
     }
     MemSegment(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count)
         : is_last_segment(false), offsets_base_addr(0),
-          page_starts(nullptr), page_single_value(nullptr), pages_dense(nullptr),
-          num_pages(0), present_count(0), addr_range_slots(0) {
+          offsets{nullptr, nullptr, nullptr, 0, 0, 0} {
         chunks = nullptr;
         init();
         push(chunk_id, from_addr, skip, count);

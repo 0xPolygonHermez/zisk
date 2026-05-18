@@ -996,9 +996,9 @@ void save_metas_append(FILE* f, const InstanceMeta& m) {
         }
     };
     uint32_t cps = m.n_chunks;
-    uint32_t np  = m.num_pages;
-    uint32_t pc  = m.present_count;
-    uint32_t ars = m.addr_range_slots;
+    uint32_t np  = m.offsets.num_pages;
+    uint32_t pc  = m.offsets.present_count;
+    uint32_t ars = m.offsets.addr_range_slots;
     wr(&m.inst_id,            sizeof(uint32_t));
     wr(&m.kind,               sizeof(uint32_t));
     wr(&m.first_addr,         sizeof(uint32_t));
@@ -1011,10 +1011,10 @@ void save_metas_append(FILE* f, const InstanceMeta& m) {
     wr(&np,  sizeof(uint32_t));
     wr(&pc,  sizeof(uint32_t));
     wr(&ars, sizeof(uint32_t));
-    wr(m.count_per_chunk,    cps * sizeof(uint32_t));
-    wr(m.page_starts,        np  * sizeof(uint32_t));
-    wr(m.page_single_value,  np  * sizeof(uint32_t));
-    wr(m.pages_dense,
+    wr(m.count_per_chunk,           cps * sizeof(uint32_t));
+    wr(m.offsets.page_starts,       np  * sizeof(uint32_t));
+    wr(m.offsets.page_single_value, np  * sizeof(uint32_t));
+    wr(m.offsets.pages_dense,
        static_cast<size_t>(pc) * MEM_OFFSETS_PAGE_SIZE * sizeof(uint32_t));
 }
 
@@ -1813,12 +1813,12 @@ void CountAndPlan::process_worker_() {
             const uint32_t num_addrs   = h_active_last_[ai] - h_active_first_[ai] + 1;
             metas_[ai].count_per_chunk = h_result_nops_ + (size_t)ai * n_chunks_;
             metas_[ai].n_chunks        = n_chunks_;
-            metas_[ai].num_pages       = h_num_pages[ai];
-            metas_[ai].present_count   = h_present_counters_[ai];
-            metas_[ai].addr_range_slots = num_addrs;
-            metas_[ai].page_starts       = h_page_starts_buf_ + h_page_meta_prefix[ai];
-            metas_[ai].page_single_value = h_page_single_buf_  + h_page_meta_prefix[ai];
-            metas_[ai].pages_dense       = h_pages_dense_buf_
+            metas_[ai].offsets.num_pages        = h_num_pages[ai];
+            metas_[ai].offsets.present_count    = h_present_counters_[ai];
+            metas_[ai].offsets.addr_range_slots = num_addrs;
+            metas_[ai].offsets.page_starts       = h_page_starts_buf_ + h_page_meta_prefix[ai];
+            metas_[ai].offsets.page_single_value = h_page_single_buf_  + h_page_meta_prefix[ai];
+            metas_[ai].offsets.pages_dense       = h_pages_dense_buf_
                                            + (size_t)h_pages_dense_host_prefix[ai] * MEM_OFFSETS_PAGE_SIZE;
         }
     }

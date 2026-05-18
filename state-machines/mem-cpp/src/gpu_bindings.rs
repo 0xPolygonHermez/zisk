@@ -9,6 +9,23 @@ pub struct MemOp {
     pub flags: u32,
 }
 
+/// Paged cumulative-offset table. WIRE/FFI-significant: field order &
+/// types must match `cpp/instance_meta.hpp::PagedOffsets` and the
+/// per-field serialisation in `cpp/instance_meta_loader.hpp` exactly.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct PagedOffsets {
+    pub page_starts: *const u32,
+    pub page_single_value: *const u32,
+    pub pages_dense: *const u32,
+    pub num_pages: u32,
+    pub present_count: u32,
+    pub addr_range_slots: u32,
+}
+// Catches an accidental add/remove of a field vs. the C++ POD (which
+// carries the matching `static_assert(sizeof(PagedOffsets) == 40)`).
+const _: () = assert!(core::mem::size_of::<PagedOffsets>() == 40);
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct InstanceMeta {
@@ -18,12 +35,7 @@ pub struct InstanceMeta {
     pub last_addr: u32,
     pub count_per_chunk: *const u32,
     pub n_chunks: u32,
-    pub page_starts: *const u32,
-    pub page_single_value: *const u32,
-    pub pages_dense: *const u32,
-    pub num_pages: u32,
-    pub present_count: u32,
-    pub addr_range_slots: u32,
+    pub offsets: PagedOffsets,
     pub first_addr_chunk: u32,
     pub first_addr_skip: u32,
     pub last_addr_chunk: u32,

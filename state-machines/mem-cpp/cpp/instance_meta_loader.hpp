@@ -89,20 +89,20 @@ inline LoadedMetas load_instance_metas(const std::string& path) {
         rd(&m.first_addr_skip,    sizeof(uint32_t));
         rd(&m.last_addr_chunk,    sizeof(uint32_t));
         rd(&m.last_addr_include,  sizeof(uint32_t));
-        rd(&m.n_chunks,           sizeof(uint32_t));
-        rd(&m.num_pages,          sizeof(uint32_t));
-        rd(&m.present_count,      sizeof(uint32_t));
-        rd(&m.addr_range_slots,   sizeof(uint32_t));
+        rd(&m.n_chunks,                 sizeof(uint32_t));
+        rd(&m.offsets.num_pages,        sizeof(uint32_t));
+        rd(&m.offsets.present_count,    sizeof(uint32_t));
+        rd(&m.offsets.addr_range_slots, sizeof(uint32_t));
         const std::size_t dense_words =
-            static_cast<std::size_t>(m.present_count) * MEM_OFFSETS_PAGE_SIZE;
+            static_cast<std::size_t>(m.offsets.present_count) * MEM_OFFSETS_PAGE_SIZE;
         tmp_cnt.resize(m.n_chunks);
-        tmp_starts.resize(m.num_pages);
-        tmp_carry.resize(m.num_pages);
+        tmp_starts.resize(m.offsets.num_pages);
+        tmp_carry.resize(m.offsets.num_pages);
         tmp_dense.resize(dense_words);
-        rd(tmp_cnt.data(),    m.n_chunks    * sizeof(uint32_t));
-        rd(tmp_starts.data(), m.num_pages   * sizeof(uint32_t));
-        rd(tmp_carry.data(),  m.num_pages   * sizeof(uint32_t));
-        rd(tmp_dense.data(),  dense_words   * sizeof(uint32_t));
+        rd(tmp_cnt.data(),    m.n_chunks            * sizeof(uint32_t));
+        rd(tmp_starts.data(), m.offsets.num_pages   * sizeof(uint32_t));
+        rd(tmp_carry.data(),  m.offsets.num_pages   * sizeof(uint32_t));
+        rd(tmp_dense.data(),  dense_words           * sizeof(uint32_t));
 
         out.cnt_offsets.push_back(out.count_storage.size());
         out.page_starts_offsets.push_back(out.page_starts_storage.size());
@@ -118,10 +118,10 @@ inline LoadedMetas load_instance_metas(const std::string& path) {
 
     // Bind pointers now that backing vectors are final.
     for (std::size_t i = 0; i < out.metas.size(); i++) {
-        out.metas[i].count_per_chunk    = out.count_storage.data()       + out.cnt_offsets[i];
-        out.metas[i].page_starts        = out.page_starts_storage.data() + out.page_starts_offsets[i];
-        out.metas[i].page_single_value  = out.page_single_storage.data()  + out.page_single_offsets[i];
-        out.metas[i].pages_dense        = out.pages_dense_storage.data() + out.pages_dense_offsets[i];
+        out.metas[i].count_per_chunk           = out.count_storage.data()        + out.cnt_offsets[i];
+        out.metas[i].offsets.page_starts       = out.page_starts_storage.data()  + out.page_starts_offsets[i];
+        out.metas[i].offsets.page_single_value = out.page_single_storage.data()  + out.page_single_offsets[i];
+        out.metas[i].offsets.pages_dense       = out.pages_dense_storage.data()  + out.pages_dense_offsets[i];
     }
     return out;
 }

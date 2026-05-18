@@ -375,12 +375,7 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
         }
         segment->is_last_segment = instance.inst_id == last_segments[instance.kind];
         segment->offsets_base_addr = instance.first_addr;
-        segment->addr_range_slots = instance.addr_range_slots;
-        segment->num_pages        = instance.num_pages;
-        segment->present_count    = instance.present_count;
-        segment->page_starts       = instance.page_starts;
-        segment->page_single_value = instance.page_single_value;
-        segment->pages_dense       = instance.pages_dense;
+        segment->offsets = instance.offsets;
         dest[instance.kind].set(instance.inst_id, segment);
     }
 }
@@ -421,12 +416,12 @@ const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
         offsets_base_addr_out = segment->offsets_base_addr;
-        addr_range_slots_out  = segment->addr_range_slots;
-        num_pages_out         = segment->num_pages;
-        present_count_out     = segment->present_count;
-        page_single_value_out = segment->page_single_value;
-        pages_dense_out       = segment->pages_dense;
-        return segment->page_starts;
+        addr_range_slots_out  = segment->offsets.addr_range_slots;
+        num_pages_out         = segment->offsets.num_pages;
+        present_count_out     = segment->offsets.present_count;
+        page_single_value_out = segment->offsets.page_single_value;
+        pages_dense_out       = segment->offsets.pages_dense;
+        return segment->offsets.page_starts;
     } else {
         offsets_base_addr_out = 0;
         addr_range_slots_out  = 0;
