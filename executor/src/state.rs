@@ -10,20 +10,18 @@ use zisk_core::ZiskRom;
 
 use anyhow::Result;
 
-use crate::{ChunkCollectorStore, InstanceSet, PlanOutput};
+use crate::{ChunkCollectorStore, InstanceSet};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 
 /// Execution state for the ZisK executor.
 ///
-/// After step 3.4, the instance maps and chunk-collector map live
-/// behind dedicated wrappers ([`InstanceSet`] / [`ChunkCollectorStore`])
-/// instead of being three free-standing `RwLock`-protected fields on
-/// this struct. Their access paths get one extra hop
-/// (`state.instance_set.main_instances` instead of
-/// `state.main_instances`) but the names now document the lifecycle:
-/// `InstanceSet` is *write-once* in `MaterializePhase`,
+/// The instance maps and chunk-collector map live behind dedicated
+/// wrappers ([`InstanceSet`] / [`ChunkCollectorStore`]). Their access
+/// paths get one extra hop (`state.instance_set.main_instances`
+/// instead of `state.main_instances`) but the names document the
+/// lifecycle: `InstanceSet` is *write-once* in [`crate::PlanPhase`],
 /// `ChunkCollectorStore` is *lock-contested* during witness collection.
 pub struct ExecutionState<F: PrimeField64> {
     /// ZisK ROM (ELF), can be changed between executions.
@@ -32,24 +30,12 @@ pub struct ExecutionState<F: PrimeField64> {
     /// Planning information for main state machines (minimal traces from emulation).
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
 
-    /// Main + secondary instance maps populated by `MaterializePhase`.
-    /// `Arc` so [`PlanOutput`] can share the same handle (B.1).
+    /// Main + secondary instance maps populated by `PlanPhase`.
     pub instance_set: Arc<InstanceSet<F>>,
 
     /// Per-instance chunk collectors. Lock-contested during the
     /// witness phase.
-    /// `Arc` so [`PlanOutput`] can share the same handle (B.1).
     pub collector_store: Arc<ChunkCollectorStore>,
-
-    /// Per-execution artifacts produced by [`crate::MaterializePhase::run`]
-    /// and consumed during `calculate_witness`. Set to `Some` at the end
-    /// of `execute`; reset to `None` on the next `reset()`.
-    ///
-    /// During the B.1 step this is populated *alongside* the legacy
-    /// `min_traces` / `instance_set` / `collector_store` fields (they
-    /// share Arc handles); B.2 will migrate readers off the legacy
-    /// fields and delete them.
-    pub artifacts: RwLock<Option<PlanOutput<F>>>,
 
     /// Execution result, including the number of executed steps.
     pub execution_result: Mutex<ZiskExecutorSummary>,
@@ -72,7 +58,6 @@ impl<F: PrimeField64> ExecutionState<F> {
             min_traces: Arc::new(RwLock::new(None)),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
-            artifacts: RwLock::new(None),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
             stats: ExecutorStatsHandle::new(),
             is_rom_initialized: AtomicBool::new(false),
@@ -115,7 +100,6 @@ impl<F: PrimeField64> ExecutionState<F> {
         *self.execution_result.lock().unwrap_or_else(PoisonError::into_inner) =
             ZiskExecutorSummary::default();
         *self.min_traces.write().unwrap_or_else(PoisonError::into_inner) = None;
-        *self.artifacts.write().unwrap_or_else(PoisonError::into_inner) = None;
         self.instance_set.reset();
         self.collector_store.reset();
         self.stats.reset();

@@ -41,33 +41,18 @@ use zisk_pil::{
 
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::{
-    state::ExecutionState, ChunkCollectorStore, CountersChunkMetrics, ExecutionOutput,
-    InstancePlanner, InstanceRegistry, InstanceSet, StaticSMBundle, WitnessRouter,
+    state::ExecutionState, CountersChunkMetrics, ExecutionOutput, InstancePlanner,
+    InstanceRegistry, StaticSMBundle, WitnessRouter,
 };
 
-/// Per-execution result produced by [`PlanPhase::run`].
+/// Telemetry returned from [`PlanPhase::run`] for the executor to fold
+/// into [`zisk_common::ZiskExecutorTime`] / [`zisk_common::ZiskExecutorSummary`].
 ///
-/// Carries both the per-execution data the witness phase reads
-/// (`min_traces`, `instance_set`, `collector_store`) and the
-/// side-information the executor folds into
-/// [`zisk_common::ZiskExecutorTime`] / [`zisk_common::ZiskExecutorSummary`]
-/// (timings, costs). One struct, one return value.
-///
-/// The three data fields share `Arc` handles with `ExecutionState`;
-/// both the legacy state fields and these artifacts point at the same
-/// backing data.
-///
-/// Lifetime: populated at the end of `execute`, drained during
-/// `calculate_witness`, dropped on the next `state.reset()`.
-pub struct PlanOutput<F: PrimeField64> {
-    /// Minimal traces from emulation. Shared handle.
-    pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
-    /// Populated main + secondary instance maps. Shared handle.
-    pub instance_set: Arc<InstanceSet<F>>,
-    /// Per-instance chunk collectors. Shared handle. Empty
-    /// immediately post-materialize; collectors fill during
-    /// `calculate_witness`.
-    pub collector_store: Arc<ChunkCollectorStore>,
+/// The per-execution *data* (`min_traces`, `instance_set`,
+/// `collector_store`) lives on [`ExecutionState`] directly — `run`
+/// mutates those fields through `state` as a side-effect. This struct
+/// is consumed inline by the caller and dropped.
+pub struct PlanOutput {
     /// Wall-clock time spent counting + planning (covers main planning
     /// through secondary planning, before the MO merge wait).
     pub count_and_plan_duration: Duration,
@@ -163,7 +148,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         global_ids: &RwLock<Vec<usize>>,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
-    ) -> Result<PlanOutput<F>> {
+    ) -> Result<PlanOutput> {
         // ────────────────────────────────────────────────────────────
         // Phase 2: plan + register + populate main instances
         // ────────────────────────────────────────────────────────────
@@ -317,14 +302,7 @@ impl<F: PrimeField64> PlanPhase<F> {
             cost_per_type.add_cost(StatsType::Tables, cost);
         }
 
-        Ok(PlanOutput {
-            min_traces: state.min_traces.clone(),
-            instance_set: state.instance_set.clone(),
-            collector_store: state.collector_store.clone(),
-            count_and_plan_duration,
-            count_and_plan_mo_duration,
-            cost_per_type,
-        })
+        Ok(PlanOutput { count_and_plan_duration, count_and_plan_mo_duration, cost_per_type })
     }
 }
 

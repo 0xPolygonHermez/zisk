@@ -216,16 +216,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &_exec_scope,
         )?;
 
-        // Read timings and costs before moving the artifacts into state.
-        let count_and_plan_duration = artifacts.count_and_plan_duration;
-        let count_and_plan_mo_duration = artifacts.count_and_plan_mo_duration;
-        let cost_per_type = artifacts.cost_per_type.clone();
-
-        // Stash the per-execution artifacts so `calculate_witness` can
-        // drain them.
-        *self.state.artifacts.write().unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Some(artifacts);
-
         // Reset hints stream and input shmem after the ASM
         // backend-specific await calls have drained the runners.
         self.trace.reset()?;
@@ -234,14 +224,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let zisk_execution_time = ZiskExecutorTime {
             execution_duration: execution_duration.as_millis() as u64,
-            count_and_plan_duration: count_and_plan_duration.as_millis() as u64,
-            count_and_plan_mo_duration: count_and_plan_mo_duration.as_millis() as u64,
+            count_and_plan_duration: artifacts.count_and_plan_duration.as_millis() as u64,
+            count_and_plan_mo_duration: artifacts.count_and_plan_mo_duration.as_millis() as u64,
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.trace.get_asm_execution_info()?,
         };
-        // Store the execution result
         let execution_result =
-            ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+            ZiskExecutorSummary::new(steps, zisk_execution_time, artifacts.cost_per_type);
 
         // Store the execution result
         self.state.set_execution_result(execution_result);
