@@ -51,7 +51,7 @@ set -euo pipefail
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil]
+         [--skip-compile-pil] [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
@@ -62,6 +62,8 @@ usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
   --setup-jobs N         Concurrent non-recursive AIR setups (pil_info + I/O).
                          Default 1. Cheaper per job than --recursive-jobs.
                          Also settable via SETUP_JOBS env var.
+  -v, --verbose          Verbose output. Repeat (-vv) or pass twice for
+                         maximum verbosity. Forwarded to compile-pil and stats.
   --skip-compile-pil     Reuse the existing pil/zisk.pilout instead of
                          recompiling. Also skips the pil-helpers regen step.
                          Faster local iteration. The <build-dir>/.input-hash
@@ -89,6 +91,7 @@ BUILD_DIR="build"
 RECURSIVE_JOBS_ARG=""
 SETUP_JOBS_ARG=""
 SKIP_COMPILE_PIL=0
+VERBOSE_COUNT=0
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
@@ -104,6 +107,8 @@ while [ $# -gt 0 ]; do
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
+    -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
+    -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
     --no-aggregation)    set_mode no_aggregation;    shift ;;
     --snark)             set_mode snark;             shift ;;
@@ -118,6 +123,11 @@ if [ "$MODE" = "compile_pil" ] && [ $SKIP_COMPILE_PIL -eq 1 ]; then
   echo "error: --compile-pil and --skip-compile-pil are contradictory" >&2
   exit 1
 fi
+
+VERBOSE_FLAGS=()
+for ((i = 0; i < VERBOSE_COUNT; i++)); do
+  VERBOSE_FLAGS+=(-v)
+done
 
 # Bucket is only relevant in build (cache lookup) and snark (cache check) modes.
 # Reads are anonymous (zisk-setup is public-read), so no auth check needed —
@@ -204,7 +214,15 @@ HASH_NAME="zisk-provingkey-${VERSION}.input-hash"
 
 # ----- frops fixed data ------------------------------------------------------
 # Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
+# Skipped under --skip-compile-pil: the on-disk *_fixed.bin files are paired
+# with the reused pilout, and frops generation is idempotent given unchanged
+# sources, so regenerating only burns cargo-build time. compute_input_hash
+# checks the bins exist and errors cleanly if they don't.
 generate_frops() {
+  if [ $SKIP_COMPILE_PIL -eq 1 ]; then
+    echo "==> generating frops fixed data (SKIPPED — reusing existing *_fixed.bin)"
+    return
+  fi
   echo "==> generating frops fixed data"
   cargo run --release --bin arith_frops_fixed_gen
   cargo run --release --bin binary_basic_frops_fixed_gen
@@ -262,7 +280,8 @@ run_compile_pil() {
     --output pil/zisk.pilout \
     --fixed-dir tmp/fixed \
     --fixed-to-file \
-    --no-proto-fixed-data
+    --no-proto-fixed-data \
+    "${VERBOSE_FLAGS[@]}"
 
   run_pil_helpers
 }
@@ -297,7 +316,9 @@ case "$MODE" in
     echo "==> proofman-setup stats"
     cargo run --release -p cargo-zisk -- proofman-setup stats \
       --airout pil/zisk.pilout \
-      -o tmp/stats.txt
+      --starkstructs state-machines/starkstructs.json \
+      -o tmp/stats.txt \
+      "${VERBOSE_FLAGS[@]}"
     echo "stats written to tmp/stats.txt"
     exit 0
     ;;
