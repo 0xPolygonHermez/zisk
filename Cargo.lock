@@ -995,17 +995,13 @@ name = "cargo-zisk"
 version = "1.0.0-beta"
 dependencies = [
  "anyhow",
- "asm-runner",
  "clap",
  "colored",
- "dirs",
- "executor",
  "fields 1.0.0-beta",
  "futures",
  "indicatif",
  "proofman",
  "proofman-common",
- "proofman-util",
  "rand 0.9.4",
  "reqwest",
  "rom-setup",
@@ -1019,7 +1015,6 @@ dependencies = [
  "yansi",
  "zisk-build",
  "zisk-common",
- "zisk-core",
  "zisk-pil",
  "zisk-prover-backend",
 ]
@@ -1653,7 +1648,6 @@ name = "data-bus"
 version = "1.0.0-beta"
 dependencies = [
  "zisk-common",
- "zisk-core",
 ]
 
 [[package]]
@@ -2019,9 +2013,7 @@ dependencies = [
  "crossbeam",
  "data-bus",
  "fields 1.0.0-beta",
- "itertools 0.14.0",
  "mem-common",
- "mem-planner-cpp",
  "named-sem",
  "pil-std-lib",
  "precomp-arith-eq",
@@ -2040,7 +2032,6 @@ dependencies = [
  "rayon",
  "sm-arith",
  "sm-binary",
- "sm-frequent-ops",
  "sm-main",
  "sm-mem",
  "sm-rom",
@@ -3211,14 +3202,8 @@ version = "1.0.0-beta"
 dependencies = [
  "clap",
  "fields 1.0.0-beta",
- "num-bigint",
- "num-traits",
- "proofman-common",
- "proofman-macros",
- "proofman-util",
  "rayon",
  "static_assertions",
- "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -3890,7 +3875,6 @@ dependencies = [
  "fields 1.0.0-beta",
  "lazy_static",
  "lib-c",
- "mem-common",
  "num-bigint",
  "num-traits",
  "path-clean",
@@ -3898,17 +3882,11 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
  "regex",
  "rustfmt-wrapper",
- "serde",
- "serde_json",
- "sm-mem",
  "tracing",
- "typenum",
- "witness",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -3919,14 +3897,9 @@ name = "precomp-arith-eq-384"
 version = "1.0.0-beta"
 dependencies = [
  "ark-bls12-381",
- "ark-bn254",
  "ark-ff 0.5.0",
- "ark-secp256k1",
- "ark-std 0.5.0",
  "fields 1.0.0-beta",
  "lazy_static",
- "lib-c",
- "mem-common",
  "num-bigint",
  "num-traits",
  "path-clean",
@@ -3935,16 +3908,10 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "regex",
  "rustfmt-wrapper",
- "serde",
- "serde_json",
  "tracing",
- "typenum",
- "witness",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -3955,16 +3922,12 @@ name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "generic-array",
  "lib-c",
- "mem-common",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -3976,14 +3939,11 @@ name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "mem-common",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -3995,18 +3955,12 @@ name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "generic-array",
- "lib-c",
- "mem-common",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
- "proofman",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -4024,7 +3978,6 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -4039,15 +3992,10 @@ name = "precomp-poseidon2"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "mem-common",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "sha2",
- "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -4059,14 +4007,11 @@ name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "mem-common",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
- "sm-mem",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -4093,7 +4038,6 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-secp256k1",
  "ark-secp256r1",
- "ark-std 0.5.0",
  "cfg-if",
  "circuit",
  "crunchy",
@@ -4109,8 +4053,6 @@ dependencies = [
  "anyhow",
  "borsh",
  "criterion 0.8.2",
- "lib-c",
- "precompiles-helpers",
  "rayon",
  "rustls",
  "tracing",
@@ -4796,7 +4738,6 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "colored",
  "fields 1.0.0-beta",
  "proofman-common",
  "sm-rom",
@@ -5412,15 +5353,11 @@ name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "num-bigint",
  "pil-std-lib",
  "proofman-common",
- "proofman-macros",
- "proofman-util",
  "rayon",
  "sm-binary",
  "sm-frequent-ops",
- "static_assertions",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -5432,11 +5369,8 @@ name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
- "num-bigint",
  "pil-std-lib",
  "proofman-common",
- "proofman-macros",
- "proofman-util",
  "rayon",
  "sm-frequent-ops",
  "static_assertions",
@@ -5452,12 +5386,8 @@ version = "1.0.0-beta"
 dependencies = [
  "clap",
  "fields 1.0.0-beta",
- "num-bigint",
  "proofman-common",
- "proofman-util",
- "rayon",
  "static_assertions",
- "tracing",
  "zisk-core",
 ]
 
@@ -5467,11 +5397,8 @@ version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
  "mem-common",
- "num-bigint",
  "pil-std-lib",
  "proofman-common",
- "proofman-macros",
- "proofman-util",
  "rayon",
  "tracing",
  "zisk-common",
@@ -5486,15 +5413,11 @@ version = "1.0.0-beta"
 dependencies = [
  "fields 1.0.0-beta",
  "mem-common",
- "num-bigint",
- "num-traits",
  "pil-std-lib",
  "proofman-common",
- "proofman-macros",
  "proofman-util",
  "rayon",
  "tracing",
- "witness",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -5946,21 +5869,6 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.12+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
-dependencies = [
- "indexmap",
- "serde_core",
- "serde_spanned 1.1.1",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 0.7.15",
-]
-
-[[package]]
-name = "toml"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
@@ -5979,15 +5887,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
 ]
 
 [[package]]
@@ -6039,12 +5938,6 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
-
-[[package]]
-name = "toml_writer"
-version = "1.1.1+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "tonic"
@@ -7432,7 +7325,6 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "rom-setup",
- "tracing",
  "vergen-git2",
 ]
 
@@ -7440,17 +7332,11 @@ dependencies = [
 name = "zisk-cluster-api"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
- "chrono",
  "prost",
  "prost-types",
- "serde",
- "serde_json",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
- "tracing",
- "uuid",
  "zisk-cluster-common",
 ]
 
@@ -7463,10 +7349,7 @@ dependencies = [
  "chrono",
  "proofman",
  "proofman-common",
- "proofman-util",
  "serde",
- "serde_json",
- "thiserror 2.0.18",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -7486,7 +7369,6 @@ dependencies = [
  "libc",
  "proofman",
  "proofman-common",
- "proofman-util",
  "proofman-verifier 1.0.0-beta",
  "quinn",
  "rcgen",
@@ -7497,7 +7379,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "zisk-core",
  "zisk-verifier",
 ]
@@ -7511,7 +7392,6 @@ dependencies = [
  "bincode",
  "blake3",
  "chrono",
- "clap",
  "colored",
  "config",
  "futures",
@@ -7520,19 +7400,15 @@ dependencies = [
  "humantime",
  "metrics",
  "proofman",
- "proofman-util",
  "prost-types",
  "reqwest",
  "serde",
- "serde_json",
  "signal-hook 0.3.18",
  "signal-hook-tokio 0.3.1",
  "thiserror 2.0.18",
  "tokio",
  "tonic",
  "tracing",
- "uuid",
- "witness",
  "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-common",
@@ -7546,7 +7422,6 @@ dependencies = [
  "chrono",
  "prost",
  "prost-types",
- "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
@@ -7584,10 +7459,7 @@ dependencies = [
  "hex",
  "metrics",
  "metrics-exporter-prometheus",
- "prost",
- "prost-types",
  "serde",
- "serde_json",
  "signal-hook 0.4.4",
  "signal-hook-tokio 0.4.0",
  "thiserror 2.0.18",
@@ -7596,10 +7468,7 @@ dependencies = [
  "tokio-util",
  "tonic",
  "tonic-health",
- "tonic-prost",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "uuid",
  "zisk-cluster-api",
  "zisk-cluster-common",
@@ -7620,7 +7489,6 @@ dependencies = [
  "precompiles-helpers",
  "rayon",
  "riscv",
- "serde",
  "sha2",
  "tiny-keccak",
  "zisk-definitions",
@@ -7638,7 +7506,6 @@ dependencies = [
  "fields 1.0.0-beta",
  "proofman-common",
  "proofman-macros",
- "rayon",
  "serde",
  "serde_arrays",
 ]
@@ -7664,7 +7531,6 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "asm-runner",
- "bincode",
  "blake3",
  "borsh",
  "colored",
@@ -7677,7 +7543,6 @@ dependencies = [
  "proofman-verifier 1.0.0-beta",
  "rom-setup",
  "serde",
- "sha2",
  "tracing",
  "zisk-cluster-common",
  "zisk-common",
@@ -7689,26 +7554,17 @@ dependencies = [
 name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
- "alloy-sol-types",
  "anyhow",
  "bincode",
- "bytes",
- "colored",
- "fields 1.0.0-beta",
- "futures",
  "proofman-common",
  "rom-setup",
  "serde",
  "tokio",
- "tonic",
- "tracing",
  "uuid",
  "zisk-build",
- "zisk-cluster-common",
  "zisk-common",
  "zisk-coordinator-api",
  "zisk-coordinator-client",
- "zisk-coordinator-server",
  "zisk-prover-backend",
 ]
 
@@ -7724,32 +7580,25 @@ name = "zisk-worker"
 version = "1.0.0-beta"
 dependencies = [
  "anyhow",
- "asm-runner",
  "bincode",
  "borsh",
  "chrono",
  "clap",
  "colored",
  "config",
- "fields 1.0.0-beta",
- "precompiles-hints",
  "proofman",
  "proofman-common",
- "rom-setup",
  "serde",
  "tokio",
  "tokio-stream",
- "toml 0.9.12+spec-1.1.0",
  "tonic",
  "tracing",
  "uuid",
  "vergen-git2",
- "witness",
  "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-common",
  "zisk-coordinator",
- "zisk-pil",
  "zisk-prover-backend",
 ]
 
@@ -7774,14 +7623,12 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-common",
  "rayon",
  "regex",
  "riscv",
  "serde_json",
  "sm-arith",
  "sm-binary",
- "symbolic-common",
  "symbolic-demangle",
  "sysinfo 0.38.4",
  "vergen-git2",
