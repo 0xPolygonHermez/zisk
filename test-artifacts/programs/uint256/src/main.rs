@@ -1,9 +1,5 @@
-#![no_main]
-ziskos::entrypoint!(main);
-
-mod constants;
-
 mod add;
+mod common;
 mod div;
 mod modular;
 mod mul;

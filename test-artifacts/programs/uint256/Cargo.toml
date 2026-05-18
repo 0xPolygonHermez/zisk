@@ -6,5 +6,11 @@ edition.workspace = true
 [dependencies]
 ziskos.workspace = true
 
+[features]
+# Force the u256 wrappers to use the ruint fallback even when targeting zisk
+ruint-fallback = []
+# Wrap every u256 function with ziskos profiling functions
+profile = []
+
 # [lints]
 # workspace = true
