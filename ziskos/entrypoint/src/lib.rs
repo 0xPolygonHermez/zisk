@@ -1,28 +1,28 @@
-#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), no_std)]
-#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), feature(core_intrinsics))]
-#![cfg_attr(all(target_os = "zkvm", target_vendor = "zisk"), allow(internal_features))]
+#![cfg_attr(zisk_guest, no_std)]
+#![cfg_attr(zisk_guest, feature(core_intrinsics))]
+#![cfg_attr(zisk_guest, allow(internal_features))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 mod dma;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 mod fcall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 mod alloc;
 
 // Link the `alloc` crate under an alias to avoid conflict with `mod alloc` above.
 // Exposed as `crate::alloc_crate` so submodules can use `use crate::alloc_crate::vec::Vec;`
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 extern crate alloc as alloc_crate;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub(crate) use alloc_crate as alloc_extern;
 
 mod profile;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub use fcall::*;
 pub mod io;
 pub use profile::*;
@@ -30,19 +30,15 @@ pub mod syscalls;
 pub mod zisklib;
 pub mod ziskos_definitions;
 
-#[cfg(all(
-    not(all(target_os = "zkvm", target_vendor = "zisk")),
-    any(zisk_hints, zisk_hints_debug),
-    feature = "user-hints"
-))]
+#[cfg(all(not(zisk_guest), any(zisk_hints, zisk_hints_debug), feature = "user-hints"))]
 pub mod hints;
 
-#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+#[cfg(all(not(zisk_guest), zisk_hints))]
 extern "C" {
     fn hint_input_data(input_data_ptr: *const u8, input_data_len: usize);
 }
 
-#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_debug))]
+#[cfg(all(not(zisk_guest), zisk_hints_debug))]
 extern "C" {
     fn hint_log_c(msg: *const std::os::raw::c_char);
 }
@@ -50,7 +46,7 @@ extern "C" {
 #[cfg(zisk_hints_debug)]
 pub fn hint_log<S: AsRef<str>>(msg: S) {
     // On native we call external C function to log hints, since it controls if hints are paused or not
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         use std::ffi::CString;
 
@@ -59,7 +55,7 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
         }
     }
     // On zkvm/zisk, we can just print directly
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         println!("{}", msg.as_ref());
     }
@@ -68,17 +64,13 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_init")]
 pub extern "C" fn zkvm_init() {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         read_input_reset();
         crate::zisklib::zkvm_io::reset();
     }
 
-    #[cfg(all(
-        not(all(target_os = "zkvm", target_vendor = "zisk")),
-        zisk_hints,
-        feature = "user-hints"
-    ))]
+    #[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
     {
         let path =
             std::env::var("ZISK_HINTS_OUTPUT").map(std::path::PathBuf::from).unwrap_or_else(|_| {
@@ -93,11 +85,7 @@ pub extern "C" fn zkvm_init() {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_deinit")]
 pub extern "C" fn zkvm_deinit() {
-    #[cfg(all(
-        not(all(target_os = "zkvm", target_vendor = "zisk")),
-        zisk_hints,
-        feature = "user-hints"
-    ))]
+    #[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
     {
         crate::hints::close_hints().expect("hints close failed");
     }
@@ -132,9 +120,9 @@ use crate::ziskos_definitions::ziskos_config::*;
 /// Initial offset for input reading.
 /// zkvm: 8 bytes offset due to INPUT_ADDR memory layout
 /// native: 0 bytes offset (file starts at position 0)
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub(crate) const INPUT_INITIAL_OFFSET: usize = 8;
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub(crate) const INPUT_INITIAL_OFFSET: usize = 0;
 
 /// Pointer to the current position in the input buffer/file.
@@ -145,10 +133,10 @@ pub fn read_input_reset() {
     unsafe { INPUT_POS = INPUT_INITIAL_OFFSET };
 }
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 static NATIVE_INPUT: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub fn set_native_input(data: Vec<u8>) {
     *NATIVE_INPUT.lock().unwrap() = Some(data);
 }
@@ -158,7 +146,7 @@ pub fn set_native_input(data: Vec<u8>) {
 /// This returns a slice pointing directly to the input memory region.
 /// Use this when you want to deserialize directly without an intermediate copy.
 /// The INPUT_POS is advanced after this call.
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub(crate) fn read_slice_zerocopy<'a>() -> &'a [u8] {
     // SAFETY: Single threaded, so nothing else can touch INPUT_POS while we're working.
     let input_pos = unsafe { INPUT_POS };
@@ -196,7 +184,7 @@ pub(crate) fn read_slice_zerocopy<'a>() -> &'a [u8] {
     data_slice
 }
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub(crate) fn read_input() -> Vec<u8> {
     let input_pos = unsafe { INPUT_POS };
 
@@ -265,7 +253,7 @@ pub(crate) fn read_input() -> Vec<u8> {
     data
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub(crate) fn set_output(id: usize, value: u32) {
     use core::arch::asm;
     let addr_v: *mut u32;
@@ -289,12 +277,12 @@ pub(crate) fn set_output(id: usize, value: u32) {
     unsafe { core::ptr::write_volatile(addr_v, value) };
 }
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub(crate) fn set_output(id: usize, value: u32) {
     println!("public {id}: {value:#010x}");
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub mod ziskos {
     use crate::ziskos_definitions::ziskos_config::*;
     use core::arch::asm;

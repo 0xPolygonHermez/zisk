@@ -1,9 +1,9 @@
 //! syscall_secp256k1_dbl system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::point::SyscallPoint256;
@@ -30,9 +30,9 @@ pub extern "C" fn syscall_secp256k1_dbl(
     p: &mut SyscallPoint256,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_SECP256K1_DBL_ID, p);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let _p1 = [p.x, p.y].concat().try_into().unwrap();
         let mut p3: [u64; 8] = [0; 8];
