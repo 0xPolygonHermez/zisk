@@ -3691,7 +3691,9 @@ impl ZiskRom2Asm {
                 //   4N + 3
                 // 4(N+1)
                 //   ...
-                if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+                if (previous_key >= ROM_ADDR)
+                    && (*key > ROM_ADDR)
+                    && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
                 {
                     for _ in previous_key + 1..*key {
                         *code += "\t.quad 0\n";
