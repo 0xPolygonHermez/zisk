@@ -1,6 +1,4 @@
 #![cfg_attr(zisk_guest, no_std)]
-#![cfg_attr(zisk_guest, feature(core_intrinsics))]
-#![cfg_attr(zisk_guest, allow(internal_features))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -390,6 +388,7 @@ pub mod ziskos {
     static mut RNG: Option<SmallRng> = None;
     static mut SYS_RAND_WARNING: bool = false;
 
+    #[allow(static_mut_refs)]
     #[no_mangle]
     unsafe extern "C" fn sys_rand(recv_buf: *mut u8, words: usize) {
         if !SYS_RAND_WARNING {

@@ -63,7 +63,9 @@ jobs:
         run: rustup toolchain install nightly --component rust-src --no-self-update
 
       - name: Build ziskos-staticlib for riscv64im-unknown-none-elf
-        run: cargo +nightly build -p ziskos-staticlib --release --target riscv64im-unknown-none-elf -Z build-std=core,alloc --config 'profile.release.lto="fat"'
+        run: cargo +nightly build -p ziskos-staticlib --release --target riscv64im-unknown-none-elf -Z build-std=core,alloc --config 'profile.release.lto="fat"' --features panic-handler
+        env:
+          RUSTFLAGS: "-D warnings"
 
   test-x86_64:
     name: Test on Ubuntu x86_64
