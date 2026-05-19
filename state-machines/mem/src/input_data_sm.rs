@@ -514,6 +514,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     ///
     /// - `mem_inputs`: A slice of all `ZiskRequiredMemory` inputs
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(feature = "legacy_mem_count_and_plan", allow(unused_variables))]
     #[inline(always)]
     fn compute_witness(
         &self,

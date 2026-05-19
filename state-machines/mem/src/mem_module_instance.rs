@@ -8,6 +8,15 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use crate::MemInput;
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use rayon::prelude::*;
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use zisk_pil::MemTrace;
+
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
     ictx: InstanceCtx,

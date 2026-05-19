@@ -140,6 +140,12 @@ impl MemPlanner {
     /// The GPU planner that produced these metas must remain alive across
     /// this call, since the per-meta `count_per_chunk` and `addr_offsets`
     /// pointers reference its pinned host memory.
+    ///
+    /// # Safety
+    ///
+    /// `gpu_metas` must point to a valid array of at least `n` meta entries,
+    /// and the GPU planner that produced them must remain alive for the
+    /// duration of this call (its pinned host memory is referenced directly).
     pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }

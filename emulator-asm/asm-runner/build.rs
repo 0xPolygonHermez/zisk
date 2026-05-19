@@ -3,7 +3,6 @@ use std::process::Command;
 
 /// Detects whether GPU (CUDA) support is available.
 /// Returns false if the `cpu-only` feature is set or if no CUDA toolkit is found.
-
 fn detect_gpu() -> bool {
     if cfg!(feature = "cpu-only") {
         return false;

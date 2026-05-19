@@ -4,7 +4,6 @@ use std::process::Command;
 
 /// Detects whether GPU (CUDA) support is available.
 /// Returns false if the `cpu-only` feature is set or if no CUDA toolkit is found.
-
 fn detect_gpu() -> bool {
     if cfg!(feature = "cpu-only") {
         return false;
@@ -101,7 +100,7 @@ fn watch_dir_recursive<P: AsRef<Path>>(dir: P, exts: &[&str]) {
         if path.is_dir() {
             watch_dir_recursive(&path, exts);
         } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if exts.iter().any(|e| *e == ext) {
+            if exts.contains(&ext) {
                 println!("cargo:rerun-if-changed={}", path.display());
             }
         }

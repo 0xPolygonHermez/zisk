@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-#[cfg(feature = "debug_mem")]
-use crate::mem_module::save_offsets_to_file;
-
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
@@ -528,6 +525,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(feature = "legacy_mem_count_and_plan", allow(unused_variables))]
     #[inline(always)]
     fn compute_witness(
         &self,

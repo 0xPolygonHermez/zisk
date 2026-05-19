@@ -901,6 +901,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     /// # Parameters
     ///
     /// - `mem_inputs`: A slice of all `MemoryInput` inputs
+    #[cfg_attr(feature = "legacy_mem_count_and_plan", allow(unused_variables))]
     fn compute_witness(
         &self,
         mem_ops: &[MemInput],
