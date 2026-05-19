@@ -23,11 +23,8 @@ sm-frequent-ops = { workspace = true }
 
 fields = { workspace=true }
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
-proofman-util = { workspace = true }
 pil-std-lib = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
-num-bigint = { workspace = true }
 static_assertions = { workspace = true }

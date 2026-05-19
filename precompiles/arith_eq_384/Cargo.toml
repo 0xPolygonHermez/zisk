@@ -28,31 +28,20 @@ precompiles-common = { workspace = true }
 precompiles-helpers = { workspace = true }
 precomp-arith-eq = { workspace = true }
 zisk-common = { workspace = true }
-lib-c = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
-witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
-mem-common = { workspace = true }
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 ark-ff = { workspace = true }
-ark-std = { workspace = true }
-ark-secp256k1 = { workspace = true }
-ark-bn254 = { workspace = true }
 ark-bls12-381 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-regex = "1.11.1"
 rustfmt-wrapper = "0.2.1"
-typenum = "1.16"
 lazy_static = "1.4"
 path-clean = "1.0"
 
