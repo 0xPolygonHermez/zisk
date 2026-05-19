@@ -4,12 +4,43 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
+use zisk_common::{OperationAdd256Data, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
 use zisk_pil::{Add256Trace, Add256TraceRowOps};
 
-use super::Add256Input;
+use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
+
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct Add256Input {
+    pub step_main: u64,
+    pub addr_main: u32,
+    pub addr_a: u32,
+    pub addr_b: u32,
+    pub addr_c: u32,
+    pub cin: u64,
+    pub a: [u64; 4],
+    pub b: [u64; 4],
+}
+
+impl Add256Input {
+    pub fn from(values: &OperationAdd256Data<u64>) -> Self {
+        Self {
+            step_main: values[STEP],
+            addr_main: values[B] as u32,
+            addr_a: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE] as u32,
+            addr_b: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1] as u32,
+            cin: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2],
+            addr_c: values[OPERATION_PRECOMPILED_BUS_DATA_SIZE + 3] as u32,
+            a: values[START_READ_PARAMS..START_READ_PARAMS + PARAM_CHUNKS].try_into().unwrap(),
+            b: values[START_READ_PARAMS + PARAM_CHUNKS..START_READ_PARAMS + 2 * PARAM_CHUNKS]
+                .try_into()
+                .unwrap(),
+        }
+    }
+}
 
 /// The `Add256SM` struct encapsulates the logic of the Add256 State Machine.
 pub struct Add256SM<F: PrimeField64> {
@@ -104,6 +135,7 @@ impl<F: PrimeField64> Add256SM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Add256TraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Add256Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
