@@ -311,12 +311,21 @@ impl BusDevice<u64> for RomCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use asm_runner::AsmRHData;
+    use asm_runner::{AsmRHData, AsmRunnerRH};
     use fields::Goldilocks;
-    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use zisk_common::Plan;
     use zisk_core::{ZiskInst, ZiskInstBuilder};
 
     type F = Goldilocks;
+
+    fn dummy_ictx() -> InstanceCtx {
+        InstanceCtx::new(0, Plan::new(0, 0, None, InstanceType::Instance, CheckPoint::None, None))
+    }
+
+    fn asm_runner_rh_empty() -> AsmRunnerRH {
+        AsmRunnerRH::new(AsmRHData::new(0, vec![]))
+    }
 
     /// Builds a ZiskRom with `n` instructions placed at `min_program_pc + 4*i`, each
     /// carrying `.index = i` (which is the column the witness pipeline indexes by).
@@ -430,5 +439,67 @@ mod tests {
         let asm_romh = AsmRHData::new(50, vec![3, 0, 0]);
         let _ =
             RomInstance::compute_witness_from_asm::<F>(&rom, &asm_romh, vec![F::from_u64(0); 10]);
+    }
+
+    #[test]
+    fn rust_reset_zeroes_inst_count() {
+        let inst_count = atomics_from(&[7, 0, 13, 42]);
+        let inst = RomInstance::new_rust(Arc::new(ZiskRom::default()), dummy_ictx(), inst_count.clone());
+
+        <RomInstance as Instance<F>>::reset(&inst);
+
+        for slot in inst_count.iter() {
+            assert_eq!(slot.load(Ordering::Relaxed), 0);
+        }
+    }
+
+    #[test]
+    fn asm_reset_leaves_mode_intact() {
+        // In ASM mode, reset() is documented as a no-op (the histogram is source input,
+        // not derived state). After reset the instance must still be in ASM mode so the
+        // next compute_witness can consume the same rh_data.
+        let rh_data = AsmRunnerRH::new(AsmRHData::new(50, vec![3, 0, 1]));
+        let inst = RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), rh_data);
+
+        <RomInstance as Instance<F>>::reset(&inst);
+
+        assert!(inst.skip_collector(), "still in ASM mode after reset");
+    }
+
+    #[test]
+    fn build_inputs_collector_returns_none_for_asm_mode() {
+        let inst = RomInstance::new_asm(
+            Arc::new(ZiskRom::default()),
+            dummy_ictx(),
+            asm_runner_rh_empty(),
+        );
+
+        let collector = <RomInstance as Instance<F>>::build_inputs_collector(&inst, ChunkId(0));
+        assert!(collector.is_none());
+    }
+
+    #[test]
+    fn build_inputs_collector_returns_some_for_rust_mode() {
+        let inst = RomInstance::new_rust(
+            Arc::new(ZiskRom::default()),
+            dummy_ictx(),
+            atomics_from(&[0; 4]),
+        );
+
+        let collector = <RomInstance as Instance<F>>::build_inputs_collector(&inst, ChunkId(0));
+        assert!(collector.is_some());
+    }
+
+    #[test]
+    fn rom_collector_process_data_updates_backing_counter() {
+        let inst_count = atomics_from(&[0; 4]);
+        let mut collector = RomCollector::new(inst_count.clone());
+
+        // ROM bus payload layout: [step, pc, index, end].
+        collector.process_data(&ROM_BUS_ID, &[10, 0x8000_0000, 2, 0]);
+        assert_eq!(inst_count[2].load(Ordering::Relaxed), 1);
+
+        collector.process_data(&ROM_BUS_ID, &[11, 0x8000_0004, 2, 1]);
+        assert_eq!(inst_count[2].load(Ordering::Relaxed), 2);
     }
 }

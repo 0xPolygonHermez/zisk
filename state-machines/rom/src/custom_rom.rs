@@ -112,6 +112,7 @@ impl CustomRom {
 mod tests {
     use super::*;
     use fields::Goldilocks;
+    use zisk_core::ZiskInstBuilder;
 
     type F = Goldilocks;
 
@@ -149,5 +150,75 @@ mod tests {
             matches!(err, RomError::ElfTranspile(_)),
             "expected RomError::ElfTranspile, got {err:?}"
         );
+    }
+
+    /// Builds a small `ZiskRom` with 3 instructions having known field values.
+    /// Each instruction sits at `paddr = 0x8000_0000 + 4*i` and gets `.index = i`.
+    fn rom_with_three_insts() -> ZiskRom {
+        let mut rom = ZiskRom { min_program_pc: 0x8000_0000, ..Default::default() };
+        // Instruction 0: positive offsets, no SRC_IMM bits, regular opcode.
+        let mut zib0 = ZiskInstBuilder::new(0x8000_0000);
+        zib0.i.index = 0;
+        zib0.i.paddr = 0x8000_0000;
+        zib0.i.jmp_offset1 = 8;
+        zib0.i.store_offset = -16; // negative — exercises signed_to_field branch
+        zib0.i.op = ZiskOp::CopyB.code();
+        rom.insts.insert(0x8000_0000, zib0);
+
+        // Instruction 1: SRC_IMM on the `a` source so a_imm1 gets a_use_sp_imm1.
+        let mut zib1 = ZiskInstBuilder::new(0x8000_0004);
+        zib1.i.index = 1;
+        zib1.i.paddr = 0x8000_0004;
+        zib1.i.a_src = SRC_IMM;
+        zib1.i.a_use_sp_imm1 = 0xABCD;
+        rom.insts.insert(0x8000_0004, zib1);
+
+        // Instruction 2: Fcall — must be remapped to CopyB in the trace.
+        let mut zib2 = ZiskInstBuilder::new(0x8000_0008);
+        zib2.i.index = 2;
+        zib2.i.paddr = 0x8000_0008;
+        zib2.i.op = ZiskOp::Fcall.code();
+        rom.insts.insert(0x8000_0008, zib2);
+        rom
+    }
+
+    #[test]
+    fn build_trace_fills_rows_from_zisk_rom() {
+        let rom = rom_with_three_insts();
+
+        let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
+
+        // Instruction 0: paddr=0x80000000, jmp_offset1=8 (positive), store_offset=-16 (negative).
+        assert_eq!(trace[0].line, F::from_u64(0x8000_0000));
+        assert_eq!(trace[0].jmp_offset1, F::from_u64(8));
+        assert_eq!(trace[0].store_offset, -F::from_u64(16));
+
+        // Instruction 1: SRC_IMM on a → a_imm1 = a_use_sp_imm1 (not the default 0).
+        assert_eq!(trace[1].a_imm1, F::from_u64(0xABCD));
+        assert_eq!(trace[1].b_imm1, F::from_u64(0), "b is not SRC_IMM, so b_imm1 stays zero");
+
+        // Instruction 2: Fcall opcode → remapped to CopyB in the trace.
+        assert_eq!(trace[2].op, F::from_u8(ZiskOp::CopyB.code()));
+    }
+
+    #[test]
+    fn build_trace_remaps_fcall_variants_to_copyb_opcode() {
+        // Three insts using the three special-cased opcodes that all must remap to CopyB.
+        let mut rom = ZiskRom { min_program_pc: 0x8000_0000, ..Default::default() };
+        for (i, op) in [ZiskOp::Fcall, ZiskOp::FcallGet, ZiskOp::FcallParam].iter().enumerate() {
+            let paddr = 0x8000_0000 + 4 * i as u64;
+            let mut zib = ZiskInstBuilder::new(paddr);
+            zib.i.index = i as u64;
+            zib.i.paddr = paddr;
+            zib.i.op = op.code();
+            rom.insts.insert(paddr, zib);
+        }
+
+        let trace = CustomRom::build_trace::<F>(&rom).expect("build_trace");
+
+        let copyb = F::from_u8(ZiskOp::CopyB.code());
+        assert_eq!(trace[0].op, copyb, "Fcall must remap to CopyB");
+        assert_eq!(trace[1].op, copyb, "FcallGet must remap to CopyB");
+        assert_eq!(trace[2].op, copyb, "FcallParam must remap to CopyB");
     }
 }

@@ -44,3 +44,54 @@ impl Planner for RomPlanner {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::any::Any;
+    use zisk_common::{BusDevice, Metrics};
+
+    /// Minimal `BusDeviceMetrics` impl — `RomPlanner::plan` only reads the `ChunkId`s,
+    /// so the payload type can be a zero-sized stand-in.
+    struct DummyMetrics;
+    impl Metrics for DummyMetrics {
+        fn measure(&mut self, _: &[u64]) {}
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+    impl BusDevice<u64> for DummyMetrics {
+        fn as_any(self: Box<Self>) -> Box<dyn Any> {
+            self
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "No metrics found")]
+    fn plan_panics_on_empty_metrics() {
+        let _ = RomPlanner.plan(Vec::new());
+    }
+
+    #[test]
+    fn plan_aggregates_chunk_ids_into_single_multiple_checkpoint() {
+        let metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = vec![
+            (ChunkId(0), Box::new(DummyMetrics)),
+            (ChunkId(2), Box::new(DummyMetrics)),
+            (ChunkId(7), Box::new(DummyMetrics)),
+        ];
+
+        let plans = RomPlanner.plan(metrics);
+
+        assert_eq!(plans.len(), 1, "always exactly one Plan");
+        let p = &plans[0];
+        assert_eq!(p.airgroup_id, ZISK_AIRGROUP_ID);
+        assert_eq!(p.air_id, ROM_AIR_IDS[0]);
+        assert_eq!(p.instance_type, InstanceType::Instance);
+        match &p.check_point {
+            CheckPoint::Multiple(ids) => {
+                assert_eq!(ids, &vec![ChunkId(0), ChunkId(2), ChunkId(7)]);
+            }
+            other => panic!("expected CheckPoint::Multiple, got {other:?}"),
+        }
+    }
+}
