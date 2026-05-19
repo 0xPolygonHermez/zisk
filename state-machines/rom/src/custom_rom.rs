@@ -91,7 +91,7 @@ impl CustomRom {
             trace[index].flags = F::from_u64(inst.get_flags());
         }
 
-        // Padd with zeroes
+        // Pad with zeroes
         trace.buffer[rom.insts.len()..].fill(RomRomTraceRow::default());
 
         Ok(trace)

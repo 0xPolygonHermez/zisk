@@ -1,6 +1,6 @@
 //! The `RomSM` module implements the ROM State Machine.
 //!
-//! `RomSM` is the for ROM-related instances and their planner.
+//! `RomSM` is the component builder for ROM-related instances and their planner.
 
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
@@ -48,7 +48,7 @@ impl RomSM {
     }
 
     /// Provides the parsed Zisk ROM. Must be called before the next `build_instance` call.
-    /// May be called multiple times — each call replaces the previously ROM.
+    /// May be called multiple times — each call replaces the previous ROM.
     ///
     /// # Errors
     /// Returns [`RomError::ZiskRomPoisoned`] if the internal mutex is poisoned.
