@@ -32,6 +32,9 @@ impl CustomRom {
     /// Transpiles `elf` into a `ZiskRom` and validates that its instruction count fits the
     /// PIL ROM trace.
     fn parse_rom<F: PrimeField64>(elf: &[u8]) -> RomResult<ZiskRom> {
+        // Load and parse the ELF file, and transpile it into a ZisK ROM using Riscv2zisk
+
+        // Create an instance of the RISCV -> ZisK program converter and convert the ELF bytes into a ZisK ROM.
         let rom = Riscv2zisk::new(elf).run().map_err(|e| RomError::ElfTranspile(e.to_string()))?;
 
         let len = rom.insts.len();
@@ -49,8 +52,12 @@ impl CustomRom {
         let mut trace = RomRomTrace::new_from_vec(buffer)
             .map_err(|e| RomError::TraceConstruction(e.to_string()))?;
 
+        // For every instruction in the rom, fill its corresponding ROM trace
         for (_pc, zib) in rom.insts.iter() {
+            // Get the ZisK instruction
             let inst = &zib.i;
+
+            // Get the ZisK instruction index
             let index = inst.index as usize;
             debug_assert!(
                 index < RomRomTrace::<F>::NUM_ROWS,
@@ -59,6 +66,7 @@ impl CustomRom {
                 RomRomTrace::<F>::NUM_ROWS
             );
 
+            // Fill the rom trace row fields
             trace[index].line = F::from_u64(inst.paddr); // TODO: unify names: pc, paddr, line
             trace[index].a_offset_imm0 = Self::signed_to_field(inst.a_offset_imm0 as i64);
             trace[index].a_imm1 =
@@ -83,6 +91,7 @@ impl CustomRom {
             trace[index].flags = F::from_u64(inst.get_flags());
         }
 
+        // Padd with zeroes
         trace.buffer[rom.insts.len()..].fill(RomRomTraceRow::default());
 
         Ok(trace)

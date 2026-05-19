@@ -128,9 +128,13 @@ impl RomInstance {
     ) -> AirInstance<F> {
         let main_trace_len = MainTrace::<()>::NUM_ROWS as u64;
 
+        // For every instruction in the rom, fill its corresponding ROM trace
         for zib in zisk_rom.insts.values() {
+            // Get the Zisk instruction
             let inst = &zib.i;
 
+            // Calculate the multiplicity, i.e. the number of times this pc is used in this
+            // execution
             let mut multiplicity = counter_stats.inst_count[inst.index as usize]
                 .load(std::sync::atomic::Ordering::Relaxed);
             if multiplicity == 0 {
@@ -148,6 +152,7 @@ impl RomInstance {
                 trace_buffer.len(),
                 RomTrace::<F>::NUM_ROWS
             );
+
             trace_buffer[index] = F::from_u64(multiplicity);
         }
 
@@ -160,6 +165,7 @@ impl RomInstance {
         asm_romh: &AsmRHData,
         mut trace_buffer: Vec<F>,
     ) -> AirInstance<F> {
+        // Check that the provided histogram has at most as many entries as the ROM trace
         assert!(
             asm_romh.inst_count.len() <= RomTrace::<F>::NUM_ROWS,
             "The provided assembly histogram has {} entries, which exceeds the maximum supported by the Zisk PIL ROM trace ({} entries).  Please review zisk.pil and increase the ROM trace size accordingly.",
@@ -180,6 +186,7 @@ impl RomInstance {
             trace_buffer[i] = F::from_u64(*multiplicity);
         }
 
+        // Search for end instruction index
         let index = zisk_rom.get_instruction(ROM_EXIT).index as usize;
         assert!(
             index < trace_buffer.len(),
