@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "fd89163a27519dbe9dd55ba135fd3ce4587f28255c76d17b3663093619207bd8";
+pub const PILOUT_HASH: &str = "a824108b6a8150d4bd5341e4d078fa46fbb0b53e0d1fb200766bf609914c3529";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -91,6 +91,8 @@ pub const POSEIDON_2_AIR_IDS: &[usize] = &[30];
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[31];
 
 pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[32];
+
+pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[33];
 
 
 //PUBLICS
@@ -487,37 +489,26 @@ trace_row!(Blake2brTraceRow<F> {
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 30], column: [F; 122], __L1__: F,
+ UID: [F; 23], column: [F; 64], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 30],
+ multiplicity:[F; 23],
 });
 
-pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 1048576, 0, 32>;
+pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
-trace_row!(VirtualTable0FixedRow<F> {
- UID: [F; 9], column: [F; 50], __L1__: F,
-});
-pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 33>;
-
-trace_row!(VirtualTable0TraceRow<F> {
- multiplicity:[F; 9],
-});
-
-pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 33>;
-
-trace_row!(VirtualTable1FixedRow<F> {
+trace_row!(VirtualTableZisk1FixedRow<F> {
  UID: [F; 8], column: [F; 64], __L1__: F,
 });
-pub type VirtualTable1Fixed<F> = GenericTrace<VirtualTable1FixedRow<F>, 2097152, 0, 34>;
+pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 
-trace_row!(VirtualTable1TraceRow<F> {
+trace_row!(VirtualTableZisk1TraceRow<F> {
  multiplicity:[F; 8],
 });
 
-pub type VirtualTable1Trace<F> = GenericTrace<VirtualTable1TraceRow<F>, 2097152, 0, 34>;
+pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 33>;
 
 trace_row!(RomRomTraceRow<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -718,6 +709,10 @@ values!(Blake2brAirGroupValues<F> {
 });
 
 values!(VirtualTableZisk0AirGroupValues<F> {
+ gsum_result: FieldExtension<F>,
+});
+
+values!(VirtualTableZisk1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
