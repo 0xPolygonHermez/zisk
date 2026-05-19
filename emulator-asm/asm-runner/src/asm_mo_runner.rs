@@ -127,6 +127,7 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
+        // Capture parent id for thread
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
 
@@ -208,6 +209,7 @@ impl AsmRunnerMO {
                             "Failed to check and map new shared memory files for MO trace",
                         )?
                     {
+                        // Update threshold based on new total mapped size
                         threshold =
                             unsafe {
                                 preloaded.output_shmem.mapped_ptr().add(
@@ -217,14 +219,12 @@ impl AsmRunnerMO {
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
+
                     data_ptr = unsafe { data_ptr.add(1) };
 
                     stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
-                    // Feed this chunk to whichever planner is active. The
-                    // `*const AsmMOChunk` body is a flat array of
-                    // {u32 addr; u32 flags;} __packed — byte-identical to
-                    // both `MemCountersBusData` (CPU) and `GpuMemOp` (GPU).
+                    // Feed this chunk to whichever planner is active
                     #[cfg(gpu)]
                     if let Some(ref gp) = gpu_count_and_plan {
                         let memops = unsafe {
@@ -262,7 +262,11 @@ impl AsmRunnerMO {
             }
         };
 
-        // owner: close the C++ context (no-op for the GPU producer)
+        // Wind the C++ planner down before any further work. Without this,
+        // its background threads stay parked waiting for more chunks, and
+        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
+        // Mutex and hanging the next job's MO thread on lock acquisition.
+        // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
         // GPU path: drain the pipeline. Pointer into pinned host memory owned
@@ -278,14 +282,14 @@ impl AsmRunnerMO {
         // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
 
-        // GPU path: build align plans BEFORE `reset()` zeroes `n_chunks_`.
+        // GPU path: build align plans
         #[cfg(gpu)]
         let gpu_align_plans: Option<Vec<Plan>> =
             gpu_count_and_plan.as_ref().map(|gp| gp.build_align_plans());
         #[cfg(not(gpu))]
         let gpu_align_plans: Option<Vec<Plan>> = None;
 
-        // owner: hand GPU-produced segments to the C++ segment table
+        // inject GPU-produced segments to the C++ segment table
         // (`mcp->segments[]`). No-op on the CPU path (gpu_metas_view None).
         if let Some((ptr, n)) = gpu_metas_view {
             let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
@@ -294,10 +298,7 @@ impl AsmRunnerMO {
             }
         }
 
-        // Stash the GPU planner for the next block. NOTE: no reset() here —
-        // it is done at the START of the next run() (see above), because
-        // proofman owns the borrowed buffer between blocks and clearing it
-        // now would not survive until the next block uses it.
+        // Stash the GPU planner for the next block
         #[cfg(gpu)]
         if let Some(gp) = gpu_count_and_plan {
             preloaded.gpu_count_and_plan = Some(gp);

@@ -7,18 +7,33 @@ use zisk_common::ChunkId;
 /// The C++ side mirrors these as
 // `MEM_OFFSETS_PAGE_SIZE` and `MEM_OFFSETS_PAGE_ABSENT` in
 // `mem-cpp/cpp/instance_meta.hpp`. If you change a value here, change it
-// there too — there is no compile-time cross-language check today.
+// there too — there is no compile-time cross-language check.
 pub const MEM_OFFSETS_PAGE_SIZE_LOG2: u32 = 10;
 pub const MEM_OFFSETS_PAGE_SIZE: u32 = 1 << MEM_OFFSETS_PAGE_SIZE_LOG2;
 const MEM_OFFSETS_PAGE_MASK: u32 = MEM_OFFSETS_PAGE_SIZE - 1;
 
 /// Sentinel stored in `page_starts[p]` to mark page `p` as absent
-/// (i.e. all slots in the page equal `page_single_value[p]`). also defined in 
+/// (i.e. all slots in the page equal `page_single_value[p]`). also defined in
 // `mem-cpp/cpp/instance_meta.hpp`. If you change a value here, change it
-// there too — there is no compile-time cross-language check today.
+// there too — there is no compile-time cross-language check.
 pub const MEM_OFFSETS_PAGE_ABSENT: u32 = u32::MAX;
 
-/// Mirrors struct defined in instance_meta.hpp
+//   offsets_base_addr  — first byte address of the segment's address range
+//                        (the byte address mapped to dense slot 0).
+//   addr_range_slots   — ("offsets_last_addr" - offsets_base_addr)/8 + 1, dense slot count
+//   num_pages          — ceil(addr_range_slots / MEM_OFFSETS_PAGE_SIZE)
+//   present_count      — number of non-absent pages
+//   page_starts[p]     — MEM_OFFSETS_PAGE_ABSENT iff page p is absent
+//                        (uniform value = page_single_value[p]); otherwise
+//                        the present-page index into `pages_dense`
+//   page_single_value[p] — the value held by every slot in page p
+//                          (the only value for absent pages, ignore if present)
+//   pages_dense        — concatenated present-page slot data; the slice for
+//                        a present page p is at
+//                        pages_dense[page_starts[p] * MEM_OFFSETS_PAGE_SIZE
+//                                   .. (page_starts[p]+1) * MEM_OFFSETS_PAGE_SIZE].
+//                        Length = present_count * MEM_OFFSETS_PAGE_SIZE; the
+//                        last partial page is padded with its carry value.
 #[derive(Debug, Default, Clone)]
 pub struct MemModuleSegmentCheckPoint {
     pub chunks: HashMap<ChunkId, MemModuleCheckPoint>,
@@ -77,7 +92,9 @@ impl MemModuleSegmentCheckPoint {
                 let dense = &self.pages_dense[start..start + MEM_OFFSETS_PAGE_SIZE as usize];
                 for j in (0..upper).rev() {
                     if dense[j] != cur_val {
-                        return Some(base_w + (page << MEM_OFFSETS_PAGE_SIZE_LOG2) as u64 + j as u64);
+                        return Some(
+                            base_w + (page << MEM_OFFSETS_PAGE_SIZE_LOG2) as u64 + j as u64,
+                        );
                     }
                 }
             }

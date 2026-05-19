@@ -456,6 +456,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             Self::save_to_file(&trace, &filename);
         }
 
+        #[cfg(feature = "debug_mem")]
         Self::dump_trace_to_file(
             &trace,
             &format!("tmp/rom_data_trace_gpu_{segment_id:04}_dump.txt"),
