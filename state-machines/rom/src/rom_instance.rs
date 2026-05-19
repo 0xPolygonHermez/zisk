@@ -444,7 +444,8 @@ mod tests {
     #[test]
     fn rust_reset_zeroes_inst_count() {
         let inst_count = atomics_from(&[7, 0, 13, 42]);
-        let inst = RomInstance::new_rust(Arc::new(ZiskRom::default()), dummy_ictx(), inst_count.clone());
+        let inst =
+            RomInstance::new_rust(Arc::new(ZiskRom::default()), dummy_ictx(), inst_count.clone());
 
         <RomInstance as Instance<F>>::reset(&inst);
 
@@ -468,11 +469,8 @@ mod tests {
 
     #[test]
     fn build_inputs_collector_returns_none_for_asm_mode() {
-        let inst = RomInstance::new_asm(
-            Arc::new(ZiskRom::default()),
-            dummy_ictx(),
-            asm_runner_rh_empty(),
-        );
+        let inst =
+            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
 
         let collector = <RomInstance as Instance<F>>::build_inputs_collector(&inst, ChunkId(0));
         assert!(collector.is_none());
