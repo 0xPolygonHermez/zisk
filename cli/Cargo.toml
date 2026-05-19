@@ -34,10 +34,10 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+rand = "0.9.0"
 
 clap = { workspace = true }
 dirs = "6"
-rand = "0.9"
 target-lexicon = "0.13"
 reqwest = { workspace = true }
 tokio = { version = "1", features = ["full"] }

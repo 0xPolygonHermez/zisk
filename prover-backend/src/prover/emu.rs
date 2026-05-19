@@ -19,7 +19,6 @@ use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime,
-    ZiskVK,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -44,7 +43,7 @@ impl<'a> EmuSetupBuilder<'a> {
 
     /// Execute the setup and return the program proving and verification keys.
     pub fn run(self) -> Result<ProgramVK> {
-        self.prover.setup_internal(self.elf, false)
+        self.prover.setup_internal(self.elf, false, false)
     }
 }
 
@@ -87,7 +86,12 @@ impl ProverEngine for EmuProver {
         EmuSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<ProgramVK> {
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        _with_hints: bool,
+        _emulator_only: bool,
+    ) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
@@ -203,16 +207,14 @@ impl ProverEngine for EmuProver {
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof_bytes, publics, vk)
-            }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof_bytes, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -253,7 +255,15 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    fn notify_cluster_cancellation(&self) {
+        self.core_prover.backend.notify_cluster_cancellation();
+    }
+
+    fn cluster_barrier(&self) {
+        self.core_prover.backend.cluster_barrier();
+    }
+
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
@@ -261,8 +271,13 @@ impl ProverEngine for EmuProver {
         Err(anyhow::anyhow!("EmuProver does not support hints"))
     }
 
-    fn cancel(&self) {
+    fn cancel(&self) -> Result<()> {
         self.core_prover.backend.cancel();
+        Ok(())
+    }
+
+    fn wait_until_proofman_ready(&self) {
+        self.core_prover.backend.wait_until_proofman_ready();
     }
 }
 
@@ -313,7 +328,7 @@ impl EmuCoreProver {
         }
 
         let executor =
-            initialize_executor(options.verbose_mode, shared_tables, false, &proofman.get_wcm())?;
+            initialize_executor(options.verbose_mode, shared_tables, &proofman.get_wcm())?;
 
         executor.set_packed(options.packed);
 

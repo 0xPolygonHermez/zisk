@@ -47,6 +47,11 @@ enum Commands {
         /// Enable hints support for this program
         #[arg(long, default_value_t = false)]
         with_hints: bool,
+
+        /// Generate setup for emulator only (skips ASM service startup).
+        /// Programs set up this way support `execute` but not `prove`.
+        #[arg(long, default_value_t = false)]
+        emulator_only: bool,
     },
 
     /// Generate a proof for a registered and set-up program (run `setup` first)
@@ -98,6 +103,13 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         timeout: u64,
     },
+
+    /// Cancel a running or queued job by its id
+    Cancel {
+        /// Job UUID printed at submission time
+        #[arg(short = 'j', long)]
+        job_id: uuid::Uuid,
+    },
 }
 
 fn parse_proof_kind(s: &str) -> Result<DomainProofKind, String> {
@@ -136,12 +148,16 @@ fn run_setup(
     hash_id: &str,
     program_name: String,
     with_hints: bool,
+    emulator_only: bool,
 ) -> Result<()> {
-    info!("Running setup for hash_id = {hash_id}, with_hints = {with_hints} …");
+    info!(
+        "Running setup for hash_id = {hash_id}, with_hints = {with_hints}, emulator_only = {emulator_only} …"
+    );
     let job = client.submit_job(DomainJobKind::Setup(DomainSetupRequest {
         hash_id: hash_id.to_string(),
         program_name,
         with_hints,
+        emulator_only,
     }))?;
     info!("Setup job submitted. job_id = {}", job.job_id());
     match job.wait(None)? {
@@ -336,9 +352,9 @@ async fn main() -> Result<()> {
             println!("Register completed. hash_id: {hash_id}");
         }
 
-        Commands::Setup { elf, with_hints } => {
+        Commands::Setup { elf, with_hints, emulator_only } => {
             let (hash_id, program_name) = register_elf(&client, elf)?;
-            run_setup(&client, &hash_id, program_name, *with_hints)?;
+            run_setup(&client, &hash_id, program_name, *with_hints, *emulator_only)?;
             println!("Setup completed for hash_id: {hash_id}");
         }
 
@@ -363,6 +379,16 @@ async fn main() -> Result<()> {
                 output.as_ref(),
                 *timeout,
             )?;
+        }
+
+        Commands::Cancel { job_id } => {
+            info!("Cancelling job {job_id} …");
+            let cancelled = client.cancel_job(*job_id)?;
+            if cancelled {
+                println!("Job {job_id} cancelled.");
+            } else {
+                println!("Job {job_id} was not cancelled (already in a terminal state).");
+            }
         }
     }
 

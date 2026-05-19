@@ -9,6 +9,7 @@ categories = { workspace = true }
 
 [dependencies]
 zisk-core = { workspace = true }
+zisk-verifier = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
@@ -23,6 +24,7 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 libc = "0.2"
+dirs = "6"
 alloy-sol-types = { version = "1.5.7" }
 
 # QUIC networking

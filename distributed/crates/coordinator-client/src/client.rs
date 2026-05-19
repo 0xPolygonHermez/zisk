@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use tonic::transport::Channel;
 use uuid::Uuid;
 use zisk_coordinator_api::dto::{DomainJobKind, RegisterGuestProgramRequestDto};
+use zisk_coordinator_api::grpc::proto::CancelJobRequest;
 use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
 
 use crate::input_sender::InputSender;
@@ -55,6 +56,20 @@ impl CoordinatorClient {
         Job::new(resp.job_id, self.clone())
     }
 
+    /// Cancel a job by its id without first holding a [`Job`] handle.
+    /// Returns `true` if the coordinator actually transitioned the job to
+    /// cancelled (i.e. the job existed and wasn't already terminal).
+    pub fn cancel_job(&self, job_id: Uuid) -> Result<bool> {
+        block_on(async {
+            let mut gw = self.inner.clone();
+            let resp = gw
+                .cancel_job(CancelJobRequest { job_id: job_id.to_string() })
+                .await
+                .map_err(|e| anyhow::anyhow!("CancelJob RPC failed: {e}"))?;
+            Ok(resp.into_inner().cancelled)
+        })
+    }
+
     pub fn async_client(&self) -> ZiskCoordinatorApiClient<Channel> {
         self.inner.clone()
     }
@@ -76,6 +91,8 @@ impl CoordinatorClient {
     }
 }
 
-pub fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+/// Bridges sync entry-points (`connect`, `submit_job`, `cancel_job`, ...) to
+/// the async tonic stack. Requires a multi-thread tokio runtime in scope.
+pub(crate) fn block_on<F: std::future::Future>(fut: F) -> F::Output {
     tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fut))
 }

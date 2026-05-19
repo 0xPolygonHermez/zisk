@@ -266,6 +266,10 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         // Skip the header size to get the data pointer
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
     }
+
+    pub fn mapped_size(&self) -> usize {
+        self.mapped_size
+    }
 }
 
 pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {

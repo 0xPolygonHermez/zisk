@@ -1,0 +1,14 @@
+---
+- name: Validate required role inputs
+  ansible.builtin.assert:
+    that:
+      - zisk_coordinator_binary_src | length > 0
+      - ansible_facts['os_family'] != 'Darwin'
+    fail_msg: >-
+      zisk-coordinator role requires a Linux target and zisk_coordinator_binary_src
+      pointing at a pre-built binary on the Ansible control host.
+
+- ansible.builtin.import_tasks: user.yml
+- ansible.builtin.import_tasks: bundle.yml
+- ansible.builtin.import_tasks: binary.yml
+- ansible.builtin.import_tasks: service.yml

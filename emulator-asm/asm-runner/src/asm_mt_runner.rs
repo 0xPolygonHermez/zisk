@@ -49,14 +49,19 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
+    pub fn run_and_count<F, R>(
         preloaded: &mut MTShMemReader,
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,
+        on_runner_failure: R,
         asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
-    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
+    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
+    where
+        F: FnMut(usize, Arc<EmuTrace>),
+        R: FnOnce() -> Result<()>,
+    {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
         let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MT);
@@ -158,6 +163,14 @@ impl AsmRunnerMT {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
+                    // Flip ResetFlag + post wait sems so the C child unwinds
+                    // `emulator_start` and the stdio request below can return.
+                    // Then sweep any post that races our exit (end chunk).
+                    if let Err(reset_err) = on_runner_failure() {
+                        error!("MT on_runner_failure failed: {reset_err:#}");
+                    }
+                    while sem_chunk_done.try_wait().is_ok() {}
+
                     if chunk_id.0 == 0 {
                         break 1;
                     }
@@ -167,13 +180,16 @@ impl AsmRunnerMT {
             }
         };
 
+        // Always join the stdio thread before evaluating the exit code: on
+        // the error path `on_runner_failure` woke the C child, so this no
+        // longer deadlocks, and joining keeps the spawned thread from
+        // outliving us into the next job.
+        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
+
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
         }
-
-        // Wait for the assembly emulator to complete writing the trace
-        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;

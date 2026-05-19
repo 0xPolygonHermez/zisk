@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProfilingMode, ProverClient, ZiskStdin};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {
@@ -80,8 +80,11 @@ async fn main() -> Result<()> {
     // Write the proofs, publics, and verification keys to be verified by the guest
     let stdin_aggregation = ZiskStdin::new();
 
-    stdin_aggregation.write(&vadcop_result1.get_proof_bytes());
-    stdin_aggregation.write(&vadcop_result2.get_proof_bytes());
+    stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
+    stdin_aggregation.write_slice(&vadcop_result2.get_proof_bytes()?);
+
+    println!("Running ZisK Emulator on aggregation program for profiling...");
+    zisk_sdk::run(&PROGRAM2, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
 
     let result_aggregation = client.prove(&PROGRAM2, stdin_aggregation).run()?.await?;
 

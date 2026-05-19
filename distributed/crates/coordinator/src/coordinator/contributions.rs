@@ -33,7 +33,7 @@ impl Coordinator {
     /// * `job` - Job containing partition assignments and configuration
     /// * `active_workers` - List of workers that should receive tasks
     pub(super) async fn dispatch_contributions_messages(
-        &self,
+        self: &Arc<Self>,
         job: &Job,
         active_workers: &[WorkerId],
     ) -> CoordinatorResult<()> {
@@ -121,14 +121,8 @@ impl Coordinator {
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
                 let send_result = workers_pool.send_message(&worker_id, req).await;
-                let state_result = workers_pool
-                    .mark_worker_with_state(
-                        &worker_id,
-                        WorkerState::Computing((job_id.clone(), JobPhase::Contributions)),
-                    )
-                    .await;
 
-                (worker_id, send_result, state_result)
+                (worker_id, send_result)
             }
         });
 
@@ -138,17 +132,10 @@ impl Coordinator {
         let results: Vec<_> = futures::stream::iter(tasks).buffer_unordered(16).collect().await;
 
         // Check for any errors
-        for (worker_id, send_result, state_result) in results {
+        for (worker_id, send_result) in results {
             send_result.map_err(|e| {
                 CoordinatorError::Internal(format!(
                     "Failed to send message to worker {}: {}",
-                    worker_id, e
-                ))
-            })?;
-
-            state_result.map_err(|e| {
-                CoordinatorError::Internal(format!(
-                    "Failed to update state for worker {}: {}",
                     worker_id, e
                 ))
             })?;
@@ -167,7 +154,7 @@ impl Coordinator {
     }
 
     async fn initialize_stream(
-        &self,
+        self: &Arc<Self>,
         job: &Job,
         cloned_active_workers: Vec<WorkerId>,
     ) -> Result<(), CoordinatorError> {
@@ -289,7 +276,7 @@ impl Coordinator {
     /// On stream errors, the job is marked as failed so workers are not left
     /// waiting for data indefinitely.
     async fn initialize_input_relay(
-        &self,
+        self: &Arc<Self>,
         job: &Job,
         active_workers: Vec<WorkerId>,
     ) -> Result<(), CoordinatorError> {
@@ -299,16 +286,7 @@ impl Coordinator {
         };
 
         let job_id = job.job_id.clone();
-        let workers_pool = Arc::clone(&self.workers_pool);
-
-        // Grab the job Arc so the relay thread can mark it failed on error.
-        let job_arc = self
-            .jobs
-            .read()
-            .await
-            .get(&job_id)
-            .cloned()
-            .expect("job must be in jobs map before relay is spawned");
+        let coord = Arc::clone(self);
 
         // Spawn a background thread: opens the stream reader, reads chunks,
         // and relays each chunk to all workers via InputStreamData.
@@ -322,16 +300,24 @@ impl Coordinator {
                 .expect("Failed to create input relay runtime");
 
             rt.block_on(async move {
-                let result =
-                    Self::run_input_relay(&inputs_uri, &job_id, &active_workers, &workers_pool)
-                        .await;
+                let result = Self::run_input_relay(
+                    &inputs_uri,
+                    &job_id,
+                    &active_workers,
+                    &coord.workers_pool,
+                )
+                .await;
 
                 if let Err(e) = result {
                     error!("Input relay failed for job {}: {}", job_id, e);
-                    // Mark the job as failed so workers are not left waiting.
-                    let mut job = job_arc.write().await;
-                    if !job.state().is_resolved() {
-                        job.change_state(JobState::Failed);
+                    // Canonical failure path: parks workers, sends
+                    // JobCancelled, records metrics, runs post_launch_proof.
+                    let reason = format!("Input relay failed: {}", e);
+                    if let Err(fail_err) = coord.fail_job(&job_id, &reason).await {
+                        error!(
+                            "Failed to fail_job after input relay error for {}: {}",
+                            job_id, fail_err
+                        );
                     }
                 }
             });
@@ -427,16 +413,16 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         let mut job = job_entry.write().await;
 
         let worker_id = execute_task_response.worker_id.clone();
 
-        // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
+        if job.state().is_resolved() {
             return Ok(());
         }
 
@@ -481,16 +467,16 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = execute_task_response.job_id.clone();
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(&job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
         let mut job = job_entry.write().await;
 
         let worker_id = execute_task_response.worker_id.clone();
 
-        // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
-            self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await?;
+        if job.state().is_resolved() {
             return Ok(());
         }
 
@@ -655,6 +641,13 @@ impl Coordinator {
             })
             .unwrap_or_default();
 
+        // Pairs with launch_proof's record_job_started (execution-only path).
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_SUCCESS,
+            &job.workers,
+            job.phase_start_time(&JobPhase::Execution),
+        );
+
         // Release job lock before cleanup
         drop(job);
 
@@ -760,10 +753,10 @@ impl Coordinator {
     /// * `result_data` - The result data from the worker's response
     fn extract_challenges_data(
         &self,
-        result_data: ExecuteTaskResponseResultDataDto,
+        result_data: Option<ExecuteTaskResponseResultDataDto>,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Challenges(ch_list) => {
+            Some(ExecuteTaskResponseResultDataDto::Challenges(ch_list)) => {
                 if ch_list.challenges.is_empty() {
                     return Err(CoordinatorError::InvalidRequest(
                         "Received empty Challenges result data".to_string(),
@@ -816,10 +809,10 @@ impl Coordinator {
     /// * `result_data` - The result data from the worker's response
     fn extract_execution_data(
         &self,
-        result_data: ExecuteTaskResponseResultDataDto,
+        result_data: Option<ExecuteTaskResponseResultDataDto>,
     ) -> CoordinatorResult<JobResultData> {
         match result_data {
-            ExecuteTaskResponseResultDataDto::Execution(exec_data) => {
+            Some(ExecuteTaskResponseResultDataDto::Execution(exec_data)) => {
                 let zisk_executor_time =
                     Self::extract_execution_info(&exec_data.zisk_executor_time);
                 let instances = exec_data.instances;

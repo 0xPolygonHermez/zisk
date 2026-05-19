@@ -24,8 +24,9 @@ num-traits = { workspace = true }
 
 precompiles-helpers = { workspace = true }
 
+rand = { workspace = true }
+
 lazy_static = "1.5.0"
-rand = "0.8.5"
 getrandom = { version = "0.2", features = ["custom"] }
 cfg-if = "1.0"
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
@@ -45,7 +46,9 @@ hints = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
-'cfg(zisk_hints)',
-'cfg(zisk_hints_metrics)',
-'cfg(zisk_hints_debug)',
-'cfg(zisk_hints_single_thread)'] }
+    'cfg(zisk_hints)',
+    'cfg(zisk_hints_metrics)',
+    'cfg(zisk_hints_debug)',
+    'cfg(zisk_hints_single_thread)',
+    'cfg(target_vendor, values("zisk"))',
+] }

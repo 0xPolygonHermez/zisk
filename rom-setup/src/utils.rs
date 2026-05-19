@@ -2,36 +2,19 @@ use anyhow::{Context, Result};
 use fields::{Goldilocks, PrimeField64};
 use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanResult};
 use sm_rom::RomSM;
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
-
-pub const DEFAULT_CACHE_PATH: &str = ".zisk/cache";
 
 pub const ROM_MERKLE_TREE_ARITY: u64 = 4;
 pub const ROM_BLOWUP_FACTOR: u64 = 2;
 
-/// Gets the user's home directory as specified by the HOME environment variable.
-pub fn get_home_dir() -> String {
-    env::var("HOME").expect("get_home_dir() failed to get HOME environment variable")
-}
-
-/// Gets the default zisk folder location in the home installation directory.
-pub fn get_default_zisk_path() -> PathBuf {
-    let zisk_path = format!("{}/.zisk", get_home_dir());
-    PathBuf::from(zisk_path)
-}
-
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
-        let cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join(DEFAULT_CACHE_PATH))
-            .unwrap_or_else(|_| panic!("$HOME environment variable is not set"));
-
+        let cache_path = ZiskPaths::global().cache.clone();
         ensure_dir_exists(&cache_path);
         cache_path
     } else {
@@ -66,15 +49,19 @@ pub fn gen_elf_hash<F: PrimeField64>(
     )
 }
 
-pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u8>>> {
+pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u64>>> {
     if !verkey_path.exists() {
         return Ok(None);
     }
 
     let mut file = File::open(verkey_path)?;
-    let mut root_bytes = [0u8; 32];
-    file.read_exact(&mut root_bytes)?;
-    Ok(Some(root_bytes.to_vec()))
+    let mut vk = vec![0u64; PROGRAM_VK_LEN];
+    for word in vk.iter_mut() {
+        let mut buf = [0u8; 8];
+        file.read_exact(&mut buf)?;
+        *word = u64::from_le_bytes(buf);
+    }
+    Ok(Some(vk))
 }
 
 pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {

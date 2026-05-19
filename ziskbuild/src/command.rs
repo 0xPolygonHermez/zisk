@@ -27,6 +27,13 @@ pub(crate) fn create_command(
         command.arg("--release");
     }
 
+    for package in &args.packages {
+        command.args(["--package", package]);
+    }
+    for bin in &args.binaries {
+        command.args(["--bin", bin]);
+    }
+
     command.args(["--target", ZISK_TARGET]);
 
     // Set up the command to inherit the parent's stdout and stderr

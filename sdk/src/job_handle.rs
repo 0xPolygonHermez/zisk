@@ -378,8 +378,10 @@ impl FromWaitResult for crate::prove::ProveResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Prove { proof, stats }) => {
-                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
+                let proof_with_pv: zisk_common::Proof =
+                    bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
+                        .map(|(v, _)| v)
+                        .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     stats.steps,
@@ -389,8 +391,10 @@ impl FromWaitResult for crate::prove::ProveResult {
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
-                let proof_with_pv: zisk_common::Proof = bincode::deserialize(&proof.data)
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
+                let proof_with_pv: zisk_common::Proof =
+                    bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
+                        .map(|(v, _)| v)
+                        .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,

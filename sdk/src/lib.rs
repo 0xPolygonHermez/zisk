@@ -49,7 +49,9 @@ pub use zisk_prover_backend::{setup_logger, ExecuteOutput, ProveOutput, VerifyCo
 pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
-pub use zisk_common::{PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK};
+pub use zisk_common::{
+    PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+};
 
 pub use zisk_build::*;
 
@@ -90,6 +92,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<SetupResult>>;

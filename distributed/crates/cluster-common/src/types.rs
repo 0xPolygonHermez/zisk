@@ -275,6 +275,7 @@ pub struct Job {
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
     pub task_received_time: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
+    pub terminated_at: Option<DateTime<Utc>>,
     pub state: JobState,
     pub data_id: DataId,
     pub inputs_mode: InputsModeDto,
@@ -303,6 +304,7 @@ pub struct Job {
 impl Job {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        job_id: JobId,
         data_id: DataId,
         hash_id: String,
         inputs_mode: InputsModeDto,
@@ -317,10 +319,11 @@ impl Job {
         proof_type: ProofKind,
     ) -> Self {
         Self {
-            job_id: JobId::new(),
+            job_id,
             hash_id,
             phase_timings: HashMap::new(),
             duration_ms: None,
+            terminated_at: None,
             state: JobState::Created,
             data_id,
             inputs_mode,
@@ -388,10 +391,13 @@ impl Job {
                 }
             }
             JobState::Completed | JobState::Failed | JobState::Cancelled => {
-                if let Some(start_time) = self.phase_start_time(&JobPhase::Contributions) {
-                    let duration = Utc::now().signed_duration_since(start_time);
+                let now = Utc::now();
+                let earliest_start = self.phase_timings.values().map(|t| t.start_time).min();
+                if let Some(start_time) = earliest_start {
+                    let duration = now.signed_duration_since(start_time);
                     self.duration_ms = Some(duration.num_milliseconds() as u64);
                 }
+                self.terminated_at = Some(now);
             }
             _ => {}
         }
@@ -586,6 +592,7 @@ mod tests {
 
     fn make_job() -> Job {
         Job::new(
+            JobId::new(),
             Default::default(),
             String::new(),
             crate::InputsModeDto::InputsNone,

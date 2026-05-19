@@ -43,9 +43,9 @@ impl InputsShmemWriter {
         );
     }
 
-    pub fn notify_all_services(&self) -> Result<()> {
+    pub fn signal_reset(&self) -> Result<()> {
         unreachable!(
-            "InputsShmemWriter::notify_all_services() is not supported on this platform. Only Linux x86_64 is supported."
+            "InputsShmemWriter::signal_reset() is not supported on this platform. Only Linux x86_64 is supported."
         );
     }
 

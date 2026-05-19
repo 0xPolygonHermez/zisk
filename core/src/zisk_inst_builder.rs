@@ -245,7 +245,10 @@ impl ZiskInstBuilder {
     }
 
     /// Called when the instruction has been built
-    pub fn build(&mut self) {
+    pub fn build(&mut self, build_counter: u64) {
+        // Set the instruction index to the current value of the ZiskRom build counter
+        self.i.index = build_counter;
+
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
 }

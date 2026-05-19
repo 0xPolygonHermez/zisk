@@ -53,7 +53,7 @@ pub unsafe fn inline_bump_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
 }
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use std::ptr;
+use core::ptr;
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 #[no_mangle]

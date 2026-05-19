@@ -1,8 +1,6 @@
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::UNIX_EPOCH;
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
@@ -17,14 +15,39 @@ fn main() {
     let library_folder = c_path.join("lib");
     let library_name = "ziskfloat";
     let lib_file = library_folder.join(format!("lib{library_name}.a"));
+    let elf_file = library_folder.join(format!("{library_name}.elf"));
 
-    // Check if the C++ library exists before recompiling
-    if !lib_file.exists() {
-        println!("`{}` not found! Compiling...", lib_file.display());
-        run_command("make", &["clean"], &c_path);
-        run_command("make", &[], &c_path);
+    // The committed `lib/ziskfloat.elf` is the source of truth: it determines the program vk
+    // (see core/src/elf2rom.rs `include_bytes!`). Rebuilding it on a consumer machine with a
+    // different riscv64-unknown-elf-gcc would produce different bytes and break vk
+    // reproducibility across hosts. Distinguish workspace dev vs cargo dep by checking whether
+    // the manifest dir lives under cargo's git/registry caches.
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let is_consumer = manifest_dir.contains("/.cargo/git/checkouts/")
+        || manifest_dir.contains("/.cargo/registry/src/");
+
+    if is_consumer {
+        if !lib_file.exists() || !elf_file.exists() {
+            println!(
+                "cargo:warning=ziskfloat artifacts missing in cargo cache; rebuilding from source"
+            );
+            run_command("make", &["clean"], &c_path);
+            run_command("make", &[], &c_path);
+        } else {
+            println!("ziskfloat artifacts already present, skipping rebuild.");
+        }
     } else {
-        println!("C++ library already compiled, skipping rebuild.");
+        // Workspace dev: only rebuild when a C source has actually changed since
+        // libziskfloat.a was last produced. Mtimes are reliable here (unlike cargo
+        // git/registry checkouts), so this skips unnecessary C rebuilds on `cargo build`.
+        let cpp_files = find_cpp_files(&c_path);
+        if cpp_files_have_changed(&cpp_files, &lib_file) {
+            eprintln!("Changes detected! Running `make clean` and recompiling...");
+            run_command("make", &["clean"], &c_path);
+            run_command("make", &[], &c_path);
+        } else {
+            println!("No C++ source changes detected, skipping rebuild.");
+        }
     }
 
     // Absolute path to the library
@@ -52,6 +75,8 @@ fn run_command(cmd: &str, args: &[&str], dir: &Path) {
     let status = Command::new(cmd)
         .args(args)
         .current_dir(dir)
+        // Neutralize timestamps gcc/ar/ld might otherwise embed.
+        .env("SOURCE_DATE_EPOCH", "0")
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute `{cmd}`: {e}"));
 
@@ -62,33 +87,22 @@ fn run_command(cmd: &str, args: &[&str], dir: &Path) {
 
 /// Tracks changes in the `pil2-stark` directory to trigger recompilation only when needed
 fn track_cpp_changes(c_path: &Path) {
+    println!("cargo:rerun-if-changed={}", c_path.join("Makefile").display());
     let cpp_files = find_cpp_files(c_path);
-    let lib_file = c_path.join("lib/libziskfloat.a");
-
     // Print tracked files for debugging
     eprintln!("Tracking {} C++ source files:", cpp_files.len());
     for file in &cpp_files {
         eprintln!(" - {}", file.display());
         println!("cargo:rerun-if-changed={}", file.display());
     }
-
-    // If any C++ source file changed, force a rebuild
-    if cpp_files_have_changed(&cpp_files, &lib_file) {
-        eprintln!("Changes detected! Running `make clean` and recompiling...");
-        run_command("make", &["clean"], c_path);
-        run_command("make", &[], c_path);
-    } else {
-        println!("No C++ source changes detected, skipping rebuild.");
-    }
 }
-/// Checks if any `.cpp`, `.h`, or `.hpp` file has changed since the last build
+
+/// Checks if any source file has been modified after `libziskfloat.a` was last built
 fn cpp_files_have_changed(cpp_files: &[PathBuf], lib_file: &Path) -> bool {
     let mut modified_files: Vec<PathBuf> = Vec::new();
-
-    // Get the modification time of `libstarks.a`
     let lib_modified_time = match fs::metadata(lib_file) {
         Ok(metadata) => {
-            let modified = metadata.modified().unwrap_or(UNIX_EPOCH);
+            let modified = metadata.modified().unwrap_or(std::time::UNIX_EPOCH);
             eprintln!("`{}` last modified: {:?}", lib_file.display(), modified);
             modified
         }
@@ -127,12 +141,17 @@ fn find_cpp_files(dir: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            // Skip top-level `c/build` and `c/lib` generated outputs. Nested directories
+            // that happen to be named build/lib (e.g. `SoftFloat-3e/build/`) contain real
+            // headers used by the compilation and must be tracked.
+            let name = path.file_name().and_then(|s| s.to_str());
+            if dir.ends_with("c") && matches!(name, Some("build" | "lib")) {
+                continue;
+            }
             if path.is_dir() {
                 cpp_files.extend(find_cpp_files(&path));
-            } else if let Some(ext) = path.extension() {
-                if (ext == "cpp" || ext == "h" || ext == "hpp")
-                    && path.file_name() != Some(std::ffi::OsStr::new("starks_lib.h"))
-                {
+            } else if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if matches!(ext, "c" | "cpp" | "h" | "hpp" | "S" | "s" | "ld") {
                     cpp_files.push(path);
                 }
             }

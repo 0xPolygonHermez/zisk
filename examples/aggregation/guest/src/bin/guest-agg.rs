@@ -5,17 +5,19 @@
 ziskos::entrypoint!(main);
 
 fn main() {
-    let proof1: Vec<u8> = ziskos::io::read();
-    let proof2: Vec<u8> = ziskos::io::read();
+    let proof1 = ziskos::io::read_input_slice();
+    let proof2 = ziskos::io::read_input_slice();
 
     // Verify the first proof
-    let valid_proof1 = ziskos::io::verify_zisk_proof(&proof1);
+    let valid_proof1 =
+        unsafe { ziskos::zisklib::verify_zisk_proof_c(proof1.as_ptr(), proof1.len()) };
     if !valid_proof1 {
         panic!("Proof 1 verification failed");
     }
 
     // Verify the second proof
-    let valid_proof2 = ziskos::io::verify_zisk_proof(&proof2);
+    let valid_proof2 =
+        unsafe { ziskos::zisklib::verify_zisk_proof_c(proof2.as_ptr(), proof2.len()) };
     if !valid_proof2 {
         panic!("Proof 2 verification failed");
     }

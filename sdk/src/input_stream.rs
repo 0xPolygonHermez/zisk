@@ -68,7 +68,8 @@ impl ZiskStream {
     /// Each call produces one length-prefixed record on the wire, recoverable
     /// by `ziskos::read::<T>()`.
     pub fn write<T: Serialize>(&self, data: &T) {
-        let bytes = bincode::serialize(data).expect("Failed to serialize");
+        let bytes = bincode::serde::encode_to_vec(data, bincode::config::standard())
+            .expect("Failed to serialize");
         self.write_slice(&bytes);
     }
 
@@ -344,8 +345,10 @@ mod tests {
                 // arrive concatenated in one wire message (under SOCK_SEQPACKET
                 // limit).
                 let msg = reader.next().unwrap().unwrap();
-                let expected1 = bincode::serialize(&42u32).unwrap();
-                let expected2 = bincode::serialize(&99u32).unwrap();
+                let expected1 =
+                    bincode::serde::encode_to_vec(42u32, bincode::config::standard()).unwrap();
+                let expected2 =
+                    bincode::serde::encode_to_vec(99u32, bincode::config::standard()).unwrap();
                 let f1 = build_frame(&expected1);
                 let f2 = build_frame(&expected2);
                 let mut concat = f1;
@@ -434,7 +437,10 @@ mod tests {
                 stream.start().unwrap();
                 let mut reader1 = UnixSocketStreamReader::new(&path).unwrap();
                 let msg = reader1.next().unwrap().unwrap();
-                assert_eq!(decode_frame(&msg), bincode::serialize(&1u32).unwrap());
+                assert_eq!(
+                    decode_frame(&msg),
+                    bincode::serde::encode_to_vec(1u32, bincode::config::standard()).unwrap()
+                );
                 stream.finish().unwrap();
                 reader1.close().unwrap();
 
@@ -443,7 +449,10 @@ mod tests {
                 stream.start().unwrap();
                 let mut reader2 = UnixSocketStreamReader::new(&path).unwrap();
                 let msg = reader2.next().unwrap().unwrap();
-                assert_eq!(decode_frame(&msg), bincode::serialize(&2u32).unwrap());
+                assert_eq!(
+                    decode_frame(&msg),
+                    bincode::serde::encode_to_vec(2u32, bincode::config::standard()).unwrap()
+                );
                 stream.finish().unwrap();
                 reader2.close().unwrap();
             });
@@ -557,7 +566,8 @@ mod tests {
                 reader.open().unwrap();
 
                 let msg = reader.next().unwrap().unwrap();
-                let expected = bincode::serialize(&42u32).unwrap();
+                let expected =
+                    bincode::serde::encode_to_vec(42u32, bincode::config::standard()).unwrap();
                 assert_eq!(decode_frame(&msg), expected);
 
                 stream.finish().unwrap();

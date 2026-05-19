@@ -80,8 +80,8 @@ main() {
       provingKey/zisk/vadcop_final/vadcop_final.verkey.bin || return 1
 
     step "Generate checksums..."
-    ensure md5sum "${PROVINGKEY_FILE}" > "${PROVINGKEY_FILE}.md5" || return 1
-    ensure md5sum "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || return 1
+    md5sum "${PROVINGKEY_FILE}" > "${PROVINGKEY_FILE}.md5" || return 1
+    md5sum "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || return 1
 
     step "Move files to output folder..."
     rm -rf "${OUTPUT_DIR}/${PROVINGKEY_FILE}"

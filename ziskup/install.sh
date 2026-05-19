@@ -6,18 +6,35 @@ set -e
 
 echo Installing ziskup...
 
-BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
-ZISK_DIR=${ZISK_DIR-"$BASE_DIR/.zisk"}
-ZISK_BIN_DIR="$ZISK_DIR/bin"
-
 BIN_URL="https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/ziskup"
-BIN_PATH="$ZISK_BIN_DIR/ziskup"
 
-# Create the .zisk bin directory and ziskup script if it doesn't exist.
-mkdir -p $ZISK_BIN_DIR
-curl -# -L $BIN_URL -o $BIN_PATH
-chmod +x $BIN_PATH
+# In --system mode, bootstrap ziskup to a temp file (running as root, we don't
+# want to pollute /root/.zisk/bin). The canonical ziskup will end up inside the
+# bundle (e.g. /opt/zisk/bin/ziskup) once the tarball is extracted.
+SYSTEM_MODE=false
+for arg in "$@"; do
+  if [[ "$arg" == "--system" ]]; then
+    SYSTEM_MODE=true
+    break
+  fi
+done
+
+if $SYSTEM_MODE; then
+  BIN_PATH=$(mktemp /tmp/ziskup-bootstrap.XXXXXX)
+  # EXIT trap (not a manual rm after the run) so the temp bootstrap is cleaned
+  # up regardless of how the script exits — including curl/chmod failure,
+  # non-zero ziskup exit (terminates immediately under set -e), or SIGINT.
+  trap 'rm -f "$BIN_PATH"' EXIT
+else
+  BASE_DIR=${XDG_CONFIG_HOME:-$HOME}
+  ZISK_DIR=${ZISK_DIR-"$BASE_DIR/.zisk"}
+  ZISK_BIN_DIR="$ZISK_DIR/bin"
+  BIN_PATH="$ZISK_BIN_DIR/ziskup"
+  mkdir -p "$ZISK_BIN_DIR"
+fi
+
+curl -# -L "$BIN_URL" -o "$BIN_PATH"
+chmod +x "$BIN_PATH"
 
 echo && echo "Running ziskup..."
-$BIN_PATH
-
+"$BIN_PATH" "$@"
