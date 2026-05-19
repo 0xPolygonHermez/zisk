@@ -254,7 +254,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 
             // Release proofman's borrowed unified buffer: the MO
             // count-and-plan GPU work is now done (handle_mo joined
-            // just above). 
+            // just above).
             if pctx.gpu {
                 unified_buffer_release_c(pctx.get_device_buffers_ptr());
             }

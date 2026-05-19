@@ -48,14 +48,10 @@ impl GpuCountAndPlan {
 
     /// Pass `d_buf = null, bytes = 0` to let the GPU class allocate internally.
     /// n_worker = 1 and worker_id = 0 to get all the instances metas otherwise distributed per worker_id using round-robin.
-    pub fn setup(
-        &self,
-        d_buf: *mut c_void,
-        bytes: usize,
-        n_workers: u32,
-        worker_id: u32,
-    ) -> bool {
-        unsafe { gpu_bindings::count_and_plan_setup(self.inner, d_buf, bytes, n_workers, worker_id) }
+    pub fn setup(&self, d_buf: *mut c_void, bytes: usize, n_workers: u32, worker_id: u32) -> bool {
+        unsafe {
+            gpu_bindings::count_and_plan_setup(self.inner, d_buf, bytes, n_workers, worker_id)
+        }
     }
 
     pub fn add_chunk(&self, memops: &[GpuMemOp]) -> bool {
@@ -85,8 +81,7 @@ impl GpuCountAndPlan {
     /// slice is the chunk_id. Valid after `run()`, until the next `reset()`.
     pub fn align_counters(&self) -> &[GpuMemAlignCounter] {
         let mut n: u32 = 0;
-        let ptr =
-            unsafe { gpu_bindings::count_and_plan_get_align_counters(self.inner, &mut n) };
+        let ptr = unsafe { gpu_bindings::count_and_plan_get_align_counters(self.inner, &mut n) };
         if ptr.is_null() || n == 0 {
             return &[];
         }

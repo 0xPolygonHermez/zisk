@@ -396,7 +396,8 @@ impl<F: PrimeField64> InputDataSM<F> {
 
             if addr_changes {
                 trace[irow].set_addr_changes(true);
-                let previous_addr = seg.previous_change_addr_w(addr_index as u32)
+                let previous_addr = seg
+                    .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 let distance = mem_op.addr as i64 - previous_addr as i64 - 1;
                 if distance < MAX_RANGE_CHECK_CACHE as i64 {

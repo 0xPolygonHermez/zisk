@@ -209,22 +209,17 @@ impl MemPlanner {
                     segment.addr_range_slots = addr_range_slots;
                     segment.num_pages = num_pages;
                     segment.present_count = present_count;
-                    segment.page_starts = unsafe {
-                        std::slice::from_raw_parts(page_starts_ptr, num_pages as usize)
-                    }
-                    .to_vec();
-                    segment.page_single_value = unsafe {
-                        std::slice::from_raw_parts(page_single_ptr, num_pages as usize)
-                    }
-                    .to_vec();
+                    segment.page_starts =
+                        unsafe { std::slice::from_raw_parts(page_starts_ptr, num_pages as usize) }
+                            .to_vec();
+                    segment.page_single_value =
+                        unsafe { std::slice::from_raw_parts(page_single_ptr, num_pages as usize) }
+                            .to_vec();
                     let dense_len = present_count as usize * MEM_OFFSETS_PAGE_SIZE as usize;
                     segment.pages_dense = if dense_len == 0 {
                         Vec::new()
                     } else {
-                        unsafe {
-                            std::slice::from_raw_parts(pages_dense_ptr, dense_len)
-                        }
-                        .to_vec()
+                        unsafe { std::slice::from_raw_parts(pages_dense_ptr, dense_len) }.to_vec()
                     };
                 }
                 plans.push(Plan::new(

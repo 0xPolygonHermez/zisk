@@ -570,10 +570,7 @@ impl<F: PrimeField64> MemSM<F> {
         #[cfg(feature = "debug_mem")]
         {
             Self::save_mem_inputs_to_file(mem_ops, segment_id);
-            save_offsets_to_file(
-                seg,
-                &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"),
-            );
+            save_offsets_to_file(seg, &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"));
         }
 
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
@@ -639,7 +636,8 @@ impl<F: PrimeField64> MemSM<F> {
                     // table (was a backward linear scan on the dense
                     // offsets array before the SoA refactor).
                     mem_op.addr as u64
-                        - seg.previous_change_addr_w(addr_index as u32)
+                        - seg
+                            .previous_change_addr_w(addr_index as u32)
                             .unwrap_or(previous_segment.addr as u64)
                         - 1
                 } else {
@@ -681,7 +679,8 @@ impl<F: PrimeField64> MemSM<F> {
                 // dual available
                 init_row = true;
 
-                let previous_addr = seg.previous_change_addr_w(addr_index as u32)
+                let previous_addr = seg
+                    .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 debug_assert!(previous_addr <= mem_op.addr as u64, "MemSM: Warning: address goes back \
                               from 0x{:X} to 0x{previous_addr:X} at irow {irow} (offset_base_addr_w: \
