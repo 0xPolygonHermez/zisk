@@ -29,46 +29,28 @@ impl Coordinator {
         active_workers: &[WorkerId],
         challenges: Vec<ChallengesDto>,
     ) -> CoordinatorResult<()> {
-        // Send messages to active workers
         for worker_id in active_workers {
-            if let Some(worker_state) = self.workers_pool.worker_state(worker_id).await {
-                // Validate worker is in the expected Phase 1 computing state
-                // This ensures proper phase sequencing and prevents race conditions
-                if !matches!(worker_state, WorkerState::Computing((_, JobPhase::Contributions))) {
-                    let reason =
-                        format!("Worker {worker_id} is not in computing state for {}", job_id);
-                    return Err(CoordinatorError::InvalidRequest(reason));
-                }
+            // Atomic transition; rejects if a concurrent fail_job parked
+            // the worker SettingUp between Phase 1 completion and here.
+            self.workers_pool
+                .try_transition_computing_phase(
+                    worker_id,
+                    job_id,
+                    JobPhase::Contributions,
+                    JobPhase::Prove,
+                )
+                .await?;
 
-                // Transition worker to Phase 2 computing state
-                // This atomic update ensures consistent state tracking across the system
-                self.workers_pool
-                    .mark_worker_with_state(
-                        worker_id,
-                        WorkerState::Computing((job_id.clone(), JobPhase::Prove)),
-                    )
-                    .await?;
+            let req = ExecuteTaskRequestDto {
+                worker_id: worker_id.clone(),
+                job_id: job_id.clone(),
+                params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
+                    challenges: challenges.clone(),
+                }),
+            };
+            let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
-                // Create Phase 2 task with complete challenge set
-                // All workers receive the full challenge data regardless of their individual contributions
-                let req = ExecuteTaskRequestDto {
-                    worker_id: worker_id.clone(),
-                    job_id: job_id.clone(),
-                    params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
-                        challenges: challenges.clone(), // Complete challenge set from Phase 1 aggregation
-                    }),
-                };
-                let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
-
-                // Send start prove message to worker
-                // Network failures here will cause the method to fail and require retry logic
-                self.workers_pool.send_message(worker_id, req).await?;
-            } else {
-                // Worker disappeared between Phase 1 completion and Phase 2 start
-                // This can happen due to disconnections or system state changes
-                warn!("Worker {} not found when starting Phase2", worker_id);
-                return Err(CoordinatorError::NotFoundOrInaccessible);
-            }
+            self.workers_pool.send_message(worker_id, req).await?;
         }
 
         Ok(())
@@ -100,12 +82,7 @@ impl Coordinator {
             return self.complete_simulated_job(&mut job, &worker_id).await;
         }
 
-        // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
-            drop(job);
-            self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
-                .await?;
+        if job.state().is_resolved() {
             return Ok(());
         }
 

@@ -3,6 +3,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator,
 };
+use chrono::Utc;
 use std::sync::atomic::Ordering;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
@@ -57,18 +58,21 @@ impl Coordinator {
         // pre-empt it.
         let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp)
-            && !self.pending_recovery.read().await.contains(&worker_id)
+            && !self.pending_recovery.read().await.contains_key(&worker_id)
         {
             let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
             info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
         }
 
         // Remove this worker from the pending set and accumulate its VK.
+        // Only count the VK if the worker was actually pending for this
+        // setup — stray acks from unrelated workers must not poison the VK
+        // validation.
         let outcome = {
             let mut pending = self.setup_pending.write().await;
             if let Some(state) = pending.get_mut(&job_id) {
-                state.pending.remove(&ack.worker_id);
-                if ack.success {
+                let was_pending = state.pending.remove(&ack.worker_id);
+                if was_pending && ack.success {
                     state.vks.push((ack.worker_id.clone(), ack.vk));
                 }
                 if state.pending.is_empty() {
@@ -89,31 +93,95 @@ impl Coordinator {
         };
 
         if let Some((vks, hash_id, program_name, with_hints, emulator_only)) = outcome {
-            let event = match validate_setup_vks(&ack.job_id, vks) {
-                Ok(vk) => {
-                    self.active_setups
-                        .write()
-                        .await
-                        .insert(SetupKey::new(hash_id, with_hints, emulator_only), program_name);
-                    CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk })
-                }
-                Err(e) => {
-                    error!("[Setup] VK mismatch for job_id {}: {}", ack.job_id, e);
-                    CoordinatorJobEvent::Failed(e)
-                }
-            };
-            self.fire_job_event(&job_id, event).await;
+            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
+                .await;
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 
         Ok(())
     }
 
+    /// Fires the terminal event for a completed `setup_pending` entry —
+    /// success (with a single agreed VK) or failure (VKs disagreed or none
+    /// arrived). Shared by `handle_stream_setup_program_ack` (normal path)
+    /// and `prune_setup_pending_for_lost_worker` (worker disappeared mid-
+    /// setup).
+    async fn finalize_setup(
+        &self,
+        job_id: &JobId,
+        vks: Vec<(WorkerId, Vec<u8>)>,
+        hash_id: String,
+        program_name: String,
+        with_hints: bool,
+        emulator_only: bool,
+    ) {
+        let event = match validate_setup_vks(job_id.as_str(), vks) {
+            Ok(vk) => {
+                self.active_setups.write().await.insert(
+                    SetupKey::new(hash_id, with_hints, emulator_only),
+                    crate::coordinator::ActiveSetup { program_name, vk: vk.clone() },
+                );
+                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk })
+            }
+            Err(e) => {
+                error!("[Setup] VK mismatch for job_id {}: {}", job_id, e);
+                CoordinatorJobEvent::Failed(e)
+            }
+        };
+        self.fire_job_event(job_id, event).await;
+    }
+
+    /// Removes `worker_id` from any in-flight `setup_pending` entries; for
+    /// each entry whose pending set becomes empty as a result, finalizes
+    /// the setup with whatever VKs have arrived so far. Called when a
+    /// worker is conclusively lost (gRPC stream dead and either evicted by
+    /// `unregister_worker` or transitioned `Disconnected` after the
+    /// reconnect grace period). Without this prune, the setup would hang
+    /// until process restart: the worker's eventual `SetupProgramAck` for
+    /// this `job_id` is permanently lost (a fresh stream gets a new
+    /// `job_id` from `read_all_setup_dtos`), and there is no setup-phase
+    /// timeout in the monitor sweep.
+    async fn prune_setup_pending_for_lost_worker(&self, worker_id: &WorkerId) {
+        let completions = {
+            let mut pending = self.setup_pending.write().await;
+            let mut completions = Vec::new();
+            pending.retain(|job_id, state| {
+                if !state.pending.remove(worker_id) {
+                    return true;
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
+                    completions.push((
+                        job_id.clone(),
+                        vks,
+                        state.hash_id.clone(),
+                        state.program_name.clone(),
+                        state.with_hints,
+                        state.emulator_only,
+                    ));
+                    false
+                } else {
+                    true
+                }
+            });
+            completions
+        };
+
+        for (job_id, vks, hash_id, program_name, with_hints, emulator_only) in completions {
+            info!(
+                "[Setup] Worker {} lost; finalizing in-flight setup {} with collected acks",
+                worker_id, job_id
+            );
+            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
+                .await;
+        }
+    }
+
     pub(crate) async fn handle_stream_recovery_complete(
         &self,
         worker_id: &WorkerId,
     ) -> CoordinatorResult<()> {
-        let was_pending = self.pending_recovery.write().await.remove(worker_id);
+        let was_pending = self.pending_recovery.write().await.remove(worker_id).is_some();
         let state = self.workers_pool.worker_state(worker_id).await;
         let parked = state == Some(WorkerState::SettingUp);
 
@@ -167,26 +235,6 @@ impl Coordinator {
         }
     }
 
-    /// Marks all Computing workers in the list as Ready.
-    pub(super) async fn ensure_workers_ready(&self, worker_ids: &[WorkerId]) {
-        self.workers_pool.mark_computing_workers_ready(worker_ids).await;
-    }
-
-    pub(super) async fn ensure_workers_ready_except(
-        &self,
-        worker_ids: &[WorkerId],
-        recovering: &WorkerId,
-    ) {
-        let others: Vec<WorkerId> =
-            worker_ids.iter().filter(|w| *w != recovering).cloned().collect();
-        self.workers_pool.mark_computing_workers_ready(&others).await;
-        if self.workers_pool.worker_state(recovering).await.is_some() {
-            let _ =
-                self.workers_pool.mark_worker_with_state(recovering, WorkerState::SettingUp).await;
-            info!("[Recovery] Worker {} entered SettingUp pending recovery completion", recovering);
-        }
-    }
-
     /// Handles new worker registration. Returns `(accepted, message)`.
     pub async fn handle_stream_registration(
         &self,
@@ -212,6 +260,22 @@ impl Coordinator {
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let worker_id = req.worker_id.clone();
+
+        // A fresh `Register` (as opposed to `Reconnect`) means the worker
+        // process has lost its in-flight state. Any leftover
+        // `pending_recovery` entry from its previous incarnation is now
+        // unanswerable — the new worker won't send
+        // `WorkerRecoveryComplete` for a recovery it doesn't know about.
+        // Leaving the entry would block dispatch (via the `setup_ack`
+        // pending-recovery guard) until the stuck-recovery sweep evicts.
+        let cleared = self.pending_recovery.write().await.remove(&worker_id).is_some();
+        if cleared {
+            info!(
+                "[Recovery] Cleared stale pending_recovery entry for worker {} on fresh register",
+                worker_id
+            );
+        }
+
         match self
             .workers_pool
             .register_worker(req.worker_id, req.compute_capacity, msg_sender, initial_state)
@@ -286,7 +350,7 @@ impl Coordinator {
         // arrives on the new stream.
         let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
             self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
-        } else if self.pending_recovery.read().await.contains(&worker_id) {
+        } else if self.pending_recovery.read().await.contains_key(&worker_id) {
             WorkerState::SettingUp
         } else {
             default_state
@@ -374,11 +438,10 @@ impl Coordinator {
         Some(ReconnectionDirectiveDto::KeepComputing)
     }
 
-    /// If the worker was Computing, fail its job via `fail_job_with_recovery`
-    /// so the worker is parked in `pending_recovery`. A subsequent reconnect
-    /// will land in `SettingUp` until `WorkerRecoveryComplete` arrives,
-    /// preventing the coordinator from dispatching a new task while the
-    /// worker's detached `spawn_blocking` is still unwinding.
+    /// If the worker was Computing, fail its job via `fail_job` so every
+    /// assigned worker (including this one) is parked in `pending_recovery`
+    /// and awaits `WorkerRecoveryComplete` before the dispatcher can re-task
+    /// them.
     async fn fail_job_if_computing(
         &self,
         worker_id: &WorkerId,
@@ -390,23 +453,27 @@ impl Coordinator {
                 "Worker {} {} while computing for job {} in phase {:?}",
                 worker_id, reason, job_id, phase
             );
-            self.fail_job_with_recovery(
-                &job_id,
-                format!("Worker {} {}", worker_id, reason),
-                Some(worker_id),
-            )
-            .await?;
+            self.fail_job(&job_id, format!("Worker {} {}", worker_id, reason)).await?;
         }
         Ok(())
     }
 
-    /// Permanently remove a worker. Clears any `pending_recovery` entry —
-    /// unlike `disconnect_worker`, this worker will not reconnect to send
-    /// `WorkerRecoveryComplete`, so the entry would otherwise leak.
+    /// Removes a worker entirely from the pool and clears any
+    /// `pending_recovery` entry. The worker's stream is dropped; a still-alive
+    /// worker process sees a broken stream and can re-enter the pool via
+    /// fresh registration (the previous entry is gone, including any
+    /// `pending_recovery` bookkeeping). Used both for explicit unregister
+    /// requests and for evicting workers that the stuck-recovery sweep gave
+    /// up on; unlike `disconnect_worker`, no state is preserved for an
+    /// in-flight reconnect.
     pub async fn unregister_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "unregistered").await?;
         self.pending_recovery.write().await.remove(worker_id);
+        // Drain any in-flight setups; on permanent eviction the worker
+        // will never ACK this job_id (a re-registered process gets a
+        // fresh setup id from active_setups).
+        self.prune_setup_pending_for_lost_worker(worker_id).await;
         self.workers_pool.unregister_worker(worker_id).await
     }
 
@@ -415,7 +482,16 @@ impl Coordinator {
     pub async fn disconnect_worker(&self, worker_id: &WorkerId) -> CoordinatorResult<()> {
         let worker_state = self.workers_pool.worker_state(worker_id).await;
         self.fail_job_if_computing(worker_id, worker_state, "disconnected").await?;
-        self.workers_pool.disconnect_worker(worker_id).await
+        let disconnected = self.workers_pool.disconnect_worker(worker_id).await?;
+        if disconnected {
+            // Even on a "transient" disconnect the worker's gRPC stream is
+            // dead; any SetupProgramAck for this job_id is lost (the
+            // worker, on reconnect, gets a fresh job_id from
+            // active_setups). Without this prune the in-flight setup
+            // hangs forever — there is no setup-phase monitor timeout.
+            self.prune_setup_pending_for_lost_worker(worker_id).await;
+        }
+        Ok(())
     }
 
     /// Generation-aware disconnect for [`ConnectionDropGuard`].
@@ -448,8 +524,18 @@ impl Coordinator {
             warn!("Failed to fail job on worker {} disconnect: {}", worker_id, e);
         }
 
-        // Disconnect with generation check (re-validates under write lock)
-        self.workers_pool.disconnect_worker_if_generation(worker_id, expected_generation).await
+        // Disconnect with generation check (re-validates under write lock).
+        // Only prune in-flight setups if the disconnect actually landed —
+        // otherwise the worker reconnected between the check above and
+        // this call, and we'd be pruning a still-live worker.
+        let disconnected = self
+            .workers_pool
+            .disconnect_worker_if_generation(worker_id, expected_generation)
+            .await?;
+        if disconnected {
+            self.prune_setup_pending_for_lost_worker(worker_id).await;
+        }
+        Ok(())
     }
 
     /// Handles heartbeat acknowledgments from workers to maintain liveness tracking.
@@ -472,10 +558,28 @@ impl Coordinator {
     ///
     /// * `message` - Worker error message containing job ID, worker ID, and error details
     pub async fn handle_stream_error(&self, message: WorkerErrorDto) -> CoordinatorResult<()> {
-        // Update last heartbeat
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         error!("Worker {} error: {}", message.worker_id, message.error_message);
+
+        // Only a worker assigned to the job may fail it.
+        let assigned = {
+            let jobs_map = self.jobs.read().await;
+            match jobs_map.get(&message.job_id) {
+                Some(job_arc) => job_arc.read().await.workers.contains(&message.worker_id),
+                None => false,
+            }
+        };
+        if !assigned {
+            warn!(
+                "Worker {} reported error for job {} it is not assigned to; ignoring",
+                message.worker_id, message.job_id
+            );
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {} not assigned to job {}",
+                message.worker_id, message.job_id
+            )));
+        }
 
         self.fail_job(&message.job_id, message.error_message).await.map_err(|e| {
             error!("Failed to mark job {} as failed after worker error: {}", message.job_id, e);
@@ -507,9 +611,15 @@ impl Coordinator {
         // Validate and update heartbeat
         self.validate_and_update_heartbeat(&message).await?;
 
-        // Late arrival for a resolved job (e.g. spawn_blocking finished after
-        // JobCancelled): discard, but park in SettingUp when `worker_in_recovery`
-        // so the dispatcher waits for `WorkerRecoveryComplete`.
+        // Late arrival for a resolved job (e.g. `spawn_blocking` finished
+        // after `JobCancelled`). The worker is — or shortly will be — parked
+        // `SettingUp` and tracked in `pending_recovery` by `fail_job` /
+        // `cancel_job`; `WorkerRecoveryComplete` owns the flip back to
+        // `Ready`. This branch is non-state-mutating: log, optionally
+        // register recovery intent for a self-reporting worker, and
+        // defensive-guard against stomping a `Computing(other_live_job, _)`
+        // state (which should be unreachable under the parking discipline
+        // but is cheap insurance).
         let job_entry = {
             let jobs_map = self.jobs.read().await;
             jobs_map.get(&message.job_id).cloned()
@@ -517,24 +627,43 @@ impl Coordinator {
         if let Some(job_entry) = job_entry {
             let job = job_entry.read().await;
             if job.state().is_resolved() {
-                let target_state = if message.worker_in_recovery {
-                    WorkerState::SettingUp
-                } else {
-                    WorkerState::Ready
-                };
-                info!(
-                    "Ignoring late ExecuteTaskResponse from worker {} for resolved job {} (worker_in_recovery={}, parking in {:?})",
-                    message.worker_id, message.job_id, message.worker_in_recovery, target_state
-                );
-                if message.worker_in_recovery {
-                    // The response arrived too late to drive the failure path,
-                    // so record the recovery intent here so the eventual
-                    // `WorkerRecoveryComplete` can flip the worker back Ready.
-                    self.pending_recovery.write().await.insert(message.worker_id.clone());
-                }
                 drop(job);
                 drop(job_entry);
-                self.workers_pool.mark_worker_with_state(&message.worker_id, target_state).await?;
+
+                let current = self.workers_pool.worker_state(&message.worker_id).await;
+
+                if let Some(WorkerState::Computing((ref other_job_id, _))) = current {
+                    if other_job_id != &message.job_id {
+                        // Should be unreachable: the worker shouldn't have
+                        // been re-tasked while owing a `WorkerRecoveryComplete`.
+                        // If it ever happens, refuse to stomp the live state.
+                        warn!(
+                            "Late ExecuteTaskResponse for resolved job {} from worker {} \
+                             dropped: worker is Computing on live job {} — refusing to stomp",
+                            message.job_id, message.worker_id, other_job_id
+                        );
+                        return Ok(());
+                    }
+                }
+
+                if message.worker_in_recovery {
+                    // Self-reporting recovery — make sure the eventual
+                    // `WorkerRecoveryComplete` is honored even if the
+                    // failure was detected via this response (and not via
+                    // `WorkerError`). Idempotent: `or_insert` preserves the
+                    // original park timestamp set by `fail_job`.
+                    self.pending_recovery
+                        .write()
+                        .await
+                        .entry(message.worker_id.clone())
+                        .or_insert_with(Utc::now);
+                }
+
+                info!(
+                    "Late ExecuteTaskResponse from worker {} for resolved job {} \
+                     (worker_in_recovery={}, state={:?}); awaiting WorkerRecoveryComplete",
+                    message.worker_id, message.job_id, message.worker_in_recovery, current
+                );
                 return Ok(());
             }
         }
@@ -578,18 +707,31 @@ impl Coordinator {
         &self,
         message: &ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
-        // Update last heartbeat
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
-        // Check if job exists
-        if !self.jobs.read().await.contains_key(&message.job_id) {
+        // Job must exist AND the worker must be assigned to it. Prevents a
+        // worker from injecting / failing a job it is not part of.
+        let job_arc = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&message.job_id).cloned()
+        };
+        let Some(job_arc) = job_arc else {
             warn!(
                 "Received ExecuteTaskResponse for unknown job {} from worker {}",
                 message.job_id, message.worker_id
             );
             return Err(CoordinatorError::NotFoundOrInaccessible);
+        };
+        if !job_arc.read().await.workers.contains(&message.worker_id) {
+            warn!(
+                "Worker {} sent ExecuteTaskResponse for job {} it is not assigned to; refusing",
+                message.worker_id, message.job_id
+            );
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {} not assigned to job {}",
+                message.worker_id, message.job_id
+            )));
         }
-
         Ok(())
     }
 
@@ -599,8 +741,6 @@ impl Coordinator {
     ///
     /// * `message` - Task response containing failure details and context
     async fn handle_task_failure(&self, message: ExecuteTaskResponseDto) -> CoordinatorResult<()> {
-        let recovering = if message.worker_in_recovery { Some(&message.worker_id) } else { None };
-
         // Surface the worker's own error_message so it propagates verbatim
         // through JobState::Failed to the prove-client.
         let worker_err = message.error_message.as_deref().map(str::trim).filter(|s| !s.is_empty());
@@ -611,7 +751,7 @@ impl Coordinator {
             None => format!("Task execution failed on worker {} (no detail)", message.worker_id),
         };
 
-        self.fail_job_with_recovery(&message.job_id, &reason, recovering).await?;
+        self.fail_job(&message.job_id, &reason).await?;
 
         Err(CoordinatorError::WorkerError(format!(
             "Worker {} failed task for job {}: {}",
