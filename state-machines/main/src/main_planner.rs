@@ -85,14 +85,14 @@ mod tests {
     }
 
     #[test]
-    fn min_traces_size_not_power_of_two_errors() {
+    fn chunk_size_not_power_of_two_errors() {
         let traces = n_default_traces(1);
         let err = MainPlanner::plan(&traces, 3).unwrap_err();
         assert!(matches!(err, MainSmError::ChunkSizeNotPowerOfTwo { size: 3 }));
     }
 
     #[test]
-    fn min_traces_size_zero_errors() {
+    fn chunk_size_zero_errors() {
         // 0 is not a power of two per Rust's `is_power_of_two()` definition.
         let traces = n_default_traces(1);
         let err = MainPlanner::plan(&traces, 0).unwrap_err();
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn min_traces_size_too_big_errors() {
+    fn chunk_size_too_big_errors() {
         // 2 * NUM_ROWS is power of two but exceeds the row capacity of MainTrace.
         let traces = n_default_traces(1);
         let oversized = (NUM_ROWS as u64) * 2;
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn single_full_segment_when_traces_equal_num_within() {
-        // min_traces_size = NUM_ROWS → num_within = 1, so 1 trace = 1 segment.
+        // chunk_size = NUM_ROWS → num_within = 1, so 1 trace = 1 segment.
         let traces = n_default_traces(1);
         let plans = MainPlanner::plan(&traces, NUM_ROWS as u64).unwrap();
         assert_eq!(plans.len(), 1);
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn multiple_full_segments_have_sequential_ids() {
-        // min_traces_size = NUM_ROWS / 2 → num_within = 2. With 4 traces → 2 segments.
+        // chunk_size = NUM_ROWS / 2 → num_within = 2. With 4 traces → 2 segments.
         let traces = n_default_traces(4);
         let size = (NUM_ROWS as u64) / 2;
         let plans = MainPlanner::plan(&traces, size).unwrap();

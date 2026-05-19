@@ -172,6 +172,7 @@ impl EmulatorAsm {
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
     /// * `u64` - Total number of steps.
+    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
