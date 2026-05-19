@@ -89,7 +89,7 @@ fn main() {
         watch_dir_recursive("cu", &["cu", "cuh"]);
         println!("cargo:rustc-cfg=gpu");
     }
-    println!("cargo:rustc-check-cfg=cfg(gpu)");
+    println!("cargo::rustc-check-cfg=cfg(gpu)");
 }
 
 fn watch_dir_recursive<P: AsRef<Path>>(dir: P, exts: &[&str]) {

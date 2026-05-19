@@ -25,3 +25,8 @@ save_mem_bus_data = []
 save_mem_plans = []
 save_mem_align_counters = []
 save_mem_bus_data_asm = []
+
+[lints.rust]
+# `gpu` is set by build.rs only when CUDA is detected; declare it so the
+# `unexpected_cfgs` lint does not flag it on non-GPU targets (e.g. macOS CI).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gpu)'] }

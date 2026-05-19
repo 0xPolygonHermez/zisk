@@ -17,5 +17,5 @@ fn main() {
     if detect_gpu() {
         println!("cargo:rustc-cfg=gpu");
     }
-    println!("cargo:rustc-check-cfg=cfg(gpu)");
+    println!("cargo::rustc-check-cfg=cfg(gpu)");
 }

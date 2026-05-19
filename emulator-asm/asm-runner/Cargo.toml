@@ -34,3 +34,8 @@ named-sem = { workspace = true }
 stats = []
 save_mem_plans = []
 cpu-only = ["mem-planner-cpp/cpu-only"]
+
+[lints.rust]
+# `gpu` is set by build.rs only when CUDA is detected; declare it so the
+# `unexpected_cfgs` lint does not flag it on non-GPU targets (e.g. macOS CI).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(gpu)'] }
