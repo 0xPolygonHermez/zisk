@@ -286,8 +286,6 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         let gpu_align_plans: Option<Vec<Plan>> =
             gpu_count_and_plan.as_ref().map(|gp| gp.build_align_plans());
-        #[cfg(not(gpu))]
-        let gpu_align_plans: Option<Vec<Plan>> = None;
 
         // inject GPU-produced segments to the C++ segment table
         // (`mcp->segments[]`). No-op on the CPU path (gpu_metas_view None).
@@ -334,8 +332,11 @@ impl AsmRunnerMO {
 
             // Use GPU-built align plans if available, otherwise wait on the
             // CPU mem-align worker.
+            #[cfg(gpu)]
             let mut mem_align_plans =
                 gpu_align_plans.unwrap_or_else(|| mem_planner.wait_mem_align_plans());
+            #[cfg(not(gpu))]
+            let mut mem_align_plans = mem_planner.wait_mem_align_plans();
 
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);

@@ -273,6 +273,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets(
         &self,
         mem_ops: &[MemInput],
@@ -420,9 +421,9 @@ impl<F: PrimeField64> InputDataSM<F> {
             let mut prev_filled_row = filled_rows[0];
             let mut from_row = 0;
             let _count = if is_last_segment { count } else { trace.num_rows() };
-            for i in 0.._count {
+            for (i, &filled_row) in filled_rows.iter().enumerate().take(_count) {
                 debug_assert!(
-                    filled_rows[i] == prev_filled_row,
+                    filled_row == prev_filled_row,
                     "InputDataSM: not complete instance found [{}..{}] = {}",
                     from_row,
                     i - 1,

@@ -251,6 +251,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn compute_witness_with_offsets(
         &self,
         mem_ops: &[MemInput],
