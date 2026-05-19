@@ -28,12 +28,14 @@ BUCKET="gs://zisk-setup"
 
 usage() {
   cat <<EOF >&2
-usage: $0 --build-dir DIR [--snark | --all] [--out-dir DIR]
+usage: $0 --build-dir DIR [--snark | --all] [--out-dir DIR] [-v|--verbose]
 
   --build-dir DIR    Directory produced by \`cargo zisk proofman-setup setup\`.
   --snark            Package only the snark output (provingKeySnark/).
   --all              Package proving key, circuits, and snark.
   --out-dir DIR      Where to write tarballs. Default: <repo root>/dist
+  -v, --verbose      Print each file as it is tarred, the resulting tarball
+                     size, and run \`gcloud storage cp\` with --verbosity=info.
 
 Artifacts are always uploaded to ${BUCKET}/ via gcloud storage.
 EOF
@@ -43,6 +45,7 @@ EOF
 BUILD_DIR=""
 MODE="standard"   # standard | snark | all
 OUT_DIR=""
+VERBOSE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -61,6 +64,10 @@ while [ $# -gt 0 ]; do
     --out-dir)
       OUT_DIR="$2"
       shift 2
+      ;;
+    -v|--verbose)
+      VERBOSE=1
+      shift
       ;;
     -h|--help)
       usage
@@ -131,7 +138,11 @@ pack() {
 
   echo "packing $BUILD_DIR/$src -> $tarball"
 
-  tar -czf "$tarball" -C "$BUILD_DIR" "$src"
+  local tar_v=""
+  [ $VERBOSE -eq 1 ] && tar_v="v"
+  tar -cz${tar_v}f "$tarball" -C "$BUILD_DIR" "$src"
+
+  [ $VERBOSE -eq 1 ] && ls -lh "$tarball"
 
   ARTIFACTS+=("$tarball")
 
@@ -140,6 +151,7 @@ pack() {
       cd "$OUT_DIR"
       write_md5 "$tarname" > "$tarname.md5"
     )
+    [ $VERBOSE -eq 1 ] && cat "$tarball.md5"
 
     ARTIFACTS+=("$tarball.md5")
   fi
@@ -184,7 +196,9 @@ fi
 
 echo "uploading ${#ARTIFACTS[@]} file(s) to ${BUCKET}/"
 
-gcloud storage cp "${ARTIFACTS[@]}" "${BUCKET}/"
+gcloud_flags=()
+[ $VERBOSE -eq 1 ] && gcloud_flags+=(--verbosity=info)
+gcloud storage cp "${gcloud_flags[@]}" "${ARTIFACTS[@]}" "${BUCKET}/"
 
 echo "done. artifacts:"
 
