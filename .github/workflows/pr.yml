@@ -47,6 +47,24 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+  build-riscv64im:
+    name: Build ziskos-staticlib (riscv64im-unknown-none-elf)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly with rust-src
+        # riscv64im-unknown-none-elf is a Tier 3 target — no pre-built std is available.
+        # rust-src is required so that -Z build-std can compile core/alloc from source.
+        # No cross-compiler is needed; Rust uses its bundled rust-lld linker.
+        run: rustup toolchain install nightly --component rust-src --no-self-update
+
+      - name: Build ziskos-staticlib for riscv64im-unknown-none-elf
+        run: cargo +nightly build -p ziskos-staticlib --release --target riscv64im-unknown-none-elf -Z build-std=core,alloc --config 'profile.release.lto="fat"'
+
   test-x86_64:
     name: Test on Ubuntu x86_64
     runs-on: gpu-hosted
