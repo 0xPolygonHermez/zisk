@@ -25,6 +25,30 @@ pub struct RegisterGuestProgramResponseDto {
     pub hash_id: String,
 }
 
+/// 4-limb Goldilocks verification key, decimal-encoded.
+pub type DomainProgramVk = [String; 4];
+
+#[derive(Debug, Clone)]
+pub struct DomainAggregatorSpec {
+    pub program_vks: Vec<DomainProgramVk>,
+    pub n_private_inputs: u64,
+    /// Empty string = use recurser default.
+    pub prepare_publics_body: String,
+    /// Empty string = use recurser default.
+    pub check_publics_body: String,
+    pub aggregate_publics_body: String,
+}
+
+pub struct RegisterRecurserAggregatorRequestDto {
+    /// SDK-computed content hash; the coordinator stores the spec under this key.
+    pub recurser_id: String,
+    pub spec: DomainAggregatorSpec,
+}
+
+pub struct RegisterRecurserAggregatorResponseDto {
+    pub recurser_id: String,
+}
+
 /// Result of [`submit_job`] — the coordinator-assigned job ID plus any
 /// stream URIs allocated by the coordinator for auto-negotiated transports.
 #[derive(Debug, Clone)]
@@ -85,6 +109,8 @@ pub enum DomainJobKind {
     Prove(DomainProveRequest),
     Wrap(DomainWrapRequest),
     Execute(DomainExecuteRequest),
+    SetupAggregator(DomainSetupAggregatorRequest),
+    Aggregate(DomainAggregateRequest),
 }
 
 /// Optional compute capacity hint attached to a job request.
@@ -126,6 +152,21 @@ pub struct DomainExecuteRequest {
     pub execute_timeout: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DomainSetupAggregatorRequest {
+    pub recurser_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAggregateRequest {
+    pub recurser_id: String,
+    /// bincode-serialized VadcopFinalProof.
+    pub proof_a: Vec<u8>,
+    pub proof_b: Vec<u8>,
+    pub private_inputs: Vec<u64>,
+    pub root_c_recurser_agg: Option<[u64; 4]>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DomainExecutionStats {
     pub steps: u64,
@@ -144,6 +185,8 @@ pub enum DomainJobKindResponse {
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
+    SetupAggregator { vk: Vec<u8> },
+    Aggregate(DomainProof),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

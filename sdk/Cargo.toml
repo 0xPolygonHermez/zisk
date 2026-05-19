@@ -37,6 +37,13 @@ alloy-sol-types = { version = "1.5.7" }
 # For utils.rs
 rom-setup = { workspace = true }
 
+# Recurser-aggregator support
+recurser = { workspace = true, features = ["setup", "prove"] }
+proofman = { workspace = true }
+proofman-verifier = { workspace = true }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+
 [features]
 default = []
 cpu-only = ["zisk-prover-backend/cpu-only"]

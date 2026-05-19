@@ -202,6 +202,43 @@ impl CoordinatorGrpc {
                     Self::validate_same_worker_id(worker_id, &rc.worker_id)?;
                     coordinator.handle_stream_recovery_complete(worker_id).await
                 }
+                worker_message::Payload::SetupRecurserAggregatorAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator
+                        .handle_stream_setup_recurser_aggregator_ack(
+                            zisk_cluster_common::SetupRecurserAggregatorAckDto {
+                                job_id: ack.job_id,
+                                worker_id: worker_id.clone(),
+                                recurser_id: ack.recurser_id,
+                                success: ack.success,
+                                error_message: if ack.error_message.is_empty() {
+                                    None
+                                } else {
+                                    Some(ack.error_message)
+                                },
+                                vk: ack.vk,
+                            },
+                        )
+                        .await
+                }
+                worker_message::Payload::RunRecurserAggregatorAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator
+                        .handle_stream_run_recurser_aggregator_ack(
+                            zisk_cluster_common::RunRecurserAggregatorAckDto {
+                                job_id: ack.job_id,
+                                worker_id: worker_id.clone(),
+                                success: ack.success,
+                                error_message: if ack.error_message.is_empty() {
+                                    None
+                                } else {
+                                    Some(ack.error_message)
+                                },
+                                proof: ack.proof,
+                            },
+                        )
+                        .await
+                }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }

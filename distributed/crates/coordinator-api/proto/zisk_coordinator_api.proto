@@ -19,7 +19,12 @@ service ZiskCoordinatorApi {
   rpc RegisterGuestProgram(RegisterGuestProgramRequest)
       returns (RegisterGuestProgramResponse);
 
-  // Submit a new job (setup, prove, wrap, or execute).
+  // Register a recurser-aggregator spec. Idempotent: the same spec always
+  // returns the same recurser_id (a content hash of the inputs).
+  rpc RegisterRecurserAggregator(RegisterRecurserAggregatorRequest)
+      returns (RegisterRecurserAggregatorResponse);
+
+  // Submit a new job (setup, prove, wrap, execute, setup_aggregator, aggregate).
   rpc JobRequest(JobRequestMessage)
       returns (JobResponse);
 
@@ -155,6 +160,36 @@ message RegisterGuestProgramResponse {
   string hash_id = 1; // blake3 content hash of zisk_elf
 }
 
+// 4-limb Goldilocks verification key, decimal-encoded.
+message ProgramVk {
+  string l0 = 1;
+  string l1 = 2;
+  string l2 = 3;
+  string l3 = 4;
+}
+
+message AggregatorSpec {
+  repeated ProgramVk program_vks            = 1;
+  uint64             n_private_inputs       = 2;
+  string             prepare_publics_body   = 3; // empty = recurser default
+  string             check_publics_body     = 4; // empty = recurser default
+  string             aggregate_publics_body = 5;
+}
+
+message RegisterRecurserAggregatorRequest {
+  // SDK-computed content hash. The coordinator stores the spec under this
+  // id and echoes it back. Re-registering an already-known id is idempotent.
+  // Computed by both SDK and worker from the same `RecurserManifestInputs`,
+  // so a misaligned zisk_vk surfaces here as a "recurser_id not found" at
+  // dispatch time rather than a silent divergence.
+  string         recurser_id = 1;
+  AggregatorSpec spec        = 2;
+}
+
+message RegisterRecurserAggregatorResponse {
+  string recurser_id = 1; // echo of the request's recurser_id
+}
+
 // ============================================================================
 // Job submission
 // ============================================================================
@@ -169,11 +204,12 @@ message JobResponse {
 
 message JobKind {
   oneof kind {
-    SetupRequest   setup   = 1;
-    ProveRequest   prove   = 2;
-    WrapRequest    wrap    = 3;
-    // AggregateRequest aggregate = 4; // TODO: not yet defined
-    ExecuteRequest execute = 5;
+    SetupRequest           setup            = 1;
+    ProveRequest           prove            = 2;
+    WrapRequest            wrap             = 3;
+    AggregateRequest       aggregate        = 4;
+    ExecuteRequest         execute          = 5;
+    SetupAggregatorRequest setup_aggregator = 6;
   }
 }
 
@@ -214,9 +250,25 @@ message WrapResponse {
   Proof proof = 1;
 }
 
-// TODO: AggregateRequest / AggregateResponse — to be defined
-// message AggregateRequest { … }
-// message AggregateResponse { … }
+message SetupAggregatorRequest {
+  string recurser_id = 1;
+}
+
+message SetupAggregatorResponse {
+  bytes vk = 1; // 32 bytes — 4 u64 little-endian limbs
+}
+
+message AggregateRequest {
+  string          recurser_id          = 1;
+  bytes           proof_a              = 2; // bincode-serialized VadcopFinalProof
+  bytes           proof_b              = 3;
+  repeated uint64 private_inputs       = 4;
+  repeated uint64 root_c_recurser_agg  = 5; // optional override; len 0 or 4
+}
+
+message AggregateResponse {
+  Proof proof = 1;
+}
 
 message ExecuteRequest {
   string                    hash_id         = 1;
@@ -232,10 +284,12 @@ message ExecuteResponse {
 
 message JobKindResponse {
   oneof kind {
-    SetupResponse   setup   = 1;
-    ProveResponse   prove   = 2;
-    WrapResponse    wrap    = 3;
-    ExecuteResponse execute = 4;
+    SetupResponse           setup            = 1;
+    ProveResponse           prove            = 2;
+    WrapResponse            wrap             = 3;
+    AggregateResponse       aggregate        = 4;
+    ExecuteResponse         execute          = 5;
+    SetupAggregatorResponse setup_aggregator = 6;
   }
 }
 

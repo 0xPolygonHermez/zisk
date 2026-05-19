@@ -362,7 +362,8 @@ fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostP
 impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
-            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. }) => {
+            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. })
+            | TerminalStatus::Completed(DomainJobKindResponse::SetupAggregator { .. }) => {
                 Ok(SetupResult { job_id: Some(job_id) })
             }
             TerminalStatus::Completed(other) => {
@@ -390,11 +391,12 @@ impl FromWaitResult for crate::prove::ProveResult {
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
-            TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
+            TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
+            | TerminalStatus::Completed(DomainJobKindResponse::Aggregate(proof)) => {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)
-                        .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
+                        .map_err(|e| anyhow::anyhow!("failed to deserialize remote proof: {e}"))?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,
@@ -404,7 +406,7 @@ impl FromWaitResult for crate::prove::ProveResult {
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(other) => {
-                anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other)
+                anyhow::bail!("unexpected job kind response for prove/wrap/aggregate: {:?}", other)
             }
             TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
             TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),

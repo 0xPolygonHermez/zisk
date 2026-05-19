@@ -7,9 +7,11 @@ use std::sync::atomic::Ordering;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
     CoordinatorMessageDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, JobId, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
-    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
+    HeartbeatAckDto, JobId, ReconnectionDirectiveDto, RunRecurserAggregatorAckDto,
+    SetupProgramAckDto, SetupProgramDto, SetupRecurserAggregatorAckDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
 };
+use zisk_cluster_common::JobState;
 use zisk_common::SetupKey;
 
 /// Trait for sending messages to workers through various communication channels.
@@ -105,6 +107,152 @@ impl Coordinator {
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 
+        Ok(())
+    }
+
+    /// Aggregator-setup ack counterpart of [`Self::handle_stream_setup_program_ack`].
+    pub(crate) async fn handle_stream_setup_recurser_aggregator_ack(
+        &self,
+        ack: SetupRecurserAggregatorAckDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = JobId::from(ack.job_id.clone());
+
+        if ack.success {
+            info!(
+                "[Recurser] Worker {} completed aggregator setup for job_id {} recurser_id {}",
+                ack.worker_id, ack.job_id, ack.recurser_id
+            );
+        } else {
+            error!(
+                "[Recurser] Worker {} failed aggregator setup for job_id {} recurser_id {}: {}",
+                ack.worker_id,
+                ack.job_id,
+                ack.recurser_id,
+                ack.error_message.as_deref().unwrap_or("unknown error")
+            );
+        }
+
+        // Same rule as setup-program ack: recovery handshake owns the flip
+        // back to Ready when a recovery is pending.
+        let worker_id = ack.worker_id.clone();
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp)
+            && !self.pending_recovery.read().await.contains(&worker_id)
+        {
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+        }
+
+        let outcome = {
+            let mut pending = self.aggregator_setup_pending.write().await;
+            if let Some(state) = pending.get_mut(&job_id) {
+                state.pending.remove(&ack.worker_id);
+                if ack.success {
+                    state.vks.push((ack.worker_id.clone(), ack.vk));
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
+                    let recurser_id = state.recurser_id.clone();
+                    pending.remove(&job_id);
+                    Some((vks, recurser_id))
+                } else {
+                    None
+                }
+            } else {
+                // Unknown / already-completed job — drop silently.
+                return Ok(());
+            }
+        };
+
+        if let Some((vks, recurser_id)) = outcome {
+            let event = match validate_setup_vks(&ack.job_id, vks) {
+                Ok(vk) => {
+                    // Mark as active so reconnecting workers can be re-sent.
+                    self.active_aggregator_setups.write().await.insert(recurser_id.clone());
+                    CoordinatorJobEvent::Completed(
+                        crate::job_events::CoordinatorJobResult::SetupAggregator { vk },
+                    )
+                }
+                Err(e) => {
+                    error!("[Recurser] VK mismatch for job_id {}: {}", ack.job_id, e);
+                    CoordinatorJobEvent::Failed(e)
+                }
+            };
+            self.fire_job_event(&job_id, event).await;
+            info!(
+                "[Recurser] All workers acknowledged aggregator setup for job_id {} (recurser_id {})",
+                ack.job_id, recurser_id
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Aggregator-prove ack counterpart of [`crate::coordinator::wrap::handle_wrap_completion`].
+    pub(crate) async fn handle_stream_run_recurser_aggregator_ack(
+        &self,
+        ack: RunRecurserAggregatorAckDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = JobId::from(ack.job_id.clone());
+        let worker_id = ack.worker_id.clone();
+
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned()
+        };
+        let Some(job_entry) = job_entry else {
+            warn!(
+                "[Recurser] Received RunRecurserAggregatorAck for unknown job {} from worker {}",
+                ack.job_id, worker_id
+            );
+            // Park Ready so the worker doesn't stay Computing forever.
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            return Ok(());
+        };
+
+        // Drop late acks for already-resolved jobs (mirrors execute-task path).
+        {
+            let job = job_entry.read().await;
+            if job.state().is_resolved() {
+                info!(
+                    "[Recurser] Ignoring late RunRecurserAggregatorAck from worker {} for resolved job {}",
+                    worker_id, ack.job_id
+                );
+                drop(job);
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+                return Ok(());
+            }
+        }
+
+        let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+
+        if !ack.success {
+            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
+            {
+                let mut job = job_entry.write().await;
+                job.change_state(JobState::Failed);
+            }
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Failed(format!(
+                    "Recurser-aggregator prove failed on worker {worker_id}: {reason}"
+                )),
+            )
+            .await;
+            return Ok(());
+        }
+
+        {
+            let mut job = job_entry.write().await;
+            job.change_state(JobState::Completed);
+        }
+        self.fire_job_event(
+            &job_id,
+            CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::Aggregate { proof_bytes: ack.proof },
+            ),
+        )
+        .await;
+        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
         Ok(())
     }
 
@@ -224,6 +372,17 @@ impl Coordinator {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
                     }
                 }
+                // Rehydrate aggregator setups so this worker can serve `Aggregate` jobs.
+                for agg in self.read_all_aggregator_setup_dtos().await {
+                    let recurser_id = agg.recurser_id.clone();
+                    let msg = CoordinatorMessageDto::SetupRecurserAggregator(agg);
+                    if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                        warn!(
+                            "[Recurser] Failed to resend aggregator setup '{}' to {}: {}",
+                            recurser_id, worker_id, e
+                        );
+                    }
+                }
                 (true, "Registration successful".to_string(), first_setup)
             }
             Err(e) => (false, format!("Registration failed: {e}"), None),
@@ -330,6 +489,17 @@ impl Coordinator {
                 warn!(
                     "[Setup] Failed to send additional setup on reconnect to {}: {}",
                     worker_id, e
+                );
+            }
+        }
+        // Rehydrate aggregator setups (symmetric with the registration path).
+        for agg in self.read_all_aggregator_setup_dtos().await {
+            let recurser_id = agg.recurser_id.clone();
+            let msg = CoordinatorMessageDto::SetupRecurserAggregator(agg);
+            if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                warn!(
+                    "[Recurser] Failed to resend aggregator setup '{}' on reconnect to {}: {}",
+                    recurser_id, worker_id, e
                 );
             }
         }

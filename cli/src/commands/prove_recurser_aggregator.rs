@@ -63,8 +63,6 @@ impl ZiskProveRecurserAggregator {
     pub fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
-        rayon::ThreadPoolBuilder::new().stack_size(64 * 1024 * 1024).build_global().ok();
-
         let proof_a = VadcopFinalProof::load(&self.proof_a)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
             .with_context(|| format!("Failed to load proof_a: {}", self.proof_a.display()))?;

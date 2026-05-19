@@ -1,5 +1,6 @@
 pub mod error;
 pub mod manifest;
+pub mod template_files;
 pub mod templates;
 
 #[cfg(feature = "setup")]

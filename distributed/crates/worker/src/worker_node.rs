@@ -1132,6 +1132,72 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 tokio::time::sleep(Duration::from_secs(shutdown.grace_period_seconds as u64)).await;
                 return Err(anyhow!("Coordinator requested shutdown: {}", shutdown.reason));
             }
+            coordinator_message::Payload::SetupRecurserAggregator(setup) => {
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id = setup.job_id.clone();
+                let recurser_id = setup.recurser_id.clone();
+
+                let (success, error_message, vk) =
+                    match self.handle_setup_recurser_aggregator(setup) {
+                        Ok(vk) => (true, String::new(), vk),
+                        Err(e) => {
+                            error!(
+                                "[Recurser] job_id {} Failed aggregator setup for recurser_id {}: {}",
+                                job_id, recurser_id, e
+                            );
+                            (false, e.to_string(), Vec::new())
+                        }
+                    };
+
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::SetupRecurserAggregatorAck(
+                        SetupRecurserAggregatorAck {
+                            job_id,
+                            worker_id,
+                            recurser_id,
+                            success,
+                            error_message,
+                            vk,
+                        },
+                    )),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send SetupRecurserAggregatorAck: {}", e);
+                }
+            }
+            coordinator_message::Payload::RunRecurserAggregator(req) => {
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id = req.job_id.clone();
+                let recurser_id = req.recurser_id.clone();
+
+                let (success, error_message, proof) =
+                    match self.handle_run_recurser_aggregator(req) {
+                        Ok(proof_bytes) => (true, String::new(), proof_bytes),
+                        Err(e) => {
+                            error!(
+                                "[Recurser] job_id {} Failed aggregator prove for recurser_id {}: {}",
+                                job_id, recurser_id, e
+                            );
+                            (false, e.to_string(), Vec::new())
+                        }
+                    };
+                let _ = recurser_id; // kept for tracing only
+
+                let ack = WorkerMessage {
+                    payload: Some(worker_message::Payload::RunRecurserAggregatorAck(
+                        RunRecurserAggregatorAck {
+                            job_id,
+                            worker_id,
+                            success,
+                            error_message,
+                            proof,
+                        },
+                    )),
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send RunRecurserAggregatorAck: {}", e);
+                }
+            }
         }
 
         Ok(())
@@ -1170,6 +1236,200 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         info!("[Setup] job_id {} Completed setup for hash_id {}", setup.job_id, setup.hash_id);
         Ok(vk)
+    }
+
+    /// Handles a `SetupRecurserAggregator` message from the coordinator.
+    ///
+    /// Runs the recurser-aggregator setup in a scoped 64 MB-stack rayon pool
+    /// (proofman setup overflows the default ~2 MB worker stack). Idempotent:
+    /// returns the existing verkey if setup has already run for this `recurser_id`.
+    fn handle_setup_recurser_aggregator(
+        &self,
+        setup: SetupRecurserAggregator,
+    ) -> Result<Vec<u8>> {
+        use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
+
+        info!(
+            "[Recurser] job_id {} Received SetupRecurserAggregator for recurser_id {}",
+            setup.job_id, setup.recurser_id
+        );
+
+        let spec = setup
+            .spec
+            .ok_or_else(|| anyhow!("SetupRecurserAggregator.spec must be set"))?;
+
+        let setup_dir = ZiskPaths::global()
+            .home
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?
+            .to_string();
+        let output_dir = ZiskPaths::global()
+            .home
+            .join("recurser")
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
+            .to_string();
+
+        let stem = PathBuf::from(&output_dir)
+            .join("provingKey")
+            .join("recurser")
+            .join(&setup.recurser_id)
+            .join("recurser_aggregator");
+        let verkey_path = {
+            let mut p = stem.as_os_str().to_owned();
+            p.push(".verkey.bin");
+            PathBuf::from(p)
+        };
+
+        if !verkey_path.exists() {
+            let program_vks: Vec<[String; 4]> = spec
+                .program_vks
+                .iter()
+                .map(|vk| {
+                    [vk.l0.clone(), vk.l1.clone(), vk.l2.clone(), vk.l3.clone()]
+                })
+                .collect();
+
+            let opts = SetupRecurserAggregatorOptions {
+                setup_dir,
+                output_dir: output_dir.clone(),
+                program_vks,
+                n_private_inputs: spec.n_private_inputs as usize,
+                prepare_publics_template: recurser::template_files::write_optional(
+                    if spec.prepare_publics_body.is_empty() {
+                        None
+                    } else {
+                        Some(spec.prepare_publics_body.as_str())
+                    },
+                    "prepare_publics.circom",
+                )?,
+                check_publics_template: recurser::template_files::write_optional(
+                    if spec.check_publics_body.is_empty() {
+                        None
+                    } else {
+                        Some(spec.check_publics_body.as_str())
+                    },
+                    "check_publics.circom",
+                )?,
+                aggregate_publics_template: recurser::template_files::write_required(
+                    &spec.aggregate_publics_body,
+                    "aggregate_publics.circom",
+                )?,
+            };
+
+            let pool = rayon::ThreadPoolBuilder::new()
+                .stack_size(64 * 1024 * 1024)
+                .build()
+                .map_err(|e| anyhow!("failed to build 64 MB-stack rayon pool: {e}"))?;
+            pool.install(|| run_setup_recurser_aggregator(&opts))
+                .map_err(|e| anyhow!("recurser-aggregator setup failed: {e}"))?;
+        } else {
+            info!(
+                "[Recurser] verkey already exists for recurser_id {}; skipping setup",
+                setup.recurser_id
+            );
+        }
+
+        let vk = std::fs::read(&verkey_path).map_err(|e| {
+            anyhow!("failed to read recurser verkey at {}: {}", verkey_path.display(), e)
+        })?;
+
+        info!(
+            "[Recurser] job_id {} Completed aggregator setup for recurser_id {}",
+            setup.job_id, setup.recurser_id
+        );
+        Ok(vk)
+    }
+
+    /// Handles a `RunRecurserAggregator` message from the coordinator.
+    ///
+    /// Folds two `VadcopFinalProof`s into one and returns the bincode-serialized
+    /// SDK `Proof`. No 64 MB rayon pool — the prove path is FFI.
+    fn handle_run_recurser_aggregator(
+        &self,
+        req: RunRecurserAggregator,
+    ) -> Result<Vec<u8>> {
+        use fields::Goldilocks;
+        use proofman::ProofMan;
+        use proofman_common::ProofmanOptions;
+        use proofman_verifier::VadcopFinalProof;
+        use recurser::prove::{run_prove_recurser_aggregator, ProveRecurserAggregatorOptions};
+
+        info!(
+            "[Recurser] job_id {} Received RunRecurserAggregator for recurser_id {}",
+            req.job_id, req.recurser_id
+        );
+
+        let (proof_a, _): (VadcopFinalProof, _) =
+            bincode::serde::decode_from_slice(&req.proof_a, bincode::config::standard())
+                .map_err(|e| anyhow!("failed to deserialize proof_a: {e}"))?;
+        let (proof_b, _): (VadcopFinalProof, _) =
+            bincode::serde::decode_from_slice(&req.proof_b, bincode::config::standard())
+                .map_err(|e| anyhow!("failed to deserialize proof_b: {e}"))?;
+
+        let root_c_override = match req.root_c_recurser_agg.len() {
+            0 => None,
+            4 => Some([
+                req.root_c_recurser_agg[0],
+                req.root_c_recurser_agg[1],
+                req.root_c_recurser_agg[2],
+                req.root_c_recurser_agg[3],
+            ]),
+            n => return Err(anyhow!("root_c_recurser_agg must have 0 or 4 limbs; got {}", n)),
+        };
+
+        let output_dir = ZiskPaths::global()
+            .home
+            .join("recurser")
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
+            .to_string();
+
+        let proving_key = self.worker.connection_config().proving_key.clone();
+        let proofman = ProofMan::<Goldilocks>::new(proving_key, ProofmanOptions::new())
+            .map_err(|e| anyhow!("ProofMan::new failed: {e}"))?;
+
+        let opts = ProveRecurserAggregatorOptions {
+            output_dir: &output_dir,
+            recurser_id: &req.recurser_id,
+            proof_a: &proof_a,
+            proof_b: &proof_b,
+            private_inputs: &req.private_inputs,
+            root_c_recurser_agg: root_c_override,
+        };
+
+        let vfp = run_prove_recurser_aggregator(&proofman, &opts)
+            .map_err(|e| anyhow!("recurser-aggregator prove failed: {e}"))?;
+
+        // Stamp the output Proof with the aggregator's own verkey as zisk_vk.
+        let stem = PathBuf::from(&output_dir)
+            .join("provingKey")
+            .join("recurser")
+            .join(&req.recurser_id)
+            .join("recurser_aggregator");
+        let mut verkey_path = stem.as_os_str().to_owned();
+        verkey_path.push(".verkey.bin");
+        let vk_bytes = std::fs::read(Path::new(&verkey_path))
+            .map_err(|e| anyhow!("failed to read recurser verkey: {e}"))?;
+        if vk_bytes.len() != 32 {
+            return Err(anyhow!("recurser verkey must be 32 bytes, got {}", vk_bytes.len()));
+        }
+        let mut zisk_vk = Vec::with_capacity(4);
+        for i in 0..4 {
+            let chunk: [u8; 8] = vk_bytes[i * 8..(i + 1) * 8].try_into().unwrap();
+            zisk_vk.push(u64::from_le_bytes(chunk));
+        }
+
+        let proof =
+            Proof::new_from_vadcop_proof(&vfp.proof_with_publics(), vfp.compressed, zisk_vk)?;
+        let bytes = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
+            .map_err(|e| anyhow!("failed to serialize aggregator proof: {e}"))?;
+
+        info!(
+            "[Recurser] job_id {} Completed aggregator prove for recurser_id {}",
+            req.job_id, req.recurser_id
+        );
+        Ok(bytes)
     }
 
     pub async fn partial_contribution(
