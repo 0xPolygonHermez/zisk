@@ -22,9 +22,10 @@ pub enum RomError {
     #[error("failed to construct custom ROM trace: {0}")]
     TraceConstruction(String),
 
-    /// [`RomSM::set_rom`](crate::RomSM::set_rom) was called more than once.
-    #[error("RomSM::set_rom called more than once")]
-    RomAlreadySet,
+    /// The internal mutex protecting the parsed Zisk ROM is poisoned (another thread
+    /// panicked while holding it).
+    #[error("RomSM zisk_rom mutex poisoned")]
+    ZiskRomPoisoned,
 
     /// The internal mutex protecting the assembly-runner histogram is poisoned (another
     /// thread panicked while holding it).

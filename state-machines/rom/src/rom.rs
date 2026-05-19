@@ -2,7 +2,7 @@
 //!
 //! `RomSM` is the for ROM-related instances and their planner.
 
-use std::sync::{atomic::AtomicU64, Arc, Mutex, OnceLock};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use crate::{RomError, RomInstance, RomPlanner, RomResult};
 use asm_runner::AsmRunnerRH;
@@ -13,8 +13,9 @@ use zisk_pil::RomTrace;
 
 /// The `RomSM` struct represents the ROM State Machine
 pub struct RomSM {
-    /// Zisk Rom, set once via [`set_rom`](Self::set_rom) before the first `build_instance` call.
-    zisk_rom: OnceLock<Arc<ZiskRom>>,
+    /// Parsed Zisk ROM, set via [`set_rom`](Self::set_rom) before each `build_instance` call.
+    /// May be replaced between jobs (a long-lived worker can serve multiple ELFs).
+    zisk_rom: Mutex<Option<Arc<ZiskRom>>>,
 
     /// Shared program instruction counter for monitoring ROM operations.
     inst_count: Arc<Vec<AtomicU64>>,
@@ -30,7 +31,7 @@ impl RomSM {
     /// An `Arc`-wrapped instance of `RomSM`.
     pub fn new<F: PrimeField64>() -> Arc<Self> {
         Arc::new(Self {
-            zisk_rom: OnceLock::new(),
+            zisk_rom: Mutex::new(None),
             inst_count: Arc::new(create_atomic_vec(RomTrace::<F>::NUM_ROWS)),
             rh_data: Mutex::new(None),
         })
@@ -46,12 +47,13 @@ impl RomSM {
         Ok(())
     }
 
-    /// Provides the parsed Zisk ROM. Must be called exactly once before `build_instance`.
+    /// Provides the parsed Zisk ROM. Must be called before the next `build_instance` call.
+    /// May be called multiple times — each call replaces the previously ROM.
     ///
     /// # Errors
-    /// Returns [`RomError::RomAlreadySet`] if called more than once.
+    /// Returns [`RomError::ZiskRomPoisoned`] if the internal mutex is poisoned.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> RomResult<()> {
-        self.zisk_rom.set(zisk_rom).map_err(|_| RomError::RomAlreadySet)?;
+        *self.zisk_rom.lock().map_err(|_| RomError::ZiskRomPoisoned)? = Some(zisk_rom);
         Ok(())
     }
 }
@@ -73,8 +75,13 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
     /// # Returns
     /// A boxed implementation of `RomInstance`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
-        let zisk_rom =
-            self.zisk_rom.get().expect("RomSM::build_instance called before set_rom").clone();
+        let zisk_rom = self
+            .zisk_rom
+            .lock()
+            .expect("RomSM zisk_rom mutex poisoned")
+            .as_ref()
+            .expect("RomSM::build_instance called before set_rom")
+            .clone();
         if let Some(rh_data) = self.rh_data.lock().expect("RomSM rh_data mutex poisoned").take() {
             Box::new(RomInstance::new_asm(zisk_rom, ictx, rh_data))
         } else {
@@ -111,7 +118,7 @@ mod tests {
     #[test]
     fn new_starts_with_no_rom_and_no_rh_data() {
         let sm = RomSM::new::<F>();
-        assert!(sm.zisk_rom.get().is_none());
+        assert!(sm.zisk_rom.lock().unwrap().is_none());
         assert!(sm.rh_data.lock().unwrap().is_none());
     }
 
@@ -119,16 +126,20 @@ mod tests {
     fn set_rom_stores_the_rom() {
         let sm = RomSM::new::<F>();
         let rom = Arc::new(ZiskRom::default());
-        sm.set_rom(rom.clone()).expect("first set should succeed");
-        assert!(Arc::ptr_eq(sm.zisk_rom.get().unwrap(), &rom));
+        sm.set_rom(rom.clone()).expect("set should succeed");
+        let guard = sm.zisk_rom.lock().unwrap();
+        assert!(Arc::ptr_eq(guard.as_ref().unwrap(), &rom));
     }
 
     #[test]
-    fn set_rom_returns_already_set_on_double_set() {
+    fn set_rom_replaces_previous_rom() {
         let sm = RomSM::new::<F>();
-        sm.set_rom(Arc::new(ZiskRom::default())).expect("first set should succeed");
-        let err = sm.set_rom(Arc::new(ZiskRom::default())).expect_err("second set must fail");
-        assert!(matches!(err, RomError::RomAlreadySet), "got {err:?}");
+        let first = Arc::new(ZiskRom::default());
+        let second = Arc::new(ZiskRom::default());
+        sm.set_rom(first.clone()).expect("first set");
+        sm.set_rom(second.clone()).expect("second set replaces");
+        let guard = sm.zisk_rom.lock().unwrap();
+        assert!(Arc::ptr_eq(guard.as_ref().unwrap(), &second), "later set must win");
     }
 
     #[test]
