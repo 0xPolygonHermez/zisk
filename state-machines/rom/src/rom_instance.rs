@@ -500,4 +500,50 @@ mod tests {
         collector.process_data(&ROM_BUS_ID, &[11, 0x8000_0004, 2, 1]);
         assert_eq!(inst_count[2].load(Ordering::Relaxed), 2);
     }
+
+    #[test]
+    fn build_rom_collector_reflects_mode() {
+        let asm =
+            RomInstance::new_asm(Arc::new(ZiskRom::default()), dummy_ictx(), asm_runner_rh_empty());
+        assert!(asm.build_rom_collector(ChunkId(0)).is_none(), "ASM mode returns no collector");
+
+        let rust =
+            RomInstance::new_rust(Arc::new(ZiskRom::default()), dummy_ictx(), atomics_from(&[0]));
+        assert!(rust.build_rom_collector(ChunkId(0)).is_some(), "Rust mode yields a collector");
+    }
+
+    #[test]
+    fn aggregate_stats_merges_collector_end_pc_and_steps() {
+        let state = RustState::new(atomics_from(&[0; 4]));
+
+        // CounterStats::+= only carries forward non-default `end_pc`/`steps`
+        // (see `common/src/component/component_counter.rs`). Per-instruction counts
+        // are accumulated through the shared `Arc<Vec<AtomicU64>>`, not the merge.
+        let mut c = RomCollector::new(state.inst_count.clone());
+        c.rom_counter.counter_stats.end_pc = 0xAAAA;
+        c.rom_counter.counter_stats.steps = 100;
+
+        let collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)> = vec![(0, Box::new(c))];
+
+        let stats = state.aggregate_stats(collectors).expect("aggregation should succeed");
+        assert_eq!(stats.end_pc, 0xAAAA);
+        assert_eq!(stats.steps, 100);
+    }
+
+    #[test]
+    fn aggregate_stats_rejects_non_rom_collector() {
+        struct WrongCollector;
+        impl BusDevice<u64> for WrongCollector {
+            fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+                self
+            }
+        }
+
+        let state = RustState::new(atomics_from(&[0]));
+        let collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)> =
+            vec![(0, Box::new(WrongCollector))];
+
+        let err = state.aggregate_stats(collectors).expect_err("wrong collector type must fail");
+        assert!(matches!(err, RomError::BadCollectorType), "got {err:?}");
+    }
 }
