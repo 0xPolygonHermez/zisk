@@ -34,7 +34,7 @@
 #   - pil2-compiler dep ref from ${PROOFMAN_DIR}/package.json
 #   - pil2-stark-setup source string from `cargo metadata`
 #
-# Hash sidecar lives at  gs://zisk-setup/zisk-provingkey-<VERSION>.input-hash.
+# Hash sidecar lives at https://storage.googleapis.com/zisk-setup/zisk-provingkey-<VERSION>.input-hash.
 # It is uploaded by package-proving-key.sh, which reads <build-dir>/.input-hash
 # written here after a successful cache-miss build.
 #
