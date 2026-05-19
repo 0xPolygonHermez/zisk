@@ -104,8 +104,8 @@ mod tests {
     }
 
     fn asm_runner_rh_empty() -> AsmRunnerRH {
-        // Empty histogram — `AsmRunnerRH`'s `Drop` `mem::forget`s its payload, so an empty
-        // `Vec` keeps the test leak-free.
+        // Empty histogram — on Linux x86_64 `AsmRunnerRH`'s `Drop` `mem::forget`s its
+        // payload, so an empty `Vec` keeps the test leak-free.
         AsmRunnerRH::new(AsmRHData::new(0, vec![]))
     }
 
