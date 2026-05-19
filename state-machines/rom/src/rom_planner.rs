@@ -8,7 +8,7 @@ use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 ///
 /// It processes metrics collected by `RomCounter` instances, combines them,
 /// and generates a single `Plan` for execution.
-pub struct RomPlanner;
+pub(crate) struct RomPlanner;
 
 impl Planner for RomPlanner {
     /// Creates an execution plan based on ROM metrics.

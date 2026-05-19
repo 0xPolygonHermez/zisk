@@ -14,9 +14,9 @@ use zisk_common::{CounterStats, Metrics, RomBusData, RomData};
 ///
 /// It collects execution statistics, such as the program counter (PC) of executed instructions,
 /// the total number of executed steps, and the PC of the last executed instruction.
-pub struct RomCounter {
+pub(crate) struct RomCounter {
     /// Execution statistics counter for ROM instructions.
-    pub counter_stats: CounterStats,
+    pub(crate) counter_stats: CounterStats,
 }
 
 impl RomCounter {
@@ -24,7 +24,7 @@ impl RomCounter {
     ///
     /// # Returns
     /// A new `RomCounter` instance.
-    pub fn new(inst_count: Arc<Vec<AtomicU64>>) -> Self {
+    pub(crate) fn new(inst_count: Arc<Vec<AtomicU64>>) -> Self {
         let counter_stats = CounterStats::new(inst_count);
         Self { counter_stats }
     }

@@ -4708,11 +4708,11 @@ dependencies = [
 name = "sm-rom"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "asm-runner",
  "fields 1.0.0-beta",
  "proofman-common",
  "rayon",
+ "thiserror 2.0.18",
  "tracing",
  "zisk-common",
  "zisk-core",
