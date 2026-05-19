@@ -18,4 +18,4 @@ proofman-common = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
-anyhow = { workspace = true }
+thiserror = { workspace = true }
