@@ -18,9 +18,9 @@ mem-planner-cpp = { workspace = true }
 mem-common = { workspace = true }
 proofman-common = { workspace = true }
 
-tracing = { workspace = true}
-rayon = { workspace = true}
-anyhow = { workspace = true}
+tracing = { workspace = true }
+rayon = { workspace = true }
+anyhow = { workspace = true }
 
 libc = "0.2"
 thiserror = { workspace = true }
