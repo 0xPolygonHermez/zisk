@@ -32,6 +32,15 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
 
+      - name: Build cargo-zisk
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin cargo-zisk
+
+      - name: Install ZisK rust toolchain
+        run: ./target/debug/cargo-zisk toolchain install
+
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
