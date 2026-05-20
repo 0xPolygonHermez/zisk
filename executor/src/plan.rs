@@ -52,7 +52,7 @@ use zisk_pil::{
 
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::state::ExecutionState;
-use crate::{CountersChunkMetrics, ExecutionOutput, StaticSMBundle, WitnessRouter};
+use crate::{CountersChunkMetrics, ExecutionOutput, StaticSMBundle, WitnessPhase};
 
 /// Telemetry returned from [`PlanPhase::run`] for the executor to fold
 /// into [`zisk_common::ZiskExecutorTime`] / [`zisk_common::ZiskExecutorSummary`].
@@ -143,7 +143,7 @@ impl<F: PrimeField64> PlanPhase<F> {
     pub fn run(
         &self,
         trace: ExecutionOutput,
-        router: &WitnessRouter<F>,
+        router: &WitnessPhase<F>,
         state: &ExecutionState<F>,
         proof_registry: &dyn ProofRegistry,
         pctx: &ProofCtx<F>,

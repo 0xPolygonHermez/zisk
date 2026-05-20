@@ -88,7 +88,7 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 
 /// Phase-4 actor — classifies each global id and dispatches to one
 /// of five [`handlers`] modules.
-pub struct WitnessRouter<F: PrimeField64> {
+pub struct WitnessPhase<F: PrimeField64> {
     /// Chunk data collector for secondary instances. Shared by the
     /// secondary + rom_native handlers (passed by reference).
     collector: ChunkDataCollector<F>,
@@ -106,7 +106,7 @@ pub struct WitnessRouter<F: PrimeField64> {
     rom_handler: Box<dyn RomWitnessHandler<F>>,
 }
 
-impl<F: PrimeField64> WitnessRouter<F> {
+impl<F: PrimeField64> WitnessPhase<F> {
     /// Construct a router bound to the **ASM** backend.
     /// ROM dispatch routes to [`RomAsmWitnessHandler`].
     pub fn new_asm(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
