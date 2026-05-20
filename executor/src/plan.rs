@@ -47,8 +47,7 @@ use zisk_common::{
     StatsType,
 };
 use zisk_pil::{
-    MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS,
-    VIRTUAL_TABLE_ZISK_1_AIR_IDS, ZISK_AIRGROUP_ID,
+    MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::ports::{GlobalId, ProofRegistry};
