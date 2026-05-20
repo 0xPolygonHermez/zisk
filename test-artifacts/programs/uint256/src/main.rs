@@ -1,3 +1,6 @@
+#![no_main]
+ziskos::entrypoint!(main);
+
 mod add;
 mod common;
 mod div;
