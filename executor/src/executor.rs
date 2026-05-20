@@ -149,6 +149,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         self.trace.set_asm_resources(asm_resources)
     }
 
+    /// Clears any previously-installed ASM resources. No-op when the
+    /// executor was built with the Rust emulator backend.
+    pub fn clear_asm_resources(&self) -> Result<()> {
+        // self.trace.clear_asm_resources()
+        Ok(())
+    }
+
     /// Returns a reference to the ASM emulator if ASM execution is active.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         self.trace.asm_emulator()

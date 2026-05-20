@@ -17,11 +17,12 @@ pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 pub struct SetupKey {
     pub hash_id: String,
     pub with_hints: bool,
+    pub emulator_only: bool,
 }
 
 impl SetupKey {
-    pub fn new(hash_id: impl Into<String>, with_hints: bool) -> Self {
-        Self { hash_id: hash_id.into(), with_hints }
+    pub fn new(hash_id: impl Into<String>, with_hints: bool, emulator_only: bool) -> Self {
+        Self { hash_id: hash_id.into(), with_hints, emulator_only }
     }
 }
 

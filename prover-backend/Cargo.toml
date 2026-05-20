@@ -33,9 +33,7 @@ ziskemu = { workspace = true }
 anyhow = { workspace = true }
 colored = { workspace = true }
 tracing = { workspace = true }
-bincode = { workspace = true }
 serde = { workspace = true }
-sha2 = { workspace = true }
 blake3 = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }
 

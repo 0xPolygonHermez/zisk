@@ -21,7 +21,6 @@ lib-c = { workspace = true }
 ziskos-hints = { workspace = true }
 riscv = { workspace = true }
 rayon = { workspace = true }
-serde = { workspace = true }
 fields = { workspace = true }
 sha2 = { workspace = true }
 paste = { workspace = true }

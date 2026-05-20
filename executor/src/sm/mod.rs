@@ -96,7 +96,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         is_asm_emulator: bool,
         precompiles: Vec<(usize, Precompiles<F>)>,
     ) -> Self {
-        let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone(), is_asm_emulator)
+        let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
             .chain(precompiles.into_iter().map(|(air_id, p)| {

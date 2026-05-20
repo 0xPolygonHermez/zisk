@@ -47,8 +47,8 @@ use zisk_common::{
     StatsType,
 };
 use zisk_pil::{
-    MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS,
+    VIRTUAL_TABLE_ZISK_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use crate::ports::{GlobalId, ProofRegistry};
@@ -290,8 +290,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         }
 
         // Cost accumulation: static tables.
-        let tables_air_ids =
-            [SPECIFIED_RANGES_AIR_IDS[0], VIRTUAL_TABLE_0_AIR_IDS[0], VIRTUAL_TABLE_1_AIR_IDS[0]];
+        let tables_air_ids = [VIRTUAL_TABLE_ZISK_0_AIR_IDS[0], VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]];
         for air_id in tables_air_ids {
             let setup = sctx.get_setup(ZISK_AIRGROUP_ID, air_id)?;
             let n_bits = setup.stark_info.stark_struct.n_bits;

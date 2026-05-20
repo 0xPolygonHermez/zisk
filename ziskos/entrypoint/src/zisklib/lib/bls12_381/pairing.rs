@@ -1,6 +1,6 @@
 //! Pairing over BLS12-381 curve
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::lib::utils::{eq, is_one, lt};

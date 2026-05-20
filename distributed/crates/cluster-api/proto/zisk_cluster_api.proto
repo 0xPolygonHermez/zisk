@@ -61,6 +61,7 @@ message SetupProgram {
   string hash_id = 3;
   bool with_hints = 4;
   string program_name = 5;
+  bool emulator_only = 6;
 }
 
 message SetupProgramAck {

@@ -1,6 +1,6 @@
 //! Operations on the BLS12-381 curve E: y² = x³ + 4
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::{

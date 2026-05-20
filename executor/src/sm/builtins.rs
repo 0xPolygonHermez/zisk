@@ -63,9 +63,9 @@ impl<F: PrimeField64> BuiltinSMs<F> {
     /// Constructs every built-in SM paired with its AIR-id coverage,
     /// ready to be wrapped in `StateMachines::Builtin` and pushed into
     /// the bundle.
-    pub(crate) fn all(std: Arc<Std<F>>, is_asm_emulator: bool) -> Vec<(SMAirType, Self)> {
+    pub(crate) fn all(std: Arc<Std<F>>) -> Vec<(SMAirType, Self)> {
         vec![
-            (rom_air_ids(), Self::RomSM(RomSM::new(is_asm_emulator))),
+            (rom_air_ids(), Self::RomSM(RomSM::new::<F>())),
             (mem_air_ids(), Self::MemSM(Mem::new(std.clone()))),
             (binary_air_ids(), Self::BinarySM(BinarySM::new(std.clone()))),
             (arith_air_ids(), Self::ArithSM(ArithSM::new(std.clone()))),
