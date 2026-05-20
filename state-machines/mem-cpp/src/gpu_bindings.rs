@@ -82,4 +82,9 @@ extern "C" {
         h: *mut CountAndPlanHandle,
         n_chunks: *mut u32,
     ) -> *const GpuMemAlignCounter;
+    pub fn count_and_plan_save_metas(
+        metas: *const InstanceMeta,
+        n: u32,
+        path: *const std::os::raw::c_char,
+    ) -> bool;
 }

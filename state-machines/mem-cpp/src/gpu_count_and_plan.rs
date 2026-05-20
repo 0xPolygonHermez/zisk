@@ -12,6 +12,26 @@ pub use crate::gpu_bindings::{
     GpuMemAlignCounter, InstanceMeta as GpuInstanceMeta, MemOp as GpuMemOp,
 };
 
+/// Serialize GPU-produced metas to `path` in the canonical `metas.bin`
+/// format (the one `load_instance_metas` / the standalone runner use).
+///
+/// `metas` must be a slice returned by [`GpuCountAndPlan::run`] that is
+/// still valid (the owning planner has not been `reset` or dropped). Intended
+/// for capturing a block to share/debug, not for the hot path. Returns
+/// `false` if `path` is not a valid C string or the FFI call fails.
+pub fn save_gpu_metas(metas: &[GpuInstanceMeta], path: &str) -> bool {
+    let Ok(c_path) = std::ffi::CString::new(path) else {
+        return false;
+    };
+    unsafe {
+        gpu_bindings::count_and_plan_save_metas(
+            metas.as_ptr(),
+            metas.len() as u32,
+            c_path.as_ptr(),
+        )
+    }
+}
+
 /// Safe Rust wrapper around the C++ `CountAndPlan` GPU pipeline.
 ///
 /// NOT an alternative to [`crate::MemPlanner`]. This is a *segment

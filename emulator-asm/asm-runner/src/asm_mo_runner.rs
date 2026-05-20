@@ -17,6 +17,7 @@ use crate::{
 use mem_planner_cpp::MemPlanner;
 #[cfg(gpu)]
 use mem_planner_cpp::{GpuCountAndPlan, GpuMemOp};
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 
 use anyhow::{Context, Result};
 
@@ -271,6 +272,7 @@ impl AsmRunnerMO {
 
         // GPU path: drain the pipeline. Pointer into pinned host memory owned
         // by the planner; valid until the planner is reset below.
+        timer_start_info!(GPU_MOPS_TIME);
         #[cfg(gpu)]
         let gpu_metas_view: Option<(*const c_void, u32)> = gpu_count_and_plan
             .as_ref()
@@ -278,6 +280,7 @@ impl AsmRunnerMO {
             .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
         #[cfg(not(gpu))]
         let gpu_metas_view: Option<(*const c_void, u32)> = None;
+        timer_stop_and_log_info!(GPU_MOPS_TIME);
 
         // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();

@@ -49,4 +49,17 @@ const ChunkCounters* count_and_plan_get_align_counters(void* h, uint32_t* n_chun
     return p->align_counters_data();
 }
 
+// Serialize `n` metas to `path` in the canonical `metas.bin` format (see
+// instance_meta_loader.hpp), reusing the same save_metas_* helpers as the
+// standalone runner so the file is loadable by `load_instance_metas`.
+// Returns false on bad args; the save_metas_* helpers abort the process on an I/O error.
+bool count_and_plan_save_metas(const InstanceMeta* metas, uint32_t n,
+                               const char* path) {
+    if (!metas || !path) return false;
+    FILE* f = save_metas_begin(path);
+    for (uint32_t i = 0; i < n; i++) save_metas_append(f, metas[i]);
+    save_metas_end(f, n);
+    return true;
+}
+
 }  // extern "C"
