@@ -50,7 +50,13 @@ constexpr uint32_t ZISK_RAM_SIZE_BYTES    = 512u * 1024u * 1024u;
 constexpr uint32_t ZISK_RAM_ADDR_END      = ZISK_RAM_ADDR_BASE + ZISK_RAM_SIZE_BYTES;
 constexpr uint32_t ZISK_ALIGN_MASK        = 0xFFFFFFF8u;
 
-constexpr uint32_t MAX_BLOCKOP_SPILL_PER_CHUNK = 16u * 1024u;
+// Per-chunk capacity for block-op spill entries. Must hold every memop that
+// could be a block-op spill candidate, which in the worst case is every memop
+// in the chunk — so this MUST track MAX_MEMOPS_PER_CHUNK. 
+constexpr uint32_t MAX_BLOCKOP_SPILL_PER_CHUNK = MAX_MEMOPS_PER_CHUNK;
+static_assert(MAX_BLOCKOP_SPILL_PER_CHUNK >= MAX_MEMOPS_PER_CHUNK,
+              "MAX_BLOCKOP_SPILL_PER_CHUNK must accommodate the worst case "
+              "(every memop in the chunk being a block-op spill candidate)");
 constexpr uint32_t BLOCKOP_SPILL_THRESH_VAL    = 64u;
 
 // =====================================================================
