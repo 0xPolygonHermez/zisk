@@ -43,9 +43,6 @@ pub struct ExecutionState<F: PrimeField64> {
     /// Statistics collected during the execution.
     pub stats: ExecutorStatsHandle,
 
-    /// Flag to indicate if the ROM has been initialized
-    pub is_rom_initialized: AtomicBool,
-
     /// Flag to indicate whether to use hints during execution
     pub use_hints: AtomicBool,
 }
@@ -60,7 +57,6 @@ impl<F: PrimeField64> ExecutionState<F> {
             collector_store: Arc::new(ChunkCollectorStore::new()),
             execution_result: Mutex::new(ZiskExecutorSummary::default()),
             stats: ExecutorStatsHandle::new(),
-            is_rom_initialized: AtomicBool::new(false),
             use_hints: AtomicBool::new(false),
         }
     }
@@ -71,8 +67,12 @@ impl<F: PrimeField64> ExecutionState<F> {
     /// without recreating the executor.
     pub fn set_rom(&self, rom: Arc<ZiskRom>, use_hints: bool) {
         *self.zisk_rom.write().unwrap() = Some(rom);
-        self.is_rom_initialized.store(true, Ordering::SeqCst);
         self.use_hints.store(use_hints, Ordering::SeqCst);
+    }
+
+    /// Checks if the ROM has been initialized.
+    fn is_rom_initialized(&self) -> bool {
+        self.zisk_rom.read().unwrap().is_some()
     }
 
     /// Gets the current ZisK ROM.
@@ -80,7 +80,7 @@ impl<F: PrimeField64> ExecutionState<F> {
     /// # Errors
     /// Returns an error if no ROM has been set via `set_rom()` or if the ROM lock is poisoned.
     pub fn get_rom(&self) -> Result<Arc<ZiskRom>> {
-        if !self.is_rom_initialized.load(Ordering::SeqCst) {
+        if !self.is_rom_initialized() {
             anyhow::bail!("ROM not initialized. Call set_rom() before execute()");
         }
 
