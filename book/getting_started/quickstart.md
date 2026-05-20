@@ -31,9 +31,9 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 
 ## Create a Project
 
-The first step is to generate a new example project using the `cargo-zisk sdk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
+The first step is to generate a new example project using the `cargo-zisk new <name>` command. This command creates a new directory named `<name>` in your current directory. For example:
 ```bash
-cargo-zisk sdk new sha_hasher
+cargo-zisk new sha_hasher
 cd sha_hasher
 ```
 
@@ -41,37 +41,36 @@ This will create a project with the following structure:
 
 ```
 .
-├── build.rs
-├── Cargo.toml
-├── .gitignore
+├── common
+|   ├── src
+|   |    └── main.rs
+|   └── Cargo.toml
 ├── guest
 |   ├── src
 |   |    └── main.rs
 |   └── Cargo.toml
-└── host
-    ├── src
-    |    └── main.rs
-    ├── bin
-    |    ├── compressed.rs
-    |    ├── execute.rs
-    |    ├── prove.rs
-    |    ├── plonk.rs
-    |    ├── verify-constraints.rs
-    |    └── ziskemu.rs
-    ├── build.rs
-    └── Cargo.toml
+├── host
+|   ├── src
+|   |    └── main.rs
+|   ├── bin
+|   |    ├── execute.rs
+|   |    ├── minimal.rs
+|   |    ├── prove.rs
+|   |    ├── plonk.rs
+|   |    └── run.rs
+|   ├── Cargo.toml
+|   └── build.rs
+└── Cargo.toml
 ```
 
 The example program takes a number `n` as input and computes the SHA-256 hash `n` times.
 
-The `build.rs` file generates an `input.bin` file containing the value of `n` (e.g., 20). This file is used in `main.rs` as input to calculate the hash.
-
 ## Build
 
-The next step is to build the program using the `cargo-zisk` command to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
+The next step is to build the program to generate an ELF file (RISC-V), which will be used later to generate the proof. Execute:
 
 ```bash
-cargo-zisk build --release
+cargo build --release
 ```
 
 This command builds the program using the `zkvm` target. The resulting `sha_hasher` ELF file (without extension) is generated in the `./target/elf/riscv64ima-zisk-zkvm-elf/release` directory.
@@ -81,52 +80,26 @@ This command builds the program using the `zkvm` target. The resulting `sha_hash
 Before generating a proof, you can test the program using the ZisK emulator to ensure its correctness:
 
 ```bash
-cargo run --release --bin ziskemu
+cargo run --release --bin execute
 ```
 
 The emulator will execute the program and display the public outputs:
 
 ```
-public 0: 0x98211882
-public 1: 0xbd13089b
-public 2: 0x6ccf1fca
-public 3: 0x81f7f0e4
-public 4: 0xabf6352a
-public 5: 0x0c39c9b1
-public 6: 0x1f142cac
-public 7: 0x233f1280
+Public outputs:
+  Hash: 0x36c1cb4f826ae42ceba848227e0c5f786178ca9dceca6772e5d728d09c30a2f6
+  Iterations: 1000
+  Magic number: 0xdeadbeef
 ```
 
 These outputs should match the native execution, confirming the program works correctly.
-
-## Verify Constraints
-
-Once you've confirmed the program executes correctly, you can verify the constraints without generating a full proof. This is useful for debugging and ensuring correctness:
-
-```bash
-cargo run --release --bin verify-constraints
-```
-
-This command will:
-1. Execute the program using the ZisK emulator
-2. Generate the execution trace
-3. Verify all arithmetic and logical constraints
-4. Check that all state machine transitions are valid
-
-If successful, you'll see:
-
-```
-✓ All constraints for Instance #0 of Main were verified
-✓ All constraints for Instance #0 of Rom were verified
-...
-✓ All global constraints were successfully verified
-```
 
 ## Prove
 
 To generate a cryptographic proof of execution, run:
 
 ```bash
+mkdir tmp
 cargo run --release --bin prove
 ```
 
@@ -136,14 +109,14 @@ This will:
 3. Generate the polynomial commitments
 4. Create the zk-STARK proof
 
-The proof will be saved in the `./proof` directory. This process may take several minutes depending on the program complexity.
+The proof will be saved in the `./tmp` directory. This process may take several minutes depending on the program complexity.
 
 ## Compressed Proof (Optional)
 
 After generating the proof, you can optionally create a compressed version to reduce the proof size:
 
 ```bash
-cargo run --release --bin compressed
+cargo run --release --bin minimal
 ```
 
 This generates an additional compressed proof on top of the existing one using recursive composition. The compressed proof is significantly smaller while maintaining the same security guarantees.

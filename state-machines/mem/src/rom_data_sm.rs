@@ -13,17 +13,9 @@ use std::{
 };
 use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
-use zisk_pil::RomDataAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::RomDataTrace;
-#[cfg(feature = "packed")]
-use zisk_pil::RomDataTracePacked;
-
-#[cfg(feature = "packed")]
-type RomDataTraceType<F> = RomDataTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type RomDataTraceType<F> = RomDataTrace<F>;
+use zisk_pil::{
+    RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
+};
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;
 pub const ROM_DATA_W_ADDR_END: u32 = ROM_ADDR_MAX as u32 >> MEM_BYTES_BITS;
@@ -62,25 +54,19 @@ impl<F: PrimeField64> RomDataSM<F> {
         ROM_DATA_W_ADDR_END
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file(trace: &RomDataTrace<F>, file_name: &str) {
+    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::<F>::NUM_ROWS;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
 
         for i in 0..num_rows {
             let addr = trace[i].get_addr() * 8;
             let step = trace[i].get_step();
             let sel = trace[i].get_sel();
             // TODO: chunk_size * 4 = 20
-            writeln!(
-                writer,
-                "{:#010X} {} {:?} S:{sel} @{}",
-                addr,
-                step,
-                trace[i].value,
-                (step - 1) >> 20
-            )
-            .unwrap();
+            let values = [trace[i].get_value(0), trace[i].get_value(1)];
+            writeln!(writer, "{:#010X} {} {:?} S:{sel} @{}", addr, step, values, (step - 1) >> 20)
+                .unwrap();
         }
     }
 }
@@ -107,9 +93,39 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         is_last_segment: bool,
         previous_segment: &MemPreviousSegment,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = RomDataTraceType::<F>::new_from_vec(trace_buffer)?;
-        let num_rows = RomDataTraceType::<F>::NUM_ROWS;
+        if packed {
+            self.compute_witness_inner::<RomDataTraceRowPacked<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<RomDataTraceRow<F>>(
+                mem_ops,
+                segment_id,
+                is_last_segment,
+                previous_segment,
+                trace_buffer,
+            )
+        }
+    }
+}
+
+impl<F: PrimeField64> RomDataSM<F> {
+    fn compute_witness_inner<R: RomDataTraceRowOps<F>>(
+        &self,
+        mem_ops: &[MemInput],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        previous_segment: &MemPreviousSegment,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = RomDataTrace::<R>::new_from_vec(trace_buffer)?;
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
         assert!(
             !mem_ops.is_empty() && mem_ops.len() <= num_rows,
             "RomDataSM: mem_ops.len()={} out of range {}",
@@ -168,8 +184,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
                 last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
                 max_range_distance_count += 1;
                 trace[i].set_addr(last_addr);
-                trace[i].set_value(0, 0);
-                trace[i].set_value(1, 0);
+                trace[i].set_all_value(&[0; 2]);
                 trace[i].set_sel(false);
                 // the step, value of internal reads isn't relevant
                 trace[i].set_step(0);
@@ -191,8 +206,7 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
             trace[i].set_sel(true);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[i].set_value(0, low_val);
-            trace[i].set_value(1, high_val);
+            trace[i].set_all_value(&[low_val, high_val]);
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes || (i == 0 && segment_id == 0) {

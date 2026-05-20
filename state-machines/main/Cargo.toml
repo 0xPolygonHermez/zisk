@@ -15,15 +15,8 @@ zisk-pil = { workspace = true }
 mem-common = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-util = { workspace = true }
-proofman-macros = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-num-bigint = { workspace = true }
 pil-std-lib = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []
+thiserror = { workspace = true }

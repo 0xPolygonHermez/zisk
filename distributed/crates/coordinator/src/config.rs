@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
-use zisk_distributed_common::Environment;
-use zisk_distributed_common::LoggingConfig;
+use zisk_cluster_common::Environment;
+use zisk_cluster_common::LoggingConfig;
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -30,14 +30,84 @@ pub struct ServiceConfig {
     pub environment: Environment,
 }
 
+/// Coordinator-level knobs for job orchestration, fault tolerance, and worker management.
+///
+/// ## Timeout mapping
+///
+/// The job monitor checks running jobs against per-phase timeouts. A phase that
+/// exceeds its timeout triggers an immediate `fail_job` (all workers cancelled).
+///
+/// | Job phase                              | Config field                    | Default |
+/// |----------------------------------------|---------------------------------|---------|
+/// | `Execution`                            | `execution_timeout_seconds`     | 300 s   |
+/// | `Contributions` / `ContributionsInputsStream` / `ContributionsHintsStream` | `phase1_timeout_seconds` | 300 s |
+/// | `Prove`                                | `phase2_timeout_seconds`        | 600 s   |
+/// | `Aggregate`                            | `phase3_timeout_seconds`        | 100 s   |
+///
+/// Setting any timeout to `0` disables enforcement for that phase.
+///
+/// ## Heartbeat detection
+///
+/// Workers send periodic heartbeats. A worker is considered dead when
+/// `heartbeat_interval_seconds × heartbeat_max_missed` seconds elapse with no
+/// heartbeat while the worker is in `Computing` state. Dead workers cause their
+/// job to be aborted.
+///
+/// ## Stale worker cleanup
+///
+/// Workers in `Disconnected` state for longer than `stale_disconnected_threshold_seconds`
+/// are removed from the pool to prevent unbounded growth.
+///
+/// ## Completed job retention
+///
+/// Jobs in a terminal state (`Completed`, `Failed`, `Cancelled`) are kept in memory
+/// for `job_ttl_seconds` after termination so clients can still query
+/// their final state, then evicted by the monitor sweep. Set to `0` to disable
+/// retention (jobs are removed on the next sweep after they terminate).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
+    /// Maximum number of workers that can be assigned to a single job.
     pub max_workers_per_job: u32,
+    /// Maximum number of workers the coordinator will accept (across all jobs).
     pub max_total_workers: u32,
+    /// Timeout for the Execution phase. Default: 300s.
+    pub execution_timeout_seconds: u64,
+    /// Timeout for Phase 1: Contributions. Default: 300s.
     pub phase1_timeout_seconds: u64,
+    /// Timeout for Phase 2: Prove (proof generation). Default: 600s.
     pub phase2_timeout_seconds: u64,
+    /// Timeout for Phase 3: Aggregate (proof aggregation). Default: 100s.
+    pub phase3_timeout_seconds: u64,
+    /// Expected interval between worker heartbeats. Default: 30s.
+    pub heartbeat_interval_seconds: u64,
+    /// Number of missed heartbeats before a computing worker is considered dead.
+    /// Dead threshold = `heartbeat_interval_seconds × heartbeat_max_missed`. Default: 3.
+    pub heartbeat_max_missed: u32,
+    /// How often the background monitor sweeps for timeouts and stale heartbeats. Default: 10s.
+    pub job_monitor_interval_seconds: u64,
+    /// Seconds a worker can remain in `Disconnected` state before being removed from
+    /// the pool entirely. Default: 300s.
+    pub stale_disconnected_threshold_seconds: u64,
+    /// Seconds before unregistering a worker stuck in `pending_recovery`.
+    /// `0` disables the sweep. Default: 600s.
+    pub stuck_recovery_threshold_seconds: u64,
+    /// Seconds a job in a terminal state (`Completed`, `Failed`, `Cancelled`) is kept
+    /// in memory before being evicted by the monitor sweep. Default: 3600s (60 min).
+    /// `0` evicts terminal jobs on the next monitor tick.
+    pub job_ttl_seconds: u64,
+    /// Optional webhook URL to POST job completion/failure notifications.
     pub webhook_url: Option<String>,
-    pub compressed_proofs: bool,
+    /// Default compute units for a job when the caller does not specify.
+    /// `0` means "use all currently available capacity".
+    pub default_compute_units: u32,
+    /// Minimum compute units required to start any job. Jobs are rejected
+    /// (`ResourceExhausted`) if available capacity falls below this floor.
+    pub min_compute_units: u32,
+    /// Grace period in milliseconds before a disconnected worker's job is failed.
+    /// If the worker reconnects within this window the disconnect is treated as a
+    /// transient network blip and computation continues uninterrupted.
+    /// Default: 500 ms (suitable for same-datacenter clusters; increase for cross-DC).
+    pub reconnect_grace_period_ms: u64,
 }
 
 impl Config {
@@ -51,7 +121,6 @@ impl Config {
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
         no_save_proofs: bool,
-        compressed_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -76,9 +145,19 @@ impl Config {
             .set_default("logging.format", "pretty")?
             .set_default("coordinator.max_workers_per_job", 10)?
             .set_default("coordinator.max_total_workers", 1000)?
+            .set_default("coordinator.execution_timeout_seconds", 300)?
             .set_default("coordinator.phase1_timeout_seconds", 300)?
             .set_default("coordinator.phase2_timeout_seconds", 600)?
-            .set_default("coordinator.compressed_proofs", compressed_proofs)?;
+            .set_default("coordinator.phase3_timeout_seconds", 100)?
+            .set_default("coordinator.heartbeat_interval_seconds", 30)?
+            .set_default("coordinator.heartbeat_max_missed", 3)?
+            .set_default("coordinator.job_monitor_interval_seconds", 10)?
+            .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
+            .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
+            .set_default("coordinator.job_ttl_seconds", 3600)?
+            .set_default("coordinator.default_compute_units", 0)?
+            .set_default("coordinator.min_compute_units", 1)?
+            .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?;
 
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(&path));

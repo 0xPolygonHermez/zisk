@@ -1,11 +1,14 @@
 //! Operations on the BLS12-381 curve E: y² = x³ + 4
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::{
     syscalls::{
         syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
         SyscallPoint384,
     },
-    zisklib::{eq, fcall_msb_pos_256, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_zero, lt},
 };
 
 use super::{
@@ -17,18 +20,22 @@ use super::{
     fr::{reduce_fr_bls12_381, scalar_bytes_be_to_u64_le_bls12_381},
 };
 
-// TODO: Check what happens if scalar or ecc coordinates are bigger than the field size
-
 /// G1 add result codes
-const G1_ADD_SUCCESS: u8 = 0;
-const G1_ADD_SUCCESS_INFINITY: u8 = 1;
-const G1_ADD_ERR_NOT_ON_CURVE: u8 = 2;
+#[allow(dead_code)]
+pub(crate) const G1_ADD_SUCCESS: u8 = 0;
+#[allow(dead_code)]
+pub(crate) const G1_ADD_SUCCESS_INFINITY: u8 = 1;
+const G1_ADD_ERR_NOT_IN_FIELD: u8 = 2;
+const G1_ADD_ERR_NOT_ON_CURVE: u8 = 3;
 
 /// G1 MSM result codes
-const G1_MSM_SUCCESS: u8 = 0;
-const G1_MSM_SUCCESS_INFINITY: u8 = 1;
-const G1_MSM_ERR_NOT_ON_CURVE: u8 = 2;
-const G1_MSM_ERR_NOT_IN_SUBGROUP: u8 = 3;
+#[allow(dead_code)]
+pub(crate) const G1_MSM_SUCCESS: u8 = 0;
+#[allow(dead_code)]
+pub(crate) const G1_MSM_SUCCESS_INFINITY: u8 = 1;
+const G1_MSM_ERR_NOT_IN_FIELD: u8 = 2;
+const G1_MSM_ERR_NOT_ON_CURVE: u8 = 3;
+const G1_MSM_ERR_NOT_IN_SUBGROUP: u8 = 4;
 
 /// Decompresses a point on the BLS12-381 curve from 48 bytes
 ///
@@ -267,6 +274,12 @@ pub fn add_complete_bls12_381(
         return Ok(G1_IDENTITY);
     }
     if p1_is_inf {
+        // Validate p2 field elements and curve membership
+        let x2: [u64; 6] = p2[0..6].try_into().unwrap();
+        let y2: [u64; 6] = p2[6..12].try_into().unwrap();
+        if !lt(&x2, &P) || !lt(&y2, &P) {
+            return Err(G1_ADD_ERR_NOT_IN_FIELD);
+        }
         if !is_on_curve_bls12_381(
             p2,
             #[cfg(feature = "hints")]
@@ -278,6 +291,12 @@ pub fn add_complete_bls12_381(
     }
 
     if p2_is_inf {
+        // Validate p1 field elements and curve membership
+        let x1: [u64; 6] = p1[0..6].try_into().unwrap();
+        let y1: [u64; 6] = p1[6..12].try_into().unwrap();
+        if !lt(&x1, &P) || !lt(&y1, &P) {
+            return Err(G1_ADD_ERR_NOT_IN_FIELD);
+        }
         if !is_on_curve_bls12_381(
             p1,
             #[cfg(feature = "hints")]
@@ -288,13 +307,25 @@ pub fn add_complete_bls12_381(
         return Ok(*p1);
     }
 
-    // Both points are non-identity, validate both are on curve
+    // Both points are non-identity, validate both
+    let x1: [u64; 6] = p1[0..6].try_into().unwrap();
+    let y1: [u64; 6] = p1[6..12].try_into().unwrap();
+    if !lt(&x1, &P) || !lt(&y1, &P) {
+        return Err(G1_ADD_ERR_NOT_IN_FIELD);
+    }
     if !is_on_curve_bls12_381(
         p1,
         #[cfg(feature = "hints")]
         hints,
     ) {
         return Err(G1_ADD_ERR_NOT_ON_CURVE);
+    }
+
+    // Validate p2 field elements and curve membership
+    let x2: [u64; 6] = p2[0..6].try_into().unwrap();
+    let y2: [u64; 6] = p2[6..12].try_into().unwrap();
+    if !lt(&x2, &P) || !lt(&y2, &P) {
+        return Err(G1_ADD_ERR_NOT_IN_FIELD);
     }
     if !is_on_curve_bls12_381(
         p2,
@@ -439,7 +470,6 @@ pub fn scalar_mul_bls12_381(
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
         k,
-        &[0, 0, 0, 0],
         #[cfg(feature = "hints")]
         hints,
     );
@@ -581,14 +611,21 @@ pub fn msm_complete_bls12_381(
             continue;
         }
 
-        // Skip zero scalars
-        if reduce_fr_bls12_381(
+        // Reduce the scalar modulo the group order, and skip if the result is zero
+        let scalar = reduce_fr_bls12_381(
             scalar,
             #[cfg(feature = "hints")]
             hints,
-        ) == [0, 0, 0, 0]
-        {
+        );
+        if is_zero(&scalar) {
             continue;
+        }
+
+        // Verify point coordinates are in the field
+        let x: [u64; 6] = point[0..6].try_into().unwrap();
+        let y: [u64; 6] = point[6..12].try_into().unwrap();
+        if !lt(&x, &P) || !lt(&y, &P) {
+            return Err(G1_MSM_ERR_NOT_IN_FIELD);
         }
 
         // Verify point is on curve
@@ -612,7 +649,7 @@ pub fn msm_complete_bls12_381(
         // Compute P * k
         let product = scalar_mul_bls12_381(
             point,
-            scalar,
+            &scalar,
             #[cfg(feature = "hints")]
             hints,
         );
@@ -673,12 +710,13 @@ pub fn sigma_endomorphism_bls12_381(
 /// - `ret` must point to a valid `[u8; 96]` for the output
 ///
 /// Returns:
-/// - 0 = success (regular point)
-/// - 1 = success (point at infinity)
-/// - 2 = error (point not on curve)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g1_add_c")]
-pub unsafe extern "C" fn bls12_381_g1_add_c(
+/// - [G1_ADD_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
+/// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn bls12_381_g1_add_c(
     ret: *mut u8,
     a: *const u8,
     b: *const u8,
@@ -722,13 +760,14 @@ pub unsafe extern "C" fn bls12_381_g1_add_c(
 /// - `ret` must point to a valid `[u8; 96]` for the output
 ///
 /// Returns:
-/// - 0 = success (regular point)
-/// - 1 = success (point at infinity)
-/// - 2 = error (point not on curve)
-/// - 3 = error (point not in subgroup)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bls12_381_g1_msm_c")]
-pub unsafe extern "C" fn bls12_381_g1_msm_c(
+/// - [G1_MSM_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_MSM_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_MSM_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
+/// - [G1_MSM_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
+/// - [G1_MSM_ERR_NOT_IN_SUBGROUP] = error (one of the input points is not in the subgroup)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn bls12_381_g1_msm_c(
     ret: *mut u8,
     pairs: *const u8,
     num_pairs: usize,
@@ -791,6 +830,142 @@ pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
     }
 
     result
+}
+
+// ==================== C FFI Functions ====================
+
+/// Decompresses a compressed BLS12-381 G1 point (48 bytes) to affine coordinates.
+/// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
+///
+/// # Safety
+/// - `input_ptr` must point to a valid `[u8; 48]` compressed point
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_decompress_bls12_381_c")]
+pub unsafe extern "C" fn decompress_bls12_381_c(
+    input_ptr: *const u8,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let input = &*(input_ptr as *const [u8; 48]);
+    match decompress_bls12_381(
+        input,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(p) => {
+            let result = &mut *(result_ptr as *mut [u64; 12]);
+            *result = p;
+            if eq(&p, &G1_IDENTITY) {
+                1
+            } else {
+                0
+            }
+        }
+        Err(_) => 2,
+    }
+}
+
+/// Curve membership check for a BLS12-381 G1 point.
+/// Returns 1 if the point is on the curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bls12_381_c")]
+pub unsafe extern "C" fn is_on_curve_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    is_on_curve_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Subgroup membership check for a BLS12-381 G1 point.
+/// Returns 1 if the point is in the G1 subgroup, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_bls12_381_c")]
+pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    is_on_subgroup_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Addition of two BLS12-381 G1 points with validation and identity handling.
+/// Returns 0 on success (result written to `result_ptr`), 1 if result is the point at infinity,
+/// or an error code if either point is invalid.
+///
+/// # Safety
+/// - `p1_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `p2_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_bls12_381_c")]
+pub unsafe extern "C" fn add_bls12_381_c(
+    p1_ptr: *const u64,
+    p2_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p1 = &*(p1_ptr as *const [u64; 12]);
+    let p2 = &*(p2_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 12]);
+    *result = add_bls12_381(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G1_IDENTITY) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Scalar multiplication of a non-zero BLS12-381 G1 point by a scalar.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 12]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bls12_381_c")]
+pub unsafe extern "C" fn scalar_mul_bls12_381_c(
+    p_ptr: *const u64,
+    k_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let k = &*(k_ptr as *const [u64; 4]);
+    let result = &mut *(result_ptr as *mut [u64; 12]);
+    *result = scalar_mul_bls12_381(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    if eq(result, &G1_IDENTITY) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Convert [u64; 12] little-endian G1 point to 96-byte big-endian

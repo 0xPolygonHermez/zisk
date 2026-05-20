@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod memcpy_tests {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     use super::ziskos::memcpy;
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     fn memcpy(dst: *mut u8, src: *const u8, len: usize) -> *mut u8 {
         unsafe {
             std::ptr::copy(src, dst, len);
@@ -314,7 +314,7 @@ mod memcpy_tests {
             println!("Auto-prefixed:       {:#x}", ptr as usize);
             println!("Debug format:        {:?}", ptr);
 
-            // También mostrar como imprimir la data
+            // Also show how to print the data
             println!("\nData at pointer:");
             println!("Hex bytes:           {:02x?}", data);
             println!("Hex UPPER bytes:     {:02X?}", data);

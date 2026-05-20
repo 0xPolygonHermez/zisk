@@ -1,9 +1,9 @@
 //! Secp256r1Add system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::point::SyscallPoint256;
@@ -17,9 +17,6 @@ pub struct SyscallSecp256r1AddParams<'a> {
 
 /// Performs the addition of two points on the Secp256r1 curve, storing the result in the first point.
 ///
-/// The `Secp256r1Add` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Secp256r1Add`.
-///
 /// `Secp256r1Add` operates on two points, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
 /// The syscall takes as a parameter the address of a structure containing points `p1` and `p2`.
@@ -27,7 +24,9 @@ pub struct SyscallSecp256r1AddParams<'a> {
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// The caller must ensure that the points `p1` and `p2` are valid points on the Secp256r1 curve.
 ///
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the Secp256r1 base field.
 ///
@@ -39,9 +38,9 @@ pub extern "C" fn syscall_secp256r1_add(
     params: &mut SyscallSecp256r1AddParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_SECP256R1_ADD_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let p1 = [params.p1.x, params.p1.y].concat().try_into().unwrap();
         let p2 = [params.p2.x, params.p2.y].concat().try_into().unwrap();

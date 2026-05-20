@@ -1,9 +1,9 @@
 //! syscall_bn254_curve_add system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::point::SyscallPoint256;
@@ -15,10 +15,7 @@ pub struct SyscallBn254CurveAddParams<'a> {
     pub p2: &'a SyscallPoint256,
 }
 
-/// Performs the addition of two points on the Bn254 curve, storing the result in the first point.
-///
-/// The `Bn254CurveAdd` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Bn254CurveAdd`.
+/// Performs the addition of two points on the BN254 curve, storing the result in the first point.
 ///
 /// `Bn254CurveAdd` operates on two points, each with two coordinates of 256 bits.
 /// Each coordinate is represented as an array of four `u64` elements.
@@ -27,7 +24,9 @@ pub struct SyscallBn254CurveAddParams<'a> {
 ///
 /// ### Safety
 ///
-/// The caller must ensure that `p1` is a valid pointer to data that is aligned to an eight-byte boundary.
+/// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// The caller must ensure that the points `p1` and `p2` are valid points on the BN254 curve.
 ///
 /// The caller must ensure that both `p1` and `p2` coordinates are within the range of the BN254 base field.
 ///
@@ -39,9 +38,9 @@ pub extern "C" fn syscall_bn254_curve_add(
     params: &mut SyscallBn254CurveAddParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BN254_CURVE_ADD_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let p1 = [params.p1.x, params.p1.y].concat().try_into().unwrap();
         let p2 = [params.p2.x, params.p2.y].concat().try_into().unwrap();

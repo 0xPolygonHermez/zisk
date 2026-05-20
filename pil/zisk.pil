@@ -1,8 +1,3 @@
-// #pragma arg -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles 
-// #pragma arg -o pil/zisk.pilout 
-// #pragma arg -O fixed-to-file 
-// #pragma arg -u tmp/fixed
-
 require "std_direct.pil"
 
 require "operations.pil"
@@ -70,12 +65,9 @@ function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1) {
 
 airgroup Zisk {
     // Virtual Tables Configuration
-    set_max_std_tables_bits(20);
-    set_max_num_rows_virtual(1 << 21); // Set the maximum rows for virtual tables
-    set_max_num_virtual_tables(2);
-    set_group_virtual_tables(table_ids: [ARITH_TABLE_ID, ARITH_RANGE_TABLE_ID, ARITH_EQ_LT_TABLE_ID, BINARY_EXTENSION_TABLE_ID, 
-                                         BINARY_TABLE_ID, MEMORY_ALIGN_ROM_ID, KECCAKF_TABLE_ID, DMA_ROM_ID, DMA_PRE_POST_TABLE_ID]);
-    set_group_virtual_tables(table_ids: [BINARY_EXTENSION_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, ARITH_FROPS_TABLE_ID]);
+    set_range_check_tables_virtual();
+    set_max_bits_virtual_tables(21);
+    set_num_virtual_tables(2);
 
     virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
     virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;
@@ -106,7 +98,7 @@ airgroup Zisk {
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
     Mem(N: 2**21, base_address: 0x8000_0000, size_mb: 128, immutable: 1, enable_flag: enable_rom_data) alias RomData;
-    Mem(N: 2**21, base_address: 0x9000_0000, size_mb: 128, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    Mem(N: 2**21, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
 
     MemAlign(N: 2**21);
     MemAlignByte(N: 2**22, read: 1, write: 1);
@@ -138,7 +130,7 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    Keccakf(N: 2**17, mem_ops_in_parallel: 25);
+    Keccakf(N: 2**17);
     virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);

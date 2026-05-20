@@ -1,5 +1,5 @@
 [package]
-name = "zisk-distributed-worker"
+name = "zisk-worker"
 description = "Distributed Network Client"
 version.workspace = true
 edition.workspace = true
@@ -14,23 +14,16 @@ path = "src/cli/main.rs"
 vergen-git2.workspace = true
 
 [dependencies]
-zisk-distributed-common = { workspace = true }
-zisk-distributed-grpc-api = { workspace = true }
-zisk-distributed-coordinator = { workspace = true }
+zisk-cluster-common = { workspace = true }
+zisk-cluster-api = { workspace = true }
+zisk-coordinator = { workspace = true }
 
-cargo-zisk = { workspace = true }
 zisk-common = { workspace = true }
+zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-asm-runner = { workspace = true }
-fields = { workspace = true }
-witness = { workspace = true }
-rom-setup = { workspace = true }
-zisk-pil = { workspace = true }
-zisk-sdk = { workspace = true }
+bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
-
-precompiles-hints = { workspace = true }
 
 tonic = { workspace = true }
 tokio = { workspace = true }
@@ -41,6 +34,9 @@ serde = { workspace = true }
 borsh = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
-toml = { workspace = true }
 config = { workspace = true }
 uuid = { workspace = true }
+
+[features]
+default = []
+cpu-only = ["zisk-prover-backend/cpu-only"]

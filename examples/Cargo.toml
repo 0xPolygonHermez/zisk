@@ -1,17 +1,18 @@
 [workspace]
-members = ["sha-hasher/host", "sha-hasher/guest", "multiple-programs/host", "multiple-programs/guest", "multiple-programs/guest_2"]
+members = [
+  "sha-hasher/host",
+  "multiple-programs/host",
+  "aggregation/host",
+  "big-program/host",
+  "hints/host",
+]
 
 resolver = "2"
 
 [profile.release]
 opt-level = 3
 
-[profile.release.package."proofman-verifier"]
-opt-level = 0
-
 [workspace.dependencies]
-# Guest dependencies
 ziskos = { path = "../ziskos/entrypoint" }
-
-# Host dependencies
 zisk-sdk = { path = "../sdk" }
+test-artifacts = { path = "../test-artifacts" }

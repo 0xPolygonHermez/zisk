@@ -72,10 +72,10 @@ impl MemCounters {
         let point = addr_vector.partition_point(|x| x.0 < (0xA000_0000 / 8));
         self.addr_sorted[2] = addr_vector.split_off(point);
 
-        let point = addr_vector.partition_point(|x| x.0 < (0x9000_0000 / 8));
-        self.addr_sorted[1] = addr_vector.split_off(point);
+        let point = addr_vector.partition_point(|x| x.0 < (0x8000_0000 / 8));
+        self.addr_sorted[0] = addr_vector.split_off(point);
 
-        self.addr_sorted[0] = addr_vector;
+        self.addr_sorted[1] = addr_vector;
     }
     #[inline(always)]
     fn incr_st_counter_aligned(count: u32, is_write: bool) -> u32 {

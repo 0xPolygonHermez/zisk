@@ -3,10 +3,12 @@ mod bls12_381;
 mod bn254;
 mod custom;
 mod hint_buffer;
+mod input_data;
 mod keccak256;
 mod kzg;
 mod macros;
 mod modexp;
+mod ripemd160;
 mod secp256k1;
 mod secp256r1;
 mod sha256f;
@@ -40,9 +42,11 @@ pub use blake2b::*;
 pub use bls12_381::*;
 pub use bn254::*;
 pub use custom::*;
+pub use input_data::*;
 pub use keccak256::*;
 pub use kzg::*;
 pub use modexp::*;
+pub use ripemd160::*;
 pub use secp256k1::*;
 pub use secp256r1::*;
 pub use sha256f::*;
@@ -309,7 +313,7 @@ pub(crate) fn check_main_thread() -> bool {
 #[inline(always)]
 pub fn hint_log<S: AsRef<str>>(msg: S) {
     // We check if hints are enable only for non-zisk targets, since in zisk targets hints are not used
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     if !HINT_BUFFER.is_enabled() {
         return;
     }

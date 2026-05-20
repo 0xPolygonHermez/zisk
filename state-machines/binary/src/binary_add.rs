@@ -7,21 +7,7 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::sync::Arc;
-use zisk_pil::BinaryAddAirValues;
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{BinaryAddTracePacked, BinaryAddTraceRowPacked};
-
-#[cfg(feature = "packed")]
-type BinaryAddTraceRowType<F> = BinaryAddTraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type BinaryAddTraceType<F> = BinaryAddTracePacked<F>;
-
-#[cfg(not(feature = "packed"))]
-type BinaryAddTraceRowType<F> = BinaryAddTraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type BinaryAddTraceType<F> = BinaryAddTrace<F>;
+use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
@@ -56,41 +42,53 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice(&self, input: &[u64; 2]) -> (BinaryAddTraceRowType<F>, [u64; 4]) {
-        // Create an empty trace
-        let mut row: BinaryAddTraceRowType<F> = Default::default();
-
+    pub fn process_slice<R: BinaryAddTraceRowOps<F>>(
+        &self,
+        row: &mut R,
+        input: &[u64; 2],
+    ) -> [u64; 4] {
         // Execute the opcode
-        let mut a = input[0];
-        let mut b = input[1];
-        let mut cin = 0;
+        let a = input[0];
+        let b = input[1];
+        let mut cin = 0u64;
 
+        // Compute all values first
+        let mut a_values = [0u32; 2];
+        let mut b_values = [0u32; 2];
+        let mut c_chunks_values = [0u16; 4];
+        let mut cout_values = [false; 2];
         let mut range_checks = [0u64; 4];
+
         for i in 0..2 {
-            let _a = a & 0xFFFF_FFFF;
-            let _b = b & 0xFFFF_FFFF;
+            // Extract the appropriate 32-bit chunk for this iteration
+            let _a = if i == 0 { a & 0xFFFF_FFFF } else { a >> 32 };
+            let _b = if i == 0 { b & 0xFFFF_FFFF } else { b >> 32 };
             let c = _a + _b + cin;
             let _c = c & 0xFFFF_FFFF;
-            row.set_a(i, _a as u32);
-            row.set_b(i, _b as u32);
-            let c_chunks = [_c & 0xFFFF, _c >> 16];
-            row.set_c_chunks(i * 2, c_chunks[0] as u16);
-            row.set_c_chunks(i * 2 + 1, c_chunks[1] as u16);
-            if c > MASK_U32 {
-                row.set_cout(i, true);
-                cin = 1
-            } else {
-                row.set_cout(i, false);
-                cin = 0
-            };
-            range_checks[i * 2] = c_chunks[0];
-            range_checks[i * 2 + 1] = c_chunks[1];
-            a >>= 32;
-            b >>= 32;
+
+            a_values[i] = _a as u32;
+            b_values[i] = _b as u32;
+
+            // Split result into two 16-bit chunks (indices: i=0 -> 0,1; i=1 -> 2,3)
+            c_chunks_values[i * 2] = (_c & 0xFFFF) as u16;
+            c_chunks_values[i * 2 + 1] = (_c >> 16) as u16;
+
+            // Update carry for next iteration
+            cin = if c > MASK_U32 { 1 } else { 0 };
+            cout_values[i] = cin != 0;
+
+            range_checks[i * 2] = c_chunks_values[i * 2] as u64;
+            range_checks[i * 2 + 1] = c_chunks_values[i * 2 + 1] as u64;
         }
 
+        // Set all values at once using bulk setters
+        row.set_all_a(&a_values);
+        row.set_all_b(&b_values);
+        row.set_all_c_chunks(&c_chunks_values);
+        row.set_all_cout(&cout_values);
+
         // Return
-        (row, range_checks)
+        range_checks
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
@@ -100,17 +98,17 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: BinaryAddTraceRowOps<F>>(
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut add_trace = BinaryAddTraceType::new_from_vec(trace_buffer)?;
+        let mut add_trace = BinaryAddTrace::<R>::new_from_vec(trace_buffer)?;
 
         let num_rows = add_trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
-        assert!(total_inputs <= num_rows);
+        debug_assert!(total_inputs <= num_rows);
 
         tracing::debug!(
             "··· Creating BinaryAdd instance [{} / {} rows filled {:.2}%]",
@@ -129,8 +127,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             .zip(add_trace.buffer.par_iter_mut())
             .zip(range_checks.par_iter_mut())
             .for_each(|((input, trace_row), range_check)| {
-                let (row, checks) = self.process_slice(input);
-                *trace_row = row;
+                let checks = self.process_slice::<R>(trace_row, input);
                 *range_check = checks;
             });
 
@@ -148,7 +145,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         // Set 0 + 0 as the padding row
         let padding_size = num_rows - total_inputs;
         if padding_size > 0 {
-            let padding_row = BinaryAddTraceRowType::<F>::default();
+            let padding_row = R::default();
             add_trace.buffer[total_inputs..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding_row);

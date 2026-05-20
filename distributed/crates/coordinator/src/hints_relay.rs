@@ -5,11 +5,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use zisk_cluster_common::StreamMessageKind;
 use zisk_common::{
     io::StreamProcessor, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
 };
-use zisk_distributed_common::StreamMessageKind;
 
 type AsyncDispatcher = Arc<
     dyn Fn(u32, StreamMessageKind, Vec<u8>) -> Pin<Box<dyn Future<Output = ()> + Send>>
@@ -148,7 +148,7 @@ impl PrecompileHintsRelay {
 }
 
 impl StreamProcessor for PrecompileHintsRelay {
-    fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
     }
 

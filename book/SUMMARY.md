@@ -9,7 +9,8 @@
 - [Writing Programs](./getting_started/writing_programs.md)
 - [Precompiles](./getting_started/precompiles.md)
 - [Distributed Execution](./getting_started/distributed_execution.md)
-- [Precompile Hints](./getting_started/precompile_hints.md)
+- [Hints Stream](./getting_started/hints_stream.md)
 
 # Developer Guide
 - [Ziskof](./developer/ziskof.md)
+- [Profiling Programs](./developer/profiling.md)

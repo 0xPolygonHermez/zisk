@@ -3,39 +3,46 @@ require "std_lookup.pil"
 require "opids.pil"
 
 // The maximum value that any expression during keccakf computation can get
-// Obtained from `keccakf_expr_generator.rs`
-const int KECCAKF_MAX_VALUE = 144;
+// Operation summary:
+//  - The θ.1 step has 4 add, this gives a number in the range <= 5
+//  - The θ.2 step has 1 add, this gives a number in the range <= 10
+//  - The θ.3 step has 1 add, this gives a number in the range <= 11
+//  - The χ.1 step has 1 add and 1 prod, this gives a number in the range <= 132
+//  - The χ.2 step has 1 add, this gives a number in the range <= 143
+//  - The ι step has 1 add, this gives a number in the range <= 144
+const int KECCAKF_TABLE_MAX_VALUE = 144;
 
-const int KECCAKF_BASE = KECCAKF_MAX_VALUE + 1;
+const int KECCAKF_TABLE_BASE = KECCAKF_TABLE_MAX_VALUE + 1;
 function keccakf_chunk_size(): int {
     int chunks = 1;
-    while (KECCAKF_BASE ** (chunks + 1) < P2_23) {
+    while (KECCAKF_TABLE_BASE ** (chunks + 1) < P2_23) {
         chunks += 1;
     }
     return chunks;
 }
 
-const int KECCAKF_LOOKUP_CHUNK_SIZE = keccakf_chunk_size();
-const int KECCAKF_TABLE_SIZE = KECCAKF_BASE ** KECCAKF_LOOKUP_CHUNK_SIZE;
+const int KECCAKF_TABLE_MAX_CHUNKS = keccakf_chunk_size();
+const int KECCAKF_TABLE_SIZE = KECCAKF_TABLE_BASE ** KECCAKF_TABLE_MAX_CHUNKS;
 
 airtemplate KeccakfTable(const int N) {
     // Ensure that the chosen size fits
     if (N < KECCAKF_TABLE_SIZE) {
         error(`N must be at least ${KECCAKF_TABLE_SIZE}, but N=${N} was provided`);
     }
+    println(`The Keccak-f's Table size is ${KECCAKF_TABLE_SIZE}`);
 
     int MAX = 0;
-    for (int i = 0; i < KECCAKF_LOOKUP_CHUNK_SIZE; i++) {
-        MAX += KECCAKF_BASE**i * KECCAKF_MAX_VALUE;
+    for (int i = 0; i < KECCAKF_TABLE_MAX_CHUNKS; i++) {
+        MAX += KECCAKF_TABLE_BASE**i * KECCAKF_TABLE_MAX_VALUE;
     }
 
     col fixed A = [0..MAX]...;
 
-    col fixed C[KECCAKF_LOOKUP_CHUNK_SIZE];
+    col fixed C[KECCAKF_TABLE_MAX_CHUNKS];
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < KECCAKF_LOOKUP_CHUNK_SIZE; j++) {
-            const int aj = (A[i] / (KECCAKF_BASE**j)) % KECCAKF_BASE;
+        for (int j = 0; j < KECCAKF_TABLE_MAX_CHUNKS; j++) {
+            const int aj = (A[i] / (KECCAKF_TABLE_BASE**j)) % KECCAKF_TABLE_BASE;
             C[j][i] = aj % 2;
         }
     }

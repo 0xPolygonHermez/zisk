@@ -11,16 +11,9 @@ use rayon::{
 };
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
+    DmaPrePostTrace, DmaPrePostTraceRow, DmaPrePostTraceRowOps, DmaPrePostTraceRowPacked,
     DMA_BYTE_CMP_TABLE_ID, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE, DUAL_RANGE_BYTE_ID,
 };
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    DmaPrePostTracePacked as DmaPrePostTrace, DmaPrePostTraceRowPacked as DmaPrePostTraceRow,
-};
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{DmaPrePostTrace, DmaPrePostTraceRow};
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
 use precompiles_helpers::DmaInfo;
@@ -71,10 +64,10 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<R: DmaPrePostTraceRowOps<F>>(
         &self,
         input: &DmaPrePostInput,
-        trace: &mut DmaPrePostTraceRow<F>,
+        trace: &mut R,
         pre_post_table_mul: &mut [u64],
         byte_cmp_table_mul: &mut [u64],
         local_dual_range_byte_mul: &mut [u64],
@@ -196,31 +189,30 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             _mask ^ (_mask << (count * 8))
         };
 
-        trace.set_sb(0, (mask & 0x0000_0000_0000_00FF) != 0);
-        trace.set_sb(1, (mask & 0x0000_0000_0000_FF00) != 0);
-        trace.set_sb(2, (mask & 0x0000_0000_00FF_0000) != 0);
-        trace.set_sb(3, (mask & 0x0000_0000_FF00_0000) != 0);
-        trace.set_sb(4, (mask & 0x0000_00FF_0000_0000) != 0);
-        trace.set_sb(5, (mask & 0x0000_FF00_0000_0000) != 0);
-        trace.set_sb(6, (mask & 0x00FF_0000_0000_0000) != 0);
-        trace.set_sb(7, (mask & 0xFF00_0000_0000_0000) != 0);
+        let sb = [
+            (mask & 0x0000_0000_0000_00FF) != 0,
+            (mask & 0x0000_0000_0000_FF00) != 0,
+            (mask & 0x0000_0000_00FF_0000) != 0,
+            (mask & 0x0000_0000_FF00_0000) != 0,
+            (mask & 0x0000_00FF_0000_0000) != 0,
+            (mask & 0x0000_FF00_0000_0000) != 0,
+            (mask & 0x00FF_0000_0000_0000) != 0,
+            (mask & 0xFF00_0000_0000_0000) != 0,
+        ];
+        trace.set_all_sb(&sb);
+        trace.set_all_rb(&rb);
+        trace.set_all_pb(&pb);
 
-        for (index, byte) in rb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_rb(index, *byte);
-        }
-        for (index, byte) in pb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_pb(index, *byte);
-        }
-
-        trace.set_selr(0, selr_value == 0);
-        trace.set_selr(1, selr_value == 1);
-        trace.set_selr(2, selr_value == 2);
-        trace.set_selr(3, selr_value == 3);
-        trace.set_selr(4, selr_value == 4);
-        trace.set_selr(5, selr_value == 5);
-        trace.set_selr(6, selr_value == 6);
+        let selr = [
+            selr_value == 0,
+            selr_value == 1,
+            selr_value == 2,
+            selr_value == 3,
+            selr_value == 4,
+            selr_value == 5,
+            selr_value == 6,
+        ];
+        trace.set_all_selr(&selr);
 
         let table_row = if is_memcmp {
             let post_count = DmaInfo::get_post_count(input.encoded);
@@ -237,27 +229,25 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             assert!(abs_diff_dst_src <= 0xFF);
             let abs_diff_dst_src = abs_diff_dst_src as u8;
             trace.set_abs_diff_dst_src(abs_diff_dst_src);
-            trace.set_bus_write_value(0, input.dst_pre_value as u32);
-            trace.set_bus_write_value(1, (input.dst_pre_value >> 32) as u32);
+            trace.set_all_bus_write_value(&[
+                input.dst_pre_value as u32,
+                (input.dst_pre_value >> 32) as u32,
+            ]);
 
             // the index of different byte determines the factor
             let dst_index = dst_offset as usize + count - 1;
             if is_negative {
                 // implies that count > 0
                 if dst_index < 4 {
-                    trace.set_diff_factor(0, F::ORDER_U64 - (1 << (8 * dst_index)));
-                    trace.set_diff_factor(1, 0);
+                    trace.set_all_diff_factor(&[F::ORDER_U64 - (1 << (8 * dst_index)), 0]);
                 } else {
-                    trace.set_diff_factor(0, 0);
-                    trace.set_diff_factor(1, F::ORDER_U64 - (1 << (8 * (dst_index - 4))));
+                    trace.set_all_diff_factor(&[0, F::ORDER_U64 - (1 << (8 * (dst_index - 4)))]);
                 }
             } else if is_nz {
                 if dst_index < 4 {
-                    trace.set_diff_factor(0, 1 << (8 * dst_index));
-                    trace.set_diff_factor(1, 0);
+                    trace.set_all_diff_factor(&[1 << (8 * dst_index), 0]);
                 } else {
-                    trace.set_diff_factor(0, 0);
-                    trace.set_diff_factor(1, 1 << (8 * (dst_index - 4)));
+                    trace.set_all_diff_factor(&[0, 1 << (8 * (dst_index - 4))]);
                 }
             }
 
@@ -305,27 +295,12 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
 
         pre_post_table_mul[table_row] += 1;
     }
-}
-
-impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostSM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_pre_post"
-    }
-
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: DmaPrePostTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaPrePostInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaPrePostTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = DmaPrePostTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|inputs| inputs.len()).sum();
@@ -463,5 +438,22 @@ impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostSM<F> {
         let from_trace = FromTrace::new(&mut trace);
         timer_stop_and_log_trace!(DMA_PRE_POST_TRACE);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostSM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_pre_post"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<DmaPrePostInput>],
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<DmaPrePostTraceRowPacked<F>>(inputs, trace_buffer)
+        } else {
+            self.compute_witness_inner::<DmaPrePostTraceRow<F>>(inputs, trace_buffer)
+        }
     }
 }

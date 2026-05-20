@@ -22,11 +22,13 @@
 //! ├─────────────────────────────────────────────────────────────┤
 //! │                             ...                             │
 //! ├─────────────────────────────────────────────────────────────┤
-//! │                     Data[length-1] (u64)                    │
+//! │                       Data[N-1] (u64)                       │
 //! └─────────────────────────────────────────────────────────────┘
 //!
+//! where N = ceil(Length / 8)
+//!
 //! - Hint Code — Control code or Data Hint Type
-//! - Length — Number of following u64 data words
+//! - Length — Data length in bytes
 //!
 //! ## Hint Type Layout
 //!
@@ -58,6 +60,9 @@ pub const CTRL_END: u32 = 0x0001;
 pub const CTRL_CANCEL: u32 = 0x0002;
 pub const CTRL_ERROR: u32 = 0x0003;
 
+// === INPUT HINT CODES ===
+pub const HINT_INPUT: u32 = 0xF0000;
+
 // === BUILT-IN HINT CODES ===
 // SHA256 hint codes
 pub const HINT_SHA256: u32 = 0x0100;
@@ -68,8 +73,8 @@ pub const HINT_BN254_G1_MUL: u32 = 0x0201;
 pub const HINT_BN254_PAIRING_CHECK: u32 = 0x0205;
 
 // Secp256k1 hint codes
-pub const HINT_SECP256K1_ECDSA_ADDRESS_RECOVER: u32 = 0x0300;
-pub const HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER: u32 = 0x0301;
+pub const HINT_SECP256K1_ECRECOVER: u32 = 0x0300;
+pub const HINT_SECP256K1_ECDSA_VERIFY: u32 = 0x0301;
 
 // Secp256r1 hint codes
 pub const HINT_SECP256R1_ECDSA_VERIFY: u32 = 0x0380;
@@ -94,6 +99,9 @@ pub const HINT_KECCAK256: u32 = 0x0700;
 
 // Blake2b hint codes
 pub const HINT_BLAKE2B_COMPRESS: u32 = 0x0800;
+
+// RIPEMD-160 hint codes
+pub const HINT_RIPEMD160: u32 = 0x0900;
 
 /// Control code variants for stream control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -139,6 +147,10 @@ impl TryFrom<u32> for CtrlHint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum BuiltInHint {
+    // INPUT hint types.
+    /// Input data hint.
+    Input = HINT_INPUT,
+
     // SHA256 hint types.
     /// Compute SHA-256 hash
     Sha256 = HINT_SHA256,
@@ -152,10 +164,10 @@ pub enum BuiltInHint {
     Bn254PairingCheck = HINT_BN254_PAIRING_CHECK,
 
     // Secp256k1 hint types.
-    /// secp256k1 ECDSA address recovery.
-    Secp256k1EcdsaAddressRecover = HINT_SECP256K1_ECDSA_ADDRESS_RECOVER,
-    /// secp256k1 ECDSA signature verification and address recovery.
-    Secp256k1EcdsaVerifyAddressRecover = HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER,
+    /// secp256k1 ECDSA recovery returning raw 64-byte public key (matches zkvm_secp256k1_ecrecover).
+    Secp256k1Ecrecover = HINT_SECP256K1_ECRECOVER,
+    /// secp256k1 ECDSA signature verification (matches zkvm_secp256k1_verify).
+    Secp256k1EcdsaVerify = HINT_SECP256K1_ECDSA_VERIFY,
 
     // Secp256r1 hint types.
     /// secp256r1 (P-256) signature verification.
@@ -192,11 +204,17 @@ pub enum BuiltInHint {
     // Blake2b hint types.
     /// Blake2b compression function.
     Blake2bCompress = HINT_BLAKE2B_COMPRESS,
+
+    // RIPEMD-160 hint types.
+    /// RIPEMD-160 hash (pure software implementation, no ZK circuit witness).
+    Ripemd160 = HINT_RIPEMD160,
 }
 
 impl Display for BuiltInHint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
+            // INPUT hint types
+            BuiltInHint::Input => "INPUT",
             // SHA256 hint types
             BuiltInHint::Sha256 => "SHA256",
             // BN254 Hints
@@ -204,10 +222,8 @@ impl Display for BuiltInHint {
             BuiltInHint::Bn254G1Mul => "BN254_G1_MUL",
             BuiltInHint::Bn254PairingCheck => "BN254_PAIRING_CHECK",
             // Secp256k1 Hints
-            BuiltInHint::Secp256k1EcdsaAddressRecover => "SECP256K1_ECDSA_ADDRESS_RECOVER",
-            BuiltInHint::Secp256k1EcdsaVerifyAddressRecover => {
-                "SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER"
-            }
+            BuiltInHint::Secp256k1Ecrecover => "SECP256K1_ECRECOVER",
+            BuiltInHint::Secp256k1EcdsaVerify => "SECP256K1_ECDSA_VERIFY",
             // Secp256r1 Hints
             BuiltInHint::Secp256r1EcdsaVerify => "SECP256R1_ECDSA_VERIFY",
             // BLS12-381 Hints
@@ -226,6 +242,8 @@ impl Display for BuiltInHint {
             BuiltInHint::Keccak256 => "KECCAK256",
             // Blake2b Hint
             BuiltInHint::Blake2bCompress => "BLAKE2B_COMPRESS",
+            // RIPEMD-160 Hint
+            BuiltInHint::Ripemd160 => "RIPEMD160",
         };
 
         write!(f, "{} ({:#x})", name, *self as u32)
@@ -237,6 +255,8 @@ impl TryFrom<u32> for BuiltInHint {
 
     fn try_from(value: u32) -> Result<Self> {
         match value {
+            // INPUT hint types
+            HINT_INPUT => Ok(Self::Input),
             // SHA256 hint types
             HINT_SHA256 => Ok(Self::Sha256),
             // BN254 Hints
@@ -244,10 +264,8 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_BN254_G1_MUL => Ok(Self::Bn254G1Mul),
             HINT_BN254_PAIRING_CHECK => Ok(Self::Bn254PairingCheck),
             // Secp256k1 Hints
-            HINT_SECP256K1_ECDSA_ADDRESS_RECOVER => Ok(Self::Secp256k1EcdsaAddressRecover),
-            HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER => {
-                Ok(Self::Secp256k1EcdsaVerifyAddressRecover)
-            }
+            HINT_SECP256K1_ECRECOVER => Ok(Self::Secp256k1Ecrecover),
+            HINT_SECP256K1_ECDSA_VERIFY => Ok(Self::Secp256k1EcdsaVerify),
             // Secp256r1 Hints
             HINT_SECP256R1_ECDSA_VERIFY => Ok(Self::Secp256r1EcdsaVerify),
             // BLS12-381 Hints
@@ -266,6 +284,8 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_KECCAK256 => Ok(Self::Keccak256),
             // Blake2b Hint
             HINT_BLAKE2B_COMPRESS => Ok(Self::Blake2bCompress),
+            // RIPEMD-160 Hint
+            HINT_RIPEMD160 => Ok(Self::Ripemd160),
             _ => Err(anyhow::anyhow!("Invalid built-in hint code: {:#x}", value)),
         }
     }
@@ -322,6 +342,8 @@ impl HintCode {
             HintCode::Ctrl(CtrlHint::Error) => CTRL_ERROR,
 
             // Built-In Hint Codes
+            // INPUT hint types
+            HintCode::BuiltIn(BuiltInHint::Input) => HINT_INPUT,
             // SHA256 Hints
             HintCode::BuiltIn(BuiltInHint::Sha256) => HINT_SHA256,
             // BN254 Hints
@@ -329,12 +351,8 @@ impl HintCode {
             HintCode::BuiltIn(BuiltInHint::Bn254G1Mul) => HINT_BN254_G1_MUL,
             HintCode::BuiltIn(BuiltInHint::Bn254PairingCheck) => HINT_BN254_PAIRING_CHECK,
             // Secp256k1 Hints
-            HintCode::BuiltIn(BuiltInHint::Secp256k1EcdsaAddressRecover) => {
-                HINT_SECP256K1_ECDSA_ADDRESS_RECOVER
-            }
-            HintCode::BuiltIn(BuiltInHint::Secp256k1EcdsaVerifyAddressRecover) => {
-                HINT_SECP256K1_ECDSA_VERIFY_ADDRESS_RECOVER
-            }
+            HintCode::BuiltIn(BuiltInHint::Secp256k1Ecrecover) => HINT_SECP256K1_ECRECOVER,
+            HintCode::BuiltIn(BuiltInHint::Secp256k1EcdsaVerify) => HINT_SECP256K1_ECDSA_VERIFY,
             // Secp256r1 Hints
             HintCode::BuiltIn(BuiltInHint::Secp256r1EcdsaVerify) => HINT_SECP256R1_ECDSA_VERIFY,
             // BLS12-381 Hints
@@ -354,6 +372,8 @@ impl HintCode {
 
             // Blake2b Hint
             HintCode::BuiltIn(BuiltInHint::Blake2bCompress) => HINT_BLAKE2B_COMPRESS,
+            // RIPEMD-160 Hint
+            HintCode::BuiltIn(BuiltInHint::Ripemd160) => HINT_RIPEMD160,
 
             // Custom Hints
             HintCode::Custom(code) => code,

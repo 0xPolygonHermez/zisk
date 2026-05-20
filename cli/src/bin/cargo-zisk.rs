@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use cargo_zisk::commands::{
-    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskProve, ZiskProveSnark, ZiskRomSetup,
-    ZiskRun, ZiskSdk, ZiskStats, ZiskVerify, ZiskVerifyConstraints, ZiskVerifySnark,
+    ZiskBuild, ZiskCheckSetup, ZiskClean, ZiskExecute, ZiskNew, ZiskProgramSetup, ZiskProve,
+    ZiskRun, ZiskStats, ZiskToolchain, ZiskUtils, ZiskVerify, ZiskVerifyConstraints, ZiskWrap,
 };
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -17,17 +17,21 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 )]
 pub enum Cargo {
     Build(ZiskBuild),
+    #[command(hide = true)]
     CheckSetup(ZiskCheckSetup),
     Clean(ZiskClean),
     Execute(ZiskExecute),
+    New(ZiskNew),
+    WrapProof(ZiskWrap),
     Prove(ZiskProve),
-    ProveSnark(ZiskProveSnark),
-    RomSetup(ZiskRomSetup),
+    ProgramSetup(ZiskProgramSetup),
     Run(ZiskRun),
-    Sdk(ZiskSdk),
+    #[command(hide = true)]
     Stats(ZiskStats),
+    Toolchain(ZiskToolchain),
+    Utils(ZiskUtils),
     Verify(ZiskVerify),
-    VerifySnark(ZiskVerifySnark),
+    #[command(hide = true)]
     VerifyConstraints(ZiskVerifyConstraints),
 }
 
@@ -45,13 +49,16 @@ fn main() -> Result<()> {
         Cargo::Clean(cmd) => {
             cmd.run().context("Error executing Clean command")?;
         }
+        Cargo::New(cmd) => {
+            cmd.run().context("Error executing New command")?;
+        }
         Cargo::Prove(mut cmd) => {
             cmd.run().context("Error executing Prove command")?;
         }
-        Cargo::ProveSnark(cmd) => {
-            cmd.run().context("Error executing ProveSnark command")?;
+        Cargo::WrapProof(cmd) => {
+            cmd.run().context("Error executing WrapProof command")?;
         }
-        Cargo::RomSetup(cmd) => {
+        Cargo::ProgramSetup(mut cmd) => {
             cmd.run().context("Error executing RomSetup command")?;
         }
         Cargo::Run(cmd) => {
@@ -60,17 +67,17 @@ fn main() -> Result<()> {
         Cargo::Stats(mut cmd) => {
             cmd.run().context("Error executing Stats command")?;
         }
+        Cargo::Toolchain(mut cmd) => {
+            cmd.run().context("Error executing Toolchain command")?;
+        }
+        Cargo::Utils(mut cmd) => {
+            cmd.run().context("Error executing Utils command")?;
+        }
         Cargo::Execute(mut cmd) => {
             cmd.run().context("Error executing Execute command")?;
         }
-        Cargo::Sdk(cmd) => {
-            cmd.command.run().context("Error executing SDK command")?;
-        }
         Cargo::Verify(cmd) => {
             cmd.run().map_err(|e| anyhow!("Error executing Verify command: {}", e))?;
-        }
-        Cargo::VerifySnark(cmd) => {
-            cmd.run().context("Error executing VerifySnark command")?;
         }
         Cargo::VerifyConstraints(mut cmd) => {
             cmd.run().context("Error executing VerifyConstraints command")?;

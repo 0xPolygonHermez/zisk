@@ -18,12 +18,12 @@ pub unsafe extern "C" fn hint_custom(
 
     let mut w = HINT_BUFFER.begin_hint(hint_id, data_len, is_result != 0);
 
-    w.write_hint_data_ptr(data_ptr, data_len);
+    w.write_data_ptr(data_ptr, data_len);
 
     let pad = (8 - (data_len & 7)) & 7;
     if pad > 0 {
         const ZERO_PAD: [u8; 8] = [0; 8];
-        w.write_hint_data_slice(&ZERO_PAD[..pad]);
+        w.write_data_slice(&ZERO_PAD[..pad]);
     }
 
     w.commit();

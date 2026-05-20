@@ -3,71 +3,103 @@
 //! This module handles the execution of a ZisK ROM program, coordinating
 //! the emulator backend and hints stream processing.
 
-use crate::{
-    AsmResources, DeviceMetricsList, Emulator, EmulatorKind, NestedDeviceMetricsList,
-    StaticSMBundle,
-};
+use crate::pub_outs_collector::PubOutsCollector;
+use crate::{AsmResources, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList, StaticSMBundle};
+use arc_swap::ArcSwap;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use std::{sync::Mutex, thread::JoinHandle};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, EmuTrace, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
+
+use anyhow::Result;
 
 /// Output from ROM execution.
 pub struct RomExecutionOutput {
     /// Minimal traces collected during execution.
     pub min_traces: Vec<EmuTrace>,
-    /// Device metrics for main state machines.
-    pub main_count: DeviceMetricsList,
     /// Device metrics for secondary state machines.
-    pub secn_count: NestedDeviceMetricsList,
+    pub counters: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
-    pub handle_mo: Option<JoinHandle<AsmRunnerMO>>,
+    pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
-    pub handle_rh: Option<JoinHandle<AsmRunnerRH>>,
+    pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
     /// Execution result with step counts.
     pub steps: u64,
+    /// Public outputs accumulated during execution (low/high 32-bit halves).
+    pub pub_outs: PubOutsCollector,
 }
 
 pub struct RomExecutor {
-    /// The emulator backend used for execution.
-    emulator: EmulatorKind,
+    // Emulator backend for executing the ROM program in ASM.
+    emulator_asm: EmulatorAsm,
+
+    // Emulator backend for executing the ROM program in native.
+    emulator_rust: EmulatorRust,
+
+    is_asm_execution: AtomicBool,
 
     /// Standard input for the ZisK program execution.
-    stdin: Mutex<ZiskStdin>,
+    stdin: ArcSwap<ZiskStdin>,
 }
 
 impl RomExecutor {
     /// Creates a new `RomExecutor`.
     ///
     /// # Arguments
-    /// * `emulator` - The emulator backend to use.
-    /// * `hints_stream` - Optional hints stream for precompile processing.
-    pub fn new(emulator: EmulatorKind) -> Self {
-        Self { emulator, stdin: Mutex::new(ZiskStdin::null()) }
+    /// * `chunk_size` - Chunk size for processing.
+    pub fn new(chunk_size: u64) -> Self {
+        Self {
+            emulator_asm: EmulatorAsm::new(chunk_size),
+            emulator_rust: EmulatorRust::new(chunk_size),
+            is_asm_execution: AtomicBool::new(false),
+            stdin: ArcSwap::from_pointee(ZiskStdin::new()),
+        }
+    }
+
+    pub fn is_asm_emulator(&self) -> bool {
+        self.is_asm_execution.load(Ordering::SeqCst)
     }
 
     /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) {
-        *self.stdin.lock().unwrap() = stdin;
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+        self.stdin.store(Arc::new(stdin));
+        Ok(())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
-        self.emulator.set_asm_resources(asm_resources);
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+        self.is_asm_execution.store(true, Ordering::SeqCst);
+        self.emulator_asm.set_asm_resources(asm_resources)
     }
 
-    /// Resets the hints stream if configured.
-    pub fn reset_hints_stream(&self) {
-        self.emulator.reset_hints_stream()
+    /// Clears the ASM-execution flag so subsequent `execute` calls route through the
+    /// Rust emulator. Used when switching to a program that was set up emulator-only.
+    pub fn clear_asm_resources(&self) {
+        self.is_asm_execution.store(false, Ordering::SeqCst);
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
-        self.emulator.get_asm_execution_info()
+    /// Returns a reference to the ASM emulator if ASM execution is active.
+    pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
+        self.is_asm_execution.load(Ordering::SeqCst).then_some(&self.emulator_asm)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.emulator.set_rh_data(rh_data);
+    /// Resets the ASM pipeline for the next job.
+    pub fn reset(&self) -> Result<()> {
+        if let Some(asm) = self.asm_emulator() {
+            asm.reset()?;
+        }
+        Ok(())
+    }
+
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+        if self.is_asm_execution.load(Ordering::SeqCst) {
+            self.emulator_asm.get_asm_execution_info()
+        } else {
+            Ok(None)
+        }
     }
 
     /// Executes the ROM program and collects minimal traces.
@@ -90,11 +122,22 @@ impl RomExecutor {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> RomExecutionOutput {
-        let (min_traces, main_count, secn_count, handle_mo, handle_rh, steps) = self
-            .emulator
-            .execute(zisk_rom, &self.stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope);
+    ) -> Result<RomExecutionOutput> {
+        let stdin = self.stdin.load_full();
+        let (min_traces, counters, handle_mo, handle_rh, steps, pub_outs) =
+            match self.is_asm_execution.load(Ordering::SeqCst) {
+                true => self.emulator_asm.execute(
+                    zisk_rom,
+                    &stdin,
+                    pctx,
+                    sm_bundle,
+                    use_hints,
+                    stats,
+                    caller_stats_scope,
+                )?,
+                false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle)?,
+            };
 
-        RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, handle_rh, steps }
+        Ok(RomExecutionOutput { min_traces, counters, handle_mo, handle_rh, steps, pub_outs })
     }
 }

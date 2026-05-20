@@ -2,13 +2,13 @@ use crate::zisklib::{eq, fcall_secp256r1_ecdsa_verify, gt, is_zero};
 
 use super::{
     constants::{IDENTITY, N_MINUS_ONE, P_MINUS_ONE},
-    curve::{secp256r1_is_on_curve, secp256r1_triple_scalar_mul_with_g},
-    scalar::{secp256r1_fn_neg, secp256r1_fn_reduce},
+    curve::{is_on_curve_secp256r1, triple_scalar_mul_with_g_secp256r1},
+    scalar::{neg_fn_secp256r1, reduce_fn_secp256r1},
 };
 
 /// Verifies the signature (r, s) over the message hash z using the public key pk
 /// Returns true if the signature is valid, false otherwise
-pub fn secp256r1_ecdsa_verify(
+pub fn ecdsa_verify_secp256r1(
     pk: &[u64; 8],
     z: &[u64; 4],
     r: &[u64; 4],
@@ -34,7 +34,7 @@ pub fn secp256r1_ecdsa_verify(
     if gt(&pk_x, &P_MINUS_ONE) || gt(&pk_y, &P_MINUS_ONE) {
         return false;
     }
-    if !secp256r1_is_on_curve(
+    if !is_on_curve_secp256r1(
         pk,
         #[cfg(feature = "hints")]
         hints,
@@ -60,7 +60,7 @@ pub fn secp256r1_ecdsa_verify(
 
     // Check the recovered point is valid
     // Note: Identity point would be raised here
-    if !secp256r1_is_on_curve(
+    if !is_on_curve_secp256r1(
         &point,
         #[cfg(feature = "hints")]
         hints,
@@ -69,12 +69,12 @@ pub fn secp256r1_ecdsa_verify(
     }
 
     // Check that [z]G + [r]PK + [-s](x,y) == 𝒪
-    let neg_s = secp256r1_fn_neg(
+    let neg_s = neg_fn_secp256r1(
         s,
         #[cfg(feature = "hints")]
         hints,
     );
-    if secp256r1_triple_scalar_mul_with_g(
+    if triple_scalar_mul_with_g_secp256r1(
         z,
         r,
         &neg_s,
@@ -91,7 +91,7 @@ pub fn secp256r1_ecdsa_verify(
     // Check that x ≡ r (mod n)
     let point_x: [u64; 4] = [point[0], point[1], point[2], point[3]];
     eq(
-        &secp256r1_fn_reduce(
+        &reduce_fn_secp256r1(
             &point_x,
             #[cfg(feature = "hints")]
             hints,
@@ -108,9 +108,8 @@ pub fn secp256r1_ecdsa_verify(
 /// - `pk_ptr` must point to 8 u64s
 ///
 /// Returns true if signature is valid
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_secp256r1_ecdsa_verify_c")]
-pub unsafe extern "C" fn secp256r1_ecdsa_verify_c(
+#[inline]
+pub(crate) unsafe fn secp256r1_ecdsa_verify_c(
     msg: *const u8,
     sig: *const u8,
     pk: *const u8,
@@ -136,7 +135,7 @@ pub unsafe extern "C" fn secp256r1_ecdsa_verify_c(
     let pk_y = bytes_be_to_u64_le(&pk_y_bytes);
 
     let pk: [u64; 8] = [pk_x[0], pk_x[1], pk_x[2], pk_x[3], pk_y[0], pk_y[1], pk_y[2], pk_y[3]];
-    secp256r1_ecdsa_verify(
+    ecdsa_verify_secp256r1(
         &pk,
         &z,
         &r,

@@ -21,21 +21,15 @@ use anyhow::{Context, Result};
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
-pub struct MOOutputShmem {
+pub struct MOShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }
 
-impl MOOutputShmem {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MO, local_rank, None);
+impl MOShMemReader {
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
         let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
             &output_name,
@@ -53,7 +47,7 @@ impl MOOutputShmem {
     }
 }
 
-impl Drop for MOOutputShmem {
+impl Drop for MOShMemReader {
     fn drop(&mut self) {
         if let Some(handle_mo) = self.handle_mo.take() {
             match handle_mo.join() {
@@ -81,19 +75,15 @@ impl AsmRunnerMO {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run(
-        preloaded: &mut MOOutputShmem,
+        preloaded: &mut MOShMemReader,
         max_steps: u64,
         chunk_size: u64,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
     ) -> Result<Self> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MO, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -105,7 +95,6 @@ impl AsmRunnerMO {
         let handle = std::thread::spawn(move || {
             stats_begin!(_thread_stats, _parent_id, _mo_scope, "ASM_MO", 0);
 
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
             #[allow(clippy::let_and_return)]
             let result = asm_services.send_memory_ops_request(max_steps, chunk_size);
 
@@ -114,10 +103,17 @@ impl AsmRunnerMO {
             result
         });
 
-        let mem_planner = preloaded
-            .mem_planner
-            .take()
-            .unwrap_or_else(|| preloaded.handle_mo.take().unwrap().join().unwrap());
+        let mem_planner = match preloaded.mem_planner.take() {
+            Some(p) => p,
+            None => preloaded
+                .handle_mo
+                .take()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("MOShMemReader: both mem_planner and handle_mo are None")
+                })?
+                .join()
+                .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
+        };
 
         // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
@@ -199,41 +195,61 @@ impl AsmRunnerMO {
             }
         };
 
-        if exit_code != 0 {
-            return Err(AsmRunError::ExitCode(exit_code as u32))
-                .context("Child process returned error");
-        }
-
-        // Wait for the assembly emulator to complete writing the trace
-        let response = handle
-            .join()
-            .map_err(|_| AsmRunError::JoinPanic)?
-            .map_err(AsmRunError::ServiceError)?;
-
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
-
+        // Wind the C++ planner down before any further work. Without this,
+        // its background threads stay parked waiting for more chunks, and
+        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
+        // Mutex and hanging the next job's MO thread on lock acquisition.
         mem_planner.set_completed();
-        // Wait for mem_align_plans, this mem_align_plans are calculated in rust from
-        // counters calculated in C++
-        let mut mem_align_plans = mem_planner.wait_mem_align_plans();
         mem_planner.wait();
 
-        stats_end!(_stats, &_process_scope);
-        stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
+        // Compute the result; on any error we still fall through to the
+        // single re-stash point below so the next job has a planner ready.
+        let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
+            if exit_code != 0 {
+                return Err(AsmRunError::ExitCode(exit_code as u32))
+                    .context("Child process returned error");
+            }
 
-        let plans = mem_planner.collect_plans(&mut mem_align_plans);
+            let response = handle
+                .join()
+                .map_err(|_| AsmRunError::JoinPanic)?
+                .map_err(AsmRunError::ServiceError)?;
 
-        #[cfg(feature = "save_mem_plans")]
-        save_plans(&plans, "mem_plans_cpp.txt");
+            if response.result != 0 {
+                return Err(anyhow::anyhow!(
+                    "ASM MO service returned non-zero result: {}",
+                    response.result
+                ));
+            }
+            if response.trace_len == 0 {
+                return Err(anyhow::anyhow!("ASM MO service returned empty trace"));
+            }
+            if response.trace_len > response.allocated_len {
+                return Err(anyhow::anyhow!(
+                    "ASM MO service trace_len ({}) exceeds allocated_len ({})",
+                    response.trace_len,
+                    response.allocated_len
+                ));
+            }
 
-        stats_end!(_stats, &_collect_scope);
+            let mut mem_align_plans = mem_planner.wait_mem_align_plans();
+            stats_end!(_stats, &_process_scope);
+            stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
+            let plans = mem_planner.collect_plans(&mut mem_align_plans);
+            stats_end!(_stats, &_collect_scope);
+            Ok(plans)
+        })();
 
+        // Always re-stash the planner so the next call has one to take.
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
         }));
+
+        let plans = result?;
+
+        #[cfg(feature = "save_mem_plans")]
+        save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerMO::new(plans))

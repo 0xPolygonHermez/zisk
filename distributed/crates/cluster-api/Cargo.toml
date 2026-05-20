@@ -1,0 +1,18 @@
+[package]
+name = "zisk-cluster-api"
+description = "gRPC API layer for Distributed Network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zisk-cluster-common = { workspace = true }
+
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }

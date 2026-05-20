@@ -125,6 +125,9 @@ pub struct InstContext {
     pub extended_arg: i64,
 
     pub stats_hint: u64,
+
+    /// Input data length, stored in the context to be used by the FCALL_INPUT_READY_ID fcall
+    pub input_len: u64,
 }
 
 /// RisK instruction context implementation
@@ -149,6 +152,7 @@ impl InstContext {
             data_ext_len: 0,
             extended_arg: 0,
             stats_hint: 0,
+            input_len: 0,
         }
     }
 

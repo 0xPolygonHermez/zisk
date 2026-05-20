@@ -2,6 +2,9 @@
 #define EMU_ASM_HPP
 
 #include <stdint.h>
+#include <sys/time.h>
+
+uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
 
 #ifdef DEBUG
 extern bool emu_verbose;

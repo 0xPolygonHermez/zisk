@@ -16,20 +16,20 @@ zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 data-bus = { workspace = true }
 asm-runner = { workspace = true }
-mem-planner-cpp = { workspace = true }
 mem-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }
-fields = { workspace=true }
+fields = { workspace = true }
 tracing = { workspace = true }
-itertools = { workspace = true }
 rayon = { workspace = true }
 pil-std-lib = { workspace = true }
 precompiles-hints = { workspace = true }
 anyhow = { workspace = true }
+arc-swap = { workspace = true }
+paste = { workspace = true }
 crossbeam = "0.8.4"
 
 precompiles-common = { workspace = true }
@@ -45,29 +45,10 @@ precomp-dma = { workspace = true }
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 sm-mem = { workspace = true }
-sm-frequent-ops = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = { workspace = true }
 
 [features]
 default = []
-disable_distributed = []
-gpu = ["proofman-common/gpu", "proofman/gpu", "packed"]
-packed = [
-    "proofman-common/packed",
-    "precomp-keccakf/packed",
-    "precomp-sha256f/packed",
-    "precomp-poseidon2/packed",
-    "precomp-arith-eq/packed",
-    "precomp-arith-eq-384/packed",
-    "precomp-big-int/packed",
-    "precomp-dma/packed",
-    "sm-arith/packed",
-    "sm-binary/packed",
-    "sm-main/packed",
-    "sm-mem/packed",
-    "sm-frequent-ops/packed",
-    "sm-rom/packed",
-]
 stats = []

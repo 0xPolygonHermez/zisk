@@ -1,9 +1,9 @@
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 // fcall_get 0xFFE
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub fn ziskos_fcall_get() -> u64 {
     let value: u64;
     unsafe {
@@ -95,7 +95,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     (12) => {
         [
             read_csr_ffe(),
@@ -111,7 +111,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     (16) => {
         [
             read_csr_ffe(),
@@ -131,7 +131,7 @@ macro_rules! ziskos_fcall_mget {
             read_csr_ffe(),
             read_csr_ffe(),
         ]
-    }; // afegeix més si cal
+    }; // add more if needed
     ($len:expr) => {{
         let mut arr = [0u64; $len];
         let mut i = 0;

@@ -3,7 +3,8 @@ use super::fp2_inv::{
     bls12_381_fp2_square, bls12_381_fp2_sub,
 };
 
-/// Computes the coefficients (𝜆,𝜇) of a line passing through points (x1,y1),(x2,y2)
+/// Computes the coefficients (𝜆,𝜇) of a line passing through points (x1,y1),(x2,y2).
+/// It assumes that x1 != x2.
 pub fn fcall_bls12_381_twist_add_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x1: &[u64; 12] = &params[0..12].try_into().unwrap();
@@ -37,7 +38,8 @@ pub fn bls12_381_twist_add_line_coeffs(
     (lambda, mu)
 }
 
-/// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y)
+/// Computes the coefficients (𝜆,𝜇) of the tangent line at the point (x,y).
+/// It assumes y != 0.
 pub fn fcall_bls12_381_twist_dbl_line_coeffs(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let x: &[u64; 12] = &params[0..12].try_into().unwrap();
@@ -63,4 +65,69 @@ pub fn bls12_381_twist_dbl_line_coeffs(x: &[u64; 12], y: &[u64; 12]) -> ([u64; 1
     let mu = bls12_381_fp2_sub(y, &bls12_381_fp2_mul(&lambda, x));
 
     (lambda, mu)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_line_coeffs() {
+        let x1 = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let y1 = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let x2 = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let y2 = [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let params = [x1, y1, x2, y2].concat();
+        let mut results = [0; 24];
+        fcall_bls12_381_twist_add_line_coeffs(&params, &mut results);
+        let lambda: &[u64; 12] = &results[0..12].try_into().unwrap();
+        let mu: &[u64; 12] = &results[12..24].try_into().unwrap();
+        assert_eq!(lambda, &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(mu, &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_dbl_line_coeffs() {
+        let x = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let y = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let params = [x, y].concat();
+        let mut results = [0; 24];
+        fcall_bls12_381_twist_dbl_line_coeffs(&params, &mut results);
+        let lambda: &[u64; 12] = &results[0..12].try_into().unwrap();
+        let mu: &[u64; 12] = &results[12..24].try_into().unwrap();
+        assert_eq!(
+            lambda,
+            &[
+                14663509280485785601,
+                1657606133637906431,
+                10188441948600449179,
+                10041189488738422287,
+                13282449870707802529,
+                1405348963235654899,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        );
+        assert_eq!(
+            mu,
+            &[
+                17185665809301629612,
+                552535377879302143,
+                15693976698673184137,
+                15644892545385841839,
+                10576397981472451381,
+                468449654411884966,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        );
+    }
 }

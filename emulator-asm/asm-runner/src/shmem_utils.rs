@@ -1,6 +1,7 @@
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use libc::shm_unlink;
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
-    S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR, S_IWUSR,
 };
 use proofman_common::format_bytes;
 use std::{
@@ -12,11 +13,8 @@ use std::{
     sync::atomic::{fence, Ordering},
 };
 use tracing::info;
-use zisk_common::io::{ZiskIO, ZiskStdin};
 
-use crate::{AsmInputHeader, SharedMemoryWriter};
-use anyhow::anyhow;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 pub enum AsmSharedMemoryMode {
     ReadOnly,
@@ -41,6 +39,9 @@ pub trait AsmShmemHeader: Debug {
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     fn drop(&mut self) {
+        if let Ok(c_name) = std::ffi::CString::new(self.shmem_name.clone()) {
+            unsafe { shm_unlink(c_name.as_ptr()) };
+        }
         self.unmap().unwrap_or_else(|err| {
             tracing::error!("Failed to unmap shared memory '{}': {}", self.shmem_name, err)
         });
@@ -63,17 +64,6 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
-            }
-
-            // Unlink the shared memory object to ensure it is removed after use
-            // This is necessary to avoid leaving stale shared memory objects
-            // in the system, especially if the program crashes or exits unexpectedly.
-            // Note: This does not affect the current mapping, it just ensures that
-            // the shared memory object is removed from the filesystem namespace.
-            if shm_unlink(c_name.as_ptr()) != 0 {
-                let err = io::Error::last_os_error();
-                close(fd);
-                return Err(anyhow::anyhow!("shm_unlink('{name}') failed: {err}"));
             }
 
             #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
@@ -276,10 +266,14 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         // Skip the header size to get the data pointer
         unsafe { self.mapped_ptr.add(size_of::<H>()) }
     }
+
+    pub fn mapped_size(&self) -> usize {
+        self.mapped_size
+    }
 }
 
 pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
-    let c_name = CString::new(name).expect("CString::new failed");
+    let c_name = CString::new(name)?;
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
 
     if fd == -1 {
@@ -332,25 +326,4 @@ pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
     if munmap(ptr, size) != 0 {
         tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
     }
-}
-
-pub fn write_input(stdin: &ZiskStdin, shmem_input_writer: &SharedMemoryWriter) {
-    const HEADER_SIZE: usize = size_of::<AsmInputHeader>();
-
-    let inputs = stdin.read_bytes();
-
-    let shmem_input_size = (HEADER_SIZE + inputs.len() + 7) & !7;
-
-    let mut full_input = Vec::with_capacity(shmem_input_size);
-
-    let header = AsmInputHeader { zero: 0, input_data_size: 0 };
-    full_input.extend_from_slice(&header.to_bytes());
-    full_input.extend_from_slice(&inputs);
-    while full_input.len() < shmem_input_size {
-        full_input.push(0);
-    }
-
-    shmem_input_writer.write_input(&full_input).expect("Failed to write input to shared memory");
-
-    shmem_input_writer.write_u64_at(8, inputs.len() as u64);
 }

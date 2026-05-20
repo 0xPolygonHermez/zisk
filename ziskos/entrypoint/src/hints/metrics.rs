@@ -57,5 +57,6 @@ pub(crate) fn reset_metrics() {
     let mut hints = HINTS_METRICS.write().expect("HINTS_METRICS poisoned");
     for (_, info) in hints.iter_mut() {
         info.count = 0;
+        info.size = 0;
     }
 }

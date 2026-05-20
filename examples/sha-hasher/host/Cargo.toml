@@ -5,38 +5,50 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
+sha-hasher-common = { path = "../common" }
 anyhow = "1.0"
-serde = { version = "1.0", default-features = false, features = ["derive"] }
 sha2 = "0.10.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 zisk-sdk = { workspace = true }
 
 [features]
 default = []
-packed = []
-gpu = ["zisk-sdk/gpu"]
+gpu = []
 
 [[bin]]
 name = "prove"
-path = "bin/prove.rs"
+path = "bin/embedded/prove.rs"
 
 [[bin]]
 name = "execute"
-path = "bin/execute.rs"
+path = "bin/embedded/execute.rs"
 
 [[bin]]
 name = "plonk"
-path = "bin/plonk.rs"
+path = "bin/embedded/plonk.rs"
 
 [[bin]]
-name = "compressed"
-path = "bin/compressed.rs"
+name = "minimal"
+path = "bin/embedded/minimal.rs"
 
 [[bin]]
-name = "verify-constraints"
-path = "bin/verify-constraints.rs"
+name = "run"
+path = "bin/run.rs"
 
 [[bin]]
-name = "ziskemu"
-path = "bin/ziskemu.rs"
+name = "prove-remote"
+path = "bin/remote/prove.rs"
+
+[[bin]]
+name = "execute-remote"
+path = "bin/remote/execute.rs"
+
+[[bin]]
+name = "plonk-remote"
+path = "bin/remote/plonk.rs"
+
+[[bin]]
+name = "minimal-remote"
+path = "bin/remote/minimal.rs"

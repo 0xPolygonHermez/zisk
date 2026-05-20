@@ -70,7 +70,7 @@ public:
             // if (chunk_id == 999999) {
                 for (int32_t i = 0; i < chunk_size; ++i) {
                     const uint32_t addr = chunk_data[i].addr;
-                    if (addr < 0x80000000 || addr >= 0x90000000) continue;
+                    if (addr < 0x40000000 || addr >= 0x80000000) continue;
                     const uint8_t bytes = chunk_data[i].flags & 0xFF; 
                     const uint8_t is_write = chunk_data[i].flags >> 16;
                     if (addr == 0x80000000) printf("=================> ADDR 0x80000000\n");

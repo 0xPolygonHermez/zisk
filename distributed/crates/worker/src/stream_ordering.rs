@@ -1,12 +1,12 @@
 use anyhow::Result;
-use precompiles_hints::HintsProcessor;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::mpsc;
 use std::sync::Arc;
 use tracing::{error, info};
+use zisk_cluster_common::{JobId, StreamDataDto, StreamMessageKind};
+use zisk_common::io::StreamProcessor;
 use zisk_common::reinterpret_vec;
-use zisk_distributed_common::{JobId, StreamDataDto, StreamMessageKind};
 
 /// Per-job actor that reorders out-of-order stream chunks and feeds them
 /// to `HintsProcessor::process_hints` in strict sequence order.
@@ -17,10 +17,10 @@ pub struct StreamOrderingActor {
 
 impl StreamOrderingActor {
     /// Spawns the ordering thread and returns the actor handle.
-    pub fn new(hints_processor: Arc<HintsProcessor>, job_id: JobId) -> Self {
+    pub fn new<P: StreamProcessor>(processor: Arc<P>, job_id: JobId) -> Self {
         let (tx, rx) = mpsc::channel::<StreamDataDto>();
 
-        let handle = std::thread::spawn(move || Self::run(rx, hints_processor, job_id));
+        let handle = std::thread::spawn(move || Self::run(rx, processor, job_id));
 
         Self { sender: Some(tx), thread_handle: Some(handle) }
     }
@@ -38,15 +38,19 @@ impl StreamOrderingActor {
 
     // Error propagation: when run_inner returns Err, rx is dropped, closing the channel.
     // The next actor.send() in the gRPC loop then returns Err.
-    fn run(rx: mpsc::Receiver<StreamDataDto>, hints_processor: Arc<HintsProcessor>, job_id: JobId) {
-        if let Err(e) = Self::run_inner(rx, &hints_processor, &job_id) {
+    fn run<P: StreamProcessor>(
+        rx: mpsc::Receiver<StreamDataDto>,
+        processor: Arc<P>,
+        job_id: JobId,
+    ) {
+        if let Err(e) = Self::run_inner(rx, &*processor, &job_id) {
             error!("Stream ordering actor failed for job {}: {}", job_id, e);
         }
     }
 
-    fn run_inner(
+    fn run_inner<P: StreamProcessor>(
         rx: mpsc::Receiver<StreamDataDto>,
-        hints_processor: &HintsProcessor,
+        processor: &P,
         job_id: &JobId,
     ) -> Result<()> {
         // Min-heap ordered by sequence number (Reverse makes BinaryHeap a min-heap)
@@ -92,7 +96,7 @@ impl StreamOrderingActor {
 
                         let hints = reinterpret_vec(combined)?;
                         let first = std::mem::replace(&mut is_first, false);
-                        hints_processor.process_hints(&hints, first)?;
+                        processor.process_hints(&hints, first)?;
                     }
                     StreamMessageKind::Start => {
                         return Err(anyhow::anyhow!(
@@ -111,12 +115,36 @@ impl StreamOrderingActor {
     }
 }
 
-impl Drop for StreamOrderingActor {
-    fn drop(&mut self) {
-        // Drop the sender first so the thread's recv() returns Err and exits
+impl StreamOrderingActor {
+    pub fn shutdown_and_join(mut self, timeout: std::time::Duration) {
         self.sender.take();
 
-        // Drop the ordering thread, it will terminate promptly once the channel is closed.
+        let Some(handle) = self.thread_handle.take() else { return };
+
+        // Bounded join: poll is_finished until timeout, then detach.
+        let deadline = std::time::Instant::now() + timeout;
+        while !handle.is_finished() {
+            if std::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    "StreamOrderingActor: shutdown timed out after {:?}; detaching thread",
+                    timeout
+                );
+                return; // detach
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = handle.join();
+    }
+}
+
+impl Drop for StreamOrderingActor {
+    fn drop(&mut self) {
+        // Drop the sender first so the thread's recv() returns Err and exits.
+        self.sender.take();
+
+        // Detach the ordering thread; it will terminate promptly once the channel
+        // is closed. Callers that need to *wait* for shutdown should use
+        // `shutdown_and_join` before dropping.
         self.thread_handle.take();
     }
 }

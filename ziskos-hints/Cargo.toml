@@ -15,6 +15,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+zkvm-interface = { workspace = true }
 lib-c = { workspace = true }
 
 num-bigint = { workspace = true }
@@ -23,8 +24,9 @@ num-traits = { workspace = true }
 
 precompiles-helpers = { workspace = true }
 
+rand = { workspace = true }
+
 lazy_static = "1.5.0"
-rand = "0.8.5"
 getrandom = { version = "0.2", features = ["custom"] }
 cfg-if = "1.0"
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
@@ -33,8 +35,10 @@ bincode = { workspace = true }
 paste = "1.0"
 sha2 = { workspace = true }
 fields = { workspace = true }
+ripemd = { workspace = true }
 
 anyhow = { workspace = true }
+zisk-verifier = { workspace = true }
 
 [features]
 default = ["hints"]
@@ -42,7 +46,8 @@ hints = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
-'cfg(zisk_hints)',
-'cfg(zisk_hints_metrics)',
-'cfg(zisk_hints_debug)',
-'cfg(zisk_hints_single_thread)'] }
+  'cfg(zisk_hints)',
+  'cfg(zisk_hints_metrics)',
+  'cfg(zisk_hints_debug)',
+  'cfg(zisk_hints_single_thread)',
+] }

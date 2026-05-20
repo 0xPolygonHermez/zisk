@@ -1,0 +1,17 @@
+[package]
+name = "big-program-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zisk-sdk = { workspace = true }
+test-artifacts = { workspace = true }
+anyhow = "1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[features]
+default = []
+gpu = []

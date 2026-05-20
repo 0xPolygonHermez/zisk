@@ -4,7 +4,8 @@
 //! centralizing the scattered `*_AIR_IDS.contains()` checks throughout the executor.
 
 use zisk_pil::{
-    INPUT_DATA_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 /// Helper for classifying AIR instances by their ID.
@@ -26,12 +27,22 @@ impl AirClassifier {
         air_id == ROM_AIR_IDS[0]
     }
 
+    #[inline]
+    pub fn is_keccakf(air_id: usize) -> bool {
+        air_id == KECCAKF_AIR_IDS[0]
+    }
+
     /// Checks if the plan targets the ROM instance that requires special handling.
     ///
     /// ROM instances need to be added to the proof context with first partition assignment.
     #[inline]
     pub fn is_rom_instance(airgroup_id: usize, air_id: usize) -> bool {
         airgroup_id == ZISK_AIRGROUP_ID && Self::is_rom(air_id)
+    }
+
+    #[inline]
+    pub fn is_keccakf_instance(airgroup_id: usize, air_id: usize) -> bool {
+        airgroup_id == ZISK_AIRGROUP_ID && Self::is_keccakf(air_id)
     }
 
     /// Checks if the AIR ID corresponds to a memory-related state machine.

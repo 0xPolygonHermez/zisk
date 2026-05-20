@@ -4,8 +4,10 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
 
+use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
@@ -28,125 +30,126 @@ fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-pub fn resolve_emulator_asm() -> Result<PathBuf> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+#[derive(Clone, Copy, Debug)]
+pub enum EmulatorAsmSource {
+    Workspace,
+    Installed,
+}
 
+pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
+    if std::env::var_os("ZISK_USE_INSTALLED").is_some_and(|v| !v.is_empty()) {
+        let installed_asm_path = ZiskPaths::global().emulator_asm.clone();
+        tracing::debug!(
+            "ZISK_USE_INSTALLED set, using installed emulator-asm at: {}",
+            installed_asm_path.display()
+        );
+        if !installed_asm_path.exists() {
+            anyhow::bail!("emulator-asm directory not found at: {}", installed_asm_path.display());
+        }
+        return Ok((installed_asm_path, EmulatorAsmSource::Installed));
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root =
         if manifest_dir.exists() { find_workspace_root(&manifest_dir) } else { None };
 
     let cargo_available = Command::new("cargo")
         .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map(|status| status.success())
         .unwrap_or(false);
 
-    // Check if we can build from workspace (need both cargo and workspace with ziskclib)
-    let can_build_from_workspace = cargo_available
-        && if let Some(ref root) = workspace_root {
-            let candidate = root.join("emulator-asm");
-            let ziskclib_path = root.join("ziskclib");
-            candidate.exists() && ziskclib_path.exists()
-        } else {
-            false
-        };
+    let workspace_choice = workspace_root.as_ref().and_then(|root| {
+        let candidate = root.join("emulator-asm");
+        let ziskclib = root.join("ziskclib");
+        (cargo_available && candidate.exists() && ziskclib.exists()).then_some(candidate)
+    });
 
-    let installed_path = crate::get_default_zisk_path();
-    let installed_asm_path = installed_path.join("zisk/emulator-asm");
-
-    let emulator_asm_path = if can_build_from_workspace {
-        let candidate = workspace_root.unwrap().join("emulator-asm");
-        tracing::debug!("Using emulator-asm from workspace: {}", candidate.display());
-        candidate
+    let (emulator_asm_path, source) = if let Some(path) = workspace_choice {
+        tracing::debug!("Using emulator-asm from workspace: {}", path.display());
+        (path, EmulatorAsmSource::Workspace)
     } else {
-        if !cargo_available {
-            tracing::debug!(
-                "Cargo not available, using installed path: {}",
-                installed_asm_path.display()
-            );
+        let installed_asm_path = ZiskPaths::global().emulator_asm.clone();
+        let reason = if !cargo_available {
+            "cargo not available"
         } else if workspace_root.is_none() {
-            tracing::debug!(
-                "No workspace found, using installed path: {}",
-                installed_asm_path.display()
-            );
+            "no workspace found"
         } else {
-            tracing::debug!(
-                "Workspace missing ziskclib source, using installed path: {}",
-                installed_asm_path.display()
-            );
-        }
-
-        installed_asm_path.clone()
+            "workspace missing emulator-asm or ziskclib source"
+        };
+        tracing::debug!(
+            "Using installed emulator-asm at {} ({reason})",
+            installed_asm_path.display()
+        );
+        (installed_asm_path, EmulatorAsmSource::Installed)
     };
-
-    tracing::info!("Looking for emulator-asm at: {}", emulator_asm_path.display());
 
     if !emulator_asm_path.exists() {
         anyhow::bail!("emulator-asm directory not found at: {}", emulator_asm_path.display());
     }
 
-    let emulator_parent =
-        emulator_asm_path.parent().context("Failed to get parent directory of emulator-asm")?;
-    let ziskclib_path = emulator_parent.join("ziskclib");
+    Ok((emulator_asm_path, source))
+}
 
-    let target_lib_path = if emulator_asm_path == installed_asm_path {
-        // For installed path, look in .zisk/bin/
-        installed_path.join("bin").join("libziskclib.a")
-    } else {
-        // For workspace builds, look in target/release/
-        emulator_parent.join("target/release/libziskclib.a")
+pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> {
+    let emulator_parent =
+        emu_dir.parent().context("Failed to get parent directory of emulator-asm")?;
+
+    let target_lib_path = match source {
+        EmulatorAsmSource::Installed => ZiskPaths::global().libziskclib.clone(),
+        EmulatorAsmSource::Workspace => emulator_parent.join("target/release/libziskclib.a"),
     };
 
-    tracing::info!("Looking for ziskclib at: {}", target_lib_path.display());
+    tracing::debug!("Looking for ziskclib at: {}", target_lib_path.display());
 
-    // Only try to build if cargo is available and ziskclib source exists
-    if cargo_available && ziskclib_path.exists() {
-        tracing::debug!("Found ziskclib at: {}", ziskclib_path.display());
-        tracing::debug!("Building ziskclib...");
+    match source {
+        EmulatorAsmSource::Workspace => {
+            tracing::debug!("Building ziskclib...");
 
-        let output = Command::new("cargo")
-            .args(["build", "--release", "-p", "ziskclib"])
-            .current_dir(emulator_parent)
-            .output()
-            .context("Failed to execute cargo build for ziskclib")?;
+            let output = Command::new("cargo")
+                .args(["build", "--release", "-p", "ziskclib"])
+                .current_dir(emulator_parent)
+                .output()
+                .context("Failed to execute cargo build for ziskclib")?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            anyhow::bail!("Failed to build ziskclib:\nstdout: {}\nstderr: {}", stdout, stderr);
-        }
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                anyhow::bail!("Failed to build ziskclib:\nstdout: {}\nstderr: {}", stdout, stderr);
+            }
 
-        if !target_lib_path.exists() {
-            anyhow::bail!(
-                "ziskclib build succeeded but library not found at: {}",
-                target_lib_path.display()
-            );
-        }
-
-        tracing::debug!("ziskclib built successfully at: {}", target_lib_path.display());
-    } else {
-        if !target_lib_path.exists() {
-            if emulator_asm_path == installed_path {
+            if !target_lib_path.exists() {
                 anyhow::bail!(
-                    "Pre-built libziskclib.a not found at: {}\nPlease ensure zisk is properly installed",
-                    target_lib_path.display()
-                );
-            } else if cargo_available {
-                anyhow::bail!(
-                    "libziskclib.a not found at: {}\nziskclib directory not found at: {}\nCannot build or locate ziskclib library",
-                    target_lib_path.display(),
-                    ziskclib_path.display()
-                );
-            } else {
-                anyhow::bail!(
-                    "libziskclib.a not found at: {}\nCargo not available for building from source\nConsider using the installed version instead",
+                    "ziskclib build succeeded but library not found at: {}",
                     target_lib_path.display()
                 );
             }
+
+            tracing::debug!("ziskclib built successfully at: {}", target_lib_path.display());
         }
-        tracing::debug!("Using existing ziskclib at: {}", target_lib_path.display());
+        EmulatorAsmSource::Installed => {
+            if !target_lib_path.exists() {
+                anyhow::bail!(
+                    "Pre-built libziskclib.a not found at: {}\nPlease ensure zisk is properly installed via ziskup",
+                    target_lib_path.display()
+                );
+            }
+            tracing::debug!("Using existing ziskclib at: {}", target_lib_path.display());
+        }
     }
 
-    Ok(emulator_asm_path)
+    Ok(())
+}
+
+fn asm_file_base(name: &str, hash: &str, hints: bool) -> String {
+    let prefix = if name != hash { format!("{name}-{hash}") } else { hash.to_string() };
+    if hints {
+        format!("{prefix}-hints")
+    } else {
+        prefix
+    }
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path
@@ -156,31 +159,18 @@ pub fn get_assembly_file_paths(
     hints: bool,
 ) -> Result<Vec<PathBuf>> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
-
-    let stem = elf
+    let elf_name = elf
         .file_stem()
         .context("Failed to extract file stem from ELF path")?
         .to_str()
         .context("Failed to convert ELF file stem to string")?;
-    let stem = if hints { format!("{stem}-hints") } else { stem.to_string() };
-    let new_filename = format!("{stem}-{elf_hash}.tmp");
-    let base_path = output_path.join(new_filename);
-    let file_stem = base_path
-        .file_stem()
-        .context("Failed to extract file stem from base path")?
-        .to_str()
-        .context("Failed to convert file stem to string")?;
+    let base = asm_file_base(elf_name, &elf_hash, hints);
 
-    let bin_mt_file = format!("{file_stem}-mt.bin");
-    let bin_mt_file = base_path.with_file_name(bin_mt_file);
-
-    let bin_rh_file = format!("{file_stem}-rh.bin");
-    let bin_rh_file = base_path.with_file_name(bin_rh_file);
-
-    let bin_mo_file = format!("{file_stem}-mo.bin");
-    let bin_mo_file = base_path.with_file_name(bin_mo_file);
-
-    Ok(vec![bin_mt_file, bin_rh_file, bin_mo_file])
+    Ok(vec![
+        output_path.join(format!("{base}-mt.bin")),
+        output_path.join(format!("{base}-rh.bin")),
+        output_path.join(format!("{base}-mo.bin")),
+    ])
 }
 
 /// Check if all assembly binary files exist for a given ELF and output path
@@ -220,31 +210,20 @@ pub fn generate_assembly(
     hints: bool,
     verbose: bool,
 ) -> Result<(), anyhow::Error> {
-    let elf_hash = blake3::hash(elf).to_hex().to_string();
+    let elf_hash = get_elf_data_hash(elf);
 
     if !is_elf_file(elf).context("Error reading ROM file")? {
         anyhow::bail!("ROM file is not a valid ELF file");
     }
 
-    let stem = if hints { format!("{elf_name}-hints") } else { elf_name.to_string() };
-    let new_filename = format!("{stem}-{elf_hash}.tmp");
-    let base_path = output_path.join(new_filename);
-    let file_stem = base_path
-        .file_stem()
-        .context("Failed to extract file stem from base path")?
-        .to_str()
-        .context("Failed to convert file stem to string")?;
+    let base = asm_file_base(elf_name, &elf_hash, hints);
 
-    let bin_mt_file = format!("{file_stem}-mt.bin");
-    let bin_mt_file = base_path.with_file_name(bin_mt_file);
+    let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
+    let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
+    let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
 
-    let bin_rh_file = format!("{file_stem}-rh.bin");
-    let bin_rh_file = base_path.with_file_name(bin_rh_file);
-
-    let bin_mo_file = format!("{file_stem}-mo.bin");
-    let bin_mo_file = base_path.with_file_name(bin_mo_file);
-
-    let emulator_asm_path = resolve_emulator_asm()?;
+    let (emulator_asm_path, asm_source) = resolve_emulator_asm()?;
+    ensure_ziskclib(&emulator_asm_path, asm_source)?;
 
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;

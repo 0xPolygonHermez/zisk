@@ -9,13 +9,11 @@ use std::thread::{self, JoinHandle};
 use crate::io::{StreamRead, StreamSource};
 
 pub trait StreamProcessor: Send + Sync + 'static {
-    /// Process data and return the processed result along with a flag indicating if CTRL_END was encountered.
+    /// Process a batch of hint data.
     ///
     /// # Returns
-    /// A tuple of (processed_data, has_ctrl_end) where:
-    /// - processed_data: Vec<u64> - The processed data
-    /// - has_ctrl_end: bool - True if CTRL_END was found (signals end of batch)
-    fn process(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
+    /// `true` if CTRL_END was encountered (signals end of stream), `false` otherwise.
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
 
     fn reset(&self) {}
 }
@@ -23,17 +21,15 @@ pub trait StreamProcessor: Send + Sync + 'static {
 /// Trait for submitting processed hints to a sink.
 ///
 /// # Arguments
-/// * `processed` - A vector of processed hints as u64 values.
+/// * `processed` - A slice of processed hints as u64 values.
 ///
 /// # Returns
 /// * `Ok(())` - If hints were successfully submitted
 /// * `Err` - If submission fails
 pub trait StreamSink: Send + Sync + 'static {
-    fn submit(&self, processed: Vec<u64>) -> anyhow::Result<()>;
+    fn submit(&self, processed: &[u64]) -> anyhow::Result<()>;
 
     fn reset(&self) {}
-
-    fn set_has_rom_sm(&self, _has_rom_sm: bool) {}
 }
 
 enum ThreadCommand {
@@ -42,9 +38,9 @@ enum ThreadCommand {
 }
 
 /// ZiskStream struct manages the processing of precompile hints and writing them to shared memory.
-pub struct ZiskStream {
+pub struct ZiskStream<P: StreamProcessor> {
     /// The hints processor used to process hints before writing.
-    hints_processor: Arc<dyn StreamProcessor>,
+    hints_processor: Arc<P>,
 
     /// Channel sender to communicate with the background thread.
     tx: Option<Sender<ThreadCommand>>,
@@ -52,10 +48,10 @@ pub struct ZiskStream {
     /// Join handle for the background thread.
     thread_handle: Option<JoinHandle<()>>,
 
-    hints_stream_initialized: AtomicBool,
+    initialized: AtomicBool,
 }
 
-impl ZiskStream {
+impl<P: StreamProcessor> ZiskStream<P> {
     /// Create a new ZiskStream with the given processor.
     ///
     /// # Arguments
@@ -63,13 +59,20 @@ impl ZiskStream {
     ///
     /// # Returns
     /// A new `ZiskStream` instance without a running thread.
-    pub fn new(hints_processor: impl StreamProcessor) -> Self {
+    pub fn new(hints_processor: P) -> Self {
         Self {
             hints_processor: Arc::new(hints_processor),
             tx: None,
             thread_handle: None,
-            hints_stream_initialized: AtomicBool::new(false),
+            initialized: AtomicBool::new(false),
         }
+    }
+
+    /// Create a new ZiskStream from an already-Arc-wrapped processor.
+    ///
+    /// Useful when the processor is shared with other owners (e.g. `InputsShmemWriter`).
+    pub fn from_arc(hints_processor: Arc<P>) -> Self {
+        Self { hints_processor, tx: None, thread_handle: None, initialized: AtomicBool::new(false) }
     }
 
     /// Stop the current background thread if running.
@@ -82,18 +85,15 @@ impl ZiskStream {
         }
     }
 
-    /// Set a new StreamSource for the pipeline and spawn a background thread to process hints.
+    /// Set a new StreamSource for the pipeline and spawn a background thread to process data.
     ///
     /// This will stop any existing background thread and start a new one with the new stream.
     ///
     /// # Arguments
-    /// * `stream` - The new StreamSource source for reading hints.
-    pub fn set_hints_stream_src(&mut self, mut stream: StreamSource) -> Result<()> {
-        if !stream.is_active() {
-            // Stop the existing thread if running
-            self.stop_thread();
-            stream.open()?;
-        }
+    /// * `stream` - The new StreamSource for reading data.
+    pub fn set_stream_src(&mut self, mut stream: StreamSource) -> Result<()> {
+        // Stop the existing thread if running
+        self.stop_thread();
 
         // Create a new channel for communication with the thread
         let (tx, rx) = std::sync::mpsc::channel();
@@ -102,14 +102,22 @@ impl ZiskStream {
         // Clone Arc references for the thread
         let hints_processor = Arc::clone(&self.hints_processor);
 
-        // Spawn the background thread
+        // Spawn the background thread — open() is deferred here so that
+        // QUIC readers can create their dedicated runtime on a plain thread
+        // (not inside spawn_blocking, which interferes with block_on).
         let thread_handle = thread::spawn(move || {
+            if !stream.is_active() {
+                if let Err(e) = stream.open() {
+                    tracing::error!("Failed to open stream in background thread: {e}");
+                    return;
+                }
+            }
             Self::background_thread(stream, hints_processor, rx);
         });
 
         self.thread_handle = Some(thread_handle);
 
-        self.hints_stream_initialized.store(true, Ordering::SeqCst);
+        self.initialized.store(true, Ordering::SeqCst);
 
         Ok(())
     }
@@ -117,7 +125,7 @@ impl ZiskStream {
     /// Background thread function that processes hints when requested.
     fn background_thread(
         mut stream: StreamSource,
-        hints_processor: Arc<dyn StreamProcessor>,
+        hints_processor: Arc<P>,
         rx: Receiver<ThreadCommand>,
     ) {
         while let Ok(ThreadCommand::Process) = rx.recv() {
@@ -131,15 +139,12 @@ impl ZiskStream {
     /// Process all hints from the stream.
     ///
     /// Processes hints in batches until CTRL_END is encountered or the stream ends.
-    fn process_stream(
-        stream: &mut StreamSource,
-        hints_processor: &dyn StreamProcessor,
-    ) -> Result<()> {
+    fn process_stream(stream: &mut StreamSource, hints_processor: &P) -> Result<()> {
         let mut first_batch = true;
 
         while let Some(hints) = stream.next()? {
             let hints = crate::reinterpret_vec(hints)?;
-            let has_ctrl_end = hints_processor.process(&hints, first_batch)?;
+            let has_ctrl_end = hints_processor.process_hints(&hints, first_batch)?;
 
             first_batch = false;
 
@@ -154,7 +159,7 @@ impl ZiskStream {
 
     pub fn reset(&mut self) {
         self.hints_processor.reset();
-        self.hints_stream_initialized.store(false, Ordering::SeqCst);
+        self.initialized.store(false, Ordering::SeqCst);
     }
 
     /// Trigger the background thread to process hints asynchronously.
@@ -167,10 +172,8 @@ impl ZiskStream {
     /// * `Ok(())` - If the command was successfully sent
     /// * `Err` - If there's no active thread or the channel is closed
     pub fn start_stream(&mut self) -> Result<()> {
-        if !self.hints_stream_initialized.load(Ordering::SeqCst) {
-            return Err(anyhow::anyhow!(
-                "Hints stream is not initialized. Call set_hints_stream_src first."
-            ));
+        if !self.initialized.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("Stream is not initialized. Call set_stream_src first."));
         }
 
         if let Some(tx) = &self.tx {
@@ -179,13 +182,28 @@ impl ZiskStream {
             })?;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("No background thread running. Call set_hints_stream first."))
+            Err(anyhow::anyhow!("No background thread running. Call set_stream_src first."))
         }
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
+    }
+
+    pub fn get_processor(&self) -> Arc<P> {
+        Arc::clone(&self.hints_processor)
     }
 }
 
-impl Drop for ZiskStream {
+impl<P: StreamProcessor> Drop for ZiskStream<P> {
     fn drop(&mut self) {
-        self.stop_thread();
+        // Drop tx — the background thread will see the channel closed and
+        // exit after its current process_stream() call returns naturally.
+        // We must NOT join here: for gRPC hints the thread blocks on
+        // ChannelStreamReader::recv(), which only unblocks when the client
+        // calls PushJobHintsInput.  That RPC can't start until submit_job
+        // returns, but submit_job can't return if we're blocking in join().
+        self.tx.take();
+        self.thread_handle.take(); // detach
     }
 }

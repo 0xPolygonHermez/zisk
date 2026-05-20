@@ -1,6 +1,6 @@
 use anyhow::Result;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use precompiles_hints::HintsProcessor;
+use precompiles_hints::{HintHandlers, HintsProcessor};
 use std::hint::black_box;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -12,8 +12,8 @@ struct BenchSink {
 }
 
 impl StreamSink for BenchSink {
-    fn submit(&self, processed: Vec<u64>) -> Result<()> {
-        self.received.lock().unwrap().push(processed);
+    fn submit(&self, processed: &[u64]) -> Result<()> {
+        self.received.lock().unwrap().push(processed.to_vec());
         Ok(())
     }
 }
@@ -46,22 +46,25 @@ fn parallel_speedup_benchmark(c: &mut Criterion) {
                 b.iter(|| {
                     let received = Arc::new(Mutex::new(Vec::new()));
                     let received_clone = received.clone();
-                    let sink = BenchSink { received: received_clone };
+                    let sink = Arc::new(BenchSink { received: received_clone });
 
-                    let p = HintsProcessor::builder(sink)
+                    let p = HintsProcessor::builder(sink, None::<Arc<BenchSink>>)
                         .num_threads(threads)
-                        .custom_hint(FAST_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(1));
-                            Ok(vec![data[0] + 1])
-                        })
-                        .custom_hint(MEDIUM_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(5));
-                            Ok(vec![data[0] + 2])
-                        })
-                        .custom_hint(SLOW_HINT, |data: &[u64]| -> Result<Vec<u64>> {
-                            thread::sleep(Duration::from_millis(10));
-                            Ok(vec![data[0] + 3])
-                        })
+                        .with_hint_handlers(
+                            HintHandlers::default()
+                                .register(FAST_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                                    thread::sleep(Duration::from_millis(1));
+                                    Ok(vec![data[0] + 1])
+                                })
+                                .register(MEDIUM_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                                    thread::sleep(Duration::from_millis(5));
+                                    Ok(vec![data[0] + 2])
+                                })
+                                .register(SLOW_HINT, |data: &[u64]| -> Result<Vec<u64>> {
+                                    thread::sleep(Duration::from_millis(10));
+                                    Ok(vec![data[0] + 3])
+                                }),
+                        )
                         .build()
                         .unwrap();
 
@@ -109,9 +112,9 @@ fn microsecond_hints_benchmark(c: &mut Criterion) {
     group.sample_size(50);
 
     let test_cases = vec![
-        ("ultra_fast_10us", ULTRA_FAST, 10),
-        ("very_fast_50us", VERY_FAST, 50),
-        ("fast_100us", FAST, 100),
+        ("ultra_fast_10us", ULTRA_FAST, 10u64),
+        ("very_fast_50us", VERY_FAST, 50u64),
+        ("fast_100us", FAST, 100u64),
     ];
 
     for (name, hint_code, micros) in test_cases {
@@ -119,14 +122,17 @@ fn microsecond_hints_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let received = Arc::new(Mutex::new(Vec::new()));
                 let received_clone = received.clone();
-                let sink = BenchSink { received: received_clone };
+                let sink = Arc::new(BenchSink { received: received_clone });
 
-                let p = HintsProcessor::builder(sink)
+                let p = HintsProcessor::builder(sink, None::<Arc<BenchSink>>)
                     .num_threads(16)
-                    .custom_hint(hint_code, move |data: &[u64]| -> Result<Vec<u64>> {
-                        thread::sleep(Duration::from_micros(micros as u64));
-                        Ok(vec![data[0] + 1])
-                    })
+                    .with_hint_handlers(HintHandlers::default().register(
+                        hint_code,
+                        move |data: &[u64]| {
+                            thread::sleep(Duration::from_micros(micros));
+                            Ok(vec![data[0] + 1])
+                        },
+                    ))
                     .build()
                     .unwrap();
 
@@ -171,30 +177,32 @@ fn workload_patterns_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 let received = Arc::new(Mutex::new(Vec::new()));
                 let received_clone = received.clone();
-                let sink = BenchSink { received: received_clone };
+                let sink = Arc::new(BenchSink { received: received_clone });
 
-                let p = HintsProcessor::builder(sink)
-                    .num_threads(8)
-                    .custom_hint(VERY_FAST, |data: &[u64]| -> Result<Vec<u64>> {
+                let handlers = HintHandlers::default()
+                    .register(VERY_FAST, |data: &[u64]| {
                         thread::sleep(Duration::from_micros(500));
                         Ok(vec![data[0] + 1])
                     })
-                    .custom_hint(FAST, |data: &[u64]| -> Result<Vec<u64>> {
+                    .register(FAST, |data: &[u64]| {
                         thread::sleep(Duration::from_millis(2));
                         Ok(vec![data[0] + 1])
                     })
-                    .custom_hint(MEDIUM, |data: &[u64]| -> Result<Vec<u64>> {
+                    .register(MEDIUM, |data: &[u64]| {
                         thread::sleep(Duration::from_millis(5));
                         Ok(vec![data[0] + 1])
                     })
-                    .custom_hint(SLOW, |data: &[u64]| -> Result<Vec<u64>> {
+                    .register(SLOW, |data: &[u64]| {
                         thread::sleep(Duration::from_millis(10));
                         Ok(vec![data[0] + 1])
                     })
-                    .custom_hint(VERY_SLOW, |data: &[u64]| -> Result<Vec<u64>> {
+                    .register(VERY_SLOW, |data: &[u64]| {
                         thread::sleep(Duration::from_millis(20));
                         Ok(vec![data[0] + 1])
-                    })
+                    });
+                let p = HintsProcessor::builder(sink, None::<Arc<BenchSink>>)
+                    .num_threads(8)
+                    .with_hint_handlers(handlers)
                     .build()
                     .unwrap();
 
@@ -225,7 +233,7 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     struct NullSink;
 
     impl StreamSink for NullSink {
-        fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+        fn submit(&self, _processed: &[u64]) -> Result<()> {
             Ok(())
         }
     }
@@ -241,7 +249,10 @@ fn noop_throughput_benchmark(c: &mut Criterion) {
     for &count in &hint_counts {
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &num_hints| {
             b.iter(|| {
-                let p = HintsProcessor::builder(NullSink).num_threads(32).build().unwrap();
+                let p = HintsProcessor::builder(Arc::new(NullSink), None::<Arc<NullSink>>)
+                    .num_threads(32)
+                    .build()
+                    .unwrap();
 
                 let mut data = Vec::with_capacity(num_hints * 2);
                 for i in 0..num_hints {

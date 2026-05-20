@@ -1,5 +1,8 @@
 //! Miller loop for BLS12-381
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::{
     eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs,
 };
@@ -573,4 +576,31 @@ fn dbl_twist_with_hints_bls12_381(
     result[0..12].copy_from_slice(&x3);
     result[12..24].copy_from_slice(&y3);
     result
+}
+
+// ==================== C FFI Functions ====================
+
+/// Miller loop for a single (G1, G2) pair over BLS12-381.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (G1 affine point x ‖ y, little-endian limbs)
+/// - `q_ptr` must point to a valid `[u64; 24]` array (G2 affine point x ‖ y in Fp2, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 72]` array (Fp12 element)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_miller_loop_bls12_381_c")]
+pub unsafe extern "C" fn miller_loop_bls12_381_c(
+    p_ptr: *const u64,
+    q_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let q = &*(q_ptr as *const [u64; 24]);
+    let result = &mut *(result_ptr as *mut [u64; 72]);
+    *result = miller_loop_bls12_381(
+        p,
+        q,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 }

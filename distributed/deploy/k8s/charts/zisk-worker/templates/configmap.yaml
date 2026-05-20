@@ -1,0 +1,12 @@
+{{- if .Values.config.workerToml }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zisk-worker.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zisk-worker.labels" . | nindent 4 }}
+data:
+  worker.toml: |-
+{{ .Values.config.workerToml | indent 4 }}
+{{- end }}

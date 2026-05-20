@@ -1,5 +1,8 @@
 //! Pairing over BN254
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::lib::utils::{eq, is_one, lt};
 
 use super::{
@@ -11,11 +14,13 @@ use super::{
 };
 
 /// Pairing check result codes
-const PAIRING_CHECK_SUCCESS: u8 = 0;
-const PAIRING_CHECK_FAILED: u8 = 1;
-const PAIRING_CHECK_ERR_G1_INVALID: u8 = 2;
+#[allow(dead_code)]
+pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
+#[allow(dead_code)]
+pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
+const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
-const PAIRING_CHECK_ERR_G2_INVALID: u8 = 4;
+const PAIRING_CHECK_ERR_G2_NOT_IN_FIELD: u8 = 4;
 const PAIRING_CHECK_ERR_G2_NOT_ON_CURVE: u8 = 5;
 const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 6;
 
@@ -120,9 +125,9 @@ pub fn pairing_batch_bn254(
 /// # Returns
 /// * `Ok(true)` - Pairing check passed (product of pairings == 1)
 /// * `Ok(false)` - Pairing check failed (product of pairings != 1)
-/// * `Err(PAIRING_CHECK_ERR_G1_INVALID)` - G1 field element not canonical (>= P)
+/// * `Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD)` - G1 field element not canonical (>= P)
 /// * `Err(PAIRING_CHECK_ERR_G1_NOT_ON_CURVE)` - G1 point not on curve
-/// * `Err(PAIRING_CHECK_ERR_G2_INVALID)` - G2 field element not canonical (>= P)
+/// * `Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD)` - G2 field element not canonical (>= P)
 /// * `Err(PAIRING_CHECK_ERR_G2_NOT_ON_CURVE)` - G2 point not on twist curve
 /// * `Err(PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP)` - G2 point not in subgroup
 pub fn pairing_check_bn254(
@@ -175,7 +180,7 @@ pub fn pairing_check_bn254(
         let x1: [u64; 4] = g1[0..4].try_into().unwrap();
         let y1: [u64; 4] = g1[4..8].try_into().unwrap();
         if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(PAIRING_CHECK_ERR_G1_INVALID);
+            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
         }
 
         // Verify G1 point is on curve
@@ -193,7 +198,7 @@ pub fn pairing_check_bn254(
         let y2_r: [u64; 4] = g2[8..12].try_into().unwrap();
         let y2_i: [u64; 4] = g2[12..16].try_into().unwrap();
         if !lt(&x2_r, &P) || !lt(&x2_i, &P) || !lt(&y2_r, &P) || !lt(&y2_i, &P) {
-            return Err(PAIRING_CHECK_ERR_G2_INVALID);
+            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
         }
 
         // Verify G2 point is on twist curve
@@ -232,6 +237,35 @@ pub fn pairing_check_bn254(
     )))
 }
 
+// ==================== C FFI Functions ====================
+
+/// Batch optimal Ate pairing over BN254: computes e(P₁,Q₁)·e(P₂,Q₂)·…·e(Pₙ,Qₙ) ∈ GT.
+///
+/// # Safety
+/// - `g1_ptr` must point to `num_pairs * 8` contiguous `u64` values (G1 points, little-endian limbs)
+/// - `g2_ptr` must point to `num_pairs * 16` contiguous `u64` values (G2 points, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 48]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_pairing_batch_bn254_c")]
+pub unsafe extern "C" fn pairing_batch_bn254_c(
+    g1_ptr: *const u64,
+    g2_ptr: *const u64,
+    num_pairs: usize,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let g1_points: &[[u64; 8]] = core::slice::from_raw_parts(g1_ptr as *const [u64; 8], num_pairs);
+    let g2_points: &[[u64; 16]] =
+        core::slice::from_raw_parts(g2_ptr as *const [u64; 16], num_pairs);
+    let result = &mut *(result_ptr as *mut [u64; 48]);
+    *result = pairing_batch_bn254(
+        g1_points,
+        g2_points,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}
+
 /// BN254 pairing check with big-endian byte format
 ///
 /// # Safety
@@ -246,9 +280,9 @@ pub fn pairing_check_bn254(
 /// - 4 = G2 field element invalid
 /// - 5 = G2 point not on curve
 /// - 6 = G2 point not in subgroup
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_bn254_pairing_check_c")]
-pub unsafe extern "C" fn bn254_pairing_check_c(
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn bn254_pairing_check_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

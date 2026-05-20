@@ -2,7 +2,9 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-use crate::{read_input, read_input_slice, set_output};
+#[cfg(not(zisk_guest))]
+use crate::read_input;
+
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Read a deserializable object from the input stream.
@@ -19,39 +21,45 @@ use serde::{de::DeserializeOwned, Serialize};
 ///
 /// let data: MyStruct = ziskos::io::read();
 /// ```
+///
+/// Note: This uses zero-copy deserialization on zkvm to avoid unnecessary data copies.
 pub fn read<T: DeserializeOwned>() -> T {
     let bytes = read_input_slice();
-    bincode::deserialize(&bytes).expect("Deserialization failed")
+    let (val, _): (T, usize) =
+        bincode::serde::decode_from_slice(bytes.as_ref(), bincode::config::standard())
+            .expect("Deserialization failed");
+    val
 }
 
-/// Read raw bytes from the input stream.
-///
-/// ### Examples
-/// ```ignore
-/// let data: Vec<u8> = ziskos::io::read_vec();
-/// ```
-pub fn read_vec() -> Vec<u8> {
-    read_input()
+#[cfg(zisk_guest)]
+pub fn read_input_slice<'a>() -> &'a [u8] {
+    crate::read_slice_zerocopy()
+}
+
+#[allow(unused)]
+#[cfg(not(zisk_guest))]
+pub fn read_input_slice() -> Box<[u8]> {
+    read_input().into_boxed_slice()
 }
 
 /// Commit a serializable value to public outputs.
 /// The value is serialized with bincode and written as 32-bit chunks.
 pub fn commit<T: Serialize>(value: &T) {
-    let bytes = bincode::serialize(value).expect("Serialization failed");
-    write(&bytes);
+    let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+        .expect("Serialization failed");
+    commit_slice(&bytes);
 }
 
-/// Write raw bytes to public outputs.
-/// Bytes are written as 32-bit little-endian values.
-pub fn write(buf: &[u8]) {
-    let chunks = buf.len().div_ceil(4);
+/// Append raw bytes to public outputs.
+///
+/// Successive calls append to the same byte stream; partial 32-bit output slots
+/// are shared across calls.
+pub fn commit_slice(buf: &[u8]) {
+    // SAFETY: buf.as_ptr() is valid for buf.len() bytes by construction of &[u8].
+    unsafe { crate::zisklib::zkvm_io::write_output(buf.as_ptr(), buf.len()) };
+}
 
-    for i in 0..chunks {
-        let start = i * 4;
-        let end = (start + 4).min(buf.len());
-        let mut bytes = [0u8; 4];
-        bytes[..end - start].copy_from_slice(&buf[start..end]);
-        let val = u32::from_le_bytes(bytes);
-        set_output(i, val);
-    }
+/// Reset the output cursor to slot 0.
+pub fn write_output_reset() {
+    crate::zisklib::zkvm_io::reset_output();
 }

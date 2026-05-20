@@ -18,19 +18,13 @@ use crate::{
 
 use anyhow::{Context, Result};
 
-pub struct MTOutputShmem {
+pub struct MTShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
 }
 
-impl MTOutputShmem {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::MT, local_rank, None);
+impl MTShMemReader {
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
         let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
             &output_name,
@@ -55,21 +49,22 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
-        preloaded: &mut MTOutputShmem,
+    pub fn run_and_count<F, R>(
+        preloaded: &mut MTShMemReader,
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        on_runner_failure: R,
+        asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
-    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)> {
+    ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
+    where
+        F: FnMut(usize, Arc<EmuTrace>),
+        R: FnOnce() -> Result<()>,
+    {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::MT, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MT);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
@@ -78,8 +73,6 @@ impl AsmRunnerMT {
         let _parent_id = _runner_scope.id();
         let _thread_stats = _stats.clone();
         let handle = std::thread::spawn(move || {
-            let asm_services = AsmServices::new(world_rank, local_rank, base_port);
-
             stats_begin!(_thread_stats, _parent_id, _mt_scope, "ASM_MT", 0);
             let start = Instant::now();
             let result = asm_services.send_minimal_trace_request(max_steps, chunk_size);
@@ -110,7 +103,6 @@ impl AsmRunnerMT {
         const MAX_BYTES_MTRACE_STEP: usize = MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE;
         const MAX_TRACE_CHUNK_INFO: usize = (44 * 8) + 32; // 384 bytes
 
-        let __stats = _stats.clone();
         let threshold_bytes = (chunk_size as usize * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO;
         let mut threshold = unsafe {
             preloaded
@@ -171,6 +163,14 @@ impl AsmRunnerMT {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
+                    // Flip ResetFlag + post wait sems so the C child unwinds
+                    // `emulator_start` and the stdio request below can return.
+                    // Then sweep any post that races our exit (end chunk).
+                    if let Err(reset_err) = on_runner_failure() {
+                        error!("MT on_runner_failure failed: {reset_err:#}");
+                    }
+                    while sem_chunk_done.try_wait().is_ok() {}
+
                     if chunk_id.0 == 0 {
                         break 1;
                     }
@@ -180,13 +180,16 @@ impl AsmRunnerMT {
             }
         };
 
+        // Always join the stdio thread before evaluating the exit code: on
+        // the error path `on_runner_failure` woke the C child, so this no
+        // longer deadlocks, and joining keeps the spawned thread from
+        // outliving us into the next job.
+        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
+
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
                 .context("Child process returned error");
         }
-
-        // Wait for the assembly emulator to complete writing the trace
-        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
 
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;
@@ -195,9 +198,22 @@ impl AsmRunnerMT {
 
         let response = handle.map_err(AsmRunError::ServiceError)?;
 
-        assert_eq!(response.result, 0);
-        assert!(response.trace_len > 0);
-        assert!(response.trace_len <= response.allocated_len);
+        if response.result != 0 {
+            return Err(anyhow::anyhow!(
+                "ASM MT service returned non-zero result: {}",
+                response.result
+            ));
+        }
+        if response.trace_len == 0 {
+            return Err(anyhow::anyhow!("ASM MT service returned empty trace"));
+        }
+        if response.trace_len > response.allocated_len {
+            return Err(anyhow::anyhow!(
+                "ASM MT service trace_len ({}) exceeds allocated_len ({})",
+                response.trace_len,
+                response.allocated_len
+            ));
+        }
 
         stats_end!(_stats, &_runner_scope);
         Ok((emu_traces, asm_execution_info))

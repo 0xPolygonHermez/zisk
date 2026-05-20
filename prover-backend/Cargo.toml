@@ -1,0 +1,44 @@
+[package]
+name = "zisk-prover-backend"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+# Proofman dependencies
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+proofman-util = { workspace = true }
+proofman-verifier = { workspace = true }
+
+# Zisk internal crates
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+zisk-cluster-common = { workspace = true }
+executor = { workspace = true }
+rom-setup = { workspace = true }
+asm-runner = { workspace = true }
+precompiles-hints = { workspace = true }
+fields = { workspace = true }
+borsh = { workspace = true }
+
+# Optional dependencies
+ziskemu = { workspace = true }
+
+# External dependencies
+anyhow = { workspace = true }
+colored = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+blake3 = { workspace = true }
+alloy-sol-types = { version = "1.5.7" }
+
+[features]
+default = []
+cpu-only = ["proofman-common/cpu-only"]
+stats = []
+diagnostic = ["proofman-common/diagnostic"]

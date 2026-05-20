@@ -9,19 +9,13 @@ use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 
 use anyhow::{Context, Result};
 
-pub struct RHOutputShmem {
+pub struct RHShMemReader {
     pub output_shmem: AsmSharedMemory<AsmRHHeader>,
 }
 
-impl RHOutputShmem {
-    pub fn new(
-        local_rank: i32,
-        base_port: Option<u16>,
-        unlock_mapped_memory: bool,
-    ) -> Result<Self> {
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let output_name = shmem_output_name(port, AsmService::RH, local_rank, Some(0));
+impl RHShMemReader {
+    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+        let output_name = shmem_output_name(shm_prefix, AsmService::RH, Some(0));
 
         let output_shared_memory =
             AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
@@ -48,26 +42,22 @@ impl AsmRunnerRH {
     }
 
     pub fn run(
-        asm_shared_memory: &mut Option<RHOutputShmem>,
+        asm_shared_memory: &mut Option<RHShMemReader>,
         max_steps: u64,
-        world_rank: i32,
-        local_rank: i32,
-        base_port: Option<u16>,
+        asm_services: AsmServices,
         unlock_mapped_memory: bool,
         _stats: ExecutorStatsHandle,
     ) -> Result<AsmRunnerRH> {
         stats_begin!(_stats, 0, _runner_scope, "ASM_RH_RUNNER", 0);
 
-        let port = AsmServices::port_base_for(base_port, local_rank);
-
-        let sem_chunk_done_name = sem_chunk_done_name(port, AsmService::RH, local_rank);
+        let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::RH);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let asm_services = AsmServices::new(world_rank, local_rank, base_port);
+        tracing::debug!("[RH] Sending histogram request...");
         asm_services.send_rom_histogram_request(max_steps)?;
-
+        tracing::debug!("[RH] Histogram request sent, waiting for completion...");
         loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
@@ -88,15 +78,19 @@ impl AsmRunnerRH {
                 }
             }
         }
-
+        tracing::debug!(
+            "[RH] Histogram computation completed, reading results from shared memory..."
+        );
         if asm_shared_memory.is_none() {
             *asm_shared_memory =
-                Some(RHOutputShmem::new(local_rank, base_port, unlock_mapped_memory)?);
+                Some(RHShMemReader::new(asm_services.shm_prefix(), unlock_mapped_memory)?);
         }
-
-        let asm_rowh_output =
-            AsmRHData::from_shared_memory(&asm_shared_memory.as_ref().unwrap().output_shmem);
-
+        tracing::debug!("[RH] Shared memory mapped, processing results...");
+        let reader = asm_shared_memory.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("ASM_RH_RUNNER: asm_shared_memory is None after initialization")
+        })?;
+        let asm_rowh_output = AsmRHData::from_shared_memory(&reader.output_shmem);
+        tracing::debug!("[RH] Results processed successfully.");
         stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerRH::new(asm_rowh_output))
     }

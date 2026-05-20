@@ -1,65 +1,61 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskIO, ZiskStdin};
+use test_artifacts::ELF_FIB_MOD;
+use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("fibonacci-guest");
-pub const ELF2: ElfBinary = include_elf!("fibonacci-guest-2");
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
 
-    // Create an input stream and write '1000' to it.
-    let n = 1000u32;
+    // Prove the same parameterized fib_mod ELF twice, with different (n, module) inputs.
+    // Demonstrates a host orchestrating multiple proofs in one run.
     let stdin = ZiskStdin::new();
-    stdin.write(&n);
+    stdin.write(&1000u32);
+    stdin.write(&233u32);
 
-    // Create a `ProverClient` method.
-    let client = ProverClient::builder().build().unwrap();
+    let embedded_opts = EmbeddedOpts::default().minimal_memory();
+    let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
-    println!("Setting up first program...");
-    let (pk, vkey) = client.setup(&ELF)?;
+    println!("Setting up program (single ELF, two invocations)...");
+    client.upload(&ELF_FIB_MOD).run()?;
+    client.setup(&ELF_FIB_MOD).run()?.await?;
 
-    println!("Setting up second program...");
-    let (pk2, vkey2) = client.setup(&ELF2)?;
-
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    println!("Executing first program...");
-    let result = client.execute(&pk, stdin.clone())?;
-
+    println!("Executing first invocation (n=1000, module=233)...");
+    let result = client.execute(&ELF_FIB_MOD, stdin.clone()).run()?.await?;
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
-        result.get_execution_steps(), result.get_duration()
+        "Program executed successfully: {} cycles in {} ms",
+        result.get_execution_steps(),
+        result.get_execution_time()
     );
 
-    println!("Generating proof for first program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
+    println!("Generating proof for first invocation...");
+    let vadcop_result = client.prove(&ELF_FIB_MOD, stdin).run()?.await?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
+    let vkey = ELF_FIB_MOD.vk()?;
+    vadcop_result.with_program_vk(&vkey).verify()?;
+    println!("Successfully generated and verified first proof!\n");
 
-    println!("Successfully generated and verified proof for first program!\n");
-
-    let n = 2000u32;
     let stdin2 = ZiskStdin::new();
-    stdin2.write(&n);
+    stdin2.write(&2000u32);
+    stdin2.write(&253u32);
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    println!("Executing second program...");
-    let result2 = client.execute(&pk2, stdin2.clone())?;
-
+    println!("Executing second invocation (n=2000, module=253)...");
+    let result2 = client.execute(&ELF_FIB_MOD, stdin2.clone()).run()?.await?;
     println!(
-        "Program executed successfully: {} cycles in {:.2?}",
-        result2.get_execution_steps(), result2.get_duration()
+        "Program executed successfully: {} cycles in {} ms",
+        result2.get_execution_steps(),
+        result2.get_execution_time()
     );
 
-    println!("Generating proof for second program...");
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result2 = client.prove(&pk2, stdin2).with_proof_options(proof_opts).run()?;
+    println!("Generating proof for second invocation...");
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    client.verify(vadcop_result2.get_proof(), vadcop_result2.get_publics(), &vkey2)?;
-
-    println!("Successfully generated and verified proof for second program!\n");
+    vadcop_result2.with_program_vk(&vkey).verify()?;
+    println!("Successfully generated and verified second proof!\n");
 
     println!("All proofs generated and verified successfully!");
 

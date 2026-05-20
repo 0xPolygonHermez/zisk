@@ -42,7 +42,7 @@
 //!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
 //!     index `(pc-ROM_ENTRY)/4`
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::{ZiskInst, ZiskInstBuilder, ROM_ENTRY};
 
@@ -81,7 +81,7 @@ pub struct ZiskRom {
 
     /// Map of instructions that are part of the ROM; the key is the ROM address (pc)
     /// This map contains the instructions that are part of the program, i.e. address >= ROM_ADDR
-    pub insts: HashMap<u64, ZiskInstBuilder>,
+    pub insts: BTreeMap<u64, ZiskInstBuilder>,
 
     /// List of RO sections as found in the ELF file
     pub ro_data: Vec<RoData>,
@@ -115,6 +115,9 @@ pub struct ZiskRom {
     /// Minimum rom instruction PC (first program instruction address)
     /// This is typically 0x80000000 but can be different (e.g., 0x80001000 with Go's internal linker)
     pub min_program_pc: u64,
+
+    /// Used for tracking the instruction creation order in the ROM
+    pub build_counter: u64,
 }
 
 /// ZisK ROM implementation

@@ -89,6 +89,7 @@ pub enum ZiskOperationType {
     FcallParam,
     Fcall,
     FcallGet,
+    Profile,
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
@@ -148,6 +149,7 @@ pub struct ZiskInst {
     pub input_size: u64,
     pub sorted_pc_list_index: usize,
     pub riscv_inst: Option<String>,
+    pub index: u64, // internal field used for tracking the instruction creation order in the ROM
 }
 
 /// Default constructor
@@ -186,6 +188,7 @@ impl Default for ZiskInst {
             input_size: 0,
             sorted_pc_list_index: 0,
             riscv_inst: None,
+            index: 0,
         }
     }
 }

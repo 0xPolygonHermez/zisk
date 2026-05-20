@@ -1,90 +1,159 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     thread::JoinHandle,
 };
 
-use crate::AsmResources;
 use crate::{
-    DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
+    pub_outs_collector::PubOutsCollector, AsmResources, NestedDeviceMetricsList, StaticDataBus,
+    StaticSMBundle, MAX_NUM_STEPS,
 };
-use asm_runner::{
-    shmem_input_name, write_input, AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, AsmService, AsmServices,
-    SharedMemoryWriter,
-};
+use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
+use precompiles_hints::HintsProcessor;
 use proofman_common::ProofCtx;
-use sm_rom::RomSM;
+use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,
 };
-use zisk_core::{ZiskRom, MAX_INPUT_SIZE};
+use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
+use anyhow::Result;
+
 pub struct EmulatorAsm {
-    /// World rank for distributed execution. Default to 0 for single-node execution.
-    world_rank: i32,
-
-    /// Local rank for distributed execution. Default to 0 for single-node execution.
-    local_rank: i32,
-
-    /// Map unlocked flag
-    /// This is used to unlock the memory map for the ROM file.
-    unlock_mapped_memory: bool,
-
     /// Chunk size for processing.
     chunk_size: u64,
 
-    /// Optional ROM state machine, used for assembly ROM execution.
-    rom_sm: Option<Arc<RomSM>>,
-
     /// Assembly resources including shared memory and hints stream.
-    asm_resources: Mutex<Option<AsmResources>>,
+    asm_resources: RwLock<Option<Arc<AsmResources>>>,
 
     asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
 
 impl EmulatorAsm {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        world_rank: i32,
-        local_rank: i32,
-        unlock_mapped_memory: bool,
-        chunk_size: u64,
-        rom_sm: Option<Arc<RomSM>>,
-        _verbose_mode: proofman_common::VerboseMode,
-    ) -> Self {
-        Self {
-            world_rank,
-            local_rank,
-            unlock_mapped_memory,
-            chunk_size,
-            rom_sm,
-            asm_resources: Mutex::new(None),
-            asm_execution_info: Mutex::new(None),
-        }
+    pub fn new(chunk_size: u64) -> Self {
+        Self { chunk_size, asm_resources: RwLock::new(None), asm_execution_info: Mutex::new(None) }
     }
 
     pub fn get_chunk_size(&self) -> u64 {
         self.chunk_size
     }
 
-    pub fn get_asm_execution_info(&self) -> Option<AsmExecutionInfo> {
-        self.asm_execution_info.lock().unwrap().clone()
+    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+        Ok(self
+            .asm_execution_info
+            .lock()
+            .map_err(|e| anyhow::anyhow!("asm_execution_info lock poisoned: {e}"))?
+            .clone())
     }
 
-    pub fn set_asm_resources(&self, asm_resources: AsmResources) {
-        *self.asm_resources.lock().unwrap() = Some(asm_resources);
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+        *self
+            .asm_resources
+            .write()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? =
+            Some(asm_resources);
+        Ok(())
     }
 
-    pub fn reset_hints_stream(&self) {
-        self.asm_resources.lock().unwrap().as_ref().unwrap().reset();
+    /// Resets the hints stream pipeline and the input shmem writer for the next job.
+    pub fn reset(&self) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.reset();
+        }
+        Ok(())
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) {
-        self.rom_sm.as_ref().unwrap().set_rh_data(rh_data);
+    /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
+    /// so any child currently blocked in `_wait_for_input_avail` /
+    /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
+    /// cancel time so a stuck `execute` returns Err promptly.
+    pub fn signal_cancellation(&self) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.signal_cancellation()?;
+        }
+        Ok(())
+    }
+
+    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+        self.asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .get_hints_processor()
+    }
+
+    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.set_active_services(is_first_partition)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+        self.asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .set_hints_stream_src(stream)
+    }
+
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+        self.asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .set_inputs_stream_src(stream)
+    }
+
+    /// Submits hint data directly to the shmem sink, bypassing the `ZiskStream` pipeline.
+    ///
+    /// Used in the gRPC streaming path where hint ordering is handled externally by the
+    /// coordinator before data arrives here.
+    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+        self.asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .submit_hint_direct(data)
+    }
+
+    /// Appends a raw byte chunk to the input shmem writer.
+    ///
+    /// Used in the gRPC streaming path where input data arrives in chunks. Unlike
+    /// `write_input` (which writes the full stdin at once for local execution), this
+    /// appends incrementally as chunks arrive over the wire.
+    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+        self.asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .append_raw_input(bytes)
     }
 
     /// Computes minimal traces by processing the ZisK ROM with given public inputs.
@@ -103,115 +172,122 @@ impl EmulatorAsm {
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
     /// * `u64` - Total number of steps.
+    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> (
+    ) -> Result<(
         Vec<EmuTrace>,
-        DeviceMetricsList,
         NestedDeviceMetricsList,
-        Option<JoinHandle<AsmRunnerMO>>,
-        Option<JoinHandle<AsmRunnerRH>>,
+        Option<JoinHandle<Result<AsmRunnerMO>>>,
+        Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
-    ) {
-        let asm_resources_guard = self.asm_resources.lock().unwrap();
-        let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
+        PubOutsCollector,
+    )> {
+        let asm_resources = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+            .clone();
 
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
         if use_hints && has_hints_stream {
-            asm_resources.start_stream().expect("Failed to start hints stream");
+            asm_resources.start_stream()?;
+        }
+
+        if asm_resources.is_inputs_stream_initialized() {
+            asm_resources.start_inputs_stream()?;
         }
 
         stats_begin!(stats, _caller_stats_scope, _exec_scope, "EXECUTE_WITH_ASSEMBLY", 0);
 
         stats_begin!(stats, &_exec_scope, _write_scope, "ASM_WRITE_INPUT", 0);
 
-        asm_resources.shmem_input_writer.lock().unwrap().get_or_insert_with(|| {
-            let port =
-                AsmServices::port_base_for(asm_resources.base_port, asm_resources.local_rank);
-            let shmem_input_name = shmem_input_name(port, asm_resources.local_rank);
-            tracing::debug!(
-                "Initializing SharedMemoryWriter for service {:?} at '{}'",
-                AsmService::MO,
-                shmem_input_name
-            );
-            SharedMemoryWriter::new(
-                &shmem_input_name,
-                MAX_INPUT_SIZE as usize,
-                asm_resources.unlock_mapped_memory,
-            )
-            .expect("Failed to create SharedMemoryWriter")
-        });
+        let config = asm_resources.config();
 
-        write_input(
-            &stdin.lock().unwrap(),
-            asm_resources.shmem_input_writer.lock().unwrap().as_ref().unwrap(),
-        );
+        asm_resources.write_input(stdin)?;
 
         stats_end!(stats, &_write_scope);
 
         let chunk_size = self.chunk_size;
-        let (world_rank, local_rank) = (self.world_rank, self.local_rank);
 
         let _stats = stats.clone();
 
         // Run the assembly Memory Operations (MO) runner thread
         let handle_mo = std::thread::spawn({
-            let asm_shmem_mo = asm_resources.asm_shmem_mo.clone();
-            let base_port = asm_resources.base_port;
-            move || {
-                AsmRunnerMO::run(
-                    &mut asm_shmem_mo.lock().unwrap(),
-                    MAX_NUM_STEPS,
-                    chunk_size,
-                    world_rank,
-                    local_rank,
-                    base_port,
-                    _stats,
-                )
-                .expect("Error during Assembly Memory Operations execution")
+            let asm_shmem_mo = asm_resources.readers().mo.clone();
+            let asm_services = asm_resources.asm_services().clone();
+            move || -> Result<AsmRunnerMO> {
+                let mut guard = asm_shmem_mo
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
+                AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, _stats)
             }
         });
 
         // Run the ROM histogram only on partition 0 as it is always computed by this partition
-        let has_rom_sm = pctx.dctx_is_first_partition();
+        let has_rom_sm = pctx.dctx_is_first_process();
 
         let _stats = stats.clone();
 
         let handle_rh = (has_rom_sm).then(|| {
-            let asm_shmem_rh = asm_resources.asm_shmem_rh.clone();
-            let base_port = asm_resources.base_port;
-            let unlock_mapped_memory = self.unlock_mapped_memory;
-            std::thread::spawn(move || {
+            let asm_shmem_rh = asm_resources.readers().rh.clone();
+            let asm_services = asm_resources.asm_services().clone();
+            let unlock_mapped_memory = config.unlock_mapped_memory;
+            std::thread::spawn(move || -> Result<AsmRunnerRH> {
+                let mut guard = asm_shmem_rh
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;
+
                 AsmRunnerRH::run(
-                    &mut asm_shmem_rh.lock().unwrap(),
+                    &mut guard,
                     MAX_NUM_STEPS,
-                    world_rank,
-                    local_rank,
-                    base_port,
+                    asm_services,
                     unlock_mapped_memory,
                     _stats,
                 )
-                .expect("Error during ROM Histogram execution")
             })
         });
-        drop(asm_resources_guard);
 
-        let (min_traces, main_count, secn_count) = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
-        // Store execute steps
-        let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
-        stats_end!(stats, &_exec_scope);
-
-        (min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps)
+        match mt_result {
+            Ok((min_traces, counters, pub_outs)) => {
+                let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+                stats_end!(stats, &_exec_scope);
+                Ok((min_traces, counters, Some(handle_mo), handle_rh, steps, pub_outs))
+            }
+            Err(e) => {
+                // MT already self-cleaned (signaled reset + joined its stdio
+                // thread). Wake MO/RH in case they're still parked, then join
+                // so their detached threads release the shmem-reader locks
+                // before the next job begins.
+                //
+                // We enter this arm for ANY MT failure — cancellation, shmem
+                // corruption, poisoned mutex, ASM child non-zero exit — so the
+                // join-failure logs deliberately say "MT-failure cleanup"
+                // rather than "after cancel" to avoid misattributing root cause.
+                if let Err(reset_err) = asm_resources.signal_cancellation() {
+                    tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
+                }
+                join_runner_during_cleanup("MO", handle_mo);
+                if let Some(h) = handle_rh {
+                    join_runner_during_cleanup("RH", h);
+                }
+                stats_end!(stats, &_exec_scope);
+                Err(e)
+            }
+        }
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -219,23 +295,36 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> (Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList) {
+    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
+        let errors: Mutex<Vec<anyhow::Error>> = Mutex::new(Vec::new());
 
         // Capture the parent scope ID so it can be copied into the closure
         #[allow(unused_variables)]
         let mt_scope_id = _mt_scope.id();
 
-        let (emu_traces, asm_execution_info) = rayon::in_place_scope(|scope| {
+        let scope_result: Result<_> = rayon::in_place_scope(|scope| {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
                 let results_ref = &results_mu;
+                let errors_ref = &errors;
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-                    let mut data_bus = sm_bundle.build_data_bus_counters();
+                    let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
+                        Ok(db) => db,
+                        Err(e) => {
+                            let _ = errors_ref.lock().map(|mut errs| {
+                                errs.push(anyhow::anyhow!(
+                                    "StaticDataBus::from_bundle failed for chunk {}: {e}",
+                                    chunk_id.0
+                                ));
+                            });
+                            return;
+                        }
+                    };
 
                     ZiskEmulator::process_emu_trace::<F, _, _>(
                         zisk_rom,
@@ -248,62 +337,104 @@ impl EmulatorAsm {
 
                     stats_end!(stats, &_chunk_scope);
 
-                    results_ref.lock().unwrap().push((chunk_id, data_bus));
+                    match results_ref.lock() {
+                        Ok(mut guard) => guard.push((chunk_id, data_bus)),
+                        Err(e) => {
+                            let _ = errors_ref.lock().map(|mut errs| {
+                                errs.push(anyhow::anyhow!(
+                                    "results_mu lock poisoned for chunk {}: {e}",
+                                    chunk_id.0
+                                ));
+                            });
+                        }
+                    }
                 });
             };
 
-            let asm_resources_guard = self.asm_resources.lock().unwrap();
-            let asm_resources = asm_resources_guard.as_ref().expect("AsmResources not initialized");
+            let asm_resources = self
+                .asm_resources
+                .read()
+                .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))?
+                .clone();
+            let mt_shmem = &mut asm_resources
+                .readers()
+                .mt
+                .lock()
+                .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
+            let asm_resources_for_failure = asm_resources.clone();
             let result = AsmRunnerMT::run_and_count(
-                &mut asm_resources.asm_shmem_mt.lock().unwrap(),
+                mt_shmem,
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
-                self.world_rank,
-                self.local_rank,
-                asm_resources.base_port,
+                move || asm_resources_for_failure.signal_cancellation(),
+                asm_resources.asm_services().clone(),
                 stats.clone(),
-            )
-            .expect("Error during ASM execution");
-            drop(asm_resources_guard);
-            result
+            )?;
+            Ok(result)
         });
 
-        self.asm_execution_info.lock().unwrap().replace(asm_execution_info);
+        let (emu_traces, asm_execution_info) = scope_result?;
+
+        // Check for errors collected during parallel execution
+        let err_vec =
+            errors.into_inner().map_err(|e| anyhow::anyhow!("errors mutex poisoned: {e}"))?;
+        if !err_vec.is_empty() {
+            let combined = err_vec
+                .iter()
+                .enumerate()
+                .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(anyhow::anyhow!(
+                "MT assembly chunk processing failed ({} errors):\n{}",
+                err_vec.len(),
+                combined
+            ));
+        }
+
+        self.asm_execution_info
+            .lock()
+            .map_err(|e| anyhow::anyhow!("asm_execution_info lock poisoned: {e}"))?
+            .replace(asm_execution_info);
 
         // Unwrap the Arc pointers now that all rayon tasks have completed
         let emu_traces = emu_traces
             .into_iter()
-            .map(|arc| Arc::try_unwrap(arc).expect("Arc should have single owner after scope"))
-            .collect();
+            .map(|arc| {
+                Arc::try_unwrap(arc)
+                    .map_err(|_| anyhow::anyhow!("Arc still has multiple owners after scope"))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        let mut data_buses = results_mu.into_inner().unwrap();
+        let mut data_buses = results_mu
+            .into_inner()
+            .map_err(|e| anyhow::anyhow!("results_mu lock poisoned: {e}"))?;
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
-        let mut main_count = Vec::with_capacity(data_buses.len());
-        let mut secn_count = HashMap::new();
+        let mut counters = HashMap::new();
+        let mut pub_outs = PubOutsCollector::new();
 
-        for (chunk_id, data_bus) in data_buses {
+        for (chunk_id, mut data_bus) in data_buses {
+            pub_outs.0.extend(data_bus.take_pub_outs().0);
             let databus_counters = data_bus.into_devices(false);
 
             for (idx, counter) in databus_counters.into_iter() {
-                match idx {
-                    None => {
-                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
-                    }
-                    Some(idx) => {
-                        secn_count
-                            .entry(idx)
-                            .or_insert_with(Vec::new)
-                            .push((chunk_id, counter.unwrap()));
-                    }
-                }
+                let idx = idx.ok_or_else(|| {
+                    anyhow::anyhow!("unexpected unindexed counter for chunk {}", chunk_id.0)
+                })?;
+                let counter = counter.ok_or_else(|| {
+                    anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
+                })?;
+                counters.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
             }
         }
 
         stats_end!(stats, &_mt_scope);
-        (emu_traces, main_count, secn_count)
+        Ok((emu_traces, counters, pub_outs))
     }
 }
 
@@ -311,20 +442,27 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> (
-        Vec<EmuTrace>,
-        DeviceMetricsList,
-        NestedDeviceMetricsList,
-        Option<JoinHandle<AsmRunnerMO>>,
-        Option<JoinHandle<AsmRunnerRH>>,
-        u64,
-    ) {
+    ) -> Result<crate::EmulatorResult> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+    }
+}
+
+/// Join an MO/RH runner thread on the MT-failure cleanup path, logging any
+/// thread panic or runner error so observability isn't silently lost. The
+/// caller has already issued `signal_cancellation`, so a healthy runner will
+/// observe the reset flag and exit `Ok(_)`.
+fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Result<T>>) {
+    match handle.join() {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+        }
+        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
     }
 }

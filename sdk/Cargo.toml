@@ -8,46 +8,31 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+# Zisk prover backend (contains prover and guest types)
+zisk-prover-backend = { workspace = true }
+
+# Common dependencies
 proofman-common = { workspace = true }
-proofman-util = { workspace = true }
 zisk-common = { workspace = true }
-fields = { workspace = true }
-anyhow = { workspace = true }
-proofman = { workspace = true }
-rom-setup = { workspace = true }
-asm-runner = { workspace = true }
-colored = { workspace = true }
-tracing = { workspace = true }
-zisk-distributed-common = { workspace = true }
-ziskemu = { workspace = true }
-zisk-core = { workspace = true }
-zisk-verifier = { workspace = true }
 zisk-build = { workspace = true }
-sha2 = { workspace = true }
-executor = { workspace = true }
-bincode = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
 serde = { workspace = true }
+bincode = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+zisk-coordinator-api = { workspace = true }
+zisk-coordinator-client = { workspace = true }
+
+# For utils.rs
+rom-setup = { workspace = true }
+
+[dev-dependencies]
+test-artifacts = { workspace = true }
 
 [features]
 default = []
-gpu = [
-    "proofman/gpu",
-    "proofman-common/gpu",
-    "rom-setup/gpu",
-    "executor/gpu",
-    "ziskemu/gpu",
-    "packed"
-]
-packed = ["proofman-common/packed", "executor/packed"]
-stats = []
-disable_distributed = [
-    "proofman/disable_distributed",
-    "proofman-common/disable_distributed",
-    "executor/disable_distributed",
-    "zisk-common/disable_distributed",
-    "zisk-build/disable_distributed",
-]
-diagnostic = ["proofman-common/diagnostic"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(distributed)'] }
+cpu-only = ["zisk-prover-backend/cpu-only"]
+stats = ["zisk-prover-backend/stats"]
+diagnostic = ["zisk-prover-backend/diagnostic"]

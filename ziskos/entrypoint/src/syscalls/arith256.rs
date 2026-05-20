@@ -1,9 +1,9 @@
 //! Arith256 system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
 #[derive(Debug)]
@@ -18,9 +18,6 @@ pub struct SyscallArith256Params<'a> {
 
 /// Executes the `Arith256` operation, performing a 256-bit multiplication and addition:
 /// `a * b + c = dh | dl`.
-///
-/// The `Arith256` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Arith256`.
 ///
 /// `Arith256` operates on arrays of four `u64` elements. The first parameter is a pointer to a structure
 /// containing five values: `a`, `b`, `c`, and the result, two 256-bit chunks for `d`:
@@ -37,9 +34,9 @@ pub extern "C" fn syscall_arith256(
     params: &mut SyscallArith256Params,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_ARITH256_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         precompiles_helpers::arith256(params.a, params.b, params.c, params.dl, params.dh);
         #[cfg(feature = "hints")]

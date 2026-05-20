@@ -19,191 +19,15 @@
 #include <netinet/tcp.h>
 #include <sys/file.h>
 #include <time.h>
+#include "constants.hpp"
 #include "emu.hpp"
-
-/**************************/
-/* Assembly-provided code */
-/**************************/
-
-// This is the emulator assembly code start function, which will execute the code in the ROM until
-// it ends, and generate the trace in the output trace memory.
-// It is called from C to start the execution of the assembly code.
-void emulator_start(void);
-
-// These functions are implemented in assembly and provide access to configuration parameters used
-// to generate the assembly code, and that in some cases must match the C main program configuration
-uint64_t get_max_bios_pc(void);
-uint64_t get_max_program_pc(void);
-uint64_t get_gen_method(void); // Must match the C main program provided argument
-uint64_t get_precompile_results(void);
-
-// These variables are updated by the assembly code to provide information about the execution
-// status and trace generation, accessed by C to generate the response to the client
-extern uint64_t MEM_STEP; // Current step, i.e. number of executed instructions, updated by assembly at every step or at the end of every chunk, depending on the generation method
-extern uint64_t MEM_END; // Indicates the end of execution
-extern uint64_t MEM_ERROR; // Indicates an error during execution
-extern uint64_t MEM_TRACE_ADDRESS; // Address of the trace memory
-extern uint64_t MEM_CHUNK_ADDRESS; // Address of the current chunk
-extern uint64_t MEM_CHUNK_START_STEP; // Step at which the current chunk started
-
-/***************/
-/* Definitions */
-/***************/
-
-// Address map
-// There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
-// assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR (uint64_t)0x80000000
-#define ROM_SIZE (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR (uint64_t)0x90000000
-#define MAX_INPUT_SIZE (uint64_t)0x08000000 // 128MB
-
-#define RAM_ADDR (uint64_t)0xA0000000
-#define RAM_SIZE (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR RAM_ADDR
-#define SYS_SIZE (uint64_t)0x10000
-#define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
-
-#ifdef TRACE_TARGET_MO
-    #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
-    #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
-#elif defined(TRACE_TARGET_RH)
-    #define TRACE_INITIAL_SIZE (uint64_t)0x004000000 /* 64MB */
-    #define TRACE_DELTA_SIZE   (uint64_t)0x004000000 /* 64MB */
-#else 
-    #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
-    #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
-#endif
-
-#define TRACE_ADDR         (uint64_t)0xd0000000
-#define TRACE_MAX_SIZE     (uint64_t)0x1000000000 // 64GB
-#define TRACE_NUMBER_OF_CHUNKS (((TRACE_MAX_SIZE - TRACE_INITIAL_SIZE) / TRACE_DELTA_SIZE) + 1)
-#define TRACE_SIZE_GRANULARITY (1014*1014) // ROM histogram trace size is round up to a multiple of this granularity
-
-// Worst case: every chunk instruction is a keccak operation, with an input data of 256 bytes
-
-// #if defined(TRACE_TARGET_MO)
-//     #define MAX_MTRACE_REGS_ACCESS_SIZE (3 * 8)
-//     #define MAX_BYTES_DIRECT_MTRACE 80 // PRE/POST = ((1 PRE + 2 SRC + 1 WR DST) * 2 + BLOCK_READ + BLOCK_WRITE) * 8
-//     #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
-//     #define MAX_CHUNK_TRACE_SIZE (CHUNK_SIZE * MAX_BYTES_MTRACE_STEP)
-// #elif defined(TRACE_TARGET_RH)
-//     #define MAX_CHUNK_TRACE_SIZE 0
-// #else 
-//     #define MAX_MTRACE_REGS_ACCESS_SIZE ((2 + 2 + 3) * 8)
-//     #define MAX_TRACE_CHUNK_INFO ((44*8) + 32)
-//     #define MAX_BYTES_DIRECT_MTRACE 256
-//     #define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
-//     #define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)
-// #endif
-// uint64_t trace_resize_request = 0;
-// uint64_t trace_address_threshold = TRACE_ADDR + INITIAL_TRACE_SIZE - MAX_CHUNK_TRACE_SIZE;
-
-// Control input and output shared memory configuration.
-// Control input is used to tell the assembly code how many precompile result u64 fields have been
-// written by the client.  Control output is used to tell the client how many precompile result u64
-// fields have been read by the assembly code, so the client can know when it can write new
-// precompile results.  Assembly code waits when the number of read fields is not lower than the
-// number of written fields, and client waits when the number of written fields would exceed the
-// number of read fields plus the available precompile shared memory size, which is a circular buffer
-#define CONTROL_INPUT_ADDR (uint64_t)0x70000000
-#define CONTROL_INPUT_SIZE (uint64_t)0x1000 // 4kB
-#define CONTROL_OUTPUT_ADDR (uint64_t)0x70001000
-#define CONTROL_OUTPUT_SIZE (uint64_t)0x1000 // 4kB
-#define CONTROL_RETRY_DELAY_US 1000 // 1ms
-#define CONTROL_NUMBER_OF_RETRIES 1000 // 1s max total
-
-// Maximum number of steps to execute, used by the client to limit the execution steps of the
-// assembly code.  This limit is set by the ZisK PIL constraints.
-#define MAX_STEPS (1ULL << 36)
-
-// Assembly service request/response types
-// Only the methods supported by the configured generation method will be implemented by the server,
-// e.g. gen_method=1 => PING, MT and SHUTDOWN; the rest will fail with an error response.
-#define TYPE_PING 1 // Ping
-#define TYPE_PONG 2
-#define TYPE_MT_REQUEST 3 // Minimal trace
-#define TYPE_MT_RESPONSE 4
-#define TYPE_RH_REQUEST 5 // ROM histogram
-#define TYPE_RH_RESPONSE 6
-#define TYPE_MO_REQUEST 7 // Memory opcode
-#define TYPE_MO_RESPONSE 8
-#define TYPE_MA_REQUEST 9 // Main packed trace
-#define TYPE_MA_RESPONSE 10
-#define TYPE_CM_REQUEST 11 // Collect memory trace
-#define TYPE_CM_RESPONSE 12
-#define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
-#define TYPE_FA_RESPONSE 14
-#define TYPE_MR_REQUEST 15 // Mem reads
-#define TYPE_MR_RESPONSE 16
-#define TYPE_CA_REQUEST 17 // Collect main trace
-#define TYPE_CA_RESPONSE 18
-#define TYPE_SD_REQUEST 1000000 // Shutdown
-#define TYPE_SD_RESPONSE 1000001
-
-// Server IP address, used by the client to connect to the server
-#define SERVER_IP "127.0.0.1"  // Change to your server IP; otherwise use localhost IP address
-
-// Chunk size used in generation methods that generate a trace chunk at every N steps, e.g. gen_method=1 or gen_method=7.
-// It must be a power of two, and it is used to calculate the trace address threshold at which the next chunk must be mapped,
-// to avoid reaching the end of the currently mapped trace memory.
-#define CHUNK_SIZE (1ULL << 18)
-
-// Maximum trace chunk size, used to determine when the trace address is close to the end of the
-// currently mapped trace memory and the next chunk must be mapped.  It is calculated based on the
-// maximum number of bytes that can be generated in a chunk
-// Worst case: every chunk instruction is a keccak operation, with an input data of 200 bytes
-// (let's use 256 bytes to be safe), and the trace includes the access to 2 source registers, 2
-// destination registers and 3 memory addresses (e.g. for a keccak operation with 3 memory operands),
-//  which are the maximum number of registers and memory addresses that can be accessed by a chunk
-// instruction, according to the ZisK assembly code generation configuration.
-
-#define MAX_MTRACE_REGS_ACCESS_SIZE ((2 + 2 + 3) * 8)
-#define MAX_TRACE_CHUNK_INFO ((44*8) + 32)
-#define MAX_BYTES_DIRECT_MTRACE 256
-#define MAX_BYTES_MTRACE_STEP (MAX_BYTES_DIRECT_MTRACE + MAX_MTRACE_REGS_ACCESS_SIZE)
-#define MAX_CHUNK_TRACE_SIZE ((CHUNK_SIZE * MAX_BYTES_MTRACE_STEP) + MAX_TRACE_CHUNK_INFO)
-
-// Maximum precompile results share memory size
-// It is a circular buffer
-#define MAX_PRECOMPILE_SIZE (uint64_t)0x400000 // 4MB
-
-// Maximum chunk mask for zip generation method, which indicates which chunks are included in the trace,
-// and must be between 0 and 7 (inclusive), as it is used to generate a mask of 8 bits where each
-// bit indicates if the corresponding chunk is included in the trace or not.
-#define MAX_CHUNK_MASK 7
-
-// Maximum length of the shared memory prefix, e.g. "ZISK_12345"
-// This prefix is used to generate the names of the shared memories and semaphores used for
-// communication and synchronization between the server and the client,
-#define MAX_SHM_PREFIX_LENGTH 64
-
-/*********************/
-/* Generation method */
-/*********************/
-
-// Specifies how the assembly code generates the trace, and what information it includes.
-// It is specified with the mandatory argument --gen=<method>
-// It must match the value returned by the assembly function get_gen_method()
-// The enum names are equivalent to the rust ones defined in core/src/riscv2zisk.rs as AsmGenerationMethod
-// ZisK uses generation methods 1 (minimal trace), 2 (ROM histogram) and 7 (memory operations)
-// but the rest of methods can be used for testing and debugging purposes
-typedef enum {
-    Fast = 0,
-    MinimalTrace = 1,
-    RomHistogram = 2,
-    MainTrace = 3,
-    ChunksOnly = 4,
-    //BusOp = 5,
-    Zip = 6,
-    MemOp = 7,
-    ChunkPlayerMTCollectMem = 8,
-    MemReads = 9,
-    ChunkPlayerMemReadsCollectMain = 10,
-} GenMethod;
-
-// Default generation method, can be overridden by the --gen argument
-GenMethod gen_method = Fast;
+#include "asm_provided.hpp"
+#include "globals.hpp"
+#include "configuration.hpp"
+#include "server.hpp"
+#include "client.hpp"
+#include "trace.hpp"
+#include "log.hpp"
 
 // Returns the acronym of the generation method, used for logging and file naming
 const char * gen_method_acronym(GenMethod method)
@@ -225,43 +49,10 @@ const char * gen_method_acronym(GenMethod method)
     }
 }
 
-// Pointers to the input, RAM, ROM and trace memory, used by both C and assembly code to access these memories
-uint64_t * pInputTrace = (uint64_t *)TRACE_ADDR; // Used for trace consumption, i.e. chunk player
-uint64_t * pOutputTrace = (uint64_t *)TRACE_ADDR; // Used for trace generation, i.e. assembly code writes the trace to this address, and client reads it from this address
-
-// Service TCP parameters
-uint16_t port = 0;
-uint16_t arguments_port = 0;
-
-// Type of execution
-bool server = false;
-bool client = false;
-bool call_chunk_done = false;
-bool do_shutdown = false; // If true, the client will perform a shutdown request to the server when done
-uint64_t number_of_mt_requests = 1; // Loop to send this number of minimal trace requests
-
-// To be used when calculating partial durations
-// Time measurements cannot be overlapped
-struct timeval start_time;
-struct timeval stop_time;
-uint64_t duration;
-
 // To be used when calculating total duration
 struct timeval total_start_time;
 struct timeval total_stop_time;
 uint64_t total_duration;
-
-// To be used when calculating the assembly duration
-uint64_t assembly_duration;
-
-// Counters used in functions called from assembly code
-uint64_t realloc_counter = 0;
-uint64_t wait_counter = 0;
-uint64_t print_pc_counter = 0;
-
-// Chunk player globals
-uint64_t chunk_player_address = 0;
-uint64_t chunk_player_mt_size = TRACE_INITIAL_SIZE;
 
 // Checks if a number is a power of two, used to validate the max steps and chunk size provided by the client
 bool is_power_of_two (uint64_t number)
@@ -273,412 +64,660 @@ bool is_power_of_two (uint64_t number)
 /* MAX STEPS */
 /*************/
 
-// Maximum number of steps to execute, used by the client to limit the execution steps of the
-// assembly code.
-uint64_t max_steps = (1ULL << 32);
-
 // Sets the maximum number of steps provided by the client in the request
 void set_max_steps (uint64_t new_max_steps)
 {
     if (!is_power_of_two(new_max_steps))
     {
-        printf("ERROR: set_max_steps() got a new max steps = %lu that is not a power of two\n", new_max_steps);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: set_max_steps() got a new max steps = %lu that is not a power of two\n", new_max_steps);
         exit(-1);
     }
     max_steps = new_max_steps;
-}
-
-uint64_t trace_address_threshold = TRACE_ADDR + TRACE_INITIAL_SIZE - MAX_CHUNK_TRACE_SIZE;
-
-int map_locked_flag = MAP_LOCKED;
-
-
-/**************/
-/* TRACE SIZE */
-/**************/
-
-uint64_t initial_trace_size = TRACE_INITIAL_SIZE;
-uint64_t trace_address = TRACE_ADDR;
-uint64_t trace_size = TRACE_INITIAL_SIZE;
-uint64_t trace_used_size = 0;
-
-void set_trace_size (uint64_t new_trace_size)
-{
-    // Update trace global variables
-    // printf("%s trace resize (trace_resize_request: %ld):  %ld MB => %ld MB\n", log_name, trace_resize_request, trace_size >> 20, new_trace_size >> 20);
-    
-    // trace_resize_request = 0;
-
-    trace_size = new_trace_size;
-    trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
-    pOutputTrace[2] = trace_size;    
 }
 
 /**************/
 /* CHUNK SIZE */
 /**************/
 
-uint64_t chunk_size = CHUNK_SIZE;
-uint64_t chunk_size_mask = CHUNK_SIZE - 1;
-
 void set_chunk_size (uint64_t new_chunk_size)
 {
     if (!is_power_of_two(new_chunk_size))
     {
-        printf("ERROR: set_chunk_size() got a new chunk size = %lu that is not a power of two\n", new_chunk_size);
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: set_chunk_size() got a new chunk size = %lu that is not a power of two\n", new_chunk_size);
         exit(-1);
     }
     chunk_size = new_chunk_size;
-    chunk_size_mask = chunk_size - 1;
     trace_address_threshold = TRACE_ADDR + trace_size - MAX_CHUNK_TRACE_SIZE;
 }
 
-void parse_arguments(int argc, char *argv[]);
-uint64_t TimeDiff(const struct timeval startTime, const struct timeval endTime);
-void configure (void);
-void server_setup (void);
-void server_reset_fast (void);
-void server_reset_slow (void);
-void server_reset_trace (void);
-void server_run (void);
-void server_cleanup (void);
-void client_setup (void);
-void client_run (void);
-void client_cleanup (void);
-void _chunk_done(void);
-void log_minimal_trace(void);
-void log_histogram(void);
-void log_main_trace(void);
-void log_mem_trace(void);
-void log_mem_op(void);
-void save_mem_op_to_files(void);
-void log_chunk_player_main_trace(void);
-int recv_all_with_timeout (int sockfd, void *buffer, size_t length, int flags, int timeout_sec);
+//#define USE_FILE_LOCK
+
+#ifdef USE_FILE_LOCK
+
 void file_lock(void);
-
-// Configuration globals, set by arguments
-bool output = false;
-bool output_riscof = false;
-bool silent = false;
-bool metrics = false;
-bool trace = false;
-bool trace_trace = false;
-bool verbose = false;
-bool save_to_file = false;
-bool share_input_shm = false; // Shares input shared memories: input, precompile results and control input, using a common name
-bool open_input_shm = false; // Opens existing input shared memories, without creating them.  They must be previously created by another process (assembly emulator or witness computation)
-char input_file[4096] = {0};
-bool redirect_output_to_file = false;
-
-// ROM histogram
-uint64_t histogram_size = 0;
-uint64_t bios_size = 0;
-uint64_t program_size = 0;
-
-// Zip
-uint64_t chunk_mask = 0x0; // 0, 1, 2, 3, 4, 5, 6 or 7
-
-/*****************/
-/* SHARED MEMORY */
-/*****************/
-
-// Shared memory prefix
-char shm_prefix[MAX_SHM_PREFIX_LENGTH];
-
-// Input shared memory
-char shmem_input_name[128];
-int shmem_input_fd = -1;
-uint64_t shmem_input_size = 0;
-void * shmem_input_address = NULL;
-
-// Output trace shared memory
-char shmem_output_name[128];
-int shmem_output_fd = -1;
-
-// Input MT trace shared memory
-char shmem_mt_name[128];
-int shmem_mt_fd = -1;
-
-// Chunk done semaphore: notifies the caller when a new chunk has been processed
-char sem_chunk_done_name[128];
-sem_t * sem_chunk_done = NULL;
-
-// Shutdown done semaphore: notifies the caller when a shutdown has been processed
-char sem_shutdown_done_name[128];
-sem_t * sem_shutdown_done = NULL;
 
 // File lock name, used to lock a file that indicates that the assembly emulator process is running,
 // to prevent multiple instances of the server from running at the same time.
-char file_lock_name[128];
 int file_lock_fd = -1;
 
-// Log name
-char log_name[128];
+#endif // USE_FILE_LOCK
 
 // Process id
 int process_id = 0;
-
-/**************************/
-/* PRECOMPILE AND CONTROL */
-/**************************/
 
 #ifdef ASM_PRECOMPILE_CACHE
 bool precompile_cache_enabled = false;
 #endif
 
-bool precompile_results_enabled = false;
-uint64_t * precompile_results_address = NULL;
+/*******************/
+/* PROCESS REQUEST */
+/*******************/
 
-// Precompile results shared memory
-char shmem_precompile_name[128];
-int shmem_precompile_fd = -1;
-uint64_t shmem_precompile_size = 0;
-void * shmem_precompile_address = NULL;
-
-// Precompile results semaphores
-char sem_prec_avail_name[128];
-sem_t * sem_prec_avail = NULL;
-char sem_prec_read_name[128];
-sem_t * sem_prec_read = NULL;
-
-// Precompile results file name (used by client)
-char precompile_file_name[4096] = {0};
-
-// Control input shared memory
-char shmem_control_input_name[128];
-int shmem_control_input_fd = -1;
-uint64_t * shmem_control_input_address = NULL;
-volatile uint64_t * precompile_written_address = NULL;
-volatile uint64_t * precompile_exit_address = NULL;
-
-// Control output shared memory
-char shmem_control_output_name[128];
-int shmem_control_output_fd = -1;
-uint64_t * shmem_control_output_address = NULL;
-volatile uint64_t * precompile_read_address = NULL;
-
-/********************/
-/* TRACE ALLOCATION */
-/********************/
-
-void trace_virtual_alloc (void)
+void process_request(const uint64_t * request, uint64_t * response, bool * bReset, bool * bShutdown)
 {
-    void * addr = mmap((void *)TRACE_ADDR, TRACE_MAX_SIZE, PROT_NONE, MAP_NORESERVE | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (addr != (void *)TRACE_ADDR)
-    {
-        printf("ERROR: trace_virtual_alloc() failed to reserve trace memory at address 0x%lx\n", TRACE_ADDR);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
+    // Initialize response with default values
+    *bReset = false;
+    *bShutdown = false;
 
-uint64_t next_chunk_id = 0; // Next trace chunk id to be mapped, starting from 0
-int trace_chunk_fd[TRACE_NUMBER_OF_CHUNKS]; // File descriptors for each chunk
-uint64_t trace_total_mapped_size = 0; // Total mapped trace size
-
-void * trace_get_chunk_address (uint64_t chunk_id)
-{
-    assert(gen_method != RomHistogram || chunk_id == 0);
-
-    if (chunk_id == 0)
+    // Switch on request type
+    switch (request[0])
     {
-        return (void *)TRACE_ADDR;
-    }
-    else
-    {
-        return (void *)(TRACE_ADDR + TRACE_INITIAL_SIZE + ((chunk_id - 1) * TRACE_DELTA_SIZE));
-    }
-}
-
-uint64_t trace_get_chunk_size (uint64_t chunk_id)
-{
-    if (gen_method == RomHistogram) {
-        assert(chunk_id == 0);
-        return trace_size;
-    }
-
-    if (chunk_id == 0)
-    {
-        return TRACE_INITIAL_SIZE;
-    }
-    else
-    {
-        return TRACE_DELTA_SIZE;
-    }
-}
-
-void trace_generate_shmem_chunk_name(char * shmem_chunk_name, size_t shmem_chunk_name_size, uint64_t chunk_id)
-{
-    int result = snprintf(shmem_chunk_name, shmem_chunk_name_size, "%s_%lu", shmem_output_name, chunk_id);
-    if (result < 0 || result >= (int)shmem_chunk_name_size)
-    {
-        printf("ERROR: trace_generate_shmem_chunk_name() failed to create chunk shared memory name\n");
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
-
-void trace_cleanup (void)
-{
-    // Unmap all mapped chunks
-    for (uint64_t chunk_id = 0; chunk_id < next_chunk_id; chunk_id++)
-    {
-        uint64_t chunk_size = trace_get_chunk_size(chunk_id);
-        void * chunk_address = trace_get_chunk_address(chunk_id);
-        int result = munmap(chunk_address, chunk_size);
-        if (result != 0)
+        case TYPE_PING:
         {
-            printf("ERROR: trace_cleanup() failed calling munmap() chunk id=%lu size=%lu B address=0x%lx errno=%d=%s\n", chunk_id, chunk_size, (uint64_t)chunk_address, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
+#ifdef DEBUG
+            if (verbose) asm_printf("PING received\n");
+#endif
+            response[0] = TYPE_PONG;
+            response[1] = gen_method;
+            response[2] = trace_size;
+            response[3] = 0;
+            response[4] = 0;
+            break;
+        }
+        case TYPE_MT_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("MINIMAL TRACE received\n");
+#endif
+            if (gen_method == MinimalTrace)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_MT_RESPONSE;
+                response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_MT_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_RH_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("ROM HISTOGRAM received\n");
+#endif
+            if (gen_method == RomHistogram)
+            {
+                set_max_steps(request[1]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_RH_RESPONSE;
+                response[1] = MEM_END ? 0 : 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_RH_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_MO_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("MEMORY OPERATIONS received\n");
+#endif
+            if (gen_method == MemOp)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_MO_RESPONSE;
+                response[1] = MEM_END ? 0 : 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_MO_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_MA_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("MAIN TRACE received\n");
+#endif
+            if (gen_method == MainTrace)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_MA_RESPONSE;
+                response[1] = MEM_END ? 0 : 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_MA_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_CM_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("COLLECT MEMORY received\n");
+#endif
+            if (gen_method == ChunkPlayerMTCollectMem)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+                chunk_player_address = request[3];
+                uint64_t * pChunk = (uint64_t *)chunk_player_address;
+                print_pc_counter = pChunk[3];
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_CM_RESPONSE;
+                response[1] = 0;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_CM_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_FA_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("FAST received\n");
+#endif
+            if (gen_method == Fast)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_FA_RESPONSE;
+                response[1] = MEM_END ? 0 : 1;
+                response[2] = 0;
+                response[3] = 0;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_FA_RESPONSE;
+                response[1] = 1;
+                response[2] = 0;
+                response[3] = 0;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_MR_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("MEMORY READS received\n");
+#endif
+            if (gen_method == MemReads)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_MR_RESPONSE;
+                response[1] = MEM_END ? 0 : 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_MR_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_CA_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("COLLECT MAIN received\n");
+#endif
+            if (gen_method == ChunkPlayerMemReadsCollectMain)
+            {
+                set_max_steps(request[1]);
+                set_chunk_size(request[2]);
+                chunk_player_address = request[3];
+                uint64_t * pChunk = (uint64_t *)chunk_player_address;
+                print_pc_counter = pChunk[3];
+
+                server_run();
+
+                server_reset_fast();
+
+                response[0] = TYPE_CA_RESPONSE;
+                response[1] = 0;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+
+                *bReset = true;
+            }
+            else
+            {
+                response[0] = TYPE_CA_RESPONSE;
+                response[1] = 1;
+                response[2] = trace_size;
+                response[3] = trace_used_size;
+                response[4] = 0;
+            }
+            break;
+        }
+        case TYPE_SD_REQUEST:
+        {
+            if (!silent) asm_printf("SHUTDOWN received\n");
+            *bShutdown = true;
+
+            response[0] = TYPE_SD_RESPONSE;
+            response[1] = 0;
+            response[2] = 0;
+            response[3] = 0;
+            response[4] = 0;
+            break;
+        }
+        default:
+        {
+            asm_printf("ERROR: Invalid request id=%lu\n", request[0]);
+            exit(-1);                
+        }
+    }
+}
+
+/**************/
+/* TCP SERVER */
+/**************/
+
+void tcp_server (void)
+{
+    int result;
+
+    // Create socket file descriptor
+    int server_fd;
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == 0)
+    {
+        asm_printf("ERROR: Failed calling socket() errno=%d=%s\n", errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Forcefully attach socket to the port (avoid "address already in use")
+    int opt = 1;
+    result = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
+    if (result != 0)
+    {
+        asm_printf("ERROR: Failed calling setsockopt() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
+    }
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY; // Listen on all interfaces
+    address.sin_port = htons(port);
+
+    // Bind socket to port
+    result = bind(server_fd, (struct sockaddr *)&address, sizeof(address));
+    if (result != 0)
+    {
+        asm_printf("ERROR: Failed calling bind() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
+    }
+
+    // Start listening
+    result = listen(server_fd, 5);
+    if (result != 0)
+    {
+        asm_printf("ERROR: Failed calling listen() result=%d errno=%d=%s\n", result, errno, strerror(errno));
+        exit(-1);
+    }
+
+    while (true)
+    {
+        // Accept incoming connection
+        struct sockaddr_in address;
+        int addrlen = sizeof(address);
+        int client_fd;
+        if (!silent)
+        {
+            asm_printf("Waiting for incoming connections to port %u...\n", port);
+        }
+        client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
+        if (client_fd < 0)
+        {
+            asm_printf("ERROR: Failed calling accept() client_fd=%d errno=%d=%s\n", client_fd, errno, strerror(errno));
             exit(-1);
         }
+#ifdef DEBUG
+        if (verbose) asm_printf("New client: %s:%d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+#endif
 
-        // Close the chunk shared memory file descriptor
-        close(trace_chunk_fd[chunk_id]);
-        trace_chunk_fd[chunk_id] = -1;
+        // Configure linger to send data before closing the socket
+        // struct linger linger_opt = {1, 5};  // Enable linger with 5s timeout
+        // setsockopt(client_fd, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt));
+        // int cork = 0;
+        // setsockopt(client_fd, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork));
+        // // Disable Nagle algorithm
+        // int flag = 1;
+        // setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
-        // Build the chunk shared memory name
-        char shmem_chunk_name[128];
-        trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+        bool bShutdown = false;
+        bool bReset;
 
-        // Make sure the chunk shared memory is deleted
-        shm_unlink(shmem_chunk_name);
-    }
+        while (true)
+        {
+            // Read client request
+            uint64_t request[5];
+            ssize_t bytes_read = recv(client_fd, request, sizeof(request), MSG_WAITALL);
+            if (bytes_read < 0)
+            {
+                asm_printf("ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                break;
+            }
+            if (bytes_read != sizeof(request))
+            {
+                if ((errno != 0) && (errno != 2))
+                {
+                    asm_printf("WARNING: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                }
+                break;
+            }
+#ifdef DEBUG
+            if (verbose)
+            {
+                asm_printf("recv() returned: %ld\n", bytes_read);
+            }
+#endif
+            if (verbose)
+            {
+                asm_printf("recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", request[0], request[1], request[2], request[3], request[4]);
+            }
 
-    // Reset next chunk id
-    next_chunk_id = 0;
-}
+            // Process request and get response
+            uint64_t response[5];
+            process_request(request, response, &bReset, &bShutdown);
 
-void trace_preventive_cleanup (void)
-{
-    // Unmap all mapped chunks
-    for (uint64_t chunk_id = 0; chunk_id < TRACE_NUMBER_OF_CHUNKS; chunk_id++)
-    {
-        // Build the chunk shared memory name
-        char shmem_chunk_name[128];
-        trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+            // Send response to client
+            if (verbose)
+            {
+                asm_printf("send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", response[0], response[1], response[2], response[3], response[4]);
+            }
+            // Send response to client, handling partial writes
+            size_t total_size = sizeof(response);
+            size_t total_sent = 0;
+            while (total_sent < total_size)
+            {
+                ssize_t bytes_sent = send(client_fd,
+                                          (const char *)response + total_sent,
+                                          total_size - total_sent,
+                                          0);
+                if (bytes_sent < 0)
+                {
+                    if (errno == EINTR)
+                    {
+                        // Interrupted by signal, retry send
+                        continue;
+                    }
+                    asm_printf("ERROR: Failed calling send() invalid bytes_sent=%zd errno=%d=%s\n",
+                               bytes_sent, errno, strerror(errno));
+                    break;
+                }
+                if (bytes_sent == 0)
+                {
+                    // Peer has performed an orderly shutdown
+                    asm_printf("ERROR: Failed calling send(): connection closed by peer\n");
+                    break;
+                }
+                total_sent += (size_t)bytes_sent;
+            }
+            if (total_sent != total_size)
+            {
+                asm_printf("ERROR: Failed calling send() invalid total_sent=%zu errno=%d=%s\n", total_sent, errno, strerror(errno));
+                break;
+            }
+            else if (verbose)
+            {
+                asm_printf("Response sent to client\n");
+            }
 
-        // Make sure the chunk shared memory is deleted
-        int result = shm_unlink(shmem_chunk_name);
-        if (result != 0)
+            // Reset the server if requested by the client
+            if (bReset)
+            {
+                server_reset_slow();
+            }
+
+            // Shutdown if requested by the client
+            if (bShutdown)
+            {
+                break;
+            }
+        }
+
+        // Shutdown the client socket
+        shutdown(client_fd, SHUT_WR);
+
+        // Close client socket
+        close(client_fd);
+
+        if (bShutdown)
         {
             break;
         }
-        if (verbose) printf("trace_preventive_cleanup() unlinked chunk shared memory %s\n", shmem_chunk_name);
     }
+
+    // Close the server
+    close(server_fd);
 }
 
-void trace_map_next_chunk (void)
+/****************/
+/* STDIO SERVER */
+/****************/
+
+void stdio_server (void)
 {
-    // Get the next chunk id, size and address
-    uint64_t chunk_id = next_chunk_id;
-    if (chunk_id >= TRACE_NUMBER_OF_CHUNKS)
+    bool bShutdown = false;
+    bool bReset;
+
+    if (!silent)
     {
-        printf("ERROR: trace_map_next_chunk() exceeded maximum number of chunks %lu\n", TRACE_NUMBER_OF_CHUNKS);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    uint64_t chunk_size = trace_get_chunk_size(chunk_id);
-    void * chunk_address = trace_get_chunk_address(chunk_id);
-
-    if (verbose) printf("trace_map_next_chunk() mapping chunk id=%lu size=%lu B address=0x%lx\n", chunk_id, chunk_size, (uint64_t)chunk_address);
-
-    // Build the chunk shared memory name
-    char shmem_chunk_name[128];
-    trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
-
-    // Make sure the chunk shared memory is deleted
-    shm_unlink(shmem_chunk_name);
-
-    // Create the output shared memory
-    trace_chunk_fd[chunk_id] = shm_open(shmem_chunk_name, O_RDWR | O_CREAT | O_EXCL, 0666);
-    if (trace_chunk_fd[chunk_id] < 0)
-    {
-        printf("ERROR: trace_map_next_chunk() failed calling trace shm_open(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        asm_printf("Waiting for incoming data from stdin in pid=%d...\n", process_id);
     }
 
-    // Size it
-    int result = ftruncate(trace_chunk_fd[chunk_id], chunk_size);
-    if (result != 0)
+    // Disable buffering on stdin and stdout
+    setbuf(stdin, NULL);
+    setbuf(stdout, NULL);
+
+    while (true)
     {
-        printf("ERROR: trace_map_next_chunk() failed calling ftruncate(%s) errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        // Read client request
+        uint64_t request[5];
+        size_t total_read = 0;
+        bool read_error = false;
+        while (total_read < sizeof(request))
+        {
+            ssize_t bytes_read = read(STDIN_FILENO,
+                                      (char *)request + total_read,
+                                      sizeof(request) - total_read);
+            if (bytes_read < 0)
+            {
+                if (errno == EINTR)
+                {
+                    continue;
+                }
+                asm_printf("WARNING: Failed calling read(stdin) bytes_read=%zd errno=%d=%s\n", bytes_read, errno, strerror(errno));
+                read_error = true;
+                break;
+            }
+            if (bytes_read == 0)
+            {
+                // EOF before full request received
+                read_error = true;
+                break;
+            }
+            total_read += (size_t)bytes_read;
+        }
+#ifdef DEBUG
+        if (verbose)
+        {
+            asm_printf("read(stdin) returned total_read: %zu\n", total_read);
+        }
+#endif
+        if (read_error || (total_read != sizeof(request)))
+        {
+            break;
+        }
+        if (verbose)
+        {
+            asm_printf("read(stdin)'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", request[0], request[1], request[2], request[3], request[4]);
+        }
+
+        // Process request and get response
+        uint64_t response[5];
+        process_request(request, response, &bReset, &bShutdown);
+
+        if (verbose)
+        {
+            asm_printf("write(stdout)'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", response[0], response[1], response[2], response[3], response[4]);
+        }
+
+        // Write response to client
+        size_t total_sent = 0;
+        bool write_error = false;
+        while (total_sent < sizeof(response))
+        {
+            ssize_t bytes_sent = write(STDOUT_FILENO,
+                                       (const char *)response + total_sent,
+                                       sizeof(response) - total_sent);
+            if (bytes_sent < 0)
+            {
+                if (errno == EINTR)
+                {
+                    // Interrupted by signal, retry write
+                    continue;
+                }
+                asm_printf("ERROR: Failed calling write(stdout) invalid bytes_sent=%zd errno=%d=%s\n", bytes_sent, errno, strerror(errno));
+                write_error = true;
+                break;
+            }
+            else if (bytes_sent == 0)
+            {
+                asm_printf("ERROR: write(stdout) returned 0, response not fully sent\n");
+                break;
+            }
+            total_sent += (size_t)bytes_sent;
+        }
+        if (write_error || (total_sent != sizeof(response)))
+        {
+            asm_printf("ERROR: Failed calling write(stdout) invalid total_sent=%zu errno=%d=%s\n", total_sent, errno, strerror(errno));
+            break;
+        }
+        else if (verbose)
+        {
+            asm_printf("Response sent to client\n");
+        }
+
+        // Reset the server if requested by the client
+        if (bReset)
+        {
+            server_reset_slow();
+        }
+
+        // Shutdown if requested by the client
+        if (bShutdown)
+        {
+            break;
+        }
     }
-
-    // Sync
-    fsync(trace_chunk_fd[chunk_id]);
-
-    // Map it to the trace address
-    if (verbose) gettimeofday(&start_time, NULL);
-    void * requested_address;
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        requested_address = 0;
-    }
-    else
-    {
-        requested_address = (void *)chunk_address;
-    }
-    int flags = MAP_SHARED | map_locked_flag;
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-        flags |= MAP_FIXED;
-    }
-    void * pTrace = mmap(requested_address, chunk_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-    }
-    if (pTrace == MAP_FAILED)
-    {
-        printf("ERROR: trace_map_next_chunk() failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != (uint64_t)requested_address))
-    {
-        printf("ERROR: trace_map_next_chunk() called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, (uint64_t)requested_address);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (verbose) printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", chunk_size, shmem_chunk_name, pTrace, duration);
-
-    // Update total mapped size
-    trace_total_mapped_size += chunk_size;
-
-    // Increment next chunk id
-    next_chunk_id++;
-}
-
-void trace_map_initialize (void)
-{
-    // Perform preventive cleanup of any leftover shared memory chunks
-    trace_preventive_cleanup();
-
-    // Reserve the full virtual trace address space
-    trace_virtual_alloc();
-
-    // Map the first chunk, i.e. chunk 0
-    trace_map_next_chunk();
-
-    trace_address = TRACE_ADDR;
-    pOutputTrace = (uint64_t *)TRACE_ADDR;
 }
 
 /********/
@@ -691,9 +730,6 @@ int main(int argc, char *argv[])
     // Start counting total execution time
     gettimeofday(&total_start_time, NULL);
 #endif
-
-    // Result, to be used in calls to functions returning int
-    int result;
 
     // Get current process id
     process_id = getpid();
@@ -716,22 +752,22 @@ int main(int argc, char *argv[])
         snprintf(redirect_output_file, sizeof(redirect_output_file), "/tmp/%s_%s_output.txt", shm_prefix, gen_method_acronym(gen_method));
 
         // Redirect stdout to file
-        FILE * file_pointer = freopen(redirect_output_file, "w", stdout);
-        if (file_pointer == NULL)
+        FILE * file_pointer;
+        if (!stdio)
         {
-            printf("ERROR: Failed to redirect stdout to file %s\n", redirect_output_file);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
+            file_pointer = freopen(redirect_output_file, "w", stdout);
+            if (file_pointer == NULL)
+            {
+                asm_printf("ERROR: Failed to redirect stdout to file %s\n", redirect_output_file);
+                exit(-1);
+            }
         }
         
         // Redirect stderr to the same file
         file_pointer = freopen(redirect_output_file, "a", stderr);
         if (file_pointer == NULL)
         {
-            printf("ERROR: Failed to redirect stderr to file %s\n", redirect_output_file);
-            fflush(stdout);
-            fflush(stderr);
+            asm_printf("ERROR: Failed to redirect stderr to file %s\n", redirect_output_file);
             exit(-1);
         }
     }
@@ -739,11 +775,13 @@ int main(int argc, char *argv[])
     // Configure based on parguments
     configure();
 
+#ifdef USE_FILE_LOCK
     // Lock file
-    // if (server)
-    // {
-    //     file_lock();
-    // }
+    if (server)
+    {
+        file_lock();
+    }
+#endif
 
     // Send a message to stderr
     // fprintf(stderr, "%s stderr test (not an error): Starting Ziskemu ASM emulator process id=%d server=%d client=%d gen_method=%d port=%u\n", log_name, process_id, server, client, gen_method, port);
@@ -752,7 +790,17 @@ int main(int argc, char *argv[])
     if (client)
     {
         // Setup the client
-        client_setup();
+        //
+        // Client setup is deferred until after the initial ping to the server to map the shared
+        // memories just created by the server in the stdio case; otherwise the client could either
+        // not find any shared memory, or map old shared memories that the server will unlink during
+        // its setup before creating new ones, causing the client to read and write to shared
+        // memories that the server will not use anymore.
+        // In the TCP case this is not an issue because the server creates the shared memories
+        // before it starts listening to clients, so the client can map them during its setup even
+        // before pinging the server, but we keep the procedure common to both cases.
+        //
+        // client_setup();
 
         // Run the client
         client_run();
@@ -766,477 +814,31 @@ int main(int argc, char *argv[])
     // Setup the server
     server_setup();
 
+    server_signal_handler();
+
     // Reset the server, i.e. reset memory
     server_reset_fast();
     server_reset_slow();
     server_reset_trace();
 
-    // Create socket file descriptor
-    int server_fd;
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == 0)
+    // In case we just want to create the shared memories and exit, do it now after the setup and reset, and exit before starting to listen to clients
+    if (just_create_all_shm)
     {
-        printf("%s ERROR: Failed calling socket() errno=%d=%s\n", log_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        server_cleanup();
+        return 0;
     }
 
-    // Forcefully attach socket to the port (avoid "address already in use")
-    int opt = 1;
-    result = setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
-    if (result != 0)
+    // Run the proper server (stdio or TCP depending on configuration) to listen to client requests and process them
+    if (stdio)
     {
-        printf("%s ERROR: Failed calling setsockopt() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        // Run the stdio server to listen to client requests and process them
+        stdio_server();
     }
-
-    struct sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY; // Listen on all interfaces
-    address.sin_port = htons(port);
-
-    // Bind socket to port
-    result = bind(server_fd, (struct sockaddr *)&address, sizeof(address));
-    if (result != 0)
+    else
     {
-        printf("%s ERROR: Failed calling bind() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
+        // Run the TCP server to listen to client requests and process them
+        tcp_server();
     }
-
-    // Start listening
-    result = listen(server_fd, 5);
-    if (result != 0)
-    {
-        printf("%s ERROR: Failed calling listen() result=%d errno=%d=%s\n", log_name, result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    while (true)
-    {
-        // Accept incoming connection
-        struct sockaddr_in address;
-        int addrlen = sizeof(address);
-        int client_fd;
-        if (!silent)
-        {
-            printf("%s Waiting for incoming connections to port %u...\n", log_name, port);
-            fflush(stdout);
-            fflush(stderr);
-        }
-        client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
-        if (client_fd < 0)
-        {
-            printf("ERROR: Failed calling accept() client_fd=%d errno=%d=%s\n", client_fd, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-#ifdef DEBUG
-        if (verbose) printf("%s New client: %s:%d\n", log_name, inet_ntoa(address.sin_addr), ntohs(address.sin_port));
-#endif
-
-        // Configure linger to send data before closing the socket
-        // struct linger linger_opt = {1, 5};  // Enable linger with 5s timeout
-        // setsockopt(client_fd, SOL_SOCKET, SO_LINGER, &linger_opt, sizeof(linger_opt));
-        // int cork = 0;
-        // setsockopt(client_fd, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork));
-        // // Disable Nagle algorithm
-        // int flag = 1;
-        // setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
-
-        bool bShutdown = false;
-        bool bReset;
-
-        while (true)
-        {
-            // Read client request
-            uint64_t request[5];
-            ssize_t bytes_read = recv(client_fd, request, sizeof(request), MSG_WAITALL);
-            if (bytes_read < 0)
-            {
-                printf("%s ERROR: Failed calling recv() bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                break;
-            }
-            if (bytes_read != sizeof(request))
-            {
-                if ((errno != 0) && (errno != 2))
-                {
-                    printf("%s WARNING: Failed calling recv() invalid bytes_read=%ld errno=%d=%s\n", log_name, bytes_read, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                }
-                break;
-            }
-#ifdef DEBUG
-            if (verbose)
-            {
-                printf("%s recv() returned: %ld\n", log_name, bytes_read);
-                fflush(stdout);
-                fflush(stderr);
-            }
-#endif
-            if (verbose)
-            {
-                printf("%s recv()'d request=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, request[0], request[1], request[2], request[3], request[4]);
-                fflush(stdout);
-                fflush(stderr);
-            }
-
-            uint64_t response[5];
-            bReset = false;
-            switch (request[0])
-            {
-                case TYPE_PING:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s PING received\n", log_name);
-#endif
-                    response[0] = TYPE_PONG;
-                    response[1] = gen_method;
-                    response[2] = trace_size;
-                    response[3] = 0;
-                    response[4] = 0;
-                    break;
-                }
-                case TYPE_MT_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s MINIMAL TRACE received\n", log_name);
-#endif
-                    if (gen_method == MinimalTrace)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_MT_RESPONSE;
-                        response[1] = (MEM_END && !MEM_ERROR) ? 0 : 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_MT_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_RH_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s ROM HISTOGRAM received\n", log_name);
-#endif
-                    if (gen_method == RomHistogram)
-                    {
-                        set_max_steps(request[1]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_RH_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_RH_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_MO_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s MEMORY OPERATIONS received\n", log_name);
-#endif
-                    if (gen_method == MemOp)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_MO_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_MO_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_MA_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s MAIN TRACE received\n", log_name);
-#endif
-                    if (gen_method == MainTrace)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_MA_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_MA_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_CM_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s COLLECT MEMORY received\n", log_name);
-#endif
-                    if (gen_method == ChunkPlayerMTCollectMem)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-                        chunk_player_address = request[3];
-                        uint64_t * pChunk = (uint64_t *)chunk_player_address;
-                        print_pc_counter = pChunk[3];
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_CM_RESPONSE;
-                        response[1] = 0;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_CM_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_FA_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s FAST received\n", log_name);
-#endif
-                    if (gen_method == Fast)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_FA_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
-                        response[2] = 0;
-                        response[3] = 0;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_FA_RESPONSE;
-                        response[1] = 1;
-                        response[2] = 0;
-                        response[3] = 0;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_MR_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s MEMORY READS received\n", log_name);
-#endif
-                    if (gen_method == MemReads)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_MR_RESPONSE;
-                        response[1] = MEM_END ? 0 : 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_MR_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_CA_REQUEST:
-                {
-#ifdef DEBUG
-                    if (verbose) printf("%s COLLECT MAIN received\n", log_name);
-#endif
-                    if (gen_method == ChunkPlayerMemReadsCollectMain)
-                    {
-                        set_max_steps(request[1]);
-                        set_chunk_size(request[2]);
-                        chunk_player_address = request[3];
-                        uint64_t * pChunk = (uint64_t *)chunk_player_address;
-                        print_pc_counter = pChunk[3];
-
-                        server_run();
-
-                        server_reset_fast();
-
-                        response[0] = TYPE_CA_RESPONSE;
-                        response[1] = 0;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-
-                        bReset = true;
-                    }
-                    else
-                    {
-                        response[0] = TYPE_CA_RESPONSE;
-                        response[1] = 1;
-                        response[2] = trace_size;
-                        response[3] = trace_used_size;
-                        response[4] = 0;
-                    }
-                    break;
-                }
-                case TYPE_SD_REQUEST:
-                {
-                    if (!silent) printf("%s SHUTDOWN received\n", log_name);
-                    bShutdown = true;
-
-                    response[0] = TYPE_SD_RESPONSE;
-                    response[1] = 0;
-                    response[2] = 0;
-                    response[3] = 0;
-                    response[4] = 0;
-                    break;
-                }
-                default:
-                {
-                    printf("%s ERROR: Invalid request id=%lu\n", log_name, request[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);                
-                }
-            }
-
-            if (verbose)
-            {
-                printf("%s send()'ing response=[%lu, 0x%lx, 0x%lx, 0x%lx, 0x%lx]\n", log_name, response[0], response[1], response[2], response[3], response[4]);
-                fflush(stdout);
-                fflush(stderr);
-            }
-
-            ssize_t bytes_sent = send(client_fd, response, sizeof(response), MSG_WAITALL);
-            if (bytes_sent != sizeof(response))
-            {
-                printf("%s ERROR: Failed calling send() invalid bytes_sent=%ld errno=%d=%s\n", log_name, bytes_sent, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                break;
-            }
-//#ifdef DEBUG
-            else if (verbose)
-            {
-                printf("Response sent to client\n");
-                fflush(stdout);
-                fflush(stderr);
-            }
-//#endif
-            if (bReset)
-            {
-                server_reset_slow();
-            }
-
-            if (bShutdown)
-            {
-                break;
-            }
-        }
-
-        // Chutdown the client socket
-        shutdown(client_fd, SHUT_WR);
-
-        // Close client socket
-        close(client_fd);
-
-        if (bShutdown)
-        {
-            break;
-        }
-    }
-
-    // Close the server
-    close(server_fd);
 
     /************/
     /* CLEAN UP */
@@ -1258,4295 +860,15 @@ int main(int argc, char *argv[])
         gettimeofday(&total_stop_time, NULL);
         total_duration = TimeDiff(total_start_time, total_stop_time);
         uint64_t assembly_percentage = total_duration == 0 ? 0 : assembly_duration * 1000 / total_duration;
-        if (verbose) printf("Emulator C end total_duration = %lu us assembly_duration = %lu us (%lu %%o)\n", total_duration, assembly_duration, assembly_percentage);
+        if (verbose) asm_printf("Emulator C end total_duration = %lu us assembly_duration = %lu us (%lu %%o)\n", total_duration, assembly_duration, assembly_percentage);
     #endif
-}
-
-/*******************************/
-/* ARGUMENTS AND CONFIGURATION */
-/*******************************/
-
-// Print usage information: valid arguments
-void print_usage (void)
-{
-    printf("Usage: ziskemuasm\n");
-    printf("\t-s(server)\n");
-    printf("\t-c(client)\n");
-    printf("\t-i <input_file>\n");
-    printf("\t-p <port_number>\n");
-    printf("\t--gen=0|--generate_fast\n");
-    printf("\t--gen=1|--generate_minimal_trace\n");
-    printf("\t--gen=2|--generate_rom_histogram\n");
-    printf("\t--gen=3|--generate_main_trace\n");
-    printf("\t--gen=4|--generate_chunks\n");
-    printf("\t--gen=6|--generate_zip\n");
-    printf("\t--gen=9|--generate_mem_reads\n");
-    printf("\t--gen=10|--generate_chunk_player_mem_reads\n");
-    printf("\t--chunk <chunk_number>\n");
-    printf("\t--shutdown\n");
-    printf("\t--mt <number_of_mt_requests>\n");
-    printf("\t-o output on\n");
-    printf("\t--output_riscof output riscof on\n");
-    printf("\t--silent silent on\n");
-    printf("\t--shm_prefix <prefix> (default: ZISK)\n");
-    printf("\t-m metrics on\n");
-    printf("\t-t trace on\n");
-    printf("\t-tt trace_trace on\n");
-    printf("\t-f(save to file)\n");
-    printf("\t-a chunk_address\n");
-    printf("\t-v verbose on\n");
-    printf("\t-u unlock physical memory in mmap\n");
-    printf("\t--share_input_shm share input shared memories\n");
-    printf("\t--open_input_shm open existing input shared memories\n");
-#ifdef ASM_PRECOMPILE_CACHE
-    printf("\t--precompile-cache-store store precompile results in cache file\n");
-    printf("\t--precompile-cache-load load precompile results from cache file\n");
-#endif
-    if (precompile_results_enabled)
-    {
-        printf("\t-r <precompile_results_file>\n");
-    }
-    printf("\t--redirect-output-to-file redirect output to file\n");
-    printf("\t-h/--help print this\n");
-}
-
-// Parse main function arguments and configure global variables accordingly
-void parse_arguments(int argc, char *argv[])
-{
-    strcpy(shm_prefix, "ZISK");
-    uint64_t number_of_selected_generation_methods = 0;
-    if (argc > 1)
-    {
-        for (int i = 1; i < argc; i++)
-        {
-            if (strcmp(argv[i], "-s") == 0)
-            {
-                server = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-c") == 0)
-            {
-                client = true;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=0") == 0) || (strcmp(argv[i], "--generate_fast") == 0))
-            {
-                gen_method = Fast;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=1") == 0) || (strcmp(argv[i], "--generate_minimal_trace") == 0))
-            {
-                gen_method = MinimalTrace;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=2") == 0) || (strcmp(argv[i], "--generate_rom_histogram") == 0))
-            {
-                gen_method = RomHistogram;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=3") == 0) || (strcmp(argv[i], "--generate_main_trace") == 0))
-            {
-                gen_method = MainTrace;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=4") == 0) || (strcmp(argv[i], "--generate_chunks") == 0))
-            {
-                gen_method = ChunksOnly;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=6") == 0) || (strcmp(argv[i], "--generate_zip") == 0))
-            {
-                gen_method = Zip;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=7") == 0) || (strcmp(argv[i], "--generate_mem_op") == 0))
-            {
-                gen_method = MemOp;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=8") == 0) || (strcmp(argv[i], "--generate_chunk_player_mt_collect_mem") == 0))
-            {
-                gen_method = ChunkPlayerMTCollectMem;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=9") == 0) || (strcmp(argv[i], "--generate_mem_reads") == 0))
-            {
-                gen_method = MemReads;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if ( (strcmp(argv[i], "--gen=10") == 0) || (strcmp(argv[i], "--generate_chunk_player_mem_reads") == 0))
-            {
-                gen_method = ChunkPlayerMemReadsCollectMain;
-                number_of_selected_generation_methods++;
-                continue;
-            }
-            if (strcmp(argv[i], "-o") == 0)
-            {
-                output = true;
-                continue;
-            }
-            if (strcmp(argv[i], "--output_riscof") == 0)
-            {
-                output_riscof = true;
-                continue;
-            }
-            if (strcmp(argv[i], "--silent") == 0)
-            {
-                silent = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-m") == 0)
-            {
-                metrics = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-t") == 0)
-            {
-                trace = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-tt") == 0)
-            {
-                trace = true;
-                trace_trace = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-v") == 0)
-            {
-                verbose = true;
-                //emu_verbose = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-u") == 0)
-            {
-                map_locked_flag = 0;
-                continue;
-            }
-            if (strcmp(argv[i], "-h") == 0)
-            {
-                print_usage();
-                exit(0);
-            }
-            if (strcmp(argv[i], "--help") == 0)
-            {
-                print_usage();
-                continue;
-            }
-            if (strcmp(argv[i], "-i") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -i in the last position; please provide input file after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                if (strlen(argv[i]) > 4095)
-                {
-                    printf("ERROR: Detected argument -i but next argument is too long\n");
-                    print_usage();
-                    exit(-1);
-                }
-                strcpy(input_file, argv[i]);
-                continue;
-            }
-            if (strcmp(argv[i], "--shm_prefix") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -i in the last position; please provide shared mem prefix after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                if (strlen(argv[i]) > MAX_SHM_PREFIX_LENGTH)
-                {
-                    printf("ERROR: Detected argument -i but next argument is too long\n");
-                    print_usage();
-                    exit(-1);
-                }
-                strcpy(shm_prefix, argv[i]);
-                continue;
-            }
-            if (strcmp(argv[i], "--chunk") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -c in the last position; please provide chunk number after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                chunk_mask = strtoul(argv[i], &endptr, 10);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    printf("ERROR: Chunk number is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argv[i]) {
-                    printf("ERROR: No digits found while parsing chunk number\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    printf("ERROR: Extra characters after chunk number: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else if (chunk_mask > MAX_CHUNK_MASK) {
-                    printf("ERROR: Invalid chunk number: %lu\n", chunk_mask);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    printf("Got chunk_mask= %lu\n", chunk_mask);
-                }
-                continue;
-            }
-            if (strcmp(argv[i], "--shutdown") == 0)
-            {
-                do_shutdown = true;
-                continue;
-            }
-            if (strcmp(argv[i], "--mt") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -mt in the last position; please provide number of MT requests after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                number_of_mt_requests = strtoul(argv[i], &endptr, 10);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    printf("ERROR: Number of MT requests is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argv[i]) {
-                    printf("ERROR: No digits found while parsing number of MT requests\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    printf("ERROR: Extra characters after number of MT requests: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else if (number_of_mt_requests > 1000000) {
-                    printf("ERROR: Invalid number of MT requests: %lu\n", number_of_mt_requests);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    printf("Got number of MT requests= %lu\n", number_of_mt_requests);
-                }
-                continue;
-            }
-            if (strcmp(argv[i], "-p") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -p in the last position; please provide port number after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                arguments_port = strtoul(argv[i], &endptr, 10);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    printf("ERROR: Port number is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argv[i]) {
-                    printf("ERROR: No digits found while parsing port number\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    printf("ERROR: Extra characters after port number: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    printf("Got port number= %u\n", arguments_port);
-                }
-                continue;
-            }
-            if (strcmp(argv[i], "-f") == 0)
-            {
-                save_to_file = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-a") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -a in the last position; please provide chunk address after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                char * argument = argv[i];
-                if ((argument[0] == '0') && (argument[1] == 'x')) argument += 2;
-                chunk_player_address = strtoul(argv[i], &endptr, 16);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    printf("ERROR: Chunk address is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argument) {
-                    printf("ERROR: No digits found while parsing chunk addresss\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    printf("ERROR: Extra characters after chunk address: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    printf("Got chunk address= %p\n", (void *)chunk_player_address);
-                }
-                continue;
-            }
-            if (strcmp(argv[i], "--share_input_shm") == 0)
-            {
-                share_input_shm = true;
-                continue;
-            }
-            if (strcmp(argv[i], "--open_input_shm") == 0)
-            {
-                open_input_shm = true;
-                continue;
-            }
-            if (strcmp(argv[i], "--redirect-output-to-file") == 0)
-            {
-                redirect_output_to_file = true;
-                continue;
-            }
-#ifdef ASM_PRECOMPILE_CACHE
-            if (strcmp(argv[i], "--precompile-cache-store") == 0)
-            {
-                precompile_cache_enabled = true;
-                precompile_cache_store_init();
-                continue;
-            }
-            if (strcmp(argv[i], "--precompile-cache-load") == 0)
-            {
-                precompile_cache_enabled = true;
-                precompile_cache_load_init();
-                continue;
-            }
-
-#endif
-            if (precompile_results_enabled && (strcmp(argv[i], "-r") == 0))
-            {
-                i++;
-                if (i >= argc)
-                {
-                    printf("ERROR: Detected argument -r in the last position; please provide precompile results file after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                if (strlen(argv[i]) > 4095)
-                {
-                    printf("ERROR: Detected argument -r but next argument is too long\n");
-                    print_usage();
-                    exit(-1);
-                }
-                strcpy(precompile_file_name, argv[i]);
-                continue;
-            }
-            printf("ERROR: parse_arguments() Unrecognized argument: %s\n", argv[i]);
-            print_usage();
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-    }
-#ifdef ASM_PRECOMPILE_CACHE
-    if (precompile_cache_enabled == false)
-    {
-        printf("ERROR: parse_arguments() when in precompile cache mode, you need to use an argument: either --precompile-cache-store or --precompile-cache-load\n");
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-#endif
-
-    // Check that only one generation method was selected as an argument
-    if (number_of_selected_generation_methods != 1)
-    {
-        printf("ERROR! parse_arguments() Invalid arguments: select 1 generation method, and only one\n");
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Check that the generation method selected by the process launcher is the same as the one
-    // for which the assembly code was generated
-    uint64_t asm_gen_method = get_gen_method();
-    if (asm_gen_method != gen_method)
-    {
-        printf("ERROR! parse_arguments() Inconsistency: C generation method is %u but ASM generation method is %lu\n",
-            gen_method,
-            asm_gen_method);
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Check server/client
-    if (server && client)
-    {
-        printf("ERROR! parse_arguments() Inconsistency: both server and client at the same time is not possible\n");
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (!server && !client)
-    {
-        printf("ERROR! parse_arguments() Inconsistency: select server or client\n");
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    if (precompile_results_enabled && client && (strlen(precompile_file_name) == 0))
-    {
-        printf("ERROR! parse_arguments() when in precompile results mode, you need to provide a precompile results file using -r <precompile_results_file>\n");
-        print_usage();
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
-
-// Configure global variables based on generation method and other arguments
-void configure (void)
-{
-    // Select configuration based on generation method
-    switch (gen_method)
-    {
-        case Fast:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_FT_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_FT_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_FT_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_FT_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_FT_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_FT_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, "");
-            strcpy(sem_chunk_done_name, "");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_FT_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_FT");
-            port = 23120;
-            break;
-        }
-        case MinimalTrace:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_MT_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_MT_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_MT_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_MT_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_MT_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_MT_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_MT_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_MT_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_MT");
-            call_chunk_done = true;
-            port = 23115;
-            break;
-        }
-        case RomHistogram:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_RH_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_RH_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_RH_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_RH_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_RH_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_RH_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_RH_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_RH_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_RH_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_RH");
-            call_chunk_done = true;
-            port = 23116;
-            break;
-        }
-        case MainTrace:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_MA_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_MA_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_MA_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_MA_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_MA_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_MA_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_MA_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_MA_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_MA_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_MA");
-            call_chunk_done = true;
-            port = 23118;
-            break;
-        }
-        case ChunksOnly:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_CH_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_CH_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_CH_input");
-            strcpy(shmem_precompile_name, "");
-            strcpy(sem_prec_avail_name, "");
-            strcpy(sem_prec_read_name, "");
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_CH_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_CH_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_CH_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_CH");
-            call_chunk_done = true;
-            port = 23115;
-            break;
-        }
-        // case BusOp:
-        // {
-        //     strcpy(shmem_input_name, "ZISKBO_input");
-        //     strcpy(shmem_output_name, "ZISKBO_output");
-        //     strcpy(sem_chunk_done_name, "ZISKBO_chunk_done");
-        //     chunk_done = true;
-        //     port = 23115;
-        //     break;
-        // }
-        case Zip:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_ZP_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_ZP_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_ZP_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_ZP_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_ZP_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_ZP_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_ZP_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_ZP_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_ZP_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_ZP");
-            call_chunk_done = true;
-            port = 23115;
-            break;
-        }
-        case MemOp:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_MO_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_MO_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_MO_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_MO_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_MO_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_MO_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_MO_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_MO_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_MO_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_MO");
-            call_chunk_done = true;
-            port = 23117;
-            break;
-        }
-        case ChunkPlayerMTCollectMem:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_CM_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_CM_control_output");
-            strcpy(shmem_input_name, "");
-            strcpy(shmem_precompile_name, "");
-            strcpy(sem_prec_avail_name, "");
-            strcpy(sem_prec_read_name, "");
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_CM_output");
-            strcpy(sem_chunk_done_name, "");
-            strcpy(sem_shutdown_done_name, "");
-            strcpy(shmem_mt_name, shm_prefix);
-            strcat(shmem_mt_name, "_MT_output");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_CM");
-            call_chunk_done = false;
-            port = 23119;
-            break;
-        }
-        case MemReads:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_MT_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_MT_control_output");
-            strcpy(shmem_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_input_name, "_input");
-            else
-                strcat(shmem_input_name, "_MT_input");
-            if (precompile_results_enabled)
-            {
-                strcpy(shmem_precompile_name, shm_prefix);
-                if (share_input_shm)
-                    strcat(shmem_precompile_name, "_precompile");
-                else
-                    strcat(shmem_precompile_name, "_MT_precompile");
-                strcpy(sem_prec_avail_name, shm_prefix);
-                strcat(sem_prec_avail_name, "_MT_prec_avail");
-                strcpy(sem_prec_read_name, shm_prefix);
-                strcat(sem_prec_read_name, "_MT_prec_read");
-            }
-            else
-            {
-                strcpy(shmem_precompile_name, "");
-                strcpy(sem_prec_avail_name, "");
-                strcpy(sem_prec_read_name, "");
-            }
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_MT_output");
-            strcpy(sem_chunk_done_name, shm_prefix);
-            strcat(sem_chunk_done_name, "_MT_chunk_done");
-            strcpy(sem_shutdown_done_name, shm_prefix);
-            strcat(sem_shutdown_done_name, "_MT_shutdown_done");
-            strcpy(shmem_mt_name, "");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_MT");
-            call_chunk_done = true;
-            port = 23115;
-            break;
-        }
-        case ChunkPlayerMemReadsCollectMain:
-        {
-            strcpy(shmem_control_input_name, shm_prefix);
-            if (share_input_shm)
-                strcat(shmem_control_input_name, "_control_input");
-            else
-                strcat(shmem_control_input_name, "_CA_control_input");
-            strcpy(shmem_control_output_name, shm_prefix);
-            strcat(shmem_control_output_name, "_CA_control_output");
-            strcpy(shmem_input_name, "");
-            strcpy(shmem_precompile_name, "");
-            strcpy(sem_prec_avail_name, "");
-            strcpy(sem_prec_read_name, "");
-            strcpy(shmem_output_name, shm_prefix);
-            strcat(shmem_output_name, "_CA_output");
-            strcpy(sem_chunk_done_name, "");
-            strcpy(sem_shutdown_done_name, "");
-            strcpy(shmem_mt_name, shm_prefix);
-            strcat(shmem_mt_name, "_MT_output");
-            strcpy(file_lock_name, "/tmp/");
-            strcat(file_lock_name, shm_prefix);
-            strcat(file_lock_name, ".lock");
-            strcpy(log_name, shm_prefix);
-            strcat(log_name, "_CA");
-            call_chunk_done = false;
-            port = 23120;
-            break;
-        }
-        default:
-        {
-            printf("ERROR: configure() Invalid gen_method = %u\n", gen_method);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-    }
-
-    if (precompile_results_enabled && (gen_method == ChunkPlayerMTCollectMem || gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        printf("ERROR: configure() precompile results enabled is not compatible with generation method %u\n", gen_method);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    if (arguments_port != 0)
-    {
-        port = arguments_port;
-    }
-
-    if (verbose)
-    {
-        printf("ziskemuasm configuration:\n");
-        printf("\tgen_method=%u\n", gen_method);
-        printf("\tshm_prefix=%s\n", shm_prefix);
-        printf("\tfile_lock_name=%s\n", file_lock_name);
-        printf("\tlog_name=%s\n", log_name);
-        printf("\tport=%u\n", port);
-        printf("\tcall_chunk_done=%u\n", call_chunk_done);
-        printf("\tchunk_size=%lu\n", chunk_size);
-        printf("\tshmem_control_input=%s\n", shmem_control_input_name);
-        printf("\tshmem_control_output=%s\n", shmem_control_output_name);
-        printf("\tshmem_input=%s\n", shmem_input_name);
-        printf("\tshmem_precompile=%s\n", shmem_precompile_name);
-        printf("\tshmem_output=%s\n", shmem_output_name);
-        printf("\tshmem_mt=%s\n", shmem_mt_name);
-        printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
-        printf("\tsem_shutdown_done=%s\n", sem_shutdown_done_name);
-        printf("\tsem_prec_avail=%s\n", sem_prec_avail_name);
-        printf("\tsem_prec_read=%s\n", sem_prec_read_name);
-        printf("\tmap_locked_flag=%d\n", map_locked_flag);
-        printf("\toutput=%u\n", output);
-        printf("\tprecompile_results_enabled=%u\n", precompile_results_enabled);
-        printf("\toutput_riscof=%u\n", output_riscof);
-    }
-}
-
-/**********/
-/* CLIENT */
-/**********/
-
-void client_setup (void)
-{
-    assert(!server);
-    assert(client);
-
-    int result;
-
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            printf("ERROR: Failed calling trace shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map it to the trace address
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-#endif
-        if (pTrace == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-    }
-
-    /**********************/
-    /* PRECOMPILE_RESULTS */
-    /**********************/
-
-    if (precompile_results_enabled)
-    {
-        /**************/
-        /* PRECOMPILE */
-        /**************/
-
-        // Create the precompile results shared memory
-        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR, 0666);
-        if (shmem_precompile_fd < 0)
-        {
-            printf("ERROR: Failed calling precompile shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map precompile address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pPrecompile == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_precompile_address = pPrecompile;
-        precompile_results_address = (uint64_t *)pPrecompile;
-
-        if (verbose) printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
-
-        /*****************/
-        /* CONTROL INPUT */
-        /*****************/
-
-        // Create the control input shared memory
-        shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDWR, 0666);
-        if (shmem_control_input_fd < 0)
-        {
-            printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map control input address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pControl == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (pControl != (void *)CONTROL_INPUT_ADDR)
-        {
-            printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_control_input_address = (uint64_t *)pControl;
-        precompile_written_address = &shmem_control_input_address[0];
-        precompile_exit_address = &shmem_control_input_address[1];
-        if (verbose) printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
-
-        /*****************/
-        /* CONTROL OUTPUT */
-        /*****************/
-
-        // Create the control input shared memory
-        shmem_control_output_fd = shm_open(shmem_control_output_name, O_RDWR, 0666);
-        if (shmem_control_output_fd < 0)
-        {
-            printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map control input address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pControl == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(control_output) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (pControl != (void *)CONTROL_OUTPUT_ADDR)
-        {
-            printf("ERROR: Called mmap(control_output) but returned address = %p != 0x%08lx\n", pControl, CONTROL_OUTPUT_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_control_output_address = (uint64_t *)pControl;
-        precompile_read_address = &shmem_control_output_address[0];
-        if (verbose) printf("mmap(control_output) mapped %lu B and returned address %p in %lu us\n", CONTROL_OUTPUT_SIZE, shmem_control_output_address, duration);
-
-        /*************************/
-        /* PRECOMPILE SEMAPHORES */
-        /*************************/
-
-        // Create the semaphore for precompile results available signal
-        assert(strlen(sem_prec_avail_name) > 0);
-
-        sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT, 0666, 0);
-        if (sem_prec_avail == SEM_FAILED)
-        {
-            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("sem_open(%s) succeeded\n", sem_prec_avail_name);
-
-        // Create the semaphore for precompile results read signal
-        assert(strlen(sem_prec_read_name) > 0);
-
-        sem_prec_read = sem_open(sem_prec_read_name, O_CREAT, 0666, 0);
-        if (sem_prec_read == SEM_FAILED)
-        {
-            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("sem_open(%s) succeeded\n", sem_prec_read_name);
-    }
-}
-
-typedef enum {
-    PrecompileReadMode_NoPrefix,
-    PrecompileReadMode_Prefixed
-} PrecompileReadMode;
-
-PrecompileReadMode precompile_read_mode = PrecompileReadMode_NoPrefix;
-//PrecompileReadMode precompile_read_mode = PrecompileReadMode_Prefixed;
-
-typedef enum {
-    PrecompileWriteMode_Full,
-    PrecompileWriteMode_OnePrecAtATime
-} PrecompileWriteMode;
-
-PrecompileWriteMode precompile_write_mode = PrecompileWriteMode_Full;
-//PrecompileWriteMode precompile_write_mode = PrecompileWriteMode_OnePrecAtATime;
-
-//#define PRECOMPILE_FIXED_SIZE 25 // Keccak-f state size in u64s
-#define PRECOMPILE_FIXED_SIZE 4 // SHA-256 state size in u64s
-
-void client_write_precompile_results (void)
-{
-    int result;
-
-#ifdef DEBUG
-    gettimeofday(&start_time, NULL);
-#endif
-
-    // Open input file
-    FILE * precompile_fp = fopen(precompile_file_name, "r");
-    if (precompile_fp == NULL)
-    {
-        printf("ERROR: Failed calling fopen(%s) errno=%d=%s; does it exist?\n", precompile_file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Get input file size
-    if (fseek(precompile_fp, 0, SEEK_END) == -1)
-    {
-        printf("ERROR: Failed calling fseek(%s) errno=%d=%s\n", precompile_file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    long precompile_data_size = ftell(precompile_fp);
-    if (precompile_data_size == -1)
-    {
-        printf("ERROR: Failed calling ftell(%s) errno=%d=%s\n", precompile_file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if ((precompile_data_size & 0x7) != 0)
-    {
-        printf("ERROR: Precompile results file (%s) size (%lu) is not a multiple of 8 B\n", precompile_file_name, precompile_data_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Go back to the first byte
-    if (fseek(precompile_fp, 0, SEEK_SET) == -1)
-    {
-        printf("ERROR: Failed calling fseek(%s, 0) errno=%d=%s\n", precompile_file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    assert(precompile_read_mode == PrecompileReadMode_NoPrefix || precompile_read_mode == PrecompileReadMode_Prefixed);
-    assert(precompile_write_mode == PrecompileWriteMode_Full || precompile_write_mode == PrecompileWriteMode_OnePrecAtATime);
-
-    /*************/
-    /* NO PREFIX */
-    /*************/
-
-    if (precompile_read_mode == PrecompileReadMode_NoPrefix)
-    {
-        if (precompile_write_mode == PrecompileWriteMode_Full)
-        {
-            // Check the precompile data size is inside the proper range
-            if (precompile_data_size > MAX_PRECOMPILE_SIZE)
-            {
-                printf("ERROR: Size of precompile results file (%s) is too long (%lu)\n", precompile_file_name, precompile_data_size);
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Copy input data into input memory
-            size_t precompile_read = fread(precompile_results_address, 1, precompile_data_size, precompile_fp);
-            if (precompile_read != precompile_data_size)
-            {
-                printf("ERROR: Input read (%lu) != expected read size (%lu)\n", precompile_read, precompile_data_size);
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Initialize precompile written address
-            *precompile_written_address = precompile_data_size >> 3; // in u64s
-
-            //printf("Posting sem_prec_avail() precompile_written=%lu precompile_read=%lu\n", *precompile_written_address, *precompile_read_address);
-            sem_post(sem_prec_avail);
-        }
-        else if (precompile_write_mode == PrecompileWriteMode_OnePrecAtATime)
-        {
-            // Check the precompile data size is inside the proper range
-            if (precompile_data_size % (PRECOMPILE_FIXED_SIZE * 8) != 0)
-            {
-                printf("ERROR: Size of precompile results file (%s) is not a multiple %u * 8 B\n", precompile_file_name, PRECOMPILE_FIXED_SIZE);
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Initialize precompile written address to zero
-            *precompile_written_address = 0; // in u64s
-
-            // Copy in chunks of PRECOMPILE_FIXED_SIZE*8 bytes (Keccak-f state size)
-            uint64_t precompile_read_so_far = 0;
-            uint64_t data[PRECOMPILE_FIXED_SIZE];
-            while (precompile_read_so_far < (uint64_t)precompile_data_size)
-            {        
-                // Wait for server to read precompile results
-                //printf("Waiting for sem_prec_read()\n");
-                result = sem_wait(sem_prec_read);
-                if (result == -1)
-                {
-                    printf("ERROR: Failed calling sem_wait(sem_prec_read) errno=%d=%s\n", errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Number of bytes to read from file and write to shared memory in every loop
-                uint64_t bytes_to_read = sizeof(data);
-
-                // Copy input data into input memory
-                size_t precompile_read = fread(data, 1, bytes_to_read, precompile_fp);
-                if (precompile_read != bytes_to_read)
-                {
-                    printf("ERROR: Input read (%lu) != expected read size (%lu)\n", precompile_read, bytes_to_read);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Copy data to shared memory
-                for (int i=0; i<PRECOMPILE_FIXED_SIZE; i++)
-                {
-                    memcpy(&precompile_results_address[(precompile_read_so_far >> 3) % (MAX_PRECOMPILE_SIZE >> 3)], &data[i], 8);
-                    precompile_read_so_far += 8;
-                }
-
-                // Notify server that precompile results are available
-                *precompile_written_address = precompile_read_so_far >> 3; // in u64s
-
-                //printf("Posting sem_prec_avail() precompile_written=%lu precompile_read=%lu\n", *precompile_written_address, *precompile_read_address);
-                sem_post(sem_prec_avail);
-            }
-        }
-    }
-
-    /************/
-    /* PREFIXED */
-    /************/
-
-    else if (precompile_read_mode == PrecompileReadMode_Prefixed)
-    {
-#define CTRL_START 0x00
-#define CTRL_END 0x01
-#define CTRL_CANCEL 0x02
-#define CTRL_ERROR 0x03
-#define HINTS_TYPE_RESULT 0x04
-#define HINTS_TYPE_ECRECOVER 0x05
-#define NUM_HINT_TYPES 0x06
-
-        uint64_t precompile_read_so_far = 0;
-        uint64_t precompile_written_so_far = 0;
-
-        while (precompile_read_so_far < (uint64_t)precompile_data_size)
-        {
-            uint64_t data;
-            uint64_t bytes_to_read = sizeof(data);
-
-            // Copy input data into input memory
-            size_t precompile_read = fread(&data, 1, bytes_to_read, precompile_fp);
-            if (precompile_read != bytes_to_read)
-            {
-                printf("ERROR: Input read (%lu) != expected read size (%lu)\n", precompile_read, bytes_to_read);
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-            precompile_read_so_far += bytes_to_read;
-            switch (data >> 32)
-            {
-                case CTRL_START:
-                    //printf("Precompile CTRL_START\n");
-                    assert(precompile_read_so_far == 8);
-                    break;
-                case CTRL_END:
-                    //printf("Precompile CTRL_END\n");
-                    assert(precompile_read_so_far == precompile_data_size);
-                    break;
-                // case CTRL_CANCEL:
-                //     printf("Precompile CTRL_CANCEL\n");
-                //     break;
-                // case CTRL_ERROR:
-                //     printf("Precompile CTRL_ERROR\n");
-                //     break;
-                case HINTS_TYPE_RESULT:
-                {
-                    //printf("Precompile HINTS_TYPE_RESULT\n");
-                    if (precompile_write_mode == PrecompileWriteMode_OnePrecAtATime)
-                    {
-                        // Wait for server to read precompile results
-                        //printf("Waiting for sem_prec_read()\n");
-                        result = sem_wait(sem_prec_read);
-                        if (result == -1)
-                        {
-                            printf("ERROR: Failed calling sem_wait(sem_prec_read) errno=%d=%s\n", errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                    }
-
-                    uint64_t result_length = data & 0xFFFFFFFF;
-                    if (result_length > (precompile_data_size - precompile_read_so_far))
-                    {
-                        printf("ERROR: Precompile HINTS_TYPE_RESULT length=%lu exceeds remaining file size %lu\n", result_length, precompile_data_size - precompile_read_so_far);
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    //printf("Precompile HINTS_TYPE_RESULT result_length=%lu\n", result_length);
-                    for (uint64_t i=0; i<result_length; i++)
-                    {
-                        uint64_t value;
-                        size_t precompile_read = fread(&value, 1, 8, precompile_fp);
-                        if (precompile_read != 8)
-                        {
-                            printf("ERROR: Input read (%lu) != expected read size (8)\n", precompile_read);
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        memcpy(&precompile_results_address[(precompile_written_so_far >> 3) % (MAX_PRECOMPILE_SIZE >> 3)], &value, 8);
-                        precompile_read_so_far += 8;
-                        precompile_written_so_far += 8;
-                        //printf("  Precompile result[%lu] = 0x%016lx\n", i, value);
-                    }
-
-                    if (precompile_write_mode == PrecompileWriteMode_OnePrecAtATime)
-                    {
-                        // Notify server that precompile results are available
-                        *precompile_written_address = precompile_written_so_far >> 3; // in u64s
-
-                        //printf("Posting sem_prec_avail() precompile_written=%lu precompile_read=%lu\n", *precompile_written_address, *precompile_read_address);
-                        sem_post(sem_prec_avail);
-                    }
-                }
-                break;
-                // case HINTS_TYPE_ECRECOVER:
-                //     {
-                //         // Not implemented
-                //         printf("Precompile HINTS_TYPE_ECRECOVER not implemented\n");
-                //     }
-                //     break;
-                default:
-                    printf("ERROR: Unknown precompile prefix type %lu\n", data >> 32);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-            }
-        }
-
-        if (precompile_write_mode == PrecompileWriteMode_Full)
-        {
-            // Notify server that precompile results are available
-            *precompile_written_address = precompile_written_so_far >> 3; // in u64s
-
-            //printf("Posting sem_prec_avail() precompile_written=%lu precompile_read=%lu\n", *precompile_written_address, *precompile_read_address);
-            sem_post(sem_prec_avail);
-        }
-
-    }
-
-    // Close the file pointer
-    fclose(precompile_fp);
-
-#ifdef DEBUG
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (precompile): done in %lu us\n", duration);
-#endif
-}
-
-void client_run (void)
-{
-    printf("client_run(): Starting client...\n");
-    assert(client);
-    assert(!server);
-
-    int result;
-
-    /************************/
-    /* Read input file data */
-    /************************/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-
-        // Open input file
-        FILE * input_fp = fopen(input_file, "r");
-        if (input_fp == NULL)
-        {
-            printf("ERROR: Failed calling fopen(%s) errno=%d=%s; does it exist?\n", input_file, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Get input file size
-        if (fseek(input_fp, 0, SEEK_END) == -1)
-        {
-            printf("ERROR: Failed calling fseek(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        long input_data_size = ftell(input_fp);
-        if (input_data_size == -1)
-        {
-            printf("ERROR: Failed calling ftell(%s) errno=%d=%s\n", input_file, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Go back to the first byte
-        if (fseek(input_fp, 0, SEEK_SET) == -1)
-        {
-            printf("ERROR: Failed calling fseek(%s, 0) errno=%d=%s\n", input_file, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Check the input data size is inside the proper range
-        if (input_data_size > (MAX_INPUT_SIZE - 16))
-        {
-            printf("ERROR: Size of input file (%s) is too long (%lu)\n", input_file, input_data_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Open input shared memory
-        shmem_input_fd = shm_open(shmem_input_name, O_RDWR, 0666);
-        if (shmem_input_fd < 0)
-        {
-            printf("ERROR: Failed calling input shm_open(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map the shared memory object into the process address space
-        shmem_input_address = mmap(NULL, MAX_INPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_input_fd, 0);
-        if (shmem_input_address == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Write the input size in the first 64 bits
-        *(uint64_t *)shmem_input_address = (uint64_t)0; // free input
-        *(uint64_t *)(shmem_input_address + 8)= (uint64_t)input_data_size;
-
-        // Copy input data into input memory
-        size_t input_read = fread(shmem_input_address + 16, 1, input_data_size, input_fp);
-        if (input_read != input_data_size)
-        {
-            printf("ERROR: Input read (%lu) != input file size (%lu)\n", input_read, input_data_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Close the file pointer
-        fclose(input_fp);
-
-        // Unmap input
-        result = munmap(shmem_input_address, MAX_INPUT_SIZE);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        printf("client (input): done in %lu us\n", duration);
-#endif
-
-    }
-
-    /*****************************/
-    /* Read precompile file data */
-    /*****************************/
-    if (precompile_results_enabled)
-    {
-        // reset written counter
-        *precompile_written_address = 0;
-
-        //client_write_precompile_results();
-    }
-
-    /*************************/
-    /* Connect to the server */
-    /*************************/
-    
-    // Create socket to connect to server
-    int socket_fd;
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd < 0)
-    {
-        printf("ERROR: socket() failed socket_fd=%d errno=%d=%s\n", socket_fd, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Configure server address
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    
-    result = inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
-    if (result <= 0)
-    {
-        printf("ERROR: inet_pton() failed.  Invalid address/Address not supported result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-
-    // Connect to server
-    result = connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (result < 0)
-    {
-        printf("ERROR: connect() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        exit(-1);
-    }
-    if (verbose) printf("connect()'d to port=%u\n", port);
-
-    // Request and response
-    uint64_t request[5];
-    uint64_t response[5];
-
-    /********/
-    /* Ping */
-    /********/
-
-    gettimeofday(&start_time, NULL);
-
-    // Prepare message to send
-    request[0] = TYPE_PING;
-    request[1] = 0;
-    request[2] = 0;
-    request[3] = 0;
-    request[4] = 0;
-
-    // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Read server response
-    ssize_t bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        printf("ERROR: recv_all_with_timeout() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        printf("ERROR: recv_all_with_timeout() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[0] != TYPE_PONG)
-    {
-        printf("ERROR: recv_all_with_timeout() returned unexpected type=%lu\n", response[0]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[1] != gen_method)
-    {
-        printf("ERROR: recv_all_with_timeout() returned unexpected gen_method=%lu\n", response[1]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (PING): done in %lu us\n", duration);
-
-    /*****************/
-    /* Minimal trace */
-    /*****************/
-    for (uint64_t i=0; i<number_of_mt_requests; i++)
-    {
-        switch (gen_method)
-        {
-            case MinimalTrace:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MT_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                if (precompile_results_enabled)
-                {
-                    client_write_precompile_results();
-                }
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_MT_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (MT)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-
-                break;
-            }
-            case RomHistogram:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_RH_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 0;
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                if (precompile_results_enabled)
-                {
-                    client_write_precompile_results();
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_RH_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (RH)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-
-                break;
-            }
-            case MemOp:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MO_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                if (precompile_results_enabled)
-                {
-                    client_write_precompile_results();
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_MO_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (MO)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-                
-                break;
-            }
-            case MainTrace:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MA_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_MA_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (MA)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-                
-                break;
-            }
-            case ChunkPlayerMTCollectMem:
-            {
-                if (chunk_player_address != 0)
-                {
-                    gettimeofday(&start_time, NULL);
-
-                    // Prepare message to send
-                    request[0] = TYPE_CM_REQUEST;
-                    request[1] = MAX_STEPS;
-                    request[2] = 1ULL << 18; // chunk_len
-                    request[3] = chunk_player_address;
-                    request[4] = 0;
-
-                    // Send data to server
-                    result = send(socket_fd, request, sizeof(request), 0);
-                    if (result < 0)
-                    {
-                        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-
-                    // Read server response
-                    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                    if (bytes_received < 0)
-                    {
-                        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (bytes_received != sizeof(response))
-                    {
-                        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (response[0] != TYPE_CM_RESPONSE)
-                    {
-                        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (response[1] != 0)
-                    {
-                        printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    
-                    gettimeofday(&stop_time, NULL);
-                    duration = TimeDiff(start_time, stop_time);
-                    printf("client (CM)[%lu]: done in %lu us\n", i, duration);
-                }
-                else
-                {
-                    uint64_t number_of_chunks = pInputTrace[4];
-                    printf("client (CM)[%lu]: sending requests for %lu chunks\n", i, number_of_chunks);
-
-                    for (uint64_t c = 0; c < number_of_chunks; c++)
-                    {
-                        if (c == 0)
-                        {
-                            chunk_player_address = 0xc0000028;
-                        }
-                        else
-                        {
-                            uint64_t * chunk = (uint64_t *)chunk_player_address;
-                            uint64_t mem_reads_size = chunk[40];
-                            chunk_player_address += (41 + mem_reads_size) * 8;
-                        }
-
-                        printf("client (CM)[%lu][%lu]: @=0x%lx sending request...", i, c, chunk_player_address);
-
-                        gettimeofday(&start_time, NULL);
-    
-                        // Prepare message to send
-                        request[0] = TYPE_CM_REQUEST;
-                        request[1] = MAX_STEPS;
-                        request[2] = 1ULL << 18; // chunk_len
-                        request[3] = chunk_player_address;
-                        request[4] = 0;
-    
-                        // Send data to server
-                        result = send(socket_fd, request, sizeof(request), 0);
-                        if (result < 0)
-                        {
-                            printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-    
-                        // Read server response
-                        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                        if (bytes_received < 0)
-                        {
-                            printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (bytes_received != sizeof(response))
-                        {
-                            printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (response[0] != TYPE_CM_RESPONSE)
-                        {
-                            printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (response[1] != 0)
-                        {
-                            printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        
-                        gettimeofday(&stop_time, NULL);
-                        duration = TimeDiff(start_time, stop_time);
-                        printf("done in %lu us\n", duration);
-                    }
-
-                } 
-                
-                break;
-            }
-            case Fast:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_FA_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_FA_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (FA)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-                
-                break;
-            }
-            case MemReads:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MR_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                result = send(socket_fd, request, sizeof(request), 0);
-                if (result < 0)
-                {
-                    printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-
-                // Read server response
-                bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                if (bytes_received < 0)
-                {
-                    printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (bytes_received != sizeof(response))
-                {
-                    printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[0] != TYPE_MR_RESPONSE)
-                {
-                    printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    fflush(stdout);
-                    fflush(stderr);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                printf("client (MR)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-
-                break;
-            }
-            case ChunkPlayerMemReadsCollectMain:
-            {
-                if (chunk_player_address != 0)
-                {
-                    gettimeofday(&start_time, NULL);
-
-                    // Prepare message to send
-                    request[0] = TYPE_CA_REQUEST;
-                    request[1] = MAX_STEPS;
-                    request[2] = 1ULL << 18; // chunk_len
-                    request[3] = chunk_player_address;
-                    request[4] = 0;
-
-                    // Send data to server
-                    result = send(socket_fd, request, sizeof(request), 0);
-                    if (result < 0)
-                    {
-                        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-
-                    // Read server response
-                    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                    if (bytes_received < 0)
-                    {
-                        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (bytes_received != sizeof(response))
-                    {
-                        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (response[0] != TYPE_CA_RESPONSE)
-                    {
-                        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    if (response[1] != 0)
-                    {
-                        printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                        fflush(stdout);
-                        fflush(stderr);
-                        exit(-1);
-                    }
-                    
-                    gettimeofday(&stop_time, NULL);
-                    duration = TimeDiff(start_time, stop_time);
-                    printf("client (CA)[%lu]: done in %lu us\n", i, duration);
-                }
-                else
-                {
-                    uint64_t number_of_chunks = pInputTrace[4];
-                    printf("client (CA)[%lu]: sending requests for %lu chunks\n", i, number_of_chunks);
-
-                    for (uint64_t c = 0; c < number_of_chunks; c++)
-                    {
-                        if (c == 0)
-                        {
-                            chunk_player_address = 0xc0000028;
-                        }
-                        else
-                        {
-                            uint64_t * chunk = (uint64_t *)chunk_player_address;
-                            uint64_t mem_reads_size = chunk[40];
-                            chunk_player_address += (41 + mem_reads_size) * 8;
-                        }
-
-                        printf("client (CA)[%lu][%lu]: @=0x%lx sending request...", i, c, chunk_player_address);
-
-                        gettimeofday(&start_time, NULL);
-    
-                        // Prepare message to send
-                        request[0] = TYPE_CA_REQUEST;
-                        request[1] = MAX_STEPS;
-                        request[2] = 1ULL << 18; // chunk_len
-                        request[3] = chunk_player_address;
-                        request[4] = 0;
-    
-                        // Send data to server
-                        result = send(socket_fd, request, sizeof(request), 0);
-                        if (result < 0)
-                        {
-                            printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-    
-                        // Read server response
-                        bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-                        if (bytes_received < 0)
-                        {
-                            printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (bytes_received != sizeof(response))
-                        {
-                            printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (response[0] != TYPE_CA_RESPONSE)
-                        {
-                            printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        if (response[1] != 0)
-                        {
-                            printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                            fflush(stdout);
-                            fflush(stderr);
-                            exit(-1);
-                        }
-                        
-                        gettimeofday(&stop_time, NULL);
-                        duration = TimeDiff(start_time, stop_time);
-                        printf("done in %lu us\n", duration);
-                    }
-
-                } 
-                
-                break;
-            }
-            default:
-            {
-                printf("client_run() found invalid gen_method=%d\n", gen_method);
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-        }
-    } // number_of_mt_requests
-
-    /************/
-    /* Shutdown */
-    /************/
-
-    if (do_shutdown)
-    {
-
-    gettimeofday(&start_time, NULL);
-
-    // Prepare message to send
-    request[0] = TYPE_SD_REQUEST;
-    request[1] = 0;
-    request[2] = 0;
-    request[3] = 0;
-    request[4] = 0;
-
-    // Send data to server
-    result = send(socket_fd, request, sizeof(request), 0);
-    if (result < 0)
-    {
-        printf("ERROR: send() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Read server response
-    bytes_received = recv(socket_fd, response, sizeof(response), MSG_WAITALL);
-    if (bytes_received < 0)
-    {
-        printf("ERROR: recv() failed result=%d errno=%d=%s\n", result, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (bytes_received != sizeof(response))
-    {
-        printf("ERROR: recv() returned bytes_received=%ld errno=%d=%s\n", bytes_received, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (response[0] != TYPE_SD_RESPONSE)
-    {
-        printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    
-    gettimeofday(&stop_time, NULL);
-    duration = TimeDiff(start_time, stop_time);
-    printf("client (SD): done in %lu us\n", duration);
-
-    } // do_shutdown
-
-    /***********/
-    /* Cleanup */
-    /***********/
-
-    // Close the socket
-    close(socket_fd);
-}
-
-void client_cleanup (void)
-{
-    // Cleanup trace
-    int result = munmap((void *)TRACE_ADDR, trace_size);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling munmap(trace) for size=%lu errno=%d=%s\n", trace_size, errno, strerror(errno));
-    }
-}
-
-/**********/
-/* SERVER */
-/**********/
-
-void server_setup (void)
-{
-    assert(server);
-    assert(!client);
-
-    int result;
-
-    /*******/
-    /* ROM */
-    /*******/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | map_locked_flag, -1, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pRom == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((uint64_t)pRom != ROM_ADDR)
-        {
-            printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(rom) mapped %ld B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
-    }
-
-    /*********/
-    /* INPUT */
-    /*********/
-
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-        if (!open_input_shm)
-        {
-            // Make sure the input shared memory is deleted
-            shm_unlink(shmem_input_name);
-
-            // Create the input shared memory
-            shmem_input_fd = shm_open(shmem_input_name, O_RDWR | O_CREAT | O_EXCL, 0666);
-            if (shmem_input_fd < 0)
-            {
-                printf("ERROR: Failed calling input RW shm_open(%s) as read-write errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Size it
-            result = ftruncate(shmem_input_fd, MAX_INPUT_SIZE);
-            if (result != 0)
-            {
-                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Sync
-            fsync(shmem_input_fd);
-
-            // Close the descriptor
-            if (close(shmem_input_fd) != 0)
-            {
-                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-        }
-
-        // Open the input shared memory as read-only
-        shmem_input_fd = shm_open(shmem_input_name, O_RDONLY | O_EXCL, 0666);
-        if (shmem_input_fd < 0)
-        {
-            printf("ERROR: Failed calling input RO shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map input address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pInput == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((uint64_t)pInput != INPUT_ADDR)
-        {
-            printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
-    }
-
-    /**********************/
-    /* PRECOMPILE_RESULTS */
-    /**********************/
-
-    if (precompile_results_enabled)
-    {
-        /**************/
-        /* PRECOMPILE */
-        /**************/
-
-        if (!open_input_shm)
-        {
-            // Make sure the precompile results shared memory is deleted
-            shm_unlink(shmem_precompile_name);
-
-            // Create the precompile results shared memory
-            shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDWR | O_CREAT, 0666);
-            if (shmem_precompile_fd < 0)
-            {
-                printf("ERROR: Failed calling precompile shm_open(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Size it
-            result = ftruncate(shmem_precompile_fd, MAX_PRECOMPILE_SIZE);
-            if (result != 0)
-            {
-                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Sync
-            fsync(shmem_precompile_fd);
-
-            // Close the descriptor
-            if (close(shmem_precompile_fd) != 0)
-            {
-                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-        }
-
-        // Open the precompile shared memory as read-only
-        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDONLY | O_EXCL, 0666);
-        if (shmem_precompile_fd < 0)
-        {
-            printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map precompile address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pPrecompile == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_precompile_address = pPrecompile;
-        precompile_results_address = (uint64_t *)pPrecompile;
-        if (verbose) printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
-
-        /*****************/
-        /* CONTROL INPUT */
-        /*****************/
-
-        if (!open_input_shm)
-        {
-            // Make sure the precompile results shared memory is deleted
-            shm_unlink(shmem_control_input_name);
-
-            // Create the control shared memory
-            shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDWR | O_CREAT, 0666);
-            if (shmem_control_input_fd < 0)
-            {
-                printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Size it
-            result = ftruncate(shmem_control_input_fd, CONTROL_INPUT_SIZE);
-            if (result != 0)
-            {
-                printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            // Sync
-            fsync(shmem_control_input_fd);
-
-            // Close the descriptor
-            if (close(shmem_control_input_fd) != 0)
-            {
-                printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-        }
-
-        // Open the control input shared memory as read-only
-        shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY | O_EXCL, 0666);
-        if (shmem_control_input_fd < 0)
-        {
-            printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map precompile address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pControl == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (pControl != (void *)CONTROL_INPUT_ADDR)
-        {
-            printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_control_input_address = (uint64_t *)pControl;
-        precompile_written_address = &shmem_control_input_address[0];
-        precompile_exit_address = &shmem_control_input_address[1];
-        if (verbose) printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
-
-        /******************/
-        /* CONTROL OUTPUT */
-        /******************/
-
-        // Make sure the precompile results shared memory is deleted
-        shm_unlink(shmem_control_output_name);
-
-        // Create the control shared memory
-        shmem_control_output_fd = shm_open(shmem_control_output_name, O_RDWR | O_CREAT, 0666);
-        if (shmem_control_output_fd < 0)
-        {
-            printf("ERROR: Failed calling control shm_open(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Size it
-        result = ftruncate(shmem_control_output_fd, CONTROL_OUTPUT_SIZE);
-        if (result != 0)
-        {
-            printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map precompile address space
-        if (verbose) gettimeofday(&start_time, NULL);
-        pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pControl == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(control_output) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (pControl != (void *)CONTROL_OUTPUT_ADDR)
-        {
-            printf("ERROR: Called mmap(control_output) but returned address = %p != 0x%08lx\n", pControl, CONTROL_OUTPUT_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        shmem_control_output_address = (uint64_t *)pControl;
-        precompile_read_address = &shmem_control_output_address[0];
-        if (verbose) printf("mmap(control_output) mapped %lu B and returned address %p in %lu us\n", CONTROL_OUTPUT_SIZE, shmem_control_output_address, duration);
-
-        /*************************/
-        /* PRECOMPILE SEMAPHORES */
-        /*************************/
-
-        // Create the semaphore for precompile results available signal
-        assert(strlen(sem_prec_avail_name) > 0);
-
-        sem_unlink(sem_prec_avail_name);
-
-        sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_avail == SEM_FAILED)
-        {
-            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("sem_open(%s) succeeded sem_prec_avail=%p\n", sem_prec_avail_name, sem_prec_avail);
-
-        // Create the semaphore for precompile results read signal
-        assert(strlen(sem_prec_read_name) > 0);
-
-        sem_unlink(sem_prec_read_name);
-
-        sem_prec_read = sem_open(sem_prec_read_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_read == SEM_FAILED)
-        {
-            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("sem_open(%s) succeeded sem_prec_read=%p\n", sem_prec_read_name, sem_prec_read);
-    }
-
-    /*******/
-    /* RAM */
-    /*******/
-
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-
-        if (verbose) gettimeofday(&start_time, NULL);
-        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | map_locked_flag, -1, 0);
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-        }
-        if (pRam == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((uint64_t)pRam != RAM_ADDR)
-        {
-            printf("ERROR: Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(ram) mapped %lu B and returned address %p in %lu us\n", RAM_SIZE, pRam, duration);
-    }
-
-    /****************/
-    /* OUTPUT TRACE */
-    /****************/
-
-    // If ROM histogram, configure trace size
-    if (gen_method == RomHistogram)
-    {
-        // Get max PC values for low and high addresses
-        uint64_t max_bios_pc = get_max_bios_pc();
-        uint64_t max_program_pc = get_max_program_pc();
-        assert(max_bios_pc >= 0x1000);
-        assert((max_bios_pc & 0x3) == 0);
-        assert(max_program_pc >= 0x80000000);
-
-        // Calculate sizes
-        bios_size = ((max_bios_pc - 0x1000) >> 2) + 1;
-        program_size = max_program_pc - 0x80000000 + 1;
-        histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
-        initial_trace_size = ((histogram_size/TRACE_SIZE_GRANULARITY) + 1) * TRACE_SIZE_GRANULARITY;
-        trace_size = initial_trace_size;
-    }
-
-    // Output trace
-    if ((gen_method == MinimalTrace) ||
-        (gen_method == RomHistogram) ||
-        (gen_method == MainTrace) ||
-        (gen_method == Zip) ||
-        (gen_method == MemOp) ||
-        (gen_method == ChunkPlayerMTCollectMem) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        trace_map_initialize();
-    }
-
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            printf("ERROR: Failed calling mt shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Map it to the trace address
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-#endif
-        if (pTrace == MAP_FAILED)
-        {
-            printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-    }
-
-    /******************/
-    /* SEM CHUNK DONE */
-    /******************/
-
-    if (call_chunk_done)
-    {
-        assert(strlen(sem_chunk_done_name) > 0);
-
-        sem_unlink(sem_chunk_done_name);
-
-        sem_chunk_done = sem_open(sem_chunk_done_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_chunk_done == SEM_FAILED)
-        {
-            printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (verbose) printf("sem_open(%s) succeeded\n", sem_chunk_done_name);
-    }
-
-    /*********************/
-    /* SEM SHUTDOWN DONE */
-    /*********************/
-    
-    assert(strlen(sem_shutdown_done_name) > 0);
-
-    sem_unlink(sem_shutdown_done_name);
-    
-    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
-    if (sem_shutdown_done == SEM_FAILED)
-    {
-        printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (verbose) printf("sem_open(%s) succeeded\n", sem_shutdown_done_name);
-}
-
-void server_reset_fast (void)
-{
-    // Reset precompile read address for next emulation
-    if (precompile_results_enabled)
-    {
-        // Set precompile read counter to 0 for next emulation
-        *precompile_read_address = 0;
-
-        // Sync control output shared memory so that the writer can see the precompile reads we have
-        // done, and thus update the precompile_written_address if needed
-        if (msync((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE, MS_SYNC) != 0) {
-            printf("ERROR: server_reset_fast() msync failed for shmem_control_output_address errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-    }
-}
-
-void server_reset_slow (void)
-{
-    // Reset RAM data for next emulation
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-        memset((void *)RAM_ADDR, 0, RAM_SIZE);
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        if (verbose) printf("server_reset_slow() memset(ram) in %lu us\n", duration);
-#endif
-    }
-}
-
-void server_reset_trace (void)
-{
-    // Reset trace header and trace_used_size for next emulation
-    if ( (gen_method != ChunkPlayerMTCollectMem) &&
-         (gen_method != ChunkPlayerMemReadsCollectMain) &&
-         (gen_method != Fast) &&
-         (gen_method != RomHistogram) )
-    {
-        // Reset trace: init output header data
-        pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutputTrace[1] = 1; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-        pOutputTrace[2] = trace_size; // MT allocated size [8] -> to be updated after reallocation
-        pOutputTrace[3] = 0; // MT used size [8] -> to be updated after completion
-        
-        // Reset trace used size
-        trace_used_size = 0;
-    }
-}
-
-void server_run (void)
-{
-    // If ROM histogram, reset the trace area to 0 for the histogram data since it represents the
-    // ROM instruction multiplicity and one of them will be increased at every executed instruction
-    if ((gen_method == RomHistogram)) {
-        memset((void *)trace_address, 0, trace_size);
-    }
-
-#ifdef ASM_CALL_METRICS
-    reset_asm_call_metrics();
-#endif
-
-    // Init trace header
-    server_reset_trace();
-
-    // Sync input shared memory
-    if (msync((void *)INPUT_ADDR, MAX_INPUT_SIZE, MS_SYNC) != 0) 
-    {
-        printf("ERROR: msync failed for shmem_input_address errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    if (precompile_results_enabled)
-    {
-        // Sync control input shared memory
-        if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
-            printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Sync precompile shared memory
-        if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
-            printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-    }
-
-    /*******/
-    /* ASM */
-    /*******/
-
-    // Call emulator assembly code
-    gettimeofday(&start_time,NULL);
-    if (verbose)
-    {
-        printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
-        fflush(stdout);
-        fflush(stderr);
-    }
-    emulator_start();
-    if (verbose)
-    {
-        printf("After calling emulator_start() trace_address=%lx\n", trace_address);
-        fflush(stdout);
-        fflush(stderr);
-    }
-    gettimeofday(&stop_time,NULL);
-    assembly_duration = TimeDiff(start_time, stop_time);
-
-    // Reset precompile read address for next emulation
-    if (precompile_results_enabled)
-    {
-        *precompile_read_address = 0;
-    }
-
-    uint64_t final_trace_size = MEM_CHUNK_ADDRESS - MEM_TRACE_ADDRESS;
-    trace_used_size = final_trace_size + 32;
-
-    if ( metrics )
-    {
-        uint64_t duration = assembly_duration;
-        uint64_t steps = MEM_STEP;
-        uint64_t end = MEM_END;
-        uint64_t error = MEM_ERROR;
-        uint64_t step_duration_ns = steps == 0 ? 0 : (duration * 1000) / steps;
-        uint64_t step_tp_sec = duration == 0 ? 0 : steps * 1000000 / duration;
-        uint64_t final_trace_size_percentage = (final_trace_size * 100) / trace_size;
-        printf("Duration = %lu us, realloc counter = %lu, wait counter = %lu, steps = %lu, step duration = %lu ns, tp = %lu steps/s, trace size = 0x%lx - 0x%lx = %lu B(%lu%% of %lu), end=%lu, error=%lu, max steps=%lu, chunk size=%lu, prec_written=%lu, prec_read=%lu\n",
-            duration,
-            realloc_counter,
-            wait_counter,
-            steps,
-            step_duration_ns,
-            step_tp_sec,
-            MEM_CHUNK_ADDRESS,
-            MEM_TRACE_ADDRESS,
-            final_trace_size,
-            final_trace_size_percentage,
-            trace_size,
-            end,
-            error,
-            max_steps,
-            chunk_size,
-            precompile_written_address ? *precompile_written_address : 0,
-            precompile_read_address ? *precompile_read_address : 0
-        );
-        fflush(stdout);
-        fflush(stderr);
-        if (gen_method == RomHistogram)
-        {
-            printf("Rom histogram size=%lu\n", histogram_size);
-            fflush(stdout);
-            fflush(stderr);
-        }
-    }
-    if (MEM_ERROR)
-    {
-        printf("Emulation ended with error code %lu\n", MEM_ERROR);
-        fflush(stdout);
-        fflush(stderr);
-    }
-
-    // Log output
-    if (output)
-    {
-        unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
-        unsigned int output_size = 64;
-#ifdef DEBUG
-        if (verbose)
-        {
-            printf("Output size=%d\n", output_size);
-            fflush(stdout);
-            fflush(stderr);
-        }
-#endif
-
-        for (unsigned int i = 0; i < output_size; i++)
-        {
-            printf("%08x\n", *pOutput);
-            pOutput++;
-        }
-        fflush(stdout);
-        fflush(stderr);
-    }
-
-    // Log output for riscof tests
-    if (output_riscof)
-    {
-        unsigned int * pOutput = (unsigned int *)OUTPUT_ADDR;
-        unsigned int output_size = *pOutput;
-#ifdef DEBUG
-        if (verbose)
-        {
-            printf("Output size=%d\n", output_size);
-            fflush(stdout);
-            fflush(stderr);
-        }
-#endif
-
-        for (unsigned int i = 0; i < output_size; i++)
-        {
-            pOutput++;
-            printf("%08x\n", *pOutput);
-        }
-        fflush(stdout);
-        fflush(stderr);
-    }
-
-    // Complete output header data
-    if ((gen_method == MinimalTrace) ||
-        (gen_method == RomHistogram) ||
-        (gen_method == Zip) ||
-        (gen_method == MainTrace) ||
-        (gen_method == MemOp) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        uint64_t * pOutput = (uint64_t *)trace_address;
-        pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
-        pOutput[1] = MEM_ERROR; // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-        pOutput[2] = trace_size; // MT allocated size [8]
-        //assert(final_trace_size > 32);
-        if (gen_method == RomHistogram)
-        {
-            pOutput[3] = MEM_STEP;
-            pOutput[4] = bios_size;
-            pOutput[4 + bios_size + 1] = program_size;
-        }
-        else
-        {
-            pOutput[3] = trace_used_size; // MT used size [8]
-        }
-    }
-
-    // Notify client
-    if (gen_method == RomHistogram)
-    {
-        _chunk_done();   
-    }
-
-
-    // Notify the caller that the trace is ready to be consumed
-    // if (!is_file)
-    // {
-    //     result = sem_post(sem_input);
-    //     if (result == -1)
-    //     {
-    //         printf("Failed calling sem_post(%s) errno=%d=%s\n", sem_input_name, errno, strerror(errno));
-    //         fflush(stdout);
-    //         fflush(stderr);
-    //         exit(-1);
-    //     }
-    // }
-
-
-#ifdef ASM_CALL_METRICS
-    print_asm_call_metrics(assembly_duration);
-#endif
-
-    // Log trace
-    if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
-    {
-        log_minimal_trace();
-    }
-    if ((gen_method == RomHistogram) && trace)
-    {
-        log_histogram();
-    }
-    if ((gen_method == MainTrace) && trace)
-    {
-        log_main_trace();
-    }
-    if ((gen_method == MemOp) && trace)
-    {
-        log_mem_op();
-    }
-    if ((gen_method == MemOp) && save_to_file)
-    {
-        save_mem_op_to_files();
-    }
-    if ((gen_method == ChunkPlayerMTCollectMem) && trace)
-    {
-        log_mem_trace();
-    }
-    if ((gen_method == MemReads) && trace)
-    {
-        log_minimal_trace();
-    }
-    if ((gen_method == ChunkPlayerMemReadsCollectMain) && trace)
-    {
-        log_chunk_player_main_trace();
-    }
-}
-
-void server_cleanup (void)
-{
-    // Cleanup ROM
-    int result = munmap((void *)ROM_ADDR, ROM_SIZE);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
-    }
-
-    // Cleanup RAM
-    result = munmap((void *)RAM_ADDR, RAM_SIZE);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
-    }
-
-    // Cleanup INPUT
-    result = munmap((void *)INPUT_ADDR, MAX_INPUT_SIZE);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
-    }
-    result = shm_unlink(shmem_input_name);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-    }
-
-    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-        // Cleanup PRECOMPILE
-        result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling munmap(precompile) errno=%d=%s\n", errno, strerror(errno));
-        }
-        result = shm_unlink(shmem_precompile_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-        }
-
-        // Cleanup CONTROL
-        result = munmap((void *)shmem_control_input_address, CONTROL_INPUT_SIZE);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling munmap(control_input) errno=%d=%s\n", errno, strerror(errno));
-        }
-        result = shm_unlink(shmem_control_input_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-        }
-        result = munmap((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling munmap(control_output) errno=%d=%s\n", errno, strerror(errno));
-        }
-        result = shm_unlink(shmem_control_output_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
-        }
-
-        // Semaphores cleanup
-        result = sem_close(sem_prec_avail);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_avail_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_close(sem_prec_read);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_read_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-    }
-
-    // Cleanup trace
-    trace_cleanup();
-
-    // Cleanup chunk done semaphore
-    if (call_chunk_done)
-    {
-        result = sem_close(sem_chunk_done);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_chunk_done_name);
-        if (result == -1)
-        {
-            printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-        }
-    }
-
-    // Post shutdown donw semaphore
-    result = sem_post(sem_shutdown_done);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling sem_post(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-    }
-}
-
-/**************/
-/* PRINT REGS */
-/**************/
-
-//#define PRINT_REGS
-#ifdef PRINT_REGS
-extern uint64_t reg_0;
-extern uint64_t reg_1;
-extern uint64_t reg_2;
-extern uint64_t reg_3;
-extern uint64_t reg_4;
-extern uint64_t reg_5;
-extern uint64_t reg_6;
-extern uint64_t reg_7;
-extern uint64_t reg_8;
-extern uint64_t reg_9;
-extern uint64_t reg_10;
-extern uint64_t reg_11;
-extern uint64_t reg_12;
-extern uint64_t reg_13;
-extern uint64_t reg_14;
-extern uint64_t reg_15;
-extern uint64_t reg_16;
-extern uint64_t reg_17;
-extern uint64_t reg_18;
-extern uint64_t reg_19;
-extern uint64_t reg_20;
-extern uint64_t reg_21;
-extern uint64_t reg_22;
-extern uint64_t reg_23;
-extern uint64_t reg_24;
-extern uint64_t reg_25;
-extern uint64_t reg_26;
-extern uint64_t reg_27;
-extern uint64_t reg_28;
-extern uint64_t reg_29;
-extern uint64_t reg_30;
-extern uint64_t reg_31;
-extern uint64_t reg_32;
-extern uint64_t reg_33;
-extern uint64_t reg_34;
-#endif
-
-// Used for debugging purposes
-extern int _print_regs()
-{
-#ifdef PRINT_REGS
-    printf("print_regs()\n");
-    printf("\treg[ 0]=%lu=0x%lx=@%p\n", reg_0,  reg_0,  &reg_0);
-    printf("\treg[ 1]=%lu=0x%lx=@%p\n", reg_1,  reg_1,  &reg_1);
-    printf("\treg[ 2]=%lu=0x%lx=@%p\n", reg_2,  reg_2,  &reg_2);
-    printf("\treg[ 3]=%lu=0x%lx=@%p\n", reg_3,  reg_3,  &reg_3);
-    printf("\treg[ 4]=%lu=0x%lx=@%p\n", reg_4,  reg_4,  &reg_4);
-    printf("\treg[ 5]=%lu=0x%lx=@%p\n", reg_5,  reg_5,  &reg_5);
-    printf("\treg[ 6]=%lu=0x%lx=@%p\n", reg_6,  reg_6,  &reg_6);
-    printf("\treg[ 7]=%lu=0x%lx=@%p\n", reg_7,  reg_7,  &reg_7);
-    printf("\treg[ 8]=%lu=0x%lx=@%p\n", reg_8,  reg_8,  &reg_8);
-    printf("\treg[ 9]=%lu=0x%lx=@%p\n", reg_9,  reg_9,  &reg_9);
-    printf("\treg[10]=%lu=0x%lx=@%p\n", reg_10, reg_10, &reg_10);
-    printf("\treg[11]=%lu=0x%lx=@%p\n", reg_11, reg_11, &reg_11);
-    printf("\treg[12]=%lu=0x%lx=@%p\n", reg_12, reg_12, &reg_12);
-    printf("\treg[13]=%lu=0x%lx=@%p\n", reg_13, reg_13, &reg_13);
-    printf("\treg[14]=%lu=0x%lx=@%p\n", reg_14, reg_14, &reg_14);
-    printf("\treg[15]=%lu=0x%lx=@%p\n", reg_15, reg_15, &reg_15);
-    printf("\treg[16]=%lu=0x%lx=@%p\n", reg_16, reg_16, &reg_16);
-    printf("\treg[17]=%lu=0x%lx=@%p\n", reg_17, reg_17, &reg_17);
-    printf("\treg[18]=%lu=0x%lx=@%p\n", reg_18, reg_18, &reg_18);
-    printf("\treg[19]=%lu=0x%lx=@%p\n", reg_19, reg_19, &reg_19);
-    printf("\treg[20]=%lu=0x%lx=@%p\n", reg_20, reg_20, &reg_20);
-    printf("\treg[21]=%lu=0x%lx=@%p\n", reg_21, reg_21, &reg_21);
-    printf("\treg[22]=%lu=0x%lx=@%p\n", reg_22, reg_22, &reg_22);
-    printf("\treg[23]=%lu=0x%lx=@%p\n", reg_23, reg_23, &reg_23);
-    printf("\treg[24]=%lu=0x%lx=@%p\n", reg_24, reg_24, &reg_24);
-    printf("\treg[25]=%lu=0x%lx=@%p\n", reg_25, reg_25, &reg_25);
-    printf("\treg[26]=%lu=0x%lx=@%p\n", reg_26, reg_26, &reg_26);
-    printf("\treg[27]=%lu=0x%lx=@%p\n", reg_27, reg_27, &reg_27);
-    printf("\treg[28]=%lu=0x%lx=@%p\n", reg_28, reg_28, &reg_28);
-    printf("\treg[29]=%lu=0x%lx=@%p\n", reg_29, reg_29, &reg_29);
-    printf("\treg[30]=%lu=0x%lx=@%p\n", reg_30, reg_30, &reg_30);
-    printf("\treg[31]=%lu=0x%lx=@%p\n", reg_31, reg_31, &reg_31);
-    printf("\treg[32]=%lu=0x%lx=@%p\n", reg_32, reg_32, &reg_32);
-    printf("\treg[33]=%lu=0x%lx=@%p\n", reg_33, reg_33, &reg_33);
-    printf("\treg[34]=%lu=0x%lx=@%p\n", reg_34, reg_34, &reg_34);
-    printf("\n");
-#endif
-}
-
-/************/
-/* PRINT PC */
-/************/
-
-//#define PRINT_PC_DURATION
-#ifdef PRINT_PC_DURATION
-struct timeval print_pc_tv;
-#endif
-
-// Used for debugging purposes
-extern int _print_pc (uint64_t pc, uint64_t c)
-{
-#ifdef PRINT_PC_DURATION
-    print_pc_counter++;
-    {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        uint64_t duration = TimeDiff(print_pc_tv, tv);
-        if (duration > 900)
-        {
-            uint64_t chunk = print_pc_counter / chunk_size;
-            printf("print_pc() pc=%lx counter=%lu sec=%lu usec=%lu duration=%lu chunk=%lu\n", pc, print_pc_counter, tv.tv_sec, tv.tv_usec, duration, chunk);
-            fflush(stdout);
-        }
-        print_pc_tv = tv;
-    }
-#endif
-
-    printf("s=%lu pc=%lx c=%lx", print_pc_counter, pc, c);
-
-//#define PRINT_PC_REGS
-#ifdef PRINT_PC_REGS
-    /* Used for debugging */
-    printf(" r0=%lx", reg_0);
-    printf(" r1=%lx", reg_1);
-    printf(" r2=%lx", reg_2);
-    printf(" r3=%lx", reg_3);
-    printf(" r4=%lx", reg_4);
-    printf(" r5=%lx", reg_5);
-    printf(" r6=%lx", reg_6);
-    printf(" r7=%lx", reg_7);
-    printf(" r8=%lx", reg_8);
-    printf(" r9=%lx", reg_9);
-    printf(" r10=%lx", reg_10);
-    printf(" r11=%lx", reg_11);
-    printf(" r12=%lx", reg_12);
-    printf(" r13=%lx", reg_13);
-    printf(" r14=%lx", reg_14);
-    printf(" r15=%lx", reg_15);
-    printf(" r16=%lx", reg_16);
-    printf(" r17=%lx", reg_17);
-    printf(" r18=%lx", reg_18);
-    printf(" r19=%lx", reg_19);
-    printf(" r20=%lx", reg_20);
-    printf(" r21=%lx", reg_21);
-    printf(" r22=%lx", reg_22);
-    printf(" r23=%lx", reg_23);
-    printf(" r24=%lx", reg_24);
-    printf(" r25=%lx", reg_25);
-    printf(" r26=%lx", reg_26);
-    printf(" r27=%lx", reg_27);
-    printf(" r28=%lx", reg_28);
-    printf(" r29=%lx", reg_29);
-    printf(" r30=%lx", reg_30);
-    printf(" r31=%lx", reg_31);
-#endif
-
-    printf("\n");
-    fflush(stdout);
-    print_pc_counter++;
-}
-
-/**************/
-/* CHUNK DONE */
-/**************/
-
-//#define CHUNK_DONE_DURATION
-#ifdef CHUNK_DONE_DURATION
-uint64_t chunk_done_counter = 0;
-struct timeval chunk_done_tv;
-#endif
-
-//#define CHUNK_DONE_SYNC_DURATION
-#ifdef CHUNK_DONE_SYNC_DURATION
-struct timeval sync_start, sync_stop;
-uint64_t sync_duration = 0;
-#endif
-
-// Called by the assembly to notify that a chunk is done and its trace is ready to be consumed
-extern void _chunk_done()
-{
-#ifdef CHUNK_DONE_DURATION
-    chunk_done_counter++;
-    if ((chunk_done_counter & 0xFF) == 0)
-    {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        uint64_t duration = TimeDiff(chunk_done_tv, tv);
-        if (duration > 5000)
-        {
-            printf("chunk_done() counter=%lu sec=%lu usec=%lu duration=%lu\n", chunk_done_counter, tv.tv_sec, tv.tv_usec, duration);
-            fflush(stdout);
-        }
-        chunk_done_tv = tv;
-    }
-#endif
-
-#ifdef CHUNK_DONE_SYNC_DURATION
-    gettimeofday(&sync_start, NULL);
-#endif
-
-    __sync_synchronize();
-
-#ifdef CHUNK_DONE_SYNC_DURATION
-    gettimeofday(&sync_stop, NULL);
-    sync_duration += TimeDiff(sync_start, sync_stop);
-    printf("chunk_done() sync_duration=%lu\n", sync_duration);
-#endif
-
-    // Notify the caller that a new chunk is done and its trace is ready to be consumed
-    assert(call_chunk_done);
-    int result = sem_post(sem_chunk_done);
-    if (result == -1)
-    {
-        printf("ERROR: Failed calling sem_post(%s) errno=%d=%s\n", sem_chunk_done_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
-
-/*****************/
-/* REALLOC TRACE */
-/*****************/
-
-// Called by the assembly to reallocate the trace when needed, e.g. for the next chunk,
-// to increase the trace size by another chunk size
-extern void _realloc_trace (void)
-{
-    // Increase realloc counter
-    realloc_counter++;
-
-    // Map next chunk of the trace shared memory
-    trace_map_next_chunk();
-
-    // Update trace global variables
-    set_trace_size(trace_total_mapped_size);
-
-#ifdef DEBUG
-    if (verbose) printf("realloc_trace() realloc counter=%lu trace_address=0x%lx trace_size=%lu=%lx max_address=0x%lx trace_address_threshold=0x%lx chunk_size=%lu\n", realloc_counter, trace_address, trace_size, trace_size, trace_address + trace_size, trace_address_threshold, chunk_size);
-#endif
-}
-
-/*****************/
-/* LOG FUNCTIONS */
-/*****************/
-
-/* Trace data structure
-    [8B] Number of chunks: C
-
-    Chunk 0:
-        Start state:
-            [8B] pc
-            [8B] sp
-            [8B] c
-            [8B] step
-            [8B] register[1]
-            …
-            [8B] register[31]
-            [8B] register[32]
-            [8B] register[33]
-        Last state:
-            [8B] c
-        End:
-            [8B] end
-        Steps:
-            [8B] steps = chunk size except for the last chunk
-            [8B] mem_reads_size
-            [8B] mem_reads[0]
-            [8B] mem_reads[1]
-            …
-            [8B] mem_reads[mem_reads_size - 1]
-
-    Chunk 1:
-    …
-    Chunk C-1:
-    …
-*/
-void log_minimal_trace(void)
-{
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Minimal trace used size = %lu B\n", pOutput[3]); // Minimal trace used size [8]
-
-    printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
-    uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
-    if (number_of_chunks > 1000000)
-    {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    uint64_t * chunk = trace + 1;
-    for (uint64_t c=0; c<number_of_chunks; c++)
-    {
-        uint64_t i=0;
-        printf("Chunk %lu (@=%p):\n", c, chunk);
-
-        // Log current chunk start state
-        printf("\tStart state:\n");
-        printf("\t\tpc=0x%lx\n", chunk[i]);
-        i++;
-        printf("\t\tsp=0x%lx\n", chunk[i]);
-        i++;
-        printf("\t\tc=0x%lx\n", chunk[i]);
-        i++;
-        printf("\t\tstep=%lu\n", chunk[i]);
-        i++;
-        printf("\t\t");
-        for (uint64_t r=1; r<34; r++)
-        {
-            printf("reg[%lu]=0x%lx ", r, chunk[i]);
-            i++;
-        }
-        printf("\n");
-
-        // Log current chunk last state
-        printf("\tEnd state:\n");
-        printf("\t\tc=0x%lx\n", chunk[i]);
-        i++;
-        // Log current chunk end
-        printf("\t\tend=%lu\n", chunk[i]);
-        i++;
-        // Log current chunk steps
-        printf("\t\tsteps=%lu\n", chunk[i]);
-        i++;
-
-        uint64_t mem_reads_size = chunk[i];
-        printf("\t\tmem_reads_size=%lu\n", mem_reads_size);
-        i++;
-        if (mem_reads_size > 10000000)
-        {
-            printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (trace_trace)
-        {
-            for (uint64_t m=0; m<mem_reads_size; m++)
-            {
-                printf("\t\tchunk[%lu].mem_reads[%lu]=%08lx\n", c, m, chunk[i]);
-                i++;
-            }
-        }
-        else
-        {
-            i += mem_reads_size;
-        }
-
-        //Set next chunk pointer
-        chunk = chunk + i;
-    }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
-}
-
-void log_histogram(void)
-{
-
-    uint64_t *  pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // MT allocated size [8]
-    printf("Steps = %lu B\n", pOutput[3]); // MT used size [8]
-
-    printf("BIOS histogram:\n");
-    uint64_t * trace = (uint64_t *)(TRACE_ADDR + 0x20);
-
-    // BIOS
-    uint64_t bios_size = trace[0];
-    printf("BIOS size=%lu\n", bios_size);
-    if (bios_size > 100000000)
-    {
-        printf("ERROR: Bios size is too high=%lu\n", bios_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (trace_trace)
-    {
-        uint64_t * bios = trace + 1;
-        for (uint64_t i=0; i<bios_size; i++)
-        {
-            printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x1000 + (i*4), bios[i] );
-        }
-    }
-
-    // Program
-    uint64_t program_size = trace[bios_size + 1];
-    printf("Program size=%lu\n", program_size);
-    if (program_size > 100000000)
-    {
-        printf("ERROR: Program size is too high=%lu\n", program_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (trace_trace)
-    {
-        uint64_t * program = trace + 1 + bios_size + 1;
-        for (uint64_t i=0; i<program_size; i++)
-        {
-            if (program[i] != 0)
-            {
-                printf("%lu: pc=0x%lx multiplicity=%lu:\n", i, 0x80000000 + i, program[i]);
-            }
-        }
-    }
-
-    printf("Histogram bios_size=%lu program_size=%lu\n", bios_size, program_size);
-}
-
-/* Trace data structure
-    [8B] Number of chunks = C
-
-    Chunk 0:
-        [8B] mem_trace_size
-        [7x8B] mem_trace[0]
-        [7x8B] mem_trace[1]
-        …
-        [7x8B] mem_trace[mem_trace_size - 1]
-
-    Chunk 1:
-    …
-    Chunk C-1:
-    …
-*/
-void log_main_trace(void)
-{
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Main trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
-
-    printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
-    uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
-    if (number_of_chunks > 1000000)
-    {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    uint64_t * chunk = trace + 1;
-    for (uint64_t c=0; c<number_of_chunks; c++)
-    {
-        uint64_t i=0;
-        printf("Chunk %lu:\n", c);
-
-        uint64_t main_trace_size = chunk[i];
-        printf("\tmem_reads_size=%lu\n", main_trace_size);
-        i++;
-        main_trace_size /= 7;
-        if (main_trace_size > 10000000)
-        {
-            printf("ERROR: Main_trace size is too high=%lu\n", main_trace_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        if (trace_trace)
-        {
-            for (uint64_t m=0; m<main_trace_size; m++)
-            {
-                printf("\t\tchunk[%lu].main_trace[%lu]=[%lx,%lx,%lx,%lx,%lx,%lx,%lx]\n",
-                    c,
-                    m,
-                    chunk[i],
-                    chunk[i+1],
-                    chunk[i+2],
-                    chunk[i+3],
-                    chunk[i+4],
-                    chunk[i+5],
-                    chunk[i+6]
-                );
-                i += 7;
-            }
-        }
-        else
-        {
-            i += main_trace_size*7;
-        }
-
-        //Set next chunk pointer
-        chunk = chunk + i;
-    }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
-}
-
-void buffer2file (const void * buffer_address, size_t buffer_length, const char * file_name)
-{
-    if (!file_name)
-    {
-        printf("ERROR: buffer2file() found invalid file_name\n");
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    if (!buffer_address)
-    {
-        printf("ERROR: buffer2file() found invalid buffer_address\n");
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    FILE * file = fopen(file_name, "wb");
-    if (!file)
-    {
-        printf("ERROR: buffer2file() failed calling fopen(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    if (buffer_length > 0)
-    {
-        size_t bytes_written = fwrite(buffer_address, 1, buffer_length, file);
-        if (bytes_written != buffer_length)
-        {
-            printf("ERROR: buffer2file() failed calling fwrite(%s) buffer_address=%p buffer_length=%lu errno=%d=%s\n", file_name, buffer_address, buffer_length, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            fclose(file);
-            exit(-1);
-        }
-    }
-
-    if (fclose(file) != 0)
-    {
-        printf("ERROR: buffer2file() failed calling fclose(%s) errno=%d=%s\n", file_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-}
-
-/* Memory operations structure
-    [8B] Number of chunks = C
-
-    Chunk 0:
-        [8b] end
-        [8B] mem_op_trace_size
-        [8B] mem_op_trace[0]
-        [8B] mem_op_trace[1]
-        …
-        [8B] mem_op_trace[mem_op_trace_size - 1]
-
-    Chunk 1:
-    …
-    Chunk C-1:
-    …
-*/
-void log_mem_op(void)
-{
-    // Log header
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
-
-    printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
-    uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
-    if (number_of_chunks > 1000000)
-    {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    uint64_t * chunk = trace + 1;
-    for (uint64_t c=0; c<number_of_chunks; c++)
-    {
-        uint64_t i=0;
-        printf("Chunk %lu:\n", c);
-
-        uint64_t end = chunk[i];
-        printf("\tend=%lu\n", end);
-        i++;
-
-        uint64_t mem_op_trace_size = chunk[i];
-        printf("\tmem_op_trace_size=%lu\n", mem_op_trace_size);
-        i++;
-        if (mem_op_trace_size > 10000000)
-        {
-            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        for (uint64_t m=0; m<mem_op_trace_size; m++)
-        {
-            uint64_t rest_are_zeros = (chunk[i] >> 49) & 0x1;
-            uint64_t write = (chunk[i] >> 48) & 0x1;
-            uint64_t width = (chunk[i] >> 32) & 0xF;
-            uint64_t address = chunk[i] & 0xFFFFFFFF;
-            bool inside_range =
-                ((address >= RAM_ADDR) && (address < (RAM_ADDR + RAM_SIZE))) ||
-                ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||
-                ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
-            if (trace_trace || !inside_range)
-            {
-                printf("\t\tchunk[%lu].mem_op_trace[%lu] = %016lx = rest_are_zeros=%lx, write=%lx, width=%lx, address=%lx%s\n",
-                    c,
-                    m,
-                    chunk[i],
-                    rest_are_zeros,
-                    write,
-                    width,
-                    address,
-                    inside_range ? "" : " ERROR!!!!!!!!!!!!!!"
-                );
-            }
-            i += 1;
-        }
-
-        //Set next chunk pointer
-        chunk = chunk + i;
-    }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
-}
-
-/* Memory trace structure (for 1 chunk)
-    [8B] mem_trace_size
-    [16B] mem_trace[0]
-        [8B] mem operacion
-            [4B] address (LE)
-            [1B] width (1, 2, 4, 8) + write (0, 1) << 4
-            [3B] 
-    [16B] mem_trace[1]
-    …
-    [16B] mem_trace[mem_trace_size - 1]
-*/
-void log_mem_trace(void)
-{
-    printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)trace_address;
-    printf("log_mem_trace() trace_address=%p\n", trace);
-    uint64_t i=0;
-    printf("Version = 0x%06lx\n", trace[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", trace[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", trace[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", trace[3]); // Main trace used size [8]
-    i += 4;
-    uint64_t number_of_entries = trace[i];
-    i++;
-    printf("Trace size=%lu\n", number_of_entries);
-
-    for (uint64_t m = 0; m < number_of_entries; m++)
-    {
-        uint64_t addr_step = trace[i];
-        i++;
-
-        // addr_step = [@0, @1, @2, @3, width + write<<4, supra_step]        
-        uint64_t address = addr_step & 0xFFFFFFFF;
-        uint64_t width = (addr_step >> (4*8)) & 0xF;
-        uint64_t write = (addr_step >> ((4*8) + 4)) & 0x1;
-        uint64_t micro_step = (addr_step >> (5*8)) & 0x3;
-        uint64_t incremental_step = (addr_step >> ((5*8) + 2));
-        bool address_is_inside_range =
-            ((address >= RAM_ADDR) && (address < (RAM_ADDR + RAM_SIZE))) ||
-            ((address >= ROM_ADDR) && (address < (ROM_ADDR + ROM_SIZE))) ||
-            ((address >= INPUT_ADDR) && (address < (INPUT_ADDR + MAX_INPUT_SIZE)));
-        bool width_is_valid = (width == 1) || (width == 2) || (width == 4) || (width == 8);
-        bool bError = !(address_is_inside_range && width_is_valid);
-        if (trace_trace || bError)
-        {
-            printf("\tmem_trace[%lu] = %016lx = [inc_step=%lu, u_step=%lu, write=%lx, width=%lx, address=%lx] %s\n",
-                m,
-                addr_step,
-                incremental_step,
-                micro_step,
-                write,
-                width,
-                address,
-                bError ? " ERROR!!!!!!!!!!!!!!" : ""
-            );
-        }
-
-        // u-step:
-        //   0: a=SRC_MEM
-        //   1: b=SRC_MEM or b=SRC_IND
-        //   2: precompiled_read
-        //   3: c=STORE_MEM, c=STORE_IND or precompiled_write
-
-        bool address_is_aligned = (address & 0x7) == 0;
-        uint64_t aligned_address = address & 0xFFFFFFF8;
-        uint64_t number_of_read_values = 0;
-        uint64_t number_of_write_values = 0;
-
-        switch (micro_step)
-        {
-            case 0: // a=SRC_MEM
-            {
-                assert_perror(width == 8);
-                if (address_is_aligned)
-                {
-                    number_of_read_values = 1;
-                }
-                else
-                {
-                    number_of_read_values = 2;
-                }
-                break;
-            }
-            case 1: // b=SRC_MEM or b=SRC_IND
-            {
-                if (address_is_aligned)
-                {
-                    number_of_read_values = 1;
-                }
-                else
-                {
-                    if (((address + width - 1) & 0xFFFFFFF8) == aligned_address)
-                    {
-                        number_of_read_values = 1;
-                    }
-                    else
-                    {
-                        number_of_read_values = 2;
-                    }
-                }
-                break;
-            }
-            case 2: // precompiled_read
-            {
-                assert_perror(width == 8);
-                if (address_is_aligned)
-                {
-                    number_of_read_values = 1;
-                }
-                else
-                {
-                    number_of_read_values = 2;
-                }
-                break;
-            }
-            case 3: // c=STORE_MEM, c=STORE_IND or precompiled_write
-            {
-                if (address_is_aligned && (width == 8))
-                {
-                    number_of_read_values = 0;
-                }
-                else
-                {
-                    if (((address + width - 1) & 0xFFFFFFF8) == aligned_address)
-                    {
-                        number_of_read_values = 1;
-                    }
-                    else
-                    {
-                        number_of_read_values = 2;
-                    }
-                }
-                number_of_write_values = 1;
-                break;
-            }
-        }
-
-        for (uint64_t r = 0; r < number_of_read_values; r++)
-        {
-            uint64_t value = trace[i];
-            i++;
-            m++;
-            if (trace_trace)
-            {
-                printf("\t\tread_value[%lu] = 0x%lx\n", i, value);
-            }
-        }
-
-        for (uint64_t w = 0; w < number_of_write_values; w++)
-        {
-            uint64_t value = trace[i];
-            i++;
-            m++;
-            if (trace_trace)
-            {
-                printf("\t\twrite_value[%lu] = 0x%lx\n", i, value);
-            }
-        }
-    }
-    printf("Trace=%p number_of_entries=%lu\n", trace, number_of_entries);
-}
-
-void save_mem_op_to_files(void)
-{
-    // Log header
-    uint64_t * pOutput = (uint64_t *)TRACE_ADDR;
-    printf("Version = 0x%06lx\n", pOutput[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", pOutput[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", pOutput[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", pOutput[3]); // Main trace used size [8]
-
-    printf("Trace content:\n");
-    uint64_t * trace = (uint64_t *)MEM_TRACE_ADDRESS;
-    uint64_t number_of_chunks = trace[0];
-    printf("Number of chunks=%lu\n", number_of_chunks);
-    if (number_of_chunks > 1000000)
-    {
-        printf("ERROR: Number of chunks is too high=%lu\n", number_of_chunks);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    uint64_t * chunk = trace + 1;
-    for (uint64_t c=0; c<number_of_chunks; c++)
-    {
-        char file_name[256];
-        sprintf(file_name, "/tmp/mem_count_data_%lu.bin", c);
-
-        uint64_t i=0;
-        uint64_t mem_op_trace_size = chunk[i];
-        i++;
-        if (mem_op_trace_size > 10000000)
-        {
-            printf("ERROR: Mem op trace size is too high=%lu\n", mem_op_trace_size);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        printf("Chunk %lu: file=%s length=%lu\n", c, file_name, mem_op_trace_size);
-
-        buffer2file(&chunk[i], mem_op_trace_size * 8, file_name);
-
-        //Set next chunk pointer
-        chunk = chunk + mem_op_trace_size + 1;
-    }
-    printf("Trace=%p chunk=%p size=%lu\n", trace, chunk, (uint64_t)chunk - (uint64_t)trace);
-}
-
-/* Trace data structure
-    [8B] Number of elements
-
-    A series of elements with the following structure:
-        [8B] op: instruction opcode
-        [8B] a: register a value
-        [8B] b: register b value
-        [8B] precompiled_memory_address: memory read address of the precompiled input data
-*/
-void log_chunk_player_main_trace(void)
-{
-    uint64_t * chunk = (uint64_t *)trace_address;
-    uint64_t i = 0;
-
-    printf("Version = 0x%06lx\n", chunk[0]); // Version, e.g. v1.0.0 [8]
-    printf("Exit code = %lu\n", chunk[1]); // Exit code: 0=successfully completed, 1=not completed (written at the beginning of the emulation), etc. [8]
-    printf("Allocated size = %lu B\n", chunk[2]); // Allocated size [8]
-    printf("Memory operations trace used size = %lu B\n", chunk[3]); // Main trace used size [8]
-    i = 4;
-
-    uint64_t mem_reads_size = chunk[i];
-    i++;
-    printf("mem_reads_size=%lu\n", mem_reads_size);
-    if (mem_reads_size > 10000000)
-    {
-        printf("ERROR: Mem reads size is too high=%lu\n", mem_reads_size);
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-    //if (trace_trace)
-    {
-        for (uint64_t m=0; m<mem_reads_size; m++)
-        {
-            uint64_t op = chunk[i];
-            if (trace_trace) printf("\tmem_reads[%lu] op=0x%lx\n", m, chunk[i]);
-            i++;
-            m++;
-            if (op > 0xFF)
-            {
-                printf("ERROR!! Invalid op=%lu=0x%lx\n", op, op);
-            }
-            if (trace_trace) printf("\tmem_reads[%lu] a=0x%08lx\n", m, chunk[i]);
-            i++;
-            m++;
-            if (trace_trace) printf("\tmem_reads[%lu] b=0x%08lx\n", m, chunk[i]);
-            i++;
-            m++;
-            if (   (op == 0xf1) // Keccak
-                || (op == 0xf9) // SHA256
-                || (op == 0xf2) // Arith256
-                || (op == 0xf3) // Arith256Mod
-                || (op == 0xf4) // Secp256k1Add
-                || (op == 0xf5) // Secp256k1Dbl
-                )
-            {
-                if (trace_trace) printf("\tmem_reads[%lu] precompiled_address=%08lx\n", m, chunk[i]);
-                i++;
-                m++;
-            }
-        }
-    }
-
-    printf("Chunk=%p size=%lu\n", chunk, mem_reads_size);
 }
 
 /*************/
 /* FILE LOCK */
 /*************/
+
+#ifdef USE_FILE_LOCK
 
 // Lock file exclusively to ensure that only one instance of the program is running at a time
 void file_lock(void)
@@ -5554,126 +876,16 @@ void file_lock(void)
     // Open (or create) the lock file. We don't need to write to it.
     file_lock_fd = open(file_lock_name, O_CREAT | O_RDONLY, 0644);
     if (file_lock_fd == -1) {
-        printf("ERROR: file_lock() failed calling open(%s) errno=%d=%s\n", file_lock_name, errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: file_lock() failed calling open(%s) errno=%d=%s\n", file_lock_name, errno, strerror(errno));
         exit(1);
     }
 
     // Try to acquire an exclusive lock, non-blocking.
     if (flock(file_lock_fd, LOCK_EX | LOCK_NB) == -1) {
         // If we fail to get the lock, another instance is running.
-        printf("ERROR: Another instance of this program is already running.\n");
-        fflush(stdout);
-        fflush(stderr);
+        asm_printf("ERROR: Another instance of this program is already running.\n");
         exit(1);
     }
 }
 
-/*********************************/
-/* WAIT FOR PRECOMPILE AVAILABLE */
-/*********************************/
-
-// Called by the assembly when prec_written == prec_read, to wait for new precompile results to be available
-int _wait_for_prec_avail (void)
-{
-    // Increment wait counter
-    wait_counter++;
-
-    // Sync control output shared memory so that the writer can see the precompile reads we have
-    // done, and thus update the precompile_written_address if needed
-    if (msync((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE, MS_SYNC) != 0) {
-        printf("ERROR: msync failed for shmem_control_output_address errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Tell the writer that we have read some precompile results
-    sem_post(sem_prec_read);
-
-    // Make sure the precompile available semaphore is reset before checking the condition,
-    // since the caller may have posted it (even several times) before we called sem_wait()
-    while (sem_trywait(sem_prec_avail) == 0) {/*printf("Purging sem_prec_avail\n");*/};
-
-    // Sync control input shared memory so that we can see the latest precompile_written_address value
-    if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
-        printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
-        fflush(stdout);
-        fflush(stderr);
-        exit(-1);
-    }
-
-    // Check if there are already precompile results available
-    if (*precompile_written_address > *precompile_read_address)
-    {
-        // Sync precompile shared memory
-        if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
-            printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        return 0;
-    }
-
-    // Wait again, but blocking this time
-    while (true)
-    {
-        struct timespec ts;
-        int result = clock_gettime(CLOCK_REALTIME, &ts);
-        if (result == -1)
-        {
-            printf("ERROR: wait_for_prec_avail() failed calling clock_gettime() errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        ts.tv_sec += 5; // 5 seconds timeout
-
-        //printf("_wait_for_prec_avail() calling sem_wait precompile_written_address=%lu precompile_read_address=%lu\n", *precompile_written_address, *precompile_read_address);
-        result = sem_timedwait(sem_prec_avail, &ts);
-        //printf("_wait_for_prec_avail() called sem_wait precompile_written_address=%lu precompile_read_address=%lu\n", *precompile_written_address, *precompile_read_address);
-        if ((result == -1) && (errno != ETIMEDOUT))
-        {
-            printf("ERROR: wait_for_prec_avail() failed calling sem_wait(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        // Sync control input shared memory so that we can see the latest precompile_written_address value
-        if (msync((void *)shmem_control_input_address, CONTROL_INPUT_SIZE, MS_SYNC) != 0) {
-            printf("ERROR: msync failed for shmem_control_input_address errno=%d=%s\n", errno, strerror(errno));
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-
-        if (*precompile_exit_address != 0)
-        {
-            printf("ERROR: wait_for_prec_avail() found precompile_exit_address=%lu\n", *precompile_exit_address);
-            fflush(stdout);
-            fflush(stderr);
-            exit(-1);
-        }
-        if (*precompile_written_address > *precompile_read_address)
-        {
-            // Sync precompile shared memory
-            if (msync((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE, MS_SYNC) != 0) {
-                printf("ERROR: msync failed for shmem_precompile_address errno=%d=%s\n", errno, strerror(errno));
-                fflush(stdout);
-                fflush(stderr);
-                exit(-1);
-            }
-
-            return 0;
-        }
-    }
-
-    printf("ERROR: wait_for_prec_avail() unreachable code\n");
-    fflush(stdout);
-    fflush(stderr);
-    exit(-1);
-}
+#endif // USE_FILE_LOCK

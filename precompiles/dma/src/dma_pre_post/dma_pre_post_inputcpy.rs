@@ -9,16 +9,11 @@ use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
     slice::{ParallelSlice, ParallelSliceMut},
 };
-use zisk_pil::{DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE, DUAL_RANGE_BYTE_ID};
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    DmaPrePostInputCpyTracePacked as DmaPrePostInputCpyTrace,
-    DmaPrePostInputCpyTraceRowPacked as DmaPrePostInputCpyTraceRow,
+use zisk_pil::{
+    DmaPrePostInputCpyTrace, DmaPrePostInputCpyTraceRow, DmaPrePostInputCpyTraceRowOps,
+    DmaPrePostInputCpyTraceRowPacked, DMA_PRE_POST_TABLE_ID, DMA_PRE_POST_TABLE_SIZE,
+    DUAL_RANGE_BYTE_ID,
 };
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{DmaPrePostInputCpyTrace, DmaPrePostInputCpyTraceRow};
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
 use precompiles_helpers::DmaInfo;
@@ -58,10 +53,10 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice(
+    pub fn process_slice<R: DmaPrePostInputCpyTraceRowOps<F>>(
         &self,
         input: &DmaPrePostInput,
-        trace: &mut DmaPrePostInputCpyTraceRow<F>,
+        trace: &mut R,
         pre_post_table_mul: &mut [u64],
         local_dual_range_byte_mul: &mut [u64],
     ) {
@@ -85,7 +80,7 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         trace.set_sel_inputcpy(false);
 
         let mut value = input.src_values[0];
-        let mut rb = [0u8; 16];
+        let mut rb = [0u8; 8];
         let mut pb = [0u8; 8];
 
         rb[0] = value as u8;
@@ -120,23 +115,19 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         let _mask = 0xFFFF_FFFF_FFFF_FFFFu64 << (dst_offset * 8);
         let mask = _mask ^ (_mask << (count * 8));
 
-        trace.set_sb(0, (mask & 0x0000_0000_0000_00FF) != 0);
-        trace.set_sb(1, (mask & 0x0000_0000_0000_FF00) != 0);
-        trace.set_sb(2, (mask & 0x0000_0000_00FF_0000) != 0);
-        trace.set_sb(3, (mask & 0x0000_0000_FF00_0000) != 0);
-        trace.set_sb(4, (mask & 0x0000_00FF_0000_0000) != 0);
-        trace.set_sb(5, (mask & 0x0000_FF00_0000_0000) != 0);
-        trace.set_sb(6, (mask & 0x00FF_0000_0000_0000) != 0);
-        trace.set_sb(7, (mask & 0xFF00_0000_0000_0000) != 0);
-
-        for (index, byte) in rb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_rb(index, *byte);
-        }
-        for (index, byte) in pb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_pb(index, *byte);
-        }
+        let sb = [
+            (mask & 0x0000_0000_0000_00FF) != 0,
+            (mask & 0x0000_0000_0000_FF00) != 0,
+            (mask & 0x0000_0000_00FF_0000) != 0,
+            (mask & 0x0000_0000_FF00_0000) != 0,
+            (mask & 0x0000_00FF_0000_0000) != 0,
+            (mask & 0x0000_FF00_0000_0000) != 0,
+            (mask & 0x00FF_0000_0000_0000) != 0,
+            (mask & 0xFF00_0000_0000_0000) != 0,
+        ];
+        trace.set_all_sb(&sb);
+        trace.set_all_rb(&rb);
+        trace.set_all_pb(&pb);
 
         let table_row = DmaPrePostRom::get_row(dst_offset as usize, 0, count, false, false, false);
         // println!("PRE-POST-ROM [{table_row}] dst_offset: {dst_offset} src_offset: {src_offset} count: {count}");
@@ -149,7 +140,7 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut DmaPrePostInputCpyTraceRow<F>) {
+    pub fn process_empty_slice<R: DmaPrePostInputCpyTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_main_step(0);
         trace.set_dst64(0);
         trace.set_dst_offset(0);
@@ -158,36 +149,16 @@ impl<F: PrimeField64> DmaPrePostInputCpySM<F> {
         trace.set_sel_inputcpy(false);
         // intermediate: trace.set_last_dst_byte(0);
 
-        for index in 0..16 {
-            trace.set_rb(index, 0);
-        }
-        for index in 0..8 {
-            trace.set_pb(index, 0);
-        }
-        for index in 0..8 {
-            trace.set_sb(index, false);
-        }
+        trace.set_all_rb(&[0; 8]);
+        trace.set_all_pb(&[0; 8]);
+        trace.set_all_sb(&[false; 8]);
     }
-}
-impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostInputCpySM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_pre_post_inputcpy"
-    }
-
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: DmaPrePostInputCpyTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaPrePostInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = DmaPrePostInputCpyTrace::<F>::new_from_vec(trace_buffer)?;
+        let mut trace = DmaPrePostInputCpyTrace::<R>::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs.iter().map(|inputs| inputs.len()).sum();
@@ -252,5 +223,22 @@ impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostInputCpySM<F> {
         let from_trace = FromTrace::new(&mut trace);
         timer_stop_and_log_trace!(DMA_PRE_POST_TRACE);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostInputCpySM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_pre_post_inputcpy"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<DmaPrePostInput>],
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<DmaPrePostInputCpyTraceRowPacked<F>>(inputs, trace_buffer)
+        } else {
+            self.compute_witness_inner::<DmaPrePostInputCpyTraceRow<F>>(inputs, trace_buffer)
+        }
     }
 }

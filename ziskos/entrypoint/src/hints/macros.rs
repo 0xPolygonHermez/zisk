@@ -28,7 +28,7 @@ macro_rules! define_hint {
                 );
 
                 $(
-                    w.write_hint_data_ptr($arg, $len);
+                    w.write_data_ptr($arg, $len);
                 )+
 
                 w.commit();
@@ -66,9 +66,9 @@ macro_rules! define_hint_pairs {
                 );
 
                 let num_pairs_bytes: [u8; 8] = (num_pairs as u64).to_le_bytes();
-                w.write_hint_data_slice(&num_pairs_bytes);
+                w.write_data_slice(&num_pairs_bytes);
 
-                w.write_hint_data_ptr(pairs, num_pairs * ($pair_len as usize));
+                w.write_data_ptr(pairs, num_pairs * ($pair_len as usize));
 
                 w.commit();
             }
@@ -104,11 +104,11 @@ macro_rules! define_hint_ptr {
                     $is_result,
                 );
 
-                w.write_hint_data_ptr([<$arg _ptr>], [<$arg _len>]);
+                w.write_data_ptr([<$arg _ptr>], [<$arg _len>]);
 
                 if pad > 0 {
                     const ZERO_PAD: [u8; 8] = [0; 8];
-                    w.write_hint_data_slice(&ZERO_PAD[..pad]);
+                    w.write_data_slice(&ZERO_PAD[..pad]);
                 }
 
                 w.commit();
@@ -152,15 +152,15 @@ macro_rules! define_hint_ptr {
                 $(
                     {
                         let len_bytes: [u8; 8] = ([<$arg _len>] as u64).to_le_bytes();
-                        w.write_hint_data_slice(&len_bytes);
+                        w.write_data_slice(&len_bytes);
 
-                        w.write_hint_data_ptr([<$arg _ptr>], [<$arg _len>]);
+                        w.write_data_ptr([<$arg _ptr>], [<$arg _len>]);
                     }
                 )+
 
                 if pad > 0 {
                     const ZERO_PAD: [u8; 8] = [0; 8];
-                    w.write_hint_data_slice(&ZERO_PAD[..pad]);
+                    w.write_data_slice(&ZERO_PAD[..pad]);
                 }
 
                 w.commit();

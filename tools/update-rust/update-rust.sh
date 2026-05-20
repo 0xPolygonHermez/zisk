@@ -103,7 +103,7 @@ fi
 for line in "${commits_array[@]}"; do
     commit=$(echo "$line" | awk '{print $1}')
     msg=$(echo "$line" | cut -d' ' -f2-)
-    
+
     log_info "Applying cherry pick for commit: ${msg} (${commit})"
     output=$(git cherry-pick $commit -n 2>&1)
     if ! [[ $? -eq 0 ]]; then
@@ -121,7 +121,9 @@ done
 
 # Final instructions
 echo
-log_info "Now test build Zisk tool chain using the rust code in the directory ${ZISK_RUST_DIR} and new branch 'zisk-rust-${TO_VERSION}'"
+log_info "Now test build Zisk tool chain using the rust code in the directory ${ZISK_RUST_DIR} and new branch 'zisk-rust-${TO_VERSION}':"
+log "ZISK_BUILD_DIR=${ZISK_RUST_DIR} cargo-zisk sdk build-toolchain"
+echo
 log_info "When successfully tested, execute the following command to commit/merge the changes to 'zisk' branch and generate the release:"
 echo
 log "./release-rust.sh ${TO_VERSION} <RELEASE_VERSION> <WORKING_DIR>"

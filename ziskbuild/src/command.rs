@@ -1,4 +1,5 @@
 use crate::{BuildArgs, HELPER_TARGET_SUBDIR, ZISK_TARGET};
+use anyhow::{Context, Result};
 use cargo_metadata::camino::Utf8PathBuf;
 use std::{path::PathBuf, process::Command};
 
@@ -7,7 +8,7 @@ pub(crate) fn create_command(
     args: &BuildArgs,
     program_dir: &Utf8PathBuf,
     program_metadata: &cargo_metadata::Metadata,
-) -> Command {
+) -> Result<Command> {
     // Construct the cargo run command
     let mut command = Command::new("cargo");
     command.args(["+zisk", "build"]);
@@ -24,6 +25,13 @@ pub(crate) fn create_command(
     }
     if args.release {
         command.arg("--release");
+    }
+
+    for package in &args.packages {
+        command.args(["--package", package]);
+    }
+    for bin in &args.binaries {
+        command.args(["--bin", bin]);
     }
 
     command.args(["--target", ZISK_TARGET]);
@@ -44,22 +52,39 @@ pub(crate) fn create_command(
             .arg("--print")
             .arg("sysroot")
             .output()
-            .expect("rustc --print sysroot should succeed");
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "ZisK toolchain '{}' is not installed or rustup is not available.\n\
+                     Run `cargo zisk toolchain install` to install it.",
+                    crate::RUSTUP_TOOLCHAIN_NAME
+                )
+            })?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "ZisK toolchain '{}' is not installed.\n\
+                 Run `cargo zisk toolchain install` to install it.",
+                crate::RUSTUP_TOOLCHAIN_NAME
+            );
+        }
 
         let stdout_string =
-            String::from_utf8(output.stdout).expect("Can't parse rustc --print rustc stdout");
+            String::from_utf8(output.stdout).context("Can't parse rustc --print sysroot stdout")?;
 
         PathBuf::from(stdout_string.trim()).join("bin/rustc")
     };
 
-    command.env_remove("RUSTC").env("RUSTC", rustc_bin.display().to_string());
+    command
+        .env_remove("RUSTC")
+        .env("RUSTC", rustc_bin.display().to_string())
+        .env_remove("RUSTC_WORKSPACE_WRAPPER");
 
     let canonicalized_program_dir =
-        program_dir.canonicalize().expect("Failed to canonicalize program directory");
+        program_dir.canonicalize().context("Failed to canonicalize program directory")?;
     command.current_dir(canonicalized_program_dir);
 
     // Use a separate subdirectory to avoid conflicts with the host build
     command.env("CARGO_TARGET_DIR", program_metadata.target_directory.join(HELPER_TARGET_SUBDIR));
 
-    command
+    Ok(command)
 }

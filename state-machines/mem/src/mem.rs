@@ -51,8 +51,8 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     }
 
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
-        let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<F>::AIR_ID);
-        let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<F>::AIR_ID);
+        let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<()>::AIR_ID);
+        let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<()>::AIR_ID);
         let mut proof_values = ZiskProofValues::from_vec_guard(pctx.get_proof_values());
         proof_values.enable_input_data = F::from_bool(enable_input_data);
         proof_values.enable_rom_data = F::from_bool(enable_rom_data);
@@ -67,23 +67,23 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
     /// A boxed implementation of a Memory Instance.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            MemTrace::<F>::AIR_ID => Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx)),
-            RomDataTrace::<F>::AIR_ID => {
+            MemTrace::<()>::AIR_ID => Box::new(MemModuleInstance::new(self.mem_sm.clone(), ictx)),
+            RomDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.rom_data_sm.clone(), ictx))
             }
-            InputDataTrace::<F>::AIR_ID => {
+            InputDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
-            MemAlignTrace::<F>::AIR_ID => {
+            MemAlignTrace::<()>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
             }
-            MemAlignByteTrace::<F>::AIR_ID => {
+            MemAlignByteTrace::<()>::AIR_ID => {
                 Box::new(MemAlignByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignReadByteTrace::<F>::AIR_ID => {
+            MemAlignReadByteTrace::<()>::AIR_ID => {
                 Box::new(MemAlignReadByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignWriteByteTrace::<F>::AIR_ID => {
+            MemAlignWriteByteTrace::<()>::AIR_ID => {
                 Box::new(MemAlignWriteByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
             _ => panic!("Memory::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),

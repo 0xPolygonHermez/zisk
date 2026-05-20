@@ -239,7 +239,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     //   For example: 4 * 8 * 2^21 = 2^26.
     //
     //   To avoid this situation, we sent to bus the read of all registers on the last mem_step
-    //   of the current instance (final reload); with this, we limit the máximum difference to
+    //   of the current instance (final reload); with this, we limit the maximum difference to
     //   size_of_instance * 4, in this case 2^23 with instances of 2^21 rows, or 2^24 with
     //   instances of 2^22 rows.
     //

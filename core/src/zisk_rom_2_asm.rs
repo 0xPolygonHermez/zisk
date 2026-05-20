@@ -3,9 +3,11 @@
 //! Generates i86_64 assembly code that implements the Zisk ROM program
 use std::path::Path;
 
+use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
+
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR,
-    FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY, SRC_C,
+    FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C,
     SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
@@ -94,7 +96,7 @@ const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
 const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
-const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x400000; // 4MB
+const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
 const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
 const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
 
@@ -146,10 +148,11 @@ pub struct ZiskAsmContext {
     mem_chunk_id: String,                   // 0, 1, 2, 3, 4...
     mem_chunk_mask: String,                 // Module 8 of the chunks we want to activate, e.g. 0x03
     mem_rsp: String,                        // Backup of rsp register value from caller
-    mem_free_input: String, // Free input address (0x90000000) used in free call operations, but stored in memory to allow sharing the input shared memory
+    mem_free_input: String, // Free input address (0x40000000) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
     mem_precompile_read_address: String, // Address where precompile read counter is stored
+    mem_input_written_address: String, // Address where input written counter is stored
 
     comments: bool, // true if we want to generate comments in the assembly source code
     boc: String,    // begin of comment: '/*', ';', '#', etc.
@@ -253,10 +256,12 @@ impl ZiskAsmContext {
         self.precompile_results
     }
     pub fn precompile_results_keccak(&self) -> bool {
-        self.precompile_results()
+        //self.precompile_results()
+        false
     }
     pub fn precompile_results_sha256(&self) -> bool {
-        self.precompile_results()
+        //self.precompile_results()
+        false
     }
     pub fn precompile_results_arith256(&self) -> bool {
         self.precompile_results()
@@ -316,7 +321,8 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_blake2(&self) -> bool {
-        self.precompile_results()
+        //self.precompile_results()
+        false
     }
     pub fn call_wait_for_prec_avail(&self) -> bool {
         self.precompile_results()
@@ -555,6 +561,7 @@ impl ZiskRom2Asm {
             ctx.mem_precompile_written_address = format!("qword {}[0x70000000]", ctx.ptr);
             ctx.mem_precompile_read_address = format!("qword {}[0x70001000]", ctx.ptr);
         }
+        ctx.mem_input_written_address = format!("qword {}[0x70000010]", ctx.ptr);
 
         // Preamble
         *code += ".intel_syntax noprefix\n";
@@ -718,6 +725,12 @@ impl ZiskRom2Asm {
         *code += ".global get_max_program_pc\n";
         *code += "get_max_program_pc:\n";
         *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_program_pc);
+        *code += "\tret\n\n";
+
+        // get_rom_length() returns the length of the ROM
+        *code += ".global get_rom_length\n";
+        *code += "get_rom_length:\n";
+        *code += &format!("\tmov rax, 0x{:08x}\n", rom.insts.len());
         *code += "\tret\n\n";
 
         // get_gen_method() returns the generation method used to generate the assembly
@@ -1028,10 +1041,17 @@ impl ZiskRom2Asm {
 
             // Update the rom histogram
             if ctx.rom_histogram() {
-                let address = Self::get_rom_histogram_trace_address(rom, ctx.pc);
-                *code += &ctx.full_line_comment("rom histogram".to_string());
-                *code += &format!("\tmov {REG_ADDRESS}, 0x{address:08x}\n");
-                *code += &format!("\tinc qword {}[{}]\n", ctx.ptr, REG_ADDRESS);
+                let address = Self::get_rom_histogram_trace_address(instruction.index);
+                *code += &format!(
+                    "\tmov {REG_ADDRESS}, 0x{address:08x} {}\n",
+                    ctx.comment_str("address = &rom_histogram[index]")
+                );
+                *code += &format!(
+                    "\tinc qword {}[{}] {}\n",
+                    ctx.ptr,
+                    REG_ADDRESS,
+                    ctx.comment_str("increment rom histogram counter")
+                );
             }
 
             // Set special storage destinations for a and b registers, based on operations, in order
@@ -1991,6 +2011,14 @@ impl ZiskRom2Asm {
                                 *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                             }
                             4 | 2 => {
+                                // Save original addr to AUX before &~7 destroys it
+                                *code += &format!(
+                                    "\tmov {}, {} {}\n",
+                                    REG_AUX,
+                                    reg_address,
+                                    ctx.comment_str("aux = original address")
+                                );
+
                                 // Calculate previous aligned address
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -2013,30 +2041,25 @@ impl ZiskRom2Asm {
                                     ctx.comment_str("mem_reads[@+size*8] = prev_b")
                                 );
 
-                                // Calculate next aligned address, keeping a copy of previous aligned
-                                // address in value
-                                *code += &format!(
-                                    "\tmov {}, {} {}\n",
-                                    REG_VALUE,
-                                    reg_address,
-                                    ctx.comment_str("value = copy of prev_address")
-                                );
+                                // Compute next_aligned from ORIGINAL addr (in AUX), not prev_aligned
                                 let address_increment = instruction.ind_width - 1;
                                 *code += &format!(
                                     "\tadd {}, {} {}\n",
-                                    reg_address,
+                                    REG_AUX,
                                     address_increment,
-                                    ctx.comment(format!("address += {address_increment}"))
+                                    ctx.comment(format!(
+                                        "aux += {address_increment} (= addr + width-1)"
+                                    ))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                    reg_address,
-                                    ctx.comment_str("address = next aligned address")
+                                    REG_AUX,
+                                    ctx.comment_str("aux = next aligned address")
                                 );
                                 *code += &format!(
                                     "\tcmp {}, {} {}\n",
-                                    REG_VALUE,
                                     reg_address,
+                                    REG_AUX,
                                     ctx.comment_str("prev_address = next_address ?")
                                 );
                                 *code +=
@@ -2058,11 +2081,11 @@ impl ZiskRom2Asm {
                                 unusual_code +=
                                     &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
 
-                                // Store next aligned address value in mem_reads
+                                // Read mem[next_address] from REG_AUX (which now holds next_aligned)
                                 unusual_code += &format!(
                                     "\tmov {}, [{}] {}\n",
                                     REG_VALUE,
-                                    reg_address,
+                                    REG_AUX,
                                     ctx.comment_str("value = mem[next_address]")
                                 );
 
@@ -2874,11 +2897,11 @@ impl ZiskRom2Asm {
                                     ctx.comment_str("aux = address")
                                 );
 
-                                // Calculate previous aligned address
+                                // Calculate previous aligned address (in AUX)
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
                                     REG_AUX,
-                                    ctx.comment_str("address = previous aligned address")
+                                    ctx.comment_str("aux = previous aligned address")
                                 );
 
                                 // Store previous aligned address value in mem_reads, advancing address
@@ -2896,30 +2919,31 @@ impl ZiskRom2Asm {
                                     ctx.comment_str("mem_reads[@+size*8] = prev_c")
                                 );
 
-                                // Calculate next aligned address, keeping a copy of previous aligned
-                                // address in value
+                                // FIX: compute next_aligned from ORIGINAL addr (REG_ADDRESS), not prev_aligned
                                 *code += &format!(
                                     "\tmov {}, {} {}\n",
                                     REG_VALUE,
-                                    REG_AUX,
-                                    ctx.comment_str("value = copy of prev_address")
+                                    REG_ADDRESS,
+                                    ctx.comment_str("value = original address")
                                 );
                                 let address_increment = instruction.ind_width - 1;
                                 *code += &format!(
                                     "\tadd {}, {} {}\n",
-                                    REG_AUX,
+                                    REG_VALUE,
                                     address_increment,
-                                    ctx.comment(format!("address += {address_increment}"))
+                                    ctx.comment(format!(
+                                        "value += {address_increment} (= addr + width-1)"
+                                    ))
                                 );
                                 *code += &format!(
                                     "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                    REG_AUX,
-                                    ctx.comment_str("address = next aligned address")
+                                    REG_VALUE,
+                                    ctx.comment_str("value = next aligned address")
                                 );
                                 *code += &format!(
                                     "\tcmp {}, {} {}\n",
-                                    REG_VALUE,
                                     REG_AUX,
+                                    REG_VALUE,
                                     ctx.comment_str("prev_address = next_address ?")
                                 );
                                 *code +=
@@ -2939,11 +2963,11 @@ impl ZiskRom2Asm {
                                 unusual_code +=
                                     &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
 
-                                // Store next aligned address value in mem_reads
+                                // FIX: REG_VALUE holds next_aligned address — read mem at it
                                 unusual_code += &format!(
                                     "\tmov {}, [{}] {}\n",
                                     REG_VALUE,
-                                    REG_AUX,
+                                    REG_VALUE,
                                     ctx.comment_str("value = mem[next_address]")
                                 );
 
@@ -6169,66 +6193,71 @@ impl ZiskRom2Asm {
                 *code += &ctx.full_line_comment("Fcall".to_string());
 
                 assert!(ctx.store_b_in_c);
+
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
-                    // Store a (function id) in context
-                    assert!(ctx.a.is_constant);
-                    *code += &format!(
-                        "\tmov qword {}[{} + {}*8], {} {}\n",
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_FUNCTION_ID,
-                        ctx.a.constant_value,
-                        ctx.comment_str("ctx.function id = a")
-                    );
-
-                    // Set the fcall context address as the first parameter
-                    *code += &format!(
-                        "\tlea rdi, {} {}\n",
-                        ctx.fcall_ctx,
-                        ctx.comment_str("rdi = fcall context")
-                    );
-
                     // Get result from precompile results data
-                    if ctx.precompile_results_fcall() {
-                        Self::precompile_results_fcall(ctx, code, unusual_code, "rdi");
+                    if ctx.a.constant_value == FCALL_INPUT_READY_ID as u64 {
+                        Self::wait_for_input_ready(ctx, code, unusual_code);
                     } else {
-                        // Call the fcall function
-                        Self::push_internal_registers(ctx, code, false);
-                        //Self::assert_rsp_is_aligned(ctx, code);
-                        *code += "\tcall _opcode_fcall\n";
-                        Self::pop_internal_registers(ctx, code, false);
-                        //Self::assert_rsp_is_aligned(ctx, code);
+                        // Store a (function id) in context
+                        assert!(ctx.a.is_constant);
+                        *code += &format!(
+                            "\tmov qword {}[{} + {}*8], {} {}\n",
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_FUNCTION_ID,
+                            ctx.a.constant_value,
+                            ctx.comment_str("ctx.function id = a")
+                        );
+
+                        // Set the fcall context address as the first parameter
+                        *code += &format!(
+                            "\tlea rdi, {} {}\n",
+                            ctx.fcall_ctx,
+                            ctx.comment_str("rdi = fcall context")
+                        );
+                        // Get result from precompile results data
+                        if ctx.precompile_results_fcall() {
+                            Self::precompile_results_fcall(ctx, code, unusual_code, "rdi");
+                        } else {
+                            // Call the fcall function
+                            Self::push_internal_registers(ctx, code, false);
+                            //Self::assert_rsp_is_aligned(ctx, code);
+                            *code += "\tcall _opcode_fcall\n";
+                            Self::pop_internal_registers(ctx, code, false);
+                            //Self::assert_rsp_is_aligned(ctx, code);
+                        }
+
+                        // If ctx.result_size == 0 => free_input = 0
+                        *code += &format!(
+                            "\tmov {}, qword {}[{} + {}*8] {}\n",
+                            REG_AUX,
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_RESULT_SIZE,
+                            ctx.comment_str("aux = ctx.result_size")
+                        );
+                        *code += &format!("\tcmp {REG_AUX}, 0\n");
+                        *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
+
+                        // Copy ctx.result[0] to free input address
+                        *code += &format!(
+                            "\tmov {}, qword {}[{} + {}*8] {}\n",
+                            REG_VALUE,
+                            ctx.ptr,
+                            ctx.fcall_ctx,
+                            FCALL_RESULT,
+                            ctx.comment_str("value = ctx.result[0]")
+                        );
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            ctx.mem_free_input,
+                            REG_VALUE,
+                            ctx.comment_str("free_input = value")
+                        );
+                        *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
                     }
-
-                    // If ctx.result_size == 0 => free_input = 0
-                    *code += &format!(
-                        "\tmov {}, qword {}[{} + {}*8] {}\n",
-                        REG_AUX,
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_RESULT_SIZE,
-                        ctx.comment_str("aux = ctx.result_size")
-                    );
-                    *code += &format!("\tcmp {REG_AUX}, 0\n");
-                    *code += &format!("\tjz pc_{:x}_fcall_result_zero\n", ctx.pc);
-
-                    // Copy ctx.result[0] to free input address
-                    *code += &format!(
-                        "\tmov {}, qword {}[{} + {}*8] {}\n",
-                        REG_VALUE,
-                        ctx.ptr,
-                        ctx.fcall_ctx,
-                        FCALL_RESULT,
-                        ctx.comment_str("value = ctx.result[0]")
-                    );
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        ctx.mem_free_input,
-                        REG_VALUE,
-                        ctx.comment_str("free_input = value")
-                    );
-                    *code += &format!("\tjmp pc_{:x}_fcall_result_done\n", ctx.pc);
 
                     *code += &format!("pc_{:x}_fcall_result_zero:\n", ctx.pc);
                     *code += &format!(
@@ -7402,7 +7431,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall dma_memcpy_fast\n";
                     }
@@ -7462,7 +7491,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_memcmp_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memcmp\n";
                     }
@@ -7510,7 +7539,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_inputcpy_mtrace_with_count_check\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_inputcpy\n";
                     }
@@ -7558,7 +7587,7 @@ impl ZiskRom2Asm {
                         // if it's necessary call to increase minimal trace
                         *code += "\tcall direct_dma_xmemset_mtrace\n";
                     }
-                    AsmGenerationMethod::AsmRomHistogram => {
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
                         // ROM hasn't a variable trace, only multiplicities
                         *code += "\tcall fast_memset\n";
                     }
@@ -7577,17 +7606,8 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Dma64Aligned => {
-                unimplemented!("Internal opcode Dma64Aligned");
-            }
-            ZiskOp::DmaUnaligned => {
-                unimplemented!("Internal opcode DmaUnaligned");
-            }
-            ZiskOp::DmaPre => {
-                unimplemented!("Internal opcode DmaPre");
-            }
-            ZiskOp::DmaPost => {
-                unimplemented!("Internal opcode DmaPost");
+            ZiskOp::Profile => {
+                unimplemented!("Internal opcode Profile");
             }
         }
     }
@@ -8347,6 +8367,10 @@ impl ZiskRom2Asm {
         let mut previous_size = 0;
 
         for (i, size) in load_sizes.iter().enumerate() {
+            if *size == 0 {
+                continue;
+            }
+
             // Store next aligned address value in mem_reads, and advance it
             *code += &format!(
                 "\tmov {REG_VALUE}, [{REG_ADDRESS} + {i}*8] {}\n",
@@ -8786,6 +8810,64 @@ impl ZiskRom2Asm {
 
         // Increment wait_for_prec_counter
         ctx.wait_for_prec_counter += 1;
+    }
+
+    // Waits for the requested reg_address input address (and previous) to be available, waiting
+    // if necessary address in reg_address,
+    fn wait_for_input_ready(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        unusual_code: &mut String,
+        //reg_address: &str, // fcall structure address
+    ) {
+        *code += &ctx.full_line_comment("Wait for input data available".to_string());
+
+        // Calculate number of bytes until the requested address from the current read address
+        // required_bytes = (required_address - INPUT_ADDR - 8 + 1 + 7) & ~0x7;
+        // + 1 because required_address is the address of the last required byte
+        // + 7 & ~0x7 because if we require any byte of the last u64, we need to wait for the whole u64 to be available
+        assert!(ctx.a.is_constant);
+        *code += &format!(
+            "\tmov rdi, qword {}[{} + {}*8] {}\n",
+            ctx.ptr,
+            ctx.fcall_ctx,
+            FCALL_PARAMS,
+            ctx.comment_str("rdi = params[0] = required_address")
+        );
+        *code += &format!(
+            "\tmov {}, 0x{:x} {}\n",
+            REG_AUX,
+            INPUT_ADDR,
+            ctx.comment_str("aux = INPUT_ADDRESS")
+        );
+        *code += &format!(
+            "\tsub rdi, {} {}\n",
+            REG_AUX,
+            ctx.comment_str("rdi = required_address - INPUT_ADDRESS")
+        );
+        *code += &format!("\tand rdi, ~0x7 {}\n", ctx.comment_str("rdi &= 0x7"));
+
+        // if input_written == input_ready then call wait_for_input_avail
+        *code += &format!(
+            "\tcmp rdi, {} {}\n",
+            ctx.mem_input_written_address,
+            ctx.comment_str("required <= written")
+        );
+        *code += &format!(
+            "\tja pc_{:x}_wait_for_input_avail {}\n",
+            ctx.pc,
+            ctx.comment_str("if there is data, done")
+        );
+        *code += &format!("pc_{:x}_wait_for_input_avail_done:\n", ctx.pc);
+
+        // Call wait_for_input_avail()
+        *unusual_code += &format!("pc_{:x}_wait_for_input_avail:\n", ctx.pc);
+        Self::push_internal_registers(ctx, unusual_code, false);
+        *unusual_code += "\tcall _wait_for_input_avail\n";
+        *unusual_code += "\tcmp rax, 0\n";
+        *unusual_code += "\tjne execute_pop_internal_regs_and_end\n";
+        Self::pop_internal_registers(ctx, unusual_code, false);
+        *unusual_code += &format!("\tjmp pc_{:x}_wait_for_input_avail_done\n", ctx.pc);
     }
 
     /*******************/
@@ -9593,31 +9675,15 @@ impl ZiskRom2Asm {
     ///     [8B] version
     ///     [8B] exit_code (0=success, 1=not completed)
     ///     [8B] allocated_size = xxx (bytes)
-    ///     [8B] used_size = xxx (bytes)
-    /// BIOS histogram: (TRACE_ADDR_NUMBER)
-    ///     [8B] multiplicity_size = B
-    ///     [8B] multiplicity[0] → 4096
-    ///     [8B] multiplicity[1] → 4096 + 4
+    ///     [8B] executed steps
+    /// Instruction histogram: (TRACE_ADDR_NUMBER)
+    ///     [8B] multiplicity_size = S
+    ///     [8B] multiplicity[0]
+    ///     [8B] multiplicity[1]
     ///     …
-    ///     [8B] multiplicity[B-1] → 4096 + 4*(B-1)
-    /// Program histogram:
-    ///     [8B] multiplicity_size = P
-    ///     [8B] multiplicity[0] → 0x80000000
-    ///     [8B] multiplicity[1] → 0x80000000 + 1
-    ///     …
-    ///     [8B] multiplicity[P-1] → 0x80000000 + (P-1)
-    ///
-    fn get_rom_histogram_trace_address(rom: &ZiskRom, pc: u64) -> u64 {
-        assert!(rom.max_bios_pc >= ROM_ENTRY);
-        assert!(rom.max_bios_pc < ROM_ADDR);
-        assert!(rom.max_program_pc >= ROM_ADDR);
-        assert!(rom.max_program_pc <= ROM_ADDR_MAX);
-        if pc < ROM_ADDR {
-            TRACE_ADDR_NUMBER + (1 + ((pc - ROM_ENTRY) >> 2)) * 8
-        } else {
-            TRACE_ADDR_NUMBER
-                + (1 + ((rom.max_bios_pc - ROM_ENTRY) >> 2) + 1 + 1 + pc - ROM_ADDR) * 8
-        }
+    ///     [8B] multiplicity[S-1]
+    fn get_rom_histogram_trace_address(index: u64) -> u64 {
+        TRACE_ADDR_NUMBER + (1 + index) * 8
     }
 
     fn chunk_player_start(ctx: &mut ZiskAsmContext, code: &mut String) {

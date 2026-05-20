@@ -14,6 +14,10 @@
 //! `|`
 //! `|---------------`
 //! `      ...`
+//! `|--------------- INPUT_ADDR                          (0x40000000)`
+//! `|`
+//! `| Contains program input data.`
+//! `|`
 //! `|--------------- ROM_ADDR: first program instruction (0x80000000)`
 //! `|`
 //! `| Contains program instructions.`
@@ -23,13 +27,7 @@
 //! `|`
 //! `| Contains float library instructions. 1M before ROM_ADDR_MAX.`
 //! `|`
-//! `|------------- FLOAT_LIB_SP: float lib stack pointer (0xaffffff0)`
-//! `|`
 //! `| Initial value of the float library stack pointer.`
-//! `|`
-//! `|--------------- INPUT_ADDR                          (0x90000000)`
-//! `|`
-//! `| Contains program input data.`
 //! `|`
 //! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
 //! `|`
@@ -49,14 +47,14 @@
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
 //! `|`
-//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xafff0000     (0xc0000000 - 0x10000)`
+//! `|--------------- FLOAT_LIB_RAM_ADDR = 0xbfff0000     (0xc0000000 - 0x10000)`
 //! `|`
 //! `| Contains float library memory, available for normal R/W`
 //! `| used during library execution (bottom-up).`
 //! `|`
 //! `| Contains float library stack memory (top-down).`
 //! `|`
-//! `|--------------- FLOAT_LIB_SP = 0xaffffff0           (0xc0000000 - 16)`
+//! `|--------------- FLOAT_LIB_SP = 0xbffffff0           (0xc0000000 - 16)`
 //! `|`
 //! `|--------------- END OF RAM                          (0xc0000000)`
 //! `      ...`
@@ -102,9 +100,9 @@ use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
-pub const INPUT_ADDR: u64 = 0x90000000;
+pub const INPUT_ADDR: u64 = 0x4000_0000;
 /// Maximum size of the input data
-pub const MAX_INPUT_SIZE: u64 = 0x08000000; // 128M,
+pub const MAX_INPUT_SIZE: u64 = 0x4000_0000; // 128M,
 /// Free input data memory address = first input address
 pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 /// First global RW memory address
@@ -125,8 +123,12 @@ pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
 pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
+/// Size of the BIOS instruction area
+pub const ROM_ENTRY_SIZE: u64 = 1 << 20;
 /// Last BIOS instruction address, i.e. last instruction executed
 pub const ROM_EXIT: u64 = 0x1004;
+/// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
+pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
 /// Maximum program ROM instruction address
@@ -377,6 +379,38 @@ impl Mem {
         }
     }
 
+    #[inline(always)]
+    pub fn read_slice(&self, addr: u64, count: u64) -> &[u8] {
+        debug_assert!(!Mem::address_is_register(addr));
+
+        // First try to read in the write section
+        if (addr >= self.write_section.start) && ((addr + count) <= self.write_section.end) {
+            // Calculate the read position
+            let read_position: usize = (addr - self.write_section.start) as usize;
+            return &self.write_section.buffer[read_position..read_position + count as usize];
+        }
+
+        // Search for the section that contains the address using binary search (dicothomic search).
+        // Read sections are ordered by start address to allow this search.
+        let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
+            if addr < section.start {
+                std::cmp::Ordering::Greater
+            } else if addr > section.end - count {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            &self.read_sections[section]
+        } else {
+            panic!("Mem::read() section not found for addr: {addr}={addr:x} with count: {count}");
+        };
+
+        // Calculate the buffer relative read position
+        let read_position: usize = (addr - section.start) as usize;
+        &section.buffer[read_position..read_position + count as usize]
+    }
+
     /*
     Possible alignment situations:
     - Full aligned = address is aligned to 8 bytes (last 3 bits are zero) and width is 8
@@ -400,7 +434,7 @@ impl Mem {
         // Calculate how aligned this operation is
         let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
         let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
-        let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
+        let is_full_aligned = ((addr & 0x07) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
@@ -648,7 +682,7 @@ impl Mem {
         // Calculate how aligned this operation is
         let addr_req_1 = addr & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the first 8-bytes chunk
         let addr_req_2 = (addr + width - 1) & 0xFFFF_FFFF_FFFF_FFF8; // Aligned address of the second 8-bytes chunk, if needed
-        let is_full_aligned = ((addr & 0x03) == 0) && (width == 8);
+        let is_full_aligned = ((addr & 0x07) == 0) && (width == 8);
         let is_single_not_aligned = !is_full_aligned && (addr_req_1 == addr_req_2);
         let is_double_not_aligned = !is_full_aligned && !is_single_not_aligned;
 
@@ -730,7 +764,7 @@ impl Mem {
     /// Returns true if the address and width are fully aligned
     #[inline(always)]
     pub fn is_full_aligned(address: u64, width: u64) -> bool {
-        ((address & 0x03) == 0) && (width == 8)
+        ((address & 0x07) == 0) && (width == 8)
     }
 
     /// Returns true if the address and width are single non aligned

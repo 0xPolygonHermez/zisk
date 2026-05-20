@@ -7,16 +7,10 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::Dma64AlignedMemAirValues;
-
-#[cfg(feature = "packed")]
-pub use zisk_pil::{
-    Dma64AlignedMemTracePacked as Dma64AlignedMemTrace,
-    Dma64AlignedMemTraceRowPacked as Dma64AlignedMemTraceRow,
+use zisk_pil::{
+    Dma64AlignedMemAirValues, Dma64AlignedMemTrace, Dma64AlignedMemTraceRow,
+    Dma64AlignedMemTraceRowOps, Dma64AlignedMemTraceRowPacked,
 };
-
-#[cfg(not(feature = "packed"))]
-pub use zisk_pil::{Dma64AlignedMemTrace, Dma64AlignedMemTraceRow};
 
 use crate::{
     dma_trace, Dma64AlignedInput, Dma64AlignedModule, DMA_64_ALIGNED_MEM_OPS_BY_ROW,
@@ -55,11 +49,11 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Dma64AlignedMemTraceRowOps<F>>(
         &self,
         input: &Dma64AlignedInput,
-        trace: &mut [Dma64AlignedMemTraceRow<F>],
-        _local_16_bits_table: &mut [u32], // for input_cpy
+        trace: &mut [R],
+        _local_16_bits_table: &mut [u32],
         air_values: &mut Dma64AlignedMemAirValues<F>,
     ) -> usize {
         let rows = input.rows as usize;
@@ -108,14 +102,19 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
                 self.op_x_rows
             };
             row.set_seq_end(seq_end);
+
+            // Compute sel_op_from_1 and value arrays
+            let mut sel_op_from_1 = [false; DMA_64_ALIGNED_MEM_OPS_BY_ROW - 1];
+            let mut values = [[0u32; 2]; DMA_64_ALIGNED_MEM_OPS_BY_ROW];
+
             if !is_memset {
                 for index in 0..use_count {
                     if index > 0 {
-                        row.set_sel_op_from_1(index - 1, true);
+                        sel_op_from_1[index - 1] = true;
                     }
                     let value = input.src_values[src_values_index];
-                    row.set_value(index, 0, value as u32);
-                    row.set_value(index, 1, (value >> 32) as u32);
+                    values[index][0] = value as u32;
+                    values[index][1] = (value >> 32) as u32;
                     src_values_index += 1;
                 }
             } else {
@@ -123,12 +122,15 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
                 row.set_fill_byte(fill_byte);
                 for index in 0..use_count {
                     if index > 0 {
-                        row.set_sel_op_from_1(index - 1, true);
+                        sel_op_from_1[index - 1] = true;
                     }
-                    row.set_value(index, 0, fill_bytes);
-                    row.set_value(index, 1, fill_bytes);
+                    values[index][0] = fill_bytes;
+                    values[index][1] = fill_bytes;
                 }
             }
+
+            row.set_all_sel_op_from_1(&sel_op_from_1);
+            row.set_all_value(&values);
         }
 
         if is_last_instance_input {
@@ -170,32 +172,19 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice(&self, trace: &mut Dma64AlignedMemTraceRow<F>) {
+    pub fn process_empty_slice<R: Dma64AlignedMemTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
-}
-impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemSM<F> {
-    fn get_name(&self) -> &'static str {
-        "dma_64_aligned_mem"
-    }
 
-    /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    ///
-    /// # Arguments
-    /// * `sctx` - The setup context containing the setup data.
-    /// * `inputs` - A slice of operations to process.
-    ///
-    /// # Returns
-    /// An `AirInstance` containing the computed witness data.
-    fn compute_witness(
+    fn compute_witness_inner<R: Dma64AlignedMemTraceRowOps<F>>(
         &self,
         inputs: &[Vec<Dma64AlignedInput>],
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Dma64AlignedMemTrace::<F>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = Dma64AlignedMemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
 
         let total_inputs: usize = inputs
@@ -295,5 +284,34 @@ impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemSM<F> {
         timer_stop_and_log_trace!(DMA_64_ALIGNED_TRACE);
         let from_trace = FromTrace::new(&mut trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))
+    }
+}
+impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedMemSM<F> {
+    fn get_name(&self) -> &'static str {
+        "dma_64_aligned_mem"
+    }
+    fn compute_witness(
+        &self,
+        inputs: &[Vec<Dma64AlignedInput>],
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+        packed: bool,
+    ) -> ProofmanResult<AirInstance<F>> {
+        if packed {
+            self.compute_witness_inner::<Dma64AlignedMemTraceRowPacked<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<Dma64AlignedMemTraceRow<F>>(
+                inputs,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        }
     }
 }

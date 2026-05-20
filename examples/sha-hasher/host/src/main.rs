@@ -1,32 +1,50 @@
 use anyhow::Result;
-use zisk_sdk::{include_elf, ElfBinary, ProofOpts, ProverClient, ZiskIO, ZiskStdin};
+use sha_hasher_host::ELF_SHA_HASHER;
+use zisk_sdk::{ExecutorKind, ProverClient, ZiskStream};
 
-pub const ELF: ElfBinary = include_elf!("sha-hasher-guest");
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
-fn main() -> Result<()> {
-    println!("Starting ZisK Prover Client...");
+    client.upload(&ELF_SHA_HASHER).run()?;
 
-    // Create an input stream and write '1000' to it.
-    let n = 1000u32;
-    let stdin = ZiskStdin::new();
-    stdin.write(&n);
+    let setup_handle = client.setup(&ELF_SHA_HASHER).run()?;
+    setup_handle.await?;
 
-    // Create a `ProverClient` method.
-    let client = ProverClient::builder().asm().build().unwrap();
+    let input = ZiskStream::unix();
 
-    let (pk, vkey) = client.setup(&ELF)?;
-
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&pk, stdin.clone())?;
+    let handle =
+        client.execute(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    input.write(&1000u32);
+    input.flush()?;
+    let result = handle.await?;
 
     println!(
-        "ZisK has executed program with {} cycles in {:?}",
-        result.executor_summary.steps, result.total_duration
+        "ZisK has executed program with {} cycles in {} ms",
+        result.get_execution_steps(),
+        result.get_execution_time()
     );
 
-    let proof_opts = ProofOpts::default().minimal_memory();
-    let vadcop_result = client.prove(&pk, stdin).with_proof_options(proof_opts).run()?;
-    client.verify(vadcop_result.get_proof(), vadcop_result.get_publics(), &vkey)?;
+    input.write(&2000u32);
+    let prove_handle =
+        client.prove(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    input.flush()?;
+    let vadcop_result = prove_handle.await?;
+
+    let vkey = ELF_SHA_HASHER.vk()?;
+    vadcop_result.with_program_vk(&vkey).verify()?;
+
+    println!("successfully generated and verified proof for the program!");
+    println!("Running second proof generation with new input...");
+
+    input.write(&3000u32);
+    let prove_handle2 =
+        client.prove(&ELF_SHA_HASHER, input.clone()).executor(ExecutorKind::Assembly).run()?;
+    input.flush()?;
+    let vadcop_result2 = prove_handle2.await?;
+
+    let vkey = ELF_SHA_HASHER.vk()?;
+    vadcop_result2.with_program_vk(&vkey).verify()?;
 
     println!("successfully generated and verified proof for the program!");
 

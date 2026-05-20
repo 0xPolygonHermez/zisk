@@ -6,24 +6,29 @@ use fields::{
 };
 use rayon::prelude::*;
 
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use pil_std_lib::Std;
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-#[cfg(not(feature = "packed"))]
-use zisk_pil::{Poseidon2Trace, Poseidon2TraceRow};
-#[cfg(feature = "packed")]
-use zisk_pil::{Poseidon2TracePacked, Poseidon2TraceRowPacked};
+use zisk_common::OperationPoseidon2Data;
+use zisk_pil::{Poseidon2Trace, Poseidon2TraceRow, Poseidon2TraceRowOps};
 
-#[cfg(feature = "packed")]
-type Poseidon2TraceRowType<F> = Poseidon2TraceRowPacked<F>;
-#[cfg(feature = "packed")]
-type Poseidon2TraceType<F> = Poseidon2TracePacked<F>;
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct Poseidon2Input {
+    pub step_main: u64,
+    pub addr_main: u32,
+    pub state: [u64; 16],
+}
 
-#[cfg(not(feature = "packed"))]
-type Poseidon2TraceRowType<F> = Poseidon2TraceRow<F>;
-#[cfg(not(feature = "packed"))]
-type Poseidon2TraceType<F> = Poseidon2Trace<F>;
-
-use super::Poseidon2Input;
+impl Poseidon2Input {
+    pub fn from(values: &OperationPoseidon2Data<u64>) -> Self {
+        Self {
+            step_main: values[4],
+            addr_main: values[3] as u32,
+            state: values[5..21].try_into().unwrap(),
+        }
+    }
+}
 
 /// The `Poseidon2SM` struct encapsulates the logic of the Poseidon2 State Machine.
 pub struct Poseidon2SM<F: PrimeField64> {
@@ -37,11 +42,14 @@ pub const CLOCKS: usize = 14;
 impl<F: PrimeField64> Poseidon2SM<F> {
     /// Creates a new Poseidon2 State Machine instance.
     ///
-    /// # Returns
-    /// A new `Poseidon2SM` instance.
-    pub fn new() -> Arc<Self> {
+    /// The `_std` parameter is unused (Poseidon2 has no Std interaction at
+    /// construction); it exists to keep the constructor signature uniform
+    /// with the other uniform precompiles, so the `zisk_precompile!` macro
+    /// can call `Poseidon2SM::new(std)` like the others.
+    pub fn new(_std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_poseidon2s = Poseidon2TraceType::<F>::NUM_ROWS / CLOCKS - 1;
+        let num_available_poseidon2s =
+            Poseidon2Trace::<Poseidon2TraceRow<F>>::NUM_ROWS / CLOCKS - 1;
 
         Arc::new(Self { num_available_poseidon2s, _phantom: std::marker::PhantomData })
     }
@@ -54,9 +62,9 @@ impl<F: PrimeField64> Poseidon2SM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input(
+    pub fn process_input<R: Poseidon2TraceRowOps<F>>(
         &self,
-        trace: &mut [Poseidon2TraceRowType<F>],
+        trace: &mut [R],
         input: &Poseidon2Input,
         is_active: bool,
     ) {
@@ -111,10 +119,13 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         }
 
         for r in 0..CLOCKS {
-            for (i, &state) in round_states[r].iter().enumerate() {
-                trace[r].set_chunks(i, 0, state as u32);
-                trace[r].set_chunks(i, 1, (state >> 32) as u32);
+            let mut chunks = [[0u32; 2]; 16];
+            for i in 0..16 {
+                let state = round_states[r][i];
+                chunks[i][0] = state as u32;
+                chunks[i][1] = (state >> 32) as u32;
             }
+            trace[r].set_all_chunks(&chunks);
         }
 
         if !is_active {
@@ -139,12 +150,13 @@ impl<F: PrimeField64> Poseidon2SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness(
+    pub fn compute_witness<R: Poseidon2TraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Poseidon2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut poseidon2_trace = Poseidon2TraceType::new_from_vec_zeroes(trace_buffer)?;
+        let mut poseidon2_trace = Poseidon2Trace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = poseidon2_trace.num_rows();
         let num_available_poseidon2s = self.num_available_poseidon2s;
 
@@ -185,7 +197,7 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         par_traces.into_par_iter().enumerate().for_each(|(index, trace)| {
             let input_index = inputs_indexes[index];
             let input = &inputs[input_index.0][input_index.1];
-            self.process_input(trace, input, true);
+            self.process_input::<R>(trace, input, true);
         });
 
         timer_stop_and_log_trace!(POSEIDON2_TRACE);
@@ -203,7 +215,7 @@ impl<F: PrimeField64> Poseidon2SM<F> {
 
         // Process padding in parallel
         if let Some((first, rest)) = padding_chunks.split_first_mut() {
-            self.process_input(
+            self.process_input::<R>(
                 first,
                 &Poseidon2Input { state: [0; 16], step_main: 0, addr_main: 0 },
                 false,

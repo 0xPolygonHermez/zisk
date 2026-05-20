@@ -14,6 +14,8 @@ use anyhow::{Context, Result};
 use super::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
+const MAX_MESSAGE_SIZE: usize = 128 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
     #[error("No client connected yet")]
@@ -21,6 +23,9 @@ pub enum UnixSocketError {
 
     #[error("Socket not connected")]
     NotConnected,
+
+    #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
+    MessageTooLarge(usize),
 
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
@@ -344,26 +349,6 @@ impl UnixSocketStreamWriter {
         self.listener_fd = Some(sock_fd);
         Ok(())
     }
-
-    /// Check if a client is currently connected.
-    ///
-    /// Returns `true` if a client is connected and ready to receive data.
-    pub fn is_client_connected(&mut self) -> bool {
-        // Already have a connection
-        if self.socket.is_some() {
-            return true;
-        }
-
-        // Try to receive socket from accept thread (non-blocking)
-        if let Some(rx) = &self.socket_receiver {
-            if let Ok(stream) = rx.try_recv() {
-                self.socket = Some(stream);
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
 impl StreamWrite for UnixSocketStreamWriter {
@@ -400,7 +385,6 @@ impl StreamWrite for UnixSocketStreamWriter {
                         if err.kind() == std::io::ErrorKind::Interrupted {
                             continue; // Retry on EINTR
                         }
-                        eprintln!("Accept failed: {}", err);
                         return;
                     }
 
@@ -428,6 +412,10 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Returns `NoClientConnected` error if no client has connected yet.
     /// The caller can retry the write until a client connects.
     fn write(&mut self, item: &[u8]) -> Result<usize> {
+        if item.len() > MAX_MESSAGE_SIZE {
+            return Err(UnixSocketError::MessageTooLarge(item.len()).into());
+        }
+
         self.open()?;
 
         // Receive socket from channel if we don't have it yet
@@ -468,11 +456,30 @@ impl StreamWrite for UnixSocketStreamWriter {
     fn close(&mut self) -> Result<()> {
         self.flush()?;
 
-        // Clear the socket
+        // Clear the connected socket
         self.socket = None;
 
-        if let Some(fd) = self.listener_fd.take() {
-            unsafe { libc::close(fd) };
+        // shutdown → join → close. close() must come *after* the accept
+        // thread has exited: closing first frees the fd number for reuse,
+        // and if another listener in this process gets that number before
+        // our accept thread re-enters libc::accept(fd), the syscall resolves
+        // to the *new* kernel file and steals a client connection meant for
+        // it. shutdown() alone wakes a blocked accept and makes future
+        // accept() calls on the same kernel file return EINVAL.
+        let listener = self.listener_fd.take();
+        if let Some(fd) = listener {
+            unsafe {
+                libc::shutdown(fd, libc::SHUT_RDWR);
+            }
+        }
+        if let Some(handle) = self.accept_thread.take() {
+            let _ = handle.join();
+        }
+        self.socket_receiver = None;
+        if let Some(fd) = listener {
+            unsafe {
+                libc::close(fd);
+            }
         }
 
         // Clean up socket file
@@ -486,6 +493,23 @@ impl StreamWrite for UnixSocketStreamWriter {
     /// Check if the stream is currently active
     fn is_active(&self) -> bool {
         self.socket.is_some()
+    }
+
+    fn is_client_connected(&mut self) -> bool {
+        if self.socket.is_some() {
+            return true;
+        }
+        if let Some(rx) = &self.socket_receiver {
+            if let Ok(stream) = rx.try_recv() {
+                self.socket = Some(stream);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn max_message_size(&self) -> usize {
+        MAX_MESSAGE_SIZE
     }
 }
 

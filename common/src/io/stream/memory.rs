@@ -4,15 +4,13 @@ use crate::io::stream::StreamRead;
 
 /// A memory-based implementation of StreamSource that reads from in-memory data.
 pub struct MemoryStreamReader {
-    data: Vec<u8>,
     cursor: Cursor<Vec<u8>>,
 }
 
 impl MemoryStreamReader {
     /// Create a new MemoryStreamReader from a vector of bytes.
     pub fn new(data: Vec<u8>) -> Self {
-        let cursor = Cursor::new(data.clone());
-        MemoryStreamReader { data, cursor }
+        MemoryStreamReader { cursor: Cursor::new(data) }
     }
 
     /// Create a new MemoryStreamReader from a string (UTF-8 encoded).
@@ -47,6 +45,6 @@ impl StreamRead for MemoryStreamReader {
     }
 
     fn is_active(&self) -> bool {
-        self.cursor.position() < self.data.len() as u64
+        self.cursor.position() < self.cursor.get_ref().len() as u64
     }
 }

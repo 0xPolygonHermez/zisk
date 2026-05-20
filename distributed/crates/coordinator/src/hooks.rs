@@ -1,5 +1,5 @@
 use anyhow::Result;
-use zisk_distributed_common::{
+use zisk_cluster_common::{
     dto::{WebhookErrorDto, WebhookPayloadDto},
     JobId,
 };
@@ -13,15 +13,15 @@ use zisk_distributed_common::{
 ///   will be appended to the URL as a path segment.
 /// * `job_id` - The ID of the job that has completed or failed.
 /// * `duration_ms` - Duration of the job in milliseconds.
-/// * `proof_data` - Optional proof data to include in the webhook payload.
+/// * `proof_data` - Optional bincode-encoded `Proof` to include in the payload.
 pub async fn send_completion_webhook(
     webhook_url: String,
     job_id: JobId,
     duration_ms: u64,
-    proof_data: Option<Vec<u64>>,
     executed_steps: Option<u64>,
+    proof_data: Option<Vec<u8>>,
 ) -> Result<()> {
-    send_webhook(webhook_url, job_id, duration_ms, proof_data, executed_steps, None).await
+    send_webhook(webhook_url, job_id, duration_ms, executed_steps, proof_data, None).await
 }
 
 /// Sends a webhook notification upon job failure with error details.
@@ -41,7 +41,7 @@ pub async fn send_failure_webhook(
     error_message: String,
 ) -> Result<()> {
     let error = WebhookErrorDto { code: error_code, message: error_message };
-    send_webhook(webhook_url, job_id, duration_ms, None, Some(0), Some(error)).await
+    send_webhook(webhook_url, job_id, duration_ms, Some(0), None, Some(error)).await
 }
 
 /// Internal function to send webhook notifications with optional error details.
@@ -49,8 +49,8 @@ async fn send_webhook(
     webhook_url: String,
     job_id: JobId,
     duration_ms: u64,
-    proof_data: Option<Vec<u64>>,
     executed_steps: Option<u64>,
+    proof_data: Option<Vec<u8>>,
     error: Option<WebhookErrorDto>,
 ) -> Result<()> {
     let client = reqwest::Client::new();
@@ -68,7 +68,7 @@ async fn send_webhook(
     let payload = if let Some(error) = error {
         WebhookPayloadDto::failure(job_id.as_string(), duration_ms, error)
     } else {
-        WebhookPayloadDto::success(job_id.as_string(), duration_ms, proof_data, executed_steps)
+        WebhookPayloadDto::success(job_id.as_string(), duration_ms, executed_steps, proof_data)
     };
 
     let response = client

@@ -1,9 +1,9 @@
 //! Arith384Mod system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
 #[derive(Debug)]
@@ -19,20 +19,14 @@ pub struct SyscallArith384ModParams<'a> {
 /// Executes the `Arith384Mod` operation, performing a modular 384-bit multiplication and addition:
 /// `d = (a * b + c) mod module`.
 ///
-/// The `Arith384Mod` system call executes a CSR set on a custom port. When transpiling from RISC-V to Zisk,
-/// this instruction is replaced with a precompiled operation—specifically, `Arith384Mod`.
-///
-/// `Arith384Mod` operates on arrays of four `u64` elements. The first parameter is a pointer to a structure
-/// containing five values:
-/// - `a`
-/// - `b`
-/// - `c`
-/// - `module`
-/// - `d` (the result)
+/// `Arith384Mod` operates on arrays of six `u64` elements. The first parameter is a pointer to a structure
+/// containing five values `a`, `b`, `c`, `module`, and the result `d`.
 ///
 /// ### Safety
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
+///
+/// The caller must ensure that `module` is not zero.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_arith384_mod")]
@@ -40,9 +34,9 @@ pub extern "C" fn syscall_arith384_mod(
     params: &mut SyscallArith384ModParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_ARITH384_MOD_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         precompiles_helpers::arith384_mod(params.a, params.b, params.c, params.module, params.d);
         #[cfg(feature = "hints")]

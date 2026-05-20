@@ -12,28 +12,14 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
+use zisk_cluster_common::{JobPhase, StreamMessage};
 use zisk_common::io::{StreamProcessor, StreamSink};
 use zisk_common::{
     BuiltInHint, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
 };
-use ziskos_hints::handlers::blake2b::blake2b_compress_hint;
-use ziskos_hints::handlers::bls381::{
-    bls12_381_fp2_to_g2_hint, bls12_381_fp_to_g1_hint, bls12_381_g1_add_hint,
-    bls12_381_g1_msm_hint, bls12_381_g2_add_hint, bls12_381_g2_msm_hint,
-    bls12_381_pairing_check_hint,
-};
-use ziskos_hints::handlers::bn254::{
-    bn254_g1_add_hint, bn254_g1_mul_hint, bn254_pairing_check_hint,
-};
-use ziskos_hints::handlers::keccak256::keccak256_hint;
-use ziskos_hints::handlers::kzg::verify_kzg_proof_hint;
-use ziskos_hints::handlers::modexp::modexp_hint;
-use ziskos_hints::handlers::secp256k1::{
-    secp256k1_ecdsa_address_recover, secp256k1_ecdsa_verify_address_recover,
-};
-use ziskos_hints::handlers::secp256r1::secp256r1_ecdsa_verify_hint;
-use ziskos_hints::handlers::sha256::sha256_hint;
+
+use crate::hint_handlers::HintHandlers;
 
 /// Ordered result buffer with drain state.
 ///
@@ -84,18 +70,20 @@ impl HintProcessorState {
     }
 }
 
-/// Type alias for custom hint handler functions.
-pub type CustomHintHandler = Arc<dyn Fn(&[u64]) -> Result<Vec<u64>> + Send + Sync>;
+/// Type alias for MPI broadcast callback function.
+pub type MpiBroadcastFn = Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>;
 
 /// Builder for configuring and constructing a [`HintsProcessor`].
-pub struct HintsProcessorBuilder {
-    hints_sink: Arc<dyn StreamSink>,
+pub struct HintsProcessorBuilder<S: StreamSink> {
+    hints_sink: Arc<S>,
+    inputs_sink: Option<Arc<dyn StreamSink>>,
     num_threads: usize,
     enable_stats: bool,
-    custom_handlers: HashMap<u32, CustomHintHandler>,
+    handlers: HintHandlers,
+    mpi_broadcast_fn: Option<MpiBroadcastFn>,
 }
 
-impl HintsProcessorBuilder {
+impl<S: StreamSink> HintsProcessorBuilder<S> {
     /// Sets the number of worker threads in the thread pool.
     pub fn num_threads(mut self, num_threads: usize) -> Self {
         self.num_threads = num_threads;
@@ -108,28 +96,20 @@ impl HintsProcessorBuilder {
         self
     }
 
-    /// Registers a custom hint handler for a specific hint code.
+    /// Sets an MPI broadcast function to be called during initialization.
     ///
-    /// # Arguments
-    ///
-    /// * `hint_code` - The u32 hint code identifier (should not conflict with built-in codes)
-    /// * `handler` - Function that processes the hint data and returns the result
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let processor = HintsProcessor::builder(my_sink)
-    ///     .custom_hint(0x10, |data| {
-    ///         // Custom processing logic
-    ///         Ok(vec![data[0] * 2])
-    ///     })
-    ///     .build()?;
-    /// ```
-    pub fn custom_hint<F>(mut self, hint_code: u32, handler: F) -> Self
+    /// This allows synchronization of initialization data across MPI ranks.
+    pub fn with_mpi_broadcast<F>(mut self, broadcast_fn: F) -> Self
     where
-        F: Fn(&[u64]) -> Result<Vec<u64>> + Send + Sync + 'static,
+        F: Fn(&mut Vec<u8>) -> Result<()> + Send + Sync + 'static,
     {
-        self.custom_handlers.insert(hint_code, Arc::new(handler));
+        self.mpi_broadcast_fn = Some(Arc::new(broadcast_fn));
+        self
+    }
+
+    /// Sets the hint dispatch table.
+    pub fn with_hint_handlers(mut self, handlers: HintHandlers) -> Self {
+        self.handlers = handlers;
         self
     }
 
@@ -137,9 +117,9 @@ impl HintsProcessorBuilder {
     ///
     /// # Returns
     ///
-    /// * `Ok(HintsProcessor)` - Successfully constructed processor
+    /// * `Ok(HintsProcessor)` - The configured hints processor
     /// * `Err` - If the thread pool fails to initialize
-    pub fn build(self) -> Result<HintsProcessor> {
+    pub fn build(self) -> Result<HintsProcessor<S>> {
         let pool = ThreadPoolBuilder::new()
             .num_threads(self.num_threads)
             .build()
@@ -147,12 +127,14 @@ impl HintsProcessorBuilder {
 
         let state = Arc::new(HintProcessorState::new());
         let hints_sink = self.hints_sink;
+        let inputs_sink = self.inputs_sink;
 
         // Spawn drainer thread
         let drainer_state = Arc::clone(&state);
         let drainer_sink = Arc::clone(&hints_sink);
+        let drainer_broadcast = self.mpi_broadcast_fn.clone();
         let drainer_thread = std::thread::spawn(move || {
-            HintsProcessor::drainer_thread(drainer_state, drainer_sink);
+            HintsProcessor::drainer_thread(drainer_state, drainer_sink, drainer_broadcast);
         });
 
         Ok(HintsProcessor {
@@ -161,11 +143,13 @@ impl HintsProcessorBuilder {
             state,
             stats: if self.enable_stats { Some(Mutex::new(HashMap::new())) } else { None },
             hints_sink,
+            inputs_sink,
             drainer_thread: ManuallyDrop::new(drainer_thread),
-            custom_handlers: Arc::new(self.custom_handlers),
+            handlers: Arc::new(self.handlers),
             stream_active: AtomicBool::new(false),
             instant: Mutex::new(None),
             pending_partial: Mutex::new(None),
+            mpi_broadcast_fn: self.mpi_broadcast_fn.clone(),
         })
     }
 }
@@ -175,7 +159,7 @@ impl HintsProcessorBuilder {
 /// This struct provides methods to parse and process a stream of concatenated
 /// hints, using a dedicated Rayon thread pool for parallel processing while
 /// preserving the original order of results.
-pub struct HintsProcessor {
+pub struct HintsProcessor<S: StreamSink> {
     /// The thread pool used for parallel hint processing.
     pool: ThreadPool,
 
@@ -187,15 +171,17 @@ pub struct HintsProcessor {
     /// Optional statistics collected during hint processing (for debugging).
     stats: Option<Mutex<HashMap<HintCode, usize>>>,
 
-    /// The hints sink used to submit processed hints (kept for ownership).
-    #[allow(dead_code)]
-    hints_sink: Arc<dyn StreamSink>,
+    /// The hints sink used to submit processed hints.
+    hints_sink: Arc<S>,
+
+    /// The inputs sink used to submit processed input hints (if any).
+    inputs_sink: Option<Arc<dyn StreamSink>>,
 
     /// Handle to the drainer thread (wrapped in ManuallyDrop to join in Drop)
     drainer_thread: ManuallyDrop<std::thread::JoinHandle<()>>,
 
-    /// Custom hint handlers registered by the user
-    custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
+    /// Hint dispatch table (built-in + custom)
+    handlers: Arc<HintHandlers>,
 
     /// Tracks whether a stream is currently active (between CTRL_START and CTRL_END)
     stream_active: AtomicBool,
@@ -205,9 +191,12 @@ pub struct HintsProcessor {
 
     /// Buffer for incomplete hint data between batches
     pending_partial: Mutex<Option<PartialPrecompileHint>>,
+
+    /// Optional MPI broadcast function for distributed execution
+    mpi_broadcast_fn: Option<MpiBroadcastFn>,
 }
 
-impl HintsProcessor {
+impl<S: StreamSink> HintsProcessor<S> {
     /// Default number of worker threads in the thread pool.
     const DEFAULT_NUM_THREADS: usize = 32;
 
@@ -225,12 +214,17 @@ impl HintsProcessor {
     ///     .enable_stats(false)
     ///     .build()?;
     /// ```
-    pub fn builder(hints_sink: impl StreamSink) -> HintsProcessorBuilder {
+    pub fn builder(
+        hints_sink: Arc<S>,
+        inputs_sink: Option<Arc<impl StreamSink>>,
+    ) -> HintsProcessorBuilder<S> {
         HintsProcessorBuilder {
-            hints_sink: Arc::new(hints_sink),
+            hints_sink,
+            inputs_sink: inputs_sink.map(|s| s as Arc<dyn StreamSink>),
             num_threads: Self::DEFAULT_NUM_THREADS,
             enable_stats: false,
-            custom_handlers: HashMap::new(),
+            handlers: HintHandlers::default(),
+            mpi_broadcast_fn: None,
         }
     }
 
@@ -290,10 +284,10 @@ impl HintsProcessor {
 
             self.num_hint.fetch_add(1, Ordering::Relaxed);
 
-            // Check if custom handler is registered for custom hints (skip pass-through)
+            // Fail fast if a custom hint code has no registered handler (skip pass-through)
             if !hint.is_passthrough {
                 if let HintCode::Custom(code) = hint.hint_code {
-                    if !self.custom_handlers.contains_key(&code) {
+                    if !self.handlers.has_custom_hint_code(code) {
                         return Err(anyhow::anyhow!(
                             "Unknown custom hint code {:#x}: no handler registered",
                             code
@@ -382,7 +376,29 @@ impl HintsProcessor {
                 _ => {} // Built-in data hint or custom hint; continue processing
             }
 
-            // Capture generation outside mutex - SeqCst provides sufficient ordering
+            // If the hint is an input hint, write it to the inputs sink instead of processing
+            if hint.hint_code == HintCode::BuiltIn(BuiltInHint::Input) {
+                if let Some(broadcast_fn) = &self.mpi_broadcast_fn {
+                    let mut serialized = borsh::to_vec(&(
+                        JobPhase::ContributionsInputsStream,
+                        StreamMessage { data: hint.data.clone() },
+                    ))
+                    .unwrap();
+
+                    broadcast_fn(&mut serialized).expect("MPI broadcast failed for input hint");
+                }
+
+                self.inputs_sink
+                    .as_ref()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Received input hint but no inputs sink configured")
+                    })?
+                    .submit(&hint.data)?;
+                // Continue to next hint without spawning worker
+                idx += length;
+                continue;
+            }
+
             let generation = self.state.generation.load(Ordering::SeqCst);
 
             // Atomically reserve slot - use Relaxed for seq since mutex provides ordering
@@ -410,9 +426,9 @@ impl HintsProcessor {
 
             // Spawn processing task for async hints (Noop already handled above)
             let state = Arc::clone(&self.state);
-            let custom_handlers = Arc::clone(&self.custom_handlers);
+            let handlers = Arc::clone(&self.handlers);
             self.pool.spawn(move || {
-                Self::worker_thread(state, hint, generation, seq_id, custom_handlers);
+                Self::worker_thread(state, hint, generation, seq_id, handlers);
             });
 
             idx += length;
@@ -463,13 +479,13 @@ impl HintsProcessor {
     /// * `hint` - The hint to process
     /// * `generation` - Generation number for detecting stale workers
     /// * `seq_id` - Sequence ID for ordering results
-    /// * `custom_handlers` - Custom hint handlers
+    /// * `handlers` - Hint Handlers for dispatching the hint
     fn worker_thread(
         state: Arc<HintProcessorState>,
         hint: PrecompileHint,
         generation: usize,
         seq_id: usize,
-        custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
+        handlers: Arc<HintHandlers>,
     ) {
         // Check generation first to detect stale workers (before processing)
         let current_gen = state.generation.load(Ordering::SeqCst);
@@ -484,7 +500,7 @@ impl HintsProcessor {
             if state.error_flag.load(Ordering::Acquire) {
                 Err(anyhow::anyhow!("Processing stopped due to error"))
             } else {
-                Self::dispatch_hint(hint, custom_handlers)
+                handlers.dispatch(hint)
             }
         }))
         .unwrap_or_else(|panic_info| {
@@ -539,7 +555,11 @@ impl HintsProcessor {
     }
 
     /// Drainer thread that waits for hints to complete and drains ready results from queue.
-    fn drainer_thread(state: Arc<HintProcessorState>, hints_sink: Arc<dyn StreamSink>) {
+    fn drainer_thread(
+        state: Arc<HintProcessorState>,
+        hints_sink: Arc<S>,
+        mpi_broadcast_fn: Option<MpiBroadcastFn>,
+    ) {
         loop {
             let mut queue = state.queue.lock().unwrap();
 
@@ -548,39 +568,53 @@ impl HintsProcessor {
                 break;
             }
 
-            // Drain all consecutive ready results from the front
+            // Drain all consecutive ready results from the front. Once the
+            // error flag is set, items are popped without submitting — the
+            // wire protocol with the C children is sequenced (each hint is
+            // delivered at a specific buffer offset), so submitting hint
+            // #N+1 after #N failed would feed the C side data it doesn't
+            // expect and crash it. The drainer stays alive across the
+            // failure so the next job's `reset_state` finds it ready.
             let mut drained_any = false;
             while let Some(Some(res)) = queue.buffer.front() {
                 drained_any = true;
+                let error_set = state.error_flag.load(Ordering::Acquire);
                 match res {
-                    Ok(data) => {
-                        // Clone data before dropping lock
+                    Ok(data) if !error_set => {
                         let data_to_submit = data.clone();
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;
-
-                        // Drop lock before submitting to avoid blocking workers
                         drop(queue);
 
-                        // Submit to sink
-                        if let Err(e) = hints_sink.submit(data_to_submit) {
-                            eprintln!("Error submitting to sink: {}", e);
+                        if let Err(e) = hints_sink.submit(&data_to_submit) {
+                            tracing::error!("Error submitting to sink: {e}");
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
-                            return;
+                        } else if let Some(broadcast_fn) = &mpi_broadcast_fn {
+                            let mut serialized = borsh::to_vec(&(
+                                JobPhase::ContributionsHintsStream,
+                                StreamMessage { data: data_to_submit.clone() },
+                            ))
+                            .unwrap();
+                            broadcast_fn(&mut serialized)
+                                .expect("MPI broadcast failed in drainer thread");
                         }
 
-                        // Re-acquire lock for next iteration
                         queue = state.queue.lock().unwrap();
                     }
-                    Err(e) => {
-                        // Error found - signal to stop
-                        state.error_flag.store(true, Ordering::Release);
-                        eprintln!("[seq={}] Error: {}", queue.next_drain_seq, e);
+                    Ok(_) => {
+                        // Error flag already set — drop without submitting.
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;
-                        state.drain_signal.notify_all();
-                        return;
+                    }
+                    Err(e) => {
+                        if !error_set {
+                            tracing::error!("[seq={}] Error: {}", queue.next_drain_seq, e);
+                            state.error_flag.store(true, Ordering::Release);
+                            state.drain_signal.notify_all();
+                        }
+                        queue.buffer.pop_front();
+                        queue.next_drain_seq += 1;
                     }
                 }
             }
@@ -630,85 +664,7 @@ impl HintsProcessor {
         Ok(())
     }
 
-    /// Dispatches a single hint to its appropriate handler based on hint type.
-    ///
-    /// # Arguments
-    ///
-    /// * `hint` - The parsed hint to dispatch
-    /// * `custom_handlers` - Custom hint handlers
-    ///
-    /// # Returns
-    ///
-    /// The result produced by the selected hint handler.
-    ///
-    /// # Note
-    ///
-    /// Control codes and Noop hints are handled before this function is called.
-    #[inline]
-    fn dispatch_hint(
-        hint: PrecompileHint,
-        custom_handlers: Arc<HashMap<u32, CustomHintHandler>>,
-    ) -> Result<Vec<u64>> {
-        match hint.hint_code {
-            HintCode::BuiltIn(builtin) => {
-                Self::dispatch_builtin_hint(builtin, hint.data, hint.data_len_bytes)
-            }
-            HintCode::Custom(code) => custom_handlers
-                .get(&code)
-                .map(|handler| handler(&hint.data))
-                .unwrap_or_else(|| Err(anyhow::anyhow!("Unknown custom hint"))),
-            _ => unreachable!("Control hints handled before dispatch"),
-        }
-    }
-
-    #[inline]
-    fn dispatch_builtin_hint(
-        hint: BuiltInHint,
-        data: Vec<u64>,
-        data_len_bytes: usize,
-    ) -> Result<Vec<u64>> {
-        match hint {
-            // SHA256 Hint Codes
-            BuiltInHint::Sha256 => sha256_hint(&data, data_len_bytes),
-
-            // BN254 Hint Codes
-            BuiltInHint::Bn254G1Add => bn254_g1_add_hint(&data),
-            BuiltInHint::Bn254G1Mul => bn254_g1_mul_hint(&data),
-            BuiltInHint::Bn254PairingCheck => bn254_pairing_check_hint(&data),
-
-            // Secp256k1 Hints
-            BuiltInHint::Secp256k1EcdsaAddressRecover => secp256k1_ecdsa_address_recover(&data),
-            BuiltInHint::Secp256k1EcdsaVerifyAddressRecover => {
-                secp256k1_ecdsa_verify_address_recover(&data)
-            }
-
-            // Secp256r1 Hints
-            BuiltInHint::Secp256r1EcdsaVerify => secp256r1_ecdsa_verify_hint(&data),
-
-            // BLS12-381 Hint Codes
-            BuiltInHint::Bls12_381G1Add => bls12_381_g1_add_hint(&data),
-            BuiltInHint::Bls12_381G1Msm => bls12_381_g1_msm_hint(&data),
-            BuiltInHint::Bls12_381G2Add => bls12_381_g2_add_hint(&data),
-            BuiltInHint::Bls12_381G2Msm => bls12_381_g2_msm_hint(&data),
-            BuiltInHint::Bls12_381PairingCheck => bls12_381_pairing_check_hint(&data),
-            BuiltInHint::Bls12_381FpToG1 => bls12_381_fp_to_g1_hint(&data),
-            BuiltInHint::Bls12_381Fp2ToG2 => bls12_381_fp2_to_g2_hint(&data),
-
-            // Modular Exponentiation Hint Codes
-            BuiltInHint::ModExp => modexp_hint(&data),
-
-            // KZG Hint Codes
-            BuiltInHint::VerifyKzgProof => verify_kzg_proof_hint(&data),
-
-            // Keccak256 Hint Codes
-            BuiltInHint::Keccak256 => keccak256_hint(&data, data_len_bytes),
-
-            // Blake2b Hint Codes
-            BuiltInHint::Blake2bCompress => blake2b_compress_hint(&data),
-        }
-    }
-
-    fn reset(&self) {
+    pub fn reset_state(&self) {
         self.num_hint.store(0, Ordering::Relaxed);
         self.state.reset();
         if let Some(stats) = self.stats.as_ref() {
@@ -720,12 +676,12 @@ impl HintsProcessor {
         self.pending_partial.lock().unwrap().take();
     }
 
-    pub fn set_has_rom_sm(&self, has_rom_sm: bool) {
-        self.hints_sink.set_has_rom_sm(has_rom_sm);
+    pub fn hints_sink(&self) -> Arc<S> {
+        Arc::clone(&self.hints_sink)
     }
 }
 
-impl Drop for HintsProcessor {
+impl<S: StreamSink> Drop for HintsProcessor<S> {
     fn drop(&mut self) {
         // Signal drainer thread to shut down
         self.state.shutdown.store(true, Ordering::Release);
@@ -740,13 +696,13 @@ impl Drop for HintsProcessor {
     }
 }
 
-impl StreamProcessor for HintsProcessor {
-    fn process(&self, data: &[u64], first_batch: bool) -> Result<bool> {
+impl<S: StreamSink> StreamProcessor for HintsProcessor<S> {
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool> {
         self.process_hints(data, first_batch)
     }
 
     fn reset(&self) {
-        self.reset();
+        self.reset_state();
     }
 }
 
@@ -759,7 +715,7 @@ mod tests {
     struct NullHints;
 
     impl StreamSink for NullHints {
-        fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+        fn submit(&self, _processed: &[u64]) -> Result<()> {
             Ok(())
         }
     }
@@ -776,14 +732,9 @@ mod tests {
     // Use high value (0x7FFF_xxxx range) to avoid conflicting with any built-in hint codes
     const TEST_PASSTHROUGH_HINT: u32 = 0x8000_0000 | 0x7FFF_0000;
 
-    fn processor() -> HintsProcessor {
-        HintsProcessor::builder(NullHints)
+    fn processor() -> HintsProcessor<NullHints> {
+        HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
             .num_threads(2)
-            .custom_hint(0x7FFF_0000, |data| {
-                // This should never be called for pass-through hints
-                // but we register it to avoid "no handler" errors
-                Ok(data.to_vec())
-            })
             .build()
             .unwrap()
     }
@@ -892,7 +843,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Unknown custom hint code"));
 
         // Reset should clear any error state
-        p.reset();
+        p.reset_state();
         assert!(!p.state.error_flag.load(Ordering::Acquire));
 
         // Should be able to process new hints after reset (8 bytes = 1 u64)
@@ -1022,15 +973,18 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
 
         let received = Arc::new(Mutex::new(Vec::new()));
         let sink = RecordingSink { received: Arc::clone(&received) };
-        let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
+        let p = HintsProcessor::builder(Arc::new(sink), None::<Arc<RecordingSink>>)
+            .num_threads(2)
+            .build()
+            .unwrap();
 
         // Send some data (16 bytes = 2 u64s, 8 bytes = 1 u64)
         let data = vec![
@@ -1061,7 +1015,7 @@ mod tests {
         }
 
         impl StreamSink for FailingSink {
-            fn submit(&self, _processed: Vec<u64>) -> Result<()> {
+            fn submit(&self, _processed: &[u64]) -> Result<()> {
                 if self.should_fail.load(Ordering::Acquire) {
                     Err(anyhow::anyhow!("Sink error"))
                 } else {
@@ -1072,7 +1026,10 @@ mod tests {
 
         let should_fail = Arc::new(AtomicBool::new(false));
         let sink = FailingSink { should_fail: Arc::clone(&should_fail) };
-        let p = HintsProcessor::builder(sink).num_threads(2).build().unwrap();
+        let p = HintsProcessor::builder(Arc::new(sink), None::<Arc<FailingSink>>)
+            .num_threads(2)
+            .build()
+            .unwrap();
 
         // First batch succeeds (8 bytes = 1 u64)
         let data1 = vec![make_header(TEST_PASSTHROUGH_HINT, 8), 0x01];
@@ -1095,26 +1052,39 @@ mod tests {
     #[test]
     fn test_builder_configuration() {
         // Default builder - stats disabled
-        let p1 = HintsProcessor::builder(NullHints).build().unwrap();
+        let p1 =
+            HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>).build().unwrap();
         assert!(p1.stats.is_none());
 
         // Explicitly disabled stats
-        let p2 = HintsProcessor::builder(NullHints).enable_stats(false).build().unwrap();
+        let p2 = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .enable_stats(false)
+            .build()
+            .unwrap();
         assert!(p2.stats.is_none());
 
         // Stats enabled
-        let p3 = HintsProcessor::builder(NullHints).enable_stats(true).build().unwrap();
+        let p3 = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .enable_stats(true)
+            .build()
+            .unwrap();
         assert!(p3.stats.is_some());
 
         // Custom threads
-        let p4 = HintsProcessor::builder(NullHints).num_threads(4).build().unwrap();
+        let p4 = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .num_threads(4)
+            .build()
+            .unwrap();
         let data = vec![make_header(TEST_PASSTHROUGH_HINT, 1), 0x42];
         assert!(p4.process_hints(&data, false).is_ok());
         assert!(p4.wait_for_completion().is_ok());
 
         // Chaining multiple options
-        let p5 =
-            HintsProcessor::builder(NullHints).num_threads(8).enable_stats(true).build().unwrap();
+        let p5 = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .num_threads(8)
+            .enable_stats(true)
+            .build()
+            .unwrap();
         assert!(p5.stats.is_some());
     }
 
@@ -1123,7 +1093,10 @@ mod tests {
     fn test_stress_throughput() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .num_threads(32)
+            .build()
+            .unwrap();
 
         // Generate a large batch of hints
         const NUM_HINTS: usize = 100_000;
@@ -1156,7 +1129,10 @@ mod tests {
     fn test_stress_concurrent_batches() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .num_threads(32)
+            .build()
+            .unwrap();
 
         const NUM_BATCHES: usize = 1_000;
         const HINTS_PER_BATCH: usize = 100;
@@ -1195,7 +1171,10 @@ mod tests {
     fn test_stress_with_resets() {
         use std::time::Instant;
 
-        let p = HintsProcessor::builder(NullHints).num_threads(32).build().unwrap();
+        let p = HintsProcessor::builder(Arc::new(NullHints), None::<Arc<NullHints>>)
+            .num_threads(32)
+            .build()
+            .unwrap();
 
         const ITERATIONS: usize = 100;
         const HINTS_PER_ITER: usize = 1_000;
@@ -1251,8 +1230,8 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
@@ -1265,22 +1244,19 @@ mod tests {
         const SLOW_HINT: u32 = 0x7FFF_0001; // Delays 10ms
         const MED_HINT: u32 = 0x7FFF_0002; // Delays 5ms
 
-        let p = HintsProcessor::builder(sink)
-            .num_threads(8)
-            .custom_hint(FAST_HINT, |data| {
-                // No delay - returns immediately
-                Ok(vec![data[0] * 2])
-            })
-            .custom_hint(SLOW_HINT, |data| {
-                // Long delay to complete last
+        let handlers = HintHandlers::default()
+            .register(FAST_HINT, |data| Ok(vec![data[0] * 2]))
+            .register(SLOW_HINT, |data| {
                 thread::sleep(Duration::from_millis(10));
                 Ok(vec![data[0] * 3])
             })
-            .custom_hint(MED_HINT, |data| {
-                // Medium delay
+            .register(MED_HINT, |data| {
                 thread::sleep(Duration::from_millis(5));
                 Ok(vec![data[0] * 4])
-            })
+            });
+        let p = HintsProcessor::builder(Arc::new(sink), None::<Arc<RecordingSink>>)
+            .num_threads(8)
+            .with_hint_handlers(handlers)
             .build()
             .unwrap();
 
@@ -1563,7 +1539,7 @@ mod tests {
         }
 
         // Reset should clear pending partial
-        p.reset();
+        p.reset_state();
 
         // Verify pending partial is cleared
         {
@@ -1622,8 +1598,8 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: Vec<u64>) -> Result<()> {
-                self.received.lock().unwrap().push(processed);
+            fn submit(&self, processed: &[u64]) -> Result<()> {
+                self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
         }
@@ -1633,18 +1609,17 @@ mod tests {
 
         const VARIABLE_HINT: u32 = 0x7FFF_0100;
 
-        let p = HintsProcessor::builder(sink)
+        let handlers = HintHandlers::default().register(VARIABLE_HINT, |data| {
+            let hash = data[0].wrapping_mul(2654435761);
+            let delay_ms = hash % 16;
+            if delay_ms > 0 {
+                thread::sleep(Duration::from_millis(delay_ms));
+            }
+            Ok(vec![data[0] + 1000])
+        });
+        let p = HintsProcessor::builder(Arc::new(sink), None::<Arc<NullHints>>)
             .num_threads(16)
-            .custom_hint(VARIABLE_HINT, |data| {
-                // Pseudo-random delay based on hash of input value (0-15ms range)
-                // This creates unpredictable completion order across runs
-                let hash = data[0].wrapping_mul(2654435761);
-                let delay_ms = hash % 16;
-                if delay_ms > 0 {
-                    thread::sleep(Duration::from_millis(delay_ms));
-                }
-                Ok(vec![data[0] + 1000])
-            })
+            .with_hint_handlers(handlers)
             .build()
             .unwrap();
 

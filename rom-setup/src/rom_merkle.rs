@@ -1,92 +1,90 @@
+use crate::{ROM_BLOWUP_FACTOR, ROM_MERKLE_TREE_ARITY};
+use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use std::path::{Path, PathBuf};
-use zisk_common::ElfBinaryLike;
+use std::path::PathBuf;
+use zisk_common::ProgramVK;
 
 use crate::{
     gen_elf_hash, get_elf_bin_file_path_with_hash, get_elf_bin_verkey_file_path_with_hash,
-    get_elf_data_hash, get_elf_vk, get_output_path, get_rom_info,
+    get_elf_data_hash, get_elf_vk, get_output_path,
 };
 
-pub fn rom_merkle_setup<F: PrimeField64>(
+pub fn get_rom_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
-    elf: &impl ElfBinaryLike,
+    elf_hash: &str,
     output_dir: &Option<PathBuf>,
-) -> Result<(PathBuf, Vec<u8>), anyhow::Error> {
+) -> Result<PathBuf> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_hash = get_elf_data_hash(elf)?;
+    let elf_bin_path = get_elf_bin_file_path_with_hash(elf_hash, &output_path, pctx.gpu)?;
 
-    let rom_info = get_rom_info(&pctx.global_info.get_proving_key_path())?;
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(elf_hash, &output_path)?;
 
-    let elf_bin_path = get_elf_bin_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-        rom_info.blowup_factor,
-        rom_info.merkle_tree_arity,
-    )?;
+    if !elf_bin_path.exists() || !elf_verkey_bin_path.exists() {
+        return Err(anyhow::anyhow!(
+            "ROM files not found for ELF hash {}. Expected paths: {:?} and {:?}",
+            elf_hash,
+            elf_bin_path,
+            elf_verkey_bin_path
+        ));
+    }
 
-    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-        rom_info.blowup_factor,
-        rom_info.merkle_tree_arity,
-    )?;
+    Ok(elf_bin_path)
+}
+pub fn rom_merkle_setup<F: PrimeField64>(
+    pctx: &ProofCtx<F>,
+    elf: &[u8],
+    output_dir: &Option<PathBuf>,
+    force: bool,
+) -> Result<ProgramVK, anyhow::Error> {
+    let output_path = get_output_path(output_dir)?;
 
-    if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
-        let verkey = get_elf_vk(elf_verkey_bin_path.as_path())?
+    let elf_hash = get_elf_data_hash(elf);
+
+    let elf_bin_path = get_elf_bin_file_path_with_hash(&elf_hash, &output_path, pctx.gpu)?;
+
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
+
+    if !force && elf_bin_path.exists() && elf_verkey_bin_path.exists() {
+        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
-
-        return Ok((elf_bin_path, verkey));
+        return Ok(ProgramVK { vk });
     }
 
     let root = gen_elf_hash::<F>(
         pctx,
-        elf.elf(),
+        elf,
         elf_bin_path.as_path(),
-        rom_info.blowup_factor,
-        rom_info.merkle_tree_arity,
+        ROM_BLOWUP_FACTOR,
+        ROM_MERKLE_TREE_ARITY,
     )?;
 
     tracing::info!("Root hash: {:?}", root);
 
-    let verkey: Vec<u8> = root.iter().flat_map(|x| x.as_canonical_u64().to_le_bytes()).collect();
+    let vk: Vec<u64> = root.iter().map(|x| x.as_canonical_u64()).collect();
 
-    std::fs::write(&elf_verkey_bin_path, &verkey)?;
+    let vk_bytes: Vec<u8> = vk.iter().flat_map(|w| w.to_le_bytes()).collect();
+    std::fs::write(&elf_verkey_bin_path, &vk_bytes)?;
 
-    Ok((elf_bin_path, verkey))
+    Ok(ProgramVK { vk })
 }
 
 pub fn rom_merkle_setup_verkey(
-    elf: &impl ElfBinaryLike,
+    elf: &[u8],
     output_dir: &Option<PathBuf>,
-    proving_key: &Path,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> Result<ProgramVK, anyhow::Error> {
     let output_path = get_output_path(output_dir)?;
 
-    let elf_hash = get_elf_data_hash(elf)?;
+    let elf_hash = get_elf_data_hash(elf);
 
-    let rom_info = get_rom_info(proving_key)?;
+    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(&elf_hash, &output_path)?;
 
-    let elf_bin_path = get_elf_bin_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-        rom_info.blowup_factor,
-        rom_info.merkle_tree_arity,
-    )?;
-
-    let elf_verkey_bin_path = get_elf_bin_verkey_file_path_with_hash(
-        &elf_hash,
-        &output_path,
-        rom_info.blowup_factor,
-        rom_info.merkle_tree_arity,
-    )?;
-
-    if elf_bin_path.exists() && elf_verkey_bin_path.exists() {
-        let verkey = get_elf_vk(elf_verkey_bin_path.as_path())?
+    if elf_verkey_bin_path.exists() {
+        let vk = get_elf_vk(elf_verkey_bin_path.as_path())?
             .ok_or_else(|| anyhow::anyhow!("Failed to read existing verkey file"))?;
 
-        Ok(verkey)
+        Ok(ProgramVK { vk })
     } else {
         Err(anyhow::anyhow!("ROM merkle setup has not been performed yet"))
     }

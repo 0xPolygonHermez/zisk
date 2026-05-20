@@ -1,13 +1,12 @@
 use anyhow::Result;
-use cargo_zisk::{commands::get_proving_key, ux::print_banner};
 use clap::Parser;
 use colored::Colorize;
 use std::path::PathBuf;
-use zisk_distributed_worker::{
+use zisk_prover_backend::{Asm, Emu};
+use zisk_worker::{
     config::{ProverServiceConfigDto, WorkerServiceConfig},
     ProverConfig, WorkerNode,
 };
-use zisk_sdk::{Asm, Emu};
 
 #[derive(Parser)]
 #[command(name = "zisk-worker")]
@@ -26,18 +25,6 @@ struct Cli {
     #[arg(long)]
     compute_capacity: Option<u32>,
 
-    /// This is the path where the worker will look for input files to process.
-    #[clap(short = 'i', long)]
-    inputs_folder: Option<PathBuf>,
-
-    #[clap(
-        short = 'j',
-        long,
-        default_value_t = false,
-        help = "Whether to share tables when worker is running in a cluster"
-    )]
-    pub shared_tables: bool,
-
     /// Path to configuration file
     #[arg(
         long,
@@ -45,15 +32,9 @@ struct Cli {
     )]
     config: Option<String>,
 
-    /// ELF file path
-    /// This is the path to the ROM file that the witness computation dynamic library will use
-    /// to generate the witness.
-    #[clap(short = 'e', long)]
-    pub elf: PathBuf,
-
     /// ASM file path
     /// Optional, mutually exclusive with `--emulator`
-    #[clap(short = 's', long)]
+    #[clap(short = 'a', long)]
     pub asm: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
@@ -64,14 +45,9 @@ struct Cli {
     #[clap(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
 
-    /// Base port for Assembly microservices (default: 23115).
-    /// A single execution will use 3 consecutive ports, from this port to port + 2.
-    /// If you are running multiple instances of ZisK using mpi on the same machine,
-    /// it will use from this base port to base port + 2 * number_of_instances.
-    /// For example, if you run 2 mpi instances of ZisK, it will use ports from 23115 to 23117
-    /// for the first instance, and from 23118 to 23120 for the second instance.
-    #[clap(long, conflicts_with = "emulator")]
-    pub asm_port: Option<u16>,
+    /// Setup folder path
+    #[clap(short = 's', long)]
+    pub proving_key_snark: Option<PathBuf>,
 
     /// Map unlocked flag
     /// This is used to unlock the memory map for the ROM file.
@@ -79,6 +55,11 @@ struct Cli {
     /// This option is mutually exclusive with `--emulator`.
     #[clap(long, conflicts_with = "emulator")]
     pub unlock_mapped_memory: bool,
+
+    /// Redirect ASM emulator output to file
+    /// This option is mutually exclusive with `--emulator`
+    #[clap(long, conflicts_with = "emulator", default_value_t = false)]
+    pub asm_out_file: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short ='v', long, action = clap::ArgAction::Count, help = "Increase verbosity level")]
@@ -90,10 +71,6 @@ struct Cli {
     /// Whether to verify constraints
     #[clap(long, default_value_t = false)]
     pub verify_constraints: bool,
-
-    /// GPU parameters
-    #[clap(short = 'z', long, default_value_t = false)]
-    pub preallocate: bool,
 
     /// Maximum number of GPU streams
     #[clap(short = 't', long)]
@@ -108,11 +85,15 @@ struct Cli {
     #[clap(short = 'm', long, default_value_t = false)]
     pub minimal_memory: bool,
 
-    #[clap(short = 'r', long, default_value_t = false)]
-    pub rma: bool,
+    #[cfg(not(feature = "cpu-only"))]
+    #[clap(short = 'g', long, default_value_t = false)]
+    pub gpu: bool,
 
-    #[clap(long, default_value_t = false)]
-    pub hints: bool,
+    #[clap(short = 'p', long, default_value_t = false)]
+    pub plonk: bool,
+
+    #[clap(short = 'P', long, default_value_t = false)]
+    pub preload_plonk: bool,
 }
 
 #[tokio::main]
@@ -124,31 +105,32 @@ async fn main() -> Result<()> {
         cli.coordinator_url,
         cli.worker_id,
         cli.compute_capacity,
-        cli.inputs_folder,
     )
     .await?;
 
-    print_banner();
+    println!("ZisK Worker v{}", env!("CARGO_PKG_VERSION"));
+
+    #[cfg(not(feature = "cpu-only"))]
+    let gpu = cli.gpu;
+    #[cfg(feature = "cpu-only")]
+    let gpu = false;
 
     let prover_config_dto = ProverServiceConfigDto {
-        elf: cli.elf.clone(),
         asm: cli.asm.clone(),
         emulator: cli.emulator,
-        hints: cli.hints,
         proving_key: cli.proving_key.clone(),
-        asm_port: cli.asm_port,
+        proving_key_snark: cli.proving_key_snark.clone(),
         unlock_mapped_memory: cli.unlock_mapped_memory,
+        asm_out_file: cli.asm_out_file,
         verbose: cli.verbose,
         debug: cli.debug.clone(),
-        verify_constraints: cli.verify_constraints,
-        aggregation: true, // we always aggregate
-        preallocate: cli.preallocate,
         max_streams: cli.max_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
-        shared_tables: cli.shared_tables,
-        rma: cli.rma,
         minimal_memory: cli.minimal_memory,
+        preload_plonk: cli.preload_plonk,
+        gpu,
+        plonk: cli.plonk,
     };
 
     let prover_config = ProverConfig::load(prover_config_dto)?;
@@ -157,11 +139,27 @@ async fn main() -> Result<()> {
 
     if prover_config.emulator {
         let mut worker = WorkerNode::<Emu>::new_emu(worker_config, prover_config).await?;
-        return worker.run().await;
+        run_with_signals(worker.run()).await
     } else {
         let mut worker = WorkerNode::<Asm>::new_asm(worker_config, prover_config).await?;
-        return worker.run().await;
-    };
+        run_with_signals(worker.run()).await
+    }
+}
+
+async fn run_with_signals(fut: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = signal(SignalKind::terminate())?;
+    tokio::select! {
+        res = fut => res,
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received SIGINT, shutting down gracefully");
+            Ok(())
+        }
+        _ = sigterm.recv() => {
+            tracing::info!("Received SIGTERM, shutting down gracefully");
+            Ok(())
+        }
+    }
 }
 
 fn print_command_info(
@@ -195,14 +193,7 @@ fn print_command_info(
             .unwrap_or_default()
     );
 
-    println!("{: >12} {}", "Elf".bright_green().bold(), prover_config.elf.display());
-    if let Some(asm) = &prover_config.asm {
-        if let Some(asm_port) = prover_config.asm_port.as_ref() {
-            println!("{: >12} {}", "Asm port".bright_green().bold(), asm_port);
-        }
-        let asm_path = asm.display();
-        println!("{: >12} {}", "ASM runner".bright_green().bold(), asm_path);
-    } else {
+    if prover_config.emulator {
         println!(
             "{: >12} {}",
             "Emulator".bright_green().bold(),
@@ -212,7 +203,7 @@ fn print_command_info(
     println!(
         "{: >12} {}",
         "Proving Key".bright_green().bold(),
-        get_proving_key(Some(&prover_config.proving_key)).display()
+        prover_config.proving_key.display()
     );
 
     let std_mode = if debug { "Debug mode" } else { "Standard mode" };

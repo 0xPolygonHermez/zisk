@@ -4,6 +4,7 @@ pub mod bn254;
 pub mod keccak256;
 pub mod kzg;
 pub mod modexp;
+pub mod ripemd160;
 pub mod secp256k1;
 pub mod secp256r1;
 pub mod sha256;
