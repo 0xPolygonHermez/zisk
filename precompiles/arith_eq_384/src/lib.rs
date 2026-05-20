@@ -42,7 +42,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_arith384_mod_tests() {
+    fn arith384_mod_tests() {
         ELF_ARITH384_MOD
             .run_emulation(ZiskStdin::new(), None)
             .expect("arith384_mod guest emulation failed");
@@ -50,7 +50,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_bls12_381_add_tests() {
+    fn bls12_381_add_tests() {
         ELF_BLS12_381_ADD
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_add guest emulation failed");
@@ -58,7 +58,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_bls12_381_dbl_tests() {
+    fn bls12_381_dbl_tests() {
         ELF_BLS12_381_DBL
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_dbl guest emulation failed");
@@ -66,7 +66,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_bls12_381_complex_add_tests() {
+    fn bls12_381_complex_add_tests() {
         ELF_BLS12_381_COMPLEX_ADD
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_add guest emulation failed");
@@ -74,7 +74,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_bls12_381_complex_mul_tests() {
+    fn bls12_381_complex_mul_tests() {
         ELF_BLS12_381_COMPLEX_MUL
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_mul guest emulation failed");
@@ -82,7 +82,7 @@ mod arith_eq_384_tests {
 
     #[test]
     #[serial]
-    fn execute_bls12_381_complex_sub_tests() {
+    fn bls12_381_complex_sub_tests() {
         ELF_BLS12_381_COMPLEX_SUB
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_sub guest emulation failed");

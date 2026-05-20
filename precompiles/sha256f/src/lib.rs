@@ -24,10 +24,10 @@ mod sha256f_tests {
     const NUM_SHA256FS: u64 = 10;
 
     #[test]
-    fn execute_sha256() {
+    fn sha256f_tests() {
         let stdin = ZiskStdin::new();
         stdin.write(&NUM_SHA256FS);
 
-        ELF_SHA256.run_emulation(stdin, None).expect("sha256 guest emulation failed");
+        ELF_SHA256.run_emulation(stdin, None).expect("sha256f guest emulation failed");
     }
 }

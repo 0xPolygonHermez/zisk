@@ -22,7 +22,7 @@ mod poseidon2_tests {
     const NUM_POSEIDON2S: u64 = 10;
 
     #[test]
-    fn execute_poseidon2() {
+    fn poseidon2_tests() {
         let stdin = ZiskStdin::new();
         stdin.write(&NUM_POSEIDON2S);
 

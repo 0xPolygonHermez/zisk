@@ -24,7 +24,7 @@ mod blake2_tests {
     const NUM_BLAKE2B_ROUNDS: u64 = 10;
 
     #[test]
-    fn execute_blake2() {
+    fn blake2_tests() {
         let stdin = ZiskStdin::new();
         stdin.write(&NUM_BLAKE2B_ROUNDS);
 

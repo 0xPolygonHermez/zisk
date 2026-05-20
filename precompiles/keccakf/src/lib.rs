@@ -20,7 +20,7 @@ zisk_common::zisk_precompile! {
 }
 
 #[cfg(test)]
-mod keccak_tests {
+mod keccakf_tests {
     use test_artifacts::ELF_KECCAK;
     use zisk_common::io::ZiskStdin;
 
@@ -28,7 +28,7 @@ mod keccak_tests {
     const NUM_KECCAKFS: u64 = 10;
 
     #[test]
-    fn execute_keccak() {
+    fn keccakf_tests() {
         let stdin = ZiskStdin::new();
         stdin.write(&NUM_KECCAKFS);
 
