@@ -94,9 +94,15 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
                 self.op_x_rows
             };
             row.set_seq_end(seq_end);
+
+            // Compute all values for this row
+            let mut h_value_chunks = [[0u32; 2]; DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW];
+            let mut l_value_chunks = [[0u8; 2]; DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW];
+            let mut sel_op_from_1 = [false; DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW - 1];
+
             for index in 0..use_count {
                 if index > 0 {
-                    row.set_sel_op_from_1(index - 1, true);
+                    sel_op_from_1[index - 1] = true;
                 }
                 let value = input.src_values[values_index];
                 values_index += 1;
@@ -104,15 +110,17 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
                 let h1 = (value >> 40) as u32;
                 let l0: u8 = value as u8;
                 let l1 = (value >> 32) as u8;
-                row.set_h_value_chunks(index, 0, h0);
-                row.set_h_value_chunks(index, 1, h1);
-                row.set_l_value_chunks(index, 0, l0);
-                row.set_l_value_chunks(index, 1, l1);
+                h_value_chunks[index] = [h0, h1];
+                l_value_chunks[index] = [l0, l1];
                 let pos = ((l1 as usize) << 8) | (l0 as usize);
                 local_dual_byte[pos] += 1;
                 values_24_bits.push(h0);
                 values_24_bits.push(h1);
             }
+
+            row.set_all_h_value_chunks(&h_value_chunks);
+            row.set_all_l_value_chunks(&l_value_chunks);
+            row.set_all_sel_op_from_1(&sel_op_from_1);
         }
 
         if is_last_instance_input {
