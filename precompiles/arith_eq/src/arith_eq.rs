@@ -434,10 +434,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
             // Compute sel_op arrays
             let mut sel_op_values = [false; ARITH_EQ_OP_NUM];
             let mut sel_op_clk0_values = [false; ARITH_EQ_OP_NUM];
-            for j in 0..ARITH_EQ_OP_NUM {
-                let selected = j == sel_op;
-                sel_op_values[j] = selected;
-                sel_op_clk0_values[j] = if i == 0 { selected } else { false };
+            sel_op_values[sel_op] = true;
+            if i == 0 {
+                sel_op_clk0_values[sel_op] = true;
             }
             trace[i].set_all_sel_op(&sel_op_values);
             trace[i].set_all_sel_op_clk0(&sel_op_clk0_values);
