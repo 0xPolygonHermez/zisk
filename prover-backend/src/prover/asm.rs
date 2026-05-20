@@ -691,10 +691,13 @@ impl AsmCoreProver {
             )?);
         }
 
-        let executor =
-            ZiskExecutor::new(&proofman.get_wcm(), options.verbose_mode, shared_tables, true)?;
-
-        executor.set_packed(options.packed);
+        let executor = ZiskExecutor::new(
+            &proofman.get_wcm(),
+            options.verbose_mode,
+            shared_tables,
+            true,
+            options.packed,
+        )?;
 
         let core = ProverBackend::new(
             proofman,

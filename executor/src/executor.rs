@@ -69,12 +69,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `wcm` - Witness manager for managing witness data.
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
-    /// * `is_asm_emulator` - Whether to use the ASM emulator for execution
+    /// * `with_asm_emulator` - Whether to use the ASM emulator for execution
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
         shared_tables: bool,
-        is_asm_emulator: bool,
+        with_asm_emulator: bool,
+        packed: bool,
     ) -> Result<Arc<Self>> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
@@ -83,18 +84,19 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         proofman::register_std(wcm, &std);
 
         let precompiles = crate::Precompiles::all(std.clone());
-        let sm_bundle = Arc::new(StaticSMBundle::new(std, is_asm_emulator, precompiles));
+        let sm_bundle = Arc::new(StaticSMBundle::new(std, with_asm_emulator, precompiles));
 
         let executor = Arc::new(Self {
             state: ExecutionState::new(),
-            execution: ExecutionPhase::new(CHUNK_SIZE, is_asm_emulator),
+            execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE, sm_bundle.clone()),
-            witness: if is_asm_emulator {
+            witness: if with_asm_emulator {
                 WitnessPhase::new_asm(CHUNK_SIZE, sm_bundle)
             } else {
                 WitnessPhase::new_native(CHUNK_SIZE, sm_bundle)
             },
         });
+        executor.set_packed(packed);
 
         wcm.register_component(executor.clone());
         wcm.set_witness_initialized();
