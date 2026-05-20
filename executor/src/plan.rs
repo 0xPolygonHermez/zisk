@@ -153,8 +153,10 @@ impl<F: PrimeField64> PlanPhase<F> {
         exec_scope: &StatsScope,
     ) -> Result<PlanOutput> {
         // ────────────────────────────────────────────────────────────
-        // Phase 2: plan + register + populate main instances
+        // Phase 1.2: Planning
         // ────────────────────────────────────────────────────────────
+
+        // Plan main instances
         stats_begin!(stats, exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
 
         timer_start_info!(PLAN);
@@ -176,9 +178,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 
         stats_end!(stats, &_main_plan_scope);
 
-        // ────────────────────────────────────────────────────────────
-        // Phase 3: plan secondary + merge MO + hand off RH
-        // ────────────────────────────────────────────────────────────
+        // Plan secondary instances
         stats_begin!(stats, exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut counters = trace.counters;
@@ -218,9 +218,9 @@ impl<F: PrimeField64> PlanPhase<F> {
         timer_stop_and_log_info!(WAIT_ASM_RH);
 
         // ────────────────────────────────────────────────────────────
-        // Phase 4: configure + assign secondary + publics + populate
-        //          + checkpoints + cost accumulation
+        // Phase 1.3: Configure and assign secondary instances
         // ────────────────────────────────────────────────────────────
+
         stats_begin!(stats, exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         // Configure secondary state machine instances based on planning.
@@ -253,17 +253,23 @@ impl<F: PrimeField64> PlanPhase<F> {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // Inject public outputs into the proof context. The ACL handles
-        // the F-specific conversion inside `ProofmanAdapter`.
+        // Inject public outputs into the proof context.
         proof_registry.write_pub_outs(&trace.pub_outs.0);
 
-        // Create secondary instances directly from the plans.
+        // ────────────────────────────────────────────────────────────
+        // Phase 1.4: Populate secondary instances
+        // ────────────────────────────────────────────────────────────
+
         self.registry.populate_secn_instances(state, secn_planning)?;
 
         // Configure instance checkpoints.
         self.registry.configure_checkpoints(proof_registry, state, &secn_global_ids)?;
 
         stats_end!(stats, &_config_scope);
+
+        // ────────────────────────────────────────────────────────────
+        // Phase 1.5: Compute cost accumulation
+        // ────────────────────────────────────────────────────────────
 
         // Cost accumulation: per-secondary instance.
         let secn_instances = state

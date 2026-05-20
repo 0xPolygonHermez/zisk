@@ -173,7 +173,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Set the start time of the current execution
         self.state.stats.set_start_time(Instant::now());
 
-        // Phase 1: Execute ROM to collect minimal traces
+        // ────────────────────────────────────────────────────────────
+        // Phase 1.1: Plan main instances
+        // ────────────────────────────────────────────────────────────
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let start_partial = Instant::now();
 
@@ -190,9 +192,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let execution_duration = start_partial.elapsed();
         timer_stop_and_log_info!(COMPUTE_MINIMAL_TRACE);
 
-        // Phases 2-4: planning + pctx mutation + instance materialization
-        // + cost accumulation. Lifted into `MaterializePhase` in step 3.2;
-        // pctx mutations route through `ProofmanAdapter` since step 3.3.
+        // ────────────────────────────────────────────────────────────
+        // Phase 1.2: Planning
+        // Phase 1.3: Configure and assign secondary instances
+        // Phase 1.4: Populate secondary instances
+        // Phase 1.5: Compute cost accumulation
+        // ────────────────────────────────────────────────────────────
         let steps = output.steps;
         let proof_registry = ProofmanAdapter::new(&pctx);
         let artifacts = self.plan.run(
