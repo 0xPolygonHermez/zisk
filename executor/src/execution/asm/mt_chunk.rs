@@ -19,6 +19,8 @@
 //!
 //! See `.claude/executor_refactor_plan.md` step 2.4 for context.
 
+#![cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(dead_code))]
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 

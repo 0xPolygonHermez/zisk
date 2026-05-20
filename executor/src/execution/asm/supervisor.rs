@@ -27,12 +27,16 @@
 //!
 //! See `.claude/executor_refactor_plan.md` step 2.3 for context.
 
+#![cfg_attr(not(all(target_os = "linux", target_arch = "x86_64")), allow(dead_code))]
+
 use std::thread::JoinHandle;
 
 use anyhow::Result;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::{AsmResources, MAX_NUM_STEPS};
 
 /// Owns the MO + (optionally) RH runner threads spawned at the start

@@ -16,9 +16,13 @@ pub mod resources;
 pub mod supervisor;
 pub mod transport;
 
-pub use mt_chunk::*;
 pub use resources::*;
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub use mt_chunk::*;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use supervisor::*;
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use transport::*;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

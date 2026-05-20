@@ -7,6 +7,8 @@
 //! "Linux x86_64 only" message — the ASM emulator is genuinely
 //! unavailable here, so failing fast is honest.
 
+#![allow(missing_docs)]
+
 use std::sync::Arc;
 
 use anyhow::Result;
