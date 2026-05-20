@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "sha-hasher/host",
-    "multiple-programs/host",
-    "aggregation/host",
-    "big-program/host",
-    "hints/host",
+  "sha-hasher/host",
+  "multiple-programs/host",
+  "aggregation/host",
+  "big-program/host",
+  "hints/host",
 ]
 
 resolver = "2"

@@ -16,7 +16,7 @@ zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 
-fields = { workspace=true }
+fields = { workspace = true }
 rayon = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 static_assertions = { workspace = true }

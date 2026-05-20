@@ -4,15 +4,15 @@ edition = "2021"
 
 [workspace]
 members = [
-    "bls12_381",
-    "bn254",
-    "examples/*",
-    "diagnostic",
-    "modexp",
-    "secp256k1",
-    "secp256r1",
-    "syscalls/*",
-    "uint256",
+  "bls12_381",
+  "bn254",
+  "examples/*",
+  "diagnostic",
+  "modexp",
+  "secp256k1",
+  "secp256r1",
+  "syscalls/*",
+  "uint256",
 ]
 resolver = "2"
 

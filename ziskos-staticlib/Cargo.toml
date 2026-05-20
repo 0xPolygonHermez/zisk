@@ -14,4 +14,3 @@ panic-handler = []
 
 [dependencies]
 ziskos = { path = "../ziskos/entrypoint" }
-
