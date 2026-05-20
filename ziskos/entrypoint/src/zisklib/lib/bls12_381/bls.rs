@@ -3,7 +3,7 @@
 //! Implements the minimal-pubkey-size **Basic** ciphersuite variant.
 //!
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::{lib::utils::eq, mul_fp12_bls12_381};

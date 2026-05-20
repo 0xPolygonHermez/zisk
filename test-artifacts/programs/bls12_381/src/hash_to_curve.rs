@@ -1,6 +1,4 @@
-use ziskos::zisklib::{hash_to_curve_g2_bls12_381, is_on_curve_twist_bls12_381};
-
-use crate::constants::IDENTITY_G2;
+use ziskos::zisklib::hash_to_curve_g2_bls12_381;
 
 // DST used by the IETF test vectors (RFC 9380 §J.10.1)
 const DST: &[u8] = b"QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_";

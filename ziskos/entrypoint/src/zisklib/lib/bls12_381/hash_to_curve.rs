@@ -1,6 +1,6 @@
 //! Hash-to-curve for BLS12-381 G2
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::lib::sha256::sha256;
