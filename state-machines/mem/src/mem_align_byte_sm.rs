@@ -20,13 +20,20 @@ pub trait MemAlignByteRow<F: PrimeField64, T> {
         sel_high_2b: bool,
         sel_high_b: bool,
         direct_value: u32,
+        composed_value: u32,
         value_16b: u16,
         value_8b: u8,
         byte_value: u8,
         addr_w: u32,
         step: u64,
     );
-    fn set_write_fields(&mut self, is_write: bool, written_byte_value: u8);
+    fn set_write_fields(
+        &mut self,
+        is_write: bool,
+        written_composed_value: u32,
+        written_byte_value: u8,
+        mem_write_values: [u32; 2],
+    );
     fn valid_for_read() -> bool;
     fn valid_for_write() -> bool;
     fn create_trace(trace_buffer: Vec<F>) -> ProofmanResult<T>;
@@ -69,6 +76,7 @@ impl<F: PrimeField64, R: MemAlignByteTraceRowOps<F>> MemAlignByteRow<F, MemAlign
         sel_high_2b: bool,
         sel_high_b: bool,
         direct_value: u32,
+        composed_value: u32,
         value_16b: u16,
         value_8b: u8,
         byte_value: u8,
@@ -79,6 +87,7 @@ impl<F: PrimeField64, R: MemAlignByteTraceRowOps<F>> MemAlignByteRow<F, MemAlign
         self.set_sel_high_2b(sel_high_2b);
         self.set_sel_high_b(sel_high_b);
         self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
         self.set_value_16b(value_16b);
         self.set_value_8b(value_8b);
         self.set_byte_value(byte_value);
@@ -86,8 +95,15 @@ impl<F: PrimeField64, R: MemAlignByteTraceRowOps<F>> MemAlignByteRow<F, MemAlign
         self.set_step(step);
     }
     #[inline(always)]
-    fn set_write_fields(&mut self, is_write: bool, written_byte_value: u8) {
+    fn set_write_fields(
+        &mut self,
+        is_write: bool,
+        written_composed_value: u32,
+        written_byte_value: u8,
+        mem_write_values: [u32; 2],
+    ) {
         self.set_is_write(is_write);
+        self.set_written_composed_value(written_composed_value);
         self.set_written_byte_value(written_byte_value);
         self.set_bus_byte(if is_write {
             self.get_written_byte_value()
@@ -141,6 +157,7 @@ impl<F: PrimeField64, R: MemAlignReadByteTraceRowOps<F>>
         sel_high_2b: bool,
         sel_high_b: bool,
         direct_value: u32,
+        composed_value: u32,
         value_16b: u16,
         value_8b: u8,
         byte_value: u8,
@@ -151,6 +168,7 @@ impl<F: PrimeField64, R: MemAlignReadByteTraceRowOps<F>>
         self.set_sel_high_2b(sel_high_2b);
         self.set_sel_high_b(sel_high_b);
         self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
         self.set_value_16b(value_16b);
         self.set_value_8b(value_8b);
         self.set_byte_value(byte_value);
@@ -158,7 +176,14 @@ impl<F: PrimeField64, R: MemAlignReadByteTraceRowOps<F>>
         self.set_step(step);
     }
     #[inline(always)]
-    fn set_write_fields(&mut self, _is_write: bool, _written_byte_value: u8) {}
+    fn set_write_fields(
+        &mut self,
+        _is_write: bool,
+        _written_composed_value: u32,
+        _written_byte_value: u8,
+        _mem_write_values: [u32; 2],
+    ) {
+    }
     #[inline(always)]
     fn valid_for_read() -> bool {
         true
@@ -204,6 +229,7 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
         sel_high_2b: bool,
         sel_high_b: bool,
         direct_value: u32,
+        composed_value: u32,
         value_16b: u16,
         value_8b: u8,
         byte_value: u8,
@@ -214,6 +240,7 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
         self.set_sel_high_2b(sel_high_2b);
         self.set_sel_high_b(sel_high_b);
         self.set_direct_value(direct_value);
+        self.set_composed_value(composed_value);
         self.set_value_16b(value_16b);
         self.set_value_8b(value_8b);
         self.set_byte_value(byte_value);
@@ -221,7 +248,14 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
         self.set_step(step);
     }
     #[inline(always)]
-    fn set_write_fields(&mut self, _is_write: bool, written_byte_value: u8) {
+    fn set_write_fields(
+        &mut self,
+        _is_write: bool,
+        written_composed_value: u32,
+        written_byte_value: u8,
+        mem_write_values: [u32; 2],
+    ) {
+        self.set_written_composed_value(written_composed_value);
         self.set_written_byte_value(written_byte_value);
         self.set_all_mem_write_values(&mem_write_values);
     }
@@ -353,88 +387,105 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         let addr_w = addr >> OFFSET_BITS;
         let step = input.step;
 
-        let (sel_high_4b, sel_high_2b, sel_high_b, direct_value, byte_value, value_16b, value_8b) =
-            match offset {
-                0 => (
-                    false,
-                    false,
-                    false,
-                    high_value,
-                    low_value as u8,
-                    (low_value >> 16) as u16,
-                    (low_value >> 8) as u8,
-                ),
-                1 => (
-                    false,
-                    false,
-                    true,
-                    high_value,
-                    (low_value >> 8) as u8,
-                    (low_value >> 16) as u16,
-                    low_value as u8,
-                ),
-                2 => (
-                    false,
-                    true,
-                    false,
-                    high_value,
-                    (low_value >> 16) as u8,
-                    low_value as u16,
-                    (low_value >> 24) as u8,
-                ),
-                3 => (
-                    false,
-                    true,
-                    true,
-                    high_value,
-                    (low_value >> 24) as u8,
-                    low_value as u16,
-                    (low_value >> 16) as u8,
-                ),
-                4 => (
-                    true,
-                    false,
-                    false,
-                    low_value,
-                    high_value as u8,
-                    (high_value >> 16) as u16,
-                    (high_value >> 8) as u8,
-                ),
-                5 => (
-                    true,
-                    false,
-                    true,
-                    low_value,
-                    (high_value >> 8) as u8,
-                    (high_value >> 16) as u16,
-                    high_value as u8,
-                ),
-                6 => (
-                    true,
-                    true,
-                    false,
-                    low_value,
-                    (high_value >> 16) as u8,
-                    high_value as u16,
-                    (high_value >> 24) as u8,
-                ),
-                7 => (
-                    true,
-                    true,
-                    true,
-                    low_value,
-                    (high_value >> 24) as u8,
-                    high_value as u16,
-                    (high_value >> 16) as u8,
-                ),
-                _ => unreachable!("Invalid offset"),
-            };
+        let (
+            sel_high_4b,
+            sel_high_2b,
+            sel_high_b,
+            direct_value,
+            composed_value,
+            byte_value,
+            value_16b,
+            value_8b,
+        ) = match offset {
+            0 => (
+                false,
+                false,
+                false,
+                high_value,
+                low_value,
+                low_value as u8,
+                (low_value >> 16) as u16,
+                (low_value >> 8) as u8,
+            ),
+            1 => (
+                false,
+                false,
+                true,
+                high_value,
+                low_value,
+                (low_value >> 8) as u8,
+                (low_value >> 16) as u16,
+                low_value as u8,
+            ),
+            2 => (
+                false,
+                true,
+                false,
+                high_value,
+                low_value,
+                (low_value >> 16) as u8,
+                low_value as u16,
+                (low_value >> 24) as u8,
+            ),
+            3 => (
+                false,
+                true,
+                true,
+                high_value,
+                low_value,
+                (low_value >> 24) as u8,
+                low_value as u16,
+                (low_value >> 16) as u8,
+            ),
+            4 => (
+                true,
+                false,
+                false,
+                low_value,
+                high_value,
+                high_value as u8,
+                (high_value >> 16) as u16,
+                (high_value >> 8) as u8,
+            ),
+            5 => (
+                true,
+                false,
+                true,
+                low_value,
+                high_value,
+                (high_value >> 8) as u8,
+                (high_value >> 16) as u16,
+                high_value as u8,
+            ),
+            6 => (
+                true,
+                true,
+                false,
+                low_value,
+                high_value,
+                (high_value >> 16) as u8,
+                high_value as u16,
+                (high_value >> 24) as u8,
+            ),
+            7 => (
+                true,
+                true,
+                true,
+                low_value,
+                high_value,
+                (high_value >> 24) as u8,
+                high_value as u16,
+                (high_value >> 16) as u8,
+            ),
+            _ => unreachable!("Invalid offset"),
+        };
 
         row.set_common_fields(
             sel_high_4b,
             sel_high_2b,
             sel_high_b,
             direct_value,
+            composed_value,
             value_16b,
             value_8b,
             byte_value,
@@ -449,11 +500,32 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         self.std.range_check(self.table_16b_id, value_16b as i64, 1);
 
         let written_byte_value = input.value as u8;
+        let written_composed_value = match offset {
+            0 => (low_value & 0xFFFF_FF00) | (written_byte_value as u32),
+            1 => (low_value & 0xFFFF_00FF) | ((written_byte_value as u32) << 8),
+            2 => (low_value & 0xFF00_FFFF) | ((written_byte_value as u32) << 16),
+            3 => (low_value & 0x00FF_FFFF) | ((written_byte_value as u32) << 24),
+            4 => (high_value & 0xFFFF_FF00) | (written_byte_value as u32),
+            5 => (high_value & 0xFFFF_00FF) | ((written_byte_value as u32) << 8),
+            6 => (high_value & 0xFF00_FFFF) | ((written_byte_value as u32) << 16),
+            7 => (high_value & 0x00FF_FFFF) | ((written_byte_value as u32) << 24),
+            _ => unreachable!("Invalid offset"),
+        };
+        let write_values = if offset < 4 {
+            [written_composed_value, high_value]
+        } else {
+            [low_value, written_composed_value]
+        };
 
         if R::valid_for_write() {
             self.std.range_check(self.table_8b_id, written_byte_value as i64, 1);
         }
-        row.set_write_fields(input.is_write, written_byte_value);
+        row.set_write_fields(
+            input.is_write,
+            written_composed_value,
+            written_byte_value,
+            write_values,
+        );
 
         if input.is_write {
             assert!(

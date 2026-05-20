@@ -11,8 +11,12 @@ use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
 
+const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
+const CHUNKS_BY_RC: usize = CHUNK_NUM / RC;
 const CHUNK_BITS: usize = 8;
+const RC_BITS: u64 = (CHUNKS_BY_RC * CHUNK_BITS) as u64;
+const RC_MASK: u64 = (1 << RC_BITS) - 1;
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 const CHUNK_BITS_MASK: u64 = (1 << CHUNK_BITS) - 1;

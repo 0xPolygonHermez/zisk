@@ -880,7 +880,6 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         if padding_size > 0 {
             let mut padding_row = R::default();
             padding_row.set_b_op(ADD_OP);
-            padding_row.set_b_op_or_sext(ADD_OP as u16);
             trace.buffer[total_inputs..num_rows]
                 .par_iter_mut()
                 .for_each(|slot| *slot = padding_row);

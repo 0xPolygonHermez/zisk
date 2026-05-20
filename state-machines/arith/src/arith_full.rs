@@ -290,45 +290,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.div_overflow,
         );
 
-        let fab = if aop.na != aop.nb { F::ORDER_U64 - 1 } else { 1 };
-        row.set_fab(fab);
-
-        let na_fb = if aop.na {
-            if aop.nb {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        //  na * (1 - 2 * nb);
-        row.set_na_fb(na_fb);
-        let nb_fa = if aop.nb {
-            if aop.na {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        row.set_nb_fa(nb_fa);
-
-        let bus_res1 = if aop.sext {
-            0xFFFFFFFF
-        } else if aop.m32 {
-            0
-        } else if aop.main_mul {
-            aop.c[2] as u32 + ((aop.c[3] as u32) << 16)
-        } else if aop.main_div {
-            aop.a[2] as u32 + ((aop.a[3] as u32) << 16)
-        } else {
-            aop.d[2] as u32 + ((aop.d[3] as u32) << 16)
-        };
-
-        row.set_bus_res1(bus_res1);
-
         row
     }
 }

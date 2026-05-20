@@ -158,6 +158,7 @@ impl<F: PrimeField64> MemSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if dual_candidate {
                 dual_candidate = false;
+                trace[i].set_previous_step(last_step);
                 // println!("trace[{i}].previous_step = {last_step} (last_step)");
                 let previous_step = mem_ops[index - 1].step;
                 let previous_chunk_id = MemHelpers::mem_step_to_chunk(previous_step);
@@ -231,7 +232,10 @@ impl<F: PrimeField64> MemSM<F> {
             if addr_changes || mem_op.is_write {
                 // in case of read operations of same address, add one to allow many reads
                 // over same address and step
+                trace[i].set_read_same_addr(false);
                 increment -= 1;
+            } else {
+                trace[i].set_read_same_addr(true);
             }
             let l_increment = increment & ((1 << 22) - 1);
             let h_increment = increment >> 22;
@@ -255,6 +259,7 @@ impl<F: PrimeField64> MemSM<F> {
             // if dual, need to "close" not dual row
             trace[i].set_sel_dual(false);
             trace[i].set_step_dual(0);
+            trace[i].set_previous_step(last_step);
             last_step = step;
             i += 1;
         }
@@ -272,6 +277,7 @@ impl<F: PrimeField64> MemSM<F> {
         let value = last_row.get_all_value();
         let padding_size = trace.num_rows() - count;
         for i in count..trace.num_rows() {
+            trace[i].set_previous_step(step);
             trace[i].set_addr(addr);
             trace[i].set_step(step);
             trace[i].set_sel(false);
@@ -282,6 +288,7 @@ impl<F: PrimeField64> MemSM<F> {
             trace[i].set_addr_changes(false);
             trace[i].set_h_increment(0);
             trace[i].set_l_increment(0);
+            trace[i].set_read_same_addr(true);
             trace[i].set_sel_dual(false);
             trace[i].set_step_dual(0);
         }

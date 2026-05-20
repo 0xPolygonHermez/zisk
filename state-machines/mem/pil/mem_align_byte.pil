@@ -54,7 +54,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     const expr value_16b_factor = p2_16 * (1 - sel_high_2b) + sel_high_2b;
 
 
-    composed_value <== byte_value * byte_value_factor +
+    composed_value === byte_value * byte_value_factor +
                        value_8b * value_8b_factor + 
                        value_16b * value_16b_factor;
 
@@ -78,21 +78,21 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
     const expr mem_op = MEMORY_LOAD_OP + air.is_write * (MEMORY_STORE_OP - MEMORY_LOAD_OP);
 
     if (write == 1) {
-        written_composed_value <== written_byte_value * byte_value_factor +
+        written_composed_value === written_byte_value * byte_value_factor +
                        value_8b * value_8b_factor + 
                        value_16b * value_16b_factor;
 
         col witness bits(32) air.mem_write_values[2];
 
-        mem_write_values[0] <== sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
-        mem_write_values[1] <== sel_high_4b * (written_composed_value - direct_value) + direct_value;  
+        mem_write_values[0] === sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
+        mem_write_values[1] === sel_high_4b * (written_composed_value - direct_value) + direct_value;  
 
         permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
     }
 
     if (read == 1 && write == 1) {
         col witness bits(8) air.bus_byte;
-        bus_byte <== is_write * (written_byte_value - byte_value) + byte_value;
+        bus_byte === is_write * (written_byte_value - byte_value) + byte_value;
         permutation_proves(MEMORY_ID, [mem_op, main_addr, step, 1, bus_byte, 0]);
     } else if (read == 1) {
         permutation_proves(MEMORY_ID, [MEMORY_LOAD_OP, main_addr, step, 1, byte_value, 0]);

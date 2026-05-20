@@ -177,9 +177,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         col witness bits(32) air.addr1;
         col witness bits(32) air.addr2;
 
-        addr0 <== a_offset_imm0 + a_use_sp_imm1 * sp;
-        addr1 <== b_offset_imm0 + b_src_ind * a[0] +  b_use_sp_imm1 * sp;
-        addr2 <== store_offset + store_ind * a[0] + store_use_sp * sp;
+        addr0 === a_offset_imm0 + a_use_sp_imm1 * sp;
+        addr1 === b_offset_imm0 + b_src_ind * a[0] +  b_use_sp_imm1 * sp;
+        addr2 === store_offset + store_ind * a[0] + store_use_sp * sp;
 
         // to avoid the addr1 overflow when a[0] has high value, this is not problem
         // because use address of 32-bits
@@ -189,7 +189,7 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
         col witness bits(32) air.addr1;
         const expr air.addr2;
         addr0 = a_offset_imm0;
-        addr1 <== b_offset_imm0 + b_src_ind * a[0];
+        addr1 === b_offset_imm0 + b_src_ind * a[0];
         addr2 = store_offset + store_ind * a[0];
 
         // to avoid the addr1 overflow when a[0] has high value, this is not problem
