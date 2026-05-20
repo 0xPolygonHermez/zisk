@@ -1,9 +1,0 @@
-[package]
-name = "sha_hasher_common"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish = false
-
-[dependencies]
-alloy-sol-types = "1.5.7"

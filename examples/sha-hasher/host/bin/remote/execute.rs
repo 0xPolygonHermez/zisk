@@ -1,5 +1,6 @@
 use anyhow::Result;
-use test_artifacts::{Output, ELF_SHA_HASHER};
+use sha_hasher_common::Output;
+use sha_hasher_host::ELF_SHA_HASHER;
 use zisk_sdk::{ProverClient, ZiskStdin};
 
 #[tokio::main]

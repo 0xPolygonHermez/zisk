@@ -68,6 +68,7 @@ members = [
   "verifier",
 ]
 resolver = "2"
+exclude = ["test-artifacts"]
 
 [profile.release]
 opt-level = 3

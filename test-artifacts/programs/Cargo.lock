@@ -4654,23 +4654,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha_hasher"
-version = "0.1.0"
-dependencies = [
- "alloy-sol-types",
- "sha2",
- "sha_hasher_common",
- "ziskos",
-]
-
-[[package]]
-name = "sha_hasher_common"
-version = "1.0.0-beta"
-dependencies = [
- "alloy-sol-types",
-]
-
-[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

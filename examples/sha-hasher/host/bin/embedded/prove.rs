@@ -1,6 +1,7 @@
 use anyhow::Result;
 use sha2::{Digest, Sha256};
-use test_artifacts::{Output, ELF_SHA_HASHER};
+use sha_hasher_common::Output;
+use sha_hasher_host::ELF_SHA_HASHER;
 use zisk_sdk::{ExecutorKind, Proof, ProverClient, PublicValues, ZiskStdin};
 
 #[tokio::main]

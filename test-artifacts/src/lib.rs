@@ -6,8 +6,6 @@
 
 use zisk_sdk::{load_program, GuestProgram};
 
-pub use sha_hasher_common::Output;
-
 pub const ELF_ADD256: GuestProgram = load_program!("add256");
 pub const ELF_AGG_VERIFY: GuestProgram = load_program!("agg_verify");
 pub const ELF_ARITH256: GuestProgram = load_program!("arith256");
@@ -41,5 +39,4 @@ pub const ELF_SECP256R1: GuestProgram = load_program!("secp256r1");
 pub const ELF_SECP256R1_ADD: GuestProgram = load_program!("secp256r1_add");
 pub const ELF_SECP256R1_DBL: GuestProgram = load_program!("secp256r1_dbl");
 pub const ELF_SHA256: GuestProgram = load_program!("sha256");
-pub const ELF_SHA_HASHER: GuestProgram = load_program!("sha_hasher");
 pub const ELF_UINT256: GuestProgram = load_program!("uint256");

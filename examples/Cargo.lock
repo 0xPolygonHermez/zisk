@@ -858,15 +858,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blst"
-version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
-dependencies = [
- "hybrid-array",
-]
-
-[[package]]
 name = "borsh"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1766,8 +1757,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "0.17.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-0.17.1#80da0af80fe231766ff5967af188aa6d72c5b132"
+version = "0.18.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2064,6 +2055,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
  "foldhash 0.2.0",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2164,15 +2157,6 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "hybrid-array"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9155a582abd142abc056962c29e3ce5ff2ad5469f4246b537ed42c5deba857da"
-dependencies = [
- "typenum",
-]
 
 [[package]]
 name = "hybrid-array"
@@ -3022,22 +3006,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
-name = "panic-guest"
-version = "0.1.0"
-dependencies = [
- "ziskos",
-]
-
-[[package]]
-name = "panic-host"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tokio",
- "zisk-sdk",
-]
-
-[[package]]
 name = "parity-scale-codec"
 version = "3.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3686,9 +3654,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c3a14896dfa883796f1cb410461aef38810ea05f2b2c33c5aded3649095fdad"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
  "bitflags",
  "memchr",
@@ -4418,22 +4386,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-hasher-guest"
-version = "0.1.0"
-dependencies = [
- "alloy-sol-types",
- "sha-hasher-common",
- "sha2",
- "ziskos",
-]
-
-[[package]]
 name = "sha-hasher-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "sha-hasher-common",
  "sha2",
- "test-artifacts",
  "tokio",
  "zisk-sdk",
 ]
@@ -4473,13 +4431,6 @@ checksum = "9f3f15d4e239ebe08413eed880e0f9b5af4b40ee0472543320efa91d488e96a7"
 dependencies = [
  "cc",
  "cfg-if",
-]
-
-[[package]]
-name = "sha_hasher_common"
-version = "0.17.1"
-dependencies = [
- "alloy-sol-types",
 ]
 
 [[package]]
@@ -4813,9 +4764,8 @@ dependencies = [
 
 [[package]]
 name = "test-artifacts"
-version = "0.17.1"
+version = "1.0.0-beta"
 dependencies = [
- "sha_hasher_common",
  "zisk-sdk",
 ]
 
@@ -6520,46 +6470,6 @@ dependencies = [
  "zisk-core",
  "zisk-definitions",
  "zisk-pil",
-]
-
-[[package]]
-name = "ziskos"
-version = "1.0.0-beta"
-dependencies = [
- "anyhow",
- "ark-bn254",
- "ark-ec",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "aurora-engine-modexp",
- "bincode",
- "blst",
- "bytes",
- "cfg-if",
- "ctor",
- "fields 0.18.0",
- "getrandom 0.2.17",
- "lazy_static",
- "lib-c",
- "libc",
- "num-bigint",
- "num-integer",
- "num-traits",
- "once_cell",
- "paste",
- "precompiles-helpers",
- "rand 0.8.6",
- "ripemd",
- "secp256k1",
- "serde",
- "sha2",
- "spin",
- "tiny-keccak",
- "tokio",
- "zisk-common",
- "zisk-definitions",
- "zisk-verifier",
- "zkvm-interface",
 ]
 
 [[package]]
