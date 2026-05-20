@@ -28,6 +28,7 @@ zisk-sdk = { path = "../../sdk" }
 precompiles-helpers = { path = "../../precompiles/helpers" }
 
 rand = "0.8.1"
+ruint = { version = "1", default-features = false }
 
 # [workspace.lints.rust]
 # unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_vendor, values("zisk"))', 'cfg(zisk_hints)'] }
