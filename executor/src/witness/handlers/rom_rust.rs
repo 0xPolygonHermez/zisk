@@ -133,13 +133,15 @@ mod tests {
         let plan =
             Plan::new(AIRGROUP_ID, AIR_ID, None, InstanceType::Instance, CheckPoint::None, None);
         let ictx = InstanceCtx::new(GID, plan);
-        Box::new(RomInstance::new(
-            Arc::new(ZiskRom::default()),
-            ictx,
-            Arc::new(Vec::<AtomicU64>::new()),
-            Arc::new(Vec::<AtomicU64>::new()),
-            rh_data,
-        ))
+        if let Some(rh_data) = rh_data {
+            Box::new(RomInstance::new_asm(Arc::new(ZiskRom::default()), ictx, rh_data))
+        } else {
+            Box::new(RomInstance::new_rust(
+                Arc::new(ZiskRom::default()),
+                ictx,
+                Arc::new(Vec::<AtomicU64>::new()),
+            ))
+        }
     }
 
     fn run_pre_calculate<'a>(
@@ -183,7 +185,7 @@ mod tests {
     #[test]
     fn pre_calculate_skips_and_marks_ready_when_skip_collector_true() {
         // ASM-execution RomInstance (rh_data is Some) → skip_collector() == true.
-        let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()));
+        let rh_data = AsmRunnerRH::new(AsmRHData::new(0, Vec::new()));
         let mut secn_instances: SecnInstanceMap<F> = HashMap::new();
         secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
 

@@ -92,7 +92,7 @@ pub struct RomInstance {
 
 impl RomInstance {
     /// Creates a `RomInstance` for the Rust emulator path.
-    pub(crate) fn new_rust(
+    pub fn new_rust(
         zisk_rom: Arc<ZiskRom>,
         ictx: InstanceCtx,
         inst_count: Arc<Vec<AtomicU64>>,
@@ -101,7 +101,7 @@ impl RomInstance {
     }
 
     /// Creates a `RomInstance` for the ASM emulator path.
-    pub(crate) fn new_asm(zisk_rom: Arc<ZiskRom>, ictx: InstanceCtx, rh_data: AsmRunnerRH) -> Self {
+    pub fn new_asm(zisk_rom: Arc<ZiskRom>, ictx: InstanceCtx, rh_data: AsmRunnerRH) -> Self {
         Self { zisk_rom, ictx, mode: RomInstanceMode::Asm(AsmState::new(rh_data)) }
     }
 

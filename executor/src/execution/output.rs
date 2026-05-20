@@ -167,8 +167,7 @@ mod tests {
 
     #[test]
     fn asm_await_rom_histogram_returns_some_after_join() {
-        let rh_handle =
-            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
+        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         // `mo` is None to assert that await_rom_histogram doesn't touch the mo slot.
         let rh = backend.await_rom_histogram().expect("await_rom_histogram on Asm");
@@ -186,8 +185,7 @@ mod tests {
 
     #[test]
     fn asm_await_rom_histogram_double_take_yields_none() {
-        let rh_handle =
-            std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new(), Vec::new()))));
+        let rh_handle = std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))));
         let mut backend = BackendArtifacts::Asm { mo: None, rh: Some(rh_handle) };
         backend.await_rom_histogram().expect("first call OK");
         let second = backend.await_rom_histogram().expect("second call OK (None)");
