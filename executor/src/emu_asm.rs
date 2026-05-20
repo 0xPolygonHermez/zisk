@@ -4,9 +4,9 @@ use std::{
     thread::JoinHandle,
 };
 
-use crate::{AsmResources, StaticDataBus};
 use crate::{
-    DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
+    pub_outs_collector::PubOutsCollector, AsmResources, NestedDeviceMetricsList, StaticDataBus,
+    StaticSMBundle, MAX_NUM_STEPS,
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
@@ -172,6 +172,7 @@ impl EmulatorAsm {
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
     /// * `u64` - Total number of steps.
+    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
@@ -185,11 +186,11 @@ impl EmulatorAsm {
         _caller_stats_scope: &StatsScope,
     ) -> Result<(
         Vec<EmuTrace>,
-        DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<Result<AsmRunnerMO>>>,
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
+        PubOutsCollector,
     )> {
         let asm_resources = self
             .asm_resources
@@ -261,10 +262,10 @@ impl EmulatorAsm {
         let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
         match mt_result {
-            Ok((min_traces, main_count, secn_count)) => {
+            Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
                 stats_end!(stats, &_exec_scope);
-                Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+                Ok((min_traces, counters, Some(handle_mo), handle_rh, steps, pub_outs))
             }
             Err(e) => {
                 // MT already self-cleaned (signaled reset + joined its stdio
@@ -294,7 +295,7 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> Result<(Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList)> {
+    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
@@ -414,32 +415,26 @@ impl EmulatorAsm {
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
-        let mut main_count = Vec::with_capacity(data_buses.len());
-        let mut secn_count = HashMap::new();
+        let mut counters = HashMap::new();
+        let mut pub_outs = PubOutsCollector::new();
 
-        for (chunk_id, data_bus) in data_buses {
+        for (chunk_id, mut data_bus) in data_buses {
+            pub_outs.0.extend(data_bus.take_pub_outs().0);
             let databus_counters = data_bus.into_devices(false);
 
             for (idx, counter) in databus_counters.into_iter() {
-                match idx {
-                    None => {
-                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
-                    }
-                    Some(idx) => {
-                        let counter = counter.ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "secondary counter is None for chunk {} idx {idx}",
-                                chunk_id.0
-                            )
-                        })?;
-                        secn_count.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
-                    }
-                }
+                let idx = idx.ok_or_else(|| {
+                    anyhow::anyhow!("unexpected unindexed counter for chunk {}", chunk_id.0)
+                })?;
+                let counter = counter.ok_or_else(|| {
+                    anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
+                })?;
+                counters.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
             }
         }
 
         stats_end!(stats, &_mt_scope);
-        Ok((emu_traces, main_count, secn_count))
+        Ok((emu_traces, counters, pub_outs))
     }
 }
 

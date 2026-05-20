@@ -3,10 +3,8 @@
 //! This module handles the execution of a ZisK ROM program, coordinating
 //! the emulator backend and hints stream processing.
 
-use crate::{
-    AsmResources, DeviceMetricsList, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList,
-    StaticSMBundle,
-};
+use crate::pub_outs_collector::PubOutsCollector;
+use crate::{AsmResources, EmulatorAsm, EmulatorRust, NestedDeviceMetricsList, StaticSMBundle};
 use arc_swap::ArcSwap;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
@@ -23,16 +21,16 @@ use anyhow::Result;
 pub struct RomExecutionOutput {
     /// Minimal traces collected during execution.
     pub min_traces: Vec<EmuTrace>,
-    /// Device metrics for main state machines.
-    pub main_count: DeviceMetricsList,
     /// Device metrics for secondary state machines.
-    pub secn_count: NestedDeviceMetricsList,
+    pub counters: NestedDeviceMetricsList,
     /// Handle to memory operations thread (for ASM emulator).
     pub handle_mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
     /// Handle to hints runner thread (for ASM emulator).
     pub handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
     /// Execution result with step counts.
     pub steps: u64,
+    /// Public outputs accumulated during execution (low/high 32-bit halves).
+    pub pub_outs: PubOutsCollector,
 }
 
 pub struct RomExecutor {
@@ -126,7 +124,7 @@ impl RomExecutor {
         caller_stats_scope: &StatsScope,
     ) -> Result<RomExecutionOutput> {
         let stdin = self.stdin.load_full();
-        let (min_traces, main_count, secn_count, handle_mo, handle_rh, steps) =
+        let (min_traces, counters, handle_mo, handle_rh, steps, pub_outs) =
             match self.is_asm_execution.load(Ordering::SeqCst) {
                 true => self.emulator_asm.execute(
                     zisk_rom,
@@ -140,6 +138,6 @@ impl RomExecutor {
                 false => self.emulator_rust.execute(zisk_rom, &stdin, sm_bundle)?,
             };
 
-        Ok(RomExecutionOutput { min_traces, main_count, secn_count, handle_mo, handle_rh, steps })
+        Ok(RomExecutionOutput { min_traces, counters, handle_mo, handle_rh, steps, pub_outs })
     }
 }

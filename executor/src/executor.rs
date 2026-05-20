@@ -217,7 +217,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .assign_rom_instance(&pctx)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
-        let main_output = self.planner.plan_main::<F>(&output.min_traces, output.main_count);
+        let main_output = self.planner.plan_main(&output.min_traces)?;
         *self.state.min_traces.write().map_err(|e| {
             proofman_common::ProofmanError::InvalidSetup(format!("min_traces lock poisoned: {e}"))
         })? = Some(output.min_traces);
@@ -236,10 +236,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Phase 3: Plan secondary instances
         stats_begin!(self.state.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
-        let mut secn_count = output.secn_count;
+        let mut counters = output.counters;
         let mut secn_planning = self.planner.plan_secondary(
             self.registry.sm_bundle(),
-            &mut secn_count,
+            &mut counters,
             self.rom_executor.is_asm_emulator(),
         );
 
@@ -342,9 +342,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             })
             .collect::<ProofmanResult<Vec<_>>>()?;
 
-        // Add public values to the proof context
+        // Add public values to the proof context (Option D: pub_outs flow directly
+        // from the executor output, not via the planner's downcast).
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
-        for (index, value) in main_output.public_values.iter() {
+        for (index, value) in output.pub_outs.0.iter() {
             publics.inputs[*index as usize] = F::from_u32(*value);
         }
         drop(publics);
