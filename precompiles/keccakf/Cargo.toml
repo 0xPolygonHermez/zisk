@@ -17,7 +17,6 @@ zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 
 precompiles-common = { workspace = true }

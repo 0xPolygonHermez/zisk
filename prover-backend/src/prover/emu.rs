@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
 use asm_runner::HintsShmem;
-use executor::initialize_executor;
+use executor::ZiskExecutor;
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -43,7 +43,7 @@ impl<'a> EmuSetupBuilder<'a> {
 
     /// Execute the setup and return the program proving and verification keys.
     pub fn run(self) -> Result<ProgramVK> {
-        self.prover.setup_internal(self.elf, false)
+        self.prover.setup_internal(self.elf, false, false)
     }
 }
 
@@ -86,7 +86,12 @@ impl ProverEngine for EmuProver {
         EmuSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<ProgramVK> {
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        _with_hints: bool,
+        _emulator_only: bool,
+    ) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
@@ -322,8 +327,7 @@ impl EmuCoreProver {
             )?);
         }
 
-        let executor =
-            initialize_executor(options.verbose_mode, shared_tables, false, &proofman.get_wcm())?;
+        let executor = ZiskExecutor::new(&proofman.get_wcm(), options.verbose_mode, shared_tables)?;
 
         executor.set_packed(options.packed);
 

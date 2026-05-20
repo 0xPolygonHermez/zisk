@@ -1,9 +1,9 @@
 //! syscall_bn254_complex_mul system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::complex::SyscallComplex256;
@@ -37,9 +37,9 @@ pub extern "C" fn syscall_bn254_complex_mul(
     params: &mut SyscallBn254ComplexMulParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BN254_COMPLEX_MUL_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
         let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();

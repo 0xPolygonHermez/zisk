@@ -18,17 +18,12 @@ zisk-pil = { workspace = true }
 mem-common = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
-witness = { workspace = true }
 pil-std-lib = { workspace = true }
 
 fields = { workspace=true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-num-bigint = { workspace = true }
-
-num-traits = "0.2"
 
 [features]
 default = []

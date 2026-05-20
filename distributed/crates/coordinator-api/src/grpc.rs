@@ -207,6 +207,7 @@ impl TryFrom<JobKind> for DomainJobKind {
                 hash_id: r.hash_id,
                 program_name: r.program_name,
                 with_hints: r.with_hints,
+                emulator_only: r.emulator_only,
             })),
             job_kind::Kind::Prove(r) => {
                 let input = r
@@ -263,6 +264,7 @@ impl From<DomainJobKind> for JobKind {
                 hash_id: r.hash_id,
                 program_name: r.program_name,
                 with_hints: r.with_hints,
+                emulator_only: r.emulator_only,
             }),
             DomainJobKind::Prove(r) => Kind::Prove(ProveRequest {
                 hash_id: r.hash_id,

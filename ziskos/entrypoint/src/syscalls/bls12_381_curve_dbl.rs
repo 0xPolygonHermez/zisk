@@ -1,9 +1,9 @@
 //! syscall_bls12_381_curve_dbl system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::point::SyscallPoint384;
@@ -30,9 +30,9 @@ pub extern "C" fn syscall_bls12_381_curve_dbl(
     p: &mut SyscallPoint384,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BLS12_381_CURVE_DBL_ID, p);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let _p1 = [p.x, p.y].concat().try_into().unwrap();
         let mut p2: [u64; 12] = [0; 12];

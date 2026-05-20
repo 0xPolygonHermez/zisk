@@ -5,11 +5,36 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::OperationSha256Data;
 use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
 
-use super::{sha256f_constants::*, Sha256fInput};
+use super::sha256f_constants::*;
+
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct Sha256fInput {
+    pub step_main: u64,
+    pub addr_main: u32,
+    pub state_addr: u32,
+    pub input_addr: u32,
+    pub state: [u64; 4],
+    pub input: [u64; 8],
+}
+
+impl Sha256fInput {
+    pub fn from(values: &OperationSha256Data<u64>) -> Self {
+        Self {
+            step_main: values[4],
+            addr_main: values[3] as u32,
+            state_addr: values[5] as u32,
+            input_addr: values[6] as u32,
+            state: values[7..11].try_into().unwrap(),
+            input: values[11..19].try_into().unwrap(),
+        }
+    }
+}
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
 pub struct Sha256fSM<F: PrimeField64> {
@@ -332,6 +357,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

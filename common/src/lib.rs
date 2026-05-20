@@ -13,6 +13,7 @@ mod regular_counters;
 mod regular_planner;
 mod types;
 mod utils;
+mod zisk_precompile;
 
 pub use bus::*;
 pub use component::*;
@@ -28,3 +29,4 @@ pub use regular_counters::*;
 pub use regular_planner::*;
 pub use types::*;
 pub use utils::*;
+pub use zisk_precompile::*;

@@ -9,7 +9,7 @@ use zisk_core::{InstContext, ZiskInst};
 pub const ROM_BUS_ID: BusId = BusId(1);
 
 /// The size of the ROM data payload.
-pub const ROM_BUS_DATA_SIZE: usize = 3;
+pub const ROM_BUS_DATA_SIZE: usize = 4;
 
 /// Index of the step value in the ROM data payload.
 const STEP: usize = 0;
@@ -17,8 +17,11 @@ const STEP: usize = 0;
 /// Index of the program counter (PC) value in the ROM data payload.
 const PC: usize = 1;
 
+/// Index of the instruction in the ROM data payload.
+const INDEX: usize = 2;
+
 /// Index of the end flag in the ROM data payload.
-const END: usize = 2;
+const END: usize = 3;
 
 /// Type alias for ROM data payload.
 pub type RomData<D> = [D; ROM_BUS_DATA_SIZE];
@@ -44,6 +47,7 @@ impl RomBusData<u64> {
         [
             inst_ctx.step,          // STEP
             inst_ctx.pc,            // PC
+            instruction.index,      // INDEX
             instruction.end as u64, // END
         ]
     }
@@ -70,6 +74,18 @@ impl RomBusData<u64> {
     #[inline(always)]
     pub fn get_pc(data: &RomData<u64>) -> PayloadType {
         data[PC]
+    }
+
+    /// Retrieves the index value from ROM data.
+    ///
+    /// # Arguments
+    /// * `data` - A reference to the ROM data payload.
+    ///
+    /// # Returns
+    /// The INDEX value as a `PayloadType`.
+    #[inline(always)]
+    pub fn get_index(data: &RomData<u64>) -> PayloadType {
+        data[INDEX]
     }
 
     /// Retrieves the end flag from ROM data.

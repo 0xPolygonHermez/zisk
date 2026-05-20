@@ -1,9 +1,9 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bin_decomp;

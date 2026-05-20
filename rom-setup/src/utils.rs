@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use fields::{Goldilocks, PrimeField64};
-use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanResult};
-use sm_rom::RomSM;
+use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanError, ProofmanResult};
+use sm_rom::CustomRom;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -35,10 +35,8 @@ pub fn gen_elf_hash<F: PrimeField64>(
     blowup_factor: u64,
     merkle_tree_arity: u64,
 ) -> ProofmanResult<Vec<F>> {
-    let buffer = vec![F::ZERO; RomRomTrace::<F>::NUM_ROWS * RomRomTrace::<F>::ROW_SIZE];
-    let mut custom_rom_trace: RomRomTrace<F> = RomRomTrace::new_from_vec(buffer)?;
-
-    RomSM::compute_custom_trace_rom(elf, &mut custom_rom_trace);
+    let mut custom_rom_trace =
+        CustomRom::build::<F>(elf).map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
 
     write_custom_commit_trace(
         pctx,

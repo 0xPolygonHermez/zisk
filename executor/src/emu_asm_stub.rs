@@ -1,6 +1,6 @@
 use std::{sync::Arc, thread::JoinHandle};
 
-use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{pub_outs_collector::PubOutsCollector, NestedDeviceMetricsList, StaticSMBundle};
 use anyhow::Result;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH, HintsShmem};
 use precompiles_hints::HintsProcessor;
@@ -35,11 +35,11 @@ impl EmulatorAsm {
         _caller_stats_scope: &StatsScope,
     ) -> Result<(
         Vec<EmuTrace>,
-        DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<Result<AsmRunnerMO>>>,
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
+        PubOutsCollector,
     )> {
         unimplemented!("AsmRunner is only supported on Linux x86_64 platforms.");
     }
