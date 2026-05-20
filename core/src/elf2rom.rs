@@ -20,6 +20,23 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =
         vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload_from_bytes(elf)?];
+
+    // The guest must export a `#[no_mangle] fn main` — that is the symbol the
+    // `ziskos::entrypoint!(main);` macro generates and the one the ELF entry
+    // point resolves to.
+    let main_addr = get_symbol_addresses_from_bytes(elf, &["main"])
+        .ok()
+        .and_then(|m| m.get("main").copied())
+        .unwrap_or(0);
+    if main_addr == 0 {
+        return Err(format!(
+            "Guest ELF has no `main` symbol (entry_point=0x{:x}). \
+             Declare `#![no_main]` and `ziskos::entrypoint!(main);` at the guest program root.",
+            payloads[1].entry_point
+        )
+        .into());
+    }
+
     // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
     let dma_addrs = get_dma_symbol_addresses(elf);
 
