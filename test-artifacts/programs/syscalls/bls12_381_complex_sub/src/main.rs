@@ -1,7 +1,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{syscall_bls12_381_complex_sub, SyscallBls12_381ComplexSubParams, SyscallComplex384};
+use ziskos::syscalls::{
+    syscall_bls12_381_complex_sub, SyscallBls12_381ComplexSubParams, SyscallComplex384,
+};
 
 fn main() {
     let mut f1 = SyscallComplex384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
