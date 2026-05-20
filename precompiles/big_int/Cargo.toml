@@ -17,9 +17,12 @@ lib-c = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 pil-std-lib = { workspace = true }
-fields = { workspace=true }
+fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
+
+[dev-dependencies]
+test-artifacts = { workspace = true }
 
 [features]
 default = []

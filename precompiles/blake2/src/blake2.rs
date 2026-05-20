@@ -116,10 +116,7 @@ impl<F: PrimeField64> Blake2SM<F> {
         for (i, &inp) in input.iter().enumerate() {
             let low_inp = [inp as u16, (inp >> 16) as u16];
             let high_inp = [(inp >> 32) as u16, (inp >> 48) as u16];
-            for j in 0..2 {
-                trace[m_idx].set_m_limbs(0, j, low_inp[j]);
-                trace[m_idx].set_m_limbs(1, j, high_inp[j]);
-            }
+            trace[m_idx].set_all_m_limbs(&[low_inp, high_inp]);
             range_checks[low_inp[0] as usize] += 1;
             range_checks[low_inp[1] as usize] += 1;
             range_checks[high_inp[0] as usize] += 1;
@@ -139,8 +136,7 @@ impl<F: PrimeField64> Blake2SM<F> {
             let inp = input[s[i]];
             ms[i] = inp;
 
-            trace[m_idx].set_ms(0, inp as u32);
-            trace[m_idx].set_ms(1, (inp >> 32) as u32);
+            trace[m_idx].set_all_ms(&[inp as u32, (inp >> 32) as u32]);
             m_idx += 1;
             if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
                 m_idx += 1;
@@ -255,43 +251,27 @@ impl<F: PrimeField64> Blake2SM<F> {
         ) {
             let low_va = [va as u16, (va >> 16) as u16];
             let high_va = [(va >> 32) as u16, (va >> 48) as u16];
-            for j in 0..2 {
-                row.set_va_limbs(0, j, low_va[j]);
-                row.set_va_limbs(1, j, high_va[j]);
-            }
+            row.set_all_va_limbs(&[low_va, high_va]);
             range_checks[low_va[0] as usize] += 1;
             range_checks[low_va[1] as usize] += 1;
             range_checks[high_va[0] as usize] += 1;
             range_checks[high_va[1] as usize] += 1;
 
-            let low_vb = vb as u32;
-            let low_vb = u32_to_le_bits(low_vb);
-            let high_vb = (vb >> 32) as u32;
-            let high_vb = u32_to_le_bits(high_vb);
-            for j in 0..32 {
-                row.set_vb(0, j, low_vb[j]);
-                row.set_vb(1, j, high_vb[j]);
-            }
+            let low_vb = u32_to_le_bits(vb as u32);
+            let high_vb = u32_to_le_bits((vb >> 32) as u32);
+            row.set_all_vb(&[low_vb, high_vb]);
 
             let low_vc = [vc as u16, (vc >> 16) as u16];
             let high_vc = [(vc >> 32) as u16, (vc >> 48) as u16];
-            for j in 0..2 {
-                row.set_vc_limbs(0, j, low_vc[j]);
-                row.set_vc_limbs(1, j, high_vc[j]);
-            }
+            row.set_all_vc_limbs(&[low_vc, high_vc]);
             range_checks[low_vc[0] as usize] += 1;
             range_checks[low_vc[1] as usize] += 1;
             range_checks[high_vc[0] as usize] += 1;
             range_checks[high_vc[1] as usize] += 1;
 
-            let low_vd = vd as u32;
-            let low_vd = u32_to_le_bits(low_vd);
-            let high_vd = (vd >> 32) as u32;
-            let high_vd = u32_to_le_bits(high_vd);
-            for j in 0..32 {
-                row.set_vd(0, j, low_vd[j]);
-                row.set_vd(1, j, high_vd[j]);
-            }
+            let low_vd = u32_to_le_bits(vd as u32);
+            let high_vd = u32_to_le_bits((vd >> 32) as u32);
+            row.set_all_vd(&[low_vd, high_vd]);
         }
 
         fn u32_to_le_bits(x: u32) -> [bool; 32] {

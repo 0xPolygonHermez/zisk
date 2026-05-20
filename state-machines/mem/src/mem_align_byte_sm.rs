@@ -110,8 +110,7 @@ impl<F: PrimeField64, R: MemAlignByteTraceRowOps<F>> MemAlignByteRow<F, MemAlign
         } else {
             self.get_byte_value()
         });
-        self.set_mem_write_values(0, mem_write_values[0]);
-        self.set_mem_write_values(1, mem_write_values[1]);
+        self.set_all_mem_write_values(&mem_write_values);
     }
     #[inline(always)]
     fn valid_for_read() -> bool {
@@ -258,8 +257,7 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
     ) {
         self.set_written_composed_value(written_composed_value);
         self.set_written_byte_value(written_byte_value);
-        self.set_mem_write_values(0, mem_write_values[0]);
-        self.set_mem_write_values(1, mem_write_values[1]);
+        self.set_all_mem_write_values(&mem_write_values);
     }
     #[inline(always)]
     fn valid_for_read() -> bool {

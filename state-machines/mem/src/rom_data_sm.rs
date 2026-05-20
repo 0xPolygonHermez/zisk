@@ -184,8 +184,7 @@ impl<F: PrimeField64> RomDataSM<F> {
                 last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
                 max_range_distance_count += 1;
                 trace[i].set_addr(last_addr);
-                trace[i].set_value(0, 0);
-                trace[i].set_value(1, 0);
+                trace[i].set_all_value(&[0; 2]);
                 trace[i].set_sel(false);
                 // the step, value of internal reads isn't relevant
                 trace[i].set_step(0);
@@ -207,8 +206,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             trace[i].set_sel(true);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[i].set_value(0, low_val);
-            trace[i].set_value(1, high_val);
+            trace[i].set_all_value(&[low_val, high_val]);
 
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes || (i == 0 && segment_id == 0) {

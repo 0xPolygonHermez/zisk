@@ -5,12 +5,10 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
+test-artifacts = { workspace = true }
 anyhow = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
-[build-dependencies]
-zisk-sdk = { workspace = true }
 
 [features]
 default = []

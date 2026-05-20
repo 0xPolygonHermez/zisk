@@ -14,3 +14,14 @@ zisk_common::zisk_precompile! {
         (OperationAdd256Data, Add256Input),
     ],
 }
+
+#[cfg(test)]
+mod add256_tests {
+    use test_artifacts::ELF_ADD256;
+    use zisk_common::io::ZiskStdin;
+
+    #[test]
+    fn add256_tests() {
+        ELF_ADD256.run_emulation(ZiskStdin::new(), None).expect("add256 guest emulation failed");
+    }
+}

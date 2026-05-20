@@ -27,7 +27,7 @@ sm-arith = { workspace = true }
 sm-binary = { workspace = true }
 zisk-definitions = { workspace = true }
 
-fields = { workspace=true }
+fields = { workspace = true }
 clap = { workspace = true }
 sysinfo = { workspace = true }
 serde_json = { workspace = true }

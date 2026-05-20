@@ -189,31 +189,30 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             _mask ^ (_mask << (count * 8))
         };
 
-        trace.set_sb(0, (mask & 0x0000_0000_0000_00FF) != 0);
-        trace.set_sb(1, (mask & 0x0000_0000_0000_FF00) != 0);
-        trace.set_sb(2, (mask & 0x0000_0000_00FF_0000) != 0);
-        trace.set_sb(3, (mask & 0x0000_0000_FF00_0000) != 0);
-        trace.set_sb(4, (mask & 0x0000_00FF_0000_0000) != 0);
-        trace.set_sb(5, (mask & 0x0000_FF00_0000_0000) != 0);
-        trace.set_sb(6, (mask & 0x00FF_0000_0000_0000) != 0);
-        trace.set_sb(7, (mask & 0xFF00_0000_0000_0000) != 0);
+        let sb = [
+            (mask & 0x0000_0000_0000_00FF) != 0,
+            (mask & 0x0000_0000_0000_FF00) != 0,
+            (mask & 0x0000_0000_00FF_0000) != 0,
+            (mask & 0x0000_0000_FF00_0000) != 0,
+            (mask & 0x0000_00FF_0000_0000) != 0,
+            (mask & 0x0000_FF00_0000_0000) != 0,
+            (mask & 0x00FF_0000_0000_0000) != 0,
+            (mask & 0xFF00_0000_0000_0000) != 0,
+        ];
+        trace.set_all_sb(&sb);
+        trace.set_all_rb(&rb);
+        trace.set_all_pb(&pb);
 
-        for (index, byte) in rb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_rb(index, *byte);
-        }
-        for (index, byte) in pb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_pb(index, *byte);
-        }
-
-        trace.set_selr(0, selr_value == 0);
-        trace.set_selr(1, selr_value == 1);
-        trace.set_selr(2, selr_value == 2);
-        trace.set_selr(3, selr_value == 3);
-        trace.set_selr(4, selr_value == 4);
-        trace.set_selr(5, selr_value == 5);
-        trace.set_selr(6, selr_value == 6);
+        let selr = [
+            selr_value == 0,
+            selr_value == 1,
+            selr_value == 2,
+            selr_value == 3,
+            selr_value == 4,
+            selr_value == 5,
+            selr_value == 6,
+        ];
+        trace.set_all_selr(&selr);
 
         let table_row = if is_memcmp {
             let post_count = DmaInfo::get_post_count(input.encoded);
@@ -230,27 +229,25 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
             assert!(abs_diff_dst_src <= 0xFF);
             let abs_diff_dst_src = abs_diff_dst_src as u8;
             trace.set_abs_diff_dst_src(abs_diff_dst_src);
-            trace.set_bus_write_value(0, input.dst_pre_value as u32);
-            trace.set_bus_write_value(1, (input.dst_pre_value >> 32) as u32);
+            trace.set_all_bus_write_value(&[
+                input.dst_pre_value as u32,
+                (input.dst_pre_value >> 32) as u32,
+            ]);
 
             // the index of different byte determines the factor
             let dst_index = dst_offset as usize + count - 1;
             if is_negative {
                 // implies that count > 0
                 if dst_index < 4 {
-                    trace.set_diff_factor(0, F::ORDER_U64 - (1 << (8 * dst_index)));
-                    trace.set_diff_factor(1, 0);
+                    trace.set_all_diff_factor(&[F::ORDER_U64 - (1 << (8 * dst_index)), 0]);
                 } else {
-                    trace.set_diff_factor(0, 0);
-                    trace.set_diff_factor(1, F::ORDER_U64 - (1 << (8 * (dst_index - 4))));
+                    trace.set_all_diff_factor(&[0, F::ORDER_U64 - (1 << (8 * (dst_index - 4)))]);
                 }
             } else if is_nz {
                 if dst_index < 4 {
-                    trace.set_diff_factor(0, 1 << (8 * dst_index));
-                    trace.set_diff_factor(1, 0);
+                    trace.set_all_diff_factor(&[1 << (8 * dst_index), 0]);
                 } else {
-                    trace.set_diff_factor(0, 0);
-                    trace.set_diff_factor(1, 1 << (8 * (dst_index - 4)));
+                    trace.set_all_diff_factor(&[0, 1 << (8 * (dst_index - 4))]);
                 }
             }
 
