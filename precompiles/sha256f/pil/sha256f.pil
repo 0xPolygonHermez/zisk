@@ -225,7 +225,6 @@ airtemplate Sha256f(const int N = 2**22) {
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17);
 
     col witness bits(1) in_use;
-
     in_use * (1 - in_use) === 0;
 
     const expr in_use_active = clock_set(start: 1, end: 17);
