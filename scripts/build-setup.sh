@@ -52,11 +52,15 @@ set -euo pipefail
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [-v|-vv|--verbose]
+         [--skip-compile-pil] [--release] [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
                          output and by --snark / --compressed-final as input.
+  --release              Look up the release-namespace bucket artifact
+                         (zisk-provingkey-<VERSION>.*). Without this flag,
+                         the "pre-<VERSION>" namespace is used, matching the
+                         default upload namespace of package-proving-key.sh.
   --recursive-jobs N     Concurrent recursive1 air pipelines (circom + pil2com).
                          Default 1. Each job can use several GB; size by RAM.
                          Also settable via RECURSIVE_JOBS env var.
@@ -92,6 +96,7 @@ BUILD_DIR="build"
 RECURSIVE_JOBS_ARG=""
 SETUP_JOBS_ARG=""
 SKIP_COMPILE_PIL=0
+RELEASE=0
 VERBOSE_COUNT=0
 
 set_mode() {
@@ -108,6 +113,7 @@ while [ $# -gt 0 ]; do
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
+    --release)           RELEASE=1;               shift ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
@@ -144,42 +150,13 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 OUT_DIR="${OUT_DIR:-$HOME/.zisk}"
-BUCKET="https://storage.googleapis.com/zisk-setup"
 
 command -v jq >/dev/null || { echo "jq not on PATH" >&2; exit 1; }
 
-# Resolve the pil2-proofman checkout. PROOFMAN_DIR env wins (handy for local dev
-# against an unpushed branch). Otherwise read it from cargo's git checkout for the
-# `proofman` dep in Cargo.toml — that's the source that will actually be compiled
-# into cargo-zisk, so it's also the one whose pil/package.json must feed the cache key.
-resolve_proofman_dir() {
-  cargo fetch >&2
-  local manifest
-  manifest="$(cargo metadata --format-version 1 \
-    | jq -r '.packages[] | select(.name=="proofman") | .manifest_path' | head -n1)"
-  [ -n "$manifest" ] && [ "$manifest" != "null" ] \
-    || { echo "could not locate 'proofman' crate via cargo metadata" >&2; return 1; }
-  local dir
-  dir="$(dirname "$manifest")"
-  while [ "$dir" != "/" ] && [ -n "$dir" ]; do
-    if [ -f "$dir/package.json" ] && [ -d "$dir/pil2-components/lib/std/pil" ]; then
-      printf '%s\n' "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  echo "walked up from $manifest without finding package.json + pil2-components/" >&2
-  return 1
-}
-
-if [ -n "${PROOFMAN_DIR:-}" ]; then
-  [ -d "$PROOFMAN_DIR" ] || { echo "PROOFMAN_DIR not a directory: $PROOFMAN_DIR" >&2; exit 1; }
-else
-  PROOFMAN_DIR="$(resolve_proofman_dir)"
-fi
-[ -f "$PROOFMAN_DIR/package.json" ] || { echo "package.json not found at $PROOFMAN_DIR/package.json" >&2; exit 1; }
-[ -d "$PROOFMAN_DIR/pil2-components/lib/std/pil" ] || { echo "pil2-components/lib/std/pil not found at $PROOFMAN_DIR" >&2; exit 1; }
-echo "proofman dir: $PROOFMAN_DIR"
+# Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets
+# VERSION / BUCKET / PK_NAME / HASH_NAME / INCLUDE_PATHS. See lib/setup-common.sh
+# for the contract.
+. "$SCRIPT_DIR/lib/setup-common.sh"
 
 # compile-pil shells into pil2-compiler from $PROOFMAN_DIR/node_modules. The
 # cargo-managed checkout starts empty; install on demand so the user doesn't have to.
@@ -206,64 +183,7 @@ if [ $USE_BUCKET -eq 1 ]; then
   command -v curl >/dev/null || { echo "curl not on PATH" >&2; exit 1; }
 fi
 
-VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 echo "version: $VERSION  mode: $MODE"
-
-INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
-PK_NAME="zisk-provingkey-${VERSION}.tar.gz"
-HASH_NAME="zisk-provingkey-${VERSION}.input-hash"
-
-# ----- frops fixed data ------------------------------------------------------
-# Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
-# Skipped under --skip-compile-pil: the on-disk *_fixed.bin files are paired
-# with the reused pilout, and frops generation is idempotent given unchanged
-# sources, so regenerating only burns cargo-build time. compute_input_hash
-# checks the bins exist and errors cleanly if they don't.
-generate_frops() {
-  if [ $SKIP_COMPILE_PIL -eq 1 ]; then
-    echo "==> generating frops fixed data (SKIPPED — reusing existing *_fixed.bin)"
-    return
-  fi
-  echo "==> generating frops fixed data"
-  cargo run --release --bin arith_frops_fixed_gen
-  cargo run --release --bin binary_basic_frops_fixed_gen
-  cargo run --release --bin binary_extension_frops_fixed_gen
-}
-
-compute_input_hash() {
-  local pil_list
-  pil_list=$(mktemp)
-  trap 'rm -f "$pil_list"' RETURN
-  find pil state-machines precompiles -type f -name '*.pil' >> "$pil_list"
-  find "$PROOFMAN_DIR/pil2-components/lib/std/pil" -type f -name '*.pil' >> "$pil_list"
-  sort -o "$pil_list" "$pil_list"
-
-  local fixed_bins=(
-    state-machines/arith/src/arith_frops_fixed.bin
-    state-machines/binary/src/binary_basic_frops_fixed.bin
-    state-machines/binary/src/binary_extension_frops_fixed.bin
-  )
-  local f
-  for f in "${fixed_bins[@]}"; do
-    [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; return 1; }
-  done
-
-  local pil2_compiler_version pil2_stark_setup_source
-  pil2_compiler_version="$(jq -r '.dependencies."pil2-compiler"' "$PROOFMAN_DIR/package.json")"
-  [ -n "$pil2_compiler_version" ] && [ "$pil2_compiler_version" != "null" ] || \
-    { echo "could not read .dependencies.pil2-compiler from $PROOFMAN_DIR/package.json" >&2; return 1; }
-  pil2_stark_setup_source="$(cargo metadata --format-version 1 --no-deps \
-    | jq -r '.packages[]|select(.name=="pil2-stark-setup")|.source // .manifest_path')"
-
-  echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
-  {
-    xargs -a "$pil_list" cat
-    cat state-machines/starkstructs.json
-    cat "${fixed_bins[@]}"
-    printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
-    printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
-  } | sha256sum | awk '{print $1}'
-}
 
 run_compile_pil() {
   if [ $SKIP_COMPILE_PIL -eq 1 ]; then
@@ -347,7 +267,7 @@ case "$MODE" in
 
       echo "cache hit — downloading ${PK_NAME} into $BUILD_DIR/"
       mkdir -p "$BUILD_DIR"
-      tarball="$(mktemp --suffix=.tar.gz)"
+      tarball="$(mktemp_tarball)"
       curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
       rm -rf "$BUILD_DIR/provingKey"
       tar -xzf "$tarball" -C "$BUILD_DIR"
@@ -401,7 +321,7 @@ if [ "$MODE" = "build" ]; then
   if [ -n "$remote_hash" ] && [ "$remote_hash" = "$LOCAL_HASH" ]; then
     echo "cache hit — downloading ${PK_NAME}"
     mkdir -p "$OUT_DIR"
-    tarball="$(mktemp --suffix=.tar.gz)"
+    tarball="$(mktemp_tarball)"
     curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
     rm -rf "$OUT_DIR/provingKey"
     tar -xzf "$tarball" -C "$OUT_DIR"

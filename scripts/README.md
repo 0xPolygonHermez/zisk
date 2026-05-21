@@ -12,10 +12,20 @@ Dev-side helpers for generating, packaging, and publishing the Zisk proving key.
 | Node.js + npm | `compile-pil` shells out to the JS pil2-compiler |
 | `circom` | required by `setup --recursive` (recursive circuit compilation) |
 | `jq` | `build-setup.sh` parses Cargo / package.json metadata |
-| `gsutil` (from `gcloud` SDK) | bucket access. `build-setup.sh` reads from a public bucket — no auth needed. `package-proving-key.sh` uploads — auth required. |
-| Standard Unix utils | `tar`, `sha256sum`, `md5sum`, `find`, `awk` |
+| `curl` | `build-setup.sh` / `fetch-setup.sh` download from the public bucket — no auth needed |
+| `gcloud` SDK (`gcloud storage`) | only for `package-proving-key.sh` uploads — auth required |
+| Standard Unix utils | `tar`, `find`, `awk`, sha256/md5 (`sha256sum`+`md5sum` on Linux, `shasum`+`md5` on macOS — auto-detected) |
 
-### System packages (Ubuntu / Debian)
+### Platform support
+
+- `fetch-setup.sh` and `package-proving-key.sh` work on Linux and macOS (the
+  GNU-only `sha256sum` / `mktemp --suffix` / `xargs -a` calls have portable
+  shims in `lib/setup-common.sh`).
+- `build-setup.sh` is Linux/x86_64 only because the underlying proving-key
+  pipeline depends on `nasm` and the C++ STARK lib's Linux toolchain (see
+  the apt list below). macOS users should consume via `fetch-setup.sh` only.
+
+### System packages (Ubuntu / Debian, build-setup.sh only)
 
 These are the build deps for pil2-proofman and the C++ STARK lib it builds:
 
@@ -41,7 +51,7 @@ git clone https://github.com/iden3/circom /tmp/circom && \
 
 ### GCS auth (publishing only)
 
-`gs://zisk-setup` is public-read, so `build-setup.sh` cache lookups and downloads need `gsutil` on PATH but **no auth**. Auth is only required when you intend to publish via `package-proving-key.sh`:
+`gs://zisk-setup` is public-read, so `build-setup.sh` cache lookups and downloads go over anonymous `curl` — **no auth**. Auth is only required when you intend to publish via `package-proving-key.sh` (which shells out to `gcloud storage`):
 
 ```bash
 gcloud auth login
@@ -64,7 +74,15 @@ gcloud auth login
 
 ## Common workflows
 
-`build-setup.sh` is the single entry point. Modes are mutually exclusive.
+Two entry points:
+- **`build-setup.sh`** — cache lookup; on miss, builds locally. Use when you may need to produce the artifact yourself.
+- **`fetch-setup.sh`** — cache lookup only; never builds. Use when you only want the published key (CI consumers, downstream users).
+
+`build-setup.sh` modes are mutually exclusive.
+
+### Release vs pre-release namespace
+
+Both scripts and `package-proving-key.sh` default to the `pre-<VERSION>` namespace (e.g. `zisk-provingkey-pre-1.0.0-beta.*`), so day-to-day publishing doesn't overwrite the stable artifact. Pass `--release` to all three to operate on the bare `<VERSION>` namespace — these must stay in sync (an upload with `--release` and a lookup without it will silently miss the cache).
 
 ### Get a working proving key (cache or build)
 
@@ -72,15 +90,28 @@ gcloud auth login
 ./scripts/build-setup.sh
 ```
 
-Computes an input hash, checks `gs://zisk-setup/zisk-provingkey-<VERSION>.input-hash`:
-- **Cache hit**: downloads `zisk-provingkey-<VERSION>.tar.gz`, extracts to `$HOME/.zisk/provingKey/`. Done.
+Computes an input hash, checks `gs://zisk-setup/zisk-provingkey-pre-<VERSION>.input-hash`:
+- **Cache hit**: downloads `zisk-provingkey-pre-<VERSION>.tar.gz`, extracts to `$HOME/.zisk/provingKey/`. Done.
 - **Cache miss**: runs frops generators, `compile-pil`, then `setup --recursive`. Result lands in `build/provingKey/`. Nothing uploaded.
+
+### Fetch the published proving key (cache only, no build)
+
+```bash
+./scripts/fetch-setup.sh                                    # extracts to build/provingKey/
+./scripts/fetch-setup.sh --build-dir /path/to/out           # extract elsewhere
+./scripts/fetch-setup.sh --release                          # release namespace (bare <VERSION>)
+./scripts/fetch-setup.sh --force                            # skip the hash compare, take whatever's published
+./scripts/fetch-setup.sh --skip-compile-pil                 # reuse existing *_fixed.bin for the hash
+```
+
+Same input-hash compare as `build-setup.sh`. Exits 0 on cache hit (tarball extracted into `<build-dir>/provingKey/`, replacing any existing one) and exits 2 on miss without attempting a build. Use `--force` when you don't want to pay for `cargo run` + frops generation just to test if the bucket has something publishable.
 
 ### Build and publish a new proving key
 
 ```bash
 ./scripts/build-setup.sh                                     # build (cache miss → drops build/.input-hash)
-./scripts/package-proving-key.sh --build-dir build           # upload tarballs + hash sidecar
+./scripts/package-proving-key.sh --build-dir build           # upload tarballs + hash sidecar (pre- namespace)
+./scripts/package-proving-key.sh --build-dir build --release # upload under the bare <VERSION>
 ```
 
 `build-setup.sh` only writes `<build-dir>/.input-hash` when it actually built something from a fresh `compile-pil` run. On cache hit, or with `--skip-compile-pil`, no sidecar is written and `package-proving-key.sh` will skip the sidecar upload (warning printed) so the cache isn't refreshed with a hash that doesn't match the artifacts.
@@ -189,27 +220,35 @@ cargo zisk proofman-setup --help
 
 ## Cache key
 
-`build-setup.sh` hashes (in this order):
+Both `build-setup.sh` and `fetch-setup.sh` use the same shared hash, computed by `lib/setup-common.sh` over (in this order):
 
-- All `*.pil` under `pil/`, `state-machines/`, `precompiles/`
+- All `*.pil` under `pil/`, `state-machines/`, `precompiles/` (paths sorted with `LC_ALL=C` for cross-host stability)
 - All `*.pil` under `${PROOFMAN_DIR}/pil2-components/lib/std/pil`
 - `state-machines/starkstructs.json`
 - `state-machines/{arith,binary}/src/*_frops_fixed.bin` (regenerated automatically before hashing)
 - `pil2-compiler` dep ref from `${PROOFMAN_DIR}/package.json`
-- `pil2-stark-setup` source from `cargo metadata`
+- `pil2-stark-setup` `.source` (e.g. `git+https://github.com/.../pil2-proofman.git?branch=X#<sha>`) from `cargo metadata`
 
-Bumping any of these — including the proofman or pil2-compiler git ref — invalidates the cache and forces a rebuild on the next `build-setup.sh` run.
+The script aborts if `pil2-stark-setup` lacks a `.source` (e.g. resolved as a local path dep) — falling back to its manifest path would tie the cache key to one host. Bumping any of these — including the proofman or pil2-compiler git ref — invalidates the cache and forces a rebuild on the next `build-setup.sh` run.
 
 ## Bucket layout
 
-Flat in `gs://zisk-setup/`, version in the filename:
+Flat in `gs://zisk-setup/`, version in the filename. The default (pre-release) namespace prefixes `<VERSION>` with `pre-`; `--release` uploads use the bare `<VERSION>`:
 
 ```
-zisk-provingkey-<VERSION>.tar.gz       # provingKey/
+# pre-release (default)
+zisk-provingkey-pre-<VERSION>.tar.gz       # provingKey/
+zisk-provingkey-pre-<VERSION>.tar.gz.md5
+zisk-provingkey-pre-<VERSION>.input-hash   # cache key sidecar
+zisk-circuits-pre-<VERSION>.tar.gz         # circom/
+zisk-provingkey-plonk-pre-<VERSION>.tar.gz # provingKeySnark/  (only after setup-snark)
+
+# release (--release on every script)
+zisk-provingkey-<VERSION>.tar.gz
 zisk-provingkey-<VERSION>.tar.gz.md5
-zisk-provingkey-<VERSION>.input-hash   # cache key sidecar
-zisk-circuits-<VERSION>.tar.gz         # circom/
-zisk-provingkey-plonk-<VERSION>.tar.gz # provingKeySnark/  (only after setup-snark)
+zisk-provingkey-<VERSION>.input-hash
+zisk-circuits-<VERSION>.tar.gz
+zisk-provingkey-plonk-<VERSION>.tar.gz
 ```
 
 `<VERSION>` = workspace `[workspace.package].version` from `Cargo.toml`.

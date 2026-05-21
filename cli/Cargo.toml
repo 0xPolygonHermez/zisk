@@ -18,11 +18,8 @@ vergen-git2.workspace = true
 zisk-common = { workspace = true }
 zisk-build = { workspace = true }
 zisk-prover-backend = { workspace = true }
-executor = { workspace = true }
 rom-setup = { workspace = true }
-zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-asm-runner = { workspace = true }
 
 colored = { workspace = true }
 fields = { workspace = true }
@@ -42,7 +39,6 @@ rayon = { workspace = true }
 rand = { workspace = true }
 
 clap = { workspace = true }
-dirs = "6"
 target-lexicon = "0.13"
 reqwest = { workspace = true }
 tokio = { version = "1", features = ["full"] }

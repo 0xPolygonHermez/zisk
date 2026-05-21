@@ -5,11 +5,11 @@ use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
 use backend::*;
 pub use emu::*;
-use executor::get_packed_info;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
@@ -258,7 +258,12 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK>;
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+    ) -> Result<ProgramVK>;
 
     /// Create a setup builder for the given ELF program.
     ///
@@ -681,6 +686,38 @@ impl ZiskProver<Asm> {
     /// Returns `true` if the last `setup()` call used `.with_hints()`.
     pub fn was_setup_with_hints(&self) -> bool {
         self.get_hints_processor().is_ok()
+    }
+
+    /// Execute via the Rust emulator path, regardless of how the program was set up.
+    /// Lets callers run the AsmProver in emulator mode without spinning up ASM children.
+    pub fn execute_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+    ) -> Result<ExecuteOutput> {
+        self.prover.execute_emulator(program, stdin)
+    }
+
+    /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
+    /// Bypasses the `emulator_only` guard on the regular `prove()` method — this is the
+    /// supported way to do emulator-mode proving with the ASM backend.
+    pub fn prove_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        proof_kind: ProofKind,
+    ) -> Result<ProveOutput> {
+        self.prover.prove_emulator(program, stdin, proof_kind, self.prover_options.clone())
+    }
+
+    /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
+    pub fn verify_constraints_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<VerifyConstraintsOutput> {
+        self.prover.verify_constraints_emulator(program, stdin, debug_info)
     }
 }
 

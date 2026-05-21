@@ -1231,6 +1231,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             &setup.hash_id,
             &setup.elf_bytes,
             setup.with_hints,
+            setup.emulator_only,
             guest_program,
         )?;
 

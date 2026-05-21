@@ -153,6 +153,7 @@ pub struct SetupProgramDto {
     pub hash_id: String,
     pub program_name: String,
     pub with_hints: bool,
+    pub emulator_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

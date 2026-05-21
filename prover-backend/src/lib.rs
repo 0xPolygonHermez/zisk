@@ -4,8 +4,8 @@ mod output;
 mod prover;
 mod utils;
 
-pub use executor::get_packed_info;
 pub use proofman_common::VerboseMode;
+pub use zisk_pil::get_packed_info;
 
 pub use builder::*;
 pub use guest::*;

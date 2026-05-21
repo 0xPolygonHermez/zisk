@@ -28,11 +28,16 @@ BUCKET="gs://zisk-setup"
 
 usage() {
   cat <<EOF >&2
-usage: $0 --build-dir DIR [--snark | --all] [--out-dir DIR] [-v|--verbose]
+usage: $0 --build-dir DIR [--snark | --all] [--release] [--out-dir DIR] [-v|--verbose]
 
   --build-dir DIR    Directory produced by \`cargo zisk proofman-setup setup\`.
   --snark            Package only the snark output (provingKeySnark/).
   --all              Package proving key, circuits, and snark.
+  --release          Publish under the bare workspace version (e.g.
+                     zisk-provingkey-1.0.0.tar.gz). Without this flag,
+                     artifacts are prefixed with \`pre-\` (e.g.
+                     zisk-provingkey-pre-1.0.0.tar.gz) so pre-release
+                     builds don't overwrite the published key.
   --out-dir DIR      Where to write tarballs. Default: <repo root>/dist
   -v, --verbose      Print each file as it is tarred, the resulting tarball
                      size, and run \`gcloud storage cp\` with --verbosity=info.
@@ -46,6 +51,7 @@ BUILD_DIR=""
 MODE="standard"   # standard | snark | all
 OUT_DIR=""
 VERBOSE=0
+RELEASE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -59,6 +65,10 @@ while [ $# -gt 0 ]; do
       ;;
     --all)
       MODE="all"
+      shift
+      ;;
+    --release)
+      RELEASE=1
       shift
       ;;
     --out-dir)
@@ -103,6 +113,10 @@ VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Car
   echo "could not read workspace version from $ROOT_DIR/Cargo.toml" >&2
   exit 1
 }
+
+if [ "$RELEASE" -eq 0 ]; then
+  VERSION="pre-${VERSION}"
+fi
 
 echo "version: $VERSION"
 

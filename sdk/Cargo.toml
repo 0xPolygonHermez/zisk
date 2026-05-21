@@ -15,24 +15,15 @@ zisk-prover-backend = { workspace = true }
 proofman-common = { workspace = true }
 zisk-common = { workspace = true }
 zisk-build = { workspace = true }
-fields = { workspace = true }
 
 # Utilities
 anyhow = { workspace = true }
-bytes = { workspace = true }
-colored = { workspace = true }
-tracing = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 tokio = { workspace = true }
-tonic = { workspace = true }
-futures = { workspace = true }
 uuid = { workspace = true }
-zisk-cluster-common = { workspace = true }
 zisk-coordinator-api = { workspace = true }
 zisk-coordinator-client = { workspace = true }
-zisk-coordinator-server = { workspace = true }
-alloy-sol-types = { version = "1.5.7" }
 
 # For utils.rs
 rom-setup = { workspace = true }
@@ -43,6 +34,11 @@ proofman = { workspace = true }
 proofman-verifier = { workspace = true }
 rayon = { workspace = true }
 serde_json = { workspace = true }
+fields = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+test-artifacts = { workspace = true }
 
 [features]
 default = []

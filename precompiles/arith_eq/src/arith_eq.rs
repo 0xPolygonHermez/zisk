@@ -10,9 +10,9 @@ use crate::{
     arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput,
     ArithEqLtTableSM, Bn254ComplexAddInput, Bn254ComplexMulInput, Bn254ComplexSubInput,
     Bn254CurveAddInput, Bn254CurveDblInput, Secp256k1AddInput, Secp256k1DblInput,
-    Secp256r1AddInput, Secp256r1DblInput, SECP256K1_PRIME_CHUNKS, SECP256R1_PRIME_CHUNKS,
-    SEL_OP_ARITH256, SEL_OP_ARITH256_MOD, SEL_OP_SECP256K1_ADD, SEL_OP_SECP256K1_DBL,
-    SEL_OP_SECP256R1_ADD, SEL_OP_SECP256R1_DBL,
+    Secp256r1AddInput, Secp256r1DblInput, ARITH_EQ_OP_NUM, BN254_PRIME_CHUNKS,
+    SECP256K1_PRIME_CHUNKS, SECP256R1_PRIME_CHUNKS, SEL_OP_ARITH256, SEL_OP_ARITH256_MOD,
+    SEL_OP_SECP256K1_ADD, SEL_OP_SECP256K1_DBL, SEL_OP_SECP256R1_ADD, SEL_OP_SECP256R1_DBL,
 };
 use rayon::prelude::*;
 
@@ -405,16 +405,16 @@ impl<F: PrimeField64> ArithEqSM<F> {
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..ARITH_EQ_ROWS_BY_OP {
+            // Compute all carry values first
+            let mut carry_values = [[0u64; 2]; 3];
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                trace[i].set_carry(j, 0, self.to_ranged_field(carry_0, self.carry_range_id));
-                trace[i].set_carry(
-                    j,
-                    1,
-                    self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id),
-                );
+                carry_values[j][0] = self.to_ranged_field(carry_0, self.carry_range_id);
+                carry_values[j][1] = self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id);
             }
+            trace[i].set_all_carry(&carry_values);
+
             let q_range_id = if i == ARITH_EQ_ROWS_BY_OP - 1 {
                 self.q_hsc_range_id
             } else {
@@ -431,16 +431,15 @@ impl<F: PrimeField64> ArithEqSM<F> {
             trace[i].set_q2(self.to_ranged_field(data.q2[i], q_range_id) as u32);
             trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
 
-            // TODO Range check
-            for j in 0..ARITH_EQ_OP_NUM {
-                let selected = j == sel_op;
-                trace[i].set_sel_op(j, selected);
-                if i == 0 {
-                    trace[i].set_sel_op_clk0(j, selected);
-                } else {
-                    trace[i].set_sel_op_clk0(j, false);
-                }
+            // Compute sel_op arrays
+            let mut sel_op_values = [false; ARITH_EQ_OP_NUM];
+            let mut sel_op_clk0_values = [false; ARITH_EQ_OP_NUM];
+            sel_op_values[sel_op] = true;
+            if i == 0 {
+                sel_op_clk0_values[sel_op] = true;
             }
+            trace[i].set_all_sel_op(&sel_op_values);
+            trace[i].set_all_sel_op_clk0(&sel_op_clk0_values);
             let iclock = match i as u8 {
                 Self::FIRST_CLOCK => 1,
                 Self::LAST_CLOCK => 2,

@@ -358,11 +358,10 @@ impl BackendService for MockBackend {
 
         // Track setup jobs so list_active_setups can return them.
         if let DomainJobKind::Setup(ref r) = kind {
-            self.state
-                .lock()
-                .await
-                .setups
-                .insert(SetupKey::new(r.hash_id.clone(), r.with_hints), r.program_name.clone());
+            self.state.lock().await.setups.insert(
+                SetupKey::new(r.hash_id.clone(), r.with_hints, r.emulator_only),
+                r.program_name.clone(),
+            );
         }
 
         let input_kind = kind.input_kind().cloned();
@@ -724,6 +723,7 @@ mod tests {
                 hash_id: hash_id.clone(),
                 program_name: hash_id,
                 with_hints: false,
+                emulator_only: false,
             }))
             .await
             .unwrap()
@@ -788,6 +788,7 @@ mod tests {
                 hash_id: "nonexistent".into(),
                 program_name: "nonexistent".into(),
                 with_hints: false,
+                emulator_only: false,
             }))
             .await
             .unwrap_err();

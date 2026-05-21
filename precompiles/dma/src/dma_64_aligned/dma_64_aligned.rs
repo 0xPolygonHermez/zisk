@@ -115,10 +115,16 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
                 self.op_x_rows
             };
             row.set_seq_end(seq_end);
+
+            // Compute arrays for all values
+            let mut h_value_chunks = [[0u32; 2]; DMA_64_ALIGNED_OPS_BY_ROW];
+            let mut l_value_chunks = [[0u8; 2]; DMA_64_ALIGNED_OPS_BY_ROW];
+            let mut sel_op_from_1 = [false; DMA_64_ALIGNED_OPS_BY_ROW - 1];
+
             if !is_memset {
                 for index in 0..use_count {
                     if index > 0 {
-                        row.set_sel_op_from_1(index - 1, true);
+                        sel_op_from_1[index - 1] = true;
                     }
                     let value = input.src_values[src_values_index];
                     src_values_index += 1;
@@ -126,10 +132,8 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
                     let h1 = ((value >> 40) & 0xFFFFFF) as u32;
                     let l0 = value as u8;
                     let l1 = (value >> 32) as u8;
-                    row.set_h_value_chunks(index, 0, h0);
-                    row.set_h_value_chunks(index, 1, h1);
-                    row.set_l_value_chunks(index, 0, l0);
-                    row.set_l_value_chunks(index, 1, l1);
+                    h_value_chunks[index] = [h0, h1];
+                    l_value_chunks[index] = [l0, l1];
                     if is_inputcpy {
                         dual_byte_range_check_values.push(l0 as u16 + ((l1 as u16) << 8));
                         range_check_24b_values.push(h0);
@@ -144,14 +148,16 @@ impl<F: PrimeField64> Dma64AlignedSM<F> {
                 row.set_fill_byte(fill_byte);
                 for index in 0..use_count {
                     if index > 0 {
-                        row.set_sel_op_from_1(index - 1, true);
+                        sel_op_from_1[index - 1] = true;
                     }
-                    row.set_h_value_chunks(index, 0, fill_bytes);
-                    row.set_h_value_chunks(index, 1, fill_bytes);
-                    row.set_l_value_chunks(index, 0, fill_byte);
-                    row.set_l_value_chunks(index, 1, fill_byte);
+                    h_value_chunks[index] = [fill_bytes, fill_bytes];
+                    l_value_chunks[index] = [fill_byte, fill_byte];
                 }
             }
+
+            row.set_all_h_value_chunks(&h_value_chunks);
+            row.set_all_l_value_chunks(&l_value_chunks);
+            row.set_all_sel_op_from_1(&sel_op_from_1);
         }
 
         if is_last_instance_input {

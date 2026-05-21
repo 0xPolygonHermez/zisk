@@ -93,15 +93,23 @@ impl<F: PrimeField64> Dma64AlignedMemCpySM<F> {
                 self.op_x_rows
             };
             row.set_seq_end(seq_end);
+
+            // Compute sel_op_from_1 and value arrays
+            let mut sel_op_from_1 = [false; DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW - 1];
+            let mut values = [[0u32; 2]; DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW];
+
             for index in 0..use_count {
                 if index > 0 {
-                    row.set_sel_op_from_1(index - 1, true);
+                    sel_op_from_1[index - 1] = true;
                 }
                 let value = input.src_values[src_values_index];
                 src_values_index += 1;
-                row.set_value(index, 0, value as u32);
-                row.set_value(index, 1, (value >> 32) as u32);
+                values[index][0] = value as u32;
+                values[index][1] = (value >> 32) as u32;
             }
+
+            row.set_all_sel_op_from_1(&sel_op_from_1);
+            row.set_all_value(&values);
         }
 
         if is_last_instance_input {

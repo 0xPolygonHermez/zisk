@@ -108,8 +108,8 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     // Auxiliary columns (primarily used to lower the lookup call complexity)
     col witness bits(10) b_op_or_sext;
     col witness bits(1) mode32_and_c_is_signed;
-    b_op_or_sext === mode32 * (c_is_signed * (OP_SEXT_FF - OP_SEXT_00) + OP_SEXT_00 - b_op) + b_op;
-    mode32_and_c_is_signed === mode32 * c_is_signed;
+    b_op_or_sext <== mode32 * (c_is_signed * (OP_SEXT_FF - OP_SEXT_00) + OP_SEXT_00 - b_op) + b_op;
+    mode32_and_c_is_signed <== mode32 * c_is_signed;
 
     // Lookups
     lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*result_is_a + 4*use_first_byte]);
@@ -153,7 +153,7 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     // Otherwise, the result is simply c
     c[0] += cout;
 
-    proves_operation(op: b_op + 0x10 * mode32, a:, b:, c:, flag:cout);
+    proves_operation(op: b_op + 0x10 * mode32, a:, b:, c:, flag: cout);
 
     airval padding_size;
     assumes_padding_operation(op: OP_ADD, padding_size:);

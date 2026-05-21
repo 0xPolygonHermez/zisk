@@ -287,16 +287,14 @@ impl<F: PrimeField64> ArithEq384SM<F> {
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..ARITH_EQ_384_ROWS_BY_OP {
+            let mut carry_values = [[0u64; 2]; 3];
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                trace[i].set_carry(j, 0, self.to_ranged_field(carry_0, self.carry_range_id));
-                trace[i].set_carry(
-                    j,
-                    1,
-                    self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id),
-                );
+                carry_values[j][0] = self.to_ranged_field(carry_0, self.carry_range_id);
+                carry_values[j][1] = self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id);
             }
+            trace[i].set_all_carry(&carry_values);
             let q_range_id = if i == ARITH_EQ_384_ROWS_BY_OP - 1 {
                 self.q_hsc_range_id
             } else {
@@ -314,15 +312,15 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
 
             // TODO Range check
-            for j in 0..ARITH_EQ_384_OP_NUM {
-                let selected = j == sel_op;
-                trace[i].set_sel_op(j, selected);
-                if i == 0 {
-                    trace[i].set_sel_op_clk0(j, selected);
-                } else {
-                    trace[i].set_sel_op_clk0(j, false);
-                }
+            // Compute sel_op arrays
+            let mut sel_op_values = [false; ARITH_EQ_384_OP_NUM];
+            let mut sel_op_clk0_values = [false; ARITH_EQ_384_OP_NUM];
+            sel_op_values[sel_op] = true;
+            if i == 0 {
+                sel_op_clk0_values[sel_op] = true;
             }
+            trace[i].set_all_sel_op(&sel_op_values);
+            trace[i].set_all_sel_op_clk0(&sel_op_clk0_values);
             let iclock = match i as u8 {
                 Self::FIRST_CLOCK => 1,
                 Self::LAST_CLOCK => 2,

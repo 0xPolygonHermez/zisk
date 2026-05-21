@@ -33,8 +33,6 @@ chrono = { version = "0.4", features = ["serde"] }
 rayon = { workspace = true }
 recurser = { workspace = true, features = ["setup", "prove"] }
 
-precompiles-hints = { workspace = true }
-
 tonic = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
@@ -44,7 +42,6 @@ serde = { workspace = true }
 borsh = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
-toml = { workspace = true }
 config = { workspace = true }
 uuid = { workspace = true }
 
