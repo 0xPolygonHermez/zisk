@@ -4,7 +4,7 @@ ziskos::entrypoint!(main);
 use ziskos::syscalls::{syscall_arith384_mod, SyscallArith384ModParams};
 
 fn main() {
-let a: [u64; 6] = [0, 0, 0, 0, 0, 0];
+    let a: [u64; 6] = [0, 0, 0, 0, 0, 0];
     let b: [u64; 6] = [0, 0, 0, 0, 0, 0];
     let c: [u64; 6] = [0, 0, 0, 0, 0, 0];
     let module: [u64; 6] = [0, 0, 0, 0, 0, 0];

@@ -1150,10 +1150,10 @@ pub unsafe extern "C" fn decompress_twist_bls12_381_c(
         #[cfg(feature = "hints")]
         hints,
     ) {
-        Ok((p, _)) => {
+        Ok((p, is_infinity)) => {
             let result = &mut *(result_ptr as *mut [u64; 24]);
             *result = p;
-            if eq(&p, &G2_IDENTITY) {
+            if is_infinity {
                 1
             } else {
                 0

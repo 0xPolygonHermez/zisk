@@ -8,6 +8,7 @@ mod fp;
 mod fp12;
 mod fp2;
 mod fp6;
+mod hash_to_curve;
 mod pairing;
 mod twist;
 
@@ -17,6 +18,7 @@ use fp::fp_tests;
 use fp12::fp12_tests;
 use fp2::fp2_tests;
 use fp6::fp6_tests;
+use hash_to_curve::hash_to_curve_tests;
 use pairing::pairing_valid_tests;
 use twist::twist_tests;
 
@@ -41,6 +43,9 @@ fn main() {
 
     // Final exponentiation
     final_exp_tests();
+
+    // Hash to curve
+    hash_to_curve_tests();
 
     // Pairing
     pairing_valid_tests();
