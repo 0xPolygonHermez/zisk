@@ -14,7 +14,7 @@ cd zisk-contracts
 Export the four ABI fields the on-chain verifier expects:
 
 ```bash
-cargo-zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+cargo zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 ```
 
 Install Hardhat deps (first run only) and run the test:

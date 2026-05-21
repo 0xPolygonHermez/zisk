@@ -89,30 +89,30 @@ generate_frops() {
   cargo run --release --bin binary_extension_frops_fixed_gen
 }
 
-compute_input_hash() {
-  local pil_list
+compute_input_hash() (
+  # Subshell: EXIT trap cleans up the temp file on every return path
+  # (success and the early-error returns) without leaking a RETURN trap
+  # into the calling shell.
   pil_list=$(mktemp)
-  trap 'rm -f "$pil_list"' RETURN
+  trap 'rm -f "$pil_list"' EXIT
   find pil state-machines precompiles -type f -name '*.pil' >> "$pil_list"
   find "$PROOFMAN_DIR/pil2-components/lib/std/pil" -type f -name '*.pil' >> "$pil_list"
   # LC_ALL=C: byte-ordered sort so the hash matches across machines regardless
   # of locale (en_US.UTF-8 vs C can reorder paths with punctuation).
   LC_ALL=C sort -o "$pil_list" "$pil_list"
 
-  local fixed_bins=(
+  fixed_bins=(
     state-machines/arith/src/arith_frops_fixed.bin
     state-machines/binary/src/binary_basic_frops_fixed.bin
     state-machines/binary/src/binary_extension_frops_fixed.bin
   )
-  local f
   for f in "${fixed_bins[@]}"; do
-    [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; return 1; }
+    [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }
   done
 
-  local pil2_compiler_version pil2_stark_setup_source
   pil2_compiler_version="$(jq -r '.dependencies."pil2-compiler"' "$PROOFMAN_DIR/package.json")"
   [ -n "$pil2_compiler_version" ] && [ "$pil2_compiler_version" != "null" ] || \
-    { echo "could not read .dependencies.pil2-compiler from $PROOFMAN_DIR/package.json" >&2; return 1; }
+    { echo "could not read .dependencies.pil2-compiler from $PROOFMAN_DIR/package.json" >&2; exit 1; }
 
   # No --no-deps: pil2-stark-setup is a transitive git dep, not a workspace
   # member, so --no-deps would silently drop it and the hash would never
@@ -126,7 +126,7 @@ compute_input_hash() {
   pil2_stark_setup_source="$(cargo metadata --format-version 1 \
     | jq -r '.packages[]|select(.name=="pil2-stark-setup")|.source')"
   [ -n "$pil2_stark_setup_source" ] && [ "$pil2_stark_setup_source" != "null" ] || \
-    { echo "pil2-stark-setup has no .source in cargo metadata — is it a local path dep? cache key would be machine-specific. aborting." >&2; return 1; }
+    { echo "pil2-stark-setup has no .source in cargo metadata — is it a local path dep? cache key would be machine-specific. aborting." >&2; exit 1; }
 
   echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
   {
@@ -136,4 +136,4 @@ compute_input_hash() {
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
   } | sha256sum | awk '{print $1}'
-}
+)

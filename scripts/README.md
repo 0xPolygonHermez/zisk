@@ -12,7 +12,8 @@ Dev-side helpers for generating, packaging, and publishing the Zisk proving key.
 | Node.js + npm | `compile-pil` shells out to the JS pil2-compiler |
 | `circom` | required by `setup --recursive` (recursive circuit compilation) |
 | `jq` | `build-setup.sh` parses Cargo / package.json metadata |
-| `gsutil` (from `gcloud` SDK) | bucket access. `build-setup.sh` reads from a public bucket — no auth needed. `package-proving-key.sh` uploads — auth required. |
+| `curl` | `build-setup.sh` / `fetch-setup.sh` download from the public bucket — no auth needed |
+| `gcloud` SDK (`gcloud storage`) | only for `package-proving-key.sh` uploads — auth required |
 | Standard Unix utils | `tar`, `sha256sum`, `md5sum`, `find`, `awk` |
 
 ### System packages (Ubuntu / Debian)
@@ -41,7 +42,7 @@ git clone https://github.com/iden3/circom /tmp/circom && \
 
 ### GCS auth (publishing only)
 
-`gs://zisk-setup` is public-read, so `build-setup.sh` cache lookups and downloads need `gsutil` on PATH but **no auth**. Auth is only required when you intend to publish via `package-proving-key.sh`:
+`gs://zisk-setup` is public-read, so `build-setup.sh` cache lookups and downloads go over anonymous `curl` — **no auth**. Auth is only required when you intend to publish via `package-proving-key.sh` (which shells out to `gcloud storage`):
 
 ```bash
 gcloud auth login
