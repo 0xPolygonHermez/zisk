@@ -1,6 +1,4 @@
-extern crate alloc;
-use alloc::vec;
-use alloc::vec::Vec;
+use crate::scratch_accelerators::{new_scratch_vec, new_scratch_vec_filled, ScratchVec};
 
 use crate::{
     syscalls::{
@@ -1006,11 +1004,9 @@ pub fn multi_scalar_mul_secp256k1(
     let mut result_is_inf = true;
 
     // Allocate buckets once, reset each window
-    let mut buckets: Vec<SyscallPoint256> = Vec::with_capacity(num_buckets);
-    let mut bucket_is_inf: Vec<bool> = vec![true; num_buckets];
-    for _ in 0..num_buckets {
-        buckets.push(SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y });
-    }
+    let mut buckets: ScratchVec<SyscallPoint256> =
+        new_scratch_vec_filled(num_buckets, SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y });
+    let mut bucket_is_inf: ScratchVec<bool> = new_scratch_vec_filled(num_buckets, true);
 
     // Process windows from most significant to least significant
     for window_idx in (0..num_windows).rev() {

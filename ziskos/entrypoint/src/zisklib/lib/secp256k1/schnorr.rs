@@ -1,8 +1,7 @@
 //! BIP-340 Schnorr signature verification for secp256k1.
 //! https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
 
-extern crate alloc;
-use alloc::vec::Vec;
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
 
 use crate::zisklib::{be_bytes_to_u64_4, eq, gt, sha256, ZERO_256};
 
@@ -49,7 +48,7 @@ pub fn schnorr_verify_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut buf = Vec::with_capacity(64 + 32 + 32 + msg.len());
+    let mut buf: ScratchVec<u8> = new_scratch_vec(64 + 32 + 32 + msg.len());
     buf.extend_from_slice(&tag);
     buf.extend_from_slice(&tag);
     buf.extend_from_slice(sig_r);
@@ -156,9 +155,9 @@ pub fn schnorr_batch_verify_secp256k1(
         );
     }
 
-    let mut r_vals = Vec::with_capacity(u);
-    let mut s_vals = Vec::with_capacity(u);
-    let mut pk_vals = Vec::with_capacity(u);
+    let mut r_vals: ScratchVec<[u64; 4]> = new_scratch_vec(u);
+    let mut s_vals: ScratchVec<[u64; 4]> = new_scratch_vec(u);
+    let mut pk_vals: ScratchVec<[u64; 4]> = new_scratch_vec(u);
 
     for i in 0..u {
         let r = be_bytes_to_u64_4(sig_rs[i]);
@@ -180,8 +179,8 @@ pub fn schnorr_batch_verify_secp256k1(
         pk_vals.push(pk);
     }
 
-    let mut points_p = Vec::with_capacity(u);
-    let mut points_r = Vec::with_capacity(u);
+    let mut points_p: ScratchVec<[u64; 8]> = new_scratch_vec(u);
+    let mut points_r: ScratchVec<[u64; 8]> = new_scratch_vec(u);
 
     for i in 0..u {
         let point_p = match lift_x_secp256k1(
@@ -211,10 +210,10 @@ pub fn schnorr_batch_verify_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut challenges = Vec::with_capacity(u);
+    let mut challenges: ScratchVec<[u64; 4]> = new_scratch_vec(u);
 
     for i in 0..u {
-        let mut buf = Vec::with_capacity(64 + 32 + 32 + msgs[i].len());
+        let mut buf: ScratchVec<u8> = new_scratch_vec(64 + 32 + 32 + msgs[i].len());
         buf.extend_from_slice(&tag);
         buf.extend_from_slice(&tag);
         buf.extend_from_slice(sig_rs[i]);
@@ -240,7 +239,9 @@ pub fn schnorr_batch_verify_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut seed_buf = Vec::new();
+    // seed_buf = 2×tag(32) + u×pk(32) + Σ(8+msg_len) + u×(r+s)(64)
+    let seed_buf_cap = 64 + u * 96 + msgs.iter().map(|m| m.len() + 8).sum::<usize>();
+    let mut seed_buf: ScratchVec<u8> = new_scratch_vec(seed_buf_cap);
     seed_buf.extend_from_slice(&batch_tag);
     seed_buf.extend_from_slice(&batch_tag);
     for pk in pk_xs {
@@ -261,7 +262,7 @@ pub fn schnorr_batch_verify_secp256k1(
         hints,
     );
 
-    let mut coeffs = Vec::with_capacity(u);
+    let mut coeffs: ScratchVec<[u64; 4]> = new_scratch_vec(u);
     coeffs.push([1u64, 0, 0, 0]);
     for i in 1..u {
         let mut coeff_buf = [0u8; 36];
@@ -300,8 +301,8 @@ pub fn schnorr_batch_verify_secp256k1(
         );
     }
 
-    let mut msm_scalars = Vec::with_capacity(2 * u + 1);
-    let mut msm_points = Vec::with_capacity(2 * u + 1);
+    let mut msm_scalars: ScratchVec<[u64; 4]> = new_scratch_vec(2 * u + 1);
+    let mut msm_points: ScratchVec<[u64; 8]> = new_scratch_vec(2 * u + 1);
 
     if !eq(&s_total, &ZERO_256) {
         msm_scalars.push(s_total);
@@ -365,13 +366,13 @@ pub(crate) unsafe fn secp256k1_schnorr_batch_verify_c(
     let msg_bytes: &[u8] =
         if msg_len == 0 { &[] } else { core::slice::from_raw_parts(msg, msg_len) };
 
-    let mut msgs_refs = Vec::with_capacity(count);
-    let mut pk_refs = Vec::with_capacity(count);
-    let mut r_refs = Vec::with_capacity(count);
-    let mut s_refs = Vec::with_capacity(count);
-    let mut pk_bufs = Vec::with_capacity(count);
-    let mut r_bufs = Vec::with_capacity(count);
-    let mut s_bufs = Vec::with_capacity(count);
+    let mut msgs_refs: ScratchVec<&[u8]> = new_scratch_vec(count);
+    let mut pk_refs: ScratchVec<&[u8; 32]> = new_scratch_vec(count);
+    let mut r_refs: ScratchVec<&[u8; 32]> = new_scratch_vec(count);
+    let mut s_refs: ScratchVec<&[u8; 32]> = new_scratch_vec(count);
+    let mut pk_bufs: ScratchVec<[u8; 32]> = new_scratch_vec(count);
+    let mut r_bufs: ScratchVec<[u8; 32]> = new_scratch_vec(count);
+    let mut s_bufs: ScratchVec<[u8; 32]> = new_scratch_vec(count);
 
     for i in 0..count {
         let pk_slice = core::slice::from_raw_parts(pk_xs.add(i * 32), 32);

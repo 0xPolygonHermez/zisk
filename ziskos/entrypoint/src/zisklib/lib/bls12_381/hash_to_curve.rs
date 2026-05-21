@@ -1,7 +1,6 @@
 //! Hash-to-curve for BLS12-381 G2
 
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec::Vec;
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
 
 use crate::zisklib::lib::sha256::sha256;
 
@@ -64,7 +63,7 @@ fn expand_message_xmd_sha256(
     dst: &[u8],
     len_in_bytes: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<u8> {
+) -> ScratchVec<u8> {
     const B_IN_BYTES: usize = 32; // SHA-256 output length in bytes
     const S_IN_BYTES: usize = 64; // SHA-256 input block length in bytes
 
@@ -75,12 +74,12 @@ fn expand_message_xmd_sha256(
     assert!(ell <= 255, "expand_message_xmd requires ell <= 255");
 
     // DST_prime = DST || I2OSP(len(DST), 1)
-    let mut dst_prime = Vec::with_capacity(dst.len() + 1);
+    let mut dst_prime = new_scratch_vec(dst.len() + 1);
     dst_prime.extend_from_slice(dst);
     dst_prime.push(dst.len() as u8);
 
     // msg_prime = I2OSP(0, s_in_bytes) || msg || I2OSP(len_in_bytes, 2) || I2OSP(0, 1) || DST_prime
-    let mut msg_prime = Vec::with_capacity(S_IN_BYTES + msg.len() + 3 + dst_prime.len());
+    let mut msg_prime = new_scratch_vec(S_IN_BYTES + msg.len() + 3 + dst_prime.len());
     msg_prime.extend(core::iter::repeat(0u8).take(S_IN_BYTES));
     msg_prime.extend_from_slice(msg);
     msg_prime.push((len_in_bytes >> 8) as u8);
@@ -96,7 +95,7 @@ fn expand_message_xmd_sha256(
     );
 
     // b_1 = H(b_0 || I2OSP(1, 1) || DST_prime)
-    let mut buf: Vec<u8> = Vec::with_capacity(B_IN_BYTES + 1 + dst_prime.len());
+    let mut buf: ScratchVec<u8> = new_scratch_vec(B_IN_BYTES + 1 + dst_prime.len());
     buf.extend_from_slice(&b_0);
     buf.push(1);
     buf.extend_from_slice(&dst_prime);
@@ -107,7 +106,7 @@ fn expand_message_xmd_sha256(
     );
 
     // b_i = H(strxor(b_0, b_{i-1}) || I2OSP(i, 1) || DST_prime), for i in 2..=ell
-    let mut uniform_bytes = Vec::with_capacity(B_IN_BYTES * ell);
+    let mut uniform_bytes: ScratchVec<u8> = new_scratch_vec(B_IN_BYTES * ell);
     uniform_bytes.extend_from_slice(&b_prev);
     for i in 2..=ell {
         let mut xored = [0u8; B_IN_BYTES];
