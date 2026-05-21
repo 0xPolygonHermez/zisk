@@ -268,8 +268,8 @@ impl ZiskInst {
             s += &format!(" m32={}", self.m32);
         }
         s += &format!(" index={}", self.index);
-        if self.next_internal_inst.is_some() {
-            s += &format!(" next_internal_inst=0x{:x}", self.next_internal_inst.unwrap());
+        if let Some(next_internal_inst) = self.next_internal_inst {
+            s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
         }
         s
     }

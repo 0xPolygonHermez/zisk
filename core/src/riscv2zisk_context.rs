@@ -926,7 +926,7 @@ impl Riscv2ZiskContext<'_> {
         // then dynamically jump to it in the next instruction. This optimization allows us to save one instruction in the
         // common case of auipc + jalr used for function calls, which is a common pattern in RISC-V
         // code.
-        if next_instructions.len() >= 1
+        if !next_instructions.is_empty()
             && next_instructions[0].inst == "jalr"
             && next_instructions[0].rs1 == i.rd
             && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
@@ -963,7 +963,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("imm", jump_pc as u64, false);
                 zib.op("copyb").unwrap();
                 zib.set_pc();
-                zib.j(0 as i64, 0);
+                zib.j(0, 0);
                 zib.verbose("internal 1 auipc");
                 zib.build(self.rom);
             }

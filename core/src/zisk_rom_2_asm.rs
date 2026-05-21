@@ -971,9 +971,9 @@ impl ZiskRom2Asm {
             let mut instruction = &rom.insts[&ctx.pc].i;
 
             // Get next instruction pc, to be used in jumps
-            ctx.next_pc = if instruction.next_internal_inst.is_some() {
+            ctx.next_pc = if let Some(next_internal_inst) = instruction.next_internal_inst {
                 // If there is an internal instruction, take it as the next instruction
-                instruction.next_internal_inst.unwrap()
+                next_internal_inst
             } else if ((k + 1) < rom.sorted_pc_list.len()) && (rom.sorted_pc_list[k + 1] & 0x1 == 0)
             {
                 // If there is an even next instruction, take it as the next instruction
@@ -1005,8 +1005,8 @@ impl ZiskRom2Asm {
 
                 // Calculate the next instruction pc, either the next internal instruction, or the
                 // next even external RISC-V-derived instruction
-                ctx.next_pc = if instruction.next_internal_inst.is_some() {
-                    instruction.next_internal_inst.unwrap()
+                ctx.next_pc = if let Some(next_internal_inst) = instruction.next_internal_inst {
+                    next_internal_inst
                 } else if ((k + 1) < rom.sorted_pc_list.len())
                     && (rom.sorted_pc_list[k + 1] & 0x1 == 0)
                 {
