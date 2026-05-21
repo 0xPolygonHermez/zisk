@@ -1,11 +1,11 @@
 use crate::zisklib::{
-    be_bytes_to_u64_4, eq, fcall_secp256k1_ecdsa_verify, gt, u64_4_to_be_bytes, ZERO_256,
+    be_bytes_to_u64_4, eq, glv_double_scalar_mul_with_g_secp256k1, gt, u64_4_to_be_bytes, ZERO_256,
 };
 
 use super::{
     constants::N_MINUS_ONE,
-    curve::{is_on_curve_secp256k1, lift_x_secp256k1, triple_scalar_mul_with_g_secp256k1},
-    scalar::{neg_fn_secp256k1, reduce_fn_secp256k1},
+    curve::{is_on_curve_secp256k1, lift_x_secp256k1},
+    scalar::{inv_fn_secp256k1, mul_fn_secp256k1, neg_fn_secp256k1, reduce_fn_secp256k1},
 };
 
 /// ECDSA recover result codes
@@ -17,11 +17,6 @@ pub const ECDSA_RECOVER_ERR_POINT_NOT_ON_CURVE: u8 = 4;
 pub const ECDSA_RECOVER_ERR_RECOVERY_FAILED: u8 = 5;
 
 /// Verifies the signature (r, s) over the message hash z using the public key pk
-///
-/// # Returns
-/// - 0 = valid signature
-/// - 1 = public key not on curve
-/// - 2 = invalid signature
 pub fn ecdsa_verify_secp256k1(
     pk: &[u64; 8],
     z: &[u64; 4],
@@ -38,62 +33,48 @@ pub fn ecdsa_verify_secp256k1(
         return false;
     }
 
-    // Ecdsa verification computes (x, y) = [z·s⁻¹ (mod n)]G + [r·s⁻¹ (mod n)]PK
-    // and checks that x ≡ r (mod n)
-    // We can equivalently hint (x,y), verify that
-    //   [z]G + [r]PK + [-s](x,y) == 𝒪,
-    // and ensure that x ≡ r (mod n), saving us from expensive fn arithmetic
-
-    // Hint the result
-    let point = fcall_secp256k1_ecdsa_verify(
-        pk,
-        z,
-        r,
+    // Compute u1, u2 such that u1 = z·s⁻¹ (mod n), u2 = r·s⁻¹ (mod n).
+    let s_inv = inv_fn_secp256k1(
         s,
         #[cfg(feature = "hints")]
         hints,
     );
+    let u1 = mul_fn_secp256k1(
+        z,
+        &s_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let u2 = mul_fn_secp256k1(
+        r,
+        &s_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    // Check the recovered point is valid
-    // Note: Identity point would be raised here
-    if !is_on_curve_secp256k1(
-        &point,
+    // Compute (x, y) = [u1]G + [u2]PK.
+    let point = match glv_double_scalar_mul_with_g_secp256k1(
+        &u1,
+        &u2,
+        pk,
         #[cfg(feature = "hints")]
         hints,
     ) {
-        return false;
-    }
+        Some(pt) => pt,
+        None => return false, // Identity is invalid
+    };
 
-    // Check that [z]G + [r]PK + [-s](x,y) == 𝒪
-    let neg_s = neg_fn_secp256k1(
-        s,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    if triple_scalar_mul_with_g_secp256k1(
-        z,
-        r,
-        &neg_s,
-        pk,
-        &point,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-    .is_some()
-    {
-        return false;
-    }
-
-    // Check that x ≡ r (mod n)
-    let point_x: [u64; 4] = [point[0], point[1], point[2], point[3]];
-    eq(
-        &reduce_fn_secp256k1(
-            &point_x,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
-        r,
-    )
+    // Check that x = r (mod n). Fast path: x < n, so x == r directly.
+    let x: [u64; 4] = [point[0], point[1], point[2], point[3]];
+    eq(&x, r)
+        || eq(
+            &reduce_fn_secp256k1(
+                &x,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            r,
+        )
 }
 
 /// Recover the public key point from an ECDSA signature (r, s) over the message hash z and recovery id recid
@@ -127,77 +108,51 @@ pub fn ecdsa_recover_secp256k1(
         return Err(ECDSA_RECOVER_ERR_INVALID_RECID);
     }
 
-    // Ecdsa recovery computes R = (x,y) and
-    //   (xQ, yQ) = [-z·r⁻¹ (mod n)]G + [s·r⁻¹ (mod n)]R
-    // We can equivalently compute R, hint (xQ,yQ) and verify that
-    //   [z]G + [-s]R + [r](xQ,yQ) == 𝒪,
-    // saving us from expensive fn arithmetic
-
-    // Determine the x-coordinate of R
-    let x = *r;
-
-    // Compute the y-coordinate from x and the parity bit
+    // Lift R from its x-coordinate (= r) and the parity bit (= recid & 1).
     let y_is_odd = (recid & 1) == 1;
     let r_point = lift_x_secp256k1(
-        &x,
+        r,
         y_is_odd,
         #[cfg(feature = "hints")]
         hints,
     )
     .map_err(|_| ECDSA_RECOVER_ERR_POINT_NOT_ON_CURVE)?;
 
-    // Check that [z]G + [-s]R + [r](xQ,yQ) == 𝒪
-
-    // Hint the result
-    // The following functions hints (x,y) satisfying
-    //    (x, y) == [s⁻¹·z (mod n)]G + [s⁻¹·r (mod n)]R iff  [z]G + [r]R + [-s](x, y) == 𝒪
-    // We can use it by flipping the signs of r and s and its order
-    let neg_s = neg_fn_secp256k1(
-        s,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let neg_r = neg_fn_secp256k1(
+    // Compute u1, u2 such that u1 = -z·r⁻¹ (mod n), u2 = s·r⁻¹ (mod n).
+    let r_inv = inv_fn_secp256k1(
         r,
         #[cfg(feature = "hints")]
         hints,
     );
-    let point = fcall_secp256k1_ecdsa_verify(
-        &r_point,
+    let neg_z = neg_fn_secp256k1(
         z,
-        &neg_s,
-        &neg_r,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let u1 = mul_fn_secp256k1(
+        &neg_z,
+        &r_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let u2 = mul_fn_secp256k1(
+        s,
+        &r_inv,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    // Check the recovered point is valid
-    // Note: Identity point would be raised here
-    if !is_on_curve_secp256k1(
-        &point,
+    // PK = [u1]G + [u2]R.
+    match glv_double_scalar_mul_with_g_secp256k1(
+        &u1,
+        &u2,
+        &r_point,
         #[cfg(feature = "hints")]
         hints,
     ) {
-        return Err(ECDSA_RECOVER_ERR_RECOVERY_FAILED);
+        Some(pk) => Ok(pk),
+        None => Err(ECDSA_RECOVER_ERR_RECOVERY_FAILED), // Recovered point is identity
     }
-
-    // Check that [z]G + [-s]R + [r](xQ,yQ) == 𝒪
-    if triple_scalar_mul_with_g_secp256k1(
-        z,
-        &neg_s,
-        r,
-        &r_point,
-        &point,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-    .is_some()
-    {
-        return Err(ECDSA_RECOVER_ERR_RECOVERY_FAILED);
-    }
-
-    // Return the recovered public key
-    Ok(point)
 }
 
 // ==================== C FFI Functions ====================

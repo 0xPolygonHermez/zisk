@@ -2,10 +2,10 @@
 
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
-    zisklib::{fcall_secp256k1_fn_inv, is_zero, lt},
+    zisklib::{eq, fcall_secp256k1_fn_inv, fcall_secp256k1_glv_decompose, is_zero, lt},
 };
 
-use super::constants::{N, N_MINUS_ONE};
+use super::constants::{LAMBDA, N, N_MINUS_ONE};
 
 /// Reduces a 256-bit value modulo the secp256k1 curve order N
 pub fn reduce_fn_secp256k1(
@@ -156,6 +156,73 @@ pub fn inv_fn_secp256k1(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
     assert_eq!(*params.d, [1, 0, 0, 0]);
 
     inv
+}
+
+/// GLV scalar split for the secp256k1 curve.
+///
+/// Given `k ∈ [0, n)`, returns `(k1, k2, sigma1, sigma2)` such that
+/// `k = (-1)^sigma1 · k1 + (-1)^sigma2 · k2 · λ (mod n)` with `k1, k2 ∈ [0, 2^128)`.
+pub fn glv_decompose_fn_secp256k1(
+    k: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> ([u64; 4], [u64; 4], u64, u64) {
+    // Hint the result
+    let hint = fcall_secp256k1_glv_decompose(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let k1: [u64; 4] = hint[0..4].try_into().unwrap();
+    let k2: [u64; 4] = hint[4..8].try_into().unwrap();
+    let sigma1 = hint[8];
+    let sigma2 = hint[9];
+
+    // Bound check: k1, k2 ∈ [0, 2^128) — i.e. the top two limbs are zero.
+    assert_eq!(k1[2], 0, "GLV: k1 exceeds 2^128");
+    assert_eq!(k1[3], 0, "GLV: k1 exceeds 2^128");
+    assert_eq!(k2[2], 0, "GLV: k2 exceeds 2^128");
+    assert_eq!(k2[3], 0, "GLV: k2 exceeds 2^128");
+
+    // Sign bits must be 0 or 1.
+    assert!(sigma1 <= 1, "GLV: sigma1 is not a bit");
+    assert!(sigma2 <= 1, "GLV: sigma2 is not a bit");
+
+    // Lift k1, k2 into Fn.
+    let k1_fn = if sigma1 == 0 {
+        k1
+    } else {
+        neg_fn_secp256k1(
+            &k1,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    };
+    let k2_fn = if sigma2 == 0 {
+        k2
+    } else {
+        neg_fn_secp256k1(
+            &k2,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    };
+
+    // Verify the relation: λ·k2 + k1 = k (mod n).
+    let mut params = SyscallArith256ModParams {
+        a: &LAMBDA,
+        b: &k2_fn,
+        c: &k1_fn,
+        module: &N,
+        d: &mut [0, 0, 0, 0],
+    };
+    syscall_arith256_mod(
+        &mut params,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    assert!(eq(params.d, k), "GLV decomposition relation failed");
+
+    (k1, k2, sigma1, sigma2)
 }
 
 // ==================== C FFI Functions ====================

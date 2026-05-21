@@ -1,7 +1,9 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{syscall_bls12_381_curve_add, SyscallBls12_381CurveAddParams, SyscallPoint384};
+use ziskos::syscalls::{
+    syscall_bls12_381_curve_add, SyscallBls12_381CurveAddParams, SyscallPoint384,
+};
 
 fn main() {
     let mut p1 = SyscallPoint384 { x: [0, 0, 0, 0, 0, 0], y: [0, 0, 0, 0, 0, 0] };
