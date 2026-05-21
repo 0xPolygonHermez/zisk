@@ -49,6 +49,8 @@ pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
 pub struct ZiskExecutor<F: PrimeField64> {
+    /// Shared static state machine bundle.
+    sm_bundle: Arc<StaticSMBundle<F>>,
     /// Shared execution state.
     state: ExecutionState<F>,
     /// Phase-1 Execution. Runs the chosen emulator and produces an `ExecutionOutput`.
@@ -87,6 +89,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let sm_bundle = Arc::new(StaticSMBundle::new(std, with_asm_emulator, precompiles));
 
         let executor = Arc::new(Self {
+            sm_bundle: sm_bundle.clone(),
             state: ExecutionState::new(),
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE, sm_bundle.clone()),
@@ -184,7 +187,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let output = self.execution.run(
             &zisk_rom,
             &pctx,
-            self.plan.sm_bundle(),
+            &*self.sm_bundle,
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,

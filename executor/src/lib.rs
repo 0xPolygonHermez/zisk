@@ -16,10 +16,10 @@
 //!   │
 //!   └── PlanPhase            → consumes the ExecutionOutput
 //!         │  (plan + materialize; one phase actor)
-//!         ├── plan_main           (pure, unit-testable)
-//!         ├── plan_secondary      (drains counters into per-SM plans)
-//!         ├── InstancePlanner     (ROM/main/secn global-id assignment)
-//!         ├── InstanceRegistry / InstanceFactory
+//!         ├── PlanPhase::plan_main      (pure, unit-testable)
+//!         ├── PlanPhase::plan_secondary (drains counters into per-SM plans)
+//!         ├── InstanceAssigner    (ROM/main/secn global-id assignment)
+//!         ├── InstancePopulator
 //!         │     → fills InstanceSet + checkpoints
 //!         └── returns PlanOutput
 //!               (instance data + timings + cost_per_type)
@@ -65,7 +65,7 @@
 //! |----------------------------|-----------------------------------------------|
 //! | `BackendArtifacts`         | Synthetic `JoinHandle`s, fake threads         |
 //! | `PlanPhase::plan_main`     | Synthetic `EmuTrace` array (no `ProofCtx`)    |
-//! | `InstancePlanner`          | `FakeProofRegistry` records call sequences    |
+//! | `InstanceAssigner`         | `FakeProofRegistry` records call sequences    |
 //! | `AsmRunnerSupervisor`      | Fake `JoinHandle`s, failure-path tests        |
 //! | `MtChunkProcessor`         | Synthetic chunk plumbing                      |
 //! | `InstanceSet` / `ChunkCollectorStore` | Construct + reset / is_empty       |

@@ -1,10 +1,4 @@
-//! Instance assignment helpers — the `pctx`-mutating half of the old
-//! `InstancePlanner` API.
-//!
-//! Every `pctx.…` call is routed through `crate::ports::ProofRegistry`
-//! (the executor's anti-corruption layer over `ProofCtx<F>`).
-//! `InstancePlanner` is field-erased over `F` and mockable in unit
-//! tests via `crate::ports::fakes::FakeProofRegistry` (test-only fake).
+//! Instance assignment (global-id allocation) for the ZiskExecutor.
 
 use crate::error::{ExecutorResult, RwLockExt};
 use std::sync::RwLock;
@@ -14,24 +8,22 @@ use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 use crate::ports::{GlobalId, InstanceInfo, ProofRegistry};
 use crate::AirClassifier;
 
-/// Assigner of state-machine instances to the proof context.
-///
-/// Stateless and `F`-free — every method takes a
-/// `&dyn ProofRegistry`, so the assigner can be exercised in unit
-/// tests against `FakeProofRegistry` (test-only fake) without any
-/// `ProofCtx<F>` setup.
-pub struct InstancePlanner;
+/// Instance assigner for the ZiskExecutor. Responsible for assigning global IDs to
+/// planned instances and registering them with the proof context.
+pub struct InstanceAssigner;
 
-impl InstancePlanner {
-    /// Creates a new `InstancePlanner`.
-    pub fn new() -> Self {
-        Self
-    }
-
+impl InstanceAssigner {
     /// Assigns the ROM instance to the proof context.
     ///
+    /// # Arguments
+    /// * `registry` - Proof-context assignment surface.
+    ///
+    /// # Returns
     /// Returns the assigned [`GlobalId`].
-    pub fn assign_rom_instance(&self, registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
+    ///
+    /// # Errors
+    /// Returns an error if the registry rejects the assignment.
+    pub fn assign_rom_instance(registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
         registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
     }
 
@@ -44,8 +36,11 @@ impl InstancePlanner {
     ///
     /// # Returns
     /// Vector of (global_id, plan) pairs for instance creation.
+    ///
+    /// # Errors
+    /// Returns an error if any registry assignment fails or if
+    /// `global_ids` is poisoned.
     pub fn assign_main_instances(
-        &self,
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: Vec<Plan>,
@@ -69,8 +64,11 @@ impl InstancePlanner {
     /// * `registry` - Proof-context assignment surface.
     /// * `global_ids` - Lock for storing assigned global IDs.
     /// * `plans` - Plans to assign (will be mutated with global IDs).
+    ///
+    /// # Errors
+    /// Returns an error if any registry assignment fails or if
+    /// `global_ids` is poisoned.
     pub fn assign_secn_instances(
-        &self,
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: &mut [Plan],
@@ -78,9 +76,8 @@ impl InstancePlanner {
         for plan in plans.iter_mut() {
             let info = InstanceInfo::new(plan.airgroup_id, plan.air_id);
 
-            // ROM instances need special first-partition assignment —
-            // look up the global id stamped by `assign_rom_instance`
-            // earlier in the phase.
+            // ROM instances need special first-partition assignment look up the global id
+            // stamped by `assign_rom_instance` earlier in the phase.
             let gid = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
                 registry.find_instance_id(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))?
             } else if AirClassifier::is_rank_assigned_precompile_instance(
@@ -103,12 +100,6 @@ impl InstancePlanner {
     }
 }
 
-impl Default for InstancePlanner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,9 +108,8 @@ mod tests {
     #[test]
     fn assign_rom_instance_uses_add_instance_assign_with_rom_air_id() {
         let registry = FakeProofRegistry::new();
-        let planner = InstancePlanner::new();
 
-        let gid = planner.assign_rom_instance(&registry).expect("ok");
+        let gid = InstanceAssigner::assign_rom_instance(&registry).expect("ok");
 
         let calls = registry.additions.borrow();
         assert_eq!(calls.len(), 1);
@@ -131,7 +121,6 @@ mod tests {
     #[test]
     fn assign_main_instances_records_one_add_instance_assign_per_plan() {
         let registry = FakeProofRegistry::new();
-        let planner = InstancePlanner::new();
         let global_ids = RwLock::new(Vec::<usize>::new());
 
         // Two synthetic plans pointing at arbitrary (group, air) tuples.
@@ -142,7 +131,8 @@ mod tests {
             Plan::new(7, 101, None, InstanceType::Instance, zisk_common::CheckPoint::None, None),
         ];
 
-        let assignments = planner.assign_main_instances(&registry, &global_ids, plans).expect("ok");
+        let assignments =
+            InstanceAssigner::assign_main_instances(&registry, &global_ids, plans).expect("ok");
 
         assert_eq!(assignments.len(), 2);
         let calls = registry.additions.borrow();
@@ -165,7 +155,6 @@ mod tests {
     #[test]
     fn assign_secn_instances_routes_by_instance_type() {
         let registry = FakeProofRegistry::new();
-        let planner = InstancePlanner::new();
         let global_ids = RwLock::new(Vec::<usize>::new());
 
         // Plain Instance → add_instance, Table → add_table.
@@ -174,7 +163,7 @@ mod tests {
             Plan::new(7, 201, None, InstanceType::Table, zisk_common::CheckPoint::None, None),
         ];
 
-        planner.assign_secn_instances(&registry, &global_ids, &mut plans).expect("ok");
+        InstanceAssigner::assign_secn_instances(&registry, &global_ids, &mut plans).expect("ok");
 
         let calls = registry.additions.borrow();
         assert_eq!(calls.len(), 2);

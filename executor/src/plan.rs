@@ -5,29 +5,30 @@
 //! before witness computation can start:
 //!
 //! 1. Register the ROM instance on `pctx` (`add_instance_assign`).
-//! 2. Plan main instances (via [`plan_main`]), assign their global
-//!    ids, and populate them into `state.instance_set.main_instances`.
+//! 2. Plan main instances (via [`PlanPhase::plan_main`]), assign their
+//!    global ids, and populate them into
+//!    `state.instance_set.main_instances`.
 //! 3. Stash `min_traces` in the execution state so the witness side can
 //!    read them.
-//! 4. Plan secondary instances (via [`plan_secondary`]), await the
-//!    ASM Memory-Operations runner and merge its plans, await the ASM
-//!    ROM-Histogram runner and hand its data to the witness router.
+//! 4. Plan secondary instances (via [`PlanPhase::plan_secondary`]),
+//!    await the ASM Memory-Operations runner and merge its plans, await
+//!    the ASM ROM-Histogram runner and hand its data to the witness
+//!    router.
 //! 5. Configure secondary SMs on `pctx`, flatten the per-SM plan map,
 //!    assign secondary global ids, inject public outputs, populate
 //!    secondary instances, configure their checkpoints.
 //! 6. Accumulate per-type proving cost (main + per-instance + tables).
 //!
-//! `plan_main` / `plan_secondary` are pure functions and individually
-//! unit-testable on synthetic `EmuTrace` / counters input. The full
-//! `run` is integration-tested via the executor pipeline.
+//! [`PlanPhase::plan_main`] / [`PlanPhase::plan_secondary`] are pure
+//! associated functions (no `self`) and individually unit-testable on
+//! synthetic `EmuTrace` / counters input. The full `run` is
+//! integration-tested via the executor pipeline.
 
-mod instance_factory;
-mod planner;
-mod registry;
+mod assigner;
+mod populator;
 
-pub use instance_factory::*;
-pub use planner::*;
-pub use registry::*;
+pub use assigner::*;
+pub use populator::*;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
@@ -68,61 +69,60 @@ pub struct PlanOutput {
     pub cost_per_type: StatsCostPerType,
 }
 
-/// Plan the main state-machine instances from minimal traces.
-///
-/// Pure: returns one [`Plan`] per `MainTrace` segment needed to cover
-/// the whole execution. No `ProofCtx`, no global ids — assignment is
-/// the caller's responsibility. Unit-testable on synthetic `EmuTrace`
-/// input without bringing up an SM bundle.
-pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> ExecutorResult<Vec<Plan>> {
-    Ok(MainPlanner::plan(min_traces, chunk_size)?)
-}
-
-/// Plan the secondary state-machine instances from per-chunk counters.
-///
-/// The bundle's per-SM planners consume the counter map by draining
-/// via `remove`, so this function takes `&mut`. `num_chunks` is the
-/// number of executed chunks — used by ROM's chunk-only planner since
-/// it has no bus-side counter. Returns a `BTreeMap` keyed by the SM's
-/// bundle position.
-pub fn plan_secondary<F: PrimeField64>(
-    counters: &mut CountersChunkMetrics,
-    bundle: &StaticSMBundle<F>,
-    num_chunks: usize,
-) -> BTreeMap<usize, Vec<Plan>> {
-    bundle.plan_sec(counters, num_chunks)
-}
-
 /// Plan + materialize phase actor.
 ///
-/// Owns the chunk size + co-actors used by the full plan-and-populate
-/// pipeline: the global-id assigner (`InstancePlanner`) and the
-/// instance lifecycle owner (`InstanceRegistry`). The pure planning
-/// helpers [`plan_main`] / [`plan_secondary`] are free functions in
-/// this module — testable without instantiating `PlanPhase`.
+/// Owns the chunk size + the instance materialiser
+/// ([`InstancePopulator`]). Global-id allocation is done via the
+/// stateless [`InstanceAssigner`] namespace. The pure planning helpers
+/// [`PlanPhase::plan_main`] / [`PlanPhase::plan_secondary`] are
+/// associated functions — no `self`, so they're testable without
+/// instantiating `PlanPhase`.
 pub struct PlanPhase<F: PrimeField64> {
     chunk_size: u64,
-    planner: InstancePlanner,
-    registry: InstanceRegistry<F>,
+    sm_bundle: Arc<StaticSMBundle<F>>,
+    populator: InstancePopulator<F>,
 }
 
 impl<F: PrimeField64> PlanPhase<F> {
     /// Construct with the chunk size and the shared SM bundle. The
-    /// bundle is wrapped into an `InstanceRegistry` so the phase can
+    /// bundle is wrapped into an `InstancePopulator` so the phase can
     /// populate instances during `run`.
     pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         Self {
             chunk_size,
-            planner: InstancePlanner::new(),
-            registry: InstanceRegistry::new(sm_bundle),
+            sm_bundle: sm_bundle.clone(),
+            populator: InstancePopulator::new(sm_bundle),
         }
     }
 
-    /// Borrows the shared SM bundle. Exposed so the trace phase can
-    /// hand it into the per-chunk counter set.
-    #[inline]
-    pub fn sm_bundle(&self) -> &StaticSMBundle<F> {
-        self.registry.sm_bundle()
+    /// Plan the main state-machine instances from minimal traces.
+    ///
+    /// Pure: returns one [`Plan`] per `MainTrace` segment needed to
+    /// cover the whole execution. No `ProofCtx`, no global ids —
+    /// assignment is the caller's responsibility. Associated function
+    /// (no `self`): unit-testable on synthetic `EmuTrace` input without
+    /// bringing up an SM bundle.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying [`MainPlanner`] rejects the
+    /// inputs (e.g. non-power-of-two `chunk_size`).
+    pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> ExecutorResult<Vec<Plan>> {
+        Ok(MainPlanner::plan(min_traces, chunk_size)?)
+    }
+
+    /// Plan the secondary state-machine instances from per-chunk counters.
+    ///
+    /// The bundle's per-SM planners consume the counter map by draining
+    /// via `remove`, so this function takes `&mut`. `num_chunks` is the
+    /// number of executed chunks — used by ROM's chunk-only planner since
+    /// it has no bus-side counter. Returns a `BTreeMap` keyed by the SM's
+    /// bundle position.
+    pub fn plan_secondary(
+        counters: &mut CountersChunkMetrics,
+        bundle: &StaticSMBundle<F>,
+        num_chunks: usize,
+    ) -> BTreeMap<usize, Vec<Plan>> {
+        bundle.plan_sec(counters, num_chunks)
     }
 
     /// Run the full plan + materialize pipeline. Consumes the trace
@@ -132,7 +132,7 @@ impl<F: PrimeField64> PlanPhase<F> {
     /// `proof_registry` is the executor's anti-corruption layer over
     /// `ProofCtx<F>`; it routes every `add_instance*`,
     /// `set_witness_ready`, `dctx_*`, and `write_pub_outs` call. `pctx`
-    /// is still passed because `InstanceRegistry::configure_sm_instances`
+    /// is still passed because `InstancePopulator::configure_sm_instances`
     /// forwards to `StaticSMBundle::configure_instances`, which uses
     /// the SM-trait's `&ProofCtx` argument (cross-crate, kept as-is).
     #[allow(clippy::too_many_arguments)]
@@ -161,16 +161,16 @@ impl<F: PrimeField64> PlanPhase<F> {
         timer_start_info!(PLAN);
         let start_partial = Instant::now();
 
-        self.planner.assign_rom_instance(proof_registry)?;
+        InstanceAssigner::assign_rom_instance(proof_registry)?;
 
-        let main_plans = plan_main(&trace.min_traces, self.chunk_size)?;
+        let main_plans = Self::plan_main(&trace.min_traces, self.chunk_size)?;
         let num_chunks = trace.min_traces.len();
         *state.min_traces.write_or_poison("min_traces")? = Some(trace.min_traces);
 
         let main_assignments =
-            self.planner.assign_main_instances(proof_registry, global_ids, main_plans)?;
+            InstanceAssigner::assign_main_instances(proof_registry, global_ids, main_plans)?;
         let main_instances_count = main_assignments.len();
-        self.registry.populate_main_instances(proof_registry, state, main_assignments)?;
+        self.populator.populate_main_instances(proof_registry, state, main_assignments)?;
 
         stats_end!(stats, &_main_plan_scope);
 
@@ -178,8 +178,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         stats_begin!(stats, exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut counters = trace.counters;
-        let mut secn_planning =
-            plan_secondary(&mut counters, self.registry.sm_bundle(), num_chunks);
+        let mut secn_planning = Self::plan_secondary(&mut counters, &self.sm_bundle, num_chunks);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);
@@ -199,7 +198,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         stats_end!(stats, &_mo_wait_scope);
 
         stats_begin!(stats, exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
-        self.registry.sm_bundle().extend_mem_plans(&mut secn_planning, mem_plans);
+        self.sm_bundle.extend_mem_plans(&mut secn_planning, mem_plans);
         stats_end!(stats, &_mo_add_scope);
 
         let count_and_plan_mo_duration = mo_start.elapsed();
@@ -221,7 +220,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         stats_begin!(stats, exec_scope, _config_scope, "CONFIGURE_INSTANCES", 0);
 
         // Configure secondary state machine instances based on planning.
-        self.registry.configure_sm_instances(pctx, &secn_planning);
+        self.populator.configure_sm_instances(pctx, &secn_planning);
 
         let mut cost_per_type = StatsCostPerType::default();
         {
@@ -240,7 +239,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 
         let mut secn_planning: Vec<_> = secn_planning.into_values().flatten().collect();
 
-        self.planner.assign_secn_instances(proof_registry, global_ids, &mut secn_planning)?;
+        InstanceAssigner::assign_secn_instances(proof_registry, global_ids, &mut secn_planning)?;
 
         let secn_global_ids: Vec<usize> = secn_planning
             .iter()
@@ -256,10 +255,10 @@ impl<F: PrimeField64> PlanPhase<F> {
         // Phase 1.4: Populate secondary instances
         // ────────────────────────────────────────────────────────────
 
-        self.registry.populate_secn_instances(state, secn_planning)?;
+        self.populator.populate_secn_instances(state, secn_planning)?;
 
         // Configure instance checkpoints.
-        self.registry.configure_checkpoints(proof_registry, state, &secn_global_ids)?;
+        self.populator.configure_checkpoints(proof_registry, state, &secn_global_ids)?;
 
         stats_end!(stats, &_config_scope);
 
@@ -309,7 +308,10 @@ impl<F: PrimeField64> PlanPhase<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fields::Goldilocks;
     use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+
+    type F = Goldilocks;
 
     const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
@@ -319,14 +321,16 @@ mod tests {
 
     #[test]
     fn plan_main_empty_traces_yields_empty_plan() {
-        let plans = plan_main(&[], NUM_ROWS as u64).expect("empty traces planned ok");
+        let plans =
+            PlanPhase::<F>::plan_main(&[], NUM_ROWS as u64).expect("empty traces planned ok");
         assert!(plans.is_empty());
     }
 
     #[test]
     fn plan_main_single_full_trace_yields_one_plan() {
         // chunk_size == NUM_ROWS → num_within = 1, so 1 trace = 1 segment.
-        let plans = plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
+        let plans =
+            PlanPhase::<F>::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plans[0].air_id, MAIN_AIR_IDS[0]);
@@ -335,13 +339,14 @@ mod tests {
     #[test]
     fn plan_main_segments_via_ceil_div() {
         // chunk_size = NUM_ROWS / 2 → num_within = 2; 3 traces → 2 segments.
-        let plans = plan_main(&synthetic_traces(3), (NUM_ROWS as u64) / 2).expect("ok");
+        let plans =
+            PlanPhase::<F>::plan_main(&synthetic_traces(3), (NUM_ROWS as u64) / 2).expect("ok");
         assert_eq!(plans.len(), 2);
     }
 
     #[test]
     fn plan_main_rejects_non_power_of_two_chunk_size() {
-        match plan_main(&synthetic_traces(1), 3) {
+        match PlanPhase::<F>::plan_main(&synthetic_traces(1), 3) {
             Ok(_) => panic!("non-power-of-two chunk_size must error"),
             Err(err) => {
                 assert!(err.to_string().to_lowercase().contains("power of two"));
