@@ -28,6 +28,27 @@
 : "${SKIP_COMPILE_PIL:=0}"
 : "${RELEASE:=0}"
 
+# Portable shims for utilities that ship as GNU-only on Linux but use different
+# names on BSD userlands (macOS). Defined once so callers don't have to care.
+
+# sha256_hex: read stdin, print lowercase hex digest, no trailing filename.
+# Linux: sha256sum. macOS/BSD: shasum -a 256 (ships with the base system).
+sha256_hex() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum
+  else shasum -a 256
+  fi | awk '{print $1}'
+}
+
+# mktemp_tarball: create a unique temp path ending in .tar.gz, print it.
+# GNU mktemp has --suffix; BSD mktemp does not. Two calls + mv is the portable
+# spelling that works on both.
+mktemp_tarball() {
+  local t
+  t="$(mktemp)"
+  mv "$t" "$t.tar.gz"
+  printf '%s\n' "$t.tar.gz"
+}
+
 # Resolve the pil2-proofman checkout. PROOFMAN_DIR env wins (handy for local dev
 # against an unpushed branch). Otherwise read it from cargo's git checkout for
 # the `proofman` dep in Cargo.toml — that's the source that will actually be
@@ -130,10 +151,10 @@ compute_input_hash() (
 
   echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
   {
-    xargs -a "$pil_list" cat
+    xargs cat < "$pil_list"
     cat state-machines/starkstructs.json
     cat "${fixed_bins[@]}"
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
-  } | sha256sum | awk '{print $1}'
+  } | sha256_hex
 )

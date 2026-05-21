@@ -267,7 +267,7 @@ case "$MODE" in
 
       echo "cache hit — downloading ${PK_NAME} into $BUILD_DIR/"
       mkdir -p "$BUILD_DIR"
-      tarball="$(mktemp --suffix=.tar.gz)"
+      tarball="$(mktemp_tarball)"
       curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
       rm -rf "$BUILD_DIR/provingKey"
       tar -xzf "$tarball" -C "$BUILD_DIR"
@@ -321,7 +321,7 @@ if [ "$MODE" = "build" ]; then
   if [ -n "$remote_hash" ] && [ "$remote_hash" = "$LOCAL_HASH" ]; then
     echo "cache hit — downloading ${PK_NAME}"
     mkdir -p "$OUT_DIR"
-    tarball="$(mktemp --suffix=.tar.gz)"
+    tarball="$(mktemp_tarball)"
     curl -fL --progress-bar "${BUCKET}/${PK_NAME}" -o "$tarball"
     rm -rf "$OUT_DIR/provingKey"
     tar -xzf "$tarball" -C "$OUT_DIR"

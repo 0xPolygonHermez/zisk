@@ -14,9 +14,18 @@ Dev-side helpers for generating, packaging, and publishing the Zisk proving key.
 | `jq` | `build-setup.sh` parses Cargo / package.json metadata |
 | `curl` | `build-setup.sh` / `fetch-setup.sh` download from the public bucket — no auth needed |
 | `gcloud` SDK (`gcloud storage`) | only for `package-proving-key.sh` uploads — auth required |
-| Standard Unix utils | `tar`, `sha256sum`, `md5sum`, `find`, `awk` |
+| Standard Unix utils | `tar`, `find`, `awk`, sha256/md5 (`sha256sum`+`md5sum` on Linux, `shasum`+`md5` on macOS — auto-detected) |
 
-### System packages (Ubuntu / Debian)
+### Platform support
+
+- `fetch-setup.sh` and `package-proving-key.sh` work on Linux and macOS (the
+  GNU-only `sha256sum` / `mktemp --suffix` / `xargs -a` calls have portable
+  shims in `lib/setup-common.sh`).
+- `build-setup.sh` is Linux/x86_64 only because the underlying proving-key
+  pipeline depends on `nasm` and the C++ STARK lib's Linux toolchain (see
+  the apt list below). macOS users should consume via `fetch-setup.sh` only.
+
+### System packages (Ubuntu / Debian, build-setup.sh only)
 
 These are the build deps for pil2-proofman and the C++ STARK lib it builds:
 

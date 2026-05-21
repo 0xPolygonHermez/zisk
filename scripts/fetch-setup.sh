@@ -96,7 +96,7 @@ else
 fi
 
 mkdir -p "$BUILD_DIR"
-tarball="$(mktemp --suffix=.tar.gz)"
+tarball="$(mktemp_tarball)"
 trap 'rm -f "$tarball"' EXIT
 
 echo "==> downloading ${PK_NAME}"
