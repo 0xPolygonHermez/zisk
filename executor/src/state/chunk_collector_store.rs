@@ -1,4 +1,4 @@
-//! [`ChunkCollectorStore`] — the lock-protected per-instance chunk
+//! [`ChunkCollectorStore`] — per-instance chunk
 //! collector map, written during the witness phase by rayon worker
 //! threads.
 //!

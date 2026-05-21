@@ -1,5 +1,11 @@
 //! Shared execution state for the ZisK executor components.
 
+mod chunk_collector_store;
+mod instance_set;
+
+pub use chunk_collector_store::*;
+pub use instance_set::*;
+
 use fields::PrimeField64;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -9,8 +15,6 @@ use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, ZiskExecutorSummary}
 use zisk_core::ZiskRom;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
-
-use crate::{ChunkCollectorStore, InstanceSet};
 
 /// Type alias for chunk collectors: (chunk_id, collector)
 pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);

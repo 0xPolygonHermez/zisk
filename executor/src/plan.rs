@@ -21,15 +21,11 @@
 //! unit-testable on synthetic `EmuTrace` / counters input. The full
 //! `run` is integration-tested via the executor pipeline.
 
-mod chunk_collector_store;
-mod factory;
-mod instance_set;
+mod instance_factory;
 mod planner;
 mod registry;
 
-pub use chunk_collector_store::*;
-pub use factory::*;
-pub use instance_set::*;
+pub use instance_factory::*;
 pub use planner::*;
 pub use registry::*;
 
