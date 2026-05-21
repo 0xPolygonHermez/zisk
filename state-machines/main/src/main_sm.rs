@@ -108,6 +108,15 @@ impl<F: PrimeField64> MainInstance<F> {
         // Calculate total filled rows
         let filled_rows: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
+        let bounded_filled_rows = filled_rows.clamp(1, NUM_ROWS);
+        if filled_rows != bounded_filled_rows {
+            tracing::warn!(
+                "MainSM segment #{} reported {} filled rows; using bounded value {}",
+                segment_id,
+                filled_rows,
+                bounded_filled_rows
+            );
+        }
 
         tracing::debug!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
@@ -177,7 +186,8 @@ impl<F: PrimeField64> MainInstance<F> {
         // Pad remaining rows with the last valid row.
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check contribution.
-        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
+        let last_row =
+            Self::pad_trailing_rows(&mut main_trace.buffer, bounded_filled_rows, NUM_ROWS);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
