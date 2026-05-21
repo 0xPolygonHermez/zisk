@@ -375,14 +375,14 @@ impl<F: PrimeField64> RomDataSM<F> {
             trace[irow].set_value(0, low_val);
             trace[irow].set_value(1, high_val);
 
-            if addr_changes || (index == 0 && segment_id == 0) {
+            if addr_changes || (irow == 0 && segment_id == 0) {
                 trace[irow].set_addr_changes(true);
                 let previous_addr = seg
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
                 let distance = mem_op.addr as i64
                     - previous_addr as i64
-                    - !(index == 0 && segment_id == 0) as i64;
+                    - !(irow == 0 && segment_id == 0) as i64;
                 if distance < MAX_RANGE_CHECK_CACHE as i64 {
                     range_check_cache[distance as usize] += 1;
                 } else {
