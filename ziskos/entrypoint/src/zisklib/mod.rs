@@ -7,9 +7,11 @@
 //!   generation.
 
 mod fcalls;
+#[cfg(not(zisk_guest))]
 mod fcalls_impl;
 pub mod lib;
 
 pub use fcalls::*;
+#[cfg(not(zisk_guest))]
 pub use fcalls_impl::*;
 pub use lib::*;

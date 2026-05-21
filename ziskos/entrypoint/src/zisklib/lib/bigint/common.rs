@@ -3,6 +3,11 @@ use core::{
     fmt::{self, Debug, Display},
 };
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec;
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
 #[derive(Clone, Copy)]

@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+    if #[cfg(zisk_guest)] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_get, ziskos_fcall_param};
         use super::FCALL_BIGINT_DIV_ID;
@@ -34,7 +34,7 @@ pub fn fcall_bigint_div(
     rem: &mut [u64],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> (usize, usize) {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut quo_vector: Vec<u64> = Vec::new();
         let mut rem_vector: Vec<u64> = Vec::new();
@@ -54,7 +54,7 @@ pub fn fcall_bigint_div(
 
         (len_quo, len_rem)
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         let len_a = a.len() as usize;
         ziskos_fcall_param!(len_a, 1);

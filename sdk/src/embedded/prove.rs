@@ -74,8 +74,15 @@ impl EmbeddedClient {
             (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
             }
-            (EmbeddedProver::Asm(_), ExecutorKind::Emulator) => {
-                unimplemented!("Assembly prover does not yet support emulation mode")
+            (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
+                if hints.is_some() {
+                    anyhow::bail!("Hints require Assembly executor");
+                }
+                if matches!(stdin, InputSource::Stream(_)) {
+                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
+                }
+                let InputSource::Stdin(s) = stdin else { unreachable!() };
+                p.prove_emulator(program, s.into_inner(), proof_kind)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {

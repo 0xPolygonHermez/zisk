@@ -1,11 +1,8 @@
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sha_hasher_common::Output;
-use zisk_sdk::{
-    load_program, ExecutorKind, GuestProgram, Proof, ProverClient, PublicValues, ZiskStdin,
-};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use sha_hasher_host::ELF_SHA_HASHER;
+use zisk_sdk::{ExecutorKind, Proof, ProverClient, PublicValues, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,11 +22,11 @@ async fn main() -> Result<()> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating proof (this may take a while)...");
-    let result = client.prove(&PROGRAM, stdin).executor(ExecutorKind::Assembly).run()?.await?;
+    let result = client.prove(&ELF_SHA_HASHER, stdin).run()?.await?;
     println!("Proof generated successfully in {} ms", result.get_proving_time());
     println!("Execution steps: {}", result.get_execution_steps());
 
@@ -54,7 +51,7 @@ async fn main() -> Result<()> {
 
     println!("Verifying saved proofs from disk...");
     let publics = PublicValues::write_abi(&output)?;
-    let vk = PROGRAM.vk()?;
+    let vk = ELF_SHA_HASHER.vk()?;
 
     println!("Loading proof with publics from disk...");
     let proof = Proof::load("tmp/sha_hasher_proof.bin")?;

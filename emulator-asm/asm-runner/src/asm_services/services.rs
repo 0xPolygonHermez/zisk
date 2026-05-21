@@ -64,6 +64,7 @@ impl AsmService {
             unsafe {
                 command.pre_exec(|| {
                     libc::setpriority(libc::PRIO_PROCESS, 0, -5);
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
                     Ok(())
                 });
             }
@@ -392,6 +393,37 @@ impl AsmServices {
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
+    }
+
+    /// Unlink every `/dev/shm/{shm_prefix}*` shmem segment and
+    /// `/dev/shm/sem.{sem_prefix}*` semaphore. The C-side `server_cleanup`
+    /// only unlinks if `delete_input_shm`/`delete_output_shm` flags are
+    /// set — which the long-running ASM service children don't have — so
+    /// the parent has to do it. Call after `stop_asm_services` so the
+    /// children are already detached from the segments.
+    pub fn cleanup_my_shmem(&self) {
+        let dev_shm = std::path::Path::new("/dev/shm");
+        let entries = match std::fs::read_dir(dev_shm) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
+                return;
+            }
+        };
+        let sem_marker = format!("sem.{}", self.sem_prefix);
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
+            if name.starts_with(&self.shm_prefix) {
+                let _ = shm_unlink_by_name(&name);
+            } else if let Some(rest) = name.strip_prefix("sem.") {
+                if name.starts_with(&sem_marker) {
+                    let sem_name = format!("/{rest}");
+                    if let Ok(cstr) = std::ffi::CString::new(sem_name) {
+                        unsafe { libc::sem_unlink(cstr.as_ptr()) };
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn encode_request(request: RequestData) -> [u8; 40] {

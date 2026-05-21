@@ -49,7 +49,9 @@ pub use zisk_prover_backend::{setup_logger, ExecuteOutput, ProveOutput, VerifyCo
 pub use proofman_common::VerboseMode;
 
 // Re-export types from zisk_common
-pub use zisk_common::{PlonkVkey, ProgramVK, Proof, ProofKind, PublicValues, ZiskVK};
+pub use zisk_common::{
+    PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+};
 
 pub use zisk_build::*;
 
@@ -78,12 +80,19 @@ pub enum ExecutorKind {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) trait Client: Clone + Send + Sync + 'static {
+    /// Default executor configured on the client builder. Used when a
+    /// per-call request does not explicitly override it.
+    fn default_executor(&self) -> ExecutorKind {
+        ExecutorKind::default()
+    }
+
     fn run_upload(&self, program: &GuestProgram) -> Result<UploadResult>;
 
     fn run_setup(
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<SetupResult>>;

@@ -98,6 +98,7 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
                     hash_id: dto.hash_id,
                     program_name: dto.program_name,
                     with_hints: dto.with_hints,
+                    emulator_only: dto.emulator_only,
                 })),
             },
             CoordinatorMessageDto::InputStreamData(dto) => {
@@ -154,6 +155,7 @@ impl From<SetupProgramDto> for SetupProgram {
             hash_id: dto.hash_id,
             program_name: dto.program_name,
             with_hints: dto.with_hints,
+            emulator_only: dto.emulator_only,
         }
     }
 }
@@ -380,7 +382,8 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
             } else {
                 Some(response.error_message)
             },
-            result_data: result_data.unwrap(),
+            result_data,
+            worker_in_recovery: response.worker_in_recovery,
         }
     }
 }

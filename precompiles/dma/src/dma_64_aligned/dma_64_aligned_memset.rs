@@ -89,11 +89,15 @@ impl<F: PrimeField64> Dma64AlignedMemSetSM<F> {
                 self.op_x_rows
             };
             row.set_seq_end(seq_end);
+
+            // Compute sel_op_from_1 array
+            let mut sel_op_from_1 = [false; DMA_64_ALIGNED_MEMSET_OPS_BY_ROW - 1];
             for index in 0..use_count {
                 if index > 0 {
-                    row.set_sel_op_from_1(index - 1, true);
+                    sel_op_from_1[index - 1] = true;
                 }
             }
+            row.set_all_sel_op_from_1(&sel_op_from_1);
         }
 
         if is_last_instance_input {

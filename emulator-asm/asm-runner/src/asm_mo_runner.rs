@@ -195,54 +195,61 @@ impl AsmRunnerMO {
             }
         };
 
-        if exit_code != 0 {
-            return Err(AsmRunError::ExitCode(exit_code as u32))
-                .context("Child process returned error");
-        }
-
-        // Wait for the assembly emulator to complete writing the trace
-        let response = handle
-            .join()
-            .map_err(|_| AsmRunError::JoinPanic)?
-            .map_err(AsmRunError::ServiceError)?;
-
-        if response.result != 0 {
-            return Err(anyhow::anyhow!(
-                "ASM MO service returned non-zero result: {}",
-                response.result
-            ));
-        }
-        if response.trace_len == 0 {
-            return Err(anyhow::anyhow!("ASM MO service returned empty trace"));
-        }
-        if response.trace_len > response.allocated_len {
-            return Err(anyhow::anyhow!(
-                "ASM MO service trace_len ({}) exceeds allocated_len ({})",
-                response.trace_len,
-                response.allocated_len
-            ));
-        }
-
+        // Wind the C++ planner down before any further work. Without this,
+        // its background threads stay parked waiting for more chunks, and
+        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
+        // Mutex and hanging the next job's MO thread on lock acquisition.
         mem_planner.set_completed();
-        // Wait for mem_align_plans, this mem_align_plans are calculated in rust from
-        // counters calculated in C++
-        let mut mem_align_plans = mem_planner.wait_mem_align_plans();
         mem_planner.wait();
 
-        stats_end!(_stats, &_process_scope);
-        stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
+        // Compute the result; on any error we still fall through to the
+        // single re-stash point below so the next job has a planner ready.
+        let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
+            if exit_code != 0 {
+                return Err(AsmRunError::ExitCode(exit_code as u32))
+                    .context("Child process returned error");
+            }
 
-        let plans = mem_planner.collect_plans(&mut mem_align_plans);
+            let response = handle
+                .join()
+                .map_err(|_| AsmRunError::JoinPanic)?
+                .map_err(AsmRunError::ServiceError)?;
 
-        #[cfg(feature = "save_mem_plans")]
-        save_plans(&plans, "mem_plans_cpp.txt");
+            if response.result != 0 {
+                return Err(anyhow::anyhow!(
+                    "ASM MO service returned non-zero result: {}",
+                    response.result
+                ));
+            }
+            if response.trace_len == 0 {
+                return Err(anyhow::anyhow!("ASM MO service returned empty trace"));
+            }
+            if response.trace_len > response.allocated_len {
+                return Err(anyhow::anyhow!(
+                    "ASM MO service trace_len ({}) exceeds allocated_len ({})",
+                    response.trace_len,
+                    response.allocated_len
+                ));
+            }
 
-        stats_end!(_stats, &_collect_scope);
+            let mut mem_align_plans = mem_planner.wait_mem_align_plans();
+            stats_end!(_stats, &_process_scope);
+            stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
+            let plans = mem_planner.collect_plans(&mut mem_align_plans);
+            stats_end!(_stats, &_collect_scope);
+            Ok(plans)
+        })();
 
+        // Always re-stash the planner so the next call has one to take.
         preloaded.handle_mo = Some(std::thread::spawn(move || {
             drop(mem_planner);
             MemPlanner::new()
         }));
+
+        let plans = result?;
+
+        #[cfg(feature = "save_mem_plans")]
+        save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
         Ok(AsmRunnerMO::new(plans))

@@ -1,5 +1,8 @@
 //! Operations on the twist E': y² = x³ + 4·(1+u) of the BLS12-381 curve
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::{eq, fcall_msb_pos_256, is_zero, lt};
 
 use super::{
@@ -1147,10 +1150,10 @@ pub unsafe extern "C" fn decompress_twist_bls12_381_c(
         #[cfg(feature = "hints")]
         hints,
     ) {
-        Ok((p, _)) => {
+        Ok((p, is_infinity)) => {
             let result = &mut *(result_ptr as *mut [u64; 24]);
             *result = p;
-            if eq(&p, &G2_IDENTITY) {
+            if is_infinity {
                 1
             } else {
                 0

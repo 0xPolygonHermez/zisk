@@ -29,6 +29,7 @@ pub struct SetupRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
     with_hints: bool,
+    emulator_only: bool,
     timeout: Option<Duration>,
     output_dir: Option<PathBuf>,
 }
@@ -36,13 +37,27 @@ pub struct SetupRequest<'a, C> {
 #[allow(private_bounds)]
 impl<'a, C: Client> SetupRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
-        Self { client, program, with_hints: false, timeout: None, output_dir: None }
+        Self {
+            client,
+            program,
+            with_hints: false,
+            emulator_only: false,
+            timeout: None,
+            output_dir: None,
+        }
     }
 
     /// Enable hints during ROM setup. Requires Assembly executor on the client builder.
     #[must_use]
     pub fn with_hints(mut self) -> Self {
         self.with_hints = true;
+        self
+    }
+
+    /// Generate setup for emulator only (skips ASM service startup).
+    #[must_use]
+    pub fn emulator_only(mut self) -> Self {
+        self.emulator_only = true;
         self
     }
 
@@ -63,8 +78,13 @@ impl<'a, C: Client> SetupRequest<'a, C> {
     /// Submit the setup, returning a [`JobHandle<SetupResult>`].
     pub fn run(self) -> Result<JobHandle<SetupResult>> {
         let subs = new_subscriber_list();
-        let mut handle =
-            self.client.run_setup(self.program, self.with_hints, self.timeout, subs)?;
+        let mut handle = self.client.run_setup(
+            self.program,
+            self.with_hints,
+            self.emulator_only,
+            self.timeout,
+            subs,
+        )?;
 
         let hash_id = self.program.program_id.hash_id.to_string();
         let output_dir = self.output_dir.clone();

@@ -1,5 +1,8 @@
 //! Miller loop for BLS12-381
 
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::zisklib::{
     eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs,
 };

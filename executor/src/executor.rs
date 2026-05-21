@@ -31,7 +31,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
-use witness::WitnessComponent;
+use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle,
     StatsCostPerType, StatsType, ZiskExecutorSummary, ZiskExecutorTime,
@@ -39,8 +39,7 @@ use zisk_common::{
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 use zisk_pil::ZiskPublicValues;
 use zisk_pil::{
-    MAIN_AIR_IDS, SPECIFIED_RANGES_AIR_IDS, VIRTUAL_TABLE_0_AIR_IDS, VIRTUAL_TABLE_1_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 use anyhow::Result;
@@ -68,15 +67,12 @@ pub struct ZiskExecutor<F: PrimeField64> {
 impl<F: PrimeField64> ZiskExecutor<F> {
     /// Creates a new instance of the `ZiskExecutor`.
     ///
-    /// The ROM can be set or changed via `set_rom()` before calling `execute()`.
+    /// This function initializes the executor with the provided state machine bundle and sets up
+    /// the necessary components for execution.
     ///
     /// # Arguments
-    /// * `std` - Standard library instance.
-    /// * `sm_bundle` - State machine bundle.
-    /// * `chunk_size` - Chunk size for processing.
-    /// * `hints_stream` - Optional hints stream for processing precompile hints.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(sm_bundle: StaticSMBundle<F>) -> Self {
+    /// * `sm_bundle` - State machines bundle.
+    pub fn with_bundle(sm_bundle: StaticSMBundle<F>) -> Self {
         let sm_bundle = Arc::new(sm_bundle);
         let chunk_size = CHUNK_SIZE;
 
@@ -87,6 +83,37 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             registry: InstanceRegistry::new(sm_bundle.clone()),
             orchestrator: WitnessOrchestrator::new(chunk_size, sm_bundle),
         }
+    }
+
+    /// Creates a new instance of the `ZiskExecutor` with default state machines.
+    ///
+    /// This function initializes the executor with a default set of state machines.
+    ///
+    /// # Arguments
+    ///
+    /// * `wcm` - Witness manager for managing witness data.
+    /// * `verbose_mode` - Verbose mode for logging.
+    /// * `shared_tables` - Whether to use shared tables for execution.
+    /// * `is_asm_emulator` - Whether to use the ASM emulator for execution
+    pub fn new(
+        wcm: &WitnessManager<F>,
+        verbose_mode: proofman_common::VerboseMode,
+        shared_tables: bool,
+    ) -> Result<Arc<Self>> {
+        let rank_info = wcm.get_rank_info();
+        proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
+
+        let std = pil_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
+        proofman::register_std(wcm, &std);
+
+        let precompiles = crate::Precompiles::all(std.clone());
+        let sm_bundle = StaticSMBundle::new(std, precompiles);
+
+        let executor = Arc::new(Self::with_bundle(sm_bundle));
+        wcm.register_component(executor.clone());
+        wcm.set_witness_initialized();
+
+        Ok(executor)
     }
 
     /// Sets the ZisK ROM (ELF) for execution.
@@ -114,6 +141,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Sets ASM resources for execution (only applicable for ASM emulator).
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         self.rom_executor.set_asm_resources(asm_resources)
+    }
+
+    /// Clears the ASM-execution flag so execution routes through the Rust emulator.
+    pub fn clear_asm_resources(&self) {
+        self.rom_executor.clear_asm_resources();
     }
 
     /// Returns a reference to the ASM emulator if ASM execution is active.
@@ -185,7 +217,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             .assign_rom_instance(&pctx)
             .map_err(|e| proofman_common::ProofmanError::InvalidSetup(format!("{e:#}")))?;
 
-        let main_output = self.planner.plan_main::<F>(&output.min_traces, output.main_count);
+        let main_output = self.planner.plan_main(&output.min_traces)?;
         *self.state.min_traces.write().map_err(|e| {
             proofman_common::ProofmanError::InvalidSetup(format!("min_traces lock poisoned: {e}"))
         })? = Some(output.min_traces);
@@ -204,10 +236,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
         // Phase 3: Plan secondary instances
         stats_begin!(self.state.stats, &_exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
-        let mut secn_count = output.secn_count;
+        let mut counters = output.counters;
         let mut secn_planning = self.planner.plan_secondary(
             self.registry.sm_bundle(),
-            &mut secn_count,
+            &mut counters,
             self.rom_executor.is_asm_emulator(),
         );
 
@@ -240,10 +272,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             stats_end!(self.state.stats, &_mo_wait_scope);
             stats_begin!(self.state.stats, &_exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
 
-            secn_planning
-                .entry(self.registry.sm_bundle().get_mem_sm_id())
-                .or_default()
-                .extend(asm_runner_mo.plans);
+            self.registry.sm_bundle().extend_mem_plans(&mut secn_planning, asm_runner_mo.plans);
 
             stats_end!(self.state.stats, &_mo_add_scope);
         }
@@ -313,9 +342,10 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             })
             .collect::<ProofmanResult<Vec<_>>>()?;
 
-        // Add public values to the proof context
+        // Add public values to the proof context (Option D: pub_outs flow directly
+        // from the executor output, not via the planner's downcast).
         let mut publics = ZiskPublicValues::from_vec_guard(pctx.get_publics());
-        for (index, value) in main_output.public_values.iter() {
+        for (index, value) in output.pub_outs.0.iter() {
             publics.inputs[*index as usize] = F::from_u32(*value);
         }
         drop(publics);
@@ -367,8 +397,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             cost_per_type.add_cost(stats_type, cost);
         }
 
-        let tables_air_ids =
-            [SPECIFIED_RANGES_AIR_IDS[0], VIRTUAL_TABLE_0_AIR_IDS[0], VIRTUAL_TABLE_1_AIR_IDS[0]];
+        let tables_air_ids = [VIRTUAL_TABLE_ZISK_0_AIR_IDS[0], VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]];
         for air_id in tables_air_ids {
             let setup = sctx.get_setup(ZISK_AIRGROUP_ID, air_id)?;
             let n_bits = setup.stark_info.stark_struct.n_bits;

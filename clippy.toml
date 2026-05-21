@@ -2,3 +2,9 @@ msrv = "1.81"
 # bytes::Bytes is included by default and alloy_primitives::Bytes is a wrapper around it,
 # so it is safe to ignore it as well
 ignore-interior-mutability = ["bytes::Bytes", "alloy_primitives::Bytes"]
+
+# Allow brevity-helpers in `#[cfg(test)]` code without disabling the lints
+# globally. Production paths still get linted.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

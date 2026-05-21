@@ -96,7 +96,7 @@ const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
 const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 
 // const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
-const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x400000; // 4MB
+const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
 const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
 const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
 
@@ -2263,6 +2263,14 @@ impl ZiskRom2Asm {
                             *code += &format!("pc_{:x}_b_address_check_done:\n", ctx.pc);
                         }
                         4 | 2 => {
+                            // Save original addr to AUX before &~7 destroys it
+                            *code += &format!(
+                                "\tmov {}, {} {}\n",
+                                REG_AUX,
+                                reg_address,
+                                ctx.comment_str("aux = original address")
+                            );
+
                             // Calculate previous aligned address
                             *code += &format!(
                                 "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
@@ -2285,30 +2293,25 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("mem_reads[@+size*8] = prev_b")
                             );
 
-                            // Calculate next aligned address, keeping a copy of previous aligned
-                            // address in value
-                            *code += &format!(
-                                "\tmov {}, {} {}\n",
-                                REG_VALUE,
-                                reg_address,
-                                ctx.comment_str("value = copy of prev_address")
-                            );
+                            // Compute next_aligned from ORIGINAL addr (in AUX), not prev_aligned
                             let address_increment = instruction.ind_width - 1;
                             *code += &format!(
                                 "\tadd {}, {} {}\n",
-                                reg_address,
+                                REG_AUX,
                                 address_increment,
-                                ctx.comment(format!("address += {address_increment}"))
+                                ctx.comment(format!(
+                                    "aux += {address_increment} (= addr + width-1)"
+                                ))
                             );
                             *code += &format!(
                                 "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                reg_address,
-                                ctx.comment_str("address = next aligned address")
+                                REG_AUX,
+                                ctx.comment_str("aux = next aligned address")
                             );
                             *code += &format!(
                                 "\tcmp {}, {} {}\n",
-                                REG_VALUE,
                                 reg_address,
+                                REG_AUX,
                                 ctx.comment_str("prev_address = next_address ?")
                             );
                             *code += &format!("\tjnz pc_{:x}_b_ind_different_address\n", ctx.pc);
@@ -2328,11 +2331,11 @@ impl ZiskRom2Asm {
 
                             *unusual_code += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
 
-                            // Store next aligned address value in mem_reads
+                            // Read mem[next_address] from REG_AUX (which now holds next_aligned)
                             *unusual_code += &format!(
                                 "\tmov {}, [{}] {}\n",
                                 REG_VALUE,
-                                reg_address,
+                                REG_AUX,
                                 ctx.comment_str("value = mem[next_address]")
                             );
 
@@ -3123,11 +3126,11 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("aux = address")
                             );
 
-                            // Calculate previous aligned address
+                            // Calculate previous aligned address (in AUX)
                             *code += &format!(
                                 "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
                                 REG_AUX,
-                                ctx.comment_str("address = previous aligned address")
+                                ctx.comment_str("aux = previous aligned address")
                             );
 
                             // Store previous aligned address value in mem_reads, advancing address
@@ -3145,30 +3148,31 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("mem_reads[@+size*8] = prev_c")
                             );
 
-                            // Calculate next aligned address, keeping a copy of previous aligned
-                            // address in value
+                            // FIX: compute next_aligned from ORIGINAL addr (REG_ADDRESS), not prev_aligned
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_VALUE,
-                                REG_AUX,
-                                ctx.comment_str("value = copy of prev_address")
+                                REG_ADDRESS,
+                                ctx.comment_str("value = original address")
                             );
                             let address_increment = instruction.ind_width - 1;
                             *code += &format!(
                                 "\tadd {}, {} {}\n",
-                                REG_AUX,
+                                REG_VALUE,
                                 address_increment,
-                                ctx.comment(format!("address += {address_increment}"))
+                                ctx.comment(format!(
+                                    "value += {address_increment} (= addr + width-1)"
+                                ))
                             );
                             *code += &format!(
                                 "\tand {}, 0xFFFFFFFFFFFFFFF8 {}\n",
-                                REG_AUX,
-                                ctx.comment_str("address = next aligned address")
+                                REG_VALUE,
+                                ctx.comment_str("value = next aligned address")
                             );
                             *code += &format!(
                                 "\tcmp {}, {} {}\n",
-                                REG_VALUE,
                                 REG_AUX,
+                                REG_VALUE,
                                 ctx.comment_str("prev_address = next_address ?")
                             );
                             *code += &format!("\tjnz pc_{:x}_c_ind_different_address\n", ctx.pc);
@@ -3186,11 +3190,11 @@ impl ZiskRom2Asm {
 
                             *unusual_code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
 
-                            // Store next aligned address value in mem_reads
+                            // FIX: REG_VALUE holds next_aligned address — read mem at it
                             *unusual_code += &format!(
                                 "\tmov {}, [{}] {}\n",
                                 REG_VALUE,
-                                REG_AUX,
+                                REG_VALUE,
                                 ctx.comment_str("value = mem[next_address]")
                             );
 

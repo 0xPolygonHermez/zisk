@@ -4,9 +4,9 @@ use std::{
     thread::JoinHandle,
 };
 
-use crate::AsmResources;
 use crate::{
-    DeviceMetricsList, DummyCounter, NestedDeviceMetricsList, StaticSMBundle, MAX_NUM_STEPS,
+    pub_outs_collector::PubOutsCollector, AsmResources, NestedDeviceMetricsList, StaticDataBus,
+    StaticSMBundle, MAX_NUM_STEPS,
 };
 use asm_runner::{AsmRunnerMO, AsmRunnerMT, AsmRunnerRH, HintsShmem};
 use data_bus::DataBusTrait;
@@ -69,6 +69,22 @@ impl EmulatorAsm {
             .as_ref()
         {
             resources.reset();
+        }
+        Ok(())
+    }
+
+    /// Poke the ASM children: set `ResetFlag` and post the wait semaphores
+    /// so any child currently blocked in `_wait_for_input_avail` /
+    /// `_wait_for_prec_avail` aborts and unwinds `emulator_start`. Used at
+    /// cancel time so a stuck `execute` returns Err promptly.
+    pub fn signal_cancellation(&self) -> Result<()> {
+        if let Some(resources) = self
+            .asm_resources
+            .read()
+            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .as_ref()
+        {
+            resources.signal_cancellation()?;
         }
         Ok(())
     }
@@ -156,12 +172,13 @@ impl EmulatorAsm {
     /// * `NestedDeviceMetricsList` - Hierarchical device metrics collected during execution.
     /// * `Option<JoinHandle<AsmRunnerMO>>` - Optional join handle for the memory-only ASM runner.
     /// * `u64` - Total number of steps.
+    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
@@ -169,11 +186,11 @@ impl EmulatorAsm {
         _caller_stats_scope: &StatsScope,
     ) -> Result<(
         Vec<EmuTrace>,
-        DeviceMetricsList,
         NestedDeviceMetricsList,
         Option<JoinHandle<Result<AsmRunnerMO>>>,
         Option<JoinHandle<Result<AsmRunnerRH>>>,
         u64,
+        PubOutsCollector,
     )> {
         let asm_resources = self
             .asm_resources
@@ -198,9 +215,7 @@ impl EmulatorAsm {
 
         let config = asm_resources.config();
 
-        let stdin_guard = stdin.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {e}"))?;
-        asm_resources.write_input(&stdin_guard)?;
-        drop(stdin_guard);
+        asm_resources.write_input(stdin)?;
 
         stats_end!(stats, &_write_scope);
 
@@ -244,14 +259,35 @@ impl EmulatorAsm {
             })
         });
 
-        let (min_traces, main_count, secn_count) =
-            self.run_mt_assembly(zisk_rom, sm_bundle, stats)?;
-        // Store execute steps
-        let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
-        stats_end!(stats, &_exec_scope);
-
-        Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
+        match mt_result {
+            Ok((min_traces, counters, pub_outs)) => {
+                let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
+                stats_end!(stats, &_exec_scope);
+                Ok((min_traces, counters, Some(handle_mo), handle_rh, steps, pub_outs))
+            }
+            Err(e) => {
+                // MT already self-cleaned (signaled reset + joined its stdio
+                // thread). Wake MO/RH in case they're still parked, then join
+                // so their detached threads release the shmem-reader locks
+                // before the next job begins.
+                //
+                // We enter this arm for ANY MT failure — cancellation, shmem
+                // corruption, poisoned mutex, ASM child non-zero exit — so the
+                // join-failure logs deliberately say "MT-failure cleanup"
+                // rather than "after cancel" to avoid misattributing root cause.
+                if let Err(reset_err) = asm_resources.signal_cancellation() {
+                    tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
+                }
+                join_runner_during_cleanup("MO", handle_mo);
+                if let Some(h) = handle_rh {
+                    join_runner_during_cleanup("RH", h);
+                }
+                stats_end!(stats, &_exec_scope);
+                Err(e)
+            }
+        }
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -259,7 +295,7 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> Result<(Vec<EmuTrace>, DeviceMetricsList, NestedDeviceMetricsList)> {
+    ) -> Result<(Vec<EmuTrace>, NestedDeviceMetricsList, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let results_mu: Mutex<Vec<(ChunkId, _)>> = Mutex::new(Vec::new());
@@ -277,12 +313,12 @@ impl EmulatorAsm {
                 scope.spawn(move |_| {
                     stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-                    let mut data_bus = match sm_bundle.build_data_bus_counters(true) {
+                    let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
                         Ok(db) => db,
                         Err(e) => {
                             let _ = errors_ref.lock().map(|mut errs| {
                                 errs.push(anyhow::anyhow!(
-                                    "build_data_bus_counters failed for chunk {}: {e}",
+                                    "StaticDataBus::from_bundle failed for chunk {}: {e}",
                                     chunk_id.0
                                 ));
                             });
@@ -327,11 +363,13 @@ impl EmulatorAsm {
                 .mt
                 .lock()
                 .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
+            let asm_resources_for_failure = asm_resources.clone();
             let result = AsmRunnerMT::run_and_count(
                 mt_shmem,
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
+                move || asm_resources_for_failure.signal_cancellation(),
                 asm_resources.asm_services().clone(),
                 stats.clone(),
             )?;
@@ -377,32 +415,26 @@ impl EmulatorAsm {
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 
-        let mut main_count = Vec::with_capacity(data_buses.len());
-        let mut secn_count = HashMap::new();
+        let mut counters = HashMap::new();
+        let mut pub_outs = PubOutsCollector::new();
 
-        for (chunk_id, data_bus) in data_buses {
+        for (chunk_id, mut data_bus) in data_buses {
+            pub_outs.0.extend(data_bus.take_pub_outs().0);
             let databus_counters = data_bus.into_devices(false);
 
             for (idx, counter) in databus_counters.into_iter() {
-                match idx {
-                    None => {
-                        main_count.push((chunk_id, counter.unwrap_or(Box::new(DummyCounter {}))));
-                    }
-                    Some(idx) => {
-                        let counter = counter.ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "secondary counter is None for chunk {} idx {idx}",
-                                chunk_id.0
-                            )
-                        })?;
-                        secn_count.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
-                    }
-                }
+                let idx = idx.ok_or_else(|| {
+                    anyhow::anyhow!("unexpected unindexed counter for chunk {}", chunk_id.0)
+                })?;
+                let counter = counter.ok_or_else(|| {
+                    anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
+                })?;
+                counters.entry(idx).or_insert_with(Vec::new).push((chunk_id, counter));
             }
         }
 
         stats_end!(stats, &_mt_scope);
-        Ok((emu_traces, main_count, secn_count))
+        Ok((emu_traces, counters, pub_outs))
     }
 }
 
@@ -410,7 +442,7 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
     fn execute(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
@@ -418,5 +450,19 @@ impl<F: PrimeField64> crate::Emulator<F> for EmulatorAsm {
         caller_stats_scope: &StatsScope,
     ) -> Result<crate::EmulatorResult> {
         self.execute(zisk_rom, stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+    }
+}
+
+/// Join an MO/RH runner thread on the MT-failure cleanup path, logging any
+/// thread panic or runner error so observability isn't silently lost. The
+/// caller has already issued `signal_cancellation`, so a healthy runner will
+/// observe the reset flag and exit `Ok(_)`.
+fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Result<T>>) {
+    match handle.join() {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+        }
+        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
     }
 }

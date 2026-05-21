@@ -14,13 +14,18 @@ impl RemoteClient {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
         let hash_id = program.program_id.hash_id.to_string();
         let program_name = program.program_id.name.to_string();
-        let job_kind =
-            DomainJobKind::Setup(DomainSetupRequest { hash_id, program_name, with_hints });
+        let job_kind = DomainJobKind::Setup(DomainSetupRequest {
+            hash_id,
+            program_name,
+            with_hints,
+            emulator_only,
+        });
 
         let remote_job = self.gw.submit_job(job_kind)?;
 

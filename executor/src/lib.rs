@@ -8,14 +8,17 @@ mod emu_asm;
 mod emu_asm_stub;
 mod emu_rust;
 mod executor;
+mod init;
 mod planner;
+mod pub_outs_collector;
 mod registry;
 mod rom_executor;
-mod sm_static_bundle;
+mod sm_builtins;
+mod sm_precompiles;
+mod sm_registry;
 mod state;
 mod static_data_bus;
 mod static_data_bus_collect;
-mod utils;
 
 mod witness_generator;
 mod witness_orchestrator;
@@ -30,14 +33,15 @@ pub use emu_asm::*;
 pub use emu_asm_stub::*;
 pub use emu_rust::*;
 pub use executor::*;
+pub use init::*;
 use planner::*;
 use registry::*;
 use rom_executor::*;
-pub use sm_static_bundle::*;
+pub use sm_builtins::*;
+pub use sm_precompiles::*;
 pub use state::*;
 pub use static_data_bus::*;
 pub use static_data_bus_collect::*;
-pub use utils::*;
 use witness_generator::*;
 use witness_orchestrator::*;
 use zisk_core::ZiskRom;
@@ -48,18 +52,20 @@ pub type NestedDeviceMetricsList = HashMap<usize, DeviceMetricsList>;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use std::{collections::HashMap, sync::Mutex, thread::JoinHandle};
+use std::{collections::HashMap, thread::JoinHandle};
 use zisk_common::{io::ZiskStdin, EmuTrace, ExecutorStatsHandle, StatsScope};
 
 use anyhow::Result;
 
+use crate::pub_outs_collector::PubOutsCollector;
+
 pub type EmulatorResult = (
     Vec<EmuTrace>,
-    DeviceMetricsList,
     NestedDeviceMetricsList,
     Option<JoinHandle<Result<AsmRunnerMO>>>,
     Option<JoinHandle<Result<AsmRunnerRH>>>,
     u64,
+    PubOutsCollector,
 );
 
 /// Trait for unified execution across different emulator backends
@@ -70,7 +76,7 @@ pub trait Emulator<F: PrimeField64>: Send + Sync {
     fn execute(
         &self,
         zisk_rom: &ZiskRom,
-        stdin: &Mutex<ZiskStdin>,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,

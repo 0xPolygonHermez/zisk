@@ -4,15 +4,16 @@ use std::sync::Arc;
 use anyhow::Result;
 use colored::Colorize;
 use fields::Goldilocks;
-use proofman_common::{MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
 
-use crate::common::{detect_current_project_elf, get_proving_key};
+use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_field};
+use zisk_common::ZiskPaths;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -65,7 +66,7 @@ impl ZiskProgramSetup {
             print_banner_field("Hints", "Enabled".yellow());
         }
 
-        let proving_key = get_proving_key(self.proving_key.as_ref())?;
+        let proving_key = ZiskPaths::get_proving_key(self.proving_key.as_ref());
 
         print_banner_field("Proving Key", proving_key.display());
 
@@ -87,6 +88,8 @@ impl ZiskProgramSetup {
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
+        init_gpu_setup(sctx.max_n_bits_ext as u64, gpu)?;
+
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1)?;
         let pctx = Arc::new(pctx);
 
@@ -94,7 +97,7 @@ impl ZiskProgramSetup {
 
         tracing::info!("Computing merkle root");
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
-        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir)?;
+        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir, true)?;
 
         gen_assembly(self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
 

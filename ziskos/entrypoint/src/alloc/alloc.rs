@@ -6,7 +6,7 @@ static mut HEAP_POS: usize = 0;
 #[export_name = "ZISK_BUMP_HEAP_TOP"]
 static mut HEAP_TOP: usize = 0;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[no_mangle]
 #[warn(dead_code)]
 pub unsafe extern "C" fn init_sys_alloc() {
@@ -21,14 +21,14 @@ pub unsafe extern "C" fn init_sys_alloc() {
     };
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
     inline_bump_alloc_aligned(bytes, align)
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[inline(always)]
 pub unsafe fn inline_bump_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
     // SAFETY: Single threaded, so nothing else can touch this while we're working.
@@ -52,14 +52,14 @@ pub unsafe fn inline_bump_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
     ptr
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-use std::ptr;
+#[cfg(zisk_guest)]
+use core::ptr;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[no_mangle]
 static mut SINK: u64 = 0;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn sys_alloc_log(op: u64, ptr: *mut u8, bytes: usize, align: usize) {

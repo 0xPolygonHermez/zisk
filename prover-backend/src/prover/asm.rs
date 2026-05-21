@@ -6,7 +6,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{initialize_executor, AsmResources, AsmSharedResources};
+use executor::{AsmResources, AsmSharedResources, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -15,7 +15,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{generate_assembly, get_output_path, DEFAULT_CACHE_PATH};
+use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
@@ -25,7 +25,7 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskVK,
+    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -42,11 +42,12 @@ pub struct AsmSetupBuilder<'a> {
     prover: &'a AsmProver,
     elf: &'a GuestProgram,
     with_hints: bool,
+    emulator_only: bool,
 }
 
 impl<'a> AsmSetupBuilder<'a> {
     fn new(prover: &'a AsmProver, elf: &'a GuestProgram) -> Self {
-        Self { prover, elf, with_hints: false }
+        Self { prover, elf, with_hints: false, emulator_only: false }
     }
 
     /// Enable hints processing for this program.
@@ -57,8 +58,13 @@ impl<'a> AsmSetupBuilder<'a> {
         self
     }
 
+    pub fn emulator_only(mut self) -> Self {
+        self.emulator_only = true;
+        self
+    }
+
     pub fn run(self) -> Result<ProgramVK> {
-        self.prover.setup_internal(self.elf, self.with_hints)
+        self.prover.setup_internal(self.elf, self.with_hints, self.emulator_only)
     }
 }
 
@@ -66,7 +72,7 @@ struct ProgramEntry {
     zisk_rom: Arc<ZiskRom>,
     program_vk: ProgramVK,
     /// Keeps ASM resources (C processes + shmem) alive for the full worker lifetime.
-    resources: Arc<AsmResources>,
+    resources: Option<Arc<AsmResources>>,
 }
 
 pub struct AsmProver {
@@ -74,6 +80,9 @@ pub struct AsmProver {
     program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
     /// Tracks whether the currently registered program was set up with hints.
     current_with_hints: AtomicBool,
+    /// Tracks whether the currently registered program was set up emulator-only.
+    /// When true, prove/verify_constraints/stats are rejected.
+    current_emulator_only: AtomicBool,
 }
 
 impl AsmProver {
@@ -109,6 +118,7 @@ impl AsmProver {
             core_prover,
             program_cache: RwLock::new(HashMap::new()),
             current_with_hints: AtomicBool::new(false),
+            current_emulator_only: AtomicBool::new(false),
         })
     }
 
@@ -116,10 +126,7 @@ impl AsmProver {
         elf: &GuestProgram,
         with_hints: bool,
     ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
-        let default_cache_path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .map_err(|e| anyhow::anyhow!("Failed to read HOME environment variable: {e}"))?
-            .join(DEFAULT_CACHE_PATH);
+        let default_cache_path = &ZiskPaths::global().cache;
         let (asm_mt_filename, asm_rh_filename) = get_asm_paths(elf, with_hints)?;
         let asm_mt_path = default_cache_path.join(asm_mt_filename);
         let asm_rh_path = default_cache_path.join(asm_rh_filename);
@@ -153,24 +160,26 @@ impl AsmProver {
             .with_unlock_mapped_memory(unlock_mapped_memory)
             .with_asm_out_file(asm_out_file);
 
-        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints).then(|| {
-            let pctx = pctx.clone();
-            Arc::new(move |data: &mut Vec<u8>| {
-                pctx.mpi_ctx.broadcast(data);
-                Ok(())
-            }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
-        });
+        let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints && world_rank == 0)
+            .then(|| {
+                let pctx = pctx.clone();
+                Arc::new(move |data: &mut Vec<u8>| {
+                    pctx.mpi_ctx.broadcast(data);
+                    Ok(())
+                }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
+            });
 
         let init_rom = !is_distributed && world_rank == 0;
 
-        if let Some(entry) = self
-            .program_cache
-            .read()
-            .unwrap()
-            .get(&SetupKey::new(&*elf.program_id.hash_id, with_hints))
-        {
+        if let Some(entry) = self.program_cache.read().unwrap().get(&SetupKey::new(
+            &*elf.program_id.hash_id,
+            with_hints,
+            false,
+        )) {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
-            self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
+            let resources =
+                entry.resources.clone().expect("full-asm cache entry must have ASM resources");
+            self.core_prover.backend.set_asm_resources(resources)?;
             return Ok(());
         }
 
@@ -202,11 +211,71 @@ impl AsmProver {
         self.core_prover.backend.set_asm_resources(resources.clone())?;
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
-            SetupKey::new(&*elf.program_id.hash_id, with_hints),
-            ProgramEntry { zisk_rom, resources, program_vk: program_vk.clone() },
+            SetupKey::new(&*elf.program_id.hash_id, with_hints, false),
+            ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
         );
 
         Ok(())
+    }
+
+    fn register_program_for_emulator(&self, program_id: &ProgramId) -> Result<()> {
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        let rom = {
+            let guard = self.program_cache.read().unwrap();
+            let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
+            let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
+            guard
+                .get(&full_key)
+                .or_else(|| guard.get(&emu_key))
+                .map(|e| e.zisk_rom.clone())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
+                        program_id.name,
+                        with_hints
+                    )
+                })?
+        };
+
+        self.core_prover.backend.clear_asm_resources();
+
+        let pctx = self.core_prover.backend.get_pctx()?;
+        let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
+        self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)
+    }
+
+    /// Execute via the Rust emulator path, regardless of how the program was set up.
+    pub fn execute_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+    ) -> Result<ExecuteOutput> {
+        self.register_program_for_emulator(&program.program_id)?;
+        self.core_prover.backend.execute(stdin)
+    }
+
+    /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
+    /// Bypasses the `current_emulator_only` guard on the regular `prove` method.
+    pub fn prove_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        proof_kind: ProofKind,
+        prover_options: BackendProverOpts,
+    ) -> Result<ProveOutput> {
+        self.register_program_for_emulator(&program.program_id)?;
+        self.core_prover.backend.prove(stdin, proof_kind, prover_options)
+    }
+
+    /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
+    pub fn verify_constraints_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<VerifyConstraintsOutput> {
+        self.register_program_for_emulator(&program.program_id)?;
+        self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 }
 
@@ -217,15 +286,20 @@ impl ProverEngine for AsmProver {
         AsmSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK> {
-        // Early return if program is already cached.
-        if let Some(entry) = self
-            .program_cache
-            .read()
-            .unwrap()
-            .get(&SetupKey::new(&*elf.program_id.hash_id, with_hints))
-        {
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+    ) -> Result<ProgramVK> {
+        // Early return if program is already cached for this exact mode.
+        if let Some(entry) = self.program_cache.read().unwrap().get(&SetupKey::new(
+            &*elf.program_id.hash_id,
+            with_hints,
+            emulator_only,
+        )) {
             self.current_with_hints.store(with_hints, Ordering::SeqCst);
+            self.current_emulator_only.store(emulator_only, Ordering::SeqCst);
             return Ok(entry.program_vk.clone());
         }
 
@@ -238,6 +312,16 @@ impl ProverEngine for AsmProver {
         let rv2zk = Riscv2zisk::new(elf.elf());
         let zisk_rom = rv2zk.run().map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let zisk_rom = Arc::new(zisk_rom);
+
+        if emulator_only {
+            self.program_cache.write().unwrap().insert(
+                SetupKey::new(&*elf.program_id.hash_id, with_hints, true),
+                ProgramEntry { zisk_rom, resources: None, program_vk: program_vk.clone() },
+            );
+            self.current_with_hints.store(with_hints, Ordering::SeqCst);
+            self.current_emulator_only.store(true, Ordering::SeqCst);
+            return Ok(program_vk);
+        }
 
         // Assembly file generation
         let (asm_mt_path, asm_rh_path) = Self::get_asm_cache_paths(elf, with_hints)?;
@@ -292,6 +376,7 @@ impl ProverEngine for AsmProver {
         }
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
+        self.current_emulator_only.store(false, Ordering::SeqCst);
         Ok(program_vk)
     }
 
@@ -310,20 +395,32 @@ impl ProverEngine for AsmProver {
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
         // Required when multiple programs have been set up: setup() activates each program's
         // services in turn, so the last setup wins. register_program restores the right services.
+        // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
         let guard = self.program_cache.read().unwrap();
-        let entry =
-            guard.get(&SetupKey::new(&*program_id.hash_id, with_hints)).ok_or_else(|| {
-                anyhow::anyhow!(
+        let (resources, rom, emulator_only) = {
+            let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
+            let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
+            if let Some(entry) = guard.get(&full_key) {
+                (entry.resources.clone(), entry.zisk_rom.clone(), false)
+            } else if let Some(entry) = guard.get(&emu_key) {
+                (entry.resources.clone(), entry.zisk_rom.clone(), true)
+            } else {
+                return Err(anyhow::anyhow!(
                     "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
                     program_id.name,
                     with_hints
-                )
-            })?;
-        self.core_prover.backend.set_asm_resources(entry.resources.clone())?;
-        let rom = entry.zisk_rom.clone();
+                ));
+            }
+        };
         drop(guard);
 
+        match resources {
+            Some(r) => self.core_prover.backend.set_asm_resources(r)?,
+            None => self.core_prover.backend.clear_asm_resources(),
+        }
+
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
+        self.current_emulator_only.store(emulator_only, Ordering::SeqCst);
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
         self.core_prover.backend.register_program(rom, &rom_bin_path, with_hints)
@@ -357,6 +454,12 @@ impl ProverEngine for AsmProver {
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
+        if self.current_emulator_only.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!(
+                "Program '{}' was set up emulator_only — stats not supported. Re-run setup without --emulator-only.",
+                program.program_id.name
+            ));
+        }
         self.core_prover.backend.stats(stdin, debug_info, minimal_memory, mpi_node)
     }
 
@@ -392,6 +495,12 @@ impl ProverEngine for AsmProver {
     ) -> Result<VerifyConstraintsOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
+        if self.current_emulator_only.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!(
+                "Program '{}' was set up emulator_only — verify_constraints not supported. Re-run setup without --emulator-only.",
+                program.program_id.name
+            ));
+        }
         self.core_prover.backend.verify_constraints(stdin, debug_info)
     }
 
@@ -404,21 +513,25 @@ impl ProverEngine for AsmProver {
     ) -> Result<ProveOutput> {
         let with_hints = self.current_with_hints.load(Ordering::SeqCst);
         self.register_program(&program.program_id, with_hints)?;
+        if self.current_emulator_only.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!(
+                "Program '{}' was set up emulator_only — prove not supported. Re-run setup without --emulator-only.",
+                program.program_id.name
+            ));
+        }
         self.core_prover.backend.prove(stdin, proof_kind, prover_options)
     }
 
     fn wrap_proof(
         &self,
-        proof_bytes: &[u8],
+        proof: &[u64],
         publics: &PublicValues,
         vk: &ProgramVK,
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => {
-                self.core_prover.backend.minimal(proof_bytes, publics, vk)
-            }
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof_bytes, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -459,7 +572,15 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.mpi_broadcast(data)
     }
 
-    fn get_vadcop_vk(&self, minimal: bool) -> Result<ZiskVK> {
+    fn notify_cluster_cancellation(&self) {
+        self.core_prover.backend.notify_cluster_cancellation();
+    }
+
+    fn cluster_barrier(&self) {
+        self.core_prover.backend.cluster_barrier();
+    }
+
+    fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
@@ -495,12 +616,19 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_active_services(is_first_partition)
     }
 
-    fn reset_resources(&self) -> Result<()> {
-        self.core_prover.backend.reset_resources()
+    fn reset(&self) -> Result<()> {
+        self.core_prover.backend.reset()
     }
 
-    fn cancel(&self) {
+    fn cancel(&self) -> Result<()> {
+        // Order matters: set proofman's cancel flag first so when the executor
+        // unwinds (after the ASM children wake), proofman already knows to bail.
         self.core_prover.backend.cancel();
+        self.core_prover.backend.signal_cancellation()
+    }
+
+    fn wait_until_proofman_ready(&self) {
+        self.core_prover.backend.wait_until_proofman_ready();
     }
 }
 
@@ -563,8 +691,7 @@ impl AsmCoreProver {
             )?);
         }
 
-        let executor =
-            initialize_executor(options.verbose_mode, shared_tables, true, &proofman.get_wcm())?;
+        let executor = ZiskExecutor::new(&proofman.get_wcm(), options.verbose_mode, shared_tables)?;
 
         executor.set_packed(options.packed);
 

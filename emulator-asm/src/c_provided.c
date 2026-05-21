@@ -333,6 +333,11 @@ int _wait_for_prec_avail (void)
             asm_printf("ERROR: wait_for_prec_avail() found precompile_exit_address=%lu\n", *precompile_exit_address);
             exit(-1);
         }
+        if (*precompile_reset_address != 0)
+        {
+            asm_printf("INFO: wait_for_prec_avail() found precompile_reset_address=%lu, aborting emulation\n", *precompile_reset_address);
+            return 1;
+        }
         if (*precompile_written_address > *precompile_read_address)
         {
             // Sync precompile shared memory
@@ -417,6 +422,11 @@ int _wait_for_input_avail (uint64_t required_input_bytes)
         {
             asm_printf("ERROR: wait_for_input_avail() found precompile_exit_address=%lu\n", *precompile_exit_address);
             exit(-1);
+        }
+        if (*precompile_reset_address != 0)
+        {
+            asm_printf("INFO: wait_for_input_avail() found precompile_reset_address=%lu, aborting emulation\n", *precompile_reset_address);
+            return 1;
         }
         if (*input_written_address >= required_input_bytes)
         {

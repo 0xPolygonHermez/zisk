@@ -7,7 +7,7 @@ IMAGE_NAME="zisk-test-env"
 # Check if --gpu was passed
 BUILD_ARGS=""
 if [[ "$1" == "--gpu" ]]; then
-    BUILD_ARGS="--build-arg GPU=true"
+    BUILD_ARGS="--build-arg CUDA=true"
     IMAGE_NAME="${IMAGE_NAME}-gpu"
 fi
 

@@ -6,7 +6,8 @@ use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
 use zisk_common::{
-    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
+    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID, ZISK_PUBLICS,
 };
 use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
@@ -20,7 +21,6 @@ use zisk_core::{
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-pub const ZISK_PUBLICS: usize = 64;
 const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -844,7 +844,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            8,
+                            instruction.ind_width as u8,
                             [raw_data_1, raw_data_2],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
@@ -2619,12 +2619,9 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        trace.set_a(0, a[0]);
-        trace.set_a(1, a[1]);
-        trace.set_b(0, b[0]);
-        trace.set_b(1, b[1]);
-        trace.set_c(0, c[0]);
-        trace.set_c(1, c[1]);
+        trace.set_all_a(&a);
+        trace.set_all_b(&b);
+        trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
         trace.set_pc(inst.paddr as u32);
         trace.set_a_src_imm(inst.a_src == SRC_IMM);
@@ -2682,8 +2679,7 @@ impl<'a> Emu<'a> {
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
-        trace.set_store_reg_prev_value(0, store_prev_value[0]);
-        trace.set_store_reg_prev_value(1, store_prev_value[1]);
+        trace.set_all_store_reg_prev_value(&store_prev_value);
     }
 
     /// Returns if the emulation ended

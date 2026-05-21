@@ -28,22 +28,23 @@ impl Coordinator {
     ) -> CoordinatorResult<()> {
         let job_id = &execute_task_response.job_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
-        let job = job_entry.write().await;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
 
-        // If job has Failed, mark worker as Idle and return early
-        if matches!(job.state(), JobState::Failed) {
-            self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
-                .await?;
+        // Hold the write lock through all state mutations so a racing
+        // fail_job cannot park the worker SettingUp between is_resolved
+        // and our worker-state writes. Drop it before sibling calls that
+        // take their own.
+        let mut job = job_entry.write().await;
+
+        if job.state().is_resolved() {
             return Ok(());
         }
 
-        drop(job);
-
-        // An aggregation request has failed, fail the job
         if !execute_task_response.success {
+            drop(job);
             let reason = format!("Aggregation failed in job {}", job_id);
             self.fail_job(job_id, &reason).await?;
 
@@ -52,7 +53,7 @@ impl Coordinator {
 
         // Extract the proof data
         let proof_data = match execute_task_response.result_data {
-            ExecuteTaskResponseResultDataDto::FinalProof(final_proof) => final_proof,
+            Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof)) => final_proof,
             _ => {
                 return Err(CoordinatorError::InvalidRequest(
                     "Expected FinalProof result data for Aggregation".to_string(),
@@ -63,29 +64,33 @@ impl Coordinator {
         // Empty proof_data means this was an intermediate aggregation step.
         // Clear the in-flight slot and dispatch the next queued task, if any.
         if proof_data.proof_data.is_empty() {
+            drop(job);
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
         }
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let agg_worker_id = job.agg_worker_id.as_ref().unwrap().clone();
 
-        let mut job = job_entry.write().await;
-
-        let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
-
-        // Mark the aggregation worker as Idle
-        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
+        self.workers_pool.mark_worker_with_state(&agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
-        let zisk_proof = bincode::deserialize::<Proof>(&proof_data.proof_data).map_err(|e| {
-            CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e))
-        })?;
+        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
+            &proof_data.proof_data,
+            bincode::config::standard(),
+        )
+        .map(|(v, _)| v)
+        .map_err(|e| CoordinatorError::Internal(format!("Failed to deserialize proof: {}", e)))?;
         job.proof = Some(zisk_proof);
         job.executed_steps = Some(proof_data.executed_steps);
         job.instances = Some(proof_data.instances);
 
         job.change_state(JobState::Completed);
+
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_SUCCESS,
+            &job.workers,
+            job.phase_start_time(&JobPhase::Contributions),
+        );
 
         let end_time = Utc::now();
 
@@ -351,10 +356,11 @@ impl Coordinator {
         // Build proof bytes and stats for the event before releasing the lock
         let prove_event = {
             let proof_bytes = match job.proof.as_ref() {
-                Some(p) => bincode::serialize(p).unwrap_or_else(|e| {
-                    warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
-                    vec![]
-                }),
+                Some(p) => bincode::serde::encode_to_vec(p, bincode::config::standard())
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to serialize proof for event on job {}: {}", job_id, e);
+                        vec![]
+                    }),
                 None => vec![],
             };
             let stats = exec_stats_from_job(&job);

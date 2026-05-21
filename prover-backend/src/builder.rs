@@ -1,12 +1,10 @@
 use std::path::Path;
 
-use crate::{
-    get_proving_key, get_proving_key_snark, Asm, AsmProver, BackendProverOpts, Emu, EmuProver,
-    ZiskProver,
-};
+use crate::{Asm, AsmProver, BackendProverOpts, Emu, EmuProver, ZiskProver};
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use zisk_cluster_common::LoggingConfig;
+use zisk_common::ZiskPaths;
 
 use anyhow::Result;
 
@@ -140,9 +138,9 @@ impl ProverClientBuilder<EmuB> {
         self.build_emu()
     }
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
-        let proving_key = get_proving_key(self.prover_options.proving_key.as_ref());
+        let proving_key = ZiskPaths::get_proving_key(self.prover_options.proving_key.as_ref());
         let proving_key_snark =
-            get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
+            ZiskPaths::get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
 
         Self::print_emu_command_info(&proving_key, &proving_key_snark);
 
@@ -211,9 +209,9 @@ impl ProverClientBuilder<AsmB> {
         F: PrimeField64,
         GoldilocksQuinticExtension: ExtensionField<F>,
     {
-        let proving_key = get_proving_key(self.prover_options.proving_key.as_ref());
+        let proving_key = ZiskPaths::get_proving_key(self.prover_options.proving_key.as_ref());
         let proving_key_snark =
-            get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
+            ZiskPaths::get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
 
         Self::print_asm_command_info(&proving_key, &proving_key_snark);
 

@@ -43,6 +43,12 @@ impl InputsShmemWriter {
         );
     }
 
+    pub fn signal_reset(&self) -> Result<()> {
+        unreachable!(
+            "InputsShmemWriter::signal_reset() is not supported on this platform. Only Linux x86_64 is supported."
+        );
+    }
+
     pub fn reset(&self) {
         unreachable!(
             "InputsShmemWriter::reset() is not supported on this platform. Only Linux x86_64 is supported."

@@ -58,6 +58,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
     let partitions: Vec<Vec<u32>> =
         workers.iter().enumerate().map(|(i, _)| vec![i as u32]).collect();
     Job::new(
+        JobId::new(),
         Default::default(),
         String::new(),
         InputsModeDto::InputsNone,

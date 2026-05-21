@@ -8,8 +8,8 @@ use tokio::sync::RwLock;
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, DataId, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState, LaunchProofResponseDto,
-    LaunchWrapRequestDto, WorkerId, WorkerState, WrapParamsDto,
+    HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobState,
+    LaunchProofResponseDto, LaunchWrapRequestDto, WorkerState, WrapParamsDto,
 };
 use zisk_common::{Proof, ProofKind};
 
@@ -22,21 +22,14 @@ impl Coordinator {
         &self,
         request: LaunchWrapRequestDto,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
-        // Select any single idle worker
-        let worker_id = {
-            let ids = self.workers_pool.connected_worker_ids().await;
-            let mut found: Option<WorkerId> = None;
-            for id in ids {
-                if matches!(self.workers_pool.worker_state(&id).await, Some(WorkerState::Ready)) {
-                    found = Some(id);
-                    break;
-                }
-            }
-            found.ok_or(CoordinatorError::InsufficientCapacity)?
-        };
+        // Atomic single-worker reservation under one pool write lock —
+        // prevents two concurrent launch_wrap calls from double-booking.
+        let job_id = JobId::new();
+        let worker_id =
+            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Aggregate).await?;
 
-        // Create a minimal job entry (no partitions / inputs needed for wrap)
-        let job = Job::new(
+        let mut job = Job::new(
+            job_id.clone(),
             DataId::new(),
             String::new(),
             InputsModeDto::InputsNone,
@@ -50,10 +43,6 @@ impl Coordinator {
             false,
             ProofKind::VadcopFinal,
         );
-
-        let job_id = job.job_id.clone();
-
-        let mut job = job;
         job.change_state(JobState::Running(JobPhase::Aggregate)); // reuse Aggregate phase as wrap phase
 
         let job_arc = Arc::new(RwLock::new(job));
@@ -62,13 +51,7 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        // Mark worker as computing and send the task
-        self.workers_pool
-            .mark_worker_with_state(
-                &worker_id,
-                WorkerState::Computing((job_id.clone(), zisk_cluster_common::JobPhase::Aggregate)),
-            )
-            .await?;
+        crate::metrics::record_job_started();
 
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
@@ -78,9 +61,13 @@ impl Coordinator {
                 proof_dest: request.proof_dest,
             }),
         };
-
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
-        self.workers_pool.send_message(&worker_id, message).await?;
+        if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {
+            // Canonical failure path releases the worker reservation.
+            let reason = format!("Failed to dispatch wrap task: {}", e);
+            let _ = self.fail_job(&job_id, &reason).await;
+            return Err(e);
+        }
 
         tracing::info!("[Wrap] Job {} started on worker {}", job_id, worker_id);
 
@@ -95,21 +82,28 @@ impl Coordinator {
         let job_id = &execute_task_response.job_id;
         let worker_id = &execute_task_response.worker_id;
 
-        let jobs_map = self.jobs.read().await;
-        let job_entry = jobs_map.get(job_id).ok_or(CoordinatorError::NotFoundOrInaccessible)?;
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
+        };
         let mut job = job_entry.write().await;
+
+        if job.state().is_resolved() {
+            return Ok(());
+        }
 
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
 
         if !execute_task_response.success {
-            job.change_state(JobState::Failed);
-            let reason = execute_task_response.error_message.unwrap_or_default();
+            // fail_job (takes its own job lock) records failure metrics
+            // and runs post_launch_proof; inline change_state would skip both.
             drop(job);
-            self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.clone())).await;
+            let reason = execute_task_response.error_message.unwrap_or_default();
+            let _ = self.fail_job(job_id, &reason).await;
             return Err(CoordinatorError::Internal(format!("Wrap task failed: {}", reason)));
         }
 
-        let ExecuteTaskResponseResultDataDto::WrapResult(wrap_result) =
+        let Some(ExecuteTaskResponseResultDataDto::WrapResult(wrap_result)) =
             execute_task_response.result_data
         else {
             return Err(CoordinatorError::Internal(
@@ -117,11 +111,23 @@ impl Coordinator {
             ));
         };
 
-        let zisk_proof = bincode::deserialize::<Proof>(&wrap_result.proof_data).map_err(|e| {
+        let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(
+            &wrap_result.proof_data,
+            bincode::config::standard(),
+        )
+        .map(|(v, _)| v)
+        .map_err(|e| {
             CoordinatorError::Internal(format!("Failed to deserialize wrap proof: {}", e))
         })?;
         job.proof = Some(zisk_proof);
         job.change_state(JobState::Completed);
+
+        // Pairs with launch_wrap's record_job_started.
+        crate::metrics::record_job_terminal(
+            crate::metrics::OUTCOME_SUCCESS,
+            &job.workers,
+            job.phase_start_time(&JobPhase::Aggregate),
+        );
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);
 

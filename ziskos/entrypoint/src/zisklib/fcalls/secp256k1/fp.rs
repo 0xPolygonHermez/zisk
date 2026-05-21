@@ -1,9 +1,9 @@
-use std::{ffi::c_void, mem::MaybeUninit};
+use core::mem::MaybeUninit;
 
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+    if #[cfg(zisk_guest)] {
         use core::arch::asm;
         use crate::{
             ziskos_fcall, ziskos_fcall_param,
@@ -38,7 +38,7 @@ pub fn fcall_secp256k1_fp_inv(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut result: [u64; 4] = [0; 4];
         secp256k1_fp_inv_c(x, &mut result);
@@ -49,7 +49,7 @@ pub fn fcall_secp256k1_fp_inv(
         }
         result
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(x, 4);
         ziskos_fcall!(FCALL_SECP256K1_FP_INV_ID);
@@ -84,7 +84,7 @@ pub fn fcall_secp256k1_fp_sqrt(
     parity: u64,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 5] {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut result: [u64; 5] = [0; 5];
         secp256k1_fp_sqrt(x, parity, &mut result);
@@ -95,7 +95,7 @@ pub fn fcall_secp256k1_fp_sqrt(
         }
         result
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(x, 4);
         ziskos_fcall_param!(parity, 1);

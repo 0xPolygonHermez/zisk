@@ -1,16 +1,10 @@
 [workspace]
 members = [
-    "sha-hasher/host", 
-    "sha-hasher/guest", 
-    "multiple-programs/host", 
-    "multiple-programs/guest", 
-    "multiple-programs/guest_2",
-    "aggregation/host",
-    "aggregation/guest",
-    "aggregation/guest_agg",
-    "big-program/host",
-    "big-program/guest",
-    "hints/host",
+  "sha-hasher/host",
+  "multiple-programs/host",
+  "aggregation/host",
+  "big-program/host",
+  "hints/host",
 ]
 
 resolver = "2"
@@ -19,8 +13,6 @@ resolver = "2"
 opt-level = 3
 
 [workspace.dependencies]
-# Guest dependencies
 ziskos = { path = "../ziskos/entrypoint" }
-
-# Host dependencies
 zisk-sdk = { path = "../sdk" }
+test-artifacts = { path = "../test-artifacts" }

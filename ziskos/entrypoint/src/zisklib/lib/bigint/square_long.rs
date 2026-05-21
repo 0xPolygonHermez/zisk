@@ -1,3 +1,8 @@
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec;
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
 use crate::syscalls::{
     syscall_add256, syscall_arith256, SyscallAdd256Params, SyscallArith256Params,
 };
