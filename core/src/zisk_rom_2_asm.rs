@@ -1181,7 +1181,10 @@ impl ZiskRom2Asm {
             // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
             // the distance between labels constant and allow jumping to the proper branch using
             // pc - ROM_ADDR as an increment
-            if (*key > ROM_ADDR) && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR)) {
+            if (previous_key >= ROM_ADDR)
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
                 for _ in previous_key + 1..*key {
                     *code += "\t.quad emu_end\n";
                 }

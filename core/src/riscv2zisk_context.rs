@@ -67,6 +67,9 @@ const M64: u64 = 0xFFFFFFFFFFFFFFFF;
 const FLOAT_HANDLER_ADDR: u64 = 0x1008;
 const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
+/// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
+const JALR_MASK: u64 = 0xfffffffffffffffe;
+
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
 pub struct Riscv2ZiskContext<'a> {
@@ -936,9 +939,10 @@ impl Riscv2ZiskContext<'_> {
             let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
             let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
-            let jump_pc = i.rom_address as i64
+            let jump_pc = (i.rom_address as i64
                 + ((i.imm as i64)/*  << 12*/)
-                + next_instructions[0].imm as i64;
+                + next_instructions[0].imm as i64) as u64
+                & JALR_MASK;
 
             let internal_address_1 = self.rom.get_internal_address();
 
@@ -960,7 +964,7 @@ impl Riscv2ZiskContext<'_> {
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst.clone());
                 zib.src_a("imm", 0, false);
-                zib.src_b("imm", jump_pc as u64, false);
+                zib.src_b("imm", jump_pc, false);
                 zib.op("copyb").unwrap();
                 zib.set_pc();
                 zib.j(0, 0);
@@ -1117,8 +1121,6 @@ impl Riscv2ZiskContext<'_> {
         // Note that this change fixes the misalign2-jalr-01.S test, which is part of the privilege
         // architecture test suite but which seeems to test requirements of other parts of the
         // spec.
-
-        const JALR_MASK: u64 = 0xfffffffffffffffe;
 
         if (i.imm % 4) == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
