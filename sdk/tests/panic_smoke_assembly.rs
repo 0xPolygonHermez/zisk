@@ -67,10 +67,10 @@ async fn panic_modes_assembly() {
 fn rejects_elf_without_entrypoint_macro() {
     let err = ELF_MISSING_ENTRYPOINT
         .run_emulation(zisk_common::io::ZiskStdin::new(), None)
-        .expect_err("elf2rom should reject a guest ELF that lacks a `main` symbol");
+        .expect_err("elf2rom should reject a guest ELF that has no entry point");
     let msg = format!("{err:#}");
     assert!(
-        msg.contains("`main` symbol") && msg.contains("ziskos::entrypoint!"),
+        msg.contains("entry point") && msg.contains("ziskos::entrypoint!"),
         "expected actionable entrypoint error, got: {msg}"
     );
 }
