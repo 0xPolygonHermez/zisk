@@ -165,7 +165,7 @@ macro_rules! register_precompiles {
                 /// value the bundle was constructed with.
                 pub fn from_bundle(
                     bundle: &$crate::StaticSMBundle<F>,
-                ) -> ::anyhow::Result<Self> {
+                ) -> $crate::error::ExecutorResult<Self> {
                     let is_asm_emulator = bundle.is_asm();
                     $( let mut [<$variant:snake>] = ::std::option::Option::None; )*
 
@@ -185,12 +185,11 @@ macro_rules! register_precompiles {
 
                     ::std::result::Result::Ok(Self {
                         $(
-                            [<$variant:snake>]: [<$variant:snake>].ok_or_else(|| {
-                                ::anyhow::anyhow!(concat!(
-                                    "Counter not found: ",
-                                    stringify!($variant),
-                                ))
-                            })?,
+                            [<$variant:snake>]: [<$variant:snake>].ok_or(
+                                $crate::error::ExecutorError::InputGeneratorNotFound {
+                                    kind: stringify!($variant),
+                                }
+                            )?,
                         )*
                     })
                 }

@@ -27,7 +27,7 @@ use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
 use zisk_common::io::StreamSource;
 
-use crate::error::{ExecutorError, ExecutorResult};
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::AsmResources;
 
 /// Wraps the optionally-set `Arc<AsmResources>` and exposes every
@@ -52,10 +52,7 @@ impl AsmTransport {
     /// Install the worker-supplied resources. Idempotent — calling
     /// again replaces the previously-installed value.
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
-        *self
-            .asm_resources
-            .write()
-            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))? = Some(asm_resources);
+        *self.asm_resources.write_or_poison("asm_resources")? = Some(asm_resources);
         Ok(())
     }
 
@@ -67,8 +64,7 @@ impl AsmTransport {
     /// access shmem readers, etc.).
     pub fn resources(&self) -> ExecutorResult<Arc<AsmResources>> {
         self.asm_resources
-            .read()
-            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))?
+            .read_or_poison("asm_resources")?
             .as_ref()
             .ok_or(ExecutorError::AsmResourcesNotInitialized)
             .cloned()
@@ -140,12 +136,7 @@ impl AsmTransport {
     /// `Option<&Arc<AsmResources>>` for methods that want to no-op
     /// when uninstalled.
     fn installed_resources_ref(&self) -> ExecutorResult<Option<Arc<AsmResources>>> {
-        Ok(self
-            .asm_resources
-            .read()
-            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))?
-            .as_ref()
-            .cloned())
+        Ok(self.asm_resources.read_or_poison("asm_resources")?.as_ref().cloned())
     }
 }
 

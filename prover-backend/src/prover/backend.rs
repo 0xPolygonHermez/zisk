@@ -50,11 +50,11 @@ impl ProverBackend {
     }
 
     pub(crate) fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
-        self.executor.set_asm_resources(resources)
+        self.executor.set_asm_resources(resources).map_err(Into::into)
     }
 
     pub(crate) fn clear_asm_resources(&self) -> Result<()> {
-        self.executor.clear_asm_resources()
+        self.executor.clear_asm_resources().map_err(Into::into)
     }
 
     pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -172,7 +172,7 @@ impl ProverBackend {
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin)
+        self.executor.set_stdin(stdin).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {

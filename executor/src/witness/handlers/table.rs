@@ -5,10 +5,10 @@
 //! to the witness generator with an empty collector list and a
 //! freshly-allocated trace buffer.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 use crate::WitnessGenerator;
 
@@ -27,12 +27,10 @@ impl TableWitnessHandler {
         global_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope_id: u64,
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let instance = &**secn_instance;
         let collectors = Vec::new(); // Tables have no per-chunk collectors.

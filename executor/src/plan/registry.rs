@@ -18,11 +18,10 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use zisk_common::{CheckPoint, InstanceType, Plan};
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::ports::{GlobalId, ProofRegistry};
 use crate::AirClassifier;
 use crate::{state::ExecutionState, InstanceFactory, StaticSMBundle};
-
-use anyhow::Result;
 
 /// Lifecycle owner for main + secondary instances on the executor.
 pub struct InstanceRegistry<F: PrimeField64> {
@@ -49,9 +48,9 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         registry: &dyn ProofRegistry,
         state: &ExecutionState<F>,
         assignments: Vec<(usize, Plan)>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let mut main_instances =
-            state.instance_set.main_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.main_instances.write_or_poison("main_instances")?;
         for (global_id, plan) in assignments {
             main_instances
                 .entry(global_id)
@@ -77,13 +76,12 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         &self,
         state: &ExecutionState<F>,
         plans: Vec<Plan>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let mut secn_instances =
-            state.instance_set.secn_instances.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.secn_instances.write_or_poison("secn_instances")?;
         for plan in plans {
-            let global_id = plan
-                .global_id
-                .ok_or_else(|| anyhow::anyhow!("secn plan missing global_id before populate"))?;
+            let global_id =
+                plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "populate" })?;
             if let Entry::Vacant(e) = secn_instances.entry(global_id) {
                 let instance = self.factory.new_secn(plan, global_id)?;
                 e.insert(instance);
@@ -123,14 +121,13 @@ impl<F: PrimeField64> InstanceRegistry<F> {
         registry: &dyn ProofRegistry,
         state: &ExecutionState<F>,
         global_ids: &[usize],
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
 
         for &global_id in global_ids {
             let instance = secn_instances
                 .get(&global_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+                .ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
             instance.reset();
 

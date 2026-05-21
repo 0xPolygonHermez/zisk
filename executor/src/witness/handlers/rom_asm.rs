@@ -7,12 +7,12 @@
 
 use std::sync::Mutex;
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 
 use super::common::{register_empty_collector, take_collectors_for_instance};
 use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
@@ -38,18 +38,15 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomAsmWitnessHandler {
         airgroup_id: usize,
         air_id: usize,
         stats_scope_id: u64,
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let needs_collection = !state
             .collector_store
             .inner
-            .read()
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .read_or_poison("collector_store")?
             .contains_key(&global_id);
 
         if needs_collection {
@@ -62,7 +59,7 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomAsmWitnessHandler {
         let instance = &**secn_instance;
         let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
         let trace_buffer =
-            std::mem::take(&mut *trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?);
+            std::mem::take(&mut *trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
 
         generator.compute_secn_witness(
             pctx,
@@ -88,7 +85,7 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomAsmWitnessHandler {
         global_id: usize,
         _airgroup_id: usize,
         _air_id: usize,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         registry.set_witness_ready(GlobalId(global_id), false);
         Ok(())
     }

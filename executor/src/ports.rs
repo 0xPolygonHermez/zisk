@@ -14,7 +14,9 @@
 //!   used by `PlanPhase`: instance/table assignment, chunk
 //!   configuration, public-output injection.
 
-use anyhow::Result;
+#[cfg(test)]
+use crate::error::ExecutorError;
+use crate::error::ExecutorResult;
 
 /// Newtype around a global instance ID assigned by the proof context.
 ///
@@ -82,10 +84,10 @@ impl From<InstanceInfo> for (usize, usize) {
 /// `ProofCtx<F>`) and on test fakes.
 pub trait Dctx {
     /// Returns `(airgroup_id, air_id)` for the instance `gid`.
-    fn instance_info(&self, gid: GlobalId) -> Result<InstanceInfo>;
+    fn instance_info(&self, gid: GlobalId) -> ExecutorResult<InstanceInfo>;
 
     /// Returns `true` if the local rank owns the instance `gid`.
-    fn is_my_process_instance(&self, gid: GlobalId) -> Result<bool>;
+    fn is_my_process_instance(&self, gid: GlobalId) -> ExecutorResult<bool>;
 
     /// Marks the witness for `gid` as ready (`true`) or not-ready
     /// (`false`).
@@ -98,20 +100,20 @@ pub trait Dctx {
 pub trait ProofRegistry: Dctx {
     /// Registers a distributed instance (any rank may own it). Returns
     /// the assigned global id.
-    fn add_instance(&self, info: InstanceInfo) -> Result<GlobalId>;
+    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
     /// Registers a rank-owned instance (this rank owns it). Returns the
     /// assigned global id. Used for ROM and `rank_assign: true`
     /// precompiles (today: only Keccakf).
-    fn add_instance_assign(&self, info: InstanceInfo) -> Result<GlobalId>;
+    fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
     /// Registers a table instance. Returns the assigned global id.
-    fn add_table(&self, info: InstanceInfo) -> Result<GlobalId>;
+    fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
     /// Looks up the previously-assigned global id for an AIR. Used by
     /// the planner to attach the ROM instance to its existing
     /// rank-assignment.
-    fn find_instance_id(&self, info: InstanceInfo) -> Result<GlobalId>;
+    fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
     /// Configures which chunks the instance `gid` needs.
     ///
@@ -204,16 +206,16 @@ pub(crate) mod fakes {
     }
 
     impl Dctx for FakeProofRegistry {
-        fn instance_info(&self, gid: GlobalId) -> Result<InstanceInfo> {
+        fn instance_info(&self, gid: GlobalId) -> ExecutorResult<InstanceInfo> {
             self.additions
                 .borrow()
                 .iter()
                 .find(|a| a.gid == gid)
                 .map(|a| a.info)
-                .ok_or_else(|| anyhow::anyhow!("unknown gid: {gid:?}"))
+                .ok_or(ExecutorError::InstanceNotFound { global_id: gid.0 })
         }
 
-        fn is_my_process_instance(&self, gid: GlobalId) -> Result<bool> {
+        fn is_my_process_instance(&self, gid: GlobalId) -> ExecutorResult<bool> {
             Ok(self.ownership.borrow().get(&gid).copied().unwrap_or(true))
         }
 
@@ -223,22 +225,22 @@ pub(crate) mod fakes {
     }
 
     impl ProofRegistry for FakeProofRegistry {
-        fn add_instance(&self, info: InstanceInfo) -> Result<GlobalId> {
+        fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::Instance, info))
         }
-        fn add_instance_assign(&self, info: InstanceInfo) -> Result<GlobalId> {
+        fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::InstanceAssign, info))
         }
-        fn add_table(&self, info: InstanceInfo) -> Result<GlobalId> {
+        fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::Table, info))
         }
-        fn find_instance_id(&self, info: InstanceInfo) -> Result<GlobalId> {
+        fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             self.additions
                 .borrow()
                 .iter()
                 .find(|a| a.info == info)
                 .map(|a| a.gid)
-                .ok_or_else(|| anyhow::anyhow!("not found: {info:?}"))
+                .ok_or(ExecutorError::SecnPlanMissing { phase: "find_instance_id" })
         }
         fn set_chunks(&self, gid: GlobalId, chunks: &[usize], is_memory_related: bool) {
             self.set_chunks_calls.borrow_mut().push((gid, chunks.to_vec(), is_memory_related));

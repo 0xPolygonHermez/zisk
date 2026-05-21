@@ -8,13 +8,13 @@
 
 use std::sync::Mutex;
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 
 use super::common::{register_empty_collector, take_collectors_for_instance};
 use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
+use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
@@ -41,30 +41,25 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
         _airgroup_id: usize,
         _air_id: usize,
         stats_scope_id: u64,
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let needs_collection = !state
             .collector_store
             .inner
-            .read()
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .read_or_poison("collector_store")?
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
         if needs_collection {
-            collector
-                .collect_single(pctx, state, global_id, instance)
-                .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
+            collector.collect_single(pctx, state, global_id, instance)?;
         }
 
         let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
         let trace_buffer =
-            std::mem::take(&mut *trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?);
+            std::mem::take(&mut *trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
 
         generator.compute_secn_witness(
             pctx,
@@ -91,15 +86,13 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let gid = GlobalId(global_id);
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
-        let rom_instance =
-            secn_instance.as_any().downcast_ref::<RomInstance>().ok_or_else(|| {
-                anyhow::anyhow!("Downcast failed: instance {global_id} to RomInstance")
-            })?;
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
+        let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().ok_or(
+            ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
+        )?;
 
         if rom_instance.skip_collector() {
             register_empty_collector(state, global_id, airgroup_id, air_id)?;
@@ -149,7 +142,7 @@ mod tests {
         state: &ExecutionState<F>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         <RomNativeWitnessHandler as RomWitnessHandler<F>>::pre_calculate(
             &RomNativeWitnessHandler,
             registry,
@@ -214,6 +207,6 @@ mod tests {
 
         let err = run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
             .expect_err("must err when the gid isn't present in the map");
-        assert!(err.to_string().contains(&format!("Instance not found: global_id={GID}")));
+        assert!(err.to_string().contains(&format!("instance not found for global_id={GID}")));
     }
 }

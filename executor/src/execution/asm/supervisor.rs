@@ -31,19 +31,19 @@
 
 use std::thread::JoinHandle;
 
-use anyhow::Result;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
 
+use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::{AsmResources, MAX_NUM_STEPS};
 
 /// Owns the MO + (optionally) RH runner threads spawned at the start
 /// of an ASM execution. See module-level docs.
 pub struct AsmRunnerSupervisor {
-    handle_mo: JoinHandle<Result<AsmRunnerMO>>,
-    handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
+    handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
+    handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
 }
 
 impl AsmRunnerSupervisor {
@@ -52,8 +52,8 @@ impl AsmRunnerSupervisor {
     /// without needing real shmem.
     #[cfg(test)]
     pub fn new(
-        handle_mo: JoinHandle<Result<AsmRunnerMO>>,
-        handle_rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
+        handle_mo: JoinHandle<ExecutorResult<AsmRunnerMO>>,
+        handle_rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
     ) -> Self {
         Self { handle_mo, handle_rh }
     }
@@ -81,11 +81,10 @@ impl AsmRunnerSupervisor {
             let asm_shmem_mo = resources.readers().mo.clone();
             let asm_services = resources.asm_services().clone();
             let stats_mo = stats.clone();
-            move || -> Result<AsmRunnerMO> {
-                let mut guard = asm_shmem_mo
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
+            move || -> ExecutorResult<AsmRunnerMO> {
+                let mut guard = asm_shmem_mo.lock_or_poison("mo_shmem")?;
                 AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, stats_mo)
+                    .map_err(ExecutorError::asm_backend)
             }
         });
 
@@ -94,10 +93,8 @@ impl AsmRunnerSupervisor {
             let asm_services = resources.asm_services().clone();
             let unlock_mapped_memory = resources.config().unlock_mapped_memory;
             let stats_rh = stats.clone();
-            std::thread::spawn(move || -> Result<AsmRunnerRH> {
-                let mut guard = asm_shmem_rh
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;
+            std::thread::spawn(move || -> ExecutorResult<AsmRunnerRH> {
+                let mut guard = asm_shmem_rh.lock_or_poison("rh_shmem")?;
 
                 AsmRunnerRH::run(
                     &mut guard,
@@ -106,6 +103,7 @@ impl AsmRunnerSupervisor {
                     unlock_mapped_memory,
                     stats_rh,
                 )
+                .map_err(ExecutorError::asm_backend)
             })
         });
 
@@ -117,7 +115,8 @@ impl AsmRunnerSupervisor {
     /// [`crate::BackendArtifacts::Asm`] for [`crate::ExecutionOutput`].
     pub fn into_handles(
         self,
-    ) -> (JoinHandle<Result<AsmRunnerMO>>, Option<JoinHandle<Result<AsmRunnerRH>>>) {
+    ) -> (JoinHandle<ExecutorResult<AsmRunnerMO>>, Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>)
+    {
         (self.handle_mo, self.handle_rh)
     }
 
@@ -130,9 +129,12 @@ impl AsmRunnerSupervisor {
     /// (not propagated) — the original MT error is what the caller
     /// will return, and a cancellation that itself fails is a
     /// secondary observability signal, not a new error mode.
-    pub fn cleanup_after_mt_failure(self, signal_cancellation: impl FnOnce() -> Result<()>) {
+    pub fn cleanup_after_mt_failure(
+        self,
+        signal_cancellation: impl FnOnce() -> ExecutorResult<()>,
+    ) {
         if let Err(reset_err) = signal_cancellation() {
-            tracing::error!("AsmRunnerSupervisor: signal_cancellation failed: {reset_err:#}");
+            tracing::error!("AsmRunnerSupervisor: signal_cancellation failed: {reset_err}");
         }
         join_runner_during_cleanup("MO", self.handle_mo);
         if let Some(h) = self.handle_rh {
@@ -145,11 +147,11 @@ impl AsmRunnerSupervisor {
 /// any thread panic or runner error so observability isn't silently
 /// lost. The caller has already issued `signal_cancellation`, so a
 /// healthy runner will observe the reset flag and exit `Ok(_)`.
-fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<Result<T>>) {
+fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<ExecutorResult<T>>) {
     match handle.join() {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
-            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err}");
         }
         Err(_) => {
             tracing::warn!("{label} runner thread panicked during MT-failure cleanup")
@@ -165,12 +167,12 @@ mod tests {
     use std::sync::Arc;
 
     /// Spawn a no-op MO runner that returns an empty `AsmRunnerMO`.
-    fn spawn_canned_mo() -> JoinHandle<Result<AsmRunnerMO>> {
+    fn spawn_canned_mo() -> JoinHandle<ExecutorResult<AsmRunnerMO>> {
         std::thread::spawn(|| Ok(AsmRunnerMO::new(Vec::new())))
     }
 
     /// Spawn a no-op RH runner that returns an empty `AsmRunnerRH`.
-    fn spawn_canned_rh() -> JoinHandle<Result<AsmRunnerRH>> {
+    fn spawn_canned_rh() -> JoinHandle<ExecutorResult<AsmRunnerRH>> {
         std::thread::spawn(|| Ok(AsmRunnerRH::new(AsmRHData::new(0, Vec::new()))))
     }
 
@@ -212,7 +214,7 @@ mod tests {
         // The cancellation closure's Err is logged, not propagated.
         // We assert the supervisor swallows it and still joins handles.
         let sup = AsmRunnerSupervisor::new(spawn_canned_mo(), Some(spawn_canned_rh()));
-        sup.cleanup_after_mt_failure(|| Err(anyhow::anyhow!("cancel boom")));
+        sup.cleanup_after_mt_failure(|| Err(ExecutorError::AsmBackend("cancel boom".to_string())));
     }
 
     #[test]
@@ -220,8 +222,9 @@ mod tests {
         // The MO runner thread panics. cleanup_after_mt_failure must
         // join it (observing the JoinHandle's Err(panic)) and log a
         // warning, but must NOT itself panic.
-        let panicking_mo =
-            std::thread::spawn(|| -> Result<AsmRunnerMO> { panic!("simulated runner panic") });
+        let panicking_mo = std::thread::spawn(|| -> ExecutorResult<AsmRunnerMO> {
+            panic!("simulated runner panic")
+        });
         let sup = AsmRunnerSupervisor::new(panicking_mo, None);
         sup.cleanup_after_mt_failure(|| Ok(()));
     }
@@ -231,8 +234,9 @@ mod tests {
         // The MO runner thread returns `Err`; the supervisor logs the
         // error and continues. Mirrors the runner-side-error branch
         // of join_runner_during_cleanup.
-        let erroring_mo: JoinHandle<Result<AsmRunnerMO>> =
-            std::thread::spawn(|| Err(anyhow::anyhow!("simulated runner error")));
+        let erroring_mo: JoinHandle<ExecutorResult<AsmRunnerMO>> = std::thread::spawn(|| {
+            Err(ExecutorError::AsmBackend("simulated runner error".to_string()))
+        });
         let sup = AsmRunnerSupervisor::new(erroring_mo, None);
         sup.cleanup_after_mt_failure(|| Ok(()));
     }

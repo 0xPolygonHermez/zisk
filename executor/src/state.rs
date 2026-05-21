@@ -8,7 +8,7 @@ use std::sync::{
 use zisk_common::{BusDevice, EmuTrace, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_core::ZiskRom;
 
-use anyhow::Result;
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 
 use crate::{ChunkCollectorStore, InstanceSet};
 
@@ -70,23 +70,13 @@ impl<F: PrimeField64> ExecutionState<F> {
         self.use_hints.store(use_hints, Ordering::SeqCst);
     }
 
-    /// Checks if the ROM has been initialized.
-    fn is_rom_initialized(&self) -> bool {
-        self.zisk_rom.read().unwrap().is_some()
-    }
-
     /// Gets the current ZisK ROM.
     ///
     /// # Errors
     /// Returns an error if no ROM has been set via `set_rom()` or if the ROM lock is poisoned.
-    pub fn get_rom(&self) -> Result<Arc<ZiskRom>> {
-        if !self.is_rom_initialized() {
-            anyhow::bail!("ROM not initialized. Call set_rom() before execute()");
-        }
-
-        let guard = self.zisk_rom.read().map_err(|e| anyhow::anyhow!("ROM lock poisoned: {e}"))?;
-
-        guard.as_ref().cloned().ok_or_else(|| anyhow::anyhow!("ROM not initialized"))
+    pub fn get_rom(&self) -> ExecutorResult<Arc<ZiskRom>> {
+        let guard = self.zisk_rom.read_or_poison("rom")?;
+        guard.as_ref().cloned().ok_or(ExecutorError::RomNotInitialized)
     }
 
     /// Resets all internal state to default values.

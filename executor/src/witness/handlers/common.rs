@@ -3,10 +3,10 @@
 //! Pulled out of [`crate::WitnessRouter`] in step 4.3 so each handler
 //! module stays focused on its own air-id category.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use zisk_common::{BusDevice, InstanceType, Stats};
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 
 /// Drains the per-chunk collectors recorded for `global_id` from
@@ -21,27 +21,26 @@ pub(super) fn take_collectors_for_instance<F: PrimeField64>(
     state: &ExecutionState<F>,
     global_id: usize,
     instance_type: InstanceType,
-) -> Result<Vec<(usize, Box<dyn BusDevice<u64>>)>> {
+) -> ExecutorResult<Vec<(usize, Box<dyn BusDevice<u64>>)>> {
     match instance_type {
         InstanceType::Instance => {
-            let mut guard =
-                state.collector_store.inner.write().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let mut guard = state.collector_store.inner.write_or_poison("collector_store")?;
 
             let collectors = guard
                 .remove(&global_id)
-                .ok_or_else(|| anyhow::anyhow!("Missing collectors for global_id {global_id}"))?;
+                .ok_or(ExecutorError::MissingIndexEntry { global_id, index: "collector_store" })?;
 
             collectors
                 .into_iter()
                 .enumerate()
                 .map(|(idx, opt)| {
                     opt.ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "Collector at index {idx} for global_id {global_id} is None"
-                        )
+                        ExecutorError::Internal(format!(
+                            "collector at index {idx} for global_id {global_id} is None"
+                        ))
                     })
                 })
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<ExecutorResult<Vec<_>>>()
         }
         InstanceType::Table => Ok(vec![]),
     }
@@ -56,15 +55,10 @@ pub(crate) fn register_empty_collector<F: PrimeField64>(
     global_id: usize,
     airgroup_id: usize,
     air_id: usize,
-) -> Result<()> {
+) -> ExecutorResult<()> {
     let stats = Stats::new_no_collection(airgroup_id, air_id);
 
-    state
-        .collector_store
-        .inner
-        .write()
-        .map_err(|e| anyhow::anyhow!("{e}"))?
-        .insert(global_id, Vec::new());
+    state.collector_store.inner.write_or_poison("collector_store")?.insert(global_id, Vec::new());
     state.stats.insert_witness_stats(global_id, stats);
 
     Ok(())

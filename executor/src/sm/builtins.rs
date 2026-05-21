@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
 use fields::PrimeField64;
 use mem_common::MemCounters;
 use pil_std_lib::Std;
@@ -178,7 +177,7 @@ impl BuiltinCounters {
     /// `RomSM` has no bus-side counter and is skipped. The ASM/native
     /// switch comes from `bundle.is_asm()` — same value the bundle was
     /// constructed with, no longer threaded through this signature.
-    pub(crate) fn from_bundle<F: PrimeField64>(bundle: &StaticSMBundle<F>) -> Result<Self> {
+    pub(crate) fn from_bundle<F: PrimeField64>(bundle: &StaticSMBundle<F>) -> ExecutorResult<Self> {
         let is_asm = bundle.is_asm();
         let mut mem = None;
         let mut binary = None;
@@ -207,10 +206,10 @@ impl BuiltinCounters {
         }
 
         Ok(Self {
-            mem: mem.ok_or_else(|| anyhow::anyhow!("Counter not found: Mem"))?,
-            binary: binary.ok_or_else(|| anyhow::anyhow!("Counter not found: Binary"))?,
-            arith: arith.ok_or_else(|| anyhow::anyhow!("Counter not found: Arith"))?,
-            dma: dma.ok_or_else(|| anyhow::anyhow!("Counter not found: Dma"))?,
+            mem: mem.ok_or(ExecutorError::InputGeneratorNotFound { kind: "Mem" })?,
+            binary: binary.ok_or(ExecutorError::InputGeneratorNotFound { kind: "Binary" })?,
+            arith: arith.ok_or(ExecutorError::InputGeneratorNotFound { kind: "Arith" })?,
+            dma: dma.ok_or(ExecutorError::InputGeneratorNotFound { kind: "Dma" })?,
         })
     }
 }

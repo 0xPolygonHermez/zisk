@@ -20,10 +20,10 @@
 
 use std::thread::JoinHandle;
 
-use anyhow::Result;
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use zisk_common::{EmuTrace, Plan};
 
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::pub_outs_collector::PubOutsCollector;
 use crate::CountersChunkMetrics;
 
@@ -56,12 +56,12 @@ pub enum BackendArtifacts {
     Asm {
         /// Memory-operations runner handle. `Some` until consumed by
         /// `await_mem_plans`, then `None`.
-        mo: Option<JoinHandle<Result<AsmRunnerMO>>>,
+        mo: Option<JoinHandle<ExecutorResult<AsmRunnerMO>>>,
         /// ROM-histogram runner handle. `Some` only on the first rank
         /// (the rank that actually runs the RH service); `None`
         /// otherwise. Set to `None` after `await_rom_histogram` consumes
         /// it.
-        rh: Option<JoinHandle<Result<AsmRunnerRH>>>,
+        rh: Option<JoinHandle<ExecutorResult<AsmRunnerRH>>>,
     },
     /// Rust backend: no async artifacts. `await_*` returns empty.
     Rust,
@@ -73,17 +73,16 @@ impl BackendArtifacts {
     ///
     /// Each call consumes the `mo` handle inside the `Asm` variant; a
     /// second call returns an error noting the handle was already taken.
-    pub fn await_mem_plans(&mut self) -> Result<Vec<Plan>> {
+    pub fn await_mem_plans(&mut self) -> ExecutorResult<Vec<Plan>> {
         match self {
             Self::Asm { mo, .. } => {
-                let handle = mo.take().ok_or_else(|| {
-                    anyhow::anyhow!("Assembly Memory Operations handle already consumed")
-                })?;
+                let handle = mo.take().ok_or(ExecutorError::RunnerHandleConsumed { name: "MO" })?;
                 let asm_runner_mo = handle
                     .join()
-                    .map_err(|_| anyhow::anyhow!("Assembly Memory Operations thread panicked"))?
-                    .map_err(|e| {
-                        anyhow::anyhow!("Assembly Memory Operations execution failed: {e}")
+                    .map_err(|_| ExecutorError::RunnerThreadPanicked { name: "MO" })?
+                    .map_err(|e| ExecutorError::RunnerFailed {
+                        name: "MO",
+                        message: e.to_string(),
                     })?;
                 Ok(asm_runner_mo.plans)
             }
@@ -97,7 +96,7 @@ impl BackendArtifacts {
     ///
     /// Each call consumes the `rh` handle inside the `Asm` variant; a
     /// second call returns `Ok(None)`.
-    pub fn await_rom_histogram(&mut self) -> Result<Option<AsmRunnerRH>> {
+    pub fn await_rom_histogram(&mut self) -> ExecutorResult<Option<AsmRunnerRH>> {
         match self {
             Self::Asm { rh, .. } => {
                 let Some(handle) = rh.take() else {
@@ -105,8 +104,11 @@ impl BackendArtifacts {
                 };
                 let rh_data = handle
                     .join()
-                    .map_err(|_| anyhow::anyhow!("ROM Histogram thread panicked"))?
-                    .map_err(|e| anyhow::anyhow!("ROM Histogram execution failed: {e}"))?;
+                    .map_err(|_| ExecutorError::RunnerThreadPanicked { name: "RH" })?
+                    .map_err(|e| ExecutorError::RunnerFailed {
+                        name: "RH",
+                        message: e.to_string(),
+                    })?;
                 Ok(Some(rh_data))
             }
             Self::Rust => Ok(None),
@@ -157,11 +159,12 @@ mod tests {
 
     #[test]
     fn asm_await_mem_plans_propagates_runner_error() {
-        let mo_handle =
-            std::thread::spawn(|| -> Result<AsmRunnerMO> { Err(anyhow::anyhow!("boom")) });
+        let mo_handle = std::thread::spawn(|| -> ExecutorResult<AsmRunnerMO> {
+            Err(ExecutorError::AsmBackend("boom".to_string()))
+        });
         let mut backend = BackendArtifacts::Asm { mo: Some(mo_handle), rh: None };
         let err = backend.await_mem_plans().expect_err("runner Err must propagate");
-        assert!(err.to_string().contains("Assembly Memory Operations execution failed"));
+        assert!(err.to_string().contains("MO runner failed"));
         assert!(err.to_string().contains("boom"));
     }
 

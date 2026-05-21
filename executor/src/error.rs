@@ -1,10 +1,14 @@
 //! Crate-level error type for the executor.
 //!
 //! [`ExecutorError`] is the crate's unified error enum. Each fallible
-//! subsystem contributes its own variants as it migrates off `anyhow`.
-//! The current variants cover collector-phase data-bus construction in
-//! [`crate::StaticDataBusCollect::for_chunk`]; more will be added here
-//! as other phases follow.
+//! subsystem contributes its own variants; the in-crate code uses
+//! [`ExecutorResult`] end-to-end, with explicit conversion to
+//! `anyhow::Result` or `ProofmanResult` only at the two external seams
+//! (asm-runner callbacks via [`Self::asm_backend`], and the
+//! [`proofman::WitnessComponent`] trait via stringification into
+//! `ProofmanError::InvalidSetup` in `executor.rs`).
+
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use proofman_common::ProofmanError;
 use thiserror::Error;
@@ -66,6 +70,59 @@ pub enum ExecutorError {
         expected: &'static str,
     },
 
+    /// The parsed ZisK ROM has not been installed yet via
+    /// `ZiskExecutor::set_rom`.
+    #[error("ROM not initialized")]
+    RomNotInitialized,
+
+    /// A plan keyed by `global_id` is missing during the assignment or
+    /// populate phase of secondary instance handling — invariant
+    /// violation.
+    #[error("secn plan missing global_id during {phase}")]
+    SecnPlanMissing {
+        /// The phase that detected the mismatch ("assignment", "populate").
+        phase: &'static str,
+    },
+
+    /// A `global_id` we expected to be in an in-memory index built
+    /// earlier in the same pipeline is missing — invariant violation.
+    #[error("invariant violation: global_id {global_id} not in {index}")]
+    MissingIndexEntry {
+        /// The global instance id that was missing.
+        global_id: usize,
+        /// Name of the index that should have contained it.
+        index: &'static str,
+    },
+
+    /// Forwarded error from `proofman-common` (pctx / dctx / setup
+    /// operations). Implements `From<ProofmanError>` so `?` auto-converts.
+    #[error(transparent)]
+    Proofman(#[from] ProofmanError),
+
+    /// Forwarded error from `sm-main` (main planner / witness).
+    #[error(transparent)]
+    MainSm(#[from] sm_main::MainSmError),
+
+    /// Forwarded error from `sm-rom` (ROM state-machine setup / planning).
+    #[error(transparent)]
+    Rom(#[from] sm_rom::RomError),
+
+    /// Forwarded error from `ziskemu` (Rust emulator).
+    #[error(transparent)]
+    Emulator(#[from] ziskemu::ZiskEmulatorErr),
+
+    /// The minimal-trace buffer in `ExecutionState` has not been
+    /// populated yet — `ExecutionPhase::run` must precede any phase
+    /// that reads it.
+    #[error("min_traces not set")]
+    MinTracesNotSet,
+
+    /// Internal invariant violation — typically a missing key in an
+    /// in-memory index built earlier in the same pipeline. If this
+    /// fires, the pipeline has a bug.
+    #[error("internal invariant violation: {0}")]
+    Internal(String),
+
     /// The ASM emulator was driven before its worker-supplied
     /// `AsmResources` handle was installed via `set_asm_resources`.
     #[error("AsmResources not initialized")]
@@ -97,6 +154,31 @@ pub enum ExecutorError {
     #[error("ASM backend operation failed: {0}")]
     AsmBackend(String),
 
+    /// An ASM runner thread's `JoinHandle` was already consumed by a
+    /// previous `await_*` call.
+    #[error("{name} runner handle already consumed")]
+    RunnerHandleConsumed {
+        /// Short label for the runner (e.g. "MO", "RH").
+        name: &'static str,
+    },
+
+    /// An ASM runner thread panicked rather than returning normally.
+    #[error("{name} runner thread panicked")]
+    RunnerThreadPanicked {
+        /// Short label for the runner (e.g. "MO", "RH").
+        name: &'static str,
+    },
+
+    /// An ASM runner thread returned an error from its body. `message`
+    /// is the stringified inner error chain.
+    #[error("{name} runner failed: {message}")]
+    RunnerFailed {
+        /// Short label for the runner (e.g. "MO", "RH").
+        name: &'static str,
+        /// Stringified runner error.
+        message: String,
+    },
+
     /// Aggregated failure across one or more MT-assembly chunks.
     /// `count` is the number of failures; `message` is the
     /// newline-joined `Display` chain of each one.
@@ -113,8 +195,11 @@ pub enum ExecutorError {
 pub type ExecutorResult<T> = Result<T, ExecutorError>;
 
 impl ExecutorError {
-    /// Build a [`Self::MutexPoisoned`] with the given lock name. Intended
-    /// for use as `.map_err(|_| ExecutorError::mutex_poisoned("foo"))?`.
+    /// Build a [`Self::MutexPoisoned`] with the given lock name. Most
+    /// sites should prefer [`MutexExt::lock_or_poison`] / [`RwLockExt::read_or_poison`] /
+    /// [`RwLockExt::write_or_poison`]; this constructor remains for the
+    /// `.into_inner()` and `.lock().map(…).map_err(…)` shapes those
+    /// traits don't cover.
     #[inline]
     pub fn mutex_poisoned(name: &'static str) -> Self {
         Self::MutexPoisoned { name }
@@ -126,5 +211,44 @@ impl ExecutorError {
     #[inline]
     pub fn asm_backend(e: anyhow::Error) -> Self {
         Self::AsmBackend(format!("{e:#}"))
+    }
+}
+
+/// Extension trait for `Mutex<T>` that converts poison errors into
+/// [`ExecutorError::MutexPoisoned`]. Replaces the boilerplate
+/// `.lock_or_poison("name")` with
+/// `.lock_or_poison("name")`.
+pub trait MutexExt<T> {
+    /// Acquire the lock or return a typed poison error.
+    fn lock_or_poison(&self, name: &'static str) -> ExecutorResult<MutexGuard<'_, T>>;
+}
+
+impl<T> MutexExt<T> for Mutex<T> {
+    #[inline]
+    fn lock_or_poison(&self, name: &'static str) -> ExecutorResult<MutexGuard<'_, T>> {
+        self.lock().map_err(|_| ExecutorError::mutex_poisoned(name))
+    }
+}
+
+/// Extension trait for `RwLock<T>` that converts poison errors into
+/// [`ExecutorError::MutexPoisoned`]. Replaces the boilerplate
+/// `.read().map_err(|_| …)` / `.write().map_err(|_| …)` with
+/// `.read_or_poison("name")` / `.write_or_poison("name")`.
+pub trait RwLockExt<T> {
+    /// Acquire the read lock or return a typed poison error.
+    fn read_or_poison(&self, name: &'static str) -> ExecutorResult<RwLockReadGuard<'_, T>>;
+    /// Acquire the write lock or return a typed poison error.
+    fn write_or_poison(&self, name: &'static str) -> ExecutorResult<RwLockWriteGuard<'_, T>>;
+}
+
+impl<T> RwLockExt<T> for RwLock<T> {
+    #[inline]
+    fn read_or_poison(&self, name: &'static str) -> ExecutorResult<RwLockReadGuard<'_, T>> {
+        self.read().map_err(|_| ExecutorError::mutex_poisoned(name))
+    }
+
+    #[inline]
+    fn write_or_poison(&self, name: &'static str) -> ExecutorResult<RwLockWriteGuard<'_, T>> {
+        self.write().map_err(|_| ExecutorError::mutex_poisoned(name))
     }
 }

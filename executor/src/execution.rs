@@ -30,7 +30,7 @@ pub use rust::*;
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use crate::error::{ExecutorError, ExecutorResult};
 use arc_swap::ArcSwap;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
@@ -95,7 +95,7 @@ impl ExecutionPhase {
     }
 
     /// Sets the standard input for the next [`Self::run`] call.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
         self.stdin.store(Arc::new(stdin));
         Ok(())
     }
@@ -103,31 +103,29 @@ impl ExecutionPhase {
     /// Hands the ASM resources to the underlying ASM emulator.
     /// Returns an error if called on a Rust-backed phase — the caller
     /// shouldn't ask for ASM resources on a non-ASM run.
-    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources).map_err(Into::into),
-            EmulatorBackend::Rust(_) => {
-                anyhow::bail!(
-                    "ExecutionPhase::set_asm_resources called on a Rust-backed trace phase"
-                )
-            }
+            EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
+            EmulatorBackend::Rust(_) => Err(ExecutorError::Internal(
+                "ExecutionPhase::set_asm_resources called on a Rust-backed trace phase".into(),
+            )),
         }
     }
 
     /// Resets the ASM pipeline (hints stream + input shmem) for the
     /// next run. No-op on the Rust backend.
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> ExecutorResult<()> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.reset().map_err(Into::into),
+            EmulatorBackend::Asm(asm) => asm.reset(),
             EmulatorBackend::Rust(_) => Ok(()),
         }
     }
 
     /// Returns the ASM execution info captured during the last run, or
     /// `None` on the Rust backend (no analogous info is collected).
-    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+    pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.get_asm_execution_info().map_err(Into::into),
+            EmulatorBackend::Asm(asm) => asm.get_asm_execution_info(),
             EmulatorBackend::Rust(_) => Ok(None),
         }
     }
@@ -146,12 +144,12 @@ impl ExecutionPhase {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
-    ) -> Result<ExecutionOutput> {
+    ) -> ExecutorResult<ExecutionOutput> {
         let stdin = self.stdin.load_full();
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm
-                .execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
-                .map_err(Into::into),
+            EmulatorBackend::Asm(asm) => {
+                asm.execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+            }
             EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, &stdin, sm_bundle),
         }
     }

@@ -6,7 +6,7 @@
 //! `InstancePlanner` is field-erased over `F` and mockable in unit
 //! tests via `crate::ports::fakes::FakeProofRegistry` (test-only fake).
 
-use anyhow::Result;
+use crate::error::{ExecutorResult, RwLockExt};
 use std::sync::RwLock;
 use zisk_common::{InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
@@ -31,7 +31,7 @@ impl InstancePlanner {
     /// Assigns the ROM instance to the proof context.
     ///
     /// Returns the assigned [`GlobalId`].
-    pub fn assign_rom_instance(&self, registry: &dyn ProofRegistry) -> Result<GlobalId> {
+    pub fn assign_rom_instance(&self, registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
         registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
     }
 
@@ -49,14 +49,14 @@ impl InstancePlanner {
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: Vec<Plan>,
-    ) -> Result<Vec<(usize, Plan)>> {
+    ) -> ExecutorResult<Vec<(usize, Plan)>> {
         let mut assignments = Vec::with_capacity(plans.len());
 
         for mut plan in plans {
             let gid =
                 registry.add_instance_assign(InstanceInfo::new(plan.airgroup_id, plan.air_id))?;
             plan.set_global_id(gid.0);
-            global_ids.write().map_err(|e| anyhow::anyhow!("{e}"))?.push(gid.0);
+            global_ids.write_or_poison("global_ids")?.push(gid.0);
             assignments.push((gid.0, plan));
         }
 
@@ -74,7 +74,7 @@ impl InstancePlanner {
         registry: &dyn ProofRegistry,
         global_ids: &RwLock<Vec<usize>>,
         plans: &mut [Plan],
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         for plan in plans.iter_mut() {
             let info = InstanceInfo::new(plan.airgroup_id, plan.air_id);
 
@@ -95,7 +95,7 @@ impl InstancePlanner {
                 }
             };
 
-            global_ids.write().map_err(|e| anyhow::anyhow!("{e}"))?.push(gid.0);
+            global_ids.write_or_poison("global_ids")?.push(gid.0);
             plan.set_global_id(gid.0);
         }
 

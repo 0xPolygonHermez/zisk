@@ -49,9 +49,9 @@ pub struct MtChunkProcessor<F: PrimeField64> {
     /// Per-chunk databuses, pushed in arbitrary order. `finalize` sorts
     /// by `ChunkId` before draining.
     results: Mutex<Vec<(ChunkId, StaticDataBus<PayloadType, F>)>>,
-    /// Errors collected from any failed chunk task. `finalize` returns
-    /// `Err` if non-empty.
-    errors: Mutex<Vec<anyhow::Error>>,
+    /// Pre-formatted error messages collected from any failed chunk
+    /// task. `finalize` returns `Err` if non-empty.
+    errors: Mutex<Vec<String>>,
 }
 
 impl<F: PrimeField64> MtChunkProcessor<F> {
@@ -82,8 +82,8 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
         let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
             Ok(db) => db,
             Err(e) => {
-                self.record_error(anyhow::anyhow!(
-                    "StaticDataBus::from_bundle failed for chunk {}: {e}",
+                self.record_error(format!(
+                    "StaticDataBus::from_bundle failed for chunk {}: {e:#}",
                     chunk_id.0
                 ));
                 return;
@@ -97,10 +97,9 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
 
         match self.results.lock() {
             Ok(mut guard) => guard.push((chunk_id, data_bus)),
-            Err(e) => self.record_error(anyhow::anyhow!(
-                "results lock poisoned for chunk {}: {e}",
-                chunk_id.0
-            )),
+            Err(e) => {
+                self.record_error(format!("results lock poisoned for chunk {}: {e}", chunk_id.0))
+            }
         }
     }
 
@@ -119,7 +118,7 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
             let message = err_vec
                 .iter()
                 .enumerate()
-                .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
+                .map(|(i, e)| format!("[Error {}] {e}", i + 1))
                 .collect::<Vec<_>>()
                 .join("\n");
             return Err(ExecutorError::MtChunkProcessing { count: err_vec.len(), message });
@@ -147,18 +146,19 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
         Ok((counters, pub_outs))
     }
 
-    /// Helper: append an error to the internal log, silently dropping
-    /// it if the mutex is poisoned (already in a failure mode).
-    fn record_error(&self, err: anyhow::Error) {
-        let _ = self.errors.lock().map(|mut errs| errs.push(err));
+    /// Helper: append a pre-formatted error message to the internal
+    /// log, silently dropping it if the mutex is poisoned (already in
+    /// a failure mode).
+    fn record_error(&self, message: String) {
+        let _ = self.errors.lock().map(|mut errs| errs.push(message));
     }
 
     /// Test-only: directly record an error without going through the
     /// chunk-processing path. Used by `finalize` tests to verify the
     /// error-aggregation branch without needing a real bundle.
     #[cfg(test)]
-    pub(crate) fn push_error_for_test(&self, err: anyhow::Error) {
-        self.record_error(err);
+    pub(crate) fn push_error_for_test(&self, message: String) {
+        self.record_error(message);
     }
 }
 
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn single_error_propagates_through_finalize() {
         let p: MtChunkProcessor<F> = MtChunkProcessor::new();
-        p.push_error_for_test(anyhow::anyhow!("boom-chunk-42"));
+        p.push_error_for_test("boom-chunk-42".to_string());
         // The Ok variant of `finalize` contains `Box<dyn BusDeviceMetrics>`
         // which doesn't implement `Debug`, so we can't use `expect_err`.
         match p.finalize() {
@@ -214,8 +214,8 @@ mod tests {
     #[test]
     fn multiple_errors_combine_with_indexed_prefixes() {
         let p: MtChunkProcessor<F> = MtChunkProcessor::new();
-        p.push_error_for_test(anyhow::anyhow!("first-fail"));
-        p.push_error_for_test(anyhow::anyhow!("second-fail"));
+        p.push_error_for_test("first-fail".to_string());
+        p.push_error_for_test("second-fail".to_string());
         match p.finalize() {
             Ok(_) => panic!("multiple errors must surface"),
             Err(err) => {

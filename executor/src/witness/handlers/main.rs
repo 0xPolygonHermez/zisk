@@ -1,9 +1,9 @@
 //! [`MainWitnessHandler`] — witness compute for main-SM instances.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::BufferPool;
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ExecutionState, WitnessGenerator};
 
 /// Static-namespace handler for main-SM witness computation.
@@ -22,12 +22,10 @@ impl MainWitnessHandler {
         global_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope_id: u64,
-    ) -> Result<()> {
-        let main_instances =
-            state.instance_set.main_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let main_instance = main_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let main_instances = state.instance_set.main_instances.read_or_poison("main_instances")?;
+        let main_instance =
+            main_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         generator.compute_main_witness(
             pctx,

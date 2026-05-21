@@ -6,11 +6,11 @@
 //! remote-proof backend) appears, split this file into a directory
 //! module.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_pil::ZiskPublicValues;
 
+use crate::error::ExecutorResult;
 use crate::ports::{Dctx, GlobalId, InstanceInfo, ProofRegistry};
 
 /// Adapter wrapping `ProofCtx<F>` for use through the port traits.
@@ -30,12 +30,12 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
 }
 
 impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
-    fn instance_info(&self, gid: GlobalId) -> Result<InstanceInfo> {
+    fn instance_info(&self, gid: GlobalId) -> ExecutorResult<InstanceInfo> {
         let (airgroup_id, air_id) = self.pctx.dctx_get_instance_info(gid.0)?;
         Ok(InstanceInfo::new(airgroup_id, air_id))
     }
 
-    fn is_my_process_instance(&self, gid: GlobalId) -> Result<bool> {
+    fn is_my_process_instance(&self, gid: GlobalId) -> ExecutorResult<bool> {
         Ok(self.pctx.dctx_is_my_process_instance(gid.0)?)
     }
 
@@ -45,19 +45,19 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
 }
 
 impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
-    fn add_instance(&self, info: InstanceInfo) -> Result<GlobalId> {
+    fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         Ok(GlobalId(self.pctx.add_instance(info.airgroup_id, info.air_id)?))
     }
 
-    fn add_instance_assign(&self, info: InstanceInfo) -> Result<GlobalId> {
+    fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id)?))
     }
 
-    fn add_table(&self, info: InstanceInfo) -> Result<GlobalId> {
+    fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))
     }
 
-    fn find_instance_id(&self, info: InstanceInfo) -> Result<GlobalId> {
+    fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         // `dctx_find_instance_id` returns `(bool, usize)`; the first field
         // is a flag the executor doesn't currently consume.
         let (_, gid) = self.pctx.dctx_find_instance_id(info.airgroup_id, info.air_id)?;

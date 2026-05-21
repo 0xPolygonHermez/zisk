@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use crate::error::ExecutorResult;
 use fields::PrimeField64;
 use sm_main::MainInstance;
 use zisk_common::{Instance, InstanceCtx, Plan};
@@ -52,7 +52,7 @@ impl<F: PrimeField64> InstanceFactory<F> {
     /// dispatches on the plan's `(airgroup_id, air_id)` to the
     /// matching built-in or precompile builder. Returns the boxed
     /// trait object.
-    pub fn new_secn(&self, plan: Plan, global_id: usize) -> Result<Box<dyn Instance<F>>> {
+    pub fn new_secn(&self, plan: Plan, global_id: usize) -> ExecutorResult<Box<dyn Instance<F>>> {
         self.sm_bundle.build_instance(InstanceCtx::new(global_id, plan))
     }
 

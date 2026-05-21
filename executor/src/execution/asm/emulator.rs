@@ -7,10 +7,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::error::{ExecutorError, ExecutorResult};
+use crate::bus::pub_outs_collector::PubOutsCollector;
+use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 use crate::execution::output::{BackendArtifacts, ExecutionOutput};
 use crate::sm::StaticSMBundle;
-use crate::witness::pub_outs_collector::PubOutsCollector;
 use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
 
 use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
@@ -52,11 +52,7 @@ impl EmulatorAsm {
     /// most recent successful `execute` call, or `None` if no
     /// execution has completed yet.
     pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {
-        Ok(self
-            .asm_execution_info
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("asm_execution_info"))?
-            .clone())
+        Ok(self.asm_execution_info.lock_or_poison("asm_execution_info")?.clone())
     }
 
     /// Installs the worker-supplied [`AsmResources`] handle on the
@@ -180,9 +176,7 @@ impl EmulatorAsm {
                 // ASM children via the cancellation closure, then joins MO/RH
                 // so their detached threads release the shmem-reader locks
                 // before the next job begins.
-                supervisor.cleanup_after_mt_failure(|| {
-                    asm_resources.signal_cancellation().map_err(anyhow::Error::from)
-                });
+                supervisor.cleanup_after_mt_failure(|| asm_resources.signal_cancellation());
                 Err(e)
             }
         };
@@ -223,11 +217,7 @@ impl EmulatorAsm {
             };
 
             let asm_resources = self.transport.resources()?;
-            let mt_shmem = &mut asm_resources
-                .readers()
-                .mt
-                .lock()
-                .map_err(|_| ExecutorError::mutex_poisoned("mt_shmem_reader"))?;
+            let mt_shmem = &mut asm_resources.readers().mt.lock_or_poison("mt_shmem_reader")?;
             let asm_resources_for_failure = asm_resources.clone();
 
             let result = AsmRunnerMT::run_and_count(
@@ -248,10 +238,7 @@ impl EmulatorAsm {
 
         let (emu_traces, asm_execution_info) = scope_result?;
 
-        self.asm_execution_info
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("asm_execution_info"))?
-            .replace(asm_execution_info);
+        self.asm_execution_info.lock_or_poison("asm_execution_info")?.replace(asm_execution_info);
 
         // Unwrap the Arc pointers now that all rayon tasks have completed.
         let emu_traces = emu_traces

@@ -6,7 +6,7 @@ use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 
-use crate::error::{ExecutorError, ExecutorResult};
+use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 
 /// Configuration for assembly resources.
 #[derive(Clone)]
@@ -181,10 +181,7 @@ impl AsmResources {
             .map_err(ExecutorError::asm_backend)?;
 
         if let Some(hints_stream) = &shared.hints_stream {
-            let processor = hints_stream
-                .lock()
-                .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
-                .get_processor();
+            let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
             processor
                 .hints_sink()
                 .bind_semaphores(sem_prefix)
@@ -211,10 +208,7 @@ impl AsmResources {
     /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
     pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
         let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
-        let processor = hints_stream
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
-            .get_processor();
+        let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
         let services = if is_first_partition {
             &AsmServices::SERVICES[..]
         } else {
@@ -237,8 +231,7 @@ impl AsmResources {
             return Err(ExecutorError::HintsNotConfigured);
         };
         hints_stream
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
+            .lock_or_poison("hints_stream")?
             .start_stream()
             .map_err(ExecutorError::asm_backend)
     }
@@ -249,8 +242,7 @@ impl AsmResources {
             return Err(ExecutorError::HintsNotConfigured);
         };
         hints_stream
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
+            .lock_or_poison("hints_stream")?
             .set_stream_src(stream)
             .map_err(ExecutorError::asm_backend)
     }
@@ -296,8 +288,7 @@ impl AsmResources {
     pub fn set_inputs_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.shared
             .inputs_stream
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("inputs_stream"))?
+            .lock_or_poison("inputs_stream")?
             .set_stream_src(stream)
             .map_err(ExecutorError::asm_backend)?;
         Ok(())
@@ -307,8 +298,7 @@ impl AsmResources {
     pub fn start_inputs_stream(&self) -> ExecutorResult<()> {
         self.shared
             .inputs_stream
-            .lock()
-            .map_err(|_| ExecutorError::mutex_poisoned("inputs_stream"))?
+            .lock_or_poison("inputs_stream")?
             .start_stream()
             .map_err(ExecutorError::asm_backend)
     }

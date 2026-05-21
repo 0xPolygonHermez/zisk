@@ -11,9 +11,8 @@ use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
 use zisk_pil::{MainTraceRow, MainTraceRowPacked};
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
-
-use anyhow::Result;
 
 /// Component responsible for witness computation.
 ///
@@ -52,7 +51,7 @@ impl WitnessGenerator {
         main_instance: &MainInstance<F>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let witness_start_time = Instant::now();
 
         let (airgroup_id, air_id) = pctx.dctx_get_instance_info(main_instance.ictx.global_id)?;
@@ -60,10 +59,8 @@ impl WitnessGenerator {
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, "AIR_MAIN_WITNESS", air_id);
 
         let zisk_rom = state.get_rom()?;
-        let min_traces_guard = state.min_traces.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let min_traces = min_traces_guard
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Resource not initialized: min_traces not set"))?;
+        let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
+        let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
         let air_instance = if self.packed.load(Ordering::Relaxed) {
             main_instance.compute_witness::<MainTraceRowPacked<F>>(
@@ -115,7 +112,7 @@ impl WitnessGenerator {
         collectors: Vec<(usize, Box<dyn BusDevice<u64>>)>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let witness_start_time = Instant::now();
 
         let _stats_msg = match secn_instance.instance_type() {

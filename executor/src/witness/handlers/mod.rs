@@ -27,7 +27,7 @@ pub use table::TableWitnessHandler;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use anyhow::Result;
+use crate::error::ExecutorResult;
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use zisk_common::Instance;
@@ -67,7 +67,7 @@ pub(crate) trait RomWitnessHandler<F: PrimeField64>: Send + Sync {
         airgroup_id: usize,
         air_id: usize,
         stats_scope_id: u64,
-    ) -> Result<()>;
+    ) -> ExecutorResult<()>;
 
     /// Pre-calculate hook for ROM ids. ASM marks the gid not-ready
     /// unconditionally; native may also register an empty collector and
@@ -83,5 +83,5 @@ pub(crate) trait RomWitnessHandler<F: PrimeField64>: Send + Sync {
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
-    ) -> Result<()>;
+    ) -> ExecutorResult<()>;
 }

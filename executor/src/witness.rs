@@ -16,7 +16,6 @@ pub mod air_classifier;
 pub mod collector;
 pub mod generator;
 pub mod handlers;
-pub mod pub_outs_collector;
 
 pub use air_classifier::*;
 pub use collector::*;
@@ -26,7 +25,6 @@ pub use handlers::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
@@ -34,6 +32,7 @@ use zisk_common::{InstanceType, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
+use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId};
 use crate::sm::StaticSMBundle;
 use crate::state::ExecutionState;
@@ -80,7 +79,7 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
     /// Routed via [`crate::ports::Dctx`] — never touches `pctx` directly.
-    pub fn get_instance_info(&self, global_id: usize) -> Result<(usize, usize)> {
+    pub fn get_instance_info(&self, global_id: usize) -> ExecutorResult<(usize, usize)> {
         let info = self.registry.instance_info(GlobalId(global_id))?;
         Ok((info.airgroup_id, info.air_id))
     }
@@ -131,11 +130,11 @@ impl<F: PrimeField64> WitnessPhase<F> {
         Self { collector, witness_generator, trace_buffer_rom, rom_handler }
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
         self.collector.set_rh_data(rh_data)
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         self.collector.set_rom(zisk_rom.clone())
     }
 
@@ -143,8 +142,8 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.witness_generator.set_packed(packed);
     }
 
-    pub fn reset(&self) -> Result<()> {
-        *self.trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))? =
+    pub fn reset(&self) -> ExecutorResult<()> {
+        *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
 
         Ok(())
@@ -159,7 +158,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ///      * `Instance` + `is_rom(air_id)` → `self.rom_handler`
     ///        (the strategy baked at construction)
     ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
-    pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> Result<()> {
+    pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> ExecutorResult<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
         let stats_scope_id = ctx.stats_scope.id();
 
@@ -178,10 +177,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
         // can route Table separately from Instance) without holding the
         // read guard across the handler call.
         let instance_type = {
-            let secn =
-                ctx.state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let secn = ctx.state.instance_set.secn_instances.read_or_poison("secn_instances")?;
             secn.get(&global_id)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?
+                .ok_or(ExecutorError::InstanceNotFound { global_id })?
                 .instance_type()
         };
 
@@ -240,9 +238,9 @@ impl<F: PrimeField64> WitnessPhase<F> {
         registry: &dyn Dctx,
         state: &ExecutionState<F>,
         global_ids: &[usize],
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let secn_instances_guard =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            state.instance_set.secn_instances.read_or_poison("secn_instances")?;
 
         let mut instances_to_collect = HashMap::new();
 
@@ -274,9 +272,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
         // Collect all instances that need collection
         if !instances_to_collect.is_empty() {
-            self.collector
-                .collect(pctx, state, instances_to_collect)
-                .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
+            self.collector.collect(pctx, state, instances_to_collect)?;
         }
 
         Ok(())
@@ -290,17 +286,15 @@ impl<F: PrimeField64> WitnessPhase<F> {
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
         global_id: usize,
-    ) -> Result<()> {
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         if secn_instance.instance_type() == InstanceType::Instance
             && !state
                 .collector_store
                 .inner
-                .read()
-                .map_err(|e| anyhow::anyhow!("{e}"))?
+                .read_or_poison("collector_store")?
                 .contains_key(&global_id)
         {
             instances_to_collect.insert(global_id, &**secn_instance);

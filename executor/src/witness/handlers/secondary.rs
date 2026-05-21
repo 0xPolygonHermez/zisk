@@ -1,11 +1,11 @@
 //! [`SecondaryWitnessHandler`] — witness compute for non-ROM
 //! `InstanceType::Instance` secondary state machines.
 
-use anyhow::Result;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 
 use super::common::take_collectors_for_instance;
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
@@ -30,25 +30,20 @@ impl SecondaryWitnessHandler {
         global_id: usize,
         buffer_pool: &dyn BufferPool<F>,
         stats_scope_id: u64,
-    ) -> Result<()> {
-        let secn_instances =
-            state.instance_set.secn_instances.read().map_err(|e| anyhow::anyhow!("{e}"))?;
-        let secn_instance = secn_instances
-            .get(&global_id)
-            .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={global_id}"))?;
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+        let secn_instance =
+            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
 
         let needs_collection = !state
             .collector_store
             .inner
-            .read()
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .read_or_poison("collector_store")?
             .contains_key(&global_id);
 
         let instance = &**secn_instance;
         if needs_collection {
-            collector
-                .collect_single(pctx, state, global_id, instance)
-                .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
+            collector.collect_single(pctx, state, global_id, instance)?;
         }
 
         let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;

@@ -6,6 +6,7 @@
 
 mod collect;
 mod counter;
+pub mod pub_outs_collector;
 
 pub use collect::*;
 pub use counter::*;

@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -78,7 +78,7 @@ pub struct PlanOutput {
 /// the whole execution. No `ProofCtx`, no global ids — assignment is
 /// the caller's responsibility. Unit-testable on synthetic `EmuTrace`
 /// input without bringing up an SM bundle.
-pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> {
+pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> ExecutorResult<Vec<Plan>> {
     Ok(MainPlanner::plan(min_traces, chunk_size)?)
 }
 
@@ -154,7 +154,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         global_ids: &RwLock<Vec<usize>>,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
-    ) -> Result<PlanOutput> {
+    ) -> ExecutorResult<PlanOutput> {
         // ────────────────────────────────────────────────────────────
         // Phase 1.2: Planning
         // ────────────────────────────────────────────────────────────
@@ -169,11 +169,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 
         let main_plans = plan_main(&trace.min_traces, self.chunk_size)?;
         let num_chunks = trace.min_traces.len();
-        *state
-            .min_traces
-            .write()
-            .map_err(|e| anyhow::anyhow!("min_traces lock poisoned: {e}"))? =
-            Some(trace.min_traces);
+        *state.min_traces.write_or_poison("min_traces")? = Some(trace.min_traces);
 
         let main_assignments =
             self.planner.assign_main_instances(proof_registry, global_ids, main_plans)?;
@@ -253,10 +249,9 @@ impl<F: PrimeField64> PlanPhase<F> {
         let secn_global_ids: Vec<usize> = secn_planning
             .iter()
             .map(|plan| {
-                plan.global_id
-                    .ok_or_else(|| anyhow::anyhow!("secn plan missing global_id after assignment"))
+                plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "assignment" })
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<ExecutorResult<Vec<_>>>()?;
 
         // Inject public outputs into the proof context.
         proof_registry.write_pub_outs(&trace.pub_outs.0);
@@ -277,11 +272,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         // ────────────────────────────────────────────────────────────
 
         // Cost accumulation: per-secondary instance.
-        let secn_instances = state
-            .instance_set
-            .secn_instances
-            .read()
-            .map_err(|e| anyhow::anyhow!("secn_instances lock poisoned: {e}"))?;
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
         for (global_id, instance) in secn_instances.iter() {
             let info = proof_registry.instance_info(GlobalId(*global_id))?;
 

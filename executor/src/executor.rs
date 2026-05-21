@@ -37,7 +37,7 @@ use zisk_common::{
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 
-use anyhow::Result;
+use crate::error::ExecutorResult;
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
 /// produced by counter-phase processing.
@@ -76,7 +76,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         shared_tables: bool,
         with_asm_emulator: bool,
         packed: bool,
-    ) -> Result<Arc<Self>> {
+    ) -> ExecutorResult<Arc<Self>> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
 
@@ -111,7 +111,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - The ZisK ROM to execute.
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) -> Result<()> {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>, use_hints: bool) -> ExecutorResult<()> {
         self.state.set_rom(zisk_rom.clone(), use_hints);
         self.witness.set_rom(zisk_rom)
     }
@@ -122,18 +122,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 
     /// Sets the standard input for execution.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
+    pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
         self.execution.set_stdin(stdin)
     }
 
     /// Sets ASM resources for execution (only applicable for ASM emulator).
-    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
         self.execution.set_asm_resources(asm_resources)
     }
 
     /// Clears any previously-installed ASM resources. No-op when the
     /// executor was built with the Rust emulator backend.
-    pub fn clear_asm_resources(&self) -> Result<()> {
+    pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
         // self.trace.clear_asm_resources()
         Ok(())
     }
@@ -156,14 +156,15 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
     /// Inner implementation of [`WitnessComponent::execute`].
     ///
-    /// Uses `anyhow::Result` so the body can use `?` freely; the trait-method
-    /// wrapper maps any error to `ProofmanError::InvalidSetup` once at the FFI seam.
+    /// Returns [`ExecutorResult`] so the body can use `?` freely; the
+    /// trait-method wrapper maps any error to `ProofmanError::InvalidSetup`
+    /// once at the FFI seam.
     fn execute_inner(
         &self,
         pctx: Arc<ProofCtx<F>>,
         sctx: Arc<SetupCtx<F>>,
         global_ids: &RwLock<Vec<usize>>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let start_total = Instant::now();
         self.state.reset();
         self.witness.reset()?;
@@ -243,7 +244,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &[usize],
         n_cores: usize,
         buffer_pool: &dyn BufferPool<F>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         if stage != 1 {
             return Ok(());
         }
@@ -252,7 +253,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let pool = create_pool(n_cores);
         let registry = ProofmanAdapter::new(&pctx);
-        pool.install(|| -> Result<()> {
+        pool.install(|| -> ExecutorResult<()> {
             let ctx = WitnessContext::new(
                 &pctx,
                 &sctx,
@@ -281,7 +282,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         global_ids: &[usize],
         n_cores: usize,
         _buffer_pool: &dyn BufferPool<F>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         stats_begin!(self.state.stats, 0, _pre_scope, "PRE_CALCULATE_WITNESS", 0);
 
         if stage != 1 {

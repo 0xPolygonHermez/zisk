@@ -14,7 +14,6 @@
 //! Uses a greedy algorithm that prioritizes completing instances that need
 //! fewer remaining chunks, minimizing time-to-first-completion.
 
-use anyhow::Result;
 use crossbeam::atomic::AtomicCell;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -33,6 +32,7 @@ use zisk_common::{CheckPoint, EmuTrace, ExecutorStatsHandle, Instance, PayloadTy
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
 use asm_runner::AsmRunnerRH;
 
@@ -66,16 +66,16 @@ struct WorkerCtx<'a, F: PrimeField64> {
     global_id_chunks: &'a HashMap<usize, Vec<usize>>,
 
     // ── Error sink ──
-    errors: &'a Mutex<Vec<anyhow::Error>>,
+    errors: &'a Mutex<Vec<String>>,
 }
 
-/// Push an error into the shared error sink. Silently drops the error
-/// if the mutex is poisoned — used in worker code where panicking
-/// further would just compound failure.
+/// Push a pre-formatted error message into the shared error sink.
+/// Silently drops the error if the mutex is poisoned — used in worker
+/// code where panicking further would just compound failure.
 #[inline]
-fn push_error(errors: &Mutex<Vec<anyhow::Error>>, err: anyhow::Error) {
+fn push_error(errors: &Mutex<Vec<String>>, message: String) {
     if let Ok(mut errs) = errors.lock() {
-        errs.push(err);
+        errs.push(message);
     }
 }
 
@@ -93,11 +93,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         Self { sm_bundle }
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         self.sm_bundle.set_rom(zisk_rom)
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
         self.sm_bundle.set_rh_data(rh_data)
     }
 
@@ -213,7 +213,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         global_id: usize,
         instance: &dyn Instance<F>,
-    ) -> Result<()> {
+    ) -> ExecutorResult<()> {
         let mut map = HashMap::with_capacity(1);
         map.insert(global_id, instance);
         self.collect(pctx, state, map)?;
@@ -234,14 +234,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
-    ) -> Result<()> {
-        let min_traces_guard = state
-            .min_traces
-            .read()
-            .map_err(|e| anyhow::anyhow!("min_traces lock poisoned: {e}"))?;
-        let min_traces = min_traces_guard
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("min_traces should not be None"))?;
+    ) -> ExecutorResult<()> {
+        let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
+        let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
         // Compute chunks to execute
         let (chunks_to_execute, global_id_chunks) =
@@ -276,8 +271,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     .map(Some)
                 }
             })
-            .collect::<std::result::Result<_, crate::ExecutorError>>()
-            .map_err(|e| anyhow::anyhow!("Failed to build data bus collectors: {e}"))?;
+            .collect::<ExecutorResult<_>>()?;
 
         // Wrap each so chunk-player threads can write to them concurrently.
         let data_buses: Vec<_> = data_buses.into_iter().map(Mutex::new).collect();
@@ -285,36 +279,38 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let n_chunks_left: Vec<AtomicUsize> = global_ids
             .iter()
             .map(|global_id| {
-                global_id_chunks
-                    .get(global_id)
-                    .map(|chunks| AtomicUsize::new(chunks.len()))
-                    .ok_or_else(|| anyhow::anyhow!("global_id {global_id} not in global_id_chunks"))
+                global_id_chunks.get(global_id).map(|chunks| AtomicUsize::new(chunks.len())).ok_or(
+                    ExecutorError::MissingIndexEntry {
+                        global_id: *global_id,
+                        index: "global_id_chunks",
+                    },
+                )
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<ExecutorResult<Vec<_>>>()?;
 
         // Initialize collectors and stats
         for global_id in global_ids.iter() {
-            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id).map_err(|e| {
-                anyhow::anyhow!("Failed to get instance info for global_id {global_id}: {e}")
-            })?;
+            let (airgroup_id, air_id) = pctx.dctx_get_instance_info(*global_id)?;
             let n_chunks = global_id_chunks
                 .get(global_id)
-                .ok_or_else(|| anyhow::anyhow!("global_id {global_id} not in global_id_chunks"))?
+                .ok_or(ExecutorError::MissingIndexEntry {
+                    global_id: *global_id,
+                    index: "global_id_chunks",
+                })?
                 .len();
             let stats = Stats::new_pending_collection(airgroup_id, air_id, n_chunks);
 
             state
                 .collector_store
                 .inner
-                .write()
-                .map_err(|e| anyhow::anyhow!("collectors_by_instance lock poisoned: {e}"))?
+                .write_or_poison("collector_store")?
                 .insert(*global_id, (0..n_chunks).map(|_| None).collect());
             state.stats.insert_witness_stats(*global_id, stats);
         }
 
         let next_chunk = AtomicUsize::new(0);
         let zisk_rom = state.get_rom()?;
-        let errors: Mutex<Vec<anyhow::Error>> = Mutex::new(Vec::new());
+        let errors: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
         let ctx = WorkerCtx {
             next_chunk: &next_chunk,
@@ -349,17 +345,13 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         });
 
         if !err_vec.is_empty() {
-            let combined = err_vec
+            let message = err_vec
                 .iter()
                 .enumerate()
-                .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
+                .map(|(i, e)| format!("[Error {}] {e}", i + 1))
                 .collect::<Vec<_>>()
                 .join("\n");
-            return Err(anyhow::anyhow!(
-                "Chunk data collection failed ({} errors):\n{}",
-                err_vec.len(),
-                combined
-            ));
+            return Err(ExecutorError::MtChunkProcessing { count: err_vec.len(), message });
         }
 
         Ok(())
@@ -388,7 +380,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 Err(_) => {
                     push_error(
                         ctx.errors,
-                        anyhow::anyhow!("data_buses lock poisoned for chunk {chunk_id}"),
+                        format!("data_buses lock poisoned for chunk {chunk_id}"),
                     );
                     continue;
                 }
@@ -421,10 +413,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     affected_globals.push((*global_id, global_id_idx));
                 }
                 None => {
-                    push_error(
-                        ctx.errors,
-                        anyhow::anyhow!("global_id {global_id} not in global_ids_map"),
-                    );
+                    push_error(ctx.errors, format!("global_id {global_id} not in global_ids_map"));
                 }
             }
         }
@@ -448,7 +437,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     } else {
                         push_error(
                             ctx.errors,
-                            anyhow::anyhow!(
+                            format!(
                                 "chunk_id {chunk_id} not in chunk_order for global_id {global_id}"
                             ),
                         );
@@ -457,7 +446,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 None => {
                     push_error(
                         ctx.errors,
-                        anyhow::anyhow!("global_id {global_id} not found in global_id_chunks"),
+                        format!("global_id {global_id} not found in global_id_chunks"),
                     );
                 }
             }
@@ -472,13 +461,13 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     } else {
                         push_error(
                             ctx.errors,
-                            anyhow::anyhow!("global_id {global_id} not in collectors_by_instance"),
+                            format!("global_id {global_id} not in collectors_by_instance"),
                         );
                     }
                 }
             }
             Err(_) => {
-                push_error(ctx.errors, anyhow::anyhow!("collectors_by_instance lock poisoned"));
+                push_error(ctx.errors, "collectors_by_instance lock poisoned".to_string());
             }
         }
 
@@ -498,10 +487,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// [`push_error`] so a failure here cannot abort other workers.
     fn record_completion_stats(global_id: usize, global_id_idx: usize, ctx: &WorkerCtx<'_, F>) {
         let Some(collect_start_time) = ctx.collect_start_times[global_id_idx].load() else {
-            push_error(
-                ctx.errors,
-                anyhow::anyhow!("collect_start_time not set for global_id {global_id}"),
-            );
+            push_error(ctx.errors, format!("collect_start_time not set for global_id {global_id}"));
             return;
         };
 
@@ -521,14 +507,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             (Err(e), _) => {
                 push_error(
                     ctx.errors,
-                    anyhow::anyhow!("Failed to get instance info for global_id {global_id}: {e}"),
+                    format!("Failed to get instance info for global_id {global_id}: {e}"),
                 );
             }
             (Ok(_), None) => {
-                push_error(
-                    ctx.errors,
-                    anyhow::anyhow!("global_id {global_id} not in global_id_chunks"),
-                );
+                push_error(ctx.errors, format!("global_id {global_id} not in global_id_chunks"));
             }
         }
     }

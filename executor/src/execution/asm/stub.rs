@@ -11,7 +11,6 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
 use asm_runner::HintsShmem;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
@@ -23,6 +22,7 @@ use zisk_common::{
 use zisk_core::ZiskRom;
 
 use super::AsmResources;
+use crate::error::ExecutorResult;
 use crate::execution::output::ExecutionOutput;
 use crate::sm::StaticSMBundle;
 
@@ -38,43 +38,43 @@ impl EmulatorAsm {
         unsupported()
     }
 
-    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+    pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {
         unsupported()
     }
 
-    pub fn set_asm_resources(&self, _: Arc<AsmResources>) -> Result<()> {
+    pub fn set_asm_resources(&self, _: Arc<AsmResources>) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn submit_hint_direct(&self, _: &[u64]) -> Result<()> {
+    pub fn submit_hint_direct(&self, _: &[u64]) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn append_raw_input(&self, _: &[u8]) -> Result<()> {
+    pub fn append_raw_input(&self, _: &[u8]) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn set_hints_stream_src(&self, _: StreamSource) -> Result<()> {
+    pub fn set_hints_stream_src(&self, _: StreamSource) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn set_inputs_stream_src(&self, _: StreamSource) -> Result<()> {
+    pub fn set_inputs_stream_src(&self, _: StreamSource) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> ExecutorResult<Arc<HintsProcessor<HintsShmem>>> {
         unsupported()
     }
 
-    pub fn set_active_services(&self, _: bool) -> Result<()> {
+    pub fn set_active_services(&self, _: bool) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> ExecutorResult<()> {
         unsupported()
     }
 
-    pub fn signal_cancellation(&self) -> Result<()> {
+    pub fn signal_cancellation(&self) -> ExecutorResult<()> {
         unsupported()
     }
 
@@ -88,7 +88,7 @@ impl EmulatorAsm {
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<ExecutionOutput> {
+    ) -> ExecutorResult<ExecutionOutput> {
         unsupported()
     }
 }

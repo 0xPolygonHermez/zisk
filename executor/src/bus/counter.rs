@@ -4,10 +4,10 @@
 //! send data, route it to the appropriate subscribers, and manage device connections.
 use std::collections::VecDeque;
 
+use crate::error::ExecutorResult;
 use crate::{
     pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters, StaticSMBundle,
 };
-use anyhow::Result;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use mem_common::MemCounters;
@@ -60,7 +60,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     /// Iterates the bundle's entries once via `BuiltinCounters` and
     /// `PrecompileCounters`, then wires their slots into `new`.
     /// Mirrors the `from_bundle` constructors on the wrapper types.
-    pub fn from_bundle(bundle: &StaticSMBundle<F>, is_asm_emulator: bool) -> Result<Self> {
+    pub fn from_bundle(bundle: &StaticSMBundle<F>, is_asm_emulator: bool) -> ExecutorResult<Self> {
         let builtins = BuiltinCounters::from_bundle(bundle)?;
         let precompiles = PrecompileCounters::from_bundle(bundle)?;
 

@@ -12,7 +12,7 @@ use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-use anyhow::Result;
+use crate::error::ExecutorResult;
 
 pub struct EmulatorRust {
     /// Chunk size for processing.
@@ -44,7 +44,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<ExecutionOutput> {
+    ) -> ExecutorResult<ExecutionOutput> {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin)?;
 
         // Store execute steps
@@ -68,7 +68,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         num_threads: usize,
         stdin: &ZiskStdin,
-    ) -> Result<Vec<EmuTrace>> {
+    ) -> ExecutorResult<Vec<EmuTrace>> {
         // Call emulate with these options
         let input_data = stdin.read_data();
 
@@ -98,7 +98,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
         sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<(CountersChunkMetrics, PubOutsCollector)> {
+    ) -> ExecutorResult<(CountersChunkMetrics, PubOutsCollector)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
@@ -121,7 +121,7 @@ impl EmulatorRust {
 
                 Ok((counters, pub_outs_chunk))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<ExecutorResult<Vec<_>>>()?;
 
         let mut counters = HashMap::new();
         let mut pub_outs = PubOutsCollector::new();

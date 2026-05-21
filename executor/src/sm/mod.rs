@@ -26,7 +26,7 @@ pub use precompiles::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::Result;
+use crate::error::{ExecutorError, ExecutorResult};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
@@ -142,7 +142,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         &self.sm
     }
 
-    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> Result<()> {
+    pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         for (_, sm) in self.sm.iter() {
             if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
                 rom_sm.set_rom(zisk_rom.clone())?;
@@ -151,7 +151,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
-    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> Result<()> {
+    pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
         for (_, sm) in self.sm.iter() {
             if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
                 rom_sm.set_rh_data(rh_data)?;
@@ -206,23 +206,19 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
-    pub fn build_instance(&self, ictx: InstanceCtx) -> Result<Box<dyn Instance<F>>> {
+    pub fn build_instance(&self, ictx: InstanceCtx) -> ExecutorResult<Box<dyn Instance<F>>> {
         let airgroup_id = ictx.plan.airgroup_id;
         let air_id = ictx.plan.air_id;
 
         if airgroup_id != ZISK_AIRGROUP_ID {
-            anyhow::bail!("State machine not found: airgroup_id={airgroup_id}, air_id={air_id}");
+            return Err(ExecutorError::StateMachineNotFound { airgroup_id, air_id });
         }
 
         let (_, sm) = self
             .sm
             .iter()
             .find(|(air_ids, _)| air_ids.contains(&(airgroup_id, air_id)))
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "State machine not found: airgroup_id={airgroup_id}, air_id={air_id}"
-                )
-            })?;
+            .ok_or(ExecutorError::StateMachineNotFound { airgroup_id, air_id })?;
 
         Ok(sm.build_instance(ictx))
     }
