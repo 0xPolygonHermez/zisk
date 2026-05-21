@@ -24,7 +24,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use anyhow::Result;
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use zisk_common::{stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, PayloadType};
@@ -32,7 +31,9 @@ use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
 use crate::{
-    pub_outs_collector::PubOutsCollector, CountersChunkMetrics, StaticDataBus, StaticSMBundle,
+    error::{ExecutorError, ExecutorResult},
+    pub_outs_collector::PubOutsCollector,
+    CountersChunkMetrics, StaticDataBus, StaticSMBundle,
 };
 
 /// Stateful accumulator for the per-chunk MT replay phase.
@@ -109,27 +110,25 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     /// Returns the combined error log if any chunk task recorded a
     /// failure; otherwise returns sorted-by-chunk counters and the
     /// concatenated `pub_outs`.
-    pub fn finalize(self) -> Result<(CountersChunkMetrics, PubOutsCollector)> {
-        let err_vec =
-            self.errors.into_inner().map_err(|e| anyhow::anyhow!("errors mutex poisoned: {e}"))?;
+    pub fn finalize(self) -> ExecutorResult<(CountersChunkMetrics, PubOutsCollector)> {
+        let err_vec = self
+            .errors
+            .into_inner()
+            .map_err(|_| ExecutorError::mutex_poisoned("mt_chunk_errors"))?;
         if !err_vec.is_empty() {
-            let combined = err_vec
+            let message = err_vec
                 .iter()
                 .enumerate()
                 .map(|(i, e)| format!("[Error {}] {:#}", i + 1, e))
                 .collect::<Vec<_>>()
                 .join("\n");
-            return Err(anyhow::anyhow!(
-                "MT assembly chunk processing failed ({} errors):\n{}",
-                err_vec.len(),
-                combined
-            ));
+            return Err(ExecutorError::MtChunkProcessing { count: err_vec.len(), message });
         }
 
         let mut data_buses = self
             .results
             .into_inner()
-            .map_err(|e| anyhow::anyhow!("results mutex poisoned: {e}"))?;
+            .map_err(|_| ExecutorError::mutex_poisoned("mt_chunk_results"))?;
 
         data_buses.sort_by_key(|(chunk_id, _)| chunk_id.0);
 

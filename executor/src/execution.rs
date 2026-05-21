@@ -105,7 +105,7 @@ impl ExecutionPhase {
     /// shouldn't ask for ASM resources on a non-ASM run.
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
+            EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources).map_err(Into::into),
             EmulatorBackend::Rust(_) => {
                 anyhow::bail!(
                     "ExecutionPhase::set_asm_resources called on a Rust-backed trace phase"
@@ -118,7 +118,7 @@ impl ExecutionPhase {
     /// next run. No-op on the Rust backend.
     pub fn reset(&self) -> Result<()> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.reset(),
+            EmulatorBackend::Asm(asm) => asm.reset().map_err(Into::into),
             EmulatorBackend::Rust(_) => Ok(()),
         }
     }
@@ -127,7 +127,7 @@ impl ExecutionPhase {
     /// `None` on the Rust backend (no analogous info is collected).
     pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.get_asm_execution_info(),
+            EmulatorBackend::Asm(asm) => asm.get_asm_execution_info().map_err(Into::into),
             EmulatorBackend::Rust(_) => Ok(None),
         }
     }
@@ -149,9 +149,9 @@ impl ExecutionPhase {
     ) -> Result<ExecutionOutput> {
         let stdin = self.stdin.load_full();
         match &self.emulator {
-            EmulatorBackend::Asm(asm) => {
-                asm.execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
-            }
+            EmulatorBackend::Asm(asm) => asm
+                .execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+                .map_err(Into::into),
             EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, &stdin, sm_bundle),
         }
     }

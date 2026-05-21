@@ -7,6 +7,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::execution::output::{BackendArtifacts, ExecutionOutput};
 use crate::sm::StaticSMBundle;
 use crate::witness::pub_outs_collector::PubOutsCollector;
@@ -23,8 +24,6 @@ use zisk_common::{
 };
 use zisk_core::ZiskRom;
 
-use anyhow::Result;
-
 /// ASM-backend emulator. Wraps an `AsmTransport` for resource access
 /// and threads MT/MO/RH runner lifecycles through `AsmRunnerSupervisor`
 /// during `execute`.
@@ -37,6 +36,7 @@ pub struct EmulatorAsm {
     /// operation as a thin forwarding method.
     transport: AsmTransport,
 
+    /// ASM execution info captured from the most recent successful `execute` call.
     asm_execution_info: Mutex<Option<AsmExecutionInfo>>,
 }
 
@@ -51,48 +51,48 @@ impl EmulatorAsm {
     /// Returns a clone of the [`AsmExecutionInfo`] captured by the
     /// most recent successful `execute` call, or `None` if no
     /// execution has completed yet.
-    pub fn get_asm_execution_info(&self) -> Result<Option<AsmExecutionInfo>> {
+    pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {
         Ok(self
             .asm_execution_info
             .lock()
-            .map_err(|e| anyhow::anyhow!("asm_execution_info lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("asm_execution_info"))?
             .clone())
     }
 
     /// Installs the worker-supplied [`AsmResources`] handle on the
     /// transport. Must be called before [`Self::execute`].
-    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
         self.transport.set_asm_resources(asm_resources)
     }
 
     /// Reset the hints stream pipeline and the input shmem writer.
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> ExecutorResult<()> {
         self.transport.reset()
     }
 
     /// Poke the ASM children so any thread blocked on shmem semaphores
     /// unwinds promptly.
-    pub fn signal_cancellation(&self) -> Result<()> {
+    pub fn signal_cancellation(&self) -> ExecutorResult<()> {
         self.transport.signal_cancellation()
     }
 
     /// Returns the `HintsProcessor` installed on the transport.
-    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> ExecutorResult<Arc<HintsProcessor<HintsShmem>>> {
         self.transport.get_hints_processor()
     }
 
     /// Toggle which ASM services participate in the next execution.
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+    pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
         self.transport.set_active_services(is_first_partition)
     }
 
     /// Replace the hints stream source to swap in a fresh stream.
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.transport.set_hints_stream_src(stream)
     }
 
     /// Replace the inputs stream source to swap in a fresh stream.
-    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.transport.set_inputs_stream_src(stream)
     }
 
@@ -100,7 +100,7 @@ impl EmulatorAsm {
     /// `ZiskStream` pipeline.
     /// Used in the gRPC streaming path where hint ordering is handled externally by the
     /// coordinator before data arrives here.
-    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+    pub fn submit_hint_direct(&self, data: &[u64]) -> ExecutorResult<()> {
         self.transport.submit_hint_direct(data)
     }
 
@@ -109,7 +109,7 @@ impl EmulatorAsm {
     /// Used in the gRPC streaming path where input data arrives in chunks. Unlike
     /// `write_input` (which writes the full stdin at once for local execution), this
     /// appends incrementally as chunks arrive over the wire.
-    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+    pub fn append_raw_input(&self, bytes: &[u8]) -> ExecutorResult<()> {
         self.transport.append_raw_input(bytes)
     }
 
@@ -135,7 +135,7 @@ impl EmulatorAsm {
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
-    ) -> Result<ExecutionOutput> {
+    ) -> ExecutorResult<ExecutionOutput> {
         let asm_resources = self.transport.resources()?;
 
         let has_hints_stream = asm_resources.is_hints_stream_initialized();
@@ -155,18 +155,16 @@ impl EmulatorAsm {
 
         stats_end!(stats, &_write_scope);
 
-        // Spawn the MO + (optionally) RH runner threads. RH only on the
-        // first rank — that's the one that computes the ROM histogram.
+        // Spawn the MO + RH runner threads. RH only on the rank 0, the one that computes the ROM histogram.
         let has_rom_sm = pctx.dctx_is_first_process();
         let supervisor =
             AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 
         let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
 
-        match mt_result {
+        let output = match mt_result {
             Ok((min_traces, counters, pub_outs)) => {
                 let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
-                stats_end!(stats, &_exec_scope);
                 let (handle_mo, handle_rh) = supervisor.into_handles();
                 Ok(ExecutionOutput {
                     min_traces,
@@ -182,17 +180,16 @@ impl EmulatorAsm {
                 // ASM children via the cancellation closure, then joins MO/RH
                 // so their detached threads release the shmem-reader locks
                 // before the next job begins.
-                //
-                // We enter this arm for ANY MT failure — cancellation, shmem
-                // corruption, poisoned mutex, ASM child non-zero exit — so any
-                // join-failure log inside `cleanup_after_mt_failure` deliberately
-                // says "MT-failure cleanup" rather than "after cancel" to avoid
-                // misattributing root cause.
-                supervisor.cleanup_after_mt_failure(|| asm_resources.signal_cancellation());
-                stats_end!(stats, &_exec_scope);
+                supervisor.cleanup_after_mt_failure(|| {
+                    asm_resources.signal_cancellation().map_err(anyhow::Error::from)
+                });
                 Err(e)
             }
-        }
+        };
+
+        stats_end!(stats, &_exec_scope);
+
+        output
     }
 
     fn run_mt_assembly<F: PrimeField64>(
@@ -200,7 +197,7 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
-    ) -> Result<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
+    ) -> ExecutorResult<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
@@ -209,7 +206,7 @@ impl EmulatorAsm {
         #[allow(unused_variables)]
         let mt_scope_id = _mt_scope.id();
 
-        let scope_result: Result<_> = rayon::in_place_scope(|scope| {
+        let scope_result: ExecutorResult<_> = rayon::in_place_scope(|scope| {
             let processor_ref = &processor;
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
@@ -230,17 +227,22 @@ impl EmulatorAsm {
                 .readers()
                 .mt
                 .lock()
-                .map_err(|e| anyhow::anyhow!("mt_shmem_reader lock poisoned: {e}"))?;
+                .map_err(|_| ExecutorError::mutex_poisoned("mt_shmem_reader"))?;
             let asm_resources_for_failure = asm_resources.clone();
+
             let result = AsmRunnerMT::run_and_count(
                 mt_shmem,
                 MAX_NUM_STEPS,
                 self.chunk_size,
                 on_chunk,
-                move || asm_resources_for_failure.signal_cancellation(),
+                move || {
+                    asm_resources_for_failure.signal_cancellation().map_err(anyhow::Error::from)
+                },
                 asm_resources.asm_services().clone(),
                 stats.clone(),
-            )?;
+            )
+            .map_err(ExecutorError::asm_backend)?;
+
             Ok(result)
         });
 
@@ -248,17 +250,18 @@ impl EmulatorAsm {
 
         self.asm_execution_info
             .lock()
-            .map_err(|e| anyhow::anyhow!("asm_execution_info lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("asm_execution_info"))?
             .replace(asm_execution_info);
 
         // Unwrap the Arc pointers now that all rayon tasks have completed.
         let emu_traces = emu_traces
             .into_iter()
             .map(|arc| {
-                Arc::try_unwrap(arc)
-                    .map_err(|_| anyhow::anyhow!("Arc still has multiple owners after scope"))
+                Arc::try_unwrap(arc).map_err(|_| ExecutorError::ArcStillReferenced {
+                    what: "EmuTrace after rayon scope",
+                })
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<ExecutorResult<Vec<_>>>()?;
 
         let (counters, pub_outs) = processor.finalize()?;
 

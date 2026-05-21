@@ -1,11 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
 use asm_runner::{AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
+
+use crate::error::{ExecutorError, ExecutorResult};
 
 /// Configuration for assembly resources.
 #[derive(Clone)]
@@ -40,10 +41,16 @@ pub struct AsmShmemReaders {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmShmemReaders {
-    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> ExecutorResult<Self> {
         Ok(Self {
-            mt: Arc::new(Mutex::new(MTShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
-            mo: Arc::new(Mutex::new(MOShMemReader::new(shm_prefix, unlock_mapped_memory)?)),
+            mt: Arc::new(Mutex::new(
+                MTShMemReader::new(shm_prefix, unlock_mapped_memory)
+                    .map_err(ExecutorError::asm_backend)?,
+            )),
+            mo: Arc::new(Mutex::new(
+                MOShMemReader::new(shm_prefix, unlock_mapped_memory)
+                    .map_err(ExecutorError::asm_backend)?,
+            )),
             rh: Arc::new(Mutex::new(None)),
         })
     }
@@ -97,19 +104,21 @@ impl AsmSharedResources {
         init_rom: bool,
         with_hints: bool,
         shm_prefix: &str,
-    ) -> Result<Self> {
+    ) -> ExecutorResult<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory)?;
 
-        let control_writer = Arc::new(ControlShmem::new(shm_prefix, unlock_mapped_memory)?);
+        let control_writer = Arc::new(
+            ControlShmem::new(shm_prefix, unlock_mapped_memory)
+                .map_err(ExecutorError::asm_backend)?,
+        );
 
         let config = AsmResourcesConfig { world_rank, local_rank, unlock_mapped_memory };
 
-        let inputs_shmem_writer = Arc::new(InputsShmemWriter::new(
-            shm_prefix,
-            unlock_mapped_memory,
-            control_writer.clone(),
-        )?);
+        let inputs_shmem_writer = Arc::new(
+            InputsShmemWriter::new(shm_prefix, unlock_mapped_memory, control_writer.clone())
+                .map_err(ExecutorError::asm_backend)?,
+        );
 
         let inputs_stream =
             Arc::new(Mutex::new(ZiskStream::from_arc(Arc::clone(&inputs_shmem_writer))));
@@ -118,12 +127,10 @@ impl AsmSharedResources {
             let active_services =
                 if init_rom { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
 
-            let hints_shmem = Arc::new(HintsShmem::new(
-                shm_prefix,
-                unlock_mapped_memory,
-                control_writer,
-                active_services,
-            )?);
+            let hints_shmem = Arc::new(
+                HintsShmem::new(shm_prefix, unlock_mapped_memory, control_writer, active_services)
+                    .map_err(ExecutorError::asm_backend)?,
+            );
 
             let mut builder =
                 HintsProcessor::builder(hints_shmem, Some(inputs_shmem_writer.clone()))
@@ -133,7 +140,7 @@ impl AsmSharedResources {
                 builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
             }
 
-            let hints_processor = builder.build()?;
+            let hints_processor = builder.build().map_err(ExecutorError::asm_backend)?;
             Some(Arc::new(Mutex::new(ZiskStream::new(hints_processor))))
         } else {
             None
@@ -166,72 +173,86 @@ impl std::fmt::Debug for AsmResources {
 
 impl AsmResources {
     /// Create per-program resources by binding semaphores on the shared shmem.
-    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> Result<Self> {
+    pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> ExecutorResult<Self> {
         let sem_prefix = asm_services.sem_prefix();
-        shared.inputs_shmem_writer.bind_semaphores(sem_prefix)?;
+        shared
+            .inputs_shmem_writer
+            .bind_semaphores(sem_prefix)
+            .map_err(ExecutorError::asm_backend)?;
 
         if let Some(hints_stream) = &shared.hints_stream {
-            let processor = hints_stream.lock().unwrap().get_processor();
-            processor.hints_sink().bind_semaphores(sem_prefix)?;
+            let processor = hints_stream
+                .lock()
+                .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
+                .get_processor();
+            processor
+                .hints_sink()
+                .bind_semaphores(sem_prefix)
+                .map_err(ExecutorError::asm_backend)?;
         }
 
         Ok(Self { shared, asm_services })
     }
 
     /// Returns the concrete hints processor, or `Err` if not set up with hints.
-    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> ExecutorResult<Arc<HintsProcessor<HintsShmem>>> {
         self.shared
             .hints_stream
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Program was not set up with hints"))?
+            .ok_or(ExecutorError::HintsNotConfigured)?
             .lock()
             .map(|g| g.get_processor())
-            .map_err(|e| anyhow::anyhow!("hints_stream lock poisoned: {e}"))
+            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))
     }
 
     /// Update the active ASM services for this partition.
     ///
     /// Call once per partition start (not per stream reset).
     /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+    pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
         let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
         let processor = hints_stream
             .lock()
-            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
             .get_processor();
         let services = if is_first_partition {
             &AsmServices::SERVICES[..]
         } else {
             &AsmServices::SERVICES[..2]
         };
-        processor.hints_sink().set_active_services(services)
+        processor.hints_sink().set_active_services(services).map_err(ExecutorError::asm_backend)
     }
 
     /// Submit hint data directly to the shmem sink, bypassing the processing pipeline.
     ///
     /// Used in the gRPC streaming path where hints arrive pre-processed.
-    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+    pub fn submit_hint_direct(&self, data: &[u64]) -> ExecutorResult<()> {
         let processor = self.get_hints_processor()?;
-        processor.hints_sink().submit(data)
+        processor.hints_sink().submit(data).map_err(ExecutorError::asm_backend)
     }
 
     /// Starts the hints stream.
-    pub fn start_stream(&self) -> Result<()> {
+    pub fn start_stream(&self) -> ExecutorResult<()> {
         let Some(hints_stream) = &self.shared.hints_stream else {
-            return Err(anyhow::anyhow!("Program was not set up with hints"));
-        };
-        hints_stream.lock().map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?.start_stream()
-    }
-
-    /// Sets the stream source for the hints stream.
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
-        let Some(hints_stream) = &self.shared.hints_stream else {
-            return Err(anyhow::anyhow!("Program was not set up with hints"));
+            return Err(ExecutorError::HintsNotConfigured);
         };
         hints_stream
             .lock()
-            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
+            .start_stream()
+            .map_err(ExecutorError::asm_backend)
+    }
+
+    /// Sets the stream source for the hints stream.
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
+        let Some(hints_stream) = &self.shared.hints_stream else {
+            return Err(ExecutorError::HintsNotConfigured);
+        };
+        hints_stream
+            .lock()
+            .map_err(|_| ExecutorError::mutex_poisoned("hints_stream"))?
             .set_stream_src(stream)
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Checks if the hints stream is initialized.
@@ -249,8 +270,8 @@ impl AsmResources {
     /// explicitly — they exit on the next `sem_timedwait` expiry (≤ 5 s, see
     /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
     /// `RECOVERY_TIMEOUT` covers that slip.
-    pub fn signal_cancellation(&self) -> Result<()> {
-        self.shared.inputs_shmem_writer.signal_reset()
+    pub fn signal_cancellation(&self) -> ExecutorResult<()> {
+        self.shared.inputs_shmem_writer.signal_reset().map_err(ExecutorError::asm_backend)
     }
 
     /// Resets the Hints Stream and the inputs shared memory writer, preparing for the next execution.
@@ -272,22 +293,24 @@ impl AsmResources {
     }
 
     /// Sets the stream source for the inputs stream.
-    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.shared
             .inputs_stream
             .lock()
-            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
-            .set_stream_src(stream)?;
+            .map_err(|_| ExecutorError::mutex_poisoned("inputs_stream"))?
+            .set_stream_src(stream)
+            .map_err(ExecutorError::asm_backend)?;
         Ok(())
     }
 
     /// Starts the inputs stream.
-    pub fn start_inputs_stream(&self) -> Result<()> {
+    pub fn start_inputs_stream(&self) -> ExecutorResult<()> {
         self.shared
             .inputs_stream
             .lock()
-            .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("inputs_stream"))?
             .start_stream()
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Checks if the inputs stream is initialized.
@@ -296,13 +319,16 @@ impl AsmResources {
     }
 
     /// Writes input data to the inputs shared memory segment.
-    pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
-        self.shared.inputs_shmem_writer.write_input(&stdin.read_data())
+    pub fn write_input(&self, stdin: &ZiskStdin) -> ExecutorResult<()> {
+        self.shared
+            .inputs_shmem_writer
+            .write_input(&stdin.read_data())
+            .map_err(ExecutorError::asm_backend)
     }
 
     /// Appends raw input data to the inputs shared memory segment.
-    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
-        self.shared.inputs_shmem_writer.append_input(bytes)
+    pub fn append_raw_input(&self, bytes: &[u8]) -> ExecutorResult<()> {
+        self.shared.inputs_shmem_writer.append_input(bytes).map_err(ExecutorError::asm_backend)
     }
 
     /// Gets the current ASM shmem readers.

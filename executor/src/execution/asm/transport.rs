@@ -23,11 +23,11 @@
 
 use std::sync::{Arc, RwLock};
 
-use anyhow::Result;
 use asm_runner::HintsShmem;
 use precompiles_hints::HintsProcessor;
 use zisk_common::io::StreamSource;
 
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::AsmResources;
 
 /// Wraps the optionally-set `Arc<AsmResources>` and exposes every
@@ -51,12 +51,11 @@ impl AsmTransport {
 
     /// Install the worker-supplied resources. Idempotent — calling
     /// again replaces the previously-installed value.
-    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> Result<()> {
+    pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
         *self
             .asm_resources
             .write()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))? =
-            Some(asm_resources);
+            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))? = Some(asm_resources);
         Ok(())
     }
 
@@ -66,12 +65,12 @@ impl AsmTransport {
     /// Used by [`crate::EmulatorAsm`] when it needs the concrete
     /// `Arc<AsmResources>` to drive its execution body (spawn MO/RH,
     /// access shmem readers, etc.).
-    pub fn resources(&self) -> Result<Arc<AsmResources>> {
+    pub fn resources(&self) -> ExecutorResult<Arc<AsmResources>> {
         self.asm_resources
             .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))?
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("AsmResources not initialized"))
+            .ok_or(ExecutorError::AsmResourcesNotInitialized)
             .cloned()
     }
 
@@ -82,7 +81,7 @@ impl AsmTransport {
     // ────────────────────────────────────────────────────────────
 
     /// See [`AsmResources::signal_cancellation`].
-    pub fn signal_cancellation(&self) -> Result<()> {
+    pub fn signal_cancellation(&self) -> ExecutorResult<()> {
         match self.installed_resources_ref()? {
             Some(r) => r.signal_cancellation(),
             // signal_cancellation is the only call where missing
@@ -94,12 +93,12 @@ impl AsmTransport {
     }
 
     /// See [`AsmResources::get_hints_processor`].
-    pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
+    pub fn get_hints_processor(&self) -> ExecutorResult<Arc<HintsProcessor<HintsShmem>>> {
         self.resources()?.get_hints_processor()
     }
 
     /// See [`AsmResources::set_active_services`].
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+    pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
         match self.installed_resources_ref()? {
             Some(r) => r.set_active_services(is_first_partition),
             None => Ok(()),
@@ -107,22 +106,22 @@ impl AsmTransport {
     }
 
     /// See [`AsmResources::set_hints_stream_src`].
-    pub fn set_hints_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_hints_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.resources()?.set_hints_stream_src(stream)
     }
 
     /// See [`AsmResources::set_inputs_stream_src`].
-    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> Result<()> {
+    pub fn set_inputs_stream_src(&self, stream: StreamSource) -> ExecutorResult<()> {
         self.resources()?.set_inputs_stream_src(stream)
     }
 
     /// See [`AsmResources::submit_hint_direct`].
-    pub fn submit_hint_direct(&self, data: &[u64]) -> Result<()> {
+    pub fn submit_hint_direct(&self, data: &[u64]) -> ExecutorResult<()> {
         self.resources()?.submit_hint_direct(data)
     }
 
     /// See [`AsmResources::append_raw_input`].
-    pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
+    pub fn append_raw_input(&self, bytes: &[u8]) -> ExecutorResult<()> {
         self.resources()?.append_raw_input(bytes)
     }
 
@@ -130,7 +129,7 @@ impl AsmTransport {
     /// shmem). Mirrors [`AsmResources::reset`]. No-op when resources
     /// haven't been installed (same as the old behavior in
     /// `EmulatorAsm::reset`).
-    pub fn reset(&self) -> Result<()> {
+    pub fn reset(&self) -> ExecutorResult<()> {
         if let Some(r) = self.installed_resources_ref()? {
             r.reset();
         }
@@ -140,11 +139,11 @@ impl AsmTransport {
     /// Read-only borrow on the install slot, surfacing the
     /// `Option<&Arc<AsmResources>>` for methods that want to no-op
     /// when uninstalled.
-    fn installed_resources_ref(&self) -> Result<Option<Arc<AsmResources>>> {
+    fn installed_resources_ref(&self) -> ExecutorResult<Option<Arc<AsmResources>>> {
         Ok(self
             .asm_resources
             .read()
-            .map_err(|e| anyhow::anyhow!("asm_resources lock poisoned: {e}"))?
+            .map_err(|_| ExecutorError::mutex_poisoned("asm_resources"))?
             .as_ref()
             .cloned())
     }

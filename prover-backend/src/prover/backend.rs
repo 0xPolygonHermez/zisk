@@ -85,6 +85,7 @@ impl ProverBackend {
                 anyhow::anyhow!("ASM resources not initialized, cannot append input data")
             })?
             .append_raw_input(reinterpreted_data)
+            .map_err(Into::into)
     }
 
     pub(crate) fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
@@ -93,6 +94,7 @@ impl ProverBackend {
                 anyhow::anyhow!("ASM resources not initialized, cannot append raw input")
             })?
             .append_raw_input(bytes)
+            .map_err(Into::into)
     }
 
     pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
@@ -115,7 +117,7 @@ impl ProverBackend {
 
     pub(crate) fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         match self.asm_emulator() {
-            Some(a) => a.get_hints_processor(),
+            Some(a) => a.get_hints_processor().map_err(Into::into),
             None => {
                 Err(anyhow::anyhow!("ASM resources not initialized, cannot get hints processor"))
             }

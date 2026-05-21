@@ -65,7 +65,66 @@ pub enum ExecutorError {
         /// The concrete `*Instance<F>` type that was expected.
         expected: &'static str,
     },
+
+    /// The ASM emulator was driven before its worker-supplied
+    /// `AsmResources` handle was installed via `set_asm_resources`.
+    #[error("AsmResources not initialized")]
+    AsmResourcesNotInitialized,
+
+    /// A hints-only operation was invoked on a program that wasn't
+    /// set up with the hints pipeline (no `HintsShmem` mapped).
+    #[error("program was not set up with hints")]
+    HintsNotConfigured,
+
+    /// A `Mutex`/`RwLock` we hold internally was poisoned by a panic
+    /// in another thread. `name` identifies the lock for diagnosis.
+    #[error("mutex poisoned: {name}")]
+    MutexPoisoned {
+        /// Static identifier of the lock that was poisoned.
+        name: &'static str,
+    },
+
+    /// An `Arc` we tried to unwrap still had additional owners after
+    /// the scope that produced it ended — invariant violation.
+    #[error("arc still has multiple owners after scope: {what}")]
+    ArcStillReferenced {
+        /// Description of the value that was still shared.
+        what: &'static str,
+    },
+
+    /// Catch-all for failures bubbling up from the external ASM
+    /// backend (asm-runner / shmem / precompiles-hints).
+    #[error("ASM backend operation failed: {0}")]
+    AsmBackend(String),
+
+    /// Aggregated failure across one or more MT-assembly chunks.
+    /// `count` is the number of failures; `message` is the
+    /// newline-joined `Display` chain of each one.
+    #[error("MT assembly chunk processing failed ({count} errors):\n{message}")]
+    MtChunkProcessing {
+        /// Number of chunk failures aggregated into `message`.
+        count: usize,
+        /// Joined `Display` chains of the underlying errors.
+        message: String,
+    },
 }
 
 /// Convenience [`Result`] alias for fallible operations in this crate.
 pub type ExecutorResult<T> = Result<T, ExecutorError>;
+
+impl ExecutorError {
+    /// Build a [`Self::MutexPoisoned`] with the given lock name. Intended
+    /// for use as `.map_err(|_| ExecutorError::mutex_poisoned("foo"))?`.
+    #[inline]
+    pub fn mutex_poisoned(name: &'static str) -> Self {
+        Self::MutexPoisoned { name }
+    }
+
+    /// Wrap an upstream `anyhow::Error` (from asm-runner, precompiles-hints,
+    /// shmem, etc.) into [`Self::AsmBackend`] with the formatted `Display`
+    /// chain. Intended for use as `.map_err(ExecutorError::asm_backend)?`.
+    #[inline]
+    pub fn asm_backend(e: anyhow::Error) -> Self {
+        Self::AsmBackend(format!("{e:#}"))
+    }
+}
