@@ -1,9 +1,9 @@
 use core::cmp::Ordering;
 
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::{new_scratch_vec_filled, scratch_vec_from_slice, ScratchVec};
 
 use crate::zisklib::fcall_bigint_div;
 
@@ -26,7 +26,7 @@ pub fn rem_long_init(
     a: &[U256],
     b: &[U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
@@ -42,9 +42,9 @@ pub fn rem_long_init(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        return scratch_vec_from_slice(a);
     } else if comp == Ordering::Equal {
-        return vec![U256::ZERO];
+        return new_scratch_vec_filled(1, U256::ZERO);
     }
     // We can assume a > b from here on
 
@@ -53,8 +53,8 @@ pub fn rem_long_init(
     let b_flat = U256::slice_to_flat(b);
 
     // Hint the quotient and remainder
-    let mut quo_flat = vec![0u64; len_a * 4];
-    let mut rem_flat = vec![0u64; len_b * 4];
+    let mut quo_flat = new_scratch_vec_filled(len_a * 4, 0u64);
+    let mut rem_flat = new_scratch_vec_filled(len_b * 4, 0u64);
     let (limbs_quo, limbs_rem) = fcall_bigint_div(
         a_flat,
         b_flat,
@@ -67,8 +67,8 @@ pub fn rem_long_init(
     let rem = U256::flat_to_slice(&rem_flat[..limbs_rem]);
 
     // Verify the division
-    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_long and add_agtb are a general purpose functions
-    let mut q_b_r = vec![U256::ZERO; len_a + 1];
+    let mut q_b = new_scratch_vec_filled(len_a + 1, U256::ZERO); // The +1 is because mul_long and add_agtb are a general purpose functions
+    let mut q_b_r = new_scratch_vec_filled(len_a + 1, U256::ZERO);
     verify_division(
         a,
         b,
@@ -80,7 +80,7 @@ pub fn rem_long_init(
         hints,
     );
 
-    rem.to_vec()
+    scratch_vec_from_slice(rem)
 }
 
 /// Computes the remainder of two large numbers (with scratch)
@@ -100,7 +100,7 @@ pub fn rem_long(
     b: &[U256],
     scratch: &mut RemLongScratch,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     #[cfg(debug_assertions)]
     {
         let len_a = a.len();
@@ -116,9 +116,9 @@ pub fn rem_long(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return a.to_vec();
+        return scratch_vec_from_slice(a);
     } else if comp == Ordering::Equal {
-        return vec![U256::ZERO];
+        return new_scratch_vec_filled(1, U256::ZERO);
     }
     // We can assume a > b from here on
 
@@ -150,7 +150,7 @@ pub fn rem_long(
         hints,
     );
 
-    rem.to_vec()
+    scratch_vec_from_slice(rem)
 }
 
 /// Verify that a = q·b + r

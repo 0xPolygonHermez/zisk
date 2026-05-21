@@ -3,6 +3,8 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
+
 use crate::zisklib::lib::utils::{eq, is_one, lt};
 
 use super::{
@@ -78,8 +80,8 @@ pub fn pairing_batch_bn254(
     assert_eq!(num_points, g2_points.len(), "Number of G1 and G2 points must be equal");
 
     // Miller loop and multiplication
-    let mut g1_points_ml = Vec::with_capacity(num_points);
-    let mut g2_points_ml = Vec::with_capacity(num_points);
+    let mut g1_points_ml: ScratchVec<[u64; 8]> = new_scratch_vec(num_points);
+    let mut g2_points_ml: ScratchVec<[u64; 16]> = new_scratch_vec(num_points);
     for (p, q) in g1_points.iter().zip(g2_points.iter()) {
         // Is p = 𝒪 or q = 𝒪?
         if *p == G1_IDENTITY || *q == G2_IDENTITY {
@@ -138,8 +140,8 @@ pub fn pairing_check_bn254(
     assert_eq!(g1_points.len(), g2_points.len(), "Number of G1 and G2 points must be equal");
 
     // Collect valid pairs
-    let mut g1_valid = Vec::with_capacity(g1_points.len());
-    let mut g2_valid = Vec::with_capacity(g2_points.len());
+    let mut g1_valid: ScratchVec<[u64; 8]> = new_scratch_vec(g1_points.len());
+    let mut g2_valid: ScratchVec<[u64; 16]> = new_scratch_vec(g2_points.len());
     for (g1, g2) in g1_points.iter().zip(g2_points.iter()) {
         let g1_is_inf = eq(g1, &G1_IDENTITY);
         let g2_is_inf = eq(g2, &G2_IDENTITY);
@@ -288,8 +290,8 @@ pub(crate) unsafe fn bn254_pairing_check_c(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> u8 {
     // Parse all pairs
-    let mut g1_points: Vec<[u64; 8]> = Vec::with_capacity(num_pairs);
-    let mut g2_points: Vec<[u64; 16]> = Vec::with_capacity(num_pairs);
+    let mut g1_points: ScratchVec<[u64; 8]> = new_scratch_vec(num_pairs);
+    let mut g2_points: ScratchVec<[u64; 16]> = new_scratch_vec(num_pairs);
 
     for i in 0..num_pairs {
         let pair_ptr = pairs.add(i * 192);

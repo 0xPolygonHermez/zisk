@@ -1,4 +1,5 @@
 #![cfg_attr(zisk_guest, no_std)]
+#![cfg_attr(zisk_guest, feature(allocator_api))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -11,6 +12,9 @@ mod fcall;
 
 #[cfg(zisk_guest)]
 mod alloc;
+
+#[path = "scratch-accelerators.rs"]
+pub(crate) mod scratch_accelerators;
 
 // Link the `alloc` crate under an alias to avoid conflict with `mod alloc` above.
 // Exposed as `crate::alloc_crate` so submodules can use `use crate::alloc_crate::vec::Vec;`
@@ -355,6 +359,8 @@ pub mod ziskos {
                 not(feature = "zisk-embedded-tlfs-alloc")
             ))]
             crate::alloc::init_sys_alloc();
+
+            crate::scratch_accelerators::init_scratch();
 
             main()
         }

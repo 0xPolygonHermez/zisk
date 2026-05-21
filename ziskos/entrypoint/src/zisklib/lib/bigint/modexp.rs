@@ -2,9 +2,9 @@
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::{new_scratch_vec_filled, scratch_vec_from_slice, ScratchVec};
 
 use crate::zisklib::fcall_bin_decomp;
 
@@ -21,7 +21,7 @@ pub fn modexp(
     exp: &[u64],
     modulus: &[U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     let len_b = base.len();
     let len_e = exp.len();
     let len_m = modulus.len();
@@ -46,28 +46,28 @@ pub fn modexp(
 
     // If modulus == 0, return zeros
     if len_m == 1 && modulus[0].is_zero() {
-        return vec![U256::ZERO];
+        return new_scratch_vec_filled(1, U256::ZERO);
     }
 
     // If modulus == 1, then base^exp (mod 1) is always 0
     if len_m == 1 && modulus[0].is_one() {
-        return vec![U256::ZERO];
+        return new_scratch_vec_filled(1, U256::ZERO);
     }
 
     // If exp == 0, then base^0 (mod modulus) is 1
     if len_e == 1 && exp[0] == 0 {
-        return vec![U256::ONE];
+        return new_scratch_vec_filled(1, U256::ONE);
     }
 
     if len_b == 1 {
         // If base == 0, then 0^exp (mod modulus) is 0
         if base[0].is_zero() {
-            return vec![U256::ZERO];
+            return new_scratch_vec_filled(1, U256::ZERO);
         }
 
         // If base == 1, then 1^exp (mod modulus) is 1
         if base[0].is_one() {
-            return vec![U256::ONE];
+            return new_scratch_vec_filled(1, U256::ONE);
         }
     }
 
@@ -97,7 +97,7 @@ fn modexp_short(
     exp: &[u64],
     modulus: &U256,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     let len_e = exp.len();
 
     // Compute base = base (mod modulus)
@@ -117,7 +117,7 @@ fn modexp_short(
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
-    let mut rec_exp = vec![0u64; len_e];
+    let mut rec_exp = new_scratch_vec_filled(len_e, 0u64);
 
     // Recompose the MSB
     let bits_pos = len - 1;
@@ -132,7 +132,7 @@ fn modexp_short(
     let mut out = base;
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.is_zero() {
-            return vec![U256::ZERO];
+            return new_scratch_vec_filled(1, U256::ZERO);
         }
 
         // Compute out = out² (mod modulus)
@@ -165,7 +165,7 @@ fn modexp_short(
 
     assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
-    vec![out]
+    new_scratch_vec_filled(1, out)
 }
 
 /// Long modexp when modulus requires multiple U256 limbs
@@ -174,7 +174,7 @@ fn modexp_long(
     exp: &[u64],
     modulus: &[U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     let len_e = exp.len();
     let len_m = modulus.len();
 
@@ -195,7 +195,7 @@ fn modexp_long(
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
-    let mut rec_exp = vec![0u64; len_e];
+    let mut rec_exp = new_scratch_vec_filled(len_e, 0u64);
 
     // Recompose the MSB
     let bits_pos = len - 1;
@@ -210,7 +210,7 @@ fn modexp_long(
     let mut out = base.clone();
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.len() == 1 && out[0].is_zero() {
-            return vec![U256::ZERO];
+            return new_scratch_vec_filled(1, U256::ZERO);
         }
 
         // Compute out = out² (mod modulus)
@@ -326,8 +326,8 @@ pub unsafe extern "C" fn modexp_u64_c(
     let base_len = base_flat.len().next_multiple_of(4);
     let modulus_len = modulus_flat.len().next_multiple_of(4);
 
-    let mut base_padded = vec![0u64; base_len];
-    let mut modulus_padded = vec![0u64; modulus_len];
+    let mut base_padded = new_scratch_vec_filled(base_len, 0u64);
+    let mut modulus_padded = new_scratch_vec_filled(modulus_len, 0u64);
 
     base_padded[..base_flat.len()].copy_from_slice(base_flat);
     modulus_padded[..modulus_flat.len()].copy_from_slice(modulus_flat);
@@ -354,9 +354,9 @@ pub unsafe extern "C" fn modexp_u64_c(
 
 /// Convert big-endian bytes to little-endian u64 array
 #[allow(dead_code)]
-fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {
+fn bytes_be_to_u64_le(bytes: &[u8]) -> ScratchVec<u64> {
     if bytes.is_empty() {
-        return vec![0];
+        return new_scratch_vec_filled(1, 0u64);
     }
 
     // Skip leading zeros but keep at least one limb
@@ -364,12 +364,12 @@ fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {
     let bytes = &bytes[first_nonzero..];
 
     if bytes.is_empty() {
-        return vec![0];
+        return new_scratch_vec_filled(1, 0u64);
     }
 
     // Process bytes into u64 limbs
     let num_limbs = bytes.len().div_ceil(8);
-    let mut result = vec![0u64; num_limbs];
+    let mut result = new_scratch_vec_filled(num_limbs, 0u64);
     for (i, &byte) in bytes.iter().rev().enumerate() {
         let limb_idx = i / 8;
         let byte_idx = i % 8;
@@ -381,15 +381,15 @@ fn bytes_be_to_u64_le(bytes: &[u8]) -> Vec<u64> {
 
 /// Convert big-endian bytes to little-endian U256 array
 #[allow(dead_code)]
-fn bytes_be_to_u256_le(bytes: &[u8]) -> Vec<U256> {
+fn bytes_be_to_u256_le(bytes: &[u8]) -> ScratchVec<U256> {
     let u64_le = bytes_be_to_u64_le(bytes);
 
     // Pad to multiple of 4 u64s
     let padded_len = u64_le.len().next_multiple_of(4);
-    let mut padded = vec![0u64; padded_len];
+    let mut padded = new_scratch_vec_filled(padded_len, 0u64);
     padded[..u64_le.len()].copy_from_slice(&u64_le);
 
-    U256::flat_to_slice(&padded).to_vec()
+    scratch_vec_from_slice(U256::flat_to_slice(&padded))
 }
 
 /// Convert little-endian U256 array to big-endian bytes
