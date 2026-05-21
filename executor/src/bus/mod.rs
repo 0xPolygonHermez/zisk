@@ -6,8 +6,6 @@
 
 mod collect;
 mod counter;
-mod dummy_counter;
 
 pub use collect::*;
 pub use counter::*;
-pub use dummy_counter::*;

@@ -440,10 +440,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         // Drain device collectors and build per-instance entries.
         let devices = data_bus.into_devices(false);
         let mut entries: Vec<(usize, usize, Option<ChunkCollector>)> = Vec::new();
-        for (maybe_gid, collector) in devices {
-            let Some(global_id) = maybe_gid else { continue };
-            match (ctx.global_id_chunks.get(&global_id), collector) {
-                (Some(chunk_order), Some(col)) => {
+        for (global_id, col) in devices {
+            match ctx.global_id_chunks.get(&global_id) {
+                Some(chunk_order) => {
                     if let Some(position) = chunk_order.iter().position(|&id| id == chunk_id) {
                         entries.push((global_id, position, Some((chunk_id, col))));
                     } else {
@@ -455,13 +454,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                         );
                     }
                 }
-                (Some(_), None) => {
-                    push_error(
-                        ctx.errors,
-                        anyhow::anyhow!("collector is None for global_id {global_id}"),
-                    );
-                }
-                (None, _) => {
+                None => {
                     push_error(
                         ctx.errors,
                         anyhow::anyhow!("global_id {global_id} not found in global_id_chunks"),

@@ -141,12 +141,6 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
             let databus_counters = data_bus.into_devices(false);
 
             for (idx, counter) in databus_counters.into_iter() {
-                let idx = idx.ok_or_else(|| {
-                    anyhow::anyhow!("unexpected unindexed counter for chunk {}", chunk_id.0)
-                })?;
-                let counter = counter.ok_or_else(|| {
-                    anyhow::anyhow!("secondary counter is None for chunk {} idx {idx}", chunk_id.0)
-                })?;
                 counters.entry(idx).or_default().push((chunk_id, counter));
             }
         }

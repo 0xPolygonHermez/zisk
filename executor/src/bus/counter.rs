@@ -5,8 +5,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    pub_outs_collector::PubOutsCollector, BuiltinCounters, DummyCounter, PrecompileCounters,
-    StaticSMBundle,
+    pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters, StaticSMBundle,
 };
 use anyhow::Result;
 use data_bus::DataBusTrait;
@@ -35,25 +34,22 @@ pub struct StaticDataBus<D, F: PrimeField64> {
     process_only_operation_bus: bool,
 
     /// List of devices connected to the bus.
-    pub pub_outs_collector: PubOutsCollector,
-
-    /// ROM counter.
-    pub rom_counter_id: Option<usize>,
+    pub_outs_collector: PubOutsCollector,
 
     /// Memory-related counter.
-    pub mem_counter: (usize, Option<MemCounters>),
+    mem_counter: (usize, Option<MemCounters>),
 
     /// Arithmetic operation counter.
-    pub arith_counter: (usize, ArithCounterInputGen),
+    arith_counter: (usize, ArithCounterInputGen),
 
     /// Binary operation counter.
-    pub binary_counter: (usize, BinaryCounter),
+    binary_counter: (usize, BinaryCounter),
 
     /// DMA operation counter.
-    pub dma_counter: (usize, DmaCounterInputGen),
+    dma_counter: (usize, DmaCounterInputGen),
 
     /// Precompile operation counters.
-    pub precompiles: PrecompileCounters<F>,
+    precompiles: PrecompileCounters<F>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
@@ -68,39 +64,16 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
         let builtins = BuiltinCounters::from_bundle(bundle)?;
         let precompiles = PrecompileCounters::from_bundle(bundle)?;
 
-        Ok(Self::new(
-            is_asm_emulator,
-            builtins.mem,
-            builtins.binary,
-            builtins.arith,
-            precompiles,
-            builtins.dma,
-            Some(0),
-        ))
-    }
-
-    /// Creates a new `DataBus` instance.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        mem_counter: (usize, Option<MemCounters>),
-        binary_counter: (usize, BinaryCounter),
-        arith_counter: (usize, ArithCounterInputGen),
-        precompiles: PrecompileCounters<F>,
-        dma_counter: (usize, DmaCounterInputGen),
-        rom_counter_id: Option<usize>,
-    ) -> Self {
-        Self {
-            process_only_operation_bus,
+        Ok(Self {
+            process_only_operation_bus: is_asm_emulator,
             pub_outs_collector: PubOutsCollector::new(),
-            mem_counter,
-            binary_counter,
-            arith_counter,
+            mem_counter: builtins.mem,
+            arith_counter: builtins.arith,
+            binary_counter: builtins.binary,
+            dma_counter: builtins.dma,
             precompiles,
-            dma_counter,
-            rom_counter_id,
             pending_transfers: VecDeque::new(),
-        }
+        })
     }
 
     /// Drains the accumulated public outputs from the embedded `PubOutsCollector`,
@@ -188,25 +161,20 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
         }
     }
 
-    fn into_devices(
-        mut self,
-        execute_on_close: bool,
-    ) -> Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> {
+    fn into_devices(mut self, execute_on_close: bool) -> Vec<(usize, Box<dyn BusDeviceMetrics>)> {
         if execute_on_close {
             self.on_close();
         }
 
-        #[allow(clippy::type_complexity)]
-        let mut counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
-            (self.rom_counter_id, Some(Box::new(DummyCounter {}))),
-            (Some(self.binary_counter.0), Some(Box::new(self.binary_counter.1))),
-            (Some(self.arith_counter.0), Some(Box::new(self.arith_counter.1))),
+        let mut counters: Vec<(usize, Box<dyn BusDeviceMetrics>)> = vec![
+            (self.binary_counter.0, Box::new(self.binary_counter.1)),
+            (self.arith_counter.0, Box::new(self.arith_counter.1)),
         ];
         counters.extend(self.precompiles.into_device_entries());
-        counters.push((Some(self.dma_counter.0), Some(Box::new(self.dma_counter.1))));
+        counters.push((self.dma_counter.0, Box::new(self.dma_counter.1)));
 
         if let Some(mem_counter) = self.mem_counter.1 {
-            counters.insert(1, (Some(self.mem_counter.0), Some(Box::new(mem_counter))));
+            counters.insert(0, (self.mem_counter.0, Box::new(mem_counter)));
         }
 
         counters

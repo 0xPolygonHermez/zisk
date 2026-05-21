@@ -85,13 +85,16 @@ pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> 
 /// Plan the secondary state-machine instances from per-chunk counters.
 ///
 /// The bundle's per-SM planners consume the counter map by draining
-/// via `remove`, so this function takes `&mut`. Returns a `BTreeMap`
-/// keyed by the SM's bundle position.
+/// via `remove`, so this function takes `&mut`. `num_chunks` is the
+/// number of executed chunks — used by ROM's chunk-only planner since
+/// it has no bus-side counter. Returns a `BTreeMap` keyed by the SM's
+/// bundle position.
 pub fn plan_secondary<F: PrimeField64>(
     counters: &mut CountersChunkMetrics,
     bundle: &StaticSMBundle<F>,
+    num_chunks: usize,
 ) -> BTreeMap<usize, Vec<Plan>> {
-    bundle.plan_sec(counters)
+    bundle.plan_sec(counters, num_chunks)
 }
 
 /// Plan + materialize phase actor.
@@ -165,6 +168,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         self.planner.assign_rom_instance(proof_registry)?;
 
         let main_plans = plan_main(&trace.min_traces, self.chunk_size)?;
+        let num_chunks = trace.min_traces.len();
         *state
             .min_traces
             .write()
@@ -182,7 +186,8 @@ impl<F: PrimeField64> PlanPhase<F> {
         stats_begin!(stats, exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut counters = trace.counters;
-        let mut secn_planning = plan_secondary(&mut counters, self.registry.sm_bundle());
+        let mut secn_planning =
+            plan_secondary(&mut counters, self.registry.sm_bundle(), num_chunks);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);

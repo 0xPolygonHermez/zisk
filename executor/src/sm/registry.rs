@@ -233,22 +233,17 @@ macro_rules! register_precompiles {
                 /// entries that `StaticDataBus::into_devices` splices
                 /// into its full device list. Order matches
                 /// declaration order in `register_precompiles!`.
-                #[allow(clippy::type_complexity)]
                 pub fn into_device_entries(
                     self,
                 ) -> ::std::vec::Vec<(
-                    ::std::option::Option<::std::primitive::usize>,
-                    ::std::option::Option<
-                        ::std::boxed::Box<dyn ::zisk_common::BusDeviceMetrics>,
-                    >,
+                    ::std::primitive::usize,
+                    ::std::boxed::Box<dyn ::zisk_common::BusDeviceMetrics>,
                 )> {
                     ::std::vec![
                         $(
                             (
-                                ::std::option::Option::Some(self.[<$variant:snake>].0),
-                                ::std::option::Option::Some(
-                                    ::std::boxed::Box::new(self.[<$variant:snake>].1),
-                                ),
+                                self.[<$variant:snake>].0,
+                                ::std::boxed::Box::new(self.[<$variant:snake>].1),
                             ),
                         )*
                     ]
@@ -423,27 +418,20 @@ macro_rules! register_precompiles {
                 /// collector entries that `StaticDataBusCollect::into_devices`
                 /// splices into its full device list. Order matches
                 /// declaration order in `register_precompiles!`.
-                #[allow(clippy::type_complexity)]
                 pub fn into_device_entries(
                     self,
                 ) -> ::std::vec::Vec<(
-                    ::std::option::Option<::std::primitive::usize>,
-                    ::std::option::Option<
-                        ::std::boxed::Box<
-                            dyn ::zisk_common::BusDevice<::zisk_common::PayloadType>,
-                        >,
-                    >,
+                    ::std::primitive::usize,
+                    ::std::boxed::Box<dyn ::zisk_common::BusDevice<::zisk_common::PayloadType>>,
                 )> {
                     let mut result = ::std::vec::Vec::new();
                     $(
                         for (id, c) in self.[<$variant:snake _collector>] {
                             result.push((
-                                ::std::option::Option::Some(id),
-                                ::std::option::Option::Some(
-                                    ::std::boxed::Box::new(c) as ::std::boxed::Box<
-                                        dyn ::zisk_common::BusDevice<::zisk_common::PayloadType>,
-                                    >,
-                                ),
+                                id,
+                                ::std::boxed::Box::new(c) as ::std::boxed::Box<
+                                    dyn ::zisk_common::BusDevice<::zisk_common::PayloadType>,
+                                >,
                             ));
                         }
                     )*

@@ -73,6 +73,12 @@ pub struct StaticSMBundle<F: PrimeField64> {
     // this position. Iteration order is insertion order.
     sm: Vec<SMType<F>>,
 
+    /// Cached Vec position of the `RomSM` entry. ROM has no bus-side
+    /// counter (`Planner::plan` is dead-coded for it); `plan_sec` looks
+    /// up this position and feeds chunk_ids straight to
+    /// [`sm_rom::RomPlanner::plan_for_chunks`].
+    rom_position: usize,
+
     /// Cached Vec position of the `MemSM` entry. Looked up at construction
     /// so `extend_mem_plans` doesn't have to scan or hardcode a number.
     mem_position: usize,
@@ -104,12 +110,17 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }))
             .collect();
 
+        let rom_position = sm
+            .iter()
+            .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::RomSM(_))))
+            .expect("RomSM must be in the bundle (constructed above)");
+
         let mem_position = sm
             .iter()
             .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::MemSM(_))))
             .expect("MemSM must be in the bundle (constructed above)");
 
-        Self { sm, mem_position, is_asm: is_asm_emulator, std }
+        Self { sm, rom_position, mem_position, is_asm: is_asm_emulator, std }
     }
 
     /// Returns `true` if the bundle was constructed for the ASM emulator
@@ -164,10 +175,21 @@ impl<F: PrimeField64> StaticSMBundle<F> {
     pub fn plan_sec(
         &self,
         vec_counters: &mut crate::CountersChunkMetrics,
+        num_chunks: usize,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();
 
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
+            // ROM has no bus-side counter: its chunk set is just every
+            // executed chunk, so plan it directly from `num_chunks`
+            // instead of routing through the counters channel.
+            if pos == self.rom_position {
+                let rom_plan = sm_rom::RomPlanner::plan_for_chunks(num_chunks)
+                    .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
+                plans.insert(pos, rom_plan);
+                continue;
+            }
+
             if let Some(counters) = vec_counters.remove(&pos) {
                 plans.insert(pos, sm.build_planner(self.is_asm).plan(counters));
             }

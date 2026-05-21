@@ -129,15 +129,7 @@ impl EmulatorRust {
         for (chunk_id, (counter_slice, pub_outs_chunk)) in metrics_slices.into_iter().enumerate() {
             pub_outs.0.extend(pub_outs_chunk.0);
             for (idx, counter) in counter_slice.into_iter() {
-                let idx = idx.ok_or_else(|| {
-                    anyhow::anyhow!("unexpected unindexed counter for chunk {chunk_id}")
-                })?;
-                counters.entry(idx).or_insert_with(Vec::new).push((
-                    ChunkId(chunk_id),
-                    counter.ok_or_else(|| {
-                        anyhow::anyhow!("secondary counter is None for chunk {chunk_id}, idx {idx}")
-                    })?,
-                ));
+                counters.entry(idx).or_insert_with(Vec::new).push((ChunkId(chunk_id), counter));
             }
         }
 

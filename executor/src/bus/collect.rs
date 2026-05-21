@@ -38,38 +38,38 @@ use zisk_common::Instance;
 ///   trait.
 pub struct StaticDataBusCollect<D, F: PrimeField64> {
     /// ROM collector.
-    pub rom_collector: Vec<(usize, RomCollector)>,
+    rom_collector: Vec<(usize, RomCollector)>,
 
     /// Memory-related collectors.
-    pub mem_collector: Vec<(usize, MemModuleCollector)>,
+    mem_collector: Vec<(usize, MemModuleCollector)>,
     /// Memory alignment collectors.
-    pub mem_align_collector: Vec<(usize, MemAlignCollector)>,
+    mem_align_collector: Vec<(usize, MemAlignCollector)>,
 
     /// Arithmetic collectors.
-    pub arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
+    arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
     /// Arithmetic inputs generator.
-    pub arith_inputs_generator: ArithCounterInputGen,
+    arith_inputs_generator: ArithCounterInputGen,
 
     /// Binary operation collectors.
-    pub binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
+    binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
     /// Binary add operation collectors.
-    pub binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
+    binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
     /// Binary extension operation collectors.
-    pub binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
+    binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
 
     /// Dma collectors.
-    pub dma_collector: Vec<(usize, DmaCollector)>,
+    dma_collector: Vec<(usize, DmaCollector)>,
     /// Dma pre/post collectors.
-    pub dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
+    dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
     /// Dma 64-aligned collectors.
-    pub dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
+    dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
     /// Dma unaligned collectors.
-    pub dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
+    dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
     /// Dma inputs generator.
-    pub dma_inputs_generator: DmaCounterInputGen,
+    dma_inputs_generator: DmaCounterInputGen,
 
     /// Per-precompile collectors + input generators.
-    pub precompiles: PrecompileCollectors<F>,
+    precompiles: PrecompileCollectors<F>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
@@ -250,54 +250,54 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
     fn into_devices(
         self,
         _execute_on_close: bool,
-    ) -> Vec<(Option<usize>, Option<Box<dyn BusDevice<PayloadType>>>)> {
+    ) -> Vec<(usize, Box<dyn BusDevice<PayloadType>>)> {
         let mut result = Vec::new();
 
         // Add all collectors to the result
         for (id, collector) in self.mem_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.mem_align_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.binary_basic_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.binary_add_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.binary_extension_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.arith_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         result.extend(self.precompiles.into_device_entries());
 
         for (id, collector) in self.dma_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.dma_pre_post_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.dma_64_aligned_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.dma_unaligned_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         for (id, collector) in self.rom_collector {
-            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
         result
