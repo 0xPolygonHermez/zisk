@@ -120,7 +120,7 @@ pub struct ZiskRom {
     pub build_counter: u64,
 
     /// Latest internal instruction odd address offset
-    /// Initialized to 0, then 1, 3, 5... every time a non alligned instruction is added to the ROM
+    /// Initialized to 0, then 1, 3, 5... every time a non-aligned instruction is added to the ROM
     /// Add this value to ROM_ADDR to get the actual address of the internal instruction
     pub last_internal_address_offset: u64,
 }

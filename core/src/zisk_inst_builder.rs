@@ -256,7 +256,11 @@ impl ZiskInstBuilder {
         rom.build_counter += 1;
 
         // Insert the instruction in the rom instructions map, using the instruction pc as key
-        rom.insts.insert(self.i.paddr, self.clone());
+        // We can use std::mem::take() to move the instruction out of the builder, and replace it
+        // with a default one, to avoid cloning it since we won't use it any more
+        let paddr = self.i.paddr;
+        let zib = std::mem::take(self);
+        rom.insts.insert(paddr, zib);
 
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
