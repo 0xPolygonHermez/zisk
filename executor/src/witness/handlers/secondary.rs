@@ -44,13 +44,13 @@ impl SecondaryWitnessHandler {
             .map_err(|e| anyhow::anyhow!("{e}"))?
             .contains_key(&global_id);
 
+        let instance = &**secn_instance;
         if needs_collection {
             collector
-                .collect_single(pctx, state, global_id, secn_instance)
+                .collect_single(pctx, state, global_id, instance)
                 .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
         }
 
-        let instance = &**secn_instance;
         let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
         let trace_buffer = buffer_pool.take_buffer();
 

@@ -42,7 +42,7 @@ pub(crate) type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
 
 /// Map of borrowed secondary instances, populated by the ROM/secondary
 /// pre-calculate paths and consumed by `ChunkDataCollector::collect`.
-pub(crate) type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a Box<dyn Instance<F>>>;
+pub(crate) type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a dyn Instance<F>>;
 
 /// Strategy interface for the ROM witness path.
 ///

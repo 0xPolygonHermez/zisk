@@ -111,11 +111,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// Tuple of `(chunks_to_execute, global_id_chunks)` where:
     /// - `chunks_to_execute[chunk_id]` = list of global_ids that need this chunk
     /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
-    #[allow(clippy::borrowed_box)]
     pub fn compute_chunks_to_execute(
         &self,
         min_traces: &[EmuTrace],
-        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        secn_instances: &HashMap<usize, &dyn Instance<F>>,
     ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
         let mut global_id_chunks: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -208,13 +207,12 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `state` - Execution state for storing collectors.
     /// * `global_id` - Global ID of the instance.
     /// * `instance` - The secondary instance to collect for.
-    #[allow(clippy::borrowed_box)]
     pub fn collect_single(
         &self,
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
         global_id: usize,
-        instance: &Box<dyn Instance<F>>,
+        instance: &dyn Instance<F>,
     ) -> Result<()> {
         let mut map = HashMap::with_capacity(1);
         map.insert(global_id, instance);
@@ -231,12 +229,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `pctx` - Proof context.
     /// * `state` - Execution state for storing collectors.
     /// * `secn_instances` - Map of global ID to secondary instances.
-    #[allow(clippy::borrowed_box)]
     pub fn collect(
         &self,
         pctx: &ProofCtx<F>,
         state: &ExecutionState<F>,
-        secn_instances: HashMap<usize, &Box<dyn Instance<F>>>,
+        secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> Result<()> {
         let min_traces_guard = state
             .min_traces

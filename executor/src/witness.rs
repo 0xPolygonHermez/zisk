@@ -303,7 +303,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                 .map_err(|e| anyhow::anyhow!("{e}"))?
                 .contains_key(&global_id)
         {
-            instances_to_collect.insert(global_id, secn_instance);
+            instances_to_collect.insert(global_id, &**secn_instance);
         } else {
             registry.set_witness_ready(GlobalId(global_id), true);
         }

@@ -55,13 +55,13 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
             .map_err(|e| anyhow::anyhow!("{e}"))?
             .contains_key(&global_id);
 
+        let instance = &**secn_instance;
         if needs_collection {
             collector
-                .collect_single(pctx, state, global_id, secn_instance)
+                .collect_single(pctx, state, global_id, instance)
                 .map_err(|e| anyhow::anyhow!("Collector error: {e}"))?;
         }
 
-        let instance = &**secn_instance;
         let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
         let trace_buffer =
             std::mem::take(&mut *trace_buffer_rom.lock().map_err(|e| anyhow::anyhow!("{e}"))?);
@@ -105,7 +105,7 @@ impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
             register_empty_collector(state, global_id, airgroup_id, air_id)?;
             registry.set_witness_ready(gid, true);
         } else {
-            instances_to_collect.insert(global_id, secn_instance);
+            instances_to_collect.insert(global_id, &**secn_instance);
         }
         Ok(())
     }

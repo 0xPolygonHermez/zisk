@@ -38,22 +38,25 @@ use zisk_pil::ZISK_AIRGROUP_ID;
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
 pub struct StaticDataBusCollect<D, F: PrimeField64> {
+    /// ROM collector.
+    pub rom_collector: Vec<(usize, RomCollector)>,
+
     /// Memory-related collectors.
     pub mem_collector: Vec<(usize, MemModuleCollector)>,
     /// Memory alignment collectors.
     pub mem_align_collector: Vec<(usize, MemAlignCollector)>,
+
+    /// Arithmetic collectors.
+    pub arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
+    /// Arithmetic inputs generator.
+    pub arith_inputs_generator: ArithCounterInputGen,
+
     /// Binary operation collectors.
     pub binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
     /// Binary add operation collectors.
     pub binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
     /// Binary extension operation collectors.
     pub binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
-    /// Arithmetic collectors.
-    pub arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
-    /// Arithmetic inputs generator.
-    pub arith_inputs_generator: ArithCounterInputGen,
-    /// Per-precompile collectors + input generators.
-    pub precompiles: PrecompileCollectors<F>,
 
     /// Dma collectors.
     pub dma_collector: Vec<(usize, DmaCollector)>,
@@ -66,8 +69,8 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     /// Dma inputs generator.
     pub dma_inputs_generator: DmaCounterInputGen,
 
-    /// ROM collector.
-    pub rom_collector: Vec<(usize, RomCollector)>,
+    /// Per-precompile collectors + input generators.
+    pub precompiles: PrecompileCollectors<F>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
@@ -84,11 +87,10 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     /// precompile wrapper via `try_push_collector`; on a miss the
     /// air-id is reported. Returns `Ok(None)` for empty chunks.
     /// Mirrors `StaticDataBus::from_bundle` on the counter side.
-    #[allow(clippy::borrowed_box)]
     pub fn for_chunk(
         bundle: &StaticSMBundle<F>,
         pctx: &ProofCtx<F>,
-        secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
+        secn_instances: &HashMap<usize, &dyn Instance<F>>,
         chunk_id: usize,
         global_idxs: &[usize],
     ) -> Result<Option<Self>> {
@@ -106,7 +108,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             let (_, air_id) = pctx
                 .dctx_get_instance_info(*global_idx)
                 .map_err(|e| anyhow::anyhow!("Execution failed: {e}"))?;
-            let instance = &***secn_instance;
+            let instance = *secn_instance;
 
             if !builtins.try_push_collector(air_id, instance, chunk_id, *global_idx)?
                 && !precompiles.try_push_collector(air_id, instance, chunk_id, *global_idx)?
@@ -119,40 +121,40 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         }
 
         Ok(Some(Self::new(
+            builtins.rom,
             builtins.mem,
             builtins.mem_align,
+            builtins.arith,
+            builtins.arith_inputs_generator,
             builtins.binary_basic,
             builtins.binary_add,
             builtins.binary_extension,
-            builtins.arith,
-            precompiles,
             builtins.dma,
             builtins.dma_pre_post,
             builtins.dma_64_aligned,
             builtins.dma_unaligned,
-            builtins.rom,
-            builtins.arith_inputs_generator,
             builtins.dma_inputs_generator,
+            precompiles,
         )))
     }
 
     /// Creates a new `DataBus` instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        rom_collector: Vec<(usize, RomCollector)>,
         mem_collector: Vec<(usize, MemModuleCollector)>,
         mem_align_collector: Vec<(usize, MemAlignCollector)>,
+        arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
+        arith_inputs_generator: ArithCounterInputGen,
         binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
         binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
         binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
-        arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
-        precompiles: PrecompileCollectors<F>,
         dma_collector: Vec<(usize, DmaCollector)>,
         dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
         dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
         dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
-        rom_collector: Vec<(usize, RomCollector)>,
-        arith_inputs_generator: ArithCounterInputGen,
         dma_inputs_generator: DmaCounterInputGen,
+        precompiles: PrecompileCollectors<F>,
     ) -> Self {
         Self {
             mem_collector,
