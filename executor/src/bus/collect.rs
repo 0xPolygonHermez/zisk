@@ -21,12 +21,11 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::{BuiltinCollectors, PrecompileCollectors, StaticSMBundle};
-use anyhow::Result;
 use proofman_common::ProofCtx;
 use std::collections::HashMap;
 use zisk_common::Instance;
-use zisk_pil::ZISK_AIRGROUP_ID;
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///
@@ -85,102 +84,60 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     /// Constructs a collector-phase data bus for a single chunk. Each
     /// `global_idx` is dispatched to the matching built-in or
     /// precompile wrapper via `try_push_collector`; on a miss the
-    /// air-id is reported. Returns `Ok(None)` for empty chunks.
+    /// air-id is reported. Callers are expected to skip empty chunks
+    /// (no `global_idxs`) themselves — this constructor always builds.
     /// Mirrors `StaticDataBus::from_bundle` on the counter side.
     pub fn for_chunk(
         bundle: &StaticSMBundle<F>,
         pctx: &ProofCtx<F>,
-        secn_instances: &HashMap<usize, &dyn Instance<F>>,
+        instances: &HashMap<usize, &dyn Instance<F>>,
         chunk_id: usize,
         global_idxs: &[usize],
-    ) -> Result<Option<Self>> {
-        if global_idxs.is_empty() {
-            return Ok(None);
-        }
-
+    ) -> ExecutorResult<Self> {
         let mut builtins = BuiltinCollectors::start_chunk(bundle)?;
         let mut precompiles = PrecompileCollectors::start_chunk(bundle)?;
 
         for global_idx in global_idxs {
-            let secn_instance = secn_instances
-                .get(global_idx)
-                .ok_or_else(|| anyhow::anyhow!("Instance not found: global_id={}", global_idx))?;
-            let (_, air_id) = pctx
-                .dctx_get_instance_info(*global_idx)
-                .map_err(|e| anyhow::anyhow!("Execution failed: {e}"))?;
-            let instance = *secn_instance;
+            let global_id = *global_idx;
+            let instance =
+                instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
+            let (airgroup_id, air_id) = pctx
+                .dctx_get_instance_info(global_id)
+                .map_err(|source| ExecutorError::InstanceInfo { global_id, source })?;
 
-            if !builtins.try_push_collector(air_id, instance, chunk_id, *global_idx)?
-                && !precompiles.try_push_collector(air_id, instance, chunk_id, *global_idx)?
-            {
-                anyhow::bail!(
-                    "State machine not found: airgroup_id={}, air_id={air_id}",
-                    ZISK_AIRGROUP_ID
-                );
+            let pushed = builtins.try_push_collector(air_id, *instance, chunk_id, global_id)?
+                || precompiles.try_push_collector(air_id, *instance, chunk_id, global_id)?;
+
+            if !pushed {
+                return Err(ExecutorError::StateMachineNotFound { airgroup_id, air_id });
             }
         }
 
-        Ok(Some(Self::new(
-            builtins.rom,
-            builtins.mem,
-            builtins.mem_align,
-            builtins.arith,
-            builtins.arith_inputs_generator,
-            builtins.binary_basic,
-            builtins.binary_add,
-            builtins.binary_extension,
-            builtins.dma,
-            builtins.dma_pre_post,
-            builtins.dma_64_aligned,
-            builtins.dma_unaligned,
-            builtins.dma_inputs_generator,
+        Ok(Self {
+            rom_collector: builtins.rom,
+            mem_collector: builtins.mem,
+            mem_align_collector: builtins.mem_align,
+            arith_collector: builtins.arith,
+            arith_inputs_generator: builtins.arith_inputs_generator,
+            binary_basic_collector: builtins.binary_basic,
+            binary_add_collector: builtins.binary_add,
+            binary_extension_collector: builtins.binary_extension,
+            dma_collector: builtins.dma,
+            dma_pre_post_collector: builtins.dma_pre_post,
+            dma_64_aligned_collector: builtins.dma_64_aligned,
+            dma_unaligned_collector: builtins.dma_unaligned,
+            dma_inputs_generator: builtins.dma_inputs_generator,
             precompiles,
-        )))
-    }
-
-    /// Creates a new `DataBus` instance.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        rom_collector: Vec<(usize, RomCollector)>,
-        mem_collector: Vec<(usize, MemModuleCollector)>,
-        mem_align_collector: Vec<(usize, MemAlignCollector)>,
-        arith_collector: Vec<(usize, ArithInstanceCollector<F>)>,
-        arith_inputs_generator: ArithCounterInputGen,
-        binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
-        binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
-        binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
-        dma_collector: Vec<(usize, DmaCollector)>,
-        dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
-        dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
-        dma_unaligned_collector: Vec<(usize, DmaUnalignedCollector)>,
-        dma_inputs_generator: DmaCounterInputGen,
-        precompiles: PrecompileCollectors<F>,
-    ) -> Self {
-        Self {
-            mem_collector,
-            mem_align_collector,
-            binary_basic_collector,
-            binary_add_collector,
-            binary_extension_collector,
-            arith_collector,
-            precompiles,
-            dma_collector,
-            dma_pre_post_collector,
-            dma_64_aligned_collector,
-            dma_unaligned_collector,
-            rom_collector,
-            arith_inputs_generator,
-            dma_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
-        }
+        })
     }
 
     /// Routes data to the devices subscribed to a specific bus ID or global devices.
     ///
     /// # Arguments
     /// * `bus_id` - The ID of the bus to route the data to.
-    /// * `payload` - A reference to the data payload being routed.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
+    /// * `data` - A reference to the data payload being routed.
+    /// * `data_ext` - A reference to the extended data payload being routed.
     ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.

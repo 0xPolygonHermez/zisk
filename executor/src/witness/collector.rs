@@ -256,20 +256,27 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
 
-        // Build one data bus per chunk in parallel.
-        let data_buses: Vec<_> = chunks_to_execute
+        // Build one data bus per chunk in parallel. Empty chunks
+        // (no instances need them) get `None` directly without
+        // running the per-chunk bundle scan.
+        let data_buses: Vec<Option<_>> = chunks_to_execute
             .par_iter()
             .enumerate()
             .map(|(chunk_id, global_idxs)| {
-                crate::StaticDataBusCollect::for_chunk(
-                    &self.sm_bundle,
-                    pctx,
-                    &secn_instances,
-                    chunk_id,
-                    global_idxs,
-                )
+                if global_idxs.is_empty() {
+                    Ok(None)
+                } else {
+                    crate::StaticDataBusCollect::for_chunk(
+                        &self.sm_bundle,
+                        pctx,
+                        &secn_instances,
+                        chunk_id,
+                        global_idxs,
+                    )
+                    .map(Some)
+                }
             })
-            .collect::<Result<_>>()
+            .collect::<std::result::Result<_, crate::ExecutorError>>()
             .map_err(|e| anyhow::anyhow!("Failed to build data bus collectors: {e}"))?;
 
         // Wrap each so chunk-player threads can write to them concurrently.

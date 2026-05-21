@@ -29,6 +29,7 @@ use sm_mem::{
 use sm_rom::{RomCollector, RomInstance, RomSM};
 use zisk_common::{ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
 
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::{StateMachines, StaticSMBundle};
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
@@ -250,7 +251,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     /// Walks the bundle once to build the two built-in input
     /// generators (`Arith`, `Dma`). Collector vecs start empty and
     /// fill via `try_push_collector` as chunk dispatch proceeds.
-    pub(crate) fn start_chunk(bundle: &StaticSMBundle<F>) -> Result<Self> {
+    pub(crate) fn start_chunk(bundle: &StaticSMBundle<F>) -> ExecutorResult<Self> {
         let mut arith_inputs_generator = None;
         let mut dma_inputs_generator = None;
 
@@ -281,9 +282,9 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             dma_64_aligned: Vec::new(),
             dma_unaligned: Vec::new(),
             arith_inputs_generator: arith_inputs_generator
-                .ok_or_else(|| anyhow::anyhow!("Counter not found: Arith input generator"))?,
+                .ok_or(ExecutorError::InputGeneratorNotFound { kind: "Arith" })?,
             dma_inputs_generator: dma_inputs_generator
-                .ok_or_else(|| anyhow::anyhow!("Counter not found: Dma input generator"))?,
+                .ok_or(ExecutorError::InputGeneratorNotFound { kind: "Dma" })?,
         })
     }
 
@@ -302,22 +303,27 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         secn_instance: &dyn Instance<F>,
         chunk_id: usize,
         global_idx: usize,
-    ) -> Result<bool> {
+    ) -> ExecutorResult<bool> {
         let chunk = ChunkId(chunk_id);
+        let mismatch = |expected: &'static str| ExecutorError::InstanceTypeMismatch {
+            global_id: global_idx,
+            air_id,
+            expected,
+        };
         match air_id {
             id if id == BINARY_AIR_IDS[0] => {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<BinaryBasicInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected BinaryBasicInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<BinaryBasicInstance<F>>()
+                    .ok_or_else(|| mismatch("BinaryBasicInstance"))?;
                 self.binary_basic.push((global_idx, inst.build_binary_basic_collector(chunk)));
                 Ok(true)
             }
             id if id == BINARY_ADD_AIR_IDS[0] => {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<BinaryAddInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected BinaryAddInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<BinaryAddInstance<F>>()
+                    .ok_or_else(|| mismatch("BinaryAddInstance"))?;
                 self.binary_add.push((global_idx, inst.build_binary_add_collector(chunk)));
                 Ok(true)
             }
@@ -325,9 +331,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<BinaryExtensionInstance<F>>()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Downcast failed: expected BinaryExtensionInstance")
-                    })?;
+                    .ok_or_else(|| mismatch("BinaryExtensionInstance"))?;
                 self.binary_extension
                     .push((global_idx, inst.build_binary_extension_collector(chunk)));
                 Ok(true)
@@ -336,10 +340,10 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 || id == INPUT_DATA_AIR_IDS[0]
                 || id == ROM_DATA_AIR_IDS[0] =>
             {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<MemModuleInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected MemModuleInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<MemModuleInstance<F>>()
+                    .ok_or_else(|| mismatch("MemModuleInstance"))?;
                 self.mem.push((global_idx, inst.build_mem_collector(chunk)));
                 Ok(true)
             }
@@ -347,15 +351,15 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<MemAlignInstance<F>>()
-                    .ok_or_else(|| anyhow::anyhow!("Downcast failed: expected MemAlignInstance"))?;
+                    .ok_or_else(|| mismatch("MemAlignInstance"))?;
                 self.mem_align.push((global_idx, inst.build_mem_align_collector(chunk)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_BYTE_AIR_IDS[0] => {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<MemAlignByteInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected MemAlignByteInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<MemAlignByteInstance<F>>()
+                    .ok_or_else(|| mismatch("MemAlignByteInstance"))?;
                 self.mem_align.push((global_idx, inst.build_mem_align_byte_collector(chunk)));
                 Ok(true)
             }
@@ -363,9 +367,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<MemAlignReadByteInstance<F>>()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Downcast failed: expected MemAlignReadByteInstance")
-                    })?;
+                    .ok_or_else(|| mismatch("MemAlignReadByteInstance"))?;
                 self.mem_align.push((global_idx, inst.build_mem_align_read_byte_collector(chunk)));
                 Ok(true)
             }
@@ -373,17 +375,15 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<MemAlignWriteByteInstance<F>>()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("Downcast failed: expected MemAlignWriteByteInstance")
-                    })?;
+                    .ok_or_else(|| mismatch("MemAlignWriteByteInstance"))?;
                 self.mem_align.push((global_idx, inst.build_mem_align_write_byte_collector(chunk)));
                 Ok(true)
             }
             id if id == ARITH_AIR_IDS[0] => {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<ArithFullInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected ArithFullInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<ArithFullInstance<F>>()
+                    .ok_or_else(|| mismatch("ArithFullInstance"))?;
                 self.arith.push((global_idx, inst.build_arith_collector(chunk)));
                 Ok(true)
             }
@@ -391,7 +391,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<RomInstance>()
-                    .ok_or_else(|| anyhow::anyhow!("Downcast failed: expected RomInstance"))?;
+                    .ok_or_else(|| mismatch("RomInstance"))?;
                 if let Some(collector) = inst.build_rom_collector(chunk) {
                     self.rom.push((global_idx, collector));
                 }
@@ -404,7 +404,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 let inst = secn_instance
                     .as_any()
                     .downcast_ref::<DmaInstance<F>>()
-                    .ok_or_else(|| anyhow::anyhow!("Downcast failed: expected DmaInstance"))?;
+                    .ok_or_else(|| mismatch("DmaInstance"))?;
                 self.dma.push((global_idx, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
@@ -412,10 +412,10 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 || id == DMA_PRE_POST_MEM_CPY_AIR_IDS[0]
                 || id == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] =>
             {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<DmaPrePostInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected DmaPrePostInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<DmaPrePostInstance<F>>()
+                    .ok_or_else(|| mismatch("DmaPrePostInstance"))?;
                 self.dma_pre_post.push((global_idx, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
@@ -425,18 +425,18 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 || id == DMA_64_ALIGNED_MEM_SET_AIR_IDS[0]
                 || id == DMA_64_ALIGNED_MEM_AIR_IDS[0] =>
             {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<Dma64AlignedInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected Dma64AlignedInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<Dma64AlignedInstance<F>>()
+                    .ok_or_else(|| mismatch("Dma64AlignedInstance"))?;
                 self.dma_64_aligned.push((global_idx, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_UNALIGNED_AIR_IDS[0] => {
-                let inst =
-                    secn_instance.as_any().downcast_ref::<DmaUnalignedInstance<F>>().ok_or_else(
-                        || anyhow::anyhow!("Downcast failed: expected DmaUnalignedInstance"),
-                    )?;
+                let inst = secn_instance
+                    .as_any()
+                    .downcast_ref::<DmaUnalignedInstance<F>>()
+                    .ok_or_else(|| mismatch("DmaUnalignedInstance"))?;
                 self.dma_unaligned.push((global_idx, inst.build_dma_collector(chunk)));
                 Ok(true)
             }

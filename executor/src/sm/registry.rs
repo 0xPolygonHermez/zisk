@@ -292,7 +292,7 @@ macro_rules! register_precompiles {
                 /// global_idx in the chunk.
                 pub fn start_chunk(
                     bundle: &$crate::StaticSMBundle<F>,
-                ) -> ::anyhow::Result<Self> {
+                ) -> $crate::error::ExecutorResult<Self> {
                     $( let mut [<$variant:snake _inputs_generator>] = ::std::option::Option::None; )*
 
                     for (_, sm) in bundle.entries().iter() {
@@ -314,13 +314,11 @@ macro_rules! register_precompiles {
                         $(
                             [<$variant:snake _collector>]: ::std::vec::Vec::new(),
                             [<$variant:snake _inputs_generator>]:
-                                [<$variant:snake _inputs_generator>].ok_or_else(|| {
-                                    ::anyhow::anyhow!(concat!(
-                                        "Counter not found: ",
-                                        stringify!($variant),
-                                        " input generator",
-                                    ))
-                                })?,
+                                [<$variant:snake _inputs_generator>].ok_or(
+                                    $crate::error::ExecutorError::InputGeneratorNotFound {
+                                        kind: stringify!($variant),
+                                    }
+                                )?,
                         )*
                     })
                 }
@@ -343,19 +341,19 @@ macro_rules! register_precompiles {
                     secn_instance: &dyn ::zisk_common::Instance<F>,
                     chunk_id: ::std::primitive::usize,
                     global_idx: ::std::primitive::usize,
-                ) -> ::anyhow::Result<::std::primitive::bool> {
+                ) -> $crate::error::ExecutorResult<::std::primitive::bool> {
                     $(
                         if air_id == $air[0] {
                             let inst = secn_instance
                                 .as_any()
                                 .downcast_ref::<[<$variant Instance>]<F>>()
-                                .ok_or_else(|| {
-                                    ::anyhow::anyhow!(concat!(
-                                        "Downcast failed: expected ",
-                                        stringify!($variant),
-                                        "Instance",
-                                    ))
-                                })?;
+                                .ok_or(
+                                    $crate::error::ExecutorError::InstanceTypeMismatch {
+                                        global_id: global_idx,
+                                        air_id,
+                                        expected: concat!(stringify!($variant), "Instance"),
+                                    }
+                                )?;
                             self.[<$variant:snake _collector>].push((
                                 global_idx,
                                 inst.[<build_ $variant:snake _collector>](

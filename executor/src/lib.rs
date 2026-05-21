@@ -79,6 +79,7 @@
 
 mod adapters;
 mod bus;
+mod error;
 mod execution;
 mod executor;
 mod plan;
@@ -95,6 +96,7 @@ pub use executor::*; // ZiskExecutor
 
 pub(crate) use adapters::*;
 pub(crate) use bus::*;
+pub(crate) use error::*;
 pub(crate) use execution::*;
 pub(crate) use plan::*;
 pub(crate) use sm::*;

@@ -36,18 +36,25 @@ pub struct StaticDataBus<D, F: PrimeField64> {
 
     /// List of devices connected to the bus.
     pub pub_outs_collector: PubOutsCollector,
-    /// Memory-related counter.
-    pub mem_counter: (usize, Option<MemCounters>),
-    /// Binary operation counter.
-    pub binary_counter: (usize, BinaryCounter),
-    /// Arithmetic operation counter.
-    pub arith_counter: (usize, ArithCounterInputGen),
-    /// Precompile operation counters.
-    pub precompiles: PrecompileCounters<F>,
-    /// DMA operation counter.
-    pub dma_counter: (usize, DmaCounterInputGen),
+
     /// ROM counter.
     pub rom_counter_id: Option<usize>,
+
+    /// Memory-related counter.
+    pub mem_counter: (usize, Option<MemCounters>),
+
+    /// Arithmetic operation counter.
+    pub arith_counter: (usize, ArithCounterInputGen),
+
+    /// Binary operation counter.
+    pub binary_counter: (usize, BinaryCounter),
+
+    /// DMA operation counter.
+    pub dma_counter: (usize, DmaCounterInputGen),
+
+    /// Precompile operation counters.
+    pub precompiles: PrecompileCounters<F>,
+
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 }

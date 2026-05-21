@@ -1822,6 +1822,7 @@ dependencies = [
  "sm-main",
  "sm-mem",
  "sm-rom",
+ "thiserror 2.0.18",
  "tracing",
  "witness",
  "zisk-common",
