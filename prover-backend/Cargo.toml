@@ -12,7 +12,7 @@ categories = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, features = ["parallel"] }
 
 # Zisk internal crates
 zisk-common = { workspace = true }
