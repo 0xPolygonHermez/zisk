@@ -244,6 +244,11 @@ impl ZiskInstBuilder {
         self.i.verbose = s.to_owned();
     }
 
+    /// Links this instruction to the next internal instruction, when existing
+    pub fn set_next_internal_address(&mut self, addr: u64) {
+        self.i.next_internal_inst = Some(addr);
+    }
+
     /// Called when the instruction has been built
     pub fn build(&mut self, rom: &mut ZiskRom) {
         // Set the instruction index to the current value of the ZiskRom build counter

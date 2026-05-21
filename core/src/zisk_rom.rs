@@ -44,7 +44,7 @@
 //!     index `(pc-ROM_ENTRY)/4`
 use std::collections::BTreeMap;
 
-use crate::{ZiskInst, ZiskInstBuilder, ROM_ENTRY};
+use crate::{ZiskInst, ZiskInstBuilder, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
@@ -118,6 +118,11 @@ pub struct ZiskRom {
 
     /// Used for tracking the instruction creation order in the ROM
     pub build_counter: u64,
+
+    /// Latest internal instruction odd address offset
+    /// Initialized to 0, then 1, 3, 5... every time a non alligned instruction is added to the ROM
+    /// Add this value to ROM_ADDR to get the actual address of the internal instruction
+    pub last_internal_address_offset: u64,
 }
 
 /// ZisK ROM implementation
@@ -209,5 +214,33 @@ impl ZiskRom {
         } else {
             panic!("ZiskRom::get_mut_instruction() pc={pc} is out of range");
         }
+    }
+
+    /// Gets the next internal instruction address, which is the next odd address after the last one
+    pub fn get_internal_address(&mut self) -> u64 {
+        // Calculate the new internal instruction address offset, which is the next odd address
+        // after the last one, if any
+        if self.last_internal_address_offset == 0 {
+            // This is the first time we need to get an internal instruction address
+            self.last_internal_address_offset = 1;
+        } else {
+            // Next times: 3, 5, 7, etc.
+            self.last_internal_address_offset += 2;
+        }
+
+        // Calculate the resulting address by adding the offset to ROM_ADDR
+        let result = ROM_ADDR + self.last_internal_address_offset;
+
+        // Check that the result is odd
+        if result & 0x01 == 0 {
+            panic!("ZiskRom::get_internal_address() result=0x{:x} is not odd", result);
+        }
+
+        // Check that the result is not out of range
+        if result > ROM_ADDR_MAX {
+            panic!("ZiskRom::get_internal_address() result=0x{:x} is out of range (ROM_ADDR_MAX=0x{:x})", result, ROM_ADDR_MAX);
+        }
+
+        result
     }
 }
