@@ -8,9 +8,15 @@ use crate::zisklib::{be_bytes_to_u64_4, eq, gt, sha256, ZERO_256};
 
 use super::{
     constants::{G, N, P},
-    curve::{double_scalar_mul_with_g_secp256k1, lift_x_secp256k1, multi_scalar_mul_secp256k1},
+    curve::{lift_x_secp256k1, multi_scalar_mul_secp256k1},
+    glv::{glv_double_scalar_mul_with_g_secp256k1, glv_multi_scalar_mul_secp256k1},
     scalar::{add_fn_secp256k1, mul_fn_secp256k1, neg_fn_secp256k1, reduce_fn_secp256k1},
 };
+
+/// Batch size threshold above which the GLV expansion's per-scalar overhead exceeds the
+/// savings it gives to Pippenger. Below this, GLV halves the bit budget and wins on the MSM;
+/// above this, the non-GLV path with a wider Pippenger window is cheaper.
+const SCHNORR_BATCH_GLV_THRESHOLD: usize = 512;
 
 /// BIP-340 `Verify(pk, m, sig)`. Arbitrary-length message, 32-byte big-endian pk/r/s.
 pub fn schnorr_verify_secp256k1(
@@ -72,7 +78,7 @@ pub fn schnorr_verify_secp256k1(
         hints,
     );
 
-    let point_r = match double_scalar_mul_with_g_secp256k1(
+    let point_r = match glv_double_scalar_mul_with_g_secp256k1(
         &s,
         &neg_e,
         &point_p,
@@ -88,40 +94,6 @@ pub fn schnorr_verify_secp256k1(
     }
 
     eq(&[point_r[0], point_r[1], point_r[2], point_r[3]], &r)
-}
-
-/// # Safety
-/// `pk_x` must point to 32 bytes, `sig` to 64 bytes.
-/// `msg` must point to `msg_len` bytes, or may be null if `msg_len == 0`.
-#[inline]
-#[allow(dead_code)]
-pub(crate) unsafe fn secp256k1_schnorr_verify_c(
-    msg: *const u8,
-    msg_len: usize,
-    pk_x: *const u8,
-    sig: *const u8,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let msg_bytes: &[u8] =
-        if msg_len == 0 { &[] } else { core::slice::from_raw_parts(msg, msg_len) };
-    let pk_bytes: [u8; 32] = core::slice::from_raw_parts(pk_x, 32).try_into().unwrap();
-    let sig_bytes: [u8; 64] = core::slice::from_raw_parts(sig, 64).try_into().unwrap();
-    let mut r = [0u8; 32];
-    let mut s = [0u8; 32];
-    r.copy_from_slice(&sig_bytes[..32]);
-    s.copy_from_slice(&sig_bytes[32..]);
-    if schnorr_verify_secp256k1(
-        msg_bytes,
-        &pk_bytes,
-        &r,
-        &s,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        0
-    } else {
-        1
-    }
 }
 
 /// BIP-340 batch verification using the multi-scalar multiplication approach.
@@ -335,13 +307,61 @@ pub fn schnorr_batch_verify_secp256k1(
         }
     }
 
-    multi_scalar_mul_secp256k1(
-        &msm_scalars,
-        &msm_points,
+    // For small-to-moderate batches, GLV expansion halves the bit budget and pays for itself.
+    // For very large batches the per-input GLV overhead (decompose + φ + sign-adjust) exceeds
+    // the MSM saving, so the plain Pippenger over 256-bit scalars is cheaper.
+    let result = if u <= SCHNORR_BATCH_GLV_THRESHOLD {
+        glv_multi_scalar_mul_secp256k1(
+            &msm_scalars,
+            &msm_points,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    } else {
+        multi_scalar_mul_secp256k1(
+            &msm_scalars,
+            &msm_points,
+            #[cfg(feature = "hints")]
+            hints,
+        )
+    };
+    result.is_none()
+}
+
+// ==================== C FFI Functions ====================
+
+/// # Safety
+/// `pk_x` must point to 32 bytes, `sig` to 64 bytes.
+/// `msg` must point to `msg_len` bytes, or may be null if `msg_len == 0`.
+#[inline]
+#[allow(dead_code)]
+pub(crate) unsafe fn secp256k1_schnorr_verify_c(
+    msg: *const u8,
+    msg_len: usize,
+    pk_x: *const u8,
+    sig: *const u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let msg_bytes: &[u8] =
+        if msg_len == 0 { &[] } else { core::slice::from_raw_parts(msg, msg_len) };
+    let pk_bytes: [u8; 32] = core::slice::from_raw_parts(pk_x, 32).try_into().unwrap();
+    let sig_bytes: [u8; 64] = core::slice::from_raw_parts(sig, 64).try_into().unwrap();
+    let mut r = [0u8; 32];
+    let mut s = [0u8; 32];
+    r.copy_from_slice(&sig_bytes[..32]);
+    s.copy_from_slice(&sig_bytes[32..]);
+    if schnorr_verify_secp256k1(
+        msg_bytes,
+        &pk_bytes,
+        &r,
+        &s,
         #[cfg(feature = "hints")]
         hints,
-    )
-    .is_none()
+    ) {
+        0
+    } else {
+        1
+    }
 }
 
 /// C FFI for batch verification where all signatures share the same message.

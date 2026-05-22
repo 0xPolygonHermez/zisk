@@ -541,9 +541,33 @@ pub fn multi_scalar_mul_secp256k1(
         return None;
     }
 
+    multi_scalar_mul_secp256k1_max_bits(
+        scalars,
+        points,
+        256,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
+/// Multi-scalar multiplication using Pippenger's bucket method: Σ kᵢ·Pᵢ.
+/// Scalars are processed up to `max_bits` bits.
+/// Returns None if the result is the point at infinity.
+/// Assumes all points are non-infinity and on the curve. Scalars must be in [0, N-1].
+pub(crate) fn multi_scalar_mul_secp256k1_max_bits(
+    scalars: &[[u64; 4]],
+    points: &[[u64; 8]],
+    max_bits: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Option<[u64; 8]> {
+    debug_assert!(!scalars.is_empty());
+    debug_assert_eq!(scalars.len(), points.len());
+    debug_assert!(max_bits > 0 && max_bits <= 256);
+
+    let n = scalars.len();
     let w = optimal_window_size(n);
     let num_buckets = (1usize << w) - 1;
-    let num_windows = 256_usize.div_ceil(w);
+    let num_windows = max_bits.div_ceil(w);
 
     let mut result = IDENTITY_POINT;
     let mut result_is_inf = true;
@@ -605,7 +629,6 @@ pub fn multi_scalar_mul_secp256k1(
         let mut running_is_inf = true;
         let mut partial_sum = IDENTITY_POINT;
         let mut partial_is_inf = true;
-
         for j in (0..num_buckets).rev() {
             // running_sum += buckets[j]
             if !bucket_is_inf[j] {
@@ -692,22 +715,33 @@ fn get_scalar_window(scalar: &[u64; 4], window_idx: usize, w: usize) -> u64 {
     val
 }
 
-/// Chooses the Pippenger window size that minimizes total group operations for `n` points.
+/// Chooses the Pippenger window size that minimises total group operations for `n` points.
+/// Bands are derived from:
+///   `cost(n, w) = ⌈max_bits / w⌉ · (w + n + 2·(2^w − 1))`
+/// taking `max_bits = 256` as the more demanding regime.
 fn optimal_window_size(n: usize) -> usize {
     if n <= 1 {
         1
-    } else if n <= 4 {
+    } else if n <= 10 {
         2
-    } else if n <= 8 {
+    } else if n <= 32 {
         3
-    } else if n <= 16 {
+    } else if n <= 100 {
         4
-    } else if n <= 64 {
+    } else if n <= 300 {
         5
-    } else if n <= 400 {
+    } else if n <= 700 {
         6
-    } else {
+    } else if n <= 1500 {
         7
+    } else if n <= 4500 {
+        8
+    } else if n <= 7000 {
+        9
+    } else if n <= 22000 {
+        10
+    } else {
+        11
     }
 }
 

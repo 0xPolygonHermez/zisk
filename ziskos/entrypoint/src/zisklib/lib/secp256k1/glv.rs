@@ -1,3 +1,6 @@
+extern crate alloc;
+use alloc::vec::Vec;
+
 use crate::{
     syscalls::{syscall_secp256k1_dbl, SyscallPoint256},
     zisklib::{eq, fcall_msb_pos_256_2, fcall_msb_pos_256_4, is_zero, ONE_256, TWO_256, ZERO_256},
@@ -5,7 +8,10 @@ use crate::{
 
 use super::{
     constants::{G, G_NEG_Y, G_PHI_X, G_PHI_Y, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
-    curve::{add_non_infinity_points_secp256k1, neg_secp256k1, phi_secp256k1},
+    curve::{
+        add_non_infinity_points_secp256k1, multi_scalar_mul_secp256k1_max_bits, neg_secp256k1,
+        phi_secp256k1,
+    },
     scalar::{add_fn_secp256k1, glv_decompose_fn_secp256k1, sub_fn_secp256k1},
 };
 
@@ -606,4 +612,96 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
     } else {
         Some([res.x[0], res.x[1], res.x[2], res.x[3], res.y[0], res.y[1], res.y[2], res.y[3]])
     }
+}
+
+/// GLV-accelerated multi-scalar multiplication: Σᵢ kᵢ·Pᵢ.
+///
+/// Returns `None` if the result is the point at infinity. Assumes all input points are
+/// non-infinity and on the curve, and scalars are in `[0, N-1]`.
+pub fn glv_multi_scalar_mul_secp256k1(
+    scalars: &[[u64; 4]],
+    points: &[[u64; 8]],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Option<[u64; 8]> {
+    // Each input pair `(kᵢ, Pᵢ)` is expanded into two pairs `(kᵢ₁, ±Pᵢ)` and `(kᵢ₂, ±φ(Pᵢ))`
+    // using the GLV decomposition. The resulting `2n` pairs are then fed into Pippenger's bucket
+    // method running over only the bottom 128 bits.
+
+    let n = scalars.len();
+    assert_eq!(n, points.len());
+    if n == 0 {
+        return None;
+    }
+
+    // Expand each (k, P) into ((k1, ±P), (k2, ±φ(P))).
+    let mut expanded_scalars: Vec<[u64; 4]> = Vec::with_capacity(2 * n);
+    let mut expanded_points: Vec<[u64; 8]> = Vec::with_capacity(2 * n);
+    for i in 0..n {
+        let (k1, k2, sigma_1, sigma_2) = glv_decompose_fn_secp256k1(
+            &scalars[i],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+
+        let p_point = SyscallPoint256 {
+            x: [points[i][0], points[i][1], points[i][2], points[i][3]],
+            y: [points[i][4], points[i][5], points[i][6], points[i][7]],
+        };
+        let p_phi = phi_secp256k1(
+            &p_point,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+
+        let base_p = if sigma_1 == 0 {
+            p_point
+        } else {
+            neg_secp256k1(
+                &p_point,
+                #[cfg(feature = "hints")]
+                hints,
+            )
+        };
+        let base_p_phi = if sigma_2 == 0 {
+            p_phi
+        } else {
+            neg_secp256k1(
+                &p_phi,
+                #[cfg(feature = "hints")]
+                hints,
+            )
+        };
+
+        expanded_scalars.push(k1);
+        expanded_points.push([
+            base_p.x[0],
+            base_p.x[1],
+            base_p.x[2],
+            base_p.x[3],
+            base_p.y[0],
+            base_p.y[1],
+            base_p.y[2],
+            base_p.y[3],
+        ]);
+        expanded_scalars.push(k2);
+        expanded_points.push([
+            base_p_phi.x[0],
+            base_p_phi.x[1],
+            base_p_phi.x[2],
+            base_p_phi.x[3],
+            base_p_phi.y[0],
+            base_p_phi.y[1],
+            base_p_phi.y[2],
+            base_p_phi.y[3],
+        ]);
+    }
+
+    // Pippenger over the bottom 128 bits.
+    multi_scalar_mul_secp256k1_max_bits(
+        &expanded_scalars,
+        &expanded_points,
+        128,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
