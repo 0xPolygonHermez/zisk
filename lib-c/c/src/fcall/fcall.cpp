@@ -1,9 +1,9 @@
 #include "fcall.hpp"
 #include "../common/utils.hpp"
+#include "../common/globals.hpp"
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
-#include "../secp256r1/secp256r1.hpp"
 #include <stdint.h>
 #include <assert.h>
 
@@ -35,9 +35,9 @@ int Fcall (
             iresult = Secp256k1GlvDecomposeCtx(ctx);
             break;
         }
-        case FCALL_SECP256R1_ECDSA_VERIFY_ID:
+        case FCALL_SECP256R1_FN_INV_ID:
         {
-            iresult = Secp256r1EcdsaVerifyCtx(ctx);
+            iresult = Secp256r1FnInvCtx(ctx);
             break;
         }
         case FCALL_BN254_FP_INV_ID:
@@ -1240,11 +1240,44 @@ int Secp256k1GlvDecomposeCtx (
     return iresult;
 }
 
-int Secp256r1EcdsaVerifyCtx(
+/****************************/
+/* SECP256R1 SCALAR INVERSE */
+/****************************/
+
+int InverseFnEcR1 (
+    const uint64_t * _a,  // 4 x 64 bits
+          uint64_t * _r   // 4 x 64 bits
+)
+{
+    RawnSecp256r1::Element a;
+    array2fe(_a, a);
+    if (secp256r1n.isZero(a))
+    {
+        printf("InverseFnEcR1() Division by zero\n");
+        return -1;
+    }
+
+    RawnSecp256r1::Element r;
+    secp256r1n.inv(r, a);
+
+    fe2array(r, _r);
+
+    return 0;
+}
+
+int Secp256r1FnInvCtx (
     struct FcallContext * ctx  // fcall context
 )
 {
-    secp256r1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
-    ctx->result_size = 8;
-    return 0;
+    int iresult = InverseFnEcR1(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 4;
+        ctx->result_size = 4;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
 }

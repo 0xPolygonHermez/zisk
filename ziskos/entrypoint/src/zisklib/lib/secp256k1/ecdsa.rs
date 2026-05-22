@@ -33,7 +33,7 @@ pub fn ecdsa_verify_secp256k1(
         return false;
     }
 
-    // Compute u1, u2 such that u1 = z·s⁻¹ (mod n), u2 = r·s⁻¹ (mod n).
+    // Compute u1 = z·s⁻¹ (mod n) and u2 = r·s⁻¹ (mod n).
     let s_inv = inv_fn_secp256k1(
         s,
         #[cfg(feature = "hints")]
@@ -61,7 +61,7 @@ pub fn ecdsa_verify_secp256k1(
         hints,
     ) {
         Some(pt) => pt,
-        None => return false, // Identity is invalid
+        None => return false, // Result is the point at infinity ⇒ invalid signature.
     };
 
     // Check that x = r (mod n). Fast path: x < n, so x == r directly.

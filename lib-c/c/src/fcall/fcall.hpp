@@ -12,7 +12,7 @@ extern "C" {
 #define FCALL_SECP256K1_FN_INV_ID 2
 #define FCALL_SECP256K1_FP_SQRT_ID 3
 #define FCALL_SECP256K1_GLV_DECOMPOSE_ID 4
-#define FCALL_SECP256R1_ECDSA_VERIFY_ID 5
+#define FCALL_SECP256R1_FN_INV_ID 5
 #define FCALL_BN254_FP_INV_ID 6
 #define FCALL_BN254_FP2_INV_ID 7
 #define FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID 8
@@ -115,7 +115,7 @@ int BLS12_381Fp2SqrtCtx (
 int Secp256k1GlvDecomposeCtx (
     struct FcallContext * ctx  // fcall context
 );
-int Secp256r1EcdsaVerifyCtx (
+int Secp256r1FnInvCtx (
     struct FcallContext * ctx  // fcall context
 );
 
@@ -125,6 +125,10 @@ int InverseFpEc (
           uint64_t * r  // 4 x 64 bits
 );
 int InverseFnEc (
+    const uint64_t * a, // 4 x 64 bits
+          uint64_t * r  // 4 x 64 bits
+);
+int InverseFnEcR1 (
     const uint64_t * a, // 4 x 64 bits
           uint64_t * r  // 4 x 64 bits
 );
