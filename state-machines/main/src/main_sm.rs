@@ -108,15 +108,6 @@ impl<F: PrimeField64> MainInstance<F> {
         // Calculate total filled rows
         let filled_rows: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
-        let bounded_filled_rows = filled_rows.clamp(1, NUM_ROWS);
-        if filled_rows != bounded_filled_rows {
-            tracing::warn!(
-                "MainSM segment #{} reported {} filled rows; using bounded value {}",
-                segment_id,
-                filled_rows,
-                bounded_filled_rows
-            );
-        }
 
         tracing::debug!(
             "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
