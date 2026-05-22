@@ -10,8 +10,8 @@ interface IZiskVerifier {
     /// @param publicValues The public values encoded as bytes.
     /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
-        bytes32 calldata programVK, 
-        bytes32 calldata rootCVadcopFinal,
+        bytes32 programVK,
+        bytes32 rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external view;
