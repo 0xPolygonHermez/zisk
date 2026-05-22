@@ -3,7 +3,6 @@
 #include "../bn254/bn254_fe.hpp"
 #include "../bls12_381/bls12_381_fe.hpp"
 #include "../bls12_381/bls12_381.hpp"
-#include "../ec/ec.hpp"
 #include "../secp256r1/secp256r1.hpp"
 #include <stdint.h>
 #include <assert.h>
@@ -31,9 +30,9 @@ int Fcall (
             iresult = SqrtFpEcParityCtx(ctx);
             break;
         }
-        case FCALL_SECP256K1_ECDSA_VERIFY_ID:
+        case FCALL_SECP256K1_GLV_DECOMPOSE_ID:
         {
-            iresult = Secp256k1EcdsaVerifyCtx(ctx);
+            iresult = Secp256k1GlvDecomposeCtx(ctx);
             break;
         }
         case FCALL_SECP256R1_ECDSA_VERIFY_ID:
@@ -1163,13 +1162,82 @@ int BLS12_381Fp2SqrtCtx (
     return 0;
 }
 
-int Secp256k1EcdsaVerifyCtx(
+/**********************************/
+/* SECP256K1 GLV SCALAR DECOMPOSE  */
+/**********************************/
+
+// Short-basis vectors of the secp256k1 GLV lattice.
+//   A1 = 0x3086D221A7D46BCDE86C90E49284EB15  (== B2)
+//  -B1 = 0xE4437ED6010E88286F547FA90ABFE4C3
+//   A2 = 0x114CA50F7A8E2F3F657C1108D9D44CFD8
+//   N  = order of secp256k1 scalar field
+static const mpz_class GLV_A1 ("3086D221A7D46BCDE86C90E49284EB15", 16);
+static const mpz_class GLV_MINUS_B1 ("E4437ED6010E88286F547FA90ABFE4C3", 16);
+static const mpz_class GLV_A2 ("114CA50F7A8E2F3F657C1108D9D44CFD8", 16);
+static const mpz_class GLV_B2 ("3086D221A7D46BCDE86C90E49284EB15", 16);
+static const mpz_class GLV_N  ("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16);
+
+// round(num / den) for den > 0, signed num.
+static inline mpz_class GlvRoundDiv (const mpz_class & num, const mpz_class & den)
+{
+    mpz_class two_den = den * 2;
+    if (num < 0)
+    {
+        mpz_class abs_num = -num;
+        mpz_class q = (abs_num * 2 + den) / two_den; // trunc-div on non-negative operands == floor
+        return -q;
+    }
+    return (num * 2 + den) / two_den;
+}
+
+// Splits k ∈ [0, n) into (k1, k2) with |k1|, |k2| < 2^128 such that k ≡ k1 + k2·λ (mod n).
+// Result layout: [k1_abs (4 u64 LE), k2_abs (4 u64 LE), sigma1 (1 u64), sigma2 (1 u64)],
+// where sigma_i ∈ {0,1} is the sign of k_i (0 = positive, 1 = negative).
+int Secp256k1GlvDecompose (
+    const uint64_t * _k, // 4 x 64 bits (scalar)
+          uint64_t * _r  // 8 x 64 bits (magnitudes) + 2 x 64 bits (sign bits)
+)
+{
+    mpz_class k;
+    array2scalar(_k, k);
+
+    // c1 ≈ round(B2·k / n), c2 ≈ round(-B1·k / n)
+    mpz_class c1 = GlvRoundDiv(GLV_B2 * k, GLV_N);
+    mpz_class c2 = GlvRoundDiv(GLV_MINUS_B1 * k, GLV_N);
+
+    // k1 = k - c1·A1 - c2·A2
+    // k2 = -c1·B1 - c2·B2 = c1·(-B1) - c2·B2
+    mpz_class k1 = k - c1 * GLV_A1 - c2 * GLV_A2;
+    mpz_class k2 = c1 * GLV_MINUS_B1 - c2 * GLV_B2;
+
+    uint64_t sigma1 = 0;
+    if (k1 < 0) { sigma1 = 1; k1 = -k1; }
+    uint64_t sigma2 = 0;
+    if (k2 < 0) { sigma2 = 1; k2 = -k2; }
+
+    scalar2array(k1, &_r[0]);
+    scalar2array(k2, &_r[4]);
+    _r[8] = sigma1;
+    _r[9] = sigma2;
+
+    return 0;
+}
+
+int Secp256k1GlvDecomposeCtx (
     struct FcallContext * ctx  // fcall context
 )
 {
-    secp256k1_ecdsa_verify( &ctx->params[0], &ctx->params[8], &ctx->params[12], &ctx->params[16], &ctx->result[0]);
-    ctx->result_size = 8;
-    return 0;
+    int iresult = Secp256k1GlvDecompose(ctx->params, ctx->result);
+    if (iresult == 0)
+    {
+        iresult = 10;
+        ctx->result_size = 10;
+    }
+    else
+    {
+        ctx->result_size = 0;
+    }
+    return iresult;
 }
 
 int Secp256r1EcdsaVerifyCtx(

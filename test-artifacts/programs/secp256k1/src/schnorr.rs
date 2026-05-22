@@ -283,13 +283,15 @@ pub fn schnorr_tests() {
     let ss_var: &[&[u8; 32]] = &[&S_15, &S_16, &S_17, &S_18];
     assert!(schnorr_batch_verify_secp256k1(msgs_var, pks_var, rs_var, ss_var));
 
-    // Stress / benchmark: batch verification at each power of two from 2^0 = 1 up to 2^13 = 8192.
-    for power in 0..=13 {
-        let u = 1usize << power;
-        run_batch_at_size(u);
-    }
+    // // Uncomment for benchmarking.
+    // // Stress / benchmark: batch verification at each power of two from 2^0 = 1 up to 2^13 = 8192.
+    // for power in 0..=13 {
+    //     let u = 1usize << power;
+    //     run_batch_at_size(u);
+    // }
 }
 
+#[allow(dead_code)]
 #[inline(never)]
 fn run_batch_at_size(u: usize) {
     let mut msgs: Vec<&[u8]> = Vec::with_capacity(u);
