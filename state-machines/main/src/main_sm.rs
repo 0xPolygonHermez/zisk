@@ -177,8 +177,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // Pad remaining rows with the last valid row.
         // In padding row must be clear of registers access, if not need to calculate previous
         // register step and range check contribution.
-        let last_row =
-            Self::pad_trailing_rows(&mut main_trace.buffer, bounded_filled_rows, NUM_ROWS);
+        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = if start_idx > 0 {
