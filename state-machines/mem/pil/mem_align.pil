@@ -139,7 +139,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     expr delta_pc;
     col witness bits(64, signed) delta_addr;
     delta_pc = pc' - pc;
-    delta_addr === (addr - 'addr) * (1 - reset);
+    delta_addr <== (addr - 'addr) * (1 - reset);
     lookup_assumes(MEMORY_ALIGN_ROM_ID, [pc, delta_pc, delta_addr, offset, width, flags]);
 
     // 2] Assume aligned memory accesses against the Memory component

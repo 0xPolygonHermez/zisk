@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ziskos.workspace = true
+ruint.workspace = true
 
 [features]
 # Force the u256 wrappers to use the ruint fallback even when targeting zisk

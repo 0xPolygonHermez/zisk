@@ -12,9 +12,10 @@ zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, features = ["parallel"] }
 proofman = { workspace = true }
 fields = { workspace = true }
+clap = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

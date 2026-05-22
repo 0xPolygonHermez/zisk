@@ -20,6 +20,19 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Extract all relevant sections from the ELF file
     let payloads: Vec<ElfPayload> =
         vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload_from_bytes(elf)?];
+
+    // Without `ziskos::entrypoint!(main);` the linker can't resolve `_start`
+    // to the ziskos boot thunk and emits `e_entry = 0`, which would crash the
+    // emulator at PC=0 with a confusing out-of-rom error. Looking up a `main`
+    // symbol is not a reliable signal: release-mode LTO inlines `main` into
+    // `_zisk_main` and strips it from the symbol table.
+    if payloads[1].entry_point == 0 {
+        return Err("Guest ELF has no entry point (e_entry=0x0). \
+                    Declare `#![no_main]` and `ziskos::entrypoint!(main);` \
+                    at the guest program root."
+            .into());
+    }
+
     // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
     let dma_addrs = get_dma_symbol_addresses(elf);
 

@@ -29,6 +29,7 @@ pub const ELF_DIAGNOSTIC: GuestProgram = load_program!("diagnostic");
 pub const ELF_FIB_MOD: GuestProgram = load_program!("fib_mod");
 pub const ELF_KECCAK: GuestProgram = load_program!("keccak");
 pub const ELF_LIVENESS: GuestProgram = load_program!("liveness");
+pub const ELF_MISSING_ENTRYPOINT: GuestProgram = load_program!("missing_entrypoint");
 pub const ELF_MODEXP: GuestProgram = load_program!("modexp");
 pub const ELF_PANIC_MODES: GuestProgram = load_program!("panic_modes");
 pub const ELF_POSEIDON2: GuestProgram = load_program!("poseidon2");

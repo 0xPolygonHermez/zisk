@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -104,7 +104,13 @@ impl ZiskStdin {
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, self.inner.data.lock().unwrap().as_slice())?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create parent directory {}", parent.display())
+            })?;
+        }
+        std::fs::write(path, self.inner.data.lock().unwrap().as_slice())
+            .with_context(|| format!("failed to write stdin to {}", path.display()))?;
         Ok(())
     }
 

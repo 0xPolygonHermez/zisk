@@ -149,7 +149,7 @@ impl GuestProgram {
         // Stored in a variable so it lives until after process_rom returns.
         let _tmp_elf;
         if let Some(mode) = profiling {
-            mode.apply(&mut options);
+            options.apply_profiling(mode);
             let tmp_path =
                 std::env::temp_dir().join(format!("zisk_elf_{}.elf", self.program_id.hash_id));
             if std::fs::write(&tmp_path, self.elf()).is_ok() {
