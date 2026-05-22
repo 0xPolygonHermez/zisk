@@ -6,7 +6,7 @@
 //! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` + `BuiltinCollectors` live in [`builtins`].
 //! * **Precompiles** — declarative registry in [`precompiles`]; emits
 //!   `Precompiles<F>` + `PrecompileCounters<F>` + `PrecompileCollectors<F>` via the
-//! `register_precompiles!` macro defined in [`registry`].
+//!   `register_precompiles!` macro defined in [`register_precompiles`].
 //! * **Bus construction** — `StaticDataBus::from_bundle` /
 //!   `StaticDataBusCollect::for_chunk` consume a bundle to build the per-phase data buses.
 //! * **Canonical entry point** — `ZiskExecutor::new` in `executor.rs`.
@@ -14,7 +14,7 @@
 mod builtins;
 mod precompiles;
 // `register_precompiles!` macro module; exported via `#[macro_export]`.
-mod registry;
+mod register_precompiles;
 
 pub use builtins::*;
 pub use precompiles::*;

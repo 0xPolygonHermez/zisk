@@ -348,7 +348,7 @@ fn downcast<'a, F: PrimeField64, T: 'static>(
 
 #[inline]
 fn check_not_duplicated<T>(existing: Option<T>, kind: &'static str) -> ExecutorResult<()> {
-    if let Some(_) = existing {
+    if existing.is_some() {
         Err(ExecutorError::BundleComponentDuplicate { kind })
     } else {
         Ok(())
