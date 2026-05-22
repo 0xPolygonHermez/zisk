@@ -1560,7 +1560,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!("\tjnz pc_{:x}_a_address_not_aligned\n", ctx.pc);
                         Self::a_src_mem_aligned(ctx, code);
-                        *unusual_code += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_a_address_not_aligned:\n", ctx.pc);
                         Self::a_src_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
                     }
@@ -1606,7 +1606,7 @@ impl ZiskRom2Asm {
                             reg_to_store_value_desc,
                             0,
                         );
-                        *unusual_code += &format!("pc_{:x}_a_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_a_address_not_aligned:\n", ctx.pc);
                         Self::chunk_player_a_src_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_a_address_check_done\n", ctx.pc);
                     }
@@ -1935,7 +1935,7 @@ impl ZiskRom2Asm {
                         );
                         *code += &format!("\tjnz pc_{:x}_b_address_not_aligned\n", ctx.pc);
                         Self::b_src_mem_aligned(ctx, code);
-                        *unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_b_address_not_aligned:\n", ctx.pc);
                         Self::b_src_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
                     }
@@ -1982,7 +1982,7 @@ impl ZiskRom2Asm {
                             reg_to_store_value_desc,
                             1,
                         );
-                        *unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_b_address_not_aligned:\n", ctx.pc);
                         Self::chunk_player_b_src_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_b_address_check_done\n", ctx.pc);
                     }
@@ -2205,7 +2205,7 @@ impl ZiskRom2Asm {
 
                             // b memory address is not aligned
 
-                            *unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                            *unusual_code += &format!("\npc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                             // Calculate previous aligned address
                             *unusual_code += &format!(
@@ -2332,7 +2332,8 @@ impl ZiskRom2Asm {
                             // Different address
                             ////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_b_ind_different_address:\n", ctx.pc);
 
                             // Read mem[next_address] from REG_AUX (which now holds next_aligned)
                             *unusual_code += &format!(
@@ -2445,7 +2446,7 @@ impl ZiskRom2Asm {
                             // b memory address is not aligned
                             //////////////////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                            *unusual_code += &format!("\npc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                             Self::chunk_player_b_src_mem_not_aligned(ctx, unusual_code);
 
@@ -2576,7 +2577,8 @@ impl ZiskRom2Asm {
                             // Different address
                             ////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_b_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_b_ind_different_address:\n", ctx.pc);
 
                             // Get bits to shift
                             *unusual_code += &format!(
@@ -2658,7 +2660,7 @@ impl ZiskRom2Asm {
                             // b memory address is not aligned
                             //////////////////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_b_address_not_aligned:\n", ctx.pc);
+                            *unusual_code += &format!("\npc_{:x}_b_address_not_aligned:\n", ctx.pc);
 
                             // Read value from memory
                             *unusual_code += &format!(
@@ -3679,8 +3681,10 @@ impl ZiskRom2Asm {
                 Self::set_pc(ctx, instruction, code, "nz", rom);
             } else {
                 *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
-                *unusual_code += &format!("pc_{:x}_step_zero:\n", ctx.pc);
+                *unusual_code += &format!("\npc_{:x}_step_zero:\n", ctx.pc);
                 Self::set_pc(ctx, instruction, unusual_code, "z", rom);
+                // Store the value of jump_to_dynamic_pc before setting calling set_pc again
+                let jump_to_dynamic_pc = ctx.jump_to_dynamic_pc;
                 *unusual_code += "\tcall chunk_end_and_start\n";
                 *unusual_code += &format!(
                     "\tmov {}, {} {}\n",
@@ -3696,6 +3700,10 @@ impl ZiskRom2Asm {
                 *unusual_code += "\tjae emu_end\n";
                 *unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
                 Self::set_pc(ctx, instruction, code, "nz", rom);
+                // Restore, if needed, the value of jump_to_dynamic_pc after calling set_pc
+                if jump_to_dynamic_pc {
+                    ctx.jump_to_dynamic_pc = true;
+                }
                 *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
             }
         }
@@ -7623,8 +7631,11 @@ impl ZiskRom2Asm {
                 );
                 // Check if target address exists in ROM before generating static jump
                 if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
-                    ctx.jump_to_static_pc =
-                        format!("\tjmp pc_{:x} {}\n", new_pc, ctx.comment_str("jump to static pc"));
+                    ctx.jump_to_static_pc = format!(
+                        "\tjmp pc_{:x} {}\n",
+                        new_pc,
+                        ctx.comment_str("jump to static pc c=const")
+                    );
                 } else {
                     ctx.jump_to_dynamic_pc = true;
                 }
@@ -7659,7 +7670,7 @@ impl ZiskRom2Asm {
                     ctx.jump_to_static_pc = format!(
                         "\tjmp pc_{:x} {}\n",
                         new_pc,
-                        ctx.comment_str("jump to pc+offset2")
+                        ctx.comment_str("jump to pc+offset2 flag=0 always")
                     );
                 } else {
                     ctx.jump_to_dynamic_pc = true;
@@ -7686,7 +7697,7 @@ impl ZiskRom2Asm {
                     ctx.jump_to_static_pc = format!(
                         "\tjmp pc_{:x} {}\n",
                         new_pc,
-                        ctx.comment_str("jump to pc+offset1")
+                        ctx.comment_str("jump to pc+offset1 flag=1 always")
                     );
                 } else {
                     ctx.jump_to_dynamic_pc = true;
@@ -7711,11 +7722,16 @@ impl ZiskRom2Asm {
                 (ctx.pc as i64 + instruction.jmp_offset1) as u64,
                 ctx.comment_str("pc += i.jmp_offset1")
             );
-            *code += &format!(
-                "\tjmp pc_{:x} {}\n",
-                (ctx.pc as i64 + instruction.jmp_offset1) as u64,
-                ctx.comment_str("jump to static pc")
-            );
+            if id == "nz" {
+                *code += &format!(
+                    "\tjmp pc_{:x} {}\n",
+                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                    ctx.comment_str("jump to static pc flag=1")
+                );
+            }
+            if id == "z" {
+                *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
+            }
 
             // Calculate the new pc if flag == 0
             *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
@@ -7725,11 +7741,17 @@ impl ZiskRom2Asm {
                 (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                 ctx.comment_str("pc += i.jmp_offset2")
             );
-            *code += &format!(
-                "\tjmp pc_{:x} {}\n",
-                (ctx.pc as i64 + instruction.jmp_offset2) as u64,
-                ctx.comment_str("jump to static pc")
-            );
+            if id == "nz" {
+                *code += &format!(
+                    "\tjmp pc_{:x} {}\n",
+                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                    ctx.comment_str("jump to static pc flag=0")
+                );
+            }
+            if id == "z" {
+                *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+                ctx.jump_to_dynamic_pc = true;
+            }
         }
     }
 
