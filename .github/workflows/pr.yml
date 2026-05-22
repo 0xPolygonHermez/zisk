@@ -67,6 +67,47 @@ jobs:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+  zisk-contracts:
+    name: Hardhat tests (zisk-contracts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build cargo-zisk
+        run: cargo build --release -p cargo-zisk --bin cargo-zisk
+
+      - name: Generate Solidity calldata fixture
+        working-directory: zisk-contracts
+        run: ../target/release/cargo-zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+
+      - name: Install JS dependencies
+        working-directory: zisk-contracts
+        run: npm install --no-audit --no-fund
+
+      - name: Run Hardhat test
+        working-directory: zisk-contracts
+        env:
+          ZISK_SOLIDITY_FIXTURE: fixtures/fixture.json
+        run: npx hardhat test
+
   build-riscv64im:
     name: Build ziskos-staticlib (riscv64im-unknown-none-elf)
     runs-on: ubuntu-latest
