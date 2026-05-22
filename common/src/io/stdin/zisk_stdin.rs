@@ -104,6 +104,9 @@ impl ZiskStdin {
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(path, self.inner.data.lock().unwrap().as_slice())?;
         Ok(())
     }

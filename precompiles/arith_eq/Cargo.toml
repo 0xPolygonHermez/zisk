@@ -41,6 +41,7 @@ zisk-pil = { workspace = true }
 precompiles-common = { workspace = true }
 precompiles-helpers = { workspace = true }
 zisk-common = { workspace = true }
+ziskemu = { workspace = true }
 lib-c = { workspace = true }
 
 proofman-common = { workspace = true }
