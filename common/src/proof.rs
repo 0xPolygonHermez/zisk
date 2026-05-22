@@ -123,7 +123,9 @@ impl PlonkVkey {
         let path = path.as_ref();
 
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create parent directory {}", parent.display())
+            })?;
         }
 
         let file = File::create(path).with_context(|| {
@@ -501,7 +503,9 @@ impl Proof {
         let path = path.as_ref();
 
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create parent directory {}", parent.display())
+            })?;
         }
 
         let mut file = File::create(path).with_context(|| {
