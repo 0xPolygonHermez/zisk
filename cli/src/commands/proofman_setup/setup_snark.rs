@@ -15,8 +15,8 @@ pub struct ZiskProofmanSetupSnark {
     #[arg(long)]
     pub powers_of_tau: Option<String>,
 
-    /// Final SNARK type: fflonk (default) or plonk
-    #[arg(long, default_value = "fflonk")]
+    /// Final SNARK type: plonk (default) or fflonk
+    #[arg(long, default_value = "plonk")]
     pub final_snark: String,
 
     /// Path to publics hash info JSON (optional)
