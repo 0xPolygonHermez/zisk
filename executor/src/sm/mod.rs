@@ -1,18 +1,14 @@
-//! Bundle types — `StateMachines<F>` wrapper enum + `StaticSMBundle<F>`
-//! registry.
+//! Bundle types — `StateMachines<F>` wrapper enum + `StaticSMBundle<F>` registry.
 //!
 //! The bundle holds every state machine the executor exposes, both
 //! built-in and precompile, indexed by Vec position. Per-side details:
 //!
-//! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` +
-//!   `BuiltinCollectors` live in [`builtins`].
+//! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` + `BuiltinCollectors` live in [`builtins`].
 //! * **Precompiles** — declarative registry in [`precompiles`]; emits
-//!   `Precompiles<F>` + `PrecompileCounters<F>` +
-//!   `PrecompileCollectors<F>` via the `register_precompiles!` macro
-//!   defined in [`registry`].
+//!   `Precompiles<F>` + `PrecompileCounters<F>` + `PrecompileCollectors<F>` via the
+//! `register_precompiles!` macro defined in [`registry`].
 //! * **Bus construction** — `StaticDataBus::from_bundle` /
-//!   `StaticDataBusCollect::for_chunk` consume a bundle to build the
-//!   per-phase data buses.
+//!   `StaticDataBusCollect::for_chunk` consume a bundle to build the per-phase data buses.
 //! * **Canonical entry point** — `ZiskExecutor::new` in `executor.rs`.
 
 mod builtins;
@@ -68,29 +64,19 @@ impl<F: PrimeField64> StateMachines<F> {
 }
 
 pub struct StaticSMBundle<F: PrimeField64> {
-    // Vec position is the SM's identity inside the bundle. External APIs
-    // that need a usize key (`CountersChunkMetrics`, planning map) use
-    // this position. Iteration order is insertion order.
+    /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
 
-    /// Cached Vec position of the `RomSM` entry. ROM has no bus-side
-    /// counter (`Planner::plan` is dead-coded for it); `plan_sec` looks
-    /// up this position and feeds chunk_ids straight to
-    /// [`sm_rom::RomPlanner::plan_for_chunks`].
+    /// Cached Vec position of the `RomSM` entry.
     rom_position: usize,
 
-    /// Cached Vec position of the `MemSM` entry. Looked up at construction
-    /// so `extend_mem_plans` doesn't have to scan or hardcode a number.
+    /// Cached Vec position of the `MemSM` entry.
     mem_position: usize,
 
-    /// `true` when the bundle was built for the ASM emulator path
-    /// (memory ops accounted out-of-band; ROM histogram via the RH service).
-    /// Set once in [`Self::new`] from the `is_asm_emulator` argument;
-    /// surfaces the value already threaded through `BuiltinSMs::all` so
-    /// callers can read it via [`Self::is_asm`] instead of plumbing the
-    /// same bool through every per-call API.
+    /// `true` when the bundle was built for the ASM emulator.
     is_asm: bool,
 
+    /// The standard library instance to be shared across built-in SMs and precompiles.
     std: Arc<Std<F>>,
 }
 
@@ -106,7 +92,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
             .chain(precompiles.into_iter().map(|(air_id, p)| {
-                (vec![(ZISK_AIRGROUP_ID, air_id)], StateMachines::Precompile(p))
+                (
+                    std::borrow::Cow::Owned(vec![(ZISK_AIRGROUP_ID, air_id)]),
+                    StateMachines::Precompile(p),
+                )
             }))
             .collect();
 
@@ -123,25 +112,18 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Self { sm, rom_position, mem_position, is_asm: is_asm_emulator, std }
     }
 
-    /// Returns `true` if the bundle was constructed for the ASM emulator
-    /// path. Mirrors the `is_asm_emulator` argument passed to [`Self::new`].
-    ///
-    /// Used to remove the redundant `is_asm_emulator` parameter from
-    /// non-hot-path APIs (`plan_sec`, `build_planner`, `from_bundle`) in
-    /// later steps; the hot-path `StaticDataBus::from_bundle` keeps its
-    /// explicit `bool` argument to avoid any codegen change.
+    /// Returns `true` if the bundle was constructed for the ASM emulator path.
     #[inline]
     pub fn is_asm(&self) -> bool {
         self.is_asm
     }
 
-    /// Read-only view of all registered SMs in insertion order. Used
-    /// by the bus-side wrapper structs (`BuiltinCounters::from_bundle`,
-    /// etc.) to iterate without naming any specific precompile type.
+    /// Read-only view of all registered SMs in insertion order.
     pub fn entries(&self) -> &[SMType<F>] {
         &self.sm
     }
 
+    /// Sets the ROM for the `RomSM` in the bundle.
     pub fn set_rom(&self, zisk_rom: Arc<ZiskRom>) -> ExecutorResult<()> {
         for (_, sm) in self.sm.iter() {
             if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
@@ -151,6 +133,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
+    /// Sets the RH data for the `RomSM` in the bundle.
     pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
         for (_, sm) in self.sm.iter() {
             if let StateMachines::Builtin(BuiltinSMs::RomSM(rom_sm)) = sm {
@@ -161,17 +144,17 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
+    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
     pub fn get_std(&self) -> Arc<Std<F>> {
         self.std.clone()
     }
 
-    /// Routes a batch of `MemSM`-flavored plans into the planning map under
-    /// the `MemSM` bucket. Used by the asm-emulator path where memory plans
-    /// arrive separately from the regular planner and need to be merged.
+    /// Extend the plans for the `MemSM` in the bundle with the given `plans`.
     pub fn extend_mem_plans(&self, planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
         planning.entry(self.mem_position).or_default().extend(plans);
     }
 
+    /// Extend the plans for the secondary SMs in the bundle with the given `plans`.
     pub fn plan_sec(
         &self,
         vec_counters: &mut crate::CountersChunkMetrics,
@@ -198,6 +181,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         plans
     }
 
+    /// Configure the instances of the SMs in the bundle for the given plans.
     pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
             if let Some(plans) = plannings.get(&pos) {
@@ -206,6 +190,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         }
     }
 
+    /// Builds an instance of the SM in the bundle matching the given `InstanceCtx`.
     pub fn build_instance(&self, ictx: InstanceCtx) -> ExecutorResult<Box<dyn Instance<F>>> {
         let airgroup_id = ictx.plan.airgroup_id;
         let air_id = ictx.plan.air_id;

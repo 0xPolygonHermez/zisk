@@ -329,8 +329,7 @@ mod tests {
     #[test]
     fn plan_main_single_full_trace_yields_one_plan() {
         // chunk_size == NUM_ROWS → num_within = 1, so 1 trace = 1 segment.
-        let plans =
-            PlanPhase::<F>::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
+        let plans = PlanPhase::<F>::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plans[0].air_id, MAIN_AIR_IDS[0]);

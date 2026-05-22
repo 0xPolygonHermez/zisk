@@ -28,7 +28,9 @@ use std::{
     time::Instant,
 };
 use tracing::error;
-use zisk_common::{CheckPoint, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats};
+use zisk_common::{
+    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
@@ -265,7 +267,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                         &self.sm_bundle,
                         pctx,
                         &secn_instances,
-                        chunk_id,
+                        ChunkId(chunk_id),
                         global_idxs,
                     )
                     .map(Some)

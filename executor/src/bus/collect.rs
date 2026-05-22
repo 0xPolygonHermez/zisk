@@ -16,6 +16,7 @@ use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
 use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
+use zisk_common::ChunkId;
 use zisk_common::{
     BusDevice, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };
@@ -91,11 +92,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         bundle: &StaticSMBundle<F>,
         pctx: &ProofCtx<F>,
         instances: &HashMap<usize, &dyn Instance<F>>,
-        chunk_id: usize,
+        chunk_id: ChunkId,
         global_idxs: &[usize],
     ) -> ExecutorResult<Self> {
-        let mut builtins = BuiltinCollectors::start_chunk(bundle)?;
-        let mut precompiles = PrecompileCollectors::start_chunk(bundle)?;
+        let mut builtins = BuiltinCollectors::new(bundle)?;
+        let mut precompiles = PrecompileCollectors::new(bundle)?;
 
         for global_idx in global_idxs {
             let global_id = *global_idx;

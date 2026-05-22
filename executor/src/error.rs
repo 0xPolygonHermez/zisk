@@ -1,12 +1,4 @@
 //! Crate-level error type for the executor.
-//!
-//! [`ExecutorError`] is the crate's unified error enum. Each fallible
-//! subsystem contributes its own variants; the in-crate code uses
-//! [`ExecutorResult`] end-to-end, with explicit conversion to
-//! `anyhow::Result` or `ProofmanResult` only at the two external seams
-//! (asm-runner callbacks via [`Self::asm_backend`], and the
-//! [`proofman::WitnessComponent`] trait via stringification into
-//! `ProofmanError::InvalidSetup` in `executor.rs`).
 
 use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -18,8 +10,7 @@ use thiserror::Error;
 /// will grow as other phases adopt typed errors.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
-    /// The `global_id` referenced by the chunk's plan is missing from
-    /// the supplied `instances` map.
+    /// The `global_id` referenced by the chunk's plan is missing from the supplied `instances` map.
     #[error("instance not found for global_id={global_id}")]
     InstanceNotFound {
         /// The missing global instance id.
@@ -46,12 +37,18 @@ pub enum ExecutorError {
         air_id: usize,
     },
 
-    /// A required input generator is missing from the bundle when
-    /// building the per-chunk `BuiltinCollectors` /
-    /// `PrecompileCollectors`. Bundle-construction invariant violation.
-    #[error("input generator not found: {kind}")]
-    InputGeneratorNotFound {
-        /// The state-machine / precompile whose input generator is missing.
+    /// An expected built-in SM or precompile is missing from the bundle.
+    #[error("bundle component missing: {kind}")]
+    BundleComponentMissing {
+        /// The built-in / precompile whose counter or input generator could not be found.
+        kind: &'static str,
+    },
+
+    /// An expected built-in SM or precompile is duplicated in the bundle.
+    #[error("bundle component duplicated: {kind}")]
+    BundleComponentDuplicate {
+        /// The built-in / precompile whose counter or input generator
+        /// was found more than once while walking the bundle.
         kind: &'static str,
     },
 
@@ -70,22 +67,18 @@ pub enum ExecutorError {
         expected: &'static str,
     },
 
-    /// The parsed ZisK ROM has not been installed yet via
-    /// `ZiskExecutor::set_rom`.
+    /// The parsed ZisK ROM has not been installed yet via `ZiskExecutor::set_rom`.
     #[error("ROM not initialized")]
     RomNotInitialized,
 
-    /// A plan keyed by `global_id` is missing during the assignment or
-    /// populate phase of secondary instance handling — invariant
-    /// violation.
+    /// A plan keyed by `global_id` is missing during the assignment or populate phase of secondary instance handling.
     #[error("secn plan missing global_id during {phase}")]
     SecnPlanMissing {
         /// The phase that detected the mismatch ("assignment", "populate").
         phase: &'static str,
     },
 
-    /// A `global_id` we expected to be in an in-memory index built
-    /// earlier in the same pipeline is missing — invariant violation.
+    /// A `global_id` we expected to be in an in-memory index built earlier in the same pipeline is missing.
     #[error("invariant violation: global_id {global_id} not in {index}")]
     MissingIndexEntry {
         /// The global instance id that was missing.
@@ -94,12 +87,11 @@ pub enum ExecutorError {
         index: &'static str,
     },
 
-    /// Forwarded error from `proofman-common` (pctx / dctx / setup
-    /// operations). Implements `From<ProofmanError>` so `?` auto-converts.
+    /// Forwarded error from `proofman-common`.
     #[error(transparent)]
     Proofman(#[from] ProofmanError),
 
-    /// Forwarded error from `sm-main` (main planner / witness).
+    /// Forwarded error from `sm-main`.
     #[error(transparent)]
     MainSm(#[from] sm_main::MainSmError),
 
@@ -111,15 +103,11 @@ pub enum ExecutorError {
     #[error(transparent)]
     Emulator(#[from] ziskemu::ZiskEmulatorErr),
 
-    /// The minimal-trace buffer in `ExecutionState` has not been
-    /// populated yet — `ExecutionPhase::run` must precede any phase
-    /// that reads it.
+    /// The minimal-trace buffer in `ExecutionState` has not been populated yet.
     #[error("min_traces not set")]
     MinTracesNotSet,
 
-    /// Internal invariant violation — typically a missing key in an
-    /// in-memory index built earlier in the same pipeline. If this
-    /// fires, the pipeline has a bug.
+    /// Internal invariant violation.
     #[error("internal invariant violation: {0}")]
     Internal(String),
 
@@ -128,34 +116,29 @@ pub enum ExecutorError {
     #[error("AsmResources not initialized")]
     AsmResourcesNotInitialized,
 
-    /// A hints-only operation was invoked on a program that wasn't
-    /// set up with the hints pipeline (no `HintsShmem` mapped).
+    /// A hints-only operation was invoked on a program that wasn't set up with the hints pipeline.
     #[error("program was not set up with hints")]
     HintsNotConfigured,
 
-    /// A `Mutex`/`RwLock` we hold internally was poisoned by a panic
-    /// in another thread. `name` identifies the lock for diagnosis.
+    /// A `Mutex`/`RwLock` we hold internally was poisoned by a panic in another thread.
     #[error("mutex poisoned: {name}")]
     MutexPoisoned {
         /// Static identifier of the lock that was poisoned.
         name: &'static str,
     },
 
-    /// An `Arc` we tried to unwrap still had additional owners after
-    /// the scope that produced it ended — invariant violation.
+    /// An `Arc` we tried to unwrap still had additional owners.
     #[error("arc still has multiple owners after scope: {what}")]
     ArcStillReferenced {
         /// Description of the value that was still shared.
         what: &'static str,
     },
 
-    /// Catch-all for failures bubbling up from the external ASM
-    /// backend (asm-runner / shmem / precompiles-hints).
+    /// Catch-all for failures bubbling up from the external ASM backend.
     #[error("ASM backend operation failed: {0}")]
     AsmBackend(String),
 
-    /// An ASM runner thread's `JoinHandle` was already consumed by a
-    /// previous `await_*` call.
+    /// An ASM runner thread's `JoinHandle` was already consumed by a previous `await_*` call.
     #[error("{name} runner handle already consumed")]
     RunnerHandleConsumed {
         /// Short label for the runner (e.g. "MO", "RH").
@@ -169,8 +152,7 @@ pub enum ExecutorError {
         name: &'static str,
     },
 
-    /// An ASM runner thread returned an error from its body. `message`
-    /// is the stringified inner error chain.
+    /// An ASM runner thread returned an error from its body.
     #[error("{name} runner failed: {message}")]
     RunnerFailed {
         /// Short label for the runner (e.g. "MO", "RH").
@@ -180,8 +162,6 @@ pub enum ExecutorError {
     },
 
     /// Aggregated failure across one or more MT-assembly chunks.
-    /// `count` is the number of failures; `message` is the
-    /// newline-joined `Display` chain of each one.
     #[error("MT assembly chunk processing failed ({count} errors):\n{message}")]
     MtChunkProcessing {
         /// Number of chunk failures aggregated into `message`.
@@ -214,10 +194,7 @@ impl ExecutorError {
     }
 }
 
-/// Extension trait for `Mutex<T>` that converts poison errors into
-/// [`ExecutorError::MutexPoisoned`]. Replaces the boilerplate
-/// `.lock_or_poison("name")` with
-/// `.lock_or_poison("name")`.
+/// Extension trait for `Mutex<T>` that converts poison errors into [`ExecutorError::MutexPoisoned`].
 pub trait MutexExt<T> {
     /// Acquire the lock or return a typed poison error.
     fn lock_or_poison(&self, name: &'static str) -> ExecutorResult<MutexGuard<'_, T>>;
@@ -230,10 +207,7 @@ impl<T> MutexExt<T> for Mutex<T> {
     }
 }
 
-/// Extension trait for `RwLock<T>` that converts poison errors into
-/// [`ExecutorError::MutexPoisoned`]. Replaces the boilerplate
-/// `.read().map_err(|_| …)` / `.write().map_err(|_| …)` with
-/// `.read_or_poison("name")` / `.write_or_poison("name")`.
+/// Extension trait for `RwLock<T>` that converts poison errors into [`ExecutorError::MutexPoisoned`].
 pub trait RwLockExt<T> {
     /// Acquire the read lock or return a typed poison error.
     fn read_or_poison(&self, name: &'static str) -> ExecutorResult<RwLockReadGuard<'_, T>>;

@@ -46,7 +46,7 @@
 ///    `dispatch_op` (counter-phase bus arm) + `into_device_entries`.
 /// 3. `struct PrecompileCollectors<F>` (per-variant `Vec<(usize,
 ///    ${Name}Collector)>` + `${Name}CounterInputGen<F>` input gen) +
-///    `start_chunk` + `try_push_collector` + `dispatch_op` (collect-phase
+///    `new` + `try_push_collector` + `dispatch_op` (collect-phase
 ///    bus arm) + `into_device_entries`.
 ///
 /// Identity inside the bundle is the variant's *position* in the
@@ -186,7 +186,7 @@ macro_rules! register_precompiles {
                     ::std::result::Result::Ok(Self {
                         $(
                             [<$variant:snake>]: [<$variant:snake>].ok_or(
-                                $crate::error::ExecutorError::InputGeneratorNotFound {
+                                $crate::error::ExecutorError::BundleComponentMissing {
                                     kind: stringify!($variant),
                                 }
                             )?,
@@ -284,7 +284,7 @@ macro_rules! register_precompiles {
                 /// input generator. Collector vecs start empty —
                 /// populated by `try_push_collector` once per
                 /// global_idx in the chunk.
-                pub fn start_chunk(
+                pub fn new(
                     bundle: &$crate::StaticSMBundle<F>,
                 ) -> $crate::error::ExecutorResult<Self> {
                     $( let mut [<$variant:snake _inputs_generator>] = ::std::option::Option::None; )*
@@ -309,7 +309,7 @@ macro_rules! register_precompiles {
                             [<$variant:snake _collector>]: ::std::vec::Vec::new(),
                             [<$variant:snake _inputs_generator>]:
                                 [<$variant:snake _inputs_generator>].ok_or(
-                                    $crate::error::ExecutorError::InputGeneratorNotFound {
+                                    $crate::error::ExecutorError::BundleComponentMissing {
                                         kind: stringify!($variant),
                                     }
                                 )?,
@@ -333,7 +333,7 @@ macro_rules! register_precompiles {
                     &mut self,
                     air_id: ::std::primitive::usize,
                     secn_instance: &dyn ::zisk_common::Instance<F>,
-                    chunk_id: ::std::primitive::usize,
+                    chunk_id: ::zisk_common::ChunkId,
                     global_idx: ::std::primitive::usize,
                 ) -> $crate::error::ExecutorResult<::std::primitive::bool> {
                     $(
@@ -351,7 +351,7 @@ macro_rules! register_precompiles {
                             self.[<$variant:snake _collector>].push((
                                 global_idx,
                                 inst.[<build_ $variant:snake _collector>](
-                                    ::zisk_common::ChunkId(chunk_id),
+                                    chunk_id,
                                 ),
                             ));
                             return ::std::result::Result::Ok(true);

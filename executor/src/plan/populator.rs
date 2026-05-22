@@ -132,7 +132,7 @@ impl<F: PrimeField64> InstancePopulator<F> {
     /// * `registry` - Proof-context surface for instance-info lookup and chunk assignment.
     /// * `state` - Execution state containing the instances.
     /// * `global_ids` - Global IDs of secondary instances to configure.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if any instance is missing from state or if any registry lookup fails.
     pub fn configure_checkpoints(
