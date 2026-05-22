@@ -1,51 +1,29 @@
-//! [`ChunkCollectorStore`] — per-instance chunk
-//! collector map, written during the witness phase by rayon worker
-//! threads.
-//!
-//! Splitting this out of [`crate::ExecutionState`] is the
-//! `ChunkCollectorStore` half of step 3.4: the genuinely
-//! lock-contested storage lives behind a clearly-named type, separate
-//! from the *write-once* [`crate::InstanceSet`] populated by
-//! `MaterializePhase`.
-//!
-//! The contained `Arc<RwLock<HashMap<...>>>` is intentionally exposed
-//! as a public field so the `ChunkDataCollector` rayon scope can
-//! clone it; this is the one place in the executor where a deliberate
-//! shared-mutable hot-path-adjacent lock lives, and the type's name
-//! is the contract.
-
+//! [`ChunkCollectorStore`] — per-instance chunk collector map.
 use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use crate::state::ChunkCollector;
 
-/// Map of `global_id → per-chunk collector vector`. Wrapped in an
-/// `Arc<RwLock<...>>` so the rayon scope inside the executor's chunk
-/// data collector can clone the handle and have multiple worker
-/// threads write to it concurrently.
+/// Map of `global_id → per-chunk collector vector`.
 pub struct ChunkCollectorStore {
-    /// Backing map. Public because the rayon scope clones the `Arc`
-    /// into worker tasks; encapsulating it further would require
-    /// per-call wrappers without changing the hot-path semantics.
+    /// Backing map.
     pub inner: Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>,
 }
 
 impl ChunkCollectorStore {
-    /// Construct an empty store. Worker threads populate it during
-    /// `calculate_witness`.
+    /// Construct an empty store.
     pub fn new() -> Self {
         Self { inner: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     /// Drop every recorded collector. Called by
-    /// [`crate::ExecutionState::reset`] between executions.
+    /// [`crate::ExecutionState::reset`] between executions so the
+    /// next proof starts from a clean slate.
     pub fn reset(&self) {
         self.inner.write().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
-    /// Returns `true` when no collectors are recorded. Useful as a
-    /// post-`PlanPhase` assertion (collectors only fill during the
-    /// subsequent witness phase).
+    /// Returns `true` when no collectors are recorded.
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.inner.read().map(|g| g.is_empty()).unwrap_or(true)

@@ -1,18 +1,4 @@
-//! [`InstanceSet`] — populated main + secondary state-machine instance
-//! maps, owned by [`crate::ExecutionState`] between
-//! `WitnessComponent::execute` and `WitnessComponent::calculate_witness`.
-//!
-//! Conceptually the maps are *write-once-then-read*: `MaterializePhase`
-//! fills them in `execute`, the witness side reads them in
-//! `calculate_witness`. Each map is still wrapped in an `RwLock`
-//! because trait-object instances may carry interior mutability, and
-//! the witness phase reads from rayon worker threads.
-//!
-//! Splitting this struct out of [`crate::ExecutionState`] is the
-//! `InstanceSet` half of step 3.4: the *immutable-after-materialization*
-//! data lives behind a clearly-named type, separate from the
-//! lock-protected [`crate::ChunkCollectorStore`] that fills during the
-//! witness phase.
+//! [`InstanceSet`] — populated main + secondary state-machine instance maps.
 
 use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock};
@@ -22,10 +8,6 @@ use sm_main::MainInstance;
 use zisk_common::Instance;
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
-///
-/// The two `HashMap`s sit behind `RwLock`s so the witness side can
-/// read concurrently while the materialize side held a write guard
-/// briefly to install them.
 pub struct InstanceSet<F: PrimeField64> {
     /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
@@ -35,8 +17,7 @@ pub struct InstanceSet<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> InstanceSet<F> {
-    /// Construct an empty set. Filled by `MaterializePhase` during
-    /// `execute`.
+    /// Construct an empty set.
     pub fn new() -> Self {
         Self {
             main_instances: RwLock::new(HashMap::new()),
