@@ -14,6 +14,7 @@ use core::{
     ptr::NonNull,
 };
 
+#[allow(dead_code)]
 /// Size of the per-call scratch arena (2 MiB).
 pub const SCRATCH_SIZE: usize = 2 * 1024 * 1024;
 
@@ -38,12 +39,14 @@ static mut SCRATCH_POS: usize = 0;
 /// On host builds the struct still exists so that call sites compile without
 /// any `#[cfg]` guards; its `reset` method is a no-op.
 #[derive(Copy, Clone)]
+#[allow(dead_code)]
 pub struct BumpScratch;
 
 /// Reset the scratch arena to the start of the static backing buffer.
 ///
 /// Delegates to `BumpScratch::reset`.  Exists to preserve the call-site
 /// convention in `_zisk_main`; on non-guest builds this is a no-op.
+#[allow(dead_code)]
 pub unsafe fn init_scratch() {
     BumpScratch::reset();
 }
@@ -55,6 +58,7 @@ impl BumpScratch {
     ///
     /// On non-guest builds this is a no-op.
     #[inline(always)]
+    #[allow(dead_code)]
     pub fn reset() {
         #[cfg(zisk_guest)]
         // SAFETY: single-threaded guest — no concurrent access.
