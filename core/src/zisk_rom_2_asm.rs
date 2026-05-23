@@ -7769,12 +7769,8 @@ impl ZiskRom2Asm {
         );
         *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
         *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-        *code += &format!(
-            "\tsub {}, {} {}\n",
-            REG_PC,
-            REG_ADDRESS,
-            ctx.comment_str(&format!("pc -= ROM_ADDR"))
-        );
+        *code +=
+            &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= ROM_ADDR"));
         *code += &format!(
             "\tlea {}, [map_pc_{:x}] {}\n",
             REG_ADDRESS,
