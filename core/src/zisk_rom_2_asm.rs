@@ -127,9 +127,6 @@ pub struct ZiskAsmContext {
     address_is_constant: bool,   // true if address is a constant value
     address_constant_value: u64, // address constant value, only valid if address_is_constant==true
 
-    // This is the address of the entrypoint.
-    min_program_pc: u64,
-
     // Force in which register a or b must be stored
     store_a_in_c: bool,
     store_a_in_a: bool,
@@ -533,7 +530,6 @@ impl ZiskRom2Asm {
             comments,
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
-            min_program_pc: rom.min_program_pc,
             precompile_results,
             ..Default::default()
         };
@@ -1170,7 +1166,9 @@ impl ZiskRom2Asm {
             //   4N + 3
             // 4(N+1)
 
-            // If not in chunk player mode, we can skip all odd, internal addresses
+            // If not in chunk player mode, we can skip all odd, internal addresses, since you
+            // cannot jump to them.  In chunk player mode, you might have to jump to them at the
+            // beginning of a chunk
             if !ctx.chunk_player_mem_reads_collect_main()
                 && !ctx.chunk_player_mt_collect_mem()
                 && key & 0x1 != 0
@@ -7762,8 +7760,7 @@ impl ZiskRom2Asm {
         // When executing zisk float library code, it can dynamically jump to any BIOS instruction
         // (low address) or to any float library code address (high address) but not to program
         // code addresses.
-        let high_address =
-            if ctx.pc < FLOAT_LIB_ROM_ADDR { ctx.min_program_pc } else { FLOAT_LIB_ROM_ADDR };
+        let high_address = if ctx.pc < FLOAT_LIB_ROM_ADDR { ROM_ADDR } else { FLOAT_LIB_ROM_ADDR };
         *code += &format!(
             "\tmov {}, 0x{:x} {}\n",
             REG_ADDRESS,
@@ -7776,7 +7773,7 @@ impl ZiskRom2Asm {
             "\tsub {}, {} {}\n",
             REG_PC,
             REG_ADDRESS,
-            ctx.comment_str(&format!("pc -= 0x{:x}", ctx.min_program_pc))
+            ctx.comment_str(&format!("pc -= ROM_ADDR"))
         );
         *code += &format!(
             "\tlea {}, [map_pc_{:x}] {}\n",
@@ -7793,11 +7790,11 @@ impl ZiskRom2Asm {
         );
         *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
         *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-        *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= 0x1000"));
+        *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ENTRY"));
         *code += &format!(
             "\tlea {}, [map_pc_1000] {}\n",
             REG_ADDRESS,
-            ctx.comment_str("address = map[0x1000]")
+            ctx.comment_str("address = map[ROM_ENTRY]")
         );
         *code += &format!(
             "\tmov {}, [{} + {}*2] {}\n",

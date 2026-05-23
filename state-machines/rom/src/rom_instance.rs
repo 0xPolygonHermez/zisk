@@ -408,8 +408,8 @@ mod tests {
     fn rom_with_exit(exit_trace_index: u64) -> ZiskRom {
         let mut rom = ZiskRom { min_program_pc: 0x8000_0000, ..Default::default() };
         let exit_slot = ((ROM_EXIT - 0x1000) >> 2) as usize;
-        rom.rom_entry_instructions = vec![ZiskInst::default(); exit_slot + 1];
-        rom.rom_entry_instructions[exit_slot].index = exit_trace_index;
+        rom.rom_bios_instructions = vec![ZiskInst::default(); exit_slot + 1];
+        rom.rom_bios_instructions[exit_slot].index = exit_trace_index;
         rom
     }
 
