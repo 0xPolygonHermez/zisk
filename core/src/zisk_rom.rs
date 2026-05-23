@@ -46,8 +46,8 @@
 //!   * If the address is < `ROM_ADDR_MAX`, there can be 2 cases:
 //!     * If the address is alligned to 4 bytes, then get it from the vector `rom_float_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
-//!     * If the address is not allgined, then get it from the vector `rom_float_na_instructions`, using
-//!      as index `(pc-FLOAT_LIB_ROM_ADDR)`
+//!     * If the address is not allgined, then get it from the vector `rom_float_na_instructions`,
+//!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
