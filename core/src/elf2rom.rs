@@ -71,8 +71,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // Preprocess the ROM
-    // Split the ROM instructions based on their address in order to get a better performance when
-    // searching for the corresponding intruction to the pc program address
+    // Split the ROM instructions based on their address to improve performance when
+    // searching for the instruction corresponding to the program counter (PC) address
     rom.optimize_instruction_lookup()?;
 
     //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};

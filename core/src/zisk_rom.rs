@@ -30,18 +30,24 @@
 //! * During the Zisk program execution, the Zisk Emulator must fetch the Zisk instruction
 //!   corresponding to the current pc for every execution step.
 //! * This fetch can be expensive in terms of computational time if done directly using the map.
-//! * For this reason, the original map of instructions is split into 3 different containers that
+//! * For this reason, the original map of instructions is split into 5 different containers that
 //!   allow to speed-up the process of finding the Zisk instruction that matches a specific pc
 //!   addresss.
 //! * The logic of this fetch procedure can be seen in the method `get_instruction()`.  This method
-//!   searches for the Zisk instruction in 3 different containers:
-//!   * If the address is >= `ROM_ADDR`, there can be 2 cases:
-//!     * If the address is alligned to 4 bytes, then get it from the vector `rom_instructions`,
+//!   searches for the Zisk instruction in 5 different containers:
+//!   * If the address is < ROM_ADDR, then get it from the vector `rom_bios_instructions`, using as
+//!     index `(pc-ROM_ENTRY)/4`.  Note that ZisK BIOS code is always alligned to 4 bytes, so there
+//!     is no need to check the alignment here.
+//!   * If the address is < `FLOAT_LIB_ROM_ADDR`, there can be 2 cases:
+//!     * If the address is alligned to 4 bytes, then get it from the vector `rom_program_instructions`,
 //!       using as index `(pc-ROM_ADDR)/4`
-//!     * If the address is not allgined, then get it from the vector `rom_na_instructions`, using
+//!     * If the address is not allgined, then get it from the vector `rom_program_na_instructions`, using
 //!       as index `(pc-ROM_ADDR)`
-//!   * If the address is < ROM_ADDR, then get it from the vector `rom_entry_instructions`, using as
-//!     index `(pc-ROM_ENTRY)/4`
+//!   * If the address is < `ROM_ADDR_MAX`, there can be 2 cases:
+//!     * If the address is alligned to 4 bytes, then get it from the vector `rom_float_instructions`,
+//!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
+//!     * If the address is not allgined, then get it from the vector `rom_float_na_instructions`, using
+//!      as index `(pc-FLOAT_LIB_ROM_ADDR)`
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -140,7 +146,7 @@ impl ZiskRom {
     /// ## Problem it solves:
     ///
     /// Instead of using a HashMap for every instruction fetch (key is the `pc`),
-    /// this creates three separate arrays where instructions can be accessed by direct
+    /// this creates 5 separate arrays where instructions can be accessed by direct
     /// index/PC calculations.
     ///
     /// Instructions are split into 5 categories:
@@ -177,14 +183,15 @@ impl ZiskRom {
         let mut max_bios_address = 0_u64;
         let mut min_program_address = u64::MAX;
         let mut max_program_address = 0_u64;
-        let mut min_program_na_address = u64::MAX;
+        //let mut min_program_na_address = u64::MAX;
         let mut max_program_na_address = 0_u64;
-        let mut min_float_address = u64::MAX;
+        //let mut min_float_address = u64::MAX;
         let mut max_float_address = 0_u64;
-        let mut min_float_na_address = u64::MAX;
+        //let mut min_float_na_address = u64::MAX;
         let mut max_float_na_address = 0_u64;
 
         // Prepare sorted pc list
+        assert!(self.sorted_pc_list.is_empty(), "ZiskRom::optimize_instruction_lookup() sorted_pc_list should be empty before optimization");
         self.sorted_pc_list.reserve(self.insts.len());
 
         // Scan all instructions to categorize them and find ranges
@@ -207,10 +214,10 @@ impl ZiskRom {
                 }
                 max_bios_address = std::cmp::max(max_bios_address, addr);
             } else if addr < FLOAT_LIB_ROM_ADDR {
-                // Main ROM area
+                // Main ROM program area
                 if addr & 0x03 != 0 {
-                    // Non-aligned instruction in main area
-                    min_program_na_address = std::cmp::min(min_program_na_address, addr);
+                    // Non-aligned instruction in main program area
+                    //min_program_na_address = std::cmp::min(min_program_na_address, addr);
                     max_program_na_address = std::cmp::max(max_program_na_address, addr);
                 } else {
                     // Aligned instruction in main area
@@ -218,14 +225,14 @@ impl ZiskRom {
                     max_program_address = max_program_address.max(addr);
                 }
             } else if addr < ROM_ADDR_MAX {
-                // Main ROM area
+                // Float library area
                 if addr & 0x03 != 0 {
-                    // Non-aligned instruction in main area
-                    min_float_na_address = std::cmp::min(min_float_na_address, addr);
+                    // Non-aligned instruction in float library area
+                    //min_float_na_address = std::cmp::min(min_float_na_address, addr);
                     max_float_na_address = std::cmp::max(max_float_na_address, addr);
                 } else {
-                    // Aligned instruction in main area
-                    min_float_address = min_float_address.min(addr);
+                    // Aligned instruction in float library area
+                    //min_float_address = min_float_address.min(addr);
                     max_float_address = max_float_address.max(addr);
                 }
             } else {
@@ -503,7 +510,7 @@ impl ZiskRom {
                 &mut self.rom_float_na_instructions[rom_index]
             }
         } else {
-            panic!("ZiskRom::get_instruction() pc={pc} is out of range");
+            panic!("ZiskRom::get_mut_instruction() pc={pc} is out of range");
         }
     }
 
@@ -636,21 +643,6 @@ mod tests {
         assert_eq!(rom.rom_float_instructions.len(), 0);
         assert_eq!(rom.rom_float_na_instructions.len(), 0);
 
-        // Since the smallest non-aligned instruction adress(`offset_rom_na_unstructions`) is ROM_ADDR+1
-        // This will be the gap between each non-aligned instruction.
-
-        // The memory layout will look like the following:
-        /*
-            Address         | Array Index | Content
-            ----------------|-------------|----------
-            0x80001001      | 0           | Instruction (op=20)
-            0x80001002      | 1           | Empty
-            0x80001003      | 2           | Empty
-            0x80001004      | 3           | Empty
-            0x80001005      | 4           | Instruction (op=21)
-            0x80001006      | 5           | Empty
-            0x80001007      | 6           | Instruction (op=22)
-        */
         assert_eq!(rom.rom_program_na_instructions.len(), 8); // ROM_ADDR+7 - (ROM_ADDR+1) + 1
 
         // Check instructions are at correct indices
