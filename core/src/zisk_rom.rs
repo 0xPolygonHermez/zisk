@@ -32,21 +32,21 @@
 //! * This fetch can be expensive in terms of computational time if done directly using the map.
 //! * For this reason, the original map of instructions is split into 5 different containers that
 //!   allow to speed-up the process of finding the Zisk instruction that matches a specific pc
-//!   addresss.
+//!   address.
 //! * The logic of this fetch procedure can be seen in the method `get_instruction()`.  This method
 //!   searches for the Zisk instruction in 5 different containers:
 //!   * If the address is < ROM_ADDR, then get it from the vector `rom_bios_instructions`, using as
-//!     index `(pc-ROM_ENTRY)/4`.  Note that ZisK BIOS code is always alligned to 4 bytes, so there
+//!     index `(pc-ROM_ENTRY)/4`.  Note that ZisK BIOS code is always aligned to 4 bytes, so there
 //!     is no need to check the alignment here.
 //!   * If the address is < `FLOAT_LIB_ROM_ADDR`, there can be 2 cases:
-//!     * If the address is alligned to 4 bytes, then get it from the vector `rom_program_instructions`,
+//!     * If the address is aligned to 4 bytes, then get it from the vector `rom_program_instructions`,
 //!       using as index `(pc-ROM_ADDR)/4`
-//!     * If the address is not allgined, then get it from the vector `rom_program_na_instructions`, using
+//!     * If the address is not aligned, then get it from the vector `rom_program_na_instructions`, using
 //!       as index `(pc-ROM_ADDR)`
 //!   * If the address is < `ROM_ADDR_MAX`, there can be 2 cases:
-//!     * If the address is alligned to 4 bytes, then get it from the vector `rom_float_instructions`,
+//!     * If the address is aligned to 4 bytes, then get it from the vector `rom_float_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
-//!     * If the address is not allgined, then get it from the vector `rom_float_na_instructions`,
+//!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
@@ -100,20 +100,20 @@ pub struct ZiskRom {
     /// Vector of ROM instructions with address < ROM_ADDR
     pub rom_bios_instructions: Vec<ZiskInst>,
 
-    /// ROM program instructions with an address that is alligned to 4 bytes
+    /// ROM program instructions with an address that is aligned to 4 bytes
     pub rom_program_instructions: Vec<ZiskInst>,
 
-    /// Offset of the non-alligned instructions, to be subtracted to the address when accessing the
+    /// Offset of the non-aligned instructions, to be subtracted to the address when accessing the
     /// corresponding vector
     //pub offset_rom_na_unstructions: u64,
 
-    /// ROM program instructions with an address that is not alligned to 4 bytes
+    /// ROM program instructions with an address that is not aligned to 4 bytes
     pub rom_program_na_instructions: Vec<ZiskInst>,
 
-    /// ROM float instructions with an address that is alligned to 4 bytes
+    /// ROM float instructions with an address that is aligned to 4 bytes
     pub rom_float_instructions: Vec<ZiskInst>,
 
-    /// ROM float instructions with an address that is not alligned to 4 bytes
+    /// ROM float instructions with an address that is not aligned to 4 bytes
     pub rom_float_na_instructions: Vec<ZiskInst>,
 
     /// Maximum ROM entry PC, used to build the ROM histogram
@@ -350,9 +350,9 @@ impl ZiskRom {
                 ROM_ENTRY
             );
         } else if pc < ROM_ADDR {
-            // pc is in the ROM_ENTRY range (always alligned)
+            // pc is in the ROM_ENTRY range (always aligned)
             if pc & 0x03 != 0 {
-                panic!("ZiskRom::get_instruction() pc=0x{:x} is not alligned to 4 bytes, but it is in the ROM_ENTRY range", pc);
+                panic!("ZiskRom::get_instruction() pc=0x{:x} is not aligned to 4 bytes, but it is in the ROM_ENTRY range", pc);
             }
             // pc is aligned to a 4-byte boundary
             let rom_index = ((pc - ROM_ENTRY) >> 2) as usize;
@@ -367,7 +367,7 @@ impl ZiskRom {
             &self.rom_bios_instructions[rom_index]
         } else if pc < FLOAT_LIB_ROM_ADDR {
             // pc is in the ROM_ADDR range
-            // If the address is alligned, take it from the proper vector
+            // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
                 // pc is aligned to a 4-byte boundary
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
@@ -380,7 +380,7 @@ impl ZiskRom {
                     );
                 }
                 &self.rom_program_instructions[rom_index]
-                // Otherwise, take it from the non alligned vector
+                // Otherwise, take it from the non aligned vector
             } else {
                 let rom_index = (pc - ROM_ADDR) as usize;
                 if rom_index >= self.rom_program_na_instructions.len() {
@@ -395,7 +395,7 @@ impl ZiskRom {
             }
         } else if pc < ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
-            // If the address is alligned, take it from the proper vector
+            // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
                 // pc is aligned to a 4-byte boundary
                 let rom_index = ((pc - FLOAT_LIB_ROM_ADDR) >> 2) as usize;
@@ -408,7 +408,7 @@ impl ZiskRom {
                     );
                 }
                 &self.rom_float_instructions[rom_index]
-                // Otherwise, take it from the non alligned vector
+                // Otherwise, take it from the non aligned vector
             } else {
                 let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
                 if rom_index >= self.rom_float_na_instructions.len() {
@@ -438,9 +438,9 @@ impl ZiskRom {
                 ROM_ENTRY
             );
         } else if pc < ROM_ADDR {
-            // pc is in the ROM_ENTRY range (always alligned)
+            // pc is in the ROM_ENTRY range (always aligned)
             if pc & 0x03 != 0 {
-                panic!("ZiskRom::get_mut_instruction() pc=0x{:x} is not alligned to 4 bytes, but it is in the ROM_ENTRY range", pc);
+                panic!("ZiskRom::get_mut_instruction() pc=0x{:x} is not aligned to 4 bytes, but it is in the ROM_ENTRY range", pc);
             }
             // pc is aligned to a 4-byte boundary
             let rom_index = ((pc - ROM_ENTRY) >> 2) as usize;
@@ -455,7 +455,7 @@ impl ZiskRom {
             &mut self.rom_bios_instructions[rom_index]
         } else if pc < FLOAT_LIB_ROM_ADDR {
             // pc is in the ROM_ADDR range
-            // If the address is alligned, take it from the proper vector
+            // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
                 // pc is aligned to a 4-byte boundary
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
@@ -468,7 +468,7 @@ impl ZiskRom {
                     );
                 }
                 &mut self.rom_program_instructions[rom_index]
-                // Otherwise, take it from the non alligned vector
+                // Otherwise, take it from the non aligned vector
             } else {
                 let rom_index = (pc - ROM_ADDR) as usize;
                 if rom_index >= self.rom_program_na_instructions.len() {
@@ -483,7 +483,7 @@ impl ZiskRom {
             }
         } else if pc < ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
-            // If the address is alligned, take it from the proper vector
+            // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
                 // pc is aligned to a 4-byte boundary
                 let rom_index = ((pc - FLOAT_LIB_ROM_ADDR) >> 2) as usize;
@@ -496,7 +496,7 @@ impl ZiskRom {
                     );
                 }
                 &mut self.rom_float_instructions[rom_index]
-                // Otherwise, take it from the non alligned vector
+                // Otherwise, take it from the non aligned vector
             } else {
                 let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
                 if rom_index >= self.rom_float_na_instructions.len() {
