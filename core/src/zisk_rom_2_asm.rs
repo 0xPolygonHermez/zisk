@@ -707,18 +707,6 @@ impl ZiskRom2Asm {
 
         // Functions to let C know about ASM generation
 
-        // get_max_bios_pc() returns the maximum bios pc used in the ROM
-        *code += ".global get_max_bios_pc\n";
-        *code += "get_max_bios_pc:\n";
-        *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_bios_pc);
-        *code += "\tret\n\n";
-
-        // get_max_program_pc() returns the maximum program pc used in the ROM
-        *code += ".global get_max_program_pc\n";
-        *code += "get_max_program_pc:\n";
-        *code += &format!("\tmov rax, 0x{:08x}\n", rom.max_program_pc);
-        *code += "\tret\n\n";
-
         // get_rom_length() returns the length of the ROM
         *code += ".global get_rom_length\n";
         *code += "get_rom_length:\n";

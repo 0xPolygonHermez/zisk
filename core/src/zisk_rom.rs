@@ -116,11 +116,14 @@ pub struct ZiskRom {
     /// ROM float instructions with an address that is not aligned to 4 bytes
     pub rom_float_na_instructions: Vec<ZiskInst>,
 
-    /// Maximum ROM entry PC, used to build the ROM histogram
+    /// Maximum entry/bios ROM instruction PC
     pub max_bios_pc: u64,
 
-    /// Maximum ROM instruction PC, used to build the ROM histogram
+    /// Maximum program ROM instruction PC
     pub max_program_pc: u64,
+
+    /// Maximum float library ROM instruction PC
+    pub max_float_pc: u64,
 
     /// List of instruction program counter (address) in incremental order:
     /// 0x1000, 0x1004, ..., 0x80000000, 0x80000004, ...
@@ -250,7 +253,8 @@ impl ZiskRom {
         // );
 
         self.max_bios_pc = max_bios_address;
-        self.max_program_pc = max_program_address;
+        self.max_program_pc = max_program_address.max(max_program_na_address);
+        self.max_float_pc = max_float_address.max(max_float_na_address);
         self.min_program_pc =
             if min_program_address == u64::MAX { ROM_ADDR } else { min_program_address };
 
