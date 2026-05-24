@@ -934,13 +934,13 @@ impl Riscv2ZiskContext<'_> {
             && next_instructions[0].rs1 == i.rd
             && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
         {
-            // return to this pc: rd = PC + 8
-            // jump to pc: PC + (i.imm << 12) + next_instructions[0].imm
+            // return_pc = pc + len(auipc) + len(jalr)
+            // jump_pc = pc + auipc_imm + jalr_imm
             let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
             let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let jump_pc = (i.rom_address as i64
-                + ((i.imm as i64)/*  << 12*/)
+                + ((i.imm as i64)/* already shifted << 12 at decoding time */)
                 + next_instructions[0].imm as i64) as u64
                 & JALR_MASK;
 
