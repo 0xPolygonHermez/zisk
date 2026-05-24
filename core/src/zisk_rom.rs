@@ -43,7 +43,7 @@
 //!       using as index `(pc-ROM_ADDR)/4`
 //!     * If the address is not aligned, then get it from the vector `rom_program_na_instructions`, using
 //!       as index `(pc-ROM_ADDR)`
-//!   * If the address is < `ROM_ADDR_MAX`, there can be 2 cases:
+//!   * If the address is <= `ROM_ADDR_MAX`, there can be 2 cases:
 //!     * If the address is aligned to 4 bytes, then get it from the vector `rom_float_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
 //!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
@@ -166,7 +166,7 @@ impl ZiskRom {
     ///    - Accessed via: `array[addr - ROM_ADDR]`
     ///
     /// 4. Float library program instructions:
-    ///    - Address range: `[FLOAT_LIB_ROM_ADDR, ROM_ADDR_MAX)`
+    ///    - Address range: `[FLOAT_LIB_ROM_ADDR, ROM_ADDR_MAX]`
     ///    - 4-byte aligned instructions in the float library ROM area
     ///    - Accessed via: `array[(addr - FLOAT_LIB_ROM_ADDR) / 4]`
     ///
@@ -224,7 +224,7 @@ impl ZiskRom {
                     min_program_address = min_program_address.min(addr);
                     max_program_address = max_program_address.max(addr);
                 }
-            } else if addr < ROM_ADDR_MAX {
+            } else if addr <= ROM_ADDR_MAX {
                 // Float library area
                 if addr & 0x03 != 0 {
                     // Non-aligned instruction in float library area
@@ -304,7 +304,7 @@ impl ZiskRom {
                     self.rom_program_instructions[((addr - ROM_ADDR) >> 2) as usize] =
                         instruction.1.i.clone();
                 }
-            } else if addr < ROM_ADDR_MAX {
+            } else if addr <= ROM_ADDR_MAX {
                 if addr % 4 != 0 {
                     // Non-aligned: store at offset from minimum non-aligned address
                     self.rom_float_na_instructions[(addr - FLOAT_LIB_ROM_ADDR) as usize] =
@@ -393,7 +393,7 @@ impl ZiskRom {
                 }
                 &self.rom_program_na_instructions[rom_index]
             }
-        } else if pc < ROM_ADDR_MAX {
+        } else if pc <= ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
             // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
@@ -481,7 +481,7 @@ impl ZiskRom {
                 }
                 &mut self.rom_program_na_instructions[rom_index]
             }
-        } else if pc < ROM_ADDR_MAX {
+        } else if pc <= ROM_ADDR_MAX {
             // pc is in the FLOAT_LIB_ROM_ADDR range
             // If the address is aligned, take it from the proper vector
             if pc & 0x03 == 0 {
@@ -542,6 +542,10 @@ impl ZiskRom {
         result
     }
 }
+
+/********/
+/* TEST */
+/********/
 
 #[cfg(test)]
 mod tests {
