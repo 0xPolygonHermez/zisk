@@ -403,7 +403,7 @@ mod tests {
     }
 
     /// Build a ROM that satisfies `get_instruction(ROM_EXIT)` by populating
-    /// `rom_entry_instructions` so that index `(ROM_EXIT - 0x1000) >> 2` (= 1) returns
+    /// `rom_bios_instructions` so that index `(ROM_EXIT - 0x1000) >> 2` (= 1) returns
     /// a `ZiskInst` whose `index` field is `exit_trace_index`.
     fn rom_with_exit(exit_trace_index: u64) -> ZiskRom {
         let mut rom = ZiskRom { min_program_pc: 0x8000_0000, ..Default::default() };
