@@ -647,12 +647,12 @@ mod tests {
         assert_eq!(rom.rom_float_instructions.len(), 0);
         assert_eq!(rom.rom_float_na_instructions.len(), 0);
 
-        assert_eq!(rom.rom_program_na_instructions.len(), 8); // ROM_ADDR+7 - (ROM_ADDR+1) + 1
+        assert_eq!(rom.rom_program_na_instructions.len(), 8); // (ROM_ADDR + 7) - ROM_ADDR + 1
 
         // Check instructions are at correct indices
-        assert_eq!(rom.rom_program_na_instructions[1].op, 20); // ROM_ADDR+1 - offset = 0
-        assert_eq!(rom.rom_program_na_instructions[5].op, 21); // ROM_ADDR+5 - offset = 4
-        assert_eq!(rom.rom_program_na_instructions[7].op, 22); // ROM_ADDR+7 - offset = 6
+        assert_eq!(rom.rom_program_na_instructions[1].op, 20); // (ROM_ADDR+1) - ROM_ADDR = 1
+        assert_eq!(rom.rom_program_na_instructions[5].op, 21); // (ROM_ADDR+5) - ROM_ADDR = 5
+        assert_eq!(rom.rom_program_na_instructions[7].op, 22); // (ROM_ADDR+7) - ROM_ADDR = 7
     }
 
     #[test]
