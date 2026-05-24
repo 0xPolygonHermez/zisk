@@ -427,7 +427,7 @@ impl ZiskRom {
     }
 
     /// Gets the ROM instruction corresponding to the provided pc address, as a mutable reference.
-    /// Depending on the range and allignment of the address, the function searches for it in the
+    /// Depending on the range and alignment of the address, the function searches for it in the
     /// corresponding vector.
     #[inline(always)]
     pub fn get_mut_instruction(&mut self, pc: u64) -> &mut ZiskInst {
