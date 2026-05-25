@@ -369,17 +369,25 @@ impl AsmRunnerMO {
 
         // GPU path: build align plans
         #[cfg(gpu)]
+        timer_start_info!(MO_BUILD_ALIGN); // TEMP-MOPROF
+        #[cfg(gpu)]
         let gpu_align_plans: Option<Vec<Plan>> =
             gpu_count_and_plan.as_ref().map(|gp| gp.build_align_plans());
+        #[cfg(gpu)]
+        timer_stop_and_log_info!(MO_BUILD_ALIGN); // TEMP-MOPROF
 
         // inject GPU-produced segments to the C++ segment table
         // (`mcp->segments[]`). No-op on the CPU path (gpu_metas_view None).
+        #[cfg(gpu)]
+        timer_start_info!(MO_INJECT_METAS); // TEMP-MOPROF
         if let Some((ptr, n)) = gpu_metas_view {
             let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(ptr, n) };
             if !ok {
                 tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
             }
         }
+        #[cfg(gpu)]
+        timer_stop_and_log_info!(MO_INJECT_METAS); // TEMP-MOPROF
 
         // Stash the GPU planner for the next block
         #[cfg(gpu)]
@@ -425,7 +433,9 @@ impl AsmRunnerMO {
 
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
+            timer_start_info!(MO_COLLECT_PLANS); // TEMP-MOPROF
             let plans = mem_planner.collect_plans(&mut mem_align_plans);
+            timer_stop_and_log_info!(MO_COLLECT_PLANS); // TEMP-MOPROF
             stats_end!(_stats, &_collect_scope);
             Ok(plans)
         })();
