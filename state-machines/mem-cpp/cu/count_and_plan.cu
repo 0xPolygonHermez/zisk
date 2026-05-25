@@ -1230,8 +1230,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
 
-    CUDA_CHECK(cudaMallocHost(&h_memops_,
-        (size_t)MAX_TOTAL_MEMOPS * sizeof(MemOp)));
+    // (No pinned h_memops_ staging buffer: add_chunk H2D's directly from the
+    //  MO shmem chunk. Saves MAX_TOTAL_MEMOPS*8 = 4 GiB of pinned host RAM.)
     CUDA_CHECK(cudaMallocHost(&h_n_emits_all_, (size_t)MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_result_nops_, (size_t)max_active_ * MAX_CHUNKS * 4));
     CUDA_CHECK(cudaMallocHost(&h_meta_scalars_, (size_t)max_active_ * 4 * 4));
@@ -1358,21 +1358,9 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
         add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
-    const size_t moff = h_memops_cursor_.fetch_add(n, std::memory_order_relaxed);
-    if (moff + n > MAX_TOTAL_MEMOPS) {
-        fprintf(stderr,
-                "CountAndPlan::add_chunk FATAL: pinned memop pool exhausted "
-                "(base %zu + need %u > MAX_TOTAL_MEMOPS=%u)\n",
-                moff, n, MAX_TOTAL_MEMOPS);
-        std::abort();
-    }
-
     out_offsets_[c]            = base;
     n_potentials_per_chunk_[c] = (uint32_t)pot;
     n_ram_per_chunk_[c]        = ram;
-
-    MemOp* memops_dst = h_memops_ + moff;
-    std::memcpy(memops_dst, memops, n * sizeof(MemOp));
 
     cudaStream_t st = streams_[s];
 
@@ -1391,7 +1379,11 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     const int g_pot    = ((uint32_t)pot + BLOCK - 1) / BLOCK;
     const int g_ram    = ram == 0 ? 0 : (int)((ram + BLOCK - 1) / BLOCK);
 
-    CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], memops_dst,
+    // H2D directly from the shmem chunk — no pinned staging buffer. If the
+    // shmem was registered (register_input_pinned), this is a true async copy;
+    // otherwise cudaMemcpyAsync from pageable host memory degrades to a
+    // synchronous copy — correct, just slower (the documented fallback).
+    CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], memops,
                                sizeof(MemOp) * n, cudaMemcpyHostToDevice, st));
     CUDA_CHECK(cudaMemsetAsync(d_ram_count_[s],    0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_count_[s],  0, 4, st));
@@ -1579,7 +1571,6 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 void CountAndPlan::reset() {
     n_chunks_              = 0;
     num_ops_               = 0;
-    h_memops_used_         = 0;
     d_ops_pool_used_u32_   = 0;
     // add_chunk_core_ writes out_offsets_/n_*_per_chunk_ by chunk index `c`
     // (workers fill out of order), so pre-size to MAX_CHUNKS instead of
@@ -1589,7 +1580,6 @@ void CountAndPlan::reset() {
     n_ram_per_chunk_.assign(MAX_CHUNKS, 0);
     packed_chunk_offsets_h_.clear();
     pool_cursor_u32_.store(0, std::memory_order_relaxed);
-    h_memops_cursor_.store(0, std::memory_order_relaxed);
     add_error_.store(false, std::memory_order_relaxed);
     pool_done_ = 0;
     metas_.assign(MAX_INSTANCES, InstanceMeta{});
@@ -1605,8 +1595,34 @@ void CountAndPlan::reset() {
         (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
 }
 
+bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
+    if (!ptr || bytes == 0) return false;
+    cudaSetDevice(gpu_device_);
+    // Read-only registration: the device only *reads* the memops (H2D). Needs
+    // cudaDevAttrReadOnlyHostRegisterSupported; on unsupported drivers this
+    // returns an error → we report false and add_chunk uses the sync fallback.
+    cudaError_t e = cudaHostRegister(ptr, bytes, cudaHostRegisterReadOnly);
+    if (e != cudaSuccess) {
+        cudaGetLastError();  // clear the sticky error so later calls aren't poisoned
+        fprintf(stderr,
+                "[mops-pinned] cudaHostRegister(%p, %zu, ReadOnly) failed: %s "
+                "— H2D will use the synchronous pageable fallback\n",
+                ptr, bytes, cudaGetErrorString(e));
+        return false;
+    }
+    fprintf(stderr, "[mops-pinned] registered MO shmem %p (%zu bytes) as read-only pinned\n",
+            ptr, bytes);
+    return true;
+}
+
+void CountAndPlan::unregister_input_pinned(void* ptr) {
+    if (!ptr) return;
+    cudaSetDevice(gpu_device_);
+    cudaHostUnregister(ptr);
+    cudaGetLastError();  // best-effort; ignore "not registered"
+}
+
 void CountAndPlan::free_pinned_() {
-    if (h_memops_)                   { cudaFreeHost(h_memops_);                   h_memops_                   = nullptr; }
     if (h_n_emits_all_)              { cudaFreeHost(h_n_emits_all_);              h_n_emits_all_              = nullptr; }
     if (h_page_starts_buf_)          { cudaFreeHost(h_page_starts_buf_);          h_page_starts_buf_          = nullptr; }
     if (h_page_single_buf_)           { cudaFreeHost(h_page_single_buf_);           h_page_single_buf_           = nullptr; }

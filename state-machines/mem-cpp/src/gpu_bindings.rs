@@ -78,6 +78,12 @@ extern "C" {
         n_metas: *mut u32,
     ) -> bool;
     pub fn count_and_plan_reset(h: *mut CountAndPlanHandle);
+    pub fn count_and_plan_register_input_pinned(
+        h: *mut CountAndPlanHandle,
+        ptr: *mut c_void,
+        bytes: usize,
+    ) -> bool;
+    pub fn count_and_plan_unregister_input_pinned(h: *mut CountAndPlanHandle, ptr: *mut c_void);
     pub fn count_and_plan_get_align_counters(
         h: *mut CountAndPlanHandle,
         n_chunks: *mut u32,

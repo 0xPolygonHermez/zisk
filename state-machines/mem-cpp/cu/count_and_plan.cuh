@@ -97,6 +97,15 @@ public:
     // Reset for the next block.
     void reset();
 
+    // Best-effort: page-lock the caller's MO shmem region as read-only pinned
+    // memory so add_chunk's H2D copies run asynchronously. Returns false if the
+    // GPU/driver doesn't support read-only host registration (or the region
+    // can't be registered) — in which case add_chunk's H2D falls back to a
+    // synchronous copy from pageable memory (still correct). Idempotent-safe:
+    // re-registering an already-registered range returns false (harmless).
+    bool register_input_pinned(void* ptr, size_t bytes);
+    void unregister_input_pinned(void* ptr);
+
     // ─── Read-only state ──────────────────────────────────────────────
 
     float               last_chunk_to_final_ms() const { return last_chunk_to_final_ms_; }
@@ -176,8 +185,6 @@ private:
 
     // ─── Pinned host buffers ─────────────────────────────────────────
 
-    MemOp*         h_memops_                   = nullptr;
-    size_t         h_memops_used_              = 0;
     uint32_t*      h_n_emits_all_              = nullptr;
     // Pinned destinations for the compacted paged-offsets output.
     //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
@@ -243,7 +250,6 @@ private:
     int                     gpu_device_           = 0;     // captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
     std::atomic<size_t>     pool_cursor_u32_{0};            // d_ops_pool_ bump
-    std::atomic<size_t>     h_memops_cursor_{0};            // h_memops_ bump
     std::atomic<bool>       add_error_{false};
 
     struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };

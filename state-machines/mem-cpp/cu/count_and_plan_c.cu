@@ -39,6 +39,18 @@ void count_and_plan_reset(void* h) {
     static_cast<CountAndPlan*>(h)->reset();
 }
 
+// Best-effort read-only pinning of the caller's MO shmem so add_chunk's H2D is
+// async; returns false (→ synchronous pageable copy) if unsupported.
+bool count_and_plan_register_input_pinned(void* h, void* ptr, size_t bytes) {
+    if (!h) return false;
+    return static_cast<CountAndPlan*>(h)->register_input_pinned(ptr, bytes);
+}
+
+void count_and_plan_unregister_input_pinned(void* h, void* ptr) {
+    if (!h) return;
+    static_cast<CountAndPlan*>(h)->unregister_input_pinned(ptr);
+}
+
 // Per-chunk mem-align counters, valid after `count_and_plan_run`. Returns a
 // pointer to `*n_chunks` entries (one per submitted chunk) of the POD
 // `ChunkCounters` struct declared in count_and_plan.cuh. Storage is owned by

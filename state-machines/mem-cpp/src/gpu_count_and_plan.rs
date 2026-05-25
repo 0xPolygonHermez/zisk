@@ -86,6 +86,30 @@ impl GpuCountAndPlan {
         unsafe { gpu_bindings::count_and_plan_reset(self.inner) };
     }
 
+    /// Best-effort: page-lock the MO shmem region `[ptr, ptr+bytes)` as
+    /// read-only pinned memory so `add_chunk`'s H2D copies run asynchronously.
+    /// Returns `true` on success. On `false` (driver lacks read-only host
+    /// registration, or the region can't be pinned) the H2D silently falls
+    /// back to a synchronous copy from pageable memory — still correct.
+    ///
+    /// # Safety
+    /// `ptr`/`bytes` must describe a currently-mapped host region that stays
+    /// valid (and registered) until `unregister_input_pinned` or process exit.
+    pub fn register_input_pinned(&self, ptr: *const c_void, bytes: usize) -> bool {
+        unsafe {
+            gpu_bindings::count_and_plan_register_input_pinned(self.inner, ptr as *mut c_void, bytes)
+        }
+    }
+
+    /// Undo a prior [`register_input_pinned`]. Best-effort (ignores errors).
+    ///
+    /// # Safety
+    /// `ptr` must be the base of a region previously registered via
+    /// [`register_input_pinned`].
+    pub fn unregister_input_pinned(&self, ptr: *const c_void) {
+        unsafe { gpu_bindings::count_and_plan_unregister_input_pinned(self.inner, ptr as *mut c_void) };
+    }
+
     /// Returns a borrowed slice of metas owned by the C++ side. Valid until the next `reset` (or drop).
     pub fn run(&self) -> Option<&[GpuInstanceMeta]> {
         let mut ptr: *mut GpuInstanceMeta = std::ptr::null_mut();
