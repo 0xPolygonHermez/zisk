@@ -256,7 +256,9 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             // count-and-plan GPU work is now done (handle_mo joined
             // just above).
             if pctx.gpu {
+                timer_start_info!(UB_RELEASE_SYNC); // TEMP-MOPROF
                 unified_buffer_release_c(pctx.get_device_buffers_ptr());
+                timer_stop_and_log_info!(UB_RELEASE_SYNC); // TEMP-MOPROF
             }
         }
 

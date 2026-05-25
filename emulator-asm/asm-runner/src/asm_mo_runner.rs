@@ -4,6 +4,7 @@ use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan}
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
+use std::time::{Duration, Instant}; // TEMP-MOPROF
 use tracing::error;
 
 use crate::SEM_CHUNK_DONE_WAIT_DURATION;
@@ -198,11 +199,27 @@ impl AsmRunnerMO {
                 as *const AsmMOChunk
         };
 
+        // TEMP-MOPROF: split the chunk-consume loop into producer-wait
+        // (blocked in timed_wait) vs the add_chunk copy, with chunk/memop
+        // counts and first-chunk latency. Instant overhead is ~once per chunk
+        // (hundreds/block), not per memop — negligible.
+        let _mo_loop_start = Instant::now();
+        let mut _mo_t_wait = Duration::ZERO;
+        let mut _mo_t_add = Duration::ZERO;
+        let mut _mo_n_chunks: u64 = 0;
+        let mut _mo_n_memops: u64 = 0;
+        let mut _mo_t_first = Duration::ZERO;
         let exit_code = loop {
-            match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
+            let _mo_w = Instant::now(); // TEMP-MOPROF
+            let _mo_wait_res = sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION); // TEMP-MOPROF
+            _mo_t_wait += _mo_w.elapsed(); // TEMP-MOPROF
+            match _mo_wait_res {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
+                    if _mo_t_first.is_zero() {
+                        _mo_t_first = _mo_loop_start.elapsed(); // TEMP-MOPROF
+                    }
 
                     // Check if we need to map additional shared memory files.
                     if data_ptr >= threshold
@@ -226,6 +243,7 @@ impl AsmRunnerMO {
                     stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
                     // Feed this chunk to whichever planner is active
+                    let _mo_a = Instant::now(); // TEMP-MOPROF
                     #[cfg(gpu)]
                     if let Some(ref gp) = gpu_count_and_plan {
                         let memops = unsafe {
@@ -242,6 +260,9 @@ impl AsmRunnerMO {
                     }
                     #[cfg(not(gpu))]
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
+                    _mo_t_add += _mo_a.elapsed(); // TEMP-MOPROF
+                    _mo_n_chunks += 1; // TEMP-MOPROF
+                    _mo_n_memops += chunk.mem_ops_size; // TEMP-MOPROF
 
                     if chunk.end == 1 {
                         break 0;
@@ -262,6 +283,19 @@ impl AsmRunnerMO {
                 }
             }
         };
+
+        // TEMP-MOPROF: per-block MO chunk-consume breakdown. wait = blocked on
+        // the ASM MO producer; add_chunk = the shmem->pinned copy; first_chunk =
+        // latency to first chunk. Pair with GPU_MOPS_TIME + WAIT_PLAN_MEM_CPP.
+        tracing::info!(
+            "[mo-prof] chunks={} memops={} first_chunk={}ms wait={}ms add_chunk={}ms loop_total={}ms",
+            _mo_n_chunks,
+            _mo_n_memops,
+            _mo_t_first.as_millis(),
+            _mo_t_wait.as_millis(),
+            _mo_t_add.as_millis(),
+            _mo_loop_start.elapsed().as_millis(),
+        );
 
         // Wind the C++ planner down before any further work. Without this,
         // its background threads stay parked waiting for more chunks, and

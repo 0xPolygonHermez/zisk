@@ -554,6 +554,7 @@ dependencies = [
  "mem-planner-cpp",
  "named-sem",
  "proofman-common",
+ "proofman-util",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
