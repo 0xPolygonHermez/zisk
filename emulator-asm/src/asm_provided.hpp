@@ -14,6 +14,8 @@ void emu_start(void);
 
 // These functions are implemented in assembly and provide access to configuration parameters used
 // to generate the assembly code, and that in some cases must match the C main program configuration
+void write_ro_init_data(void);
+void write_rw_init_data(void);
 uint64_t get_rom_length(void);
 uint64_t get_gen_method(void); // Must match the C main program provided argument
 uint64_t get_precompile_results(void);

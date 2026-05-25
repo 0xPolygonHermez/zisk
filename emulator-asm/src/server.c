@@ -197,6 +197,9 @@ void server_setup (void)
         close(shmem_rom_fd);
         shmem_rom_fd = -1;
 
+        // Initialize data by calling the assembly code
+        write_ro_init_data();
+
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -817,12 +820,17 @@ void server_reset_slow (void)
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
 #endif
+        // Reset RAM data
         memset((void *)RAM_ADDR, 0, RAM_SIZE);
+        write_rw_init_data();
+
+        // Reset ROM data
         memset((void *)ROM_ADDR, 0, ROM_SIZE);
+        
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
-        if (verbose) asm_printf("server_reset_slow() memset(ram) and memset(rom) in %lu us\n", duration);
+        if (verbose) asm_printf("server_reset_slow() memset(ram), write_rw_init_data(), and memset(rom) in %lu us\n", duration);
 #endif
     }
 }

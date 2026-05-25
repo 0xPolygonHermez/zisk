@@ -46,15 +46,15 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let mut rw_data: Vec<DataSection> = Vec::new();
 
     for (i, payload) in payloads.into_iter().enumerate() {
-        // 1. Add executable code sections
+        // Add executable code sections
         for section in &payload.exec {
             add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
         }
 
-        // 3. Add read-only data sections (will be stored in ROM)
+        // Add read-only data sections (will be stored in ROM)
         ro_data.append(&mut payload.ro.clone());
 
-        // 2. Add read-write data sections (will be stored in RAM)
+        // Add read-write data sections (will be stored in RAM)
         rw_data.append(&mut payload.rw.clone());
 
         // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
