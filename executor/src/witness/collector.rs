@@ -8,11 +8,6 @@
 //! 1. Determines which chunks each instance needs (via checkpoints)
 //! 2. Orders chunks for optimal parallel processing
 //! 3. Executes chunks and routes data to the appropriate collectors
-//!
-//! ## Chunk Ordering Strategy
-//!
-//! Uses a greedy algorithm that prioritizes completing instances that need
-//! fewer remaining chunks, minimizing time-to-first-completion.
 
 use crossbeam::atomic::AtomicCell;
 use data_bus::DataBusTrait;
@@ -146,8 +141,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
 
     /// Orders chunks for optimal processing.
     ///
-    /// Uses a greedy algorithm to minimize the time until any instance
-    /// has all its chunks collected.
+    /// Uses an algorithm to minimize the time until any instance has all its chunks collected.
     ///
     /// # Arguments
     /// * `chunks_to_execute` - Which instances need each chunk.

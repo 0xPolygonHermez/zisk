@@ -1,10 +1,8 @@
 //! Concrete adapters bridging external library types to the executor's
 //! port traits in [`crate::ports`].
 //!
-//! Today the only adapter is [`ProofmanAdapter`] wrapping
-//! `proofman_common::ProofCtx<F>`. If a second adapter (e.g. a
-//! remote-proof backend) appears, split this file into a directory
-//! module.
+//! Today the only adapter is [`ProofmanAdapter`] wrapping `proofman_common::ProofCtx<F>`. If a
+//! second adapter (e.g. a remote-proof backend) appears, split this file into a directory module.
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;

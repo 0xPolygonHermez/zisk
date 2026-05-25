@@ -78,12 +78,9 @@ impl InstanceAssigner {
 
             // ROM instances need special first-partition assignment look up the global id
             // stamped by `assign_rom_instance` earlier in the phase.
-            let gid = if AirClassifier::is_rom_instance(plan.airgroup_id, plan.air_id) {
+            let gid = if AirClassifier::is_rom(plan.airgroup_id, plan.air_id) {
                 registry.find_instance_id(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))?
-            } else if AirClassifier::is_rank_assigned_precompile_instance(
-                plan.airgroup_id,
-                plan.air_id,
-            ) {
+            } else if AirClassifier::is_rank_assigned_precompile(plan.airgroup_id, plan.air_id) {
                 registry.add_instance_assign(info)?
             } else {
                 match plan.instance_type {

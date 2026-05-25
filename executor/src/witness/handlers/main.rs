@@ -1,4 +1,4 @@
-//! [`MainWitnessHandler`] — witness compute for main-SM instances.
+//! Handlers for computing witnesses for Main SM instances.
 
 use fields::PrimeField64;
 use proofman_common::BufferPool;
@@ -6,11 +6,7 @@ use proofman_common::BufferPool;
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ExecutionState, WitnessGenerator};
 
-/// Static-namespace handler for main-SM witness computation.
-///
-/// Looks up the main instance from the executor's
-/// [`crate::InstanceSet`] and forwards to the witness generator's
-/// `compute_main_witness`.
+/// Main SM handler witness computation.
 pub struct MainWitnessHandler;
 
 impl MainWitnessHandler {

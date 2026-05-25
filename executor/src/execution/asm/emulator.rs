@@ -17,7 +17,6 @@ use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
 use asm_runner::{AsmRunnerMT, HintsShmem};
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
-use proofman_common::ProofCtx;
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,
@@ -126,8 +125,8 @@ impl EmulatorAsm {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
+        has_rom_sm: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
@@ -152,7 +151,6 @@ impl EmulatorAsm {
         stats_end!(stats, &_write_scope);
 
         // Spawn the MO + RH runner threads. RH only on the rank 0, the one that computes the ROM histogram.
-        let has_rom_sm = pctx.dctx_is_first_process();
         let supervisor =
             AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 

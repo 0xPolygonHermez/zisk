@@ -1,7 +1,6 @@
 //! Witness computation component.
 //!
-//! This module handles the computation of witnesses for main and
-//! secondary state machine instances.
+//! This module handles the computation of witnesses for main and secondary state machine instances.
 
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};

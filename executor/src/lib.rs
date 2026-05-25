@@ -28,11 +28,11 @@
 //!   │
 //!   └── WitnessRouter::dispatch
 //!         │  (router has its backend baked at construction via
-//!         │   `new_asm` / `new_native`)
+//!         │   `new_asm` / `new_rust`; ROM compute is one shared
+//!         │   algorithm with a backend-tag branch)
 //!         ├── MainWitnessHandler
 //!         ├── SecondaryWitnessHandler
-//!         ├── RomNativeWitnessHandler
-//!         ├── RomAsmWitnessHandler
+//!         ├── WitnessPhase::rom_dispatch (shared body + RomBackend branch)
 //!         └── TableWitnessHandler
 //! ```
 //!

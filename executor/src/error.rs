@@ -5,9 +5,7 @@ use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use proofman_common::ProofmanError;
 use thiserror::Error;
 
-/// Crate-wide error type for the executor. Variants are organised by
-/// failure site; today they cover collector-phase bus construction and
-/// will grow as other phases adopt typed errors.
+/// Crate-wide error type for the executor.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
     /// The `global_id` referenced by the chunk's plan is missing from the supplied `instances` map.

@@ -1,24 +1,4 @@
 //! [`ExecutionPhase`] — the executor's emulator-front-end.
-//!
-//! Replaces the old `RomExecutor` that branched on a runtime
-//! `AtomicBool` to pick between the ASM and Rust emulators. The backend
-//! is now chosen **at construction time** from the bundle's
-//! [`StaticSMBundle::is_asm`] flag; no atomic, no runtime flip.
-//!
-//! Owns the per-execution standard input (settable between runs) and
-//! exposes a single [`ExecutionPhase::run`] entry point that returns
-//! the backend-uniform [`ExecutionOutput`].
-//!
-//! Backends: both [`asm::EmulatorAsm`] and [`rust::EmulatorRust`]
-//! expose an inherent `execute` method that returns a uniform
-//! [`output::ExecutionOutput`]; backend-specific async work (ASM-only
-//! MO + RH handles) is encapsulated in [`output::BackendArtifacts`].
-//! Dispatch is via the `EmulatorBackend` enum inside `ExecutionPhase`,
-//! not via dyn trait. `EmulatorAsm` is provided uniformly on every
-//! target — real on Linux x86_64, stub elsewhere — so this module
-//! stays platform-agnostic.
-//!
-//! See `.claude/executor_refactor_plan.md` step 2.1 for context.
 
 pub mod asm;
 pub mod output;
@@ -39,35 +19,25 @@ use zisk_core::ZiskRom;
 
 use crate::sm::StaticSMBundle;
 
-/// Single emulator backend chosen at construction. The variants hold
-/// the concrete emulator type so the executor can still expose
-/// ASM-specific helpers (`asm_emulator()`, `set_asm_resources`, ...)
-/// without downcasting from a `Box<dyn ...>`.
+/// Emulator backend chosen at construction.
 enum EmulatorBackend {
-    /// x86-64 ASM emulator (Linux-only via `EmulatorAsm`).
+    /// x86-64 ASM emulator.
     Asm(EmulatorAsm),
     /// Native Rust emulator.
     Rust(EmulatorRust),
 }
 
-/// Phase-1 actor: runs the chosen emulator backend, returns a uniform
-/// [`ExecutionOutput`] regardless of which backend ran.
-///
-/// Construction is parameterised by the bundle's `is_asm()` flag, so
-/// the backend choice agrees with the SM-counter set the bundle was
-/// built for.
+/// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
+/// regardless of which backend ran.
 pub struct ExecutionPhase {
     /// Concrete backend, set once at construction.
     emulator: EmulatorBackend,
-    /// Standard input for the next run. Settable between executions
-    /// without touching the backend.
+    /// Standard input for the next run. Settable between executions without touching the backend.
     stdin: ArcSwap<ZiskStdin>,
 }
 
 impl ExecutionPhase {
-    /// Construct the trace phase for the chosen backend. `is_asm`
-    /// should mirror [`StaticSMBundle::is_asm`] so the bundle's
-    /// counter layout matches the emulator that will populate it.
+    /// Construct the execution phase for the given chunk size and backend choice.
     pub fn new(chunk_size: u64, is_asm: bool) -> Self {
         let emulator = if is_asm {
             EmulatorBackend::Asm(EmulatorAsm::new(chunk_size))
@@ -84,9 +54,7 @@ impl ExecutionPhase {
         matches!(self.emulator, EmulatorBackend::Asm(_))
     }
 
-    /// Returns a reference to the underlying ASM emulator, or `None`
-    /// on the Rust backend. The worker/coordinator uses this to drive
-    /// the ASM-specific streaming + cancellation APIs.
+    /// Returns a reference to the underlying ASM emulator, or `None` on the Rust backend.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => Some(asm),
@@ -101,19 +69,17 @@ impl ExecutionPhase {
     }
 
     /// Hands the ASM resources to the underlying ASM emulator.
-    /// Returns an error if called on a Rust-backed phase — the caller
-    /// shouldn't ask for ASM resources on a non-ASM run.
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
             EmulatorBackend::Rust(_) => Err(ExecutorError::Internal(
-                "ExecutionPhase::set_asm_resources called on a Rust-backed trace phase".into(),
+                "ExecutionPhase::set_asm_resources called on a Rust-backed execution phase".into(),
             )),
         }
     }
 
-    /// Resets the ASM pipeline (hints stream + input shmem) for the
-    /// next run. No-op on the Rust backend.
+    /// Resets the ASM pipeline (hints stream + input shmem) for the next run.
+    /// No-op on the Rust backend.
     pub fn reset(&self) -> ExecutorResult<()> {
         match &self.emulator {
             EmulatorBackend::Asm(asm) => asm.reset(),
@@ -131,11 +97,6 @@ impl ExecutionPhase {
     }
 
     /// Runs the chosen emulator and returns its [`ExecutionOutput`].
-    ///
-    /// Non-ASM arguments (`pctx`, `use_hints`, `stats`,
-    /// `caller_stats_scope`) are forwarded to the ASM backend and
-    /// ignored by the Rust backend.
-    #[allow(clippy::too_many_arguments)]
     pub fn run<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -148,7 +109,16 @@ impl ExecutionPhase {
         let stdin = self.stdin.load_full();
         match &self.emulator {
             EmulatorBackend::Asm(asm) => {
-                asm.execute(zisk_rom, &stdin, pctx, sm_bundle, use_hints, stats, caller_stats_scope)
+                let has_rom_sm = pctx.dctx_is_first_process();
+                asm.execute(
+                    zisk_rom,
+                    &stdin,
+                    sm_bundle,
+                    has_rom_sm,
+                    use_hints,
+                    stats,
+                    caller_stats_scope,
+                )
             }
             EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, &stdin, sm_bundle),
         }

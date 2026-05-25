@@ -1,107 +1,37 @@
-//! [`RomNativeWitnessHandler`] — ROM witness compute on the **native**
-//! (Rust-emulator) backend.
-//!
-//! Mirrors [`super::secondary::SecondaryWitnessHandler`]
-//! but uses the router's shared ROM trace buffer (single allocation
-//! reused across runs) instead of pulling a fresh buffer from the
-//! per-call pool.
-
-use std::sync::Mutex;
+//! ROM pre-calculate hook on the **Rust** backend.
 
 use fields::PrimeField64;
-use proofman_common::{ProofCtx, SetupCtx};
 use sm_rom::RomInstance;
 
-use super::common::{register_empty_collector, take_collectors_for_instance};
-use super::{RomWitnessHandler, SecnInstanceMap, SecnInstanceMapRef};
-use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
+use super::{SecnInstanceMap, SecnInstanceMapRef};
+use crate::error::{ExecutorError, ExecutorResult};
 use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
-use crate::{ChunkDataCollector, WitnessGenerator};
 
-/// Strategy implementor for the native-backend ROM witness path.
-pub struct RomNativeWitnessHandler;
+/// Pre-calculate hook for Rust ROM.
+pub(crate) fn pre_calculate<'a, F: PrimeField64>(
+    registry: &dyn Dctx,
+    state: &ExecutionState<F>,
+    secn_instances: &'a SecnInstanceMap<F>,
+    instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
+    global_id: usize,
+    airgroup_id: usize,
+    air_id: usize,
+) -> ExecutorResult<()> {
+    let gid = GlobalId(global_id);
+    let secn_instance =
+        secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
+    let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().ok_or(
+        ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
+    )?;
 
-impl<F: PrimeField64> RomWitnessHandler<F> for RomNativeWitnessHandler {
-    /// Compute the witness for the ROM global id under the native
-    /// backend: run per-chunk collection if it hasn't already happened
-    /// (the pre-calculate path may have done it), then drain the
-    /// collectors and call into the witness generator with the shared
-    /// ROM trace buffer. `airgroup_id`/`air_id` are unused on this path
-    /// — the secondary instance carries them implicitly.
-    fn dispatch(
-        &self,
-        generator: &WitnessGenerator,
-        collector: &ChunkDataCollector<F>,
-        trace_buffer_rom: &Mutex<Vec<F>>,
-        state: &ExecutionState<F>,
-        pctx: &ProofCtx<F>,
-        sctx: &SetupCtx<F>,
-        global_id: usize,
-        _airgroup_id: usize,
-        _air_id: usize,
-        stats_scope_id: u64,
-    ) -> ExecutorResult<()> {
-        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
-        let secn_instance =
-            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
-
-        let needs_collection = !state
-            .collector_store
-            .inner
-            .read_or_poison("collector_store")?
-            .contains_key(&global_id);
-
-        let instance = &**secn_instance;
-        if needs_collection {
-            collector.collect_single(pctx, state, global_id, instance)?;
-        }
-
-        let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
-        let trace_buffer =
-            std::mem::take(&mut *trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
-
-        generator.compute_secn_witness(
-            pctx,
-            sctx,
-            state,
-            global_id,
-            instance,
-            collectors,
-            trace_buffer,
-            stats_scope_id,
-        )
+    if rom_instance.skip_collector() {
+        state.register_empty_collector(global_id, airgroup_id, air_id)?;
+        registry.set_witness_ready(gid, true);
+    } else {
+        instances_to_collect.insert(global_id, &**secn_instance);
     }
-
-    /// Pre-calculate hook for native ROM: downcasts the secondary
-    /// instance to `RomInstance`. If `skip_collector()`, registers an
-    /// empty collector and flips the gid to ready; otherwise enqueues
-    /// the instance for per-chunk collection.
-    fn pre_calculate<'a>(
-        &self,
-        registry: &dyn Dctx,
-        state: &ExecutionState<F>,
-        secn_instances: &'a SecnInstanceMap<F>,
-        instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
-        global_id: usize,
-        airgroup_id: usize,
-        air_id: usize,
-    ) -> ExecutorResult<()> {
-        let gid = GlobalId(global_id);
-        let secn_instance =
-            secn_instances.get(&global_id).ok_or(ExecutorError::InstanceNotFound { global_id })?;
-        let rom_instance = secn_instance.as_any().downcast_ref::<RomInstance>().ok_or(
-            ExecutorError::InstanceTypeMismatch { global_id, air_id, expected: "RomInstance" },
-        )?;
-
-        if rom_instance.skip_collector() {
-            register_empty_collector(state, global_id, airgroup_id, air_id)?;
-            registry.set_witness_ready(gid, true);
-        } else {
-            instances_to_collect.insert(global_id, &**secn_instance);
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -110,7 +40,6 @@ mod tests {
     use crate::ports::fakes::FakeProofRegistry;
     use asm_runner::{AsmRHData, AsmRunnerRH};
     use fields::Goldilocks;
-    use sm_rom::RomInstance;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
@@ -143,8 +72,7 @@ mod tests {
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     ) -> ExecutorResult<()> {
-        <RomNativeWitnessHandler as RomWitnessHandler<F>>::pre_calculate(
-            &RomNativeWitnessHandler,
+        pre_calculate(
             registry,
             state,
             secn_instances,

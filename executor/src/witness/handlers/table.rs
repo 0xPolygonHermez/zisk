@@ -1,9 +1,4 @@
-//! [`TableWitnessHandler`] — witness compute for
-//! `InstanceType::Table` secondary state machines.
-//!
-//! Tables have no per-chunk collection; the handler skips straight
-//! to the witness generator with an empty collector list and a
-//! freshly-allocated trace buffer.
+//! [`TableWitnessHandler`] — witness compute for `InstanceType::Table` secondary state machines.
 
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
@@ -12,12 +7,11 @@ use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 use crate::WitnessGenerator;
 
-/// Static-namespace handler for `InstanceType::Table` secondary
-/// instances.
+/// Secondary handler witness computation for `InstanceType::Table` secondaries.
 pub struct TableWitnessHandler;
 
 impl TableWitnessHandler {
-    /// Compute the witness for a table instance.
+    /// Compute the witness for a `InstanceType::Table` secondary.
     #[allow(clippy::too_many_arguments)]
     pub fn dispatch<F: PrimeField64>(
         generator: &WitnessGenerator,

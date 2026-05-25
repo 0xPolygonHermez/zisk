@@ -96,7 +96,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             witness: if with_asm_emulator {
                 WitnessPhase::new_asm(CHUNK_SIZE, sm_bundle)
             } else {
-                WitnessPhase::new_native(CHUNK_SIZE, sm_bundle)
+                WitnessPhase::new_rust(CHUNK_SIZE, sm_bundle)
             },
         });
         executor.set_packed(packed);

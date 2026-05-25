@@ -1,25 +1,18 @@
-//! [`SecondaryWitnessHandler`] — witness compute for non-ROM
-//! `InstanceType::Instance` secondary state machines.
+//! [`SecondaryWitnessHandler`] — witness compute for non-ROM `InstanceType::Instance`
+//! secondary state machines.
 
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 
-use super::common::take_collectors_for_instance;
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
 use crate::{ChunkDataCollector, WitnessGenerator};
 
-/// Static-namespace handler for non-ROM secondary `Instance`s.
-///
-/// Runs per-chunk collection via the executor's `ChunkDataCollector`
-/// when the collector slot is empty, then drains the recorded
-/// collectors and forwards to the witness generator's
-/// `compute_secn_witness`.
+/// Secondary handler witness computation for non-ROM `InstanceType::Instance` secondaries.
 pub struct SecondaryWitnessHandler;
 
 impl SecondaryWitnessHandler {
-    /// Compute the witness for `global_id` (assumed to be a non-ROM
-    /// `InstanceType::Instance` secondary).
+    /// Compute the witness for `global_id` (assumed to be a non-ROM `InstanceType::Instance`).
     #[allow(clippy::too_many_arguments)]
     pub fn dispatch<F: PrimeField64>(
         generator: &WitnessGenerator,
@@ -46,7 +39,7 @@ impl SecondaryWitnessHandler {
             collector.collect_single(pctx, state, global_id, instance)?;
         }
 
-        let collectors = take_collectors_for_instance(state, global_id, instance.instance_type())?;
+        let collectors = state.take_collectors_for_instance(global_id, instance.instance_type())?;
         let trace_buffer = buffer_pool.take_buffer();
 
         generator.compute_secn_witness(
