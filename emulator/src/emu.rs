@@ -99,14 +99,16 @@ impl<'a> Emu<'a> {
 
         // Create a new read section for every RO data entry of the rom
         for i in 0..self.rom.ro_data.len() {
-            ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].from, &self.rom.ro_data[i].data);
+            ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].addr, &self.rom.ro_data[i].data);
+        }
+
+        // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
+        for i in 0..self.rom.rw_data.len() {
+            ctx.inst_ctx.mem.init_write_section_data(&self.rom.rw_data[i]);
         }
 
         // Sort read sections by start address to improve performance when using binary search
         ctx.inst_ctx.mem.read_sections.sort_by_key(|a| a.start);
-
-        // Get registers
-        //emu.get_regs(); // TODO: ask Jordi
 
         ctx
     }

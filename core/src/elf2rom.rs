@@ -4,10 +4,10 @@ use crate::{
     add_end_and_lib,
     elf_extraction::{
         collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes,
-        merge_adjacent_ro_sections, ElfPayload,
+        merge_adjacent_data_sections, DataSection, ElfPayload,
     },
-    riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_zisk_init_data},
-    AsmGenerationMethod, RoData, ZiskRom, ZiskRom2Asm, ROM_ENTRY,
+    riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code},
+    AsmGenerationMethod, ZiskRom, ZiskRom2Asm, ROM_ENTRY,
 };
 use std::{error::Error, path::Path};
 
@@ -41,34 +41,53 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Add the end instruction, jumping over it
     add_end_and_lib(&mut rom);
 
+    // Store RO and RW data sections separately, as they will be treated differently when generating the ROM instructions
+    let mut ro_data: Vec<DataSection> = Vec::new();
+    let mut rw_data: Vec<DataSection> = Vec::new();
+
     for (i, payload) in payloads.into_iter().enumerate() {
         // 1. Add executable code sections
         for section in &payload.exec {
             add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
         }
 
-        // 2. Add read-write data sections (will be copied to RAM)
-        for section in &payload.rw {
-            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
-        }
+        // 3. Add read-only data sections (will be stored in ROM)
+        ro_data.append(&mut payload.ro.clone());
 
-        // 3. Add read-only data sections
-        // Merge adjacent read-only sections for efficiency
-        let merged_ro = merge_adjacent_ro_sections(&payload.ro);
-        for section in &merged_ro {
-            rom.ro_data.push(RoData::new(section.addr, section.data.len(), section.data.clone()));
-        }
-
-        // Add RO data initialization code instructions
-        for section in &merged_ro {
-            add_zisk_init_data(&mut rom, section.addr, &section.data, true);
-        }
+        // 2. Add read-write data sections (will be stored in RAM)
+        rw_data.append(&mut payload.rw.clone());
 
         // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
         if i == 1 {
             add_entry_exit_jmp(&mut rom, payload.entry_point);
         }
     }
+
+    // Merge adjacent read-only and read_write data sections for efficiency
+    rom.ro_data = merge_adjacent_data_sections(&ro_data);
+    rom.rw_data = merge_adjacent_data_sections(&rw_data);
+
+    // println!(
+    //     "Merged data sections: {} read-only sections, {} read-write sections",
+    //     rom.ro_data.len(),
+    //     rom.rw_data.len()
+    // );
+    // for i in 0..rom.ro_data.len() {
+    //     println!(
+    //         "RO section {}: addr=0x{:x}, size={}",
+    //         i,
+    //         rom.ro_data[i].addr,
+    //         rom.ro_data[i].data.len()
+    //     );
+    // }
+    // for i in 0..rom.rw_data.len() {
+    //     println!(
+    //         "RW section {}: addr=0x{:x}, size={}",
+    //         i,
+    //         rom.rw_data[i].addr,
+    //         rom.rw_data[i].data.len()
+    //     );
+    // }
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when
