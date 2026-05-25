@@ -58,6 +58,9 @@ int InverseFpEcCtx (
 int InverseFnEcCtx (
     struct FcallContext * ctx  // fcall context
 );
+int InverseFnEcR1Ctx (
+    struct FcallContext * ctx  // fcall context
+);
 int SqrtFpEcParityCtx (
     struct FcallContext * ctx  // fcall context
 );

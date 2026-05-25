@@ -37,7 +37,7 @@ int Fcall (
         }
         case FCALL_SECP256R1_FN_INV_ID:
         {
-            iresult = Secp256r1FnInvCtx(ctx);
+            iresult = InverseFnEcR1Ctx(ctx);
             break;
         }
         case FCALL_BN254_FP_INV_ID:
@@ -183,8 +183,8 @@ int InverseFpEcCtx (
 /****************/
 
 int InverseFnEc (
-    const uint64_t * _a,  // 8 x 64 bits
-    uint64_t * _r  // 8 x 64 bits
+    const uint64_t * _a,  // 4 x 64 bits
+    uint64_t * _r  // 4 x 64 bits
 )
 {
     RawFnec::Element a;
@@ -318,8 +318,8 @@ uint64_t msb_pos(uint64_t x)
 }
 
 int MsbPos256 (
-    const uint64_t * a, // 8 x 64 bits
-          uint64_t * r  // 2 x 64 bits
+    const uint64_t * a,
+          uint64_t * r
 )
 {
     const uint64_t n = a[0]; // number of inputs
@@ -828,12 +828,12 @@ int BLS12_381TwistDblLineCoeffsCtx (
 /***************/
 
 int MsbPos384 (
-    const uint64_t * a, // 12 x 64 bits
+    const uint64_t * a, // 16 x 64 bits: x (6 + 2 padding) || y (6 + 2 padding)
           uint64_t * r  // 2 x 64 bits
 )
 {
     const uint64_t * x = a;
-    const uint64_t * y = &a[6];
+    const uint64_t * y = &a[8];
 
     for (int i=5; i>=0; i--)
     {
@@ -1265,7 +1265,7 @@ int InverseFnEcR1 (
     return 0;
 }
 
-int Secp256r1FnInvCtx (
+int InverseFnEcR1Ctx (
     struct FcallContext * ctx  // fcall context
 )
 {
