@@ -13,6 +13,11 @@
 #include <cuda_runtime.h>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 
 // `InstanceMeta` is declared in this shared header so the plain C++ side
 // (mem_count_and_plan.cpp) can read GPU-produced metas directly without
@@ -51,7 +56,12 @@ constexpr uint32_t MAX_CHUNKS            = 1u << 13;          // 8192
 constexpr uint32_t MAX_MEMOPS_PER_CHUNK  = 1u << 19;          // 524288 (bumped from 1<<18 to fit denser inputs; ~+350 MiB GPU device memory)
 constexpr uint32_t POTENTIAL_FACTOR      = 8;                 
 constexpr uint32_t MAX_POT_PER_CHUNK     = MAX_MEMOPS_PER_CHUNK * POTENTIAL_FACTOR;
-constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops 
+constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops
+
+// Internal compile-time toggle for the add_chunk worker pool (parallelizes the
+// per-chunk count + memcpy + kernel launches across N_STREAMS threads). Set to
+// 0 to fall back to the serial path. Replaces the ZISK_MOPS_POOL env var for now.
+#define ZISK_MOPS_POOL 1
 
 class CountAndPlan {
 public:
@@ -187,7 +197,7 @@ private:
 
     cudaStream_t  d2h_stream_         = nullptr;
     cudaStream_t  meta_stream_        = nullptr;
-    cudaEvent_t   e_last_chunk_start_ = nullptr;
+    cudaEvent_t   e_last_chunk_start_[N_STREAMS] = {nullptr};
     cudaEvent_t   e_after_preproc_    = nullptr;
     cudaEvent_t   e_after_prepare_    = nullptr;
     cudaEvent_t   e_metas_ready_      = nullptr;
@@ -224,7 +234,29 @@ private:
     uint32_t  num_instances_       = 0;
     uint32_t  h_max_compact_[3]    = {0};
 
-    // ─── Internal helpers 
+    // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
+    // Per-stream device buffers are scratch fully consumed within
+    // add_chunk_core_; the only cross-chunk shared host state is bumped via
+    // these atomics, so chunks can be processed by N_STREAMS worker threads
+    // (one per stream, FIFO → no per-stream buffer aliasing). The serial
+    // path uses the same core (1 thread, identical results).
+    int                     gpu_device_           = 0;     // captured in setup()
+    bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
+    std::atomic<size_t>     pool_cursor_u32_{0};            // d_ops_pool_ bump
+    std::atomic<size_t>     h_memops_cursor_{0};            // h_memops_ bump
+    std::atomic<bool>       add_error_{false};
+
+    struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
+    std::thread              pool_threads_[N_STREAMS];
+    std::mutex               pool_mtx_[N_STREAMS];
+    std::condition_variable  pool_cv_[N_STREAMS];
+    std::deque<ChunkJob>     pool_q_[N_STREAMS];
+    bool                     pool_should_stop_   = false;
+    std::mutex               pool_done_mtx_;
+    std::condition_variable  pool_done_cv_;
+    std::atomic<uint32_t>    pool_done_{0};                 // completed chunks
+
+    // ─── Internal helpers
 
     void   free_all_();
     void   free_pinned_();
@@ -235,6 +267,12 @@ private:
     void   process_worker_();
     void   set_active_worker_();
     void   pick_active_instances_();
+
+    bool   add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c);
+    void   pool_start_();
+    void   pool_stop_();
+    void   pool_drain_();
+    void   worker_loop_(int s);
 };
 
 // ─── Binary-meta save helpers ───────────────────────────────────────

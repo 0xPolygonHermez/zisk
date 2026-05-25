@@ -10,17 +10,10 @@
 #include <thrust/iterator/discard_iterator.h>
 
 #include <algorithm>
-#include <chrono> // TEMP-ADDCHUNK-PROF
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-
-// TEMP-ADDCHUNK-PROF: per-block CPU-time accumulators for the add_chunk split
-// (potential-counting loop vs the shmem->pinned memcpy). Summed across chunks,
-// logged + reset in run(). One CountAndPlan per worker process → file-static ok.
-static double g_dbg_count_us = 0.0;
-static double g_dbg_memcpy_us = 0.0;
 
 // =====================================================================
 // Preprocessing constants
@@ -1231,7 +1224,8 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         CUDA_CHECK(cudaStreamCreate(&streams_[s]));
     CUDA_CHECK(cudaStreamCreate(&d2h_stream_));
     CUDA_CHECK(cudaStreamCreate(&meta_stream_));
-    CUDA_CHECK(cudaEventCreate(&e_last_chunk_start_));
+    for (int s = 0; s < N_STREAMS; s++)
+        CUDA_CHECK(cudaEventCreate(&e_last_chunk_start_[s]));
     CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
@@ -1258,6 +1252,20 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
 
+    // Capture the device the caller bound so pool workers can attach to it.
+    CUDA_CHECK(cudaGetDevice(&gpu_device_));
+
+    // Worker pool: parallelizes the per-chunk add_chunk CPU work
+    // (potential-count + memcpy + kernel launches) across N_STREAMS threads,
+    // matching the device's existing per-stream concurrency. Compile-time
+    // toggle ZISK_MOPS_POOL (count_and_plan.cuh); set to 0 for the serial path.
+    pool_enabled_ = (ZISK_MOPS_POOL != 0);
+    if (pool_enabled_) {
+        fprintf(stderr, "[mops-pool] enabled (%d stream workers, device %d)\n",
+                N_STREAMS, gpu_device_);
+        pool_start_();
+    }
+
     reset();
     return true;
 }
@@ -1275,16 +1283,25 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
                 n, MAX_MEMOPS_PER_CHUNK);
         std::abort();
     }
-    if (h_memops_used_ + n > MAX_TOTAL_MEMOPS) {
-        fprintf(stderr,
-                "CountAndPlan::add_chunk FATAL: pinned memop pool exhausted "
-                "(used %zu + need %u > MAX_TOTAL_MEMOPS=%u)\n",
-                h_memops_used_, n, MAX_TOTAL_MEMOPS);
-        std::abort();
-    }
 
-    const uint32_t c = n_chunks_;
-    const int      s = c % N_STREAMS;
+    // Single-threaded caller assigns the chunk index. Pool path: hand the job
+    // to the worker that owns stream (c % N_STREAMS) — chunks on a stream are
+    // processed FIFO, so the per-stream scratch buffers never alias.
+    const uint32_t c = n_chunks_++;
+    if (pool_enabled_) {
+        const int s = c % N_STREAMS;
+        {
+            std::lock_guard<std::mutex> lk(pool_mtx_[s]);
+            pool_q_[s].push_back(ChunkJob{memops, n, c});
+        }
+        pool_cv_[s].notify_one();
+        return true;
+    }
+    return add_chunk_core_(memops, n, c);
+}
+
+bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
+    const int s = c % N_STREAMS;
 
     //add potencial emission
     auto add_pot = [](uint32_t addr, uint32_t count, size_t& pot, uint32_t& ram) {
@@ -1293,7 +1310,6 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
     };
     size_t   pot = 0;
     uint32_t ram = 0;
-    auto _dbg_c0 = std::chrono::steady_clock::now(); // TEMP-ADDCHUNK-PROF
     for (uint32_t k = 0; k < n; k++) {
         const MemOp& op = memops[k];
         const uint32_t addr    = op.addr;
@@ -1319,45 +1335,54 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
                        add_pot(addr, cnt, pot, ram); break; }
         }
     }
-    g_dbg_count_us += std::chrono::duration<double, std::micro>(
-        std::chrono::steady_clock::now() - _dbg_c0).count(); // TEMP-ADDCHUNK-PROF
 
     if (pot > MAX_POT_PER_CHUNK) {
         fprintf(stderr,
                 "CountAndPlan::add_chunk ERROR: chunk %u has %zu potentials > "
                 "MAX_POT_PER_CHUNK=%u\n", c, pot, MAX_POT_PER_CHUNK);
+        add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
-    if (d_ops_pool_used_u32_ + pot > d_ops_pool_cap_u32_) {
+
+    // Reserve this chunk's compacted-output region in the device ops pool and
+    // its staging slot in the pinned memop buffer. Atomic bumps so per-stream
+    // worker threads run concurrently; in the serial path (1 thread) these are
+    // identical to the old cumulative prefix sum.
+    const size_t base = pool_cursor_u32_.fetch_add(pot, std::memory_order_relaxed);
+    if (base + pot > d_ops_pool_cap_u32_) {
         fprintf(stderr,
                 "CountAndPlan::add_chunk ERROR: ops pool exhausted at chunk %u "
-                "(used %zu + need %zu > capacity %zu u32 entries). "
+                "(base %zu + need %zu > capacity %zu u32 entries). "
                 "Increase the buffer size passed to setup().\n",
-                c, d_ops_pool_used_u32_, pot, d_ops_pool_cap_u32_);
+                c, base, pot, d_ops_pool_cap_u32_);
+        add_error_.store(true, std::memory_order_relaxed);
         return false;
     }
+    const size_t moff = h_memops_cursor_.fetch_add(n, std::memory_order_relaxed);
+    if (moff + n > MAX_TOTAL_MEMOPS) {
+        fprintf(stderr,
+                "CountAndPlan::add_chunk FATAL: pinned memop pool exhausted "
+                "(base %zu + need %u > MAX_TOTAL_MEMOPS=%u)\n",
+                moff, n, MAX_TOTAL_MEMOPS);
+        std::abort();
+    }
 
-    n_potentials_per_chunk_.push_back((uint32_t)pot);
-    n_ram_per_chunk_.push_back(ram);
-    out_offsets_.push_back(out_offsets_.back() + pot);
-    d_ops_pool_used_u32_ += pot;
+    out_offsets_[c]            = base;
+    n_potentials_per_chunk_[c] = (uint32_t)pot;
+    n_ram_per_chunk_[c]        = ram;
 
-    MemOp* memops_dst = h_memops_ + h_memops_used_;
-    auto _dbg_m0 = std::chrono::steady_clock::now(); // TEMP-ADDCHUNK-PROF
+    MemOp* memops_dst = h_memops_ + moff;
     std::memcpy(memops_dst, memops, n * sizeof(MemOp));
-    g_dbg_memcpy_us += std::chrono::duration<double, std::micro>(
-        std::chrono::steady_clock::now() - _dbg_m0).count(); // TEMP-ADDCHUNK-PROF
-    h_memops_used_ += n;
 
     cudaStream_t st = streams_[s];
 
-    CUDA_CHECK(cudaEventRecord(e_last_chunk_start_, st));
+    CUDA_CHECK(cudaEventRecord(e_last_chunk_start_[s], st));
 
-    uint32_t* d_chunk_out = d_ops_pool_ + out_offsets_[c];
+    uint32_t* d_chunk_out = d_ops_pool_ + base;
 
     if (n == 0) {
         *(h_n_emits_[s]) = 0;
-        n_chunks_++;
+        h_n_emits_all_[c] = 0;
         return true;
     }
 
@@ -1433,21 +1458,62 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
         d_potentials_[s], d_emit_bits_[s], d_final_offsets_[s],
         (uint32_t)pot, d_chunk_out);
 
-    n_chunks_++;
     return true;
 }
 
+// ─── add_chunk worker pool (ZISK_MOPS_POOL) ──────────────────────────
+
+void CountAndPlan::worker_loop_(int s) {
+    cudaSetDevice(gpu_device_);
+    for (;;) {
+        ChunkJob job;
+        {
+            std::unique_lock<std::mutex> lk(pool_mtx_[s]);
+            pool_cv_[s].wait(lk, [&] { return pool_should_stop_ || !pool_q_[s].empty(); });
+            if (pool_q_[s].empty()) {
+                if (pool_should_stop_) return;
+                continue;
+            }
+            job = pool_q_[s].front();
+            pool_q_[s].pop_front();
+        }
+        add_chunk_core_(job.memops, job.n, job.c);
+        {
+            std::lock_guard<std::mutex> lk(pool_done_mtx_);
+            pool_done_++;
+        }
+        pool_done_cv_.notify_one();
+    }
+}
+
+void CountAndPlan::pool_start_() {
+    pool_should_stop_ = false;
+    for (int s = 0; s < N_STREAMS; s++)
+        pool_threads_[s] = std::thread(&CountAndPlan::worker_loop_, this, s);
+}
+
+void CountAndPlan::pool_stop_() {
+    for (int s = 0; s < N_STREAMS; s++) {
+        std::lock_guard<std::mutex> lk(pool_mtx_[s]);
+        pool_should_stop_ = true;
+    }
+    for (int s = 0; s < N_STREAMS; s++) pool_cv_[s].notify_all();
+    for (int s = 0; s < N_STREAMS; s++)
+        if (pool_threads_[s].joinable()) pool_threads_[s].join();
+}
+
+// Block until all enqueued chunks have been processed by the workers.
+void CountAndPlan::pool_drain_() {
+    std::unique_lock<std::mutex> lk(pool_done_mtx_);
+    pool_done_cv_.wait(lk, [&] { return pool_done_ >= n_chunks_; });
+}
+
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
+    if (pool_enabled_) pool_drain_();
     if (n_chunks_ == 0) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
         return false;
     }
-
-    // TEMP-ADDCHUNK-PROF: per-block CPU split of add_chunk (count loop vs memcpy).
-    fprintf(stderr, "[addchunk-prof] chunks=%u count_loop=%.1fms memcpy=%.1fms\n",
-            n_chunks_, g_dbg_count_us / 1000.0, g_dbg_memcpy_us / 1000.0);
-    g_dbg_count_us = 0.0;
-    g_dbg_memcpy_us = 0.0;
 
     if (!preprocessed_) {
         for (int s = 0; s < N_STREAMS; s++)
@@ -1498,7 +1564,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
     if (!metas_ready_recorded_) {
         CUDA_CHECK(cudaEventRecord(e_metas_ready_, 0));
         CUDA_CHECK(cudaEventSynchronize(e_metas_ready_));
-        cudaEventElapsedTime(&last_chunk_to_final_ms_, e_last_chunk_start_, e_metas_ready_);
+        cudaEventElapsedTime(&last_chunk_to_final_ms_, e_last_chunk_start_[0], e_metas_ready_);
         metas_ready_recorded_ = true;
     }
 
@@ -1515,11 +1581,17 @@ void CountAndPlan::reset() {
     num_ops_               = 0;
     h_memops_used_         = 0;
     d_ops_pool_used_u32_   = 0;
-    out_offsets_.clear();
-    out_offsets_.push_back(0);
-    n_potentials_per_chunk_.clear();
-    n_ram_per_chunk_.clear();
+    // add_chunk_core_ writes out_offsets_/n_*_per_chunk_ by chunk index `c`
+    // (workers fill out of order), so pre-size to MAX_CHUNKS instead of
+    // push_back. Reset the atomic cursors + completion counter for the block.
+    out_offsets_.assign(MAX_CHUNKS, 0);
+    n_potentials_per_chunk_.assign(MAX_CHUNKS, 0);
+    n_ram_per_chunk_.assign(MAX_CHUNKS, 0);
     packed_chunk_offsets_h_.clear();
+    pool_cursor_u32_.store(0, std::memory_order_relaxed);
+    h_memops_cursor_.store(0, std::memory_order_relaxed);
+    add_error_.store(false, std::memory_order_relaxed);
+    pool_done_ = 0;
     metas_.assign(MAX_INSTANCES, InstanceMeta{});
     metas_ready_recorded_   = false;
     last_chunk_to_final_ms_ = 0.f;
@@ -1548,11 +1620,13 @@ void CountAndPlan::free_pinned_() {
 }
 
 void CountAndPlan::free_all_() {
+    pool_stop_();  // join worker threads (no-op if none) before tearing down
     for (int s = 0; s < N_STREAMS; s++)
         if (streams_[s]) { cudaStreamDestroy(streams_[s]); streams_[s] = nullptr; }
     if (d2h_stream_)         { cudaStreamDestroy(d2h_stream_);  d2h_stream_  = nullptr; }
     if (meta_stream_)        { cudaStreamDestroy(meta_stream_); meta_stream_ = nullptr; }
-    if (e_last_chunk_start_) { cudaEventDestroy(e_last_chunk_start_); e_last_chunk_start_ = nullptr; }
+    for (int s = 0; s < N_STREAMS; s++)
+        if (e_last_chunk_start_[s]) { cudaEventDestroy(e_last_chunk_start_[s]); e_last_chunk_start_[s] = nullptr; }
     if (e_after_preproc_)    { cudaEventDestroy(e_after_preproc_);    e_after_preproc_    = nullptr; }
     if (e_after_prepare_)    { cudaEventDestroy(e_after_prepare_);    e_after_prepare_    = nullptr; }
     if (e_metas_ready_)      { cudaEventDestroy(e_metas_ready_);      e_metas_ready_      = nullptr; }
