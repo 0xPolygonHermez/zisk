@@ -27,24 +27,24 @@
 //! ZiskExecutor::calculate_witness
 //!   │
 //!   └── WitnessRouter::dispatch
-//!         │  (router has its backend baked at construction via
-//!         │   `new_asm` / `new_rust`; ROM compute is one shared
-//!         │   algorithm with a backend-tag branch)
+//!         │  (ROM backend is selected at runtime from
+//!         │   `WitnessContext::is_asm_emulator`; ROM compute is one
+//!         │   shared algorithm with an in-flight branch)
 //!         ├── MainWitnessHandler
 //!         ├── SecondaryWitnessHandler
-//!         ├── WitnessPhase::rom_dispatch (shared body + RomBackend branch)
+//!         ├── WitnessPhase::rom_dispatch (shared body + runtime branch)
 //!         └── TableWitnessHandler
 //! ```
 //!
 //! # Backend abstraction
 //!
-//! The ASM / Rust split is encapsulated by the `EmulatorBackend` enum
-//! inside `ExecutionPhase` (set once at construction, no runtime
-//! dispatch). Both backends return `ExecutionOutput`; backend-specific
-//! async work (the ASM MO + RH runner handles) lives in
-//! `BackendArtifacts`, exposed only through `await_*` methods. **No
-//! phase signature mentions `is_asm`, `JoinHandle`, or `AsmRunner*`**
-//! — the backend choice is invisible past `ExecutionPhase`.
+//! `ExecutionPhase` owns both backends side-by-side and dispatches at
+//! runtime by an `AtomicBool` toggled via `set_asm_resources` /
+//! `clear_asm_resources`. The ASM backend is `Option<EmulatorAsm>`,
+//! populated only when the executor was constructed with
+//! `with_asm_emulator = true`. Both paths return `ExecutionOutput`;
+//! backend-specific async work (the ASM MO + RH runner handles) lives
+//! in `BackendArtifacts`, exposed only through `await_*` methods.
 //!
 //! # Anti-corruption layer (ACL)
 //!

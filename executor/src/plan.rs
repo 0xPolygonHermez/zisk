@@ -121,8 +121,9 @@ impl<F: PrimeField64> PlanPhase<F> {
         counters: &mut CountersChunkMetrics,
         bundle: &StaticSMBundle<F>,
         num_chunks: usize,
+        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
-        bundle.plan_sec(counters, num_chunks)
+        bundle.plan_sec(counters, num_chunks, is_asm_emulator)
     }
 
     /// Run the full plan + materialize pipeline. Consumes the trace
@@ -148,6 +149,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_ids: &RwLock<Vec<usize>>,
+        is_asm_emulator: bool,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
     ) -> ExecutorResult<PlanOutput> {
@@ -178,7 +180,8 @@ impl<F: PrimeField64> PlanPhase<F> {
         stats_begin!(stats, exec_scope, _secn_plan_scope, "SECN_PLAN", 0);
 
         let mut counters = trace.counters;
-        let mut secn_planning = Self::plan_secondary(&mut counters, &self.sm_bundle, num_chunks);
+        let mut secn_planning =
+            Self::plan_secondary(&mut counters, &self.sm_bundle, num_chunks, is_asm_emulator);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN);

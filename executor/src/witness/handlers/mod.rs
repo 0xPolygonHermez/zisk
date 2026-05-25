@@ -18,10 +18,3 @@ pub(crate) type SecnInstanceMap<F> = HashMap<usize, Box<dyn Instance<F>>>;
 
 /// Map of borrowed secondary instances.
 pub(crate) type SecnInstanceMapRef<'a, F> = HashMap<usize, &'a dyn Instance<F>>;
-
-/// ROM backend tag for dispatching the shared ROM pre-calculate body.
-#[derive(Clone, Copy, Debug)]
-pub enum RomBackend {
-    Asm,
-    Rust,
-}

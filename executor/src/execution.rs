@@ -8,6 +8,7 @@ pub use asm::*;
 pub use output::*;
 pub use rust::*;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
@@ -18,76 +19,85 @@ use zisk_core::ZiskRom;
 
 use crate::sm::StaticSMBundle;
 
-/// Emulator backend chosen at construction.
-enum EmulatorBackend {
-    /// x86-64 ASM emulator.
-    Asm(EmulatorAsm),
-    /// Native Rust emulator.
-    Rust(EmulatorRust),
-}
-
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.
 pub struct ExecutionPhase {
-    /// Concrete backend, set once at construction.
-    emulator: EmulatorBackend,
+    /// Rust emulator. Always present.
+    emulator_rust: EmulatorRust,
+
+    /// ASM-backed emulator. Present iff the executor was constructed with `with_asm_emulator = true`.
+    emulator_asm: Option<EmulatorAsm>,
+
+    /// Runtime selector. Set to `true` when ASM resources are installed
+    /// via [`Self::set_asm_resources`]; cleared by [`Self::clear_asm_resources`].
+    is_asm_execution: AtomicBool,
 }
 
 impl ExecutionPhase {
-    /// Construct the execution phase for the given chunk size and backend choice.
-    pub fn new(chunk_size: u64, is_asm: bool) -> Self {
-        let emulator = if is_asm {
-            EmulatorBackend::Asm(EmulatorAsm::new(chunk_size))
-        } else {
-            EmulatorBackend::Rust(EmulatorRust::new(chunk_size))
-        };
-        Self { emulator }
+    /// Construct the execution phase.
+    ///
+    /// * `with_asm_emulator = false` — builds an emu-only phase.
+    /// * `with_asm_emulator = true` — builds both backends.
+    pub fn new(chunk_size: u64, with_asm_emulator: bool) -> Self {
+        Self {
+            emulator_asm: with_asm_emulator.then(|| EmulatorAsm::new(chunk_size)),
+            emulator_rust: EmulatorRust::new(chunk_size),
+            is_asm_execution: AtomicBool::new(false),
+        }
     }
 
-    /// Returns `true` if the ASM backend was chosen at construction.
-    #[cfg(test)]
+    /// Returns `true` if the next `run` will route through the ASM backend.
     #[inline]
-    pub fn is_asm(&self) -> bool {
-        matches!(self.emulator, EmulatorBackend::Asm(_))
+    pub fn is_asm_execution(&self) -> bool {
+        self.is_asm_execution.load(Ordering::Relaxed)
     }
 
-    /// Returns a reference to the underlying ASM emulator, or `None` on the Rust backend.
+    /// Returns a reference to the ASM emulator iff ASM execution is currently active.
+    /// Returns `None` when the executor is emu-only or when the runtime flag is cleared.
     pub fn asm_emulator(&self) -> Option<&EmulatorAsm> {
-        match &self.emulator {
-            EmulatorBackend::Asm(asm) => Some(asm),
-            EmulatorBackend::Rust(_) => None,
+        if self.is_asm_execution() {
+            self.emulator_asm.as_ref()
+        } else {
+            None
         }
     }
 
-    /// Hands the ASM resources to the underlying ASM emulator.
+    /// Installs the worker-supplied [`AsmResources`] handle and flips
+    /// the runtime flag to ASM. Returns an error on emu-only
+    /// executors — they have no ASM backend to install into.
     pub fn set_asm_resources(&self, asm_resources: Arc<AsmResources>) -> ExecutorResult<()> {
-        match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.set_asm_resources(asm_resources),
-            EmulatorBackend::Rust(_) => Err(ExecutorError::Internal(
-                "ExecutionPhase::set_asm_resources called on a Rust-backed execution phase".into(),
-            )),
-        }
+        let asm = self.emulator_asm.as_ref().ok_or(ExecutorError::AsmNotAvailable)?;
+        asm.set_asm_resources(asm_resources)?;
+        self.is_asm_execution.store(true, Ordering::Relaxed);
+        Ok(())
     }
 
-    /// Resets the ASM pipeline (hints stream + input shmem) for the next run.
-    /// No-op on the Rust backend.
+    /// Clears the runtime flag so subsequent `run` calls route through the Rust emulator.
+    pub fn clear_asm_resources(&self) {
+        self.is_asm_execution.store(false, Ordering::Relaxed);
+    }
+
+    /// Resets the ASM pipeline (hints stream + input shmem) only when
+    /// the ASM backend is the active one. No-op on the Rust path and
+    /// on emu-only executors.
     pub fn reset(&self) -> ExecutorResult<()> {
-        match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.reset(),
-            EmulatorBackend::Rust(_) => Ok(()),
+        if let Some(asm) = self.asm_emulator() {
+            asm.reset()?;
         }
+        Ok(())
     }
 
-    /// Returns the ASM execution info captured during the last run, or
-    /// `None` on the Rust backend (no analogous info is collected).
+    /// Returns the ASM execution info captured during the last run,
+    /// or `None` when the Rust backend was the active one or the executor is emu-only.
     pub fn get_asm_execution_info(&self) -> ExecutorResult<Option<AsmExecutionInfo>> {
-        match &self.emulator {
-            EmulatorBackend::Asm(asm) => asm.get_asm_execution_info(),
-            EmulatorBackend::Rust(_) => Ok(None),
+        match self.asm_emulator() {
+            Some(asm) => asm.get_asm_execution_info(),
+            None => Ok(None),
         }
     }
 
-    /// Runs the chosen emulator and returns its [`ExecutionOutput`].
+    /// Runs the active emulator and returns its [`ExecutionOutput`].
+    #[allow(clippy::too_many_arguments)]
     pub fn run<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
@@ -98,8 +108,8 @@ impl ExecutionPhase {
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> ExecutorResult<ExecutionOutput> {
-        match &self.emulator {
-            EmulatorBackend::Asm(asm) => {
+        match self.asm_emulator() {
+            Some(asm) => {
                 let has_rom_sm = pctx.dctx_is_first_process();
                 asm.execute(
                     zisk_rom,
@@ -111,7 +121,7 @@ impl ExecutionPhase {
                     caller_stats_scope,
                 )
             }
-            EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, stdin, sm_bundle),
+            None => self.emulator_rust.execute(zisk_rom, stdin, sm_bundle),
         }
     }
 }
@@ -121,40 +131,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rust_phase_reports_not_asm() {
+    fn emu_only_starts_in_rust_mode() {
         let phase = ExecutionPhase::new(1024, false);
-        assert!(!phase.is_asm());
+        assert!(!phase.is_asm_execution());
         assert!(phase.asm_emulator().is_none());
     }
 
     #[test]
-    fn rust_phase_reset_is_noop() {
+    fn asm_capable_starts_in_rust_mode() {
+        let phase = ExecutionPhase::new(1024, true);
+        assert!(!phase.is_asm_execution(), "runtime flag defaults to false");
+        assert!(phase.asm_emulator().is_none(), "no asm dispatch until set_asm_resources");
+    }
+
+    #[test]
+    fn rust_reset_is_noop() {
         let phase = ExecutionPhase::new(1024, false);
         assert!(phase.reset().is_ok());
     }
 
     #[test]
-    fn rust_phase_asm_execution_info_is_none() {
+    fn rust_asm_execution_info_is_none() {
         let phase = ExecutionPhase::new(1024, false);
         let info = phase.get_asm_execution_info().expect("ok");
         assert!(info.is_none());
     }
 
     #[test]
-    fn rust_phase_rejects_asm_resources() {
-        // Constructing `Arc<AsmResources>` would require shmem setup, so we
-        // just confirm the *type-level* contract via the method name: the
-        // ASM-resources setter on a Rust phase must error.
-        //
-        // We avoid actually calling set_asm_resources here (it would need
-        // an Arc<AsmResources>). The behavior is locked by the
-        // `EmulatorBackend::Rust(_) => bail!` arm above; verifying it
-        // structurally is good enough at this level.
-        let phase = ExecutionPhase::new(1024, false);
-        assert!(!phase.is_asm());
+    fn clear_without_set_is_safe() {
+        let phase = ExecutionPhase::new(1024, true);
+        phase.clear_asm_resources();
+        assert!(!phase.is_asm_execution());
     }
 
-    // Note: We do not unit-test the ASM path here because constructing
-    // `EmulatorAsm`'s internals (and the AsmResources it needs) requires
-    // shmem bring-up. The ASM path is covered by the integration suite.
+    // Note: The ASM path is exercised via integration tests, since
+    // `set_asm_resources` requires real shmem-backed `AsmResources`.
 }

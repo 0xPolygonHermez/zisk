@@ -114,6 +114,12 @@ pub enum ExecutorError {
     #[error("AsmResources not initialized")]
     AsmResourcesNotInitialized,
 
+    /// An ASM-only operation (e.g. `set_asm_resources`) was invoked on
+    /// an executor that was built without `with_asm_emulator = true`,
+    /// so no ASM backend exists to install resources into.
+    #[error("ASM backend not available — executor was built emu-only")]
+    AsmNotAvailable,
+
     /// A hints-only operation was invoked on a program that wasn't set up with the hints pipeline.
     #[error("program was not set up with hints")]
     HintsNotConfigured,

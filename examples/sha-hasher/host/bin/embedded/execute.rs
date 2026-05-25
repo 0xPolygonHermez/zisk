@@ -1,7 +1,7 @@
 use anyhow::Result;
 use sha_hasher_common::Output;
 use sha_hasher_host::ELF_SHA_HASHER;
-use zisk_sdk::{ProverClient, ZiskStdin};
+use zisk_sdk::{ExecutorKind, ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let builder = ProverClient::embedded();
+    let builder = ProverClient::embedded().assembly();
     #[cfg(feature = "gpu")]
     let builder = builder.gpu();
     let client = builder.build()?;
@@ -26,7 +26,20 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client.execute(&ELF_SHA_HASHER, stdin.clone()).run()?.await?;
+    let result = client
+        .execute(&ELF_SHA_HASHER, stdin.clone())
+        .executor(ExecutorKind::Emulator)
+        .run()?
+        .await?;
+    println!("\u{2713} Execution completed successfully!");
+    println!("Cycles: {}", result.get_execution_steps());
+    println!("Duration: {} ms", result.get_execution_time());
+
+    let result = client
+        .execute(&ELF_SHA_HASHER, stdin.clone())
+        .executor(ExecutorKind::Assembly)
+        .run()?
+        .await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

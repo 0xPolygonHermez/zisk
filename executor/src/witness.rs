@@ -3,9 +3,7 @@
 //! per-category path: main, secondary, ROM (shared body in
 //! [`WitnessPhase::rom_dispatch`]), or table.
 //!
-//! `new_asm` / `new_rust` pick the ROM backend once per executor;
-//! only the in-collection step of `rom_dispatch` branches on it at
-//! runtime.
+//! The ROM-backend selection is read at runtime from the [`WitnessContext`]'s `is_asm_emulator` flag.
 
 pub mod air_classifier;
 pub mod collector;
@@ -57,10 +55,14 @@ pub struct WitnessContext<'a, F: PrimeField64> {
     /// ACL surface used by the router's own pctx-equivalent lookups
     /// (instance_info, set_witness_ready, is_my_process_instance, ...).
     pub registry: &'a dyn Dctx,
+
+    /// Runtime selector for the ROM backend
+    pub is_asm_emulator: bool,
 }
 
 impl<'a, F: PrimeField64> WitnessContext<'a, F> {
     /// Creates a new witness context.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pctx: &'a ProofCtx<F>,
         sctx: &'a SetupCtx<F>,
@@ -68,8 +70,9 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
         buffer_pool: &'a dyn BufferPool<F>,
         stats_scope: &'a StatsScope,
         registry: &'a dyn Dctx,
+        is_asm_emulator: bool,
     ) -> Self {
-        Self { pctx, sctx, state, buffer_pool, stats_scope, registry }
+        Self { pctx, sctx, state, buffer_pool, stats_scope, registry, is_asm_emulator }
     }
 
     /// Gets instance info (airgroup_id, air_id) for a global ID.
@@ -93,31 +96,15 @@ pub struct WitnessPhase<F: PrimeField64> {
     /// Reusable ROM trace buffer (single allocation across runs),
     /// shared by both ROM handlers.
     trace_buffer_rom: Mutex<Vec<F>>,
-
-    /// Backend tag chosen once at construction by `new_asm` /
-    /// `new_rust`. Selects the one backend-specific branch in
-    /// [`Self::rom_dispatch`] and which `pre_calculate` free function
-    /// to call.
-    rom_backend: RomBackend,
 }
 
 impl<F: PrimeField64> WitnessPhase<F> {
-    /// Construct a router bound to the **ASM** backend.
-    pub fn new_asm(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
-        Self::new(chunk_size, sm_bundle, RomBackend::Asm)
-    }
-
-    /// Construct a router bound to the **Rust** backend.
-    pub fn new_rust(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
-        Self::new(chunk_size, sm_bundle, RomBackend::Rust)
-    }
-
-    /// Internal constructor used by the two public flavours.
-    fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>, rom_backend: RomBackend) -> Self {
+    /// Construct the witness phase.
+    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
-        Self { collector, witness_generator, trace_buffer_rom, rom_backend }
+        Self { collector, witness_generator, trace_buffer_rom }
     }
 
     pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
@@ -228,16 +215,13 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
         let instance = &**secn_instance;
         if needs_collection {
-            match self.rom_backend {
+            if ctx.is_asm_emulator {
                 // ASM ROM: the RH service supplies the data — pin an
                 // empty slot so the rest of the pipeline observes the
                 // "no-collection" state.
-                RomBackend::Asm => {
-                    ctx.state.register_empty_collector(global_id, airgroup_id, air_id)?;
-                }
-                RomBackend::Rust => {
-                    self.collector.collect_single(ctx.pctx, ctx.state, global_id, instance)?;
-                }
+                ctx.state.register_empty_collector(global_id, airgroup_id, air_id)?;
+            } else {
+                self.collector.collect_single(ctx.pctx, ctx.state, global_id, instance)?;
             }
         }
 
@@ -260,10 +244,6 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
     /// Pre-calculates witnesses by determining which instances need collection.
     ///
-    /// ROM-id pre-calc dispatches on `rom_backend` to the matching free
-    /// function in [`handlers::rom_asm`] / [`handlers::rom_rust`]. The
-    /// two paths share nothing structural, so they're not unified.
-    ///
     /// `pctx` is still required because [`ChunkDataCollector::collect`]
     /// takes `&ProofCtx<F>` directly (cross-crate, library-coupled).
     /// All other `pctx`-equivalent lookups (`instance_info`,
@@ -274,6 +254,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         registry: &dyn Dctx,
         state: &ExecutionState<F>,
         global_ids: &[usize],
+        is_asm_emulator: bool,
     ) -> ExecutorResult<()> {
         let secn_instances_guard =
             state.instance_set.secn_instances.read_or_poison("secn_instances")?;
@@ -286,13 +267,12 @@ impl<F: PrimeField64> WitnessPhase<F> {
             if AirClassifier::is_main(info.air_id) {
                 registry.set_witness_ready(GlobalId(global_id), false);
             } else if AirClassifier::is_rom(info.airgroup_id, info.air_id) {
-                match self.rom_backend {
+                if is_asm_emulator {
                     // ASM ROM: the RH service handles collection
                     // out-of-band; just flag the gid not-ready.
-                    RomBackend::Asm => {
-                        registry.set_witness_ready(GlobalId(global_id), false);
-                    }
-                    RomBackend::Rust => handlers::rom_rust::pre_calculate(
+                    registry.set_witness_ready(GlobalId(global_id), false);
+                } else {
+                    handlers::rom_rust::pre_calculate(
                         registry,
                         state,
                         &secn_instances_guard,
@@ -300,7 +280,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
                         global_id,
                         info.airgroup_id,
                         info.air_id,
-                    )?,
+                    )?;
                 }
             } else {
                 self.handle_secondary_pre_calculate(

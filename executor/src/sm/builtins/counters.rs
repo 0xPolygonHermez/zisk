@@ -28,9 +28,10 @@ impl BuiltinCounters {
     /// # Errors
     /// Returns [`ExecutorError::BundleComponentMissing`] if any expected
     /// built-in SM is absent from the bundle.
-    pub(crate) fn from_bundle<F: PrimeField64>(bundle: &StaticSMBundle<F>) -> ExecutorResult<Self> {
-        let is_asm = bundle.is_asm();
-
+    pub(crate) fn from_bundle<F: PrimeField64>(
+        bundle: &StaticSMBundle<F>,
+        is_asm: bool,
+    ) -> ExecutorResult<Self> {
         let mut mem = None;
         let mut binary = None;
         let mut arith = None;

@@ -66,6 +66,7 @@ members = [
   "definitions",
   "zkvm-interface",
   "verifier",
+  "examples/sha-hasher/host",
 ]
 resolver = "2"
 exclude = ["test-artifacts"]

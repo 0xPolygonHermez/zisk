@@ -73,9 +73,6 @@ pub struct StaticSMBundle<F: PrimeField64> {
     /// Cached Vec position of the `MemSM` entry.
     mem_position: usize,
 
-    /// `true` when the bundle was built for the ASM emulator.
-    is_asm: bool,
-
     /// The standard library instance to be shared across built-in SMs and precompiles.
     std: Arc<Std<F>>,
 }
@@ -83,11 +80,7 @@ pub struct StaticSMBundle<F: PrimeField64> {
 impl<F: PrimeField64> StaticSMBundle<F> {
     /// Construct the bundle with the built-in SMs (Rom, Mem, Binary,
     /// Arith, Dma) created internally + the caller-supplied precompiles.
-    pub fn new(
-        std: Arc<Std<F>>,
-        is_asm_emulator: bool,
-        precompiles: Vec<(usize, Precompiles<F>)>,
-    ) -> Self {
+    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(usize, Precompiles<F>)>) -> Self {
         let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
@@ -109,13 +102,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::MemSM(_))))
             .expect("MemSM must be in the bundle (constructed above)");
 
-        Self { sm, rom_position, mem_position, is_asm: is_asm_emulator, std }
-    }
-
-    /// Returns `true` if the bundle was constructed for the ASM emulator path.
-    #[inline]
-    pub fn is_asm(&self) -> bool {
-        self.is_asm
+        Self { sm, rom_position, mem_position, std }
     }
 
     /// Read-only view of all registered SMs in insertion order.
@@ -159,6 +146,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         &self,
         vec_counters: &mut crate::CountersChunkMetrics,
         num_chunks: usize,
+        is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
         let mut plans = BTreeMap::new();
 
@@ -174,7 +162,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }
 
             if let Some(counters) = vec_counters.remove(&pos) {
-                plans.insert(pos, sm.build_planner(self.is_asm).plan(counters));
+                plans.insert(pos, sm.build_planner(is_asm_emulator).plan(counters));
             }
         }
 

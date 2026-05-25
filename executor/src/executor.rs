@@ -67,7 +67,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `wcm` - Witness manager for managing witness data.
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
-    /// * `with_asm_emulator` - Whether to use the ASM emulator for execution
+    /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
     /// * `packed` - Whether to use packed representation for witness computation.
     pub fn new(
         wcm: &WitnessManager<F>,
@@ -83,18 +83,14 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         proofman::register_std(wcm, &std);
 
         let precompiles = crate::Precompiles::all(std.clone());
-        let sm_bundle = Arc::new(StaticSMBundle::new(std, with_asm_emulator, precompiles));
+        let sm_bundle = Arc::new(StaticSMBundle::new(std, precompiles));
 
         let executor = Arc::new(Self {
             sm_bundle: sm_bundle.clone(),
             state: ExecutionState::new(),
             execution: ExecutionPhase::new(CHUNK_SIZE, with_asm_emulator),
             plan: PlanPhase::new(CHUNK_SIZE, sm_bundle.clone()),
-            witness: if with_asm_emulator {
-                WitnessPhase::new_asm(CHUNK_SIZE, sm_bundle)
-            } else {
-                WitnessPhase::new_rust(CHUNK_SIZE, sm_bundle)
-            },
+            witness: WitnessPhase::new(CHUNK_SIZE, sm_bundle),
         });
         executor.set_packed(packed);
 
@@ -135,7 +131,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// Clears any previously-installed ASM resources. No-op when the
     /// executor was built with the Rust emulator backend.
     pub fn clear_asm_resources(&self) -> ExecutorResult<()> {
-        // self.trace.clear_asm_resources()
+        self.execution.clear_asm_resources();
         Ok(())
     }
 
@@ -204,6 +200,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // ────────────────────────────────────────────────────────────
         let steps = output.steps;
         let proof_registry = ProofmanAdapter::new(&pctx);
+        let is_asm_emulator = self.execution.is_asm_execution();
         let artifacts = self.plan.run(
             output,
             &self.witness,
@@ -212,6 +209,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &pctx,
             &sctx,
             global_ids,
+            is_asm_emulator,
             &self.state.stats,
             &_exec_scope,
         )?;
@@ -256,6 +254,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let pool = create_pool(n_cores);
         let registry = ProofmanAdapter::new(&pctx);
+        let is_asm_emulator = self.execution.is_asm_execution();
         pool.install(|| -> ExecutorResult<()> {
             let ctx = WitnessContext::new(
                 &pctx,
@@ -264,6 +263,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 buffer_pool,
                 &_witness_scope,
                 &registry,
+                is_asm_emulator,
             );
             for &global_id in global_ids {
                 self.witness.dispatch(&ctx, global_id)?;
@@ -294,8 +294,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let pool = create_pool(n_cores);
         let registry = ProofmanAdapter::new(&pctx);
+        let is_asm_emulator = self.execution.is_asm_execution();
 
-        pool.install(|| self.witness.pre_calculate(&pctx, &registry, &self.state, global_ids))?;
+        pool.install(|| {
+            self.witness.pre_calculate(&pctx, &registry, &self.state, global_ids, is_asm_emulator)
+        })?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())
