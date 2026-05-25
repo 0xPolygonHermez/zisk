@@ -1,7 +1,7 @@
 use crate::AsmShmemHeader;
 use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
-    S_IWUSR,
+    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
+    PROT_WRITE, S_IRUSR, S_IWUSR,
 };
 use std::{
     ffi::CString,
@@ -36,6 +36,12 @@ pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
     mapped_files: Vec<MappedFile>,
     total_mapped_size: usize,
     unlock_mapped_memory: bool,
+    /// Map the shmem `PROT_READ|PROT_WRITE` (and open the fd `O_RDWR`) instead
+    /// of read-only. The consumer never writes; this only exists so the region
+    /// can be registered with the GPU as default-pinned host memory
+    /// (`cudaHostRegister` rejects a read-only mapping with `invalid argument`,
+    /// and the read-only-pinned flag is unsupported on the prover's driver).
+    read_write: bool,
     _phantom: std::marker::PhantomData<H>,
 }
 
@@ -76,12 +82,16 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     /// * `incremental_size` - Size of subsequent files (`_1`, `_2`, ...)
     /// * `max_size` - Total virtual address space to reserve
     /// * `unlock_mapped_memory` - If true, don't use MAP_LOCKED
+    /// * `read_write` - If true, open `O_RDWR` and map `PROT_READ|PROT_WRITE`
+    ///   (needed only so the region can be registered as default-pinned for GPU
+    ///   H2D; the consumer itself never writes).
     pub fn open_and_map(
         base_name: &str,
         initial_size: usize,
         incremental_size: usize,
         max_size: usize,
         unlock_mapped_memory: bool,
+        read_write: bool,
     ) -> Result<Self> {
         if base_name.is_empty() {
             return Err(anyhow!("Shared memory base name cannot be empty"));
@@ -133,6 +143,7 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
             mapped_files: Vec::with_capacity(8),
             total_mapped_size: 0,
             unlock_mapped_memory,
+            read_write,
             _phantom: std::marker::PhantomData,
         };
 
@@ -200,8 +211,8 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
             let c_name = CString::new(file_name.clone())
                 .map_err(|_| anyhow!("Shared memory name contains null byte"))?;
 
-            let fd =
-                shm_open(c_name.as_ptr(), libc::O_RDONLY, S_IRUSR as c_uint | S_IWUSR as c_uint);
+            let open_flags = if self.read_write { libc::O_RDWR } else { libc::O_RDONLY };
+            let fd = shm_open(c_name.as_ptr(), open_flags, S_IRUSR as c_uint | S_IWUSR as c_uint);
             if fd == -1 {
                 let err = io::Error::last_os_error();
                 return Err(anyhow!("shm_open('{}') failed: {}", file_name, err));
@@ -242,7 +253,8 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
                 flags |= libc::MAP_LOCKED;
             }
 
-            let mapped_ptr = mmap(target_addr, file_size, PROT_READ, flags, fd, 0);
+            let prot = if self.read_write { PROT_READ | PROT_WRITE } else { PROT_READ };
+            let mapped_ptr = mmap(target_addr, file_size, prot, flags, fd, 0);
             if mapped_ptr == MAP_FAILED {
                 let err = io::Error::last_os_error();
                 close(fd);

@@ -1643,19 +1643,22 @@ void CountAndPlan::reset() {
 bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
     if (!ptr || bytes == 0) return false;
     cudaSetDevice(gpu_device_);
-    // Read-only registration: the device only *reads* the memops (H2D). Needs
-    // cudaDevAttrReadOnlyHostRegisterSupported; on unsupported drivers this
-    // returns an error → we report false and add_chunk uses the sync fallback.
-    cudaError_t e = cudaHostRegister(ptr, bytes, cudaHostRegisterReadOnly);
+    // Default registration (read-write pinning). The caller maps the MO shmem
+    // PROT_READ|PROT_WRITE for exactly this reason: cudaHostRegisterReadOnly is
+    // unsupported on the prover's driver, and default registration of a
+    // read-only mapping fails with "invalid argument". The device still only
+    // reads the memops (H2D); RW is just what the driver needs to pin. On any
+    // failure we report false and add_chunk uses the synchronous pageable copy.
+    cudaError_t e = cudaHostRegister(ptr, bytes, cudaHostRegisterDefault);
     if (e != cudaSuccess) {
         cudaGetLastError();  // clear the sticky error so later calls aren't poisoned
         fprintf(stderr,
-                "[mops-pinned] cudaHostRegister(%p, %zu, ReadOnly) failed: %s "
+                "[mops-pinned] cudaHostRegister(%p, %zu, Default) failed: %s "
                 "— H2D will use the synchronous pageable fallback\n",
                 ptr, bytes, cudaGetErrorString(e));
         return false;
     }
-    fprintf(stderr, "[mops-pinned] registered MO shmem %p (%zu bytes) as read-only pinned\n",
+    fprintf(stderr, "[mops-pinned] registered MO shmem %p (%zu bytes) as pinned (async H2D)\n",
             ptr, bytes);
     return true;
 }

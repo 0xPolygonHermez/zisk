@@ -32,6 +32,7 @@ impl MTShMemReader {
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            false, // MT shmem stays read-only (not GPU-registered)
         )?;
 
         Ok(Self { output_shmem })

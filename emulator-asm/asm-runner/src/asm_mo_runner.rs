@@ -82,6 +82,10 @@ impl MOShMemReader {
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            // GPU builds map the MO shmem read-write only so it can be
+            // registered as default-pinned host memory for async H2D in
+            // count-and-plan (the consumer never writes it).
+            cfg!(gpu),
         )?;
 
         #[cfg(gpu)]
