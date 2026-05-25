@@ -78,7 +78,7 @@ pub fn fcall_msb_pos_256_2(
 }
 
 /// Returns `(limb, bit)` — the index of the highest-order limb and bit position of the
-/// most significant set bit across three 256-bit values `x`, `y`, and `z`.
+/// most significant set bit across four 256-bit values `x`, `y`, `z`, and `w`.
 ///
 /// Panics if all values are zero.
 ///
