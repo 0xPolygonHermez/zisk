@@ -103,10 +103,6 @@ pub struct ZiskRom {
     /// ROM program instructions with an address that is aligned to 4 bytes
     pub rom_program_instructions: Vec<ZiskInst>,
 
-    /// Offset of the non-aligned instructions, to be subtracted to the address when accessing the
-    /// corresponding vector
-    //pub offset_rom_na_unstructions: u64,
-
     /// ROM program instructions with an address that is not aligned to 4 bytes
     pub rom_program_na_instructions: Vec<ZiskInst>,
 
@@ -194,7 +190,12 @@ impl ZiskRom {
         let mut max_float_na_address = 0_u64;
 
         // Prepare sorted pc list
-        assert!(self.sorted_pc_list.is_empty(), "ZiskRom::optimize_instruction_lookup() sorted_pc_list should be empty before optimization");
+        if !self.sorted_pc_list.is_empty() {
+            return Err(
+                 "ZiskRom::optimize_instruction_lookup() sorted_pc_list should be empty before optimization"
+                     .into(),
+             );
+        }
         self.sorted_pc_list.reserve(self.insts.len());
 
         // Scan all instructions to categorize them and find ranges
