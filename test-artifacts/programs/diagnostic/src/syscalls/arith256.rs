@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_arith256() {
+pub fn diagnostic_arith256() {
     //////////////
     // Add256 Tests
     //////////////

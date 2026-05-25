@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_blake2() {
+pub fn diagnostic_blake2() {
     //////////////
     // Blake2 Tests
     //////////////

@@ -11,6 +11,3 @@ generic-array = "0.14"
 
 [build-dependencies]
 zisk-sdk.workspace = true
-
-# [lints]
-# workspace = true

@@ -5,6 +5,3 @@ edition.workspace = true
 
 [dependencies]
 ziskos.workspace = true
-
-# [lints]
-# workspace = true

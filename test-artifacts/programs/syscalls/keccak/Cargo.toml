@@ -10,6 +10,3 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [build-dependencies]
 zisk-sdk.workspace = true
-
-# [lints]
-# workspace = true

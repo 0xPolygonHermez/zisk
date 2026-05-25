@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_poseidon2() {
+pub fn diagnostic_poseidon2() {
     //////////////
     // Poseidon2 Tests
     //////////////
