@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_bls12_381() {
+pub fn diagnostic_bls12_381() {
     //////////////
     // BLS12-381 Add Tests
     //////////////

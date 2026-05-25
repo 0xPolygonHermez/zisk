@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_sha256f() {
+pub fn diagnostic_sha256f() {
     //////////////
     // Sha256f Tests
     //////////////

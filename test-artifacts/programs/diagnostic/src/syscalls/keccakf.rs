@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_keccakf() {
+pub fn diagnostic_keccakf() {
     //////////////
     // Keccakf Tests
     //////////////

@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_bn254() {
+pub fn diagnostic_bn254() {
     //////////////
     // Bn254 Add Tests
     //////////////
