@@ -1164,6 +1164,18 @@ impl ZiskRom2Asm {
                 continue;
             }
 
+            // Add the missing `map_pc_{ROM_ADDR}` label and padding to the first key, so the jump
+            // table resolves when .text starts above ROM_ADDR, e.g. Go ELFs.
+            if previous_key < ROM_ADDR
+                && (*key > ROM_ADDR)
+                && (*key != (previous_key + 1) && (*key != FLOAT_LIB_ROM_ADDR))
+            {
+                *code += &format!("map_pc_{ROM_ADDR:x}: \t.quad emu_end\n");
+                for _ in ROM_ADDR + 1..*key {
+                    *code += "\t.quad emu_end\n";
+                }
+            }
+
             // Fill the gaps between consecutive, valid keys with dummy labels, in order to keep
             // the distance between labels constant and allow jumping to the proper branch using
             // pc - ROM_ADDR as an increment
