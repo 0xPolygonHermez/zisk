@@ -10,6 +10,7 @@
 #include <thrust/iterator/discard_iterator.h>
 
 #include <algorithm>
+#include <chrono>  // TEMP-MOPROF
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +19,12 @@
 // =====================================================================
 // Preprocessing constants
 // =====================================================================
+
+// TEMP-MOPROF: per-block accumulators (us) for the two worker costs in
+// add_chunk_core_ — CPU count-loop vs the (sync-when-pageable) H2D copy.
+// Single CountAndPlan instance per worker process, so file-scope is fine.
+static std::atomic<uint64_t> g_count_us{0};  // TEMP-MOPROF
+static std::atomic<uint64_t> g_copy_us{0};   // TEMP-MOPROF
 
 #define MOPS_WRITE_FLAG               0x10
 #define MOPS_WRITE_BYTE_CLEAR_FLAG    0x20
@@ -1310,6 +1317,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     };
     size_t   pot = 0;
     uint32_t ram = 0;
+    auto _tc0 = std::chrono::steady_clock::now();  // TEMP-MOPROF
     for (uint32_t k = 0; k < n; k++) {
         const MemOp& op = memops[k];
         const uint32_t addr    = op.addr;
@@ -1334,6 +1342,12 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
             default: { uint32_t cnt = op.flags >> MOPS_BLOCK_COUNT_SBITS;
                        add_pot(addr, cnt, pot, ram); break; }
         }
+    }
+    {   // TEMP-MOPROF
+        auto _tc1 = std::chrono::steady_clock::now();
+        g_count_us.fetch_add(
+            std::chrono::duration_cast<std::chrono::microseconds>(_tc1 - _tc0).count(),
+            std::memory_order_relaxed);
     }
 
     if (pot > MAX_POT_PER_CHUNK) {
@@ -1383,8 +1397,15 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     // shmem was registered (register_input_pinned), this is a true async copy;
     // otherwise cudaMemcpyAsync from pageable host memory degrades to a
     // synchronous copy — correct, just slower (the documented fallback).
+    auto _tcp0 = std::chrono::steady_clock::now();  // TEMP-MOPROF
     CUDA_CHECK(cudaMemcpyAsync(d_memops_[s], memops,
                                sizeof(MemOp) * n, cudaMemcpyHostToDevice, st));
+    {   // TEMP-MOPROF: pageable copy is implicitly sync, so this dt ~= H2D time
+        auto _tcp1 = std::chrono::steady_clock::now();
+        g_copy_us.fetch_add(
+            std::chrono::duration_cast<std::chrono::microseconds>(_tcp1 - _tcp0).count(),
+            std::memory_order_relaxed);
+    }
     CUDA_CHECK(cudaMemsetAsync(d_ram_count_[s],    0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_count_[s],  0, 4, st));
     CUDA_CHECK(cudaMemsetAsync(d_spill_status_[s], 0, n, st));
@@ -1501,15 +1522,21 @@ void CountAndPlan::pool_drain_() {
 }
 
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
+    using _clk = std::chrono::steady_clock;  // TEMP-MOPROF
+    auto _t0 = _clk::now();                   // TEMP-MOPROF
     if (pool_enabled_) pool_drain_();
+    auto _t_drain = _clk::now();              // TEMP-MOPROF
     if (n_chunks_ == 0) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
         return false;
     }
 
+    auto _t_sync = _t_drain;       // TEMP-MOPROF (set after stream sync below)
+    auto _t_prepare = _t_drain;    // TEMP-MOPROF
     if (!preprocessed_) {
         for (int s = 0; s < N_STREAMS; s++)
             CUDA_CHECK(cudaStreamSynchronize(streams_[s]));
+        _t_sync = _clk::now();  // TEMP-MOPROF: per-chunk kernel tail drained
         CUDA_CHECK(cudaEventRecord(e_after_preproc_, 0));
 
         // Pull per-chunk mem-align counters back to host (only the touched
@@ -1550,6 +1577,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         CUDA_CHECK(cudaEventRecord(e_after_prepare_, 0));
         preprocessed_ = true;
     }
+    _t_prepare = _clk::now();  // TEMP-MOPROF: preprocess copies + prepare_global_ done (launches)
 
     process_worker_();
 
@@ -1558,6 +1586,23 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         CUDA_CHECK(cudaEventSynchronize(e_metas_ready_));
         cudaEventElapsedTime(&last_chunk_to_final_ms_, e_last_chunk_start_[0], e_metas_ready_);
         metas_ready_recorded_ = true;
+    }
+    // TEMP-MOPROF: split GPU_MOPS_TIME into drain(worker submit) / sync(per-chunk
+    // kernel tail) / prepare(copies+cub prefix) / worker(global stage: sort/RLE/metas).
+    {
+        auto _t_end = _clk::now();
+        auto _ms = [](auto a, auto b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        // worker-summed (across N_STREAMS threads) CPU count-loop vs sync H2D copy.
+        double _count_ms = g_count_us.exchange(0, std::memory_order_relaxed) / 1000.0;
+        double _copy_ms  = g_copy_us.exchange(0, std::memory_order_relaxed) / 1000.0;
+        fprintf(stderr,
+                "[gprof] run chunks=%u drain=%.1fms sync=%.1fms prepare=%.1fms worker=%.1fms total=%.1fms "
+                "| worker-sum count=%.1fms copy=%.1fms (/%d streams)\n",
+                n_chunks_, _ms(_t0, _t_drain), _ms(_t_drain, _t_sync),
+                _ms(_t_sync, _t_prepare), _ms(_t_prepare, _t_end), _ms(_t0, _t_end),
+                _count_ms, _copy_ms, N_STREAMS);
     }
 
     // Hand back the internal pointer + count (no copy). The records — and
