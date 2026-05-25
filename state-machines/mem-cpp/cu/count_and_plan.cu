@@ -10,10 +10,17 @@
 #include <thrust/iterator/discard_iterator.h>
 
 #include <algorithm>
+#include <chrono> // TEMP-ADDCHUNK-PROF
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+
+// TEMP-ADDCHUNK-PROF: per-block CPU-time accumulators for the add_chunk split
+// (potential-counting loop vs the shmem->pinned memcpy). Summed across chunks,
+// logged + reset in run(). One CountAndPlan per worker process → file-static ok.
+static double g_dbg_count_us = 0.0;
+static double g_dbg_memcpy_us = 0.0;
 
 // =====================================================================
 // Preprocessing constants
@@ -1286,6 +1293,7 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
     };
     size_t   pot = 0;
     uint32_t ram = 0;
+    auto _dbg_c0 = std::chrono::steady_clock::now(); // TEMP-ADDCHUNK-PROF
     for (uint32_t k = 0; k < n; k++) {
         const MemOp& op = memops[k];
         const uint32_t addr    = op.addr;
@@ -1311,6 +1319,8 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
                        add_pot(addr, cnt, pot, ram); break; }
         }
     }
+    g_dbg_count_us += std::chrono::duration<double, std::micro>(
+        std::chrono::steady_clock::now() - _dbg_c0).count(); // TEMP-ADDCHUNK-PROF
 
     if (pot > MAX_POT_PER_CHUNK) {
         fprintf(stderr,
@@ -1333,7 +1343,10 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
     d_ops_pool_used_u32_ += pot;
 
     MemOp* memops_dst = h_memops_ + h_memops_used_;
+    auto _dbg_m0 = std::chrono::steady_clock::now(); // TEMP-ADDCHUNK-PROF
     std::memcpy(memops_dst, memops, n * sizeof(MemOp));
+    g_dbg_memcpy_us += std::chrono::duration<double, std::micro>(
+        std::chrono::steady_clock::now() - _dbg_m0).count(); // TEMP-ADDCHUNK-PROF
     h_memops_used_ += n;
 
     cudaStream_t st = streams_[s];
@@ -1429,6 +1442,12 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
         return false;
     }
+
+    // TEMP-ADDCHUNK-PROF: per-block CPU split of add_chunk (count loop vs memcpy).
+    fprintf(stderr, "[addchunk-prof] chunks=%u count_loop=%.1fms memcpy=%.1fms\n",
+            n_chunks_, g_dbg_count_us / 1000.0, g_dbg_memcpy_us / 1000.0);
+    g_dbg_count_us = 0.0;
+    g_dbg_memcpy_us = 0.0;
 
     if (!preprocessed_) {
         for (int s = 0; s < N_STREAMS; s++)
