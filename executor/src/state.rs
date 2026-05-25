@@ -6,13 +6,15 @@ mod instance_set;
 pub use chunk_collector_store::*;
 pub use instance_set::*;
 
+use arc_swap::ArcSwap;
 use fields::PrimeField64;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats, ZiskExecutorSummary,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
+    ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
 
@@ -32,6 +34,11 @@ pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 pub struct ExecutionState<F: PrimeField64> {
     /// ZisK ROM (ELF), can be changed between executions.
     pub zisk_rom: RwLock<Option<Arc<ZiskRom>>>,
+
+    /// Standard input for the next run. Bridges the caller-set value and
+    /// the framework-driven `WitnessComponent::execute` (whose trait
+    /// signature has no stdin slot).
+    pub stdin: ArcSwap<ZiskStdin>,
 
     /// Planning information for main state machines (minimal traces from emulation).
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
@@ -58,6 +65,7 @@ impl<F: PrimeField64> ExecutionState<F> {
     pub fn new() -> Self {
         Self {
             zisk_rom: RwLock::new(None),
+            stdin: ArcSwap::from_pointee(ZiskStdin::new()),
             min_traces: Arc::new(RwLock::new(None)),
             instance_set: Arc::new(InstanceSet::new()),
             collector_store: Arc::new(ChunkCollectorStore::new()),
@@ -83,6 +91,16 @@ impl<F: PrimeField64> ExecutionState<F> {
     pub fn get_rom(&self) -> ExecutorResult<Arc<ZiskRom>> {
         let guard = self.zisk_rom.read_or_poison("rom")?;
         guard.as_ref().cloned().ok_or(ExecutorError::RomNotInitialized)
+    }
+
+    /// Sets the standard input for the next execution.
+    pub fn set_stdin(&self, stdin: ZiskStdin) {
+        self.stdin.store(Arc::new(stdin));
+    }
+
+    /// Gets a snapshot of the current standard input.
+    pub fn get_stdin(&self) -> Arc<ZiskStdin> {
+        self.stdin.load_full()
     }
 
     /// Resets all internal state to default values.

@@ -11,7 +11,6 @@ pub use rust::*;
 use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
-use arc_swap::ArcSwap;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
@@ -32,8 +31,6 @@ enum EmulatorBackend {
 pub struct ExecutionPhase {
     /// Concrete backend, set once at construction.
     emulator: EmulatorBackend,
-    /// Standard input for the next run. Settable between executions without touching the backend.
-    stdin: ArcSwap<ZiskStdin>,
 }
 
 impl ExecutionPhase {
@@ -44,7 +41,7 @@ impl ExecutionPhase {
         } else {
             EmulatorBackend::Rust(EmulatorRust::new(chunk_size))
         };
-        Self { emulator, stdin: ArcSwap::from_pointee(ZiskStdin::new()) }
+        Self { emulator }
     }
 
     /// Returns `true` if the ASM backend was chosen at construction.
@@ -60,12 +57,6 @@ impl ExecutionPhase {
             EmulatorBackend::Asm(asm) => Some(asm),
             EmulatorBackend::Rust(_) => None,
         }
-    }
-
-    /// Sets the standard input for the next [`Self::run`] call.
-    pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
-        self.stdin.store(Arc::new(stdin));
-        Ok(())
     }
 
     /// Hands the ASM resources to the underlying ASM emulator.
@@ -100,19 +91,19 @@ impl ExecutionPhase {
     pub fn run<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
+        stdin: &ZiskStdin,
         pctx: &ProofCtx<F>,
         sm_bundle: &StaticSMBundle<F>,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> ExecutorResult<ExecutionOutput> {
-        let stdin = self.stdin.load_full();
         match &self.emulator {
             EmulatorBackend::Asm(asm) => {
                 let has_rom_sm = pctx.dctx_is_first_process();
                 asm.execute(
                     zisk_rom,
-                    &stdin,
+                    stdin,
                     sm_bundle,
                     has_rom_sm,
                     use_hints,
@@ -120,7 +111,7 @@ impl ExecutionPhase {
                     caller_stats_scope,
                 )
             }
-            EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, &stdin, sm_bundle),
+            EmulatorBackend::Rust(rust) => rust.execute(zisk_rom, stdin, sm_bundle),
         }
     }
 }

@@ -1,9 +1,5 @@
 //! The `ZiskExecutor` module serves as the core orchestrator for executing the ZisK ROM program
-//! and generating witness computations. It manages the execution of the state machines,
-//! from initial planning to witness computation.
-//!
-//! This module handles both main and secondary state machines, integrating tasks such as
-//! planning, configuration, and witness computation.
+//! and generating witness computations.
 //!
 //! ## Executor Workflow
 //! The execution is divided into distinct, sequential phases:
@@ -72,6 +68,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether to use the ASM emulator for execution
+    /// * `packed` - Whether to use packed representation for witness computation.
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
@@ -126,7 +123,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
     /// Sets the standard input for execution.
     pub fn set_stdin(&self, stdin: ZiskStdin) -> ExecutorResult<()> {
-        self.execution.set_stdin(stdin)
+        self.state.set_stdin(stdin);
+        Ok(())
     }
 
     /// Sets ASM resources for execution (only applicable for ASM emulator).
@@ -184,8 +182,10 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let start_partial = Instant::now();
 
         let zisk_rom = self.state.get_rom()?;
+        let stdin = self.state.get_stdin();
         let output = self.execution.run(
             &zisk_rom,
+            &stdin,
             &pctx,
             &*self.sm_bundle,
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
