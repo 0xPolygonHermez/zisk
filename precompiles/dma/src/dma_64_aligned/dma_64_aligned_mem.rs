@@ -247,7 +247,7 @@ impl<F: PrimeField64> Dma64AlignedMemSM<F> {
         local_16_bits_table[(last_count & 0xFFFF) as usize] += 1;
         local_16_bits_table[((last_count >> 16) & 0xFFFF) as usize] += 1;
 
-        self.std.range_checks(self.range_16_bits_id, local_16_bits_table);
+        self.std.range_check_ranged(self.range_16_bits_id, None, &local_16_bits_table);
 
         let segment_id = segment_id.into();
         air_values.segment_id = F::from_usize(segment_id);

@@ -254,11 +254,11 @@ impl<F: PrimeField64> DmaPrePostMemCpySM<F> {
 
         for pre_post_table_mul in global_pre_post_table_mul.iter() {
             // println!("PRE_POST_TABLE_MUL {:?}", pre_post_table_mul);
-            self.std.inc_virtual_rows_ranged(self.pre_post_table_id, pre_post_table_mul);
+            self.std.inc_virtual_rows_ranged(self.pre_post_table_id, None, pre_post_table_mul);
         }
 
         for dual_range_byte_mul in global_dual_range_byte_mul.iter() {
-            self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, dual_range_byte_mul);
+            self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, dual_range_byte_mul);
         }
 
         /*
