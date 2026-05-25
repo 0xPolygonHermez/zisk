@@ -104,9 +104,6 @@ impl<F: PrimeField64> Blake2SM<F> {
             // Activate the in_use selector
             row.set_in_use(true);
 
-            // Set idx
-            row.set_round_idx(index);
-
             // Set idx_sel
             row.set_round_idx_sel(idx_usize, true);
         }
@@ -367,7 +364,6 @@ impl<F: PrimeField64> Blake2SM<F> {
         // As a consequence, one should also set idx_sel
         if all_ops_used {
             let prev_idx = trace.buffer[num_rows_filled - 1].get_round_idx();
-            padding_row.set_round_idx(prev_idx);
             padding_row.set_round_idx_sel(prev_idx as usize, true);
         }
 

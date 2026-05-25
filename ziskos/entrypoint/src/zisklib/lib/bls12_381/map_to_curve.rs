@@ -1,3 +1,5 @@
+//! Map-to-curve for BLS12-381 G1 and G2
+
 use crate::zisklib::{eq, is_zero, lt};
 
 use super::{
@@ -68,30 +70,42 @@ pub fn map_to_curve_g2_bls12_381(
     u: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 24], u8> {
-    // Verify input is in field
+    let p = map_to_curve_g2_no_cofactor_bls12_381(
+        u,
+        #[cfg(feature = "hints")]
+        hints,
+    )?;
+
+    // Clear cofactor
+    Ok(clear_cofactor_twist_bls12_381(
+        &p,
+        #[cfg(feature = "hints")]
+        hints,
+    ))
+}
+
+/// Maps a field element in Fp2 to a point on the BLS12-381 G2 curve
+/// without clearing the cofactor.
+pub(super) fn map_to_curve_g2_no_cofactor_bls12_381(
+    u: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> Result<[u64; 24], u8> {
     let u_0: [u64; 6] = u[0..6].try_into().unwrap();
     let u_1: [u64; 6] = u[6..12].try_into().unwrap();
     if !lt(&u_0, &P) || !lt(&u_1, &P) {
         return Err(G2_MAP_TO_CURVE_ERR_NOT_IN_FIELD);
     }
 
-    // Step 1: Map to isogenous curve E' using simplified SWU
+    // Map to isogenous curve E' using simplified SWU
     let p_prime = map_to_curve_simple_swu_g2_bls12_381(
         u,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    // Step 2: Apply isogeny map from E' to E
-    let p = isogeny_map_g2_bls12_381(
+    // Apply isogeny map from E' to E
+    Ok(isogeny_map_g2_bls12_381(
         &p_prime,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    // Step 3: Clear cofactor
-    Ok(clear_cofactor_twist_bls12_381(
-        &p,
         #[cfg(feature = "hints")]
         hints,
     ))

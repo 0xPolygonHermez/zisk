@@ -339,11 +339,22 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             used_rows as f64 / num_rows as f64 * 100.0
         );
 
+        let mut dual_mults = vec![0u64; 65536];
+        let mut mults_16b = vec![0u32; 65536];
+        let mut mults_8b = vec![0u32; 256];
+
         let mut irow = 0;
         for inner_memp_ops in mem_ops.iter() {
             for input in inner_memp_ops.iter() {
                 assert!(irow < num_rows);
-                self.compute_row_witness(input, irow, R::get_row_mut(&mut trace, irow));
+                self.compute_row_witness(
+                    input,
+                    irow,
+                    R::get_row_mut(&mut trace, irow),
+                    &mut dual_mults,
+                    &mut mults_16b,
+                    &mut mults_8b,
+                );
                 irow += 1;
             }
         }
@@ -361,23 +372,36 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 },
                 irow,
                 padding_row,
+                &mut dual_mults,
+                &mut mults_16b,
+                &mut mults_8b,
             );
-            // padding_size - 1, because compute_row_witness call range_check
-            self.std.inc_virtual_row(self.table_dual_byte_id, 0, padding_size - 1);
-            self.std.range_check(self.table_16b_id, 0, padding_size - 1);
+            dual_mults[0] += padding_size - 1;
+            mults_16b[0] += (padding_size - 1) as u32;
             if R::valid_for_write() {
-                self.std.range_check(self.table_8b_id, 0, padding_size - 1);
+                mults_8b[0] += (padding_size - 1) as u32;
             }
         }
+
+        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, &dual_mults);
+        self.std.range_checks(self.table_16b_id, mults_16b);
+        if R::valid_for_write() {
+            self.std.range_checks(self.table_8b_id, mults_8b);
+        }
+
         Ok(R::create_instance_from_trace(&mut trace, irow))
     }
 
     /// Common logic for computing witness that can be shared across different trace types
+    #[allow(clippy::too_many_arguments)]
     fn compute_row_witness<T, R: MemAlignByteRow<F, T>>(
         &self,
         input: &MemAlignInput,
         irow: usize,
         row: &mut R,
+        dual_mults: &mut [u64],
+        mults_16b: &mut [u32],
+        mults_8b: &mut [u32],
     ) {
         let addr = input.addr;
 
@@ -492,12 +516,8 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             addr_w,
             step,
         );
-        self.std.inc_virtual_row(
-            self.table_dual_byte_id,
-            (value_8b as u16 + ((byte_value as u16) << 8)) as u64,
-            1,
-        );
-        self.std.range_check(self.table_16b_id, value_16b as i64, 1);
+        dual_mults[(value_8b as u16 + ((byte_value as u16) << 8)) as usize] += 1;
+        mults_16b[value_16b as usize] += 1;
 
         let written_byte_value = input.value as u8;
         let written_composed_value = match offset {
@@ -518,7 +538,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         };
 
         if R::valid_for_write() {
-            self.std.range_check(self.table_8b_id, written_byte_value as i64, 1);
+            mults_8b[written_byte_value as usize] += 1;
         }
         row.set_write_fields(
             input.is_write,

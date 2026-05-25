@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
+use zisk_common::ProfilingMode;
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
@@ -279,36 +280,24 @@ impl EmuOptions {
             && !self.log_output
             && !self.log_output_riscof
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
-pub enum ProfilingMode {
-    /// Tag-level inline profiling (`--sdk --profile-tags`).
-    Inline,
-    /// Per-opcode + top-functions summary (`--sdk --opcodes --top-functions`).
-    Summary,
-    /// Full profiler output written to disk (`--sdk --profiler-output`).
-    Complete,
-}
-
-impl ProfilingMode {
-    pub fn apply(self, options: &mut EmuOptions) {
-        match self {
+    pub fn apply_profiling(&mut self, mode: ProfilingMode) {
+        match mode {
             ProfilingMode::Inline => {
-                options.sdk = true;
-                options.stats = true;
-                options.profile_tags = true;
+                self.sdk = true;
+                self.stats = true;
+                self.profile_tags = true;
             }
             ProfilingMode::Summary => {
-                options.sdk = true;
-                options.stats = true;
-                options.opcodes = true;
-                options.top_functions = true;
+                self.sdk = true;
+                self.stats = true;
+                self.opcodes = true;
+                self.top_functions = true;
             }
             ProfilingMode::Complete => {
-                options.sdk = true;
-                options.stats = true;
-                options.profiler_output = Some("profile.json.gz".to_string());
+                self.sdk = true;
+                self.stats = true;
+                self.profiler_output = Some("profile.json.gz".to_string());
             }
         }
     }

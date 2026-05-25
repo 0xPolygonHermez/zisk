@@ -1,7 +1,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use ziskos::syscalls::{syscall_secp256k1_add, SyscallSecp256k1AddParams, SyscallPoint256};
+use ziskos::syscalls::{syscall_secp256k1_add, SyscallPoint256, SyscallSecp256k1AddParams};
 
 fn main() {
     let mut p1 = SyscallPoint256 { x: [0, 0, 0, 0], y: [0, 0, 0, 0] };
