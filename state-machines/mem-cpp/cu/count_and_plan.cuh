@@ -50,6 +50,9 @@ struct ChunkCounters {
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
 constexpr int      N_STREAMS             = 4;
+// CPU-only count-thread pool (stage 1). Independent of N_STREAMS, so it adds
+// no GPU memory — just parallelizes the potential-count ahead of the launchers.
+constexpr int      N_COUNT_THREADS       = 8;
 constexpr uint32_t MAX_INSTANCES         = 1024;
 constexpr uint32_t MASK_WORDS            = (MAX_INSTANCES + 31) / 32;
 constexpr uint32_t MAX_CHUNKS            = 1u << 13;          // 8192
@@ -253,6 +256,8 @@ private:
     std::atomic<bool>       add_error_{false};
 
     struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
+    // Stage 2 (launch): one thread per CUDA stream does the GPU dispatch
+    // (base + H2D + kernels). Per-stream buffers ⇒ FIFO, one chunk per stream.
     std::thread              pool_threads_[N_STREAMS];
     std::mutex               pool_mtx_[N_STREAMS];
     std::condition_variable  pool_cv_[N_STREAMS];
@@ -261,6 +266,14 @@ private:
     std::mutex               pool_done_mtx_;
     std::condition_variable  pool_done_cv_;
     std::atomic<uint32_t>    pool_done_{0};                 // completed chunks
+    // Stage 1 (count): N_COUNT_THREADS CPU-only threads run the potential-count
+    // loop and hand each counted chunk to its stream-launcher. Decoupling the
+    // count from the launch keeps it off the GPU's critical path (a launcher
+    // blocked on a kernel launch no longer stalls counting) — no extra GPU mem.
+    std::thread              count_threads_[N_COUNT_THREADS];
+    std::mutex               count_mtx_;
+    std::condition_variable  count_cv_;
+    std::deque<ChunkJob>     count_q_;
 
     // ─── Internal helpers
 
@@ -274,11 +287,13 @@ private:
     void   set_active_worker_();
     void   pick_active_instances_();
 
-    bool   add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c);
+    void   count_chunk_(const MemOp* memops, uint32_t n, uint32_t c);  // stage 1 (CPU)
+    bool   add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c);  // stage 2 (GPU)
     void   pool_start_();
     void   pool_stop_();
     void   pool_drain_();
-    void   worker_loop_(int s);
+    void   count_worker_loop_();   // stage-1 thread body
+    void   worker_loop_(int s);    // stage-2 (per-stream) thread body
 };
 
 // ─── Binary-meta save helpers ───────────────────────────────────────

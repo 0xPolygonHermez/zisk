@@ -1292,25 +1292,27 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
     }
 
     // Single-threaded caller assigns the chunk index. Pool path: hand the job
-    // to the worker that owns stream (c % N_STREAMS) — chunks on a stream are
-    // processed FIFO, so the per-stream scratch buffers never alias.
+    // to the stage-1 count pool. A count thread computes pot/ram, then routes
+    // the chunk to the stage-2 launcher for stream (c % N_STREAMS) — chunks on
+    // a stream are processed one at a time, so per-stream buffers never alias.
     const uint32_t c = n_chunks_++;
     if (pool_enabled_) {
-        const int s = c % N_STREAMS;
         {
-            std::lock_guard<std::mutex> lk(pool_mtx_[s]);
-            pool_q_[s].push_back(ChunkJob{memops, n, c});
+            std::lock_guard<std::mutex> lk(count_mtx_);
+            count_q_.push_back(ChunkJob{memops, n, c});
         }
-        pool_cv_[s].notify_one();
+        count_cv_.notify_one();
         return true;
     }
+    // Serial path: count then launch inline (identical results).
+    count_chunk_(memops, n, c);
     return add_chunk_core_(memops, n, c);
 }
 
-bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
-    const int s = c % N_STREAMS;
-
-    //add potencial emission
+// Stage 1 (CPU, runs on the count-thread pool): potential-count loop. Writes
+// pot/ram into the per-chunk arrays for the stage-2 launcher to consume. Pure
+// CPU — touches no per-stream GPU buffers, so any count thread can run any chunk.
+void CountAndPlan::count_chunk_(const MemOp* memops, uint32_t n, uint32_t c) {
     auto add_pot = [](uint32_t addr, uint32_t count, size_t& pot, uint32_t& ram) {
         pot += count;
         if (is_ram_addr(addr)) ram += count;
@@ -1349,6 +1351,17 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
             std::chrono::duration_cast<std::chrono::microseconds>(_tc1 - _tc0).count(),
             std::memory_order_relaxed);
     }
+    n_potentials_per_chunk_[c] = (uint32_t)pot;
+    n_ram_per_chunk_[c]        = ram;
+}
+
+bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
+    const int s = c % N_STREAMS;
+
+    // pot/ram were computed by the stage-1 count pool (count_chunk_) and handed
+    // off via these arrays + the queue's release/acquire barrier.
+    const size_t   pot = n_potentials_per_chunk_[c];
+    const uint32_t ram = n_ram_per_chunk_[c];
 
     if (pot > MAX_POT_PER_CHUNK) {
         fprintf(stderr,
@@ -1476,6 +1489,32 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
 
 // ─── add_chunk worker pool (ZISK_MOPS_POOL) ──────────────────────────
 
+// Stage 1: pull a chunk, run the CPU potential-count, then route it to the
+// stage-2 launcher for its stream. Pure CPU — no cudaSetDevice/GPU calls — so
+// being blocked here never stalls a CUDA stream, and vice-versa.
+void CountAndPlan::count_worker_loop_() {
+    for (;;) {
+        ChunkJob job;
+        {
+            std::unique_lock<std::mutex> lk(count_mtx_);
+            count_cv_.wait(lk, [&] { return pool_should_stop_ || !count_q_.empty(); });
+            if (count_q_.empty()) {
+                if (pool_should_stop_) return;
+                continue;
+            }
+            job = count_q_.front();
+            count_q_.pop_front();
+        }
+        count_chunk_(job.memops, job.n, job.c);
+        const int s = job.c % N_STREAMS;
+        {
+            std::lock_guard<std::mutex> lk(pool_mtx_[s]);
+            pool_q_[s].push_back(job);
+        }
+        pool_cv_[s].notify_one();
+    }
+}
+
 void CountAndPlan::worker_loop_(int s) {
     cudaSetDevice(gpu_device_);
     for (;;) {
@@ -1503,14 +1542,23 @@ void CountAndPlan::pool_start_() {
     pool_should_stop_ = false;
     for (int s = 0; s < N_STREAMS; s++)
         pool_threads_[s] = std::thread(&CountAndPlan::worker_loop_, this, s);
+    for (int i = 0; i < N_COUNT_THREADS; i++)
+        count_threads_[i] = std::thread(&CountAndPlan::count_worker_loop_, this);
 }
 
 void CountAndPlan::pool_stop_() {
+    {
+        std::lock_guard<std::mutex> lk(count_mtx_);
+        pool_should_stop_ = true;
+    }
     for (int s = 0; s < N_STREAMS; s++) {
         std::lock_guard<std::mutex> lk(pool_mtx_[s]);
         pool_should_stop_ = true;
     }
+    count_cv_.notify_all();
     for (int s = 0; s < N_STREAMS; s++) pool_cv_[s].notify_all();
+    for (int i = 0; i < N_COUNT_THREADS; i++)
+        if (count_threads_[i].joinable()) count_threads_[i].join();
     for (int s = 0; s < N_STREAMS; s++)
         if (pool_threads_[s].joinable()) pool_threads_[s].join();
 }
