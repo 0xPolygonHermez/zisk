@@ -383,10 +383,10 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
             }
         }
 
-        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, &dual_mults);
-        self.std.range_checks(self.table_16b_id, mults_16b);
+        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
+        self.std.range_check_ranged(self.table_16b_id, None, &mults_16b);
         if R::valid_for_write() {
-            self.std.range_checks(self.table_8b_id, mults_8b);
+            self.std.range_check_ranged(self.table_8b_id, None, &mults_8b);
         }
 
         Ok(R::create_instance_from_trace(&mut trace, irow))
