@@ -7,12 +7,17 @@ C_DIR="$(dirname -- "$SCRIPT_DIR")"
 
 IMAGE_TAG="$("$SCRIPT_DIR/ensure-base-image.sh")"
 
+if ! command -v docker >/dev/null 2>&1; then
+    echo "ERROR: docker CLI not installed. Install docker before running this script." >&2
+    exit 1
+fi
+
 if docker info >/dev/null 2>&1; then
     DOCKER=(docker)
 elif command -v sudo >/dev/null 2>&1; then
     DOCKER=(sudo docker)
 else
-    echo "ERROR: need docker (with group access) or sudo." >&2
+    echo "ERROR: cannot reach the docker daemon. Add yourself to the docker group, or run this script with sudo." >&2
     exit 1
 fi
 

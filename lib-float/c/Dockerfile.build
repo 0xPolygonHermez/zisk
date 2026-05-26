@@ -1,18 +1,19 @@
 # Canonical build environment for lib/ziskfloat.elf and lib/libziskfloat.a.
 # The output bytes determine the program verification key (see
-# core/src/elf2rom.rs `include_bytes!`), so the toolchain is pinned here and
-# this is the single source of truth — other docker images FROM this one.
-FROM ubuntu:24.04
+# core/src/elf2rom.rs `include_bytes!`), so the base image, the toolchain
+# binaries, and the build platform are all pinned. Other docker images that
+# need the same toolchain FROM this one.
+FROM --platform=linux/amd64 ubuntu:24.04@sha256:cdb5fd928fced577cfecf12c8966e830fcdf42ee481fb0b91904eeddc2fe5eff
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc-riscv64-unknown-elf=13.2.0-11ubuntu1+12 \
-        binutils-riscv64-unknown-elf \
+        binutils-riscv64-unknown-elf=2.42-1ubuntu1+6 \
         make \
-        coreutils \
     && rm -rf /var/lib/apt/lists/* \
-    && riscv64-unknown-elf-gcc --version | head -1
+    && riscv64-unknown-elf-gcc --version | head -1 \
+    && riscv64-unknown-elf-ld --version | head -1
 
 WORKDIR /work
 
