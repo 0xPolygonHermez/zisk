@@ -48,8 +48,8 @@ pub struct ZiskProve {
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
 
-    /// Disable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    /// Disable proofs aggregation (deprecated, no-op)
+    #[arg(long, default_value_t = false, hide = true)]
     pub no_aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
@@ -127,6 +127,14 @@ impl ZiskProve {
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
+        if std::env::args().any(|arg| arg == "--no-aggregation") {
+            eprintln!(
+                "{}",
+                "Warning: --no-aggregation is deprecated and has no effect; it will be removed in a future release"
+                    .yellow()
+                    .bold()
+            );
+        }
 
         print_banner();
 
@@ -146,8 +154,7 @@ impl ZiskProve {
         }
 
         // Build BackendProverOpts once with all configuration
-        let mut prover_options =
-            BackendProverOpts::default().aggregation(!self.no_aggregation).verbose(self.verbose);
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if self.minimal_memory {
             prover_options = prover_options.minimal_memory();
