@@ -1,3 +1,8 @@
+# The output of this Makefile is embedded in cargo-zisk and determines the
+# program verification key, so it must be byte-reproducible. The riscv64 gcc
+# pin is in lib-float/c/Dockerfile.build. After editing a C source, regenerate
+# via ./scripts/build-in-docker.sh and commit the updated lib/ artifacts.
+
 # Debug build flags
 ifeq ($(dbg),1)
       CFLAGS = -g -D DEBUG -D ZISK_GCC -fPIC

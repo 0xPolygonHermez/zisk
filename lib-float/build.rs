@@ -17,16 +17,15 @@ fn main() {
     let lib_file = library_folder.join(format!("lib{library_name}.a"));
     let elf_file = library_folder.join(format!("{library_name}.elf"));
 
-    // The committed `lib/ziskfloat.elf` is the source of truth: it determines the program vk
-    // (see core/src/elf2rom.rs `include_bytes!`). Rebuilding it on a consumer machine with a
-    // different riscv64-unknown-elf-gcc would produce different bytes and break vk
-    // reproducibility across hosts. Distinguish workspace dev vs cargo dep by checking whether
-    // the manifest dir lives under cargo's git/registry caches.
+    // The committed lib/ziskfloat.elf is the program vk source of truth (see
+    // core/src/elf2rom.rs include_bytes!), so we only rebuild it in workspace dev — never from
+    // cargo caches or CI, where the local riscv toolchain would risk producing different bytes.
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let is_consumer = manifest_dir.contains("/.cargo/git/checkouts/")
         || manifest_dir.contains("/.cargo/registry/src/");
+    let in_ci = std::env::var("CI").map(|v| v == "true" || v == "1").unwrap_or(false);
 
-    if is_consumer {
+    if is_consumer || in_ci {
         if !lib_file.exists() || !elf_file.exists() {
             println!(
                 "cargo:warning=ziskfloat artifacts missing in cargo cache; rebuilding from source"

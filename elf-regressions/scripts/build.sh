@@ -109,11 +109,20 @@ parse_args() {
     VERBOSE="$verbose"
 }
 
-# Build Docker image
 build_docker_image() {
-    log_info "Building Docker image for RISC-V assembly compilation..."
-    
-    if ! docker build -f "$PROJECT_DIR/Dockerfile.build" -t "$DOCKER_IMAGE" "$PROJECT_DIR"; then
+    local repo_root base_image
+    repo_root="$(cd "$PROJECT_DIR/.." && pwd)"
+    if ! base_image="$("$repo_root/lib-float/c/scripts/ensure-base-image.sh")"; then
+        log_error "Failed to build canonical ziskfloat base image"
+        exit 1
+    fi
+
+    log_info "Building RISC-V assembly compilation image on top of $base_image..."
+    if ! docker build \
+            --build-arg BASE_IMAGE="$base_image" \
+            -f "$PROJECT_DIR/Dockerfile.build" \
+            -t "$DOCKER_IMAGE" \
+            "$PROJECT_DIR"; then
         log_error "Failed to build Docker image"
         exit 1
     fi

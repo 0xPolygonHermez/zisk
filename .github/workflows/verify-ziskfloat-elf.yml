@@ -1,0 +1,80 @@
+name: Verify ziskfloat.elf
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths:
+      - 'lib-float/**'
+      - '.github/workflows/verify-ziskfloat-elf.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  verify-ziskfloat-elf:
+    name: Rebuild in canonical docker image and diff against committed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Save committed artifacts
+        run: |
+          cp lib-float/c/lib/ziskfloat.elf  /tmp/committed_ziskfloat.elf
+          cp lib-float/c/lib/libziskfloat.a /tmp/committed_libziskfloat.a
+
+      - name: Rebuild ziskfloat from C sources in canonical docker image
+        run: |
+          ./lib-float/c/scripts/build-in-docker.sh
+
+      - name: Record toolchain versions from the image
+        run: |
+          BASE_IMAGE="$(./lib-float/c/scripts/ensure-base-image.sh)"
+          docker run --rm "$BASE_IMAGE" bash -c '
+              riscv64-unknown-elf-gcc --version | head -1
+              riscv64-unknown-elf-ld --version | head -1
+              riscv64-unknown-elf-as --version | head -1
+              riscv64-unknown-elf-strip --version | head -1
+              riscv64-unknown-elf-ar --version | head -1
+          '
+
+      - name: Diff freshly-built vs committed artifacts
+        working-directory: lib-float/c
+        run: |
+          set -e
+
+          committed_elf_sha=$(sha256sum /tmp/committed_ziskfloat.elf  | awk '{print $1}')
+          rebuilt_elf_sha=$(sha256sum   lib/ziskfloat.elf             | awk '{print $1}')
+          committed_lib_sha=$(sha256sum /tmp/committed_libziskfloat.a | awk '{print $1}')
+          rebuilt_lib_sha=$(sha256sum   lib/libziskfloat.a            | awk '{print $1}')
+
+          echo "committed ziskfloat.elf:  $committed_elf_sha"
+          echo "rebuilt   ziskfloat.elf:  $rebuilt_elf_sha"
+          echo "committed libziskfloat.a: $committed_lib_sha"
+          echo "rebuilt   libziskfloat.a: $rebuilt_lib_sha"
+
+          ok=1
+          if [ "$committed_elf_sha" != "$rebuilt_elf_sha" ]; then
+            echo "::error file=lib-float/c/lib/ziskfloat.elf::committed lib/ziskfloat.elf does not match a fresh build from the current C sources"
+            ok=0
+          fi
+          if [ "$committed_lib_sha" != "$rebuilt_lib_sha" ]; then
+            echo "::error file=lib-float/c/lib/libziskfloat.a::committed lib/libziskfloat.a does not match a fresh build from the current C sources"
+            ok=0
+          fi
+
+          if [ "$ok" -eq 0 ]; then
+            echo ""
+            echo "To fix, regenerate and commit in the same PR:"
+            echo "  ./lib-float/c/scripts/build-in-docker.sh"
+            echo "  git add lib-float/c/lib/ziskfloat.elf lib-float/c/lib/libziskfloat.a && git commit"
+            exit 1
+          fi
+
+          echo "OK: committed artifacts match a fresh build from source."

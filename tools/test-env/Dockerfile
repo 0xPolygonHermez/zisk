@@ -1,12 +1,12 @@
-FROM ubuntu:22.04
+# Inherits the pinned riscv64 toolchain from lib-float/c/Dockerfile.build.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV container=docker
 
-# Define build-time argument
 ARG CUDA=false
 
-# Install base packages
 RUN apt update && apt install -y \
     bash \
     sudo \
@@ -16,15 +16,12 @@ RUN apt update && apt install -y \
     systemd-sysv \
     dbus
 
-# Copy helper scripts to /tmp
 COPY utils.sh install_deps.sh /tmp/
 
-# Create a non-root user with sudo privileges
 RUN groupadd --gid 1000 ziskuser \
  && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash ziskuser \
  && echo "ziskuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Patch install_deps.sh to source utils.sh from /tmp, then run it as ziskuser
 RUN chmod +x /tmp/install_deps.sh \
  && cd /tmp/ \
  && if [ "$CUDA" = "true" ]; then \
@@ -34,11 +31,11 @@ RUN chmod +x /tmp/install_deps.sh \
     fi \
  && rm -f ./utils.sh ./install_deps.sh
 
-# Create output directory and set ownership
+RUN riscv64-unknown-elf-gcc --version | head -1
+
 RUN mkdir -p /home/ziskuser/output \
  && chown ziskuser:ziskuser /home/ziskuser/output
 
-# Copy project files and adjust permissions
 COPY . /home/ziskuser/scripts/
 
 RUN chown -R ziskuser:ziskuser /home/ziskuser \
