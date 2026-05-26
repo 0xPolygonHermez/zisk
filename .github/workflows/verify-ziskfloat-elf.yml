@@ -36,7 +36,7 @@ jobs:
       - name: Record toolchain versions from the image
         run: |
           BASE_IMAGE="$(./lib-float/c/scripts/ensure-base-image.sh)"
-          docker run --rm "$BASE_IMAGE" bash -c '
+          docker run --rm --platform linux/amd64 "$BASE_IMAGE" bash -c '
               riscv64-unknown-elf-gcc --version | head -1
               riscv64-unknown-elf-ld --version | head -1
               riscv64-unknown-elf-as --version | head -1

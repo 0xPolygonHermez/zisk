@@ -28,6 +28,7 @@ HOST_GID="${SUDO_GID:-$(id -g)}"
 
 echo "==> Rebuilding lib/ziskfloat.elf and lib/libziskfloat.a in $IMAGE_TAG"
 "${DOCKER[@]}" run --rm \
+    --platform linux/amd64 \
     --user "$HOST_UID:$HOST_GID" \
     --volume "$C_DIR":/work \
     --workdir /work \

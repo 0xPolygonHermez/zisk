@@ -111,6 +111,20 @@ parse_args() {
 
 build_docker_image() {
     local repo_root base_image
+
+    if ! command -v docker >/dev/null 2>&1; then
+        log_error "docker CLI not installed."
+        exit 1
+    fi
+    if docker info >/dev/null 2>&1; then
+        DOCKER=(docker)
+    elif command -v sudo >/dev/null 2>&1; then
+        DOCKER=(sudo docker)
+    else
+        log_error "Cannot reach the docker daemon. Add yourself to the docker group, or run with sudo."
+        exit 1
+    fi
+
     repo_root="$(cd "$PROJECT_DIR/.." && pwd)"
     if ! base_image="$("$repo_root/lib-float/c/scripts/ensure-base-image.sh")"; then
         log_error "Failed to build canonical ziskfloat base image"
@@ -118,7 +132,7 @@ build_docker_image() {
     fi
 
     log_info "Building RISC-V assembly compilation image on top of $base_image..."
-    if ! docker build \
+    if ! "${DOCKER[@]}" build \
             --build-arg BASE_IMAGE="$base_image" \
             -f "$PROJECT_DIR/Dockerfile.build" \
             -t "$DOCKER_IMAGE" \
@@ -178,7 +192,7 @@ compile_assembly_file() {
     fi
     
     # Run compilation in Docker
-    if docker run --rm -v "$(pwd):/workspace" "$DOCKER_IMAGE" bash -c "$compile_cmd" 2>/dev/null; then
+    if "${DOCKER[@]}" run --rm -v "$(pwd):/workspace" "$DOCKER_IMAGE" bash -c "$compile_cmd" 2>/dev/null; then
         if [[ -f "$output_file" ]]; then
             log_success "Created: $output_file"
             return 0

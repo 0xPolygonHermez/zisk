@@ -24,6 +24,7 @@ else
 fi
 
 "${DOCKER[@]}" build \
+    --platform linux/amd64 \
     --file "$C_DIR/Dockerfile.build" \
     --tag "$ZISKFLOAT_BASE_IMAGE" \
     "$C_DIR" >&2
