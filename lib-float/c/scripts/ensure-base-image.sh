@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 C_DIR="$(dirname -- "$SCRIPT_DIR")"
 
 # Tag includes the apt pin so a pin bump can't alias on top of a stale image.
-ZISKFLOAT_BASE_IMAGE="${ZISKFLOAT_BASE_IMAGE:-ziskfloat-build:ubuntu24.04-gcc13.2.0-11ubuntu1+12}"
+ZISKFLOAT_BASE_IMAGE="${ZISKFLOAT_BASE_IMAGE:-ziskfloat-build:ubuntu24.04-gcc13.2.0-11ubuntu1_12}"
 
 if docker info >/dev/null 2>&1; then
     DOCKER=(docker)
