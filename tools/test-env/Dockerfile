@@ -1,6 +1,6 @@
 # Inherits the pinned riscv64 toolchain from lib-float/c/Dockerfile.build.
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
+FROM --platform=linux/amd64 ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV container=docker
