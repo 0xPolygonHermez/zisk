@@ -13,5 +13,5 @@ ruint-fallback = []
 # Wrap every u256 function with ziskos profiling functions
 profile = []
 
-# [lints]
-# workspace = true
+[lints]
+workspace = true

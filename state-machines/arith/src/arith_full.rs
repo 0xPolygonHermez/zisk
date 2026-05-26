@@ -88,30 +88,39 @@ impl<F: PrimeField64> ArithFullSM<F> {
         );
 
         // Split the arith_trace.buffer into slices matching each inner vector’s length.
-        let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
-        let flat_buffer = arith_trace.buffer.as_mut_slice();
-        let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
+        if total_inputs > 0 {
+            let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
+            let flat_buffer = arith_trace.buffer.as_mut_slice();
+            let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
 
-        flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
-            |(trace_slice, input_slice)| {
-                let mut aop = ArithOperation::new();
-                let mut range_table = ArithRangeTableInputs::new();
-                let mut table = ArithTableInputs::new();
+            flat_buffer
+                .par_chunks_mut(chunk_size)
+                .zip(flat_inputs.par_chunks(chunk_size))
+                .for_each(|(trace_slice, input_slice)| {
+                    let mut aop = ArithOperation::new();
+                    let mut range_table = ArithRangeTableInputs::new();
+                    let mut table = ArithTableInputs::new();
 
-                trace_slice.iter_mut().zip(input_slice.iter()).for_each(|(trace_row, input)| {
-                    *trace_row =
-                        Self::process_slice::<R>(&mut range_table, &mut table, &mut aop, input);
+                    trace_slice.iter_mut().zip(input_slice.iter()).for_each(
+                        |(trace_row, input)| {
+                            *trace_row = Self::process_slice::<R>(
+                                &mut range_table,
+                                &mut table,
+                                &mut aop,
+                                input,
+                            );
+                        },
+                    );
+
+                    for (row, multiplicity) in &table {
+                        self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
+                    }
+
+                    for (row, multiplicity) in &range_table {
+                        self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
+                    }
                 });
-
-                for (row, multiplicity) in &table {
-                    self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
-                }
-
-                for (row, multiplicity) in &range_table {
-                    self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
-                }
-            },
-        );
+        }
 
         let padding_offset = total_inputs;
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
