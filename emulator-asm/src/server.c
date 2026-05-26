@@ -139,6 +139,12 @@ void server_setup (void)
 
         if (create_internal_shm)
         {
+            // If we are not reusing an existing shared memory, we be more strict with the
+            // permissions during the emulation, saving the time to initialize it, done only once.
+            // First, the ROM shared memory is created and initialized (zero + ROM init data).
+            // Then, the sared memory is reopened as read-only, containing the proper constant data
+            // values, and preventing the assembly code from modifying it.
+
             // Make sure the rom shared memory is deleted
             shm_unlink(shmem_rom_name);
 
@@ -160,9 +166,82 @@ void server_setup (void)
 
             // Sync
             fsync(shmem_rom_fd);
+
+            // Map as read-write for writing the initialization data
+#ifdef USE_HUGE_PAGES
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
+#else
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+#endif
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
+
+            // Initialize the ROM content by calling the assembly code, which writes it to the
+            // shared memory
+            write_ro_init_data();
+
+            // Sync
+            fsync(shmem_rom_fd);
+
+            // Unmap the ROM memory since we will remap it later as read-only (if create_internal_shm is false) or with the same permissions (if create_internal_shm is true)
+            if (munmap(pRom, ROM_SIZE) != 0)
+            {
+                asm_printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Close the descriptor since we don't need it anymore after initializing the content
+            close(shmem_rom_fd);
+            shmem_rom_fd = -1;
+
+            // Reopen the rom shared memory as read-only for mapping it
+            shmem_rom_fd = shm_open(shmem_rom_name, O_RDONLY, 0666);
+            if (shmem_rom_fd < 0)
+            {
+                asm_printf("ERROR: Failed reopening rom RO shm_open(%s) as read-only errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Remap as read-only for the assembly code, which should not modify it
+#ifdef USE_HUGE_PAGES
+            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
+#else
+            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+#endif
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
         }
         else
         {
+            // If we are reusing an existing shared memory, we have to map it as read-write and
+            // initialize the ROM content before every emulation.
+
             // Open the rom shared memory
             shmem_rom_fd = shm_open(shmem_rom_name, O_RDWR, 0666);
             if (shmem_rom_fd < 0)
@@ -170,41 +249,42 @@ void server_setup (void)
                 asm_printf("ERROR: Failed opening rom RW shm_open(%s) as read-write errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
                 exit(-1);
             }
-        }
 
+            // Map as read-write for writing the initialization data before every emulation
 #ifdef USE_HUGE_PAGES
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
-        }
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
 #else
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
 #endif
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pRom != ROM_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
-            exit(-1);
-        }
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
 
-        // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_rom_fd);
-        shmem_rom_fd = -1;
+            // Close the descriptor since we don't need it anymore after mapping
+            close(shmem_rom_fd);
+            shmem_rom_fd = -1;
 
-        // Initialize data by calling the assembly code
-        write_ro_init_data();
+            // Initialize data by calling the assembly code
+            write_ro_init_data();
+        }
 
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
             duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+            asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, (void *)ROM_ADDR, duration);
         }
     }
 
@@ -824,8 +904,15 @@ void server_reset_slow (void)
         memset((void *)RAM_ADDR, 0, RAM_SIZE);
         write_rw_init_data();
 
-        // Reset ROM data
-        memset((void *)ROM_ADDR, 0, ROM_SIZE);
+        // Reset ROM data only if we are sharing the ROM memory with other assembly processes, i.e.
+        // if other programs are executed using the same ROM, with different content.
+        // If we created it from scratch, we initialized it with the correct content and reopen it
+        // as read-only, so we don't need to reset it again.
+        if (!create_internal_shm)
+        {
+            memset((void *)ROM_ADDR, 0, ROM_SIZE);
+            write_ro_init_data();
+        }
         
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);

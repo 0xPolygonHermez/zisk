@@ -58,6 +58,14 @@ use std::error::Error;
 // #[cfg(feature = "sp")]
 // use crate::SRC_SP;
 
+/// Data section with 64-bit data, used for RW sections that contain initial data
+/// It is an evolution of DataSection
+#[derive(Debug, Clone)]
+pub struct DataSection64 {
+    pub addr: u64,
+    pub data: Vec<u64>,
+}
+
 /// ZisK ROM structure, including a map address to ZisK instruction
 #[derive(Default, Debug, Clone)]
 pub struct ZiskRom {
@@ -71,8 +79,14 @@ pub struct ZiskRom {
     /// List of RO data sections as found in the ELF file, after merging adjacent sections
     pub ro_data: Vec<DataSection>,
 
+    /// RO data sections in u64
+    pub ro_data_64: Vec<DataSection64>,
+
     /// List of RW data sections as found in the ELF file, after merging adjacent sections
     pub rw_data: Vec<DataSection>,
+
+    /// RW data sections in u64
+    pub rw_data_64: Vec<DataSection64>,
 
     // The following vectors are to store subsets of the ROM instructions in order to improve the
     // program execution performance while fetching the instruction for the current step pc

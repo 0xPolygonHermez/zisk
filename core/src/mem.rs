@@ -131,10 +131,12 @@ pub const ROM_EXIT: u64 = 0x1004;
 pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
+/// Size of the program ROM instruction area
+pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
-pub const ROM_ADDR_MAX: u64 = ROM_ADDR + 0x08000000 - 1; // 128M
+pub const ROM_ADDR_MAX: u64 = ROM_ADDR + ROM_SIZE - 1;
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
 /// First float library RAM address
 pub const FLOAT_LIB_RAM_ADDR: u64 = 0xc0000000 - 0x10000; // 0xbfff0000
 /// Float library stack pointer address

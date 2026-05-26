@@ -7,7 +7,8 @@ use crate::{
         merge_adjacent_data_sections, DataSection, ElfPayload,
     },
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code},
-    AsmGenerationMethod, ZiskRom, ZiskRom2Asm, ROM_ENTRY,
+    AsmGenerationMethod, DataSection64, ZiskRom, ZiskRom2Asm, RAM_ADDR, RAM_SIZE, ROM_ADDR,
+    ROM_ENTRY, ROM_SIZE,
 };
 use std::{error::Error, path::Path};
 
@@ -51,8 +52,26 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
         }
 
-        // Add read-only data sections (will be stored in ROM)
-        ro_data.append(&mut payload.ro.clone());
+        // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
+        // regions marked as read-only as well, e.g. the output region
+        for section in &payload.ro {
+            if section.addr >= ROM_ADDR
+                && (section.addr + section.data.len() as u64) < (ROM_ADDR + ROM_SIZE)
+            {
+                ro_data.push(section.clone());
+            } else if section.addr >= RAM_ADDR
+                && (section.addr + section.data.len() as u64) < (RAM_ADDR + RAM_SIZE)
+            {
+                rw_data.push(section.clone());
+            } else {
+                return Err(format!(
+                    "Data section at address 0x{:x} with size {} is out of ROM and RAM bounds",
+                    section.addr,
+                    section.data.len()
+                )
+                .into());
+            }
+        }
 
         // Add read-write data sections (will be stored in RAM)
         rw_data.append(&mut payload.rw.clone());
@@ -64,8 +83,127 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // Merge adjacent read-only and read_write data sections for efficiency
-    rom.ro_data = merge_adjacent_data_sections(&ro_data);
-    rom.rw_data = merge_adjacent_data_sections(&rw_data);
+    ro_data = merge_adjacent_data_sections(&ro_data);
+    rw_data = merge_adjacent_data_sections(&rw_data);
+
+    // Delete trailing zeros in every data section of the RAM, and delete the section if needed
+    rw_data = rw_data
+        .into_iter()
+        .filter_map(|section| {
+            let mut data = section.data;
+            while data.last() == Some(&0) {
+                data.pop();
+            }
+            if data.is_empty() {
+                None
+            } else {
+                Some(DataSection { addr: section.addr, data })
+            }
+        })
+        .collect();
+
+    // Add trailing zeros in every data section of the RAM to make their size a multiple of 8 bytes
+    rw_data = rw_data
+        .into_iter()
+        .map(|section| {
+            let mut data = section.data;
+            while data.len() % 8 != 0 {
+                data.push(0);
+            }
+            DataSection { addr: section.addr, data }
+        })
+        .collect();
+
+    // Ensure every data section address is aligned to 8 bytes, and data length as well
+    for section in &mut ro_data {
+        if section.addr % 8 != 0 {
+            return Err(format!(
+                "RO data section at address 0x{:x} is not aligned to 8 bytes",
+                section.addr
+            )
+            .into());
+        }
+        if section.data.len() % 8 != 0 {
+            return Err(format!(
+                "RO data section at address 0x{:x} has size {} which is not a multiple of 8 bytes",
+                section.addr,
+                section.data.len()
+            )
+            .into());
+        }
+    }
+    for section in &mut rw_data {
+        if section.addr % 8 != 0 {
+            return Err(format!(
+                "RW data section at address 0x{:x} is not aligned to 8 bytes",
+                section.addr
+            )
+            .into());
+        }
+        if section.data.len() % 8 != 0 {
+            return Err(format!(
+                "RW data section at address 0x{:x} has size {} which is not a multiple of 8 bytes",
+                section.addr,
+                section.data.len()
+            )
+            .into());
+        }
+    }
+
+    // Remove heading zeros, only for RW data sections
+    for section in &mut rw_data {
+        // Get number of heading zeros
+        let mut heading_zeros_counter: usize = 0;
+        for i in 0..section.data.len() {
+            if section.data[i] == 0 {
+                heading_zeros_counter += 1;
+            } else {
+                break;
+            }
+        }
+        // Align to 8 bytes, as the data sections will be converted to 64-bit data sections
+        heading_zeros_counter &= !0x07;
+
+        if heading_zeros_counter == section.data.len() {
+            // The whole section is zeros, we can delete it
+            section.data.clear();
+            continue;
+        }
+
+        // Delete heading zeros and update the section address accordingly
+        if heading_zeros_counter > 0 {
+            section.data.drain(0..heading_zeros_counter);
+            section.addr += heading_zeros_counter as u64;
+        }
+    }
+
+    // Copy to rom
+    rom.ro_data = ro_data.clone();
+    rom.rw_data = rw_data.clone();
+
+    // Convert RO data sections to 64-bit data sections, and store them in the ROM
+    rom.ro_data_64 = ro_data
+        .into_iter()
+        .map(|section| {
+            let mut data = Vec::new();
+            for chunk in section.data.chunks(8) {
+                data.push(u64::from_le_bytes(chunk.try_into().unwrap()));
+            }
+            DataSection64 { addr: section.addr, data }
+        })
+        .collect();
+
+    // Convert RW data sections to 64-bit data sections, and store them in the ROM
+    rom.rw_data_64 = rw_data
+        .into_iter()
+        .map(|section| {
+            let mut data = Vec::new();
+            for chunk in section.data.chunks(8) {
+                data.push(u64::from_le_bytes(chunk.try_into().unwrap()));
+            }
+            DataSection64 { addr: section.addr, data }
+        })
+        .collect();
 
     // println!(
     //     "Merged data sections: {} read-only sections, {} read-write sections",
