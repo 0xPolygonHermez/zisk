@@ -2,6 +2,7 @@ use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -276,7 +277,178 @@ pub struct Worker<T: ZiskBackend + 'static> {
     program_vks: HashMap<SetupKey, ProgramVK>,
 }
 
+/// Per-field byte estimate of a `Worker`'s directly-owned state.
+///
+/// Opaque fields (`Arc<ZiskProver>`, spawned thread heaps, the two unbounded
+/// mpsc channels) are reported as pointer size only — what lives behind them
+/// is not reachable through `Worker`. Track process RSS separately to catch
+/// growth in that opaque territory.
+#[derive(Debug, Clone, Default)]
+pub struct WorkerBytes {
+    pub state: usize,
+    pub current_job: usize,
+    pub current_job_id: String,
+    pub current_computation: usize,
+    pub current_mpi_task: usize,
+    pub prover: usize,
+    pub prover_config: usize,
+    pub stream_actor: usize,
+    pub guest_programs: usize,
+    pub guest_programs_count: usize,
+    pub program_vks: usize,
+    pub program_vks_count: usize,
+}
+
+impl WorkerBytes {
+    pub fn total(&self) -> usize {
+        self.state
+            + self.current_job
+            + self.current_computation
+            + self.current_mpi_task
+            + self.prover
+            + self.prover_config
+            + self.stream_actor
+            + self.guest_programs
+            + self.program_vks
+    }
+}
+
+impl Display for WorkerBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Worker {{")?;
+        writeln!(f, "  current_job:          {}  ({})", self.current_job_id, fmt_bytes(self.current_job))?;
+        writeln!(f, "  current_computation:  ({})", fmt_bytes(self.current_computation))?;
+        writeln!(f, "  current_mpi_task:     ({})", fmt_bytes(self.current_mpi_task))?;
+        writeln!(f, "  prover (Arc, opaque): ({})", fmt_bytes(self.prover))?;
+        writeln!(f, "  prover_config:        ({})", fmt_bytes(self.prover_config))?;
+        writeln!(f, "  stream_actor:         ({})", fmt_bytes(self.stream_actor))?;
+        writeln!(
+            f,
+            "  guest_programs:       {} entries  ({})",
+            self.guest_programs_count,
+            fmt_bytes(self.guest_programs)
+        )?;
+        writeln!(
+            f,
+            "  program_vks:          {} entries  ({})",
+            self.program_vks_count,
+            fmt_bytes(self.program_vks)
+        )?;
+        writeln!(f, "  --- measured total:   {}", fmt_bytes(self.total()))?;
+        write!(f, "}}")
+    }
+}
+
+fn fmt_bytes(b: usize) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let f = b as f64;
+    if f >= GB {
+        format!("{:.2} GB", f / GB)
+    } else if f >= MB {
+        format!("{:.2} MB", f / MB)
+    } else if f >= KB {
+        format!("{:.2} KB", f / KB)
+    } else {
+        format!("{} B", b)
+    }
+}
+
+fn data_ctx_heap_bytes(ctx: &DataCtx) -> usize {
+    let input = match &ctx.input_source {
+        InputSourceDto::InputPath(s) => s.capacity(),
+        InputSourceDto::InputData(v) => v.capacity(),
+        InputSourceDto::InputNull => 0,
+    };
+    let hints = match &ctx.hints_source {
+        HintsSourceDto::HintsPath(s) => s.capacity(),
+        HintsSourceDto::HintsData(v) => v.capacity(),
+        HintsSourceDto::HintsStream(s) => s.capacity(),
+        HintsSourceDto::HintsNull => 0,
+    };
+    input + hints
+}
+
+impl<T: ZiskBackend + 'static> Display for Worker<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.bytes_breakdown())
+    }
+}
+
 impl<T: ZiskBackend + 'static> Worker<T> {
+    /// Best-effort byte estimate of state owned directly by this `Worker`.
+    ///
+    /// Uses `try_lock` on the current-job mutex so a busy job reports its
+    /// stack-only footprint instead of blocking the caller. Opaque fields
+    /// (`Arc<ZiskProver>`, spawned-thread heaps) report pointer size only.
+    pub fn bytes_breakdown(&self) -> WorkerBytes {
+        let state = std::mem::size_of_val(&self.state);
+
+        let (current_job, current_job_id) = match self.current_job.as_ref() {
+            Some(arc_mutex) => {
+                let stack = std::mem::size_of::<Arc<Mutex<JobContext>>>();
+                let (heap, id) = match arc_mutex.try_lock() {
+                    Ok(g) => {
+                        let heap = std::mem::size_of::<JobContext>()
+                            + g.allocation.capacity() * std::mem::size_of::<u32>()
+                            + g.hash_id.capacity()
+                            + data_ctx_heap_bytes(&g.data_ctx);
+                        (heap, format!("{:?}", g.job_id))
+                    }
+                    Err(_) => (std::mem::size_of::<JobContext>(), "<locked>".into()),
+                };
+                (stack + heap, id)
+            }
+            None => (std::mem::size_of::<Option<Arc<Mutex<JobContext>>>>(), "None".into()),
+        };
+
+        let current_computation = std::mem::size_of::<Option<JoinHandle<()>>>();
+        let current_mpi_task = std::mem::size_of::<Option<JoinHandle<()>>>();
+        let prover = std::mem::size_of::<Arc<ZiskProver<T>>>();
+        let prover_config = std::mem::size_of_val(&self.prover_config);
+        let stream_actor = std::mem::size_of::<Option<StreamOrderingActor>>();
+
+        let guest_programs: usize = self
+            .guest_programs
+            .iter()
+            .map(|(k, v)| {
+                k.capacity()
+                    + std::mem::size_of::<Arc<GuestProgram>>()
+                    + std::mem::size_of::<GuestProgram>()
+                    + v.elf.data.len()
+                    + v.program_id.name.len()
+                    + v.program_id.hash_id.len()
+            })
+            .sum();
+
+        let program_vks: usize = self
+            .program_vks
+            .iter()
+            .map(|(k, v)| {
+                std::mem::size_of::<SetupKey>()
+                    + k.hash_id.capacity()
+                    + std::mem::size_of::<ProgramVK>()
+                    + v.vk.capacity() * std::mem::size_of::<u64>()
+            })
+            .sum();
+
+        WorkerBytes {
+            state,
+            current_job,
+            current_job_id,
+            current_computation,
+            current_mpi_task,
+            prover,
+            prover_config,
+            stream_actor,
+            guest_programs,
+            guest_programs_count: self.guest_programs.len(),
+            program_vks,
+            program_vks_count: self.program_vks.len(),
+        }
+    }
+
     pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())

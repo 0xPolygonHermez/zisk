@@ -994,6 +994,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
             }
             coordinator_message::Payload::ExecuteTask(request) => {
+                let rss_kb = std::fs::read_to_string("/proc/self/statm")
+                    .ok()
+                    .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+                    .map(|pages| pages * 4)
+                    .unwrap_or(0);
+                tracing::info!(
+                    target: "memdiag",
+                    "\nExecuteTask received — worker memory snapshot:\nrss: {} KB\n{}",
+                    rss_kb,
+                    self.worker.bytes_breakdown(),
+                );
+
                 let job_id = request.job_id.clone();
                 let task_type_int = request.task_type;
                 let dispatch = match TaskType::try_from(task_type_int) {
