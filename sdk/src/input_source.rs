@@ -17,8 +17,20 @@ impl From<ZiskStdin> for InputSource {
     }
 }
 
+impl From<&ZiskStdin> for InputSource {
+    fn from(s: &ZiskStdin) -> Self {
+        InputSource::Stdin(s.clone())
+    }
+}
+
 impl From<ZiskStream> for InputSource {
     fn from(s: ZiskStream) -> Self {
         InputSource::Stream(s)
+    }
+}
+
+impl From<&ZiskStream> for InputSource {
+    fn from(s: &ZiskStream) -> Self {
+        InputSource::Stream(s.clone())
     }
 }
