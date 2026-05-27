@@ -197,7 +197,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if addr_changes {
                 trace[i].set_addr_changes(true);
-                self.std.range_check(self.range_id, (mem_op.addr - last_addr - 1) as i64, 1);
+                self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
             } else {
                 trace[i].set_addr_changes(false);
             }
@@ -235,8 +235,8 @@ impl<F: PrimeField64> InputDataSM<F> {
 
         self.std.range_check(
             self.range_id,
-            SEGMENT_ADDR_MAX_RANGE as i64,
-            max_range_distance_count,
+            SEGMENT_ADDR_MAX_RANGE,
+            max_range_distance_count as u32,
         );
 
         // range of chunks
@@ -273,7 +273,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         range_16bits[distance_end[0] as usize] += 1;
         range_16bits[distance_end[1] as usize] += 1;
 
-        self.std.range_checks(self.range_16bits_id, range_16bits);
+        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }

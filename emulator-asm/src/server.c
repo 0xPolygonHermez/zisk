@@ -907,13 +907,13 @@ void server_run (void)
     // response then carries result=1 back to the parent, which reports the
     // error.
     gettimeofday(&start_time,NULL);
-    if (verbose) asm_printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("Before calling emu_start() trace_address=%lx\n", trace_address);
     caught_signal = 0;
     bool emulation_aborted = false;
     if (sigsetjmp(emulation_jmp_buf, 1) == 0)
     {
         in_emulation = 1;
-        emulator_start();
+        emu_start();
         in_emulation = 0;
     }
     else
@@ -924,7 +924,7 @@ void server_run (void)
         asm_printf("WARNING: caught signal %d during emulation, aborting run\n",
                    (int)caught_signal);
     }
-    if (verbose) asm_printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("After calling emu_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 

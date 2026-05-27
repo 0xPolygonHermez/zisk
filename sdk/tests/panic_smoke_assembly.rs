@@ -17,7 +17,7 @@
 
 use std::path::PathBuf;
 
-use test_artifacts::ELF_PANIC_MODES;
+use test_artifacts::{ELF_MISSING_ENTRYPOINT, ELF_PANIC_MODES};
 use zisk_sdk::{EmbeddedClient, EmbeddedClientBuilder, ZiskStdin};
 
 async fn execute_with_input(client: &EmbeddedClient, input: u64) -> anyhow::Result<()> {
@@ -61,4 +61,16 @@ async fn panic_modes_assembly() {
 
     // Post-failure: valid input must succeed, proving in-process recovery.
     execute_with_input(&client, 99).await.expect("post-failure valid execute");
+}
+
+#[test]
+fn rejects_elf_without_entrypoint_macro() {
+    let err = ELF_MISSING_ENTRYPOINT
+        .run_emulation(zisk_common::io::ZiskStdin::new(), None)
+        .expect_err("elf2rom should reject a guest ELF that has no entry point");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("entry point") && msg.contains("ziskos::entrypoint!"),
+        "expected actionable entrypoint error, got: {msg}"
+    );
 }

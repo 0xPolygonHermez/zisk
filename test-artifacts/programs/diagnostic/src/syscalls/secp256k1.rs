@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_secp256k1() {
+pub fn diagnostic_secp256k1() {
     //////////////
     // Secp256k1 Add Tests
     //////////////

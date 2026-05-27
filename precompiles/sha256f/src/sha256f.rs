@@ -98,9 +98,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
         trace[4].set_step_addr(state_addr as u64); // ADDR_IND_0
         trace[5].set_step_addr(input_addr as u64); // ADDR_IND_1
 
-        // Activate the clk_0 selector
-        trace[0].set_in_use_clk_0(true);
-
         // Activate the in_use selector
         for r in trace.iter_mut().take(18) {
             r.set_in_use(true);
@@ -499,8 +496,8 @@ impl<F: PrimeField64> Sha256fSM<F> {
         a_range_checks[0] += count_zeros as u32;
         e_range_checks[0] += count_zeros as u32;
 
-        self.std.range_checks(self.a_range_id, a_range_checks);
-        self.std.range_checks(self.e_range_id, e_range_checks);
+        self.std.range_check_ranged(self.a_range_id, None, &a_range_checks);
+        self.std.range_check_ranged(self.e_range_id, None, &e_range_checks);
 
         timer_stop_and_log_trace!(SHA256F_PADDING);
 

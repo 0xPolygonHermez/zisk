@@ -1,13 +1,13 @@
-use crate::zisklib::{eq, fcall_secp256r1_ecdsa_verify, gt, is_zero};
+use crate::zisklib::{be_bytes_to_u64_4, eq, gt, is_zero};
 
 use super::{
     constants::{IDENTITY, N_MINUS_ONE, P_MINUS_ONE},
-    curve::{is_on_curve_secp256r1, triple_scalar_mul_with_g_secp256r1},
-    scalar::{neg_fn_secp256r1, reduce_fn_secp256r1},
+    curve::{double_scalar_mul_with_g_secp256r1, is_on_curve_secp256r1},
+    scalar::{inv_fn_secp256r1, mul_fn_secp256r1, reduce_fn_secp256r1},
 };
 
-/// Verifies the signature (r, s) over the message hash z using the public key pk
-/// Returns true if the signature is valid, false otherwise
+/// Verifies the signature (r, s) over the message hash z using the public key pk.
+/// Returns true if the signature is valid, false otherwise.
 pub fn ecdsa_verify_secp256r1(
     pk: &[u64; 8],
     z: &[u64; 4],
@@ -15,7 +15,7 @@ pub fn ecdsa_verify_secp256r1(
     s: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
-    // r and s must be in the range [1, n-1]
+    // Range checks: r, s ∈ [1, n−1].
     if is_zero(r) || gt(r, &N_MINUS_ONE) {
         return false;
     }
@@ -23,12 +23,12 @@ pub fn ecdsa_verify_secp256r1(
         return false;
     }
 
-    // pk must not be the identity point
+    // pk must not be the identity point.
     if eq(pk, &IDENTITY) {
         return false;
     }
 
-    // pk must be a valid curve point
+    // pk must be a valid curve point with both coordinates in [0, p−1].
     let pk_x: [u64; 4] = [pk[0], pk[1], pk[2], pk[3]];
     let pk_y: [u64; 4] = [pk[4], pk[5], pk[6], pk[7]];
     if gt(&pk_x, &P_MINUS_ONE) || gt(&pk_y, &P_MINUS_ONE) {
@@ -42,62 +42,48 @@ pub fn ecdsa_verify_secp256r1(
         return false;
     }
 
-    // Ecdsa verification computes (x, y) = [s⁻¹·z (mod n)]G + [s⁻¹·r (mod n)]PK
-    // and checks that x ≡ r (mod n)
-    // We can equivalently hint (x,y), verify that
-    //   [z]G + [r]PK + [-s](x,y) == 𝒪,
-    // and ensure that x ≡ r (mod n), saving us from expensive fn arithmetic
-
-    // Hint the result
-    let point = fcall_secp256r1_ecdsa_verify(
-        pk,
-        z,
-        r,
+    // Compute u1 = z·s⁻¹ (mod n) and u2 = r·s⁻¹ (mod n).
+    let s_inv = inv_fn_secp256r1(
         s,
         #[cfg(feature = "hints")]
         hints,
     );
+    let u1 = mul_fn_secp256r1(
+        z,
+        &s_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let u2 = mul_fn_secp256r1(
+        r,
+        &s_inv,
+        #[cfg(feature = "hints")]
+        hints,
+    );
 
-    // Check the recovered point is valid
-    // Note: Identity point would be raised here
-    if !is_on_curve_secp256r1(
-        &point,
+    // Compute (x, y) = [u1]·G + [u2]·PK.
+    let point = match double_scalar_mul_with_g_secp256r1(
+        &u1,
+        &u2,
+        pk,
         #[cfg(feature = "hints")]
         hints,
     ) {
-        return false;
-    }
+        Some(pt) => pt,
+        None => return false, // Result is the point at infinity ⇒ invalid signature.
+    };
 
-    // Check that [z]G + [r]PK + [-s](x,y) == 𝒪
-    let neg_s = neg_fn_secp256r1(
-        s,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    if triple_scalar_mul_with_g_secp256r1(
-        z,
-        r,
-        &neg_s,
-        pk,
-        &point,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-    .is_some()
-    {
-        return false;
-    }
-
-    // Check that x ≡ r (mod n)
-    let point_x: [u64; 4] = [point[0], point[1], point[2], point[3]];
-    eq(
-        &reduce_fn_secp256r1(
-            &point_x,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
-        r,
-    )
+    // Check that x ≡ r (mod n). Fast path: when x < n, x == r directly.
+    let x: [u64; 4] = [point[0], point[1], point[2], point[3]];
+    eq(&x, r)
+        || eq(
+            &reduce_fn_secp256r1(
+                &x,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            r,
+        )
 }
 
 // ==================== C FFI Functions ====================
@@ -128,11 +114,11 @@ pub(crate) unsafe fn secp256r1_ecdsa_verify_c(
     let pk_y_bytes: [u8; 32] = pk_bytes[32..64].try_into().unwrap();
 
     // Convert to little-endian u64 limbs
-    let z = bytes_be_to_u64_le(msg_bytes);
-    let r = bytes_be_to_u64_le(&r_bytes);
-    let s = bytes_be_to_u64_le(&s_bytes);
-    let pk_x = bytes_be_to_u64_le(&pk_x_bytes);
-    let pk_y = bytes_be_to_u64_le(&pk_y_bytes);
+    let z = be_bytes_to_u64_4(msg_bytes);
+    let r = be_bytes_to_u64_4(&r_bytes);
+    let s = be_bytes_to_u64_4(&s_bytes);
+    let pk_x = be_bytes_to_u64_4(&pk_x_bytes);
+    let pk_y = be_bytes_to_u64_4(&pk_y_bytes);
 
     let pk: [u64; 8] = [pk_x[0], pk_x[1], pk_x[2], pk_x[3], pk_y[0], pk_y[1], pk_y[2], pk_y[3]];
     ecdsa_verify_secp256r1(
@@ -143,15 +129,4 @@ pub(crate) unsafe fn secp256r1_ecdsa_verify_c(
         #[cfg(feature = "hints")]
         hints,
     )
-}
-
-/// Convert big-endian bytes to little-endian u64 limbs (32 bytes -> [u64; 4])
-fn bytes_be_to_u64_le(bytes: &[u8; 32]) -> [u64; 4] {
-    let mut result = [0u64; 4];
-    for i in 0..4 {
-        for j in 0..8 {
-            result[3 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
-        }
-    }
-    result
 }

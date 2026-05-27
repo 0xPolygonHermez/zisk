@@ -447,7 +447,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
                 second_read_row.set_addr(addr_second_read);
-                second_read_row.set_delta_addr(1);
                 second_read_row.set_offset(DEFAULT_OFFSET);
                 second_read_row.set_width(DEFAULT_WIDTH);
                 second_read_row.set_pc(next_pc as u8 + 1);
@@ -658,7 +657,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 let mut second_write_row: R = Default::default();
                 second_write_row.set_step(step + 1);
                 second_write_row.set_addr(addr_second_read_write);
-                second_write_row.set_delta_addr(1);
                 second_write_row.set_offset(DEFAULT_OFFSET);
                 second_write_row.set_width(DEFAULT_WIDTH);
                 second_write_row.set_wr(true);
@@ -911,6 +909,6 @@ impl<F: PrimeField64> MemAlignSM<F> {
 
     fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
         // Perform the range checks
-        self.std.range_checks(self.range_id, reg_range_check);
+        self.std.range_check_ranged(self.range_id, None, &reg_range_check);
     }
 }

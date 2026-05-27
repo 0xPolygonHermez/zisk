@@ -1,6 +1,6 @@
 use ziskos::syscalls::*;
 
-pub fn test_arith384() {
+pub fn diagnostic_arith384() {
     //////////////
     // Arith384 Tests
     //////////////
