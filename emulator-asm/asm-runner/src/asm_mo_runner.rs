@@ -24,12 +24,35 @@ use anyhow::{Context, Result};
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
+#[cfg(gpu)]
+fn register_mo_shmem_pinned(
+    gp: &GpuCountAndPlan,
+    shmem: &AsmMultiSharedMemory<AsmMOHeader>,
+    registered: &mut usize,
+) {
+    if *registered == usize::MAX {
+        return; // registration unsupported on this device — sync fallback in use
+    }
+    let total = shmem.total_mapped_size();
+    if total <= *registered {
+        return;
+    }
+    let new_ptr = unsafe { (shmem.mapped_ptr() as *const c_void).add(*registered) };
+    if gp.register_input_pinned(new_ptr, total - *registered) {
+        *registered = total;
+    } else {
+        *registered = usize::MAX; // give up; do not retry
+    }
+}
+
 pub struct MOShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
     #[cfg(gpu)]
     gpu_count_and_plan: Option<GpuCountAndPlan>,
+    #[cfg(gpu)]
+    registered_bytes: usize,
 }
 
 impl MOShMemReader {
@@ -47,6 +70,7 @@ impl MOShMemReader {
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            cfg!(gpu),
         )?;
 
         #[cfg(gpu)]
@@ -60,6 +84,8 @@ impl MOShMemReader {
             handle_mo: None,
             #[cfg(gpu)]
             gpu_count_and_plan,
+            #[cfg(gpu)]
+            registered_bytes: 0,
         })
     }
 }
@@ -164,6 +190,7 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         if let Some(ref gp) = gpu_count_and_plan {
             gp.reset();
+            register_mo_shmem_pinned(gp, &preloaded.output_shmem, &mut preloaded.registered_bytes);
         }
 
         // CPU workers are only spawned when no GPU planner is active.
@@ -217,6 +244,15 @@ impl AsmRunnerMO {
                                     preloaded.output_shmem.total_mapped_size() - threshold_bytes,
                                 ) as *const AsmMOChunk
                             };
+                        // Pin the newly-mapped tail before its chunks are H2D'd.
+                        #[cfg(gpu)]
+                        if let Some(ref gp) = gpu_count_and_plan {
+                            register_mo_shmem_pinned(
+                                gp,
+                                &preloaded.output_shmem,
+                                &mut preloaded.registered_bytes,
+                            );
+                        }
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };

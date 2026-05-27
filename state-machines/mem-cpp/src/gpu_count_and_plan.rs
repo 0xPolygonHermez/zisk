@@ -86,6 +86,16 @@ impl GpuCountAndPlan {
         unsafe { gpu_bindings::count_and_plan_reset(self.inner) };
     }
 
+    pub fn register_input_pinned(&self, ptr: *const c_void, bytes: usize) -> bool {
+        unsafe {
+            gpu_bindings::count_and_plan_register_input_pinned(self.inner, ptr as *mut c_void, bytes)
+        }
+    }
+
+    pub fn unregister_input_pinned(&self, ptr: *const c_void) {
+        unsafe { gpu_bindings::count_and_plan_unregister_input_pinned(self.inner, ptr as *mut c_void) };
+    }
+
     /// Returns a borrowed slice of metas owned by the C++ side. Valid until the next `reset` (or drop).
     pub fn run(&self) -> Option<&[GpuInstanceMeta]> {
         let mut ptr: *mut GpuInstanceMeta = std::ptr::null_mut();

@@ -13,6 +13,11 @@
 #include <cuda_runtime.h>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 
 // `InstanceMeta` is declared in this shared header so the plain C++ side
 // (mem_count_and_plan.cpp) can read GPU-produced metas directly without
@@ -51,7 +56,10 @@ constexpr uint32_t MAX_CHUNKS            = 1u << 13;          // 8192
 constexpr uint32_t MAX_MEMOPS_PER_CHUNK  = 1u << 19;          // 524288 (bumped from 1<<18 to fit denser inputs; ~+350 MiB GPU device memory)
 constexpr uint32_t POTENTIAL_FACTOR      = 8;                 
 constexpr uint32_t MAX_POT_PER_CHUNK     = MAX_MEMOPS_PER_CHUNK * POTENTIAL_FACTOR;
-constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops 
+constexpr uint32_t MAX_TOTAL_MEMOPS      = 1u << 29;          // 512M ops
+
+// Internal compile-time toggle for the add_chunk worker pool 
+#define ZISK_MOPS_POOL 1
 
 class CountAndPlan {
 public:
@@ -87,9 +95,12 @@ public:
     // Reset for the next block.
     void reset();
 
+
+    bool register_input_pinned(void* ptr, size_t bytes);
+    void unregister_input_pinned(void* ptr);
+
     // ─── Read-only state ──────────────────────────────────────────────
 
-    float               last_chunk_to_final_ms() const { return last_chunk_to_final_ms_; }
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
 
@@ -166,8 +177,6 @@ private:
 
     // ─── Pinned host buffers ─────────────────────────────────────────
 
-    MemOp*         h_memops_                   = nullptr;
-    size_t         h_memops_used_              = 0;
     uint32_t*      h_n_emits_all_              = nullptr;
     // Pinned destinations for the compacted paged-offsets output.
     //   - h_page_starts_buf_ / h_page_single_buf_ are sized in pages
@@ -187,7 +196,6 @@ private:
 
     cudaStream_t  d2h_stream_         = nullptr;
     cudaStream_t  meta_stream_        = nullptr;
-    cudaEvent_t   e_last_chunk_start_ = nullptr;
     cudaEvent_t   e_after_preproc_    = nullptr;
     cudaEvent_t   e_after_prepare_    = nullptr;
     cudaEvent_t   e_metas_ready_      = nullptr;
@@ -206,7 +214,6 @@ private:
     bool                  preprocessed_            = false;
     bool                  prepared_                = false;
     bool                  metas_ready_recorded_    = false;
-    float                 last_chunk_to_final_ms_  = 0.f;
 
     // ─── Worker state ───────────────────────────────────────────────
 
@@ -224,7 +231,23 @@ private:
     uint32_t  num_instances_       = 0;
     uint32_t  h_max_compact_[3]    = {0};
 
-    // ─── Internal helpers 
+    // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
+    int                     gpu_device_           = 0;     // captured in setup()
+    bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
+
+    struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
+    std::deque<ChunkJob>     pool_q_[N_STREAMS];
+    std::mutex               pool_mtx_[N_STREAMS];
+    std::condition_variable  pool_cv_[N_STREAMS];
+    std::thread              pool_threads_[N_STREAMS];
+    bool                     pool_should_stop_   = false;
+
+    std::atomic<size_t>     pool_cursor_u32_{0};
+    std::atomic<bool>       add_error_{false};
+
+    
+
+    // ─── Internal helpers
 
     void   free_all_();
     void   free_pinned_();
@@ -235,6 +258,11 @@ private:
     void   process_worker_();
     void   set_active_worker_();
     void   pick_active_instances_();
+
+    bool   add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c);
+    void   pool_start_();
+    void   pool_stop_();
+    void   pool_thread_loop_(int s);
 };
 
 // ─── Binary-meta save helpers ───────────────────────────────────────
