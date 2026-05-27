@@ -139,6 +139,7 @@ impl AsmRunnerOptions {
 
         command.arg("--stdio");
         command.arg("--open_all_shm");
+        command.arg("--share_input_shm");
 
         if self.unlock_mapped_memory {
             command.arg("-u");
@@ -178,5 +179,6 @@ impl AsmRunnerOptions {
         if self.keccak_trace {
             command.arg("-k");
         }
+        println!("Command after applying options: {:?}", command);
     }
 }
