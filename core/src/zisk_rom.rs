@@ -542,6 +542,21 @@ impl ZiskRom {
     }
 }
 
+pub trait MemDataSection {
+    fn ro_sections(&self) -> &[DataSection64];
+    fn rw_sections(&self) -> &[DataSection64];
+}
+
+impl MemDataSection for ZiskRom {
+    fn ro_sections(&self) -> &[DataSection64] {
+        &self.ro_data_64
+    }
+
+    fn rw_sections(&self) -> &[DataSection64] {
+        &self.rw_data_64
+    }
+}
+
 /********/
 /* TEST */
 /********/

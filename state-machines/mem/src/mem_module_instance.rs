@@ -43,7 +43,11 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         timer_stop_and_log_debug!(MEM_SORT);
     }
 
-    pub fn build_mem_collector(&self, chunk_id: ChunkId) -> MemModuleCollector {
+    pub fn build_mem_collector(
+        &self,
+        chunk_id: ChunkId,
+        mem_sections: &dyn zisk_core::MemDataSection,
+    ) -> MemModuleCollector {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
         MemModuleCollector::new(
             chunk_check_point,

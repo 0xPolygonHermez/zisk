@@ -31,7 +31,11 @@ impl<F: PrimeField64> MemAlignInstance<F> {
         Self { ictx, checkpoint, mem_align_sm }
     }
 
-    pub fn build_mem_align_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
+    pub fn build_mem_align_collector(
+        &self,
+        chunk_id: ChunkId,
+        mem_sections: &dyn zisk_core::MemDataSection,
+    ) -> MemAlignCollector {
         MemAlignCollector::new(&self.checkpoint[&chunk_id])
     }
 }

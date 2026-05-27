@@ -227,6 +227,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     &secn_instances,
                     chunk_id,
                     global_idxs,
+                    &*state.get_rom()?,
                 )
             })
             .collect::<Result<_>>()

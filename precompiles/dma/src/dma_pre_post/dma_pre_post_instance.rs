@@ -43,7 +43,11 @@ impl<F: PrimeField64> DmaPrePostInstance<F> {
         Self { module, ictx }
     }
 
-    pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaPrePostCollector {
+    pub fn build_dma_collector(
+        &self,
+        chunk_id: ChunkId,
+        mem_sections: &dyn zisk_core::MemDataSection,
+    ) -> DmaPrePostCollector {
         debug_assert!(
             [
                 DmaPrePostTrace::<()>::AIR_ID,

@@ -93,6 +93,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         secn_instances: &HashMap<usize, &Box<dyn Instance<F>>>,
         chunk_id: usize,
         global_idxs: &[usize],
+        zisk_rom: &zisk_core::ZiskRom,
     ) -> Result<Option<Self>> {
         if global_idxs.is_empty() {
             return Ok(None);
@@ -110,7 +111,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                 .map_err(|e| anyhow::anyhow!("Execution failed: {e}"))?;
             let instance = &***secn_instance;
 
-            if !builtins.try_push_collector(air_id, instance, chunk_id, *global_idx)?
+            if !builtins.try_push_collector(air_id, instance, chunk_id, *global_idx, zisk_rom)?
                 && !precompiles.try_push_collector(air_id, instance, chunk_id, *global_idx)?
             {
                 anyhow::bail!(
