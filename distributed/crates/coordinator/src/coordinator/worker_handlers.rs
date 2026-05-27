@@ -52,14 +52,16 @@ impl Coordinator {
             );
         }
 
-        // A worker can be `SettingUp` either pending this `SetupProgramAck`
-        // or pending a `WorkerRecoveryComplete`. The recovery handshake owns
-        // the flip back to Ready in the latter case; setup-ack must not
-        // pre-empt it.
+        // A successful SetupProgramAck proves the prover is healthy; any
+        // lingering pending_recovery entry is stale (WRC will never arrive).
         let worker_id = ack.worker_id.clone();
-        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp)
-            && !self.pending_recovery.read().await.contains_key(&worker_id)
-        {
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
+            if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+                warn!(
+                    "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
+                    worker_id
+                );
+            }
             let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
             info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
         }
@@ -337,21 +339,22 @@ impl Coordinator {
         let directive =
             self.compute_reconnection_directive(&worker_id, last_known_job_id.clone()).await;
 
-        // Read all known setups before registering so the initial state is set atomically —
-        // no window where the worker is Idle without having a guest program.
+        // Non-KeepComputing reconnects won't produce a matching WRC, so any
+        // leftover pending_recovery entry is stale and would wedge the worker
+        // SettingUp via the SetupProgramAck guard.
+        if !matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
+            if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+                info!("[Recovery] Cleared stale pending_recovery for {}", worker_id);
+            }
+        }
+
         let mut setups = self.read_all_setup_dtos().await;
         let first_setup = if setups.is_empty() { None } else { Some(setups.remove(0)) };
         let default_state =
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
-        // KeepComputing preserves the Computing(_) state across the channel
-        // swap. Pending-recovery workers stay SettingUp so the dispatcher
-        // doesn't pick them up before the queued `WorkerRecoveryComplete`
-        // arrives on the new stream.
         let initial_state = if matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
             self.workers_pool.worker_state(&worker_id).await.unwrap_or(default_state)
-        } else if self.pending_recovery.read().await.contains_key(&worker_id) {
-            WorkerState::SettingUp
         } else {
             default_state
         };
