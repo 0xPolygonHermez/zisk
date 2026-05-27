@@ -21,7 +21,11 @@ ZisK aims to provide a flexible and developer-friendly zkVM, with Rust as its pr
 
 To start using ZisK, follow the [Quickstart](https://0xpolygonhermez.github.io/zisk/getting_started/quickstart.html) guide.
 
-📚 Complete Documentation: [ZisK Docs](https://0xpolygonhermez.github.io/zisk/)
+📚 **Complete Documentation**: explore the full [ZisK Docs](https://0xpolygonhermez.github.io/zisk/) for installation, usage, and API references.
+
+📄 **Whitepaper**: read the [ZisK Whitepaper](documents/papers/whitepaper.pdf) for the design, architecture, and cryptographic foundations of ZisK.
+
+🔍 **Security Audits**: browse the [audits](documents/audits/) folder for third-party security reviews of ZisK.
 
 ## License
 
