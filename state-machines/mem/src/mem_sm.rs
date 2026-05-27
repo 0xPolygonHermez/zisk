@@ -354,8 +354,7 @@ impl<F: PrimeField64> MemSM<F> {
 
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-            trace[i].set_value(0, low_val);
-            trace[i].set_value(1, high_val);
+            trace[i].set_all_value(&[low_val, high_val]);
 
             trace[i].set_step(step);
             trace[i].set_sel(true);
@@ -405,6 +404,7 @@ impl<F: PrimeField64> MemSM<F> {
         let step =
             if !last_row.get_sel_dual() { last_row.get_step() } else { last_row.get_step_dual() };
 
+        let value = last_row.get_all_value();
         let padding_size = trace.num_rows() - count;
         assert!(
             is_last_segment || padding_size == 0,
@@ -417,10 +417,7 @@ impl<F: PrimeField64> MemSM<F> {
             trace[i].set_sel(false);
             trace[i].set_wr(false);
 
-            let low_value = last_row.get_value(0);
-            trace[i].set_value(0, low_value);
-            let high_value = last_row.get_value(1);
-            trace[i].set_value(1, high_value);
+            trace[i].set_all_value(&value);
 
             trace[i].set_addr_changes(false);
             trace[i].set_h_increment(0);
@@ -472,8 +469,8 @@ impl<F: PrimeField64> MemSM<F> {
         range_16bits[distance_end[0] as usize] += 1;
         range_16bits[distance_end[1] as usize] += 1;
 
-        self.std.range_checks(self.range_22bits_id, range_22bits);
-        self.std.range_checks(self.range_16bits_id, range_16bits);
+        self.std.range_check_ranged(self.range_22bits_id, None, &range_22bits);
+        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {
@@ -483,6 +480,7 @@ impl<F: PrimeField64> MemSM<F> {
             Self::save_to_file(&trace, &filename);
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
+
         #[cfg(feature = "debug_mem")]
         Self::save_bin_offsets_to_file(
             &trace,
@@ -866,8 +864,8 @@ impl<F: PrimeField64> MemSM<F> {
         range_16bits[distance_end[0] as usize] += 1;
         range_16bits[distance_end[1] as usize] += 1;
 
-        self.std.range_checks(self.range_22bits_id, range_22bits);
-        self.std.range_checks(self.range_16bits_id, range_16bits);
+        self.std.range_check_ranged(self.range_22bits_id, None, &range_22bits);
+        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
         {

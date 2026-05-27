@@ -88,30 +88,39 @@ impl<F: PrimeField64> ArithFullSM<F> {
         );
 
         // Split the arith_trace.buffer into slices matching each inner vector’s length.
-        let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
-        let flat_buffer = arith_trace.buffer.as_mut_slice();
-        let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
+        if total_inputs > 0 {
+            let flat_inputs: Vec<_> = inputs.iter().flatten().collect(); // Vec<&OperationData<u64>>
+            let flat_buffer = arith_trace.buffer.as_mut_slice();
+            let chunk_size = total_inputs.div_ceil(rayon::current_num_threads());
 
-        flat_buffer.par_chunks_mut(chunk_size).zip(flat_inputs.par_chunks(chunk_size)).for_each(
-            |(trace_slice, input_slice)| {
-                let mut aop = ArithOperation::new();
-                let mut range_table = ArithRangeTableInputs::new();
-                let mut table = ArithTableInputs::new();
+            flat_buffer
+                .par_chunks_mut(chunk_size)
+                .zip(flat_inputs.par_chunks(chunk_size))
+                .for_each(|(trace_slice, input_slice)| {
+                    let mut aop = ArithOperation::new();
+                    let mut range_table = ArithRangeTableInputs::new();
+                    let mut table = ArithTableInputs::new();
 
-                trace_slice.iter_mut().zip(input_slice.iter()).for_each(|(trace_row, input)| {
-                    *trace_row =
-                        Self::process_slice::<R>(&mut range_table, &mut table, &mut aop, input);
+                    trace_slice.iter_mut().zip(input_slice.iter()).for_each(
+                        |(trace_row, input)| {
+                            *trace_row = Self::process_slice::<R>(
+                                &mut range_table,
+                                &mut table,
+                                &mut aop,
+                                input,
+                            );
+                        },
+                    );
+
+                    for (row, multiplicity) in &table {
+                        self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
+                    }
+
+                    for (row, multiplicity) in &range_table {
+                        self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
+                    }
                 });
-
-                for (row, multiplicity) in &table {
-                    self.std.inc_virtual_row(self.table_id, row as u64, multiplicity);
-                }
-
-                for (row, multiplicity) in &range_table {
-                    self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
-                }
-            },
-        );
+        }
 
         let padding_offset = total_inputs;
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
@@ -120,7 +129,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             let mut row = R::default();
             let padding_opcode = ZiskOp::Muluh.code();
             row.set_op(padding_opcode);
-            row.set_fab(1);
 
             arith_trace.buffer[padding_offset..num_rows]
                 .par_iter_mut()
@@ -195,14 +203,14 @@ impl<F: PrimeField64> ArithFullSM<F> {
             OperationBusData::from_values(
                 opcode,
                 ZiskOperationType::Binary as u64,
-                aop.d[0]
-                    + CHUNK_SIZE * aop.d[1]
-                    + CHUNK_SIZE.pow(2) * (aop.d[2] + extension.0)
-                    + CHUNK_SIZE.pow(3) * aop.d[3],
-                aop.b[0]
-                    + CHUNK_SIZE * aop.b[1]
-                    + CHUNK_SIZE.pow(2) * (aop.b[2] + extension.1)
-                    + CHUNK_SIZE.pow(3) * aop.b[3],
+                aop.d[0] as u64
+                    + CHUNK_SIZE * aop.d[1] as u64
+                    + CHUNK_SIZE.pow(2) * (aop.d[2] as u64 + extension.0)
+                    + CHUNK_SIZE.pow(3) * aop.d[3] as u64,
+                aop.b[0] as u64
+                    + CHUNK_SIZE * aop.b[1] as u64
+                    + CHUNK_SIZE.pow(2) * (aop.b[2] as u64 + extension.1)
+                    + CHUNK_SIZE.pow(3) * aop.b[3] as u64,
                 pending,
             );
         }
@@ -223,40 +231,37 @@ impl<F: PrimeField64> ArithFullSM<F> {
         aop.calculate(opcode, a, b);
         let mut row = R::default();
         for i in [0, 2] {
-            row.set_a(i, aop.a[i] as u16);
-            row.set_b(i, aop.b[i] as u16);
-            row.set_c(i, aop.c[i] as u16);
-            row.set_d(i, aop.d[i] as u16);
-            range_table_inputs.use_chunk_range_check(0, aop.a[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.b[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.c[i]);
-            range_table_inputs.use_chunk_range_check(0, aop.d[i]);
+            range_table_inputs.use_chunk_range_check(0, aop.a[i] as u64);
+            range_table_inputs.use_chunk_range_check(0, aop.b[i] as u64);
+            range_table_inputs.use_chunk_range_check(0, aop.c[i] as u64);
+            range_table_inputs.use_chunk_range_check(0, aop.d[i] as u64);
         }
-        for i in [1, 3] {
-            row.set_a(i, aop.a[i] as u16);
-            row.set_b(i, aop.b[i] as u16);
-            row.set_c(i, aop.c[i] as u16);
-            row.set_d(i, aop.d[i] as u16);
-        }
-        range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 17, aop.b[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 9, aop.b[1]);
+        row.set_all_a(&aop.a);
+        row.set_all_b(&aop.b);
+        row.set_all_c(&aop.c);
+        row.set_all_d(&aop.d);
+        range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 17, aop.b[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 9, aop.b[1] as u64);
 
-        range_table_inputs.use_chunk_range_check(aop.range_cd, aop.c[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 26, aop.c[1]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 17, aop.d[3]);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1]);
+        range_table_inputs.use_chunk_range_check(aop.range_cd, aop.c[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 26, aop.c[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 17, aop.d[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1] as u64);
 
-        for i in 0..7 {
+        let mut carry_values = [0u64; 7];
+        for (i, carry_value) in carry_values.iter_mut().enumerate() {
             let carry = if aop.carry[i] >= 0 {
                 aop.carry[i] as u64
             } else {
                 (aop.carry[i] + F::ORDER_U64 as i64) as u64
             };
-            row.set_carry(i, carry);
+            *carry_value = carry;
             range_table_inputs.use_carry_range_check(aop.carry[i]);
         }
+        row.set_all_carry(&carry_values);
+
         row.set_op(aop.op);
         row.set_m32(aop.m32);
         row.set_div(aop.div);
@@ -275,7 +280,9 @@ impl<F: PrimeField64> ArithFullSM<F> {
         row.set_div_overflow(aop.div_overflow);
 
         let inv_sum_all_bs = if aop.div && !aop.div_by_zero {
-            F::from_u64(aop.b[0] + aop.b[1] + aop.b[2] + aop.b[3]).inverse().as_canonical_u64()
+            F::from_u64(aop.b[0] as u64 + aop.b[1] as u64 + aop.b[2] as u64 + aop.b[3] as u64)
+                .inverse()
+                .as_canonical_u64()
         } else {
             0
         };
@@ -291,45 +298,6 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.div_by_zero,
             aop.div_overflow,
         );
-
-        let fab = if aop.na != aop.nb { F::ORDER_U64 - 1 } else { 1 };
-        row.set_fab(fab);
-
-        let na_fb = if aop.na {
-            if aop.nb {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        //  na * (1 - 2 * nb);
-        row.set_na_fb(na_fb);
-        let nb_fa = if aop.nb {
-            if aop.na {
-                F::ORDER_U64 - 1
-            } else {
-                1
-            }
-        } else {
-            0
-        };
-        row.set_nb_fa(nb_fa);
-
-        let bus_res1 = if aop.sext {
-            0xFFFFFFFF
-        } else if aop.m32 {
-            0
-        } else if aop.main_mul {
-            aop.c[2] + (aop.c[3] << 16)
-        } else if aop.main_div {
-            aop.a[2] + (aop.a[3] << 16)
-        } else {
-            aop.d[2] + (aop.d[3] << 16)
-        };
-
-        row.set_bus_res1(bus_res1 as u32);
 
         row
     }

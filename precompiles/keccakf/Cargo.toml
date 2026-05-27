@@ -17,7 +17,6 @@ zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
 proofman-util = { workspace = true }
 
 precompiles-common = { workspace = true }
@@ -27,9 +26,12 @@ pil-std-lib = { workspace = true }
 
 circuit = { workspace = true }
 
-fields = { workspace=true }
+fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 
 path-clean = "1.0"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+
+[dev-dependencies]
+test-artifacts = { workspace = true }

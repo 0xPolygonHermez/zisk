@@ -48,33 +48,44 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         input: &[u64; 2],
     ) -> [u64; 4] {
         // Execute the opcode
-        let mut a = input[0];
-        let mut b = input[1];
-        let mut cin = 0;
+        let a = input[0];
+        let b = input[1];
+        let mut cin = 0u64;
 
+        // Compute all values first
+        let mut a_values = [0u32; 2];
+        let mut b_values = [0u32; 2];
+        let mut c_chunks_values = [0u16; 4];
+        let mut cout_values = [false; 2];
         let mut range_checks = [0u64; 4];
+
         for i in 0..2 {
-            let _a = a & 0xFFFF_FFFF;
-            let _b = b & 0xFFFF_FFFF;
+            // Extract the appropriate 32-bit chunk for this iteration
+            let _a = if i == 0 { a & 0xFFFF_FFFF } else { a >> 32 };
+            let _b = if i == 0 { b & 0xFFFF_FFFF } else { b >> 32 };
             let c = _a + _b + cin;
             let _c = c & 0xFFFF_FFFF;
-            row.set_a(i, _a as u32);
-            row.set_b(i, _b as u32);
-            let c_chunks = [_c & 0xFFFF, _c >> 16];
-            row.set_c_chunks(i * 2, c_chunks[0] as u16);
-            row.set_c_chunks(i * 2 + 1, c_chunks[1] as u16);
-            if c > MASK_U32 {
-                row.set_cout(i, true);
-                cin = 1
-            } else {
-                row.set_cout(i, false);
-                cin = 0
-            };
-            range_checks[i * 2] = c_chunks[0];
-            range_checks[i * 2 + 1] = c_chunks[1];
-            a >>= 32;
-            b >>= 32;
+
+            a_values[i] = _a as u32;
+            b_values[i] = _b as u32;
+
+            // Split result into two 16-bit chunks (indices: i=0 -> 0,1; i=1 -> 2,3)
+            c_chunks_values[i * 2] = (_c & 0xFFFF) as u16;
+            c_chunks_values[i * 2 + 1] = (_c >> 16) as u16;
+
+            // Update carry for next iteration
+            cin = if c > MASK_U32 { 1 } else { 0 };
+            cout_values[i] = cin != 0;
+
+            range_checks[i * 2] = c_chunks_values[i * 2] as u64;
+            range_checks[i * 2 + 1] = c_chunks_values[i * 2 + 1] as u64;
         }
+
+        // Set all values at once using bulk setters
+        row.set_all_a(&a_values);
+        row.set_all_b(&b_values);
+        row.set_all_c_chunks(&c_chunks_values);
+        row.set_all_cout(&cout_values);
 
         // Return
         range_checks
@@ -129,7 +140,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
-        self.std.range_checks(self.range_id, multiplicities);
+        self.std.range_check_ranged(self.range_id, None, &multiplicities);
 
         // Set 0 + 0 as the padding row
         let padding_size = num_rows - total_inputs;

@@ -2,7 +2,7 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 use crate::read_input;
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -31,13 +31,13 @@ pub fn read<T: DeserializeOwned>() -> T {
     val
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub fn read_input_slice<'a>() -> &'a [u8] {
     crate::read_slice_zerocopy()
 }
 
 #[allow(unused)]
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub fn read_input_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
 }

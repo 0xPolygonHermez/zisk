@@ -1,15 +1,31 @@
 mod poseidon2;
-mod poseidon2_bus_device;
-mod poseidon2_gen_mem_inputs;
-mod poseidon2_input;
-mod poseidon2_instance;
-mod poseidon2_manager;
-mod poseidon2_planner;
+mod poseidon2_mem_inputs;
 
 pub use poseidon2::*;
-pub use poseidon2_bus_device::*;
-pub use poseidon2_gen_mem_inputs::*;
-pub use poseidon2_input::*;
-pub use poseidon2_instance::*;
-pub use poseidon2_manager::*;
-pub use poseidon2_planner::*;
+
+zisk_common::zisk_precompile! {
+    name = Poseidon2,
+    op_type = Poseidon2,
+    trace = Poseidon2Trace,
+    num_available_field = num_available_poseidon2s,
+    ops = [
+        (OperationPoseidon2Data, Poseidon2Input),
+    ],
+}
+
+#[cfg(test)]
+mod poseidon2_tests {
+    use test_artifacts::ELF_POSEIDON2;
+    use zisk_common::io::ZiskStdin;
+
+    /// Number of `syscall_poseidon2` invocations the guest will perform.
+    const NUM_POSEIDON2S: u64 = 10;
+
+    #[test]
+    fn poseidon2_tests() {
+        let stdin = ZiskStdin::new();
+        stdin.write(&NUM_POSEIDON2S);
+
+        ELF_POSEIDON2.run_emulation(stdin, None).expect("poseidon2 guest emulation failed");
+    }
+}

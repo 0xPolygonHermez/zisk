@@ -1,6 +1,6 @@
 //! Operations on the BLS12-381 curve E: y² = x³ + 4
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 use crate::{
@@ -46,7 +46,7 @@ const G1_MSM_ERR_NOT_IN_SUBGROUP: u8 = 4;
 pub fn decompress_bls12_381(
     input: &[u8; 48],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Result<[u64; 12], &'static str> {
+) -> Result<([u64; 12], bool), &'static str> {
     let flags = input[0];
 
     // Check compression bit
@@ -65,7 +65,7 @@ pub fn decompress_bls12_381(
                 return Err("Invalid infinity encoding");
             }
         }
-        return Ok(G1_IDENTITY);
+        return Ok((G1_IDENTITY, true));
     }
 
     // Extract sign bit
@@ -132,7 +132,7 @@ pub fn decompress_bls12_381(
     let mut result = [0u64; 12];
     result[0..6].copy_from_slice(&x);
     result[6..12].copy_from_slice(&final_y);
-    Ok(result)
+    Ok((result, false))
 }
 
 /// Check if a non-zero point `p` is on the BLS12-381 curve
@@ -853,10 +853,10 @@ pub unsafe extern "C" fn decompress_bls12_381_c(
         #[cfg(feature = "hints")]
         hints,
     ) {
-        Ok(p) => {
+        Ok((p, is_infinity)) => {
             let result = &mut *(result_ptr as *mut [u64; 12]);
             *result = p;
-            if eq(&p, &G1_IDENTITY) {
+            if is_infinity {
                 1
             } else {
                 0

@@ -10,12 +10,10 @@
 // This is the emulator assembly code start function, which will execute the code in the ROM until
 // it ends, and generate the trace in the output trace memory.
 // It is called from C to start the execution of the assembly code.
-void emulator_start(void);
+void emu_start(void);
 
 // These functions are implemented in assembly and provide access to configuration parameters used
 // to generate the assembly code, and that in some cases must match the C main program configuration
-uint64_t get_max_bios_pc(void);
-uint64_t get_max_program_pc(void);
 uint64_t get_rom_length(void);
 uint64_t get_gen_method(void); // Must match the C main program provided argument
 uint64_t get_precompile_results(void);

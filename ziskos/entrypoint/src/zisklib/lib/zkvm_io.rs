@@ -10,7 +10,7 @@ use core::ptr::{self, addr_of, addr_of_mut};
 // Public outputs are written as u32 slots via set_output.
 const OUTPUT_WORD_SIZE: usize = core::mem::size_of::<u32>();
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 static STANDARD_INPUT: std::sync::Mutex<Option<&'static [u8]>> = std::sync::Mutex::new(None);
 
 static mut OUTPUT_WORD_SLOT: usize = 0;
@@ -27,13 +27,13 @@ static mut OUTPUT_PENDING_LEN: usize = 0;
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_read_input")]
 pub unsafe extern "C" fn read_input(buf_ptr: *mut *const u8, buf_size: *mut usize) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         let (data_ptr, len) = zkvm_standard_input();
         ptr::write(buf_ptr, data_ptr);
         ptr::write(buf_size, len);
     }
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut input = STANDARD_INPUT.lock().unwrap();
         if input.is_none() {
@@ -49,7 +49,7 @@ pub unsafe extern "C" fn read_input(buf_ptr: *mut *const u8, buf_size: *mut usiz
     }
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 fn zkvm_standard_input() -> (*const u8, usize) {
     static mut INPUT_PTR: *const u8 = ptr::null();
     static mut INPUT_LEN: usize = 0;
@@ -140,7 +140,7 @@ unsafe fn write_padded_pending_word() {
     crate::set_output(OUTPUT_WORD_SLOT, u32::from_le_bytes(bytes));
 }
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 pub(crate) fn reset() {
     // Leaked slices are intentionally not freed; each reset() will re-read
     // fresh input on the next call, leaking one allocation per test run.

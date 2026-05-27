@@ -12,12 +12,13 @@ categories = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-proofman-verifier = { workspace = true }
+proofman-verifier = { workspace = true, features = ["parallel"] }
 proofman-starks-lib-c = { workspace = true }
 
 # Zisk internal crates
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
 executor = { workspace = true }
 rom-setup = { workspace = true }
@@ -33,9 +34,7 @@ ziskemu = { workspace = true }
 anyhow = { workspace = true }
 colored = { workspace = true }
 tracing = { workspace = true }
-bincode = { workspace = true }
 serde = { workspace = true }
-sha2 = { workspace = true }
 blake3 = { workspace = true }
 alloy-sol-types = { version = "1.5.7" }
 

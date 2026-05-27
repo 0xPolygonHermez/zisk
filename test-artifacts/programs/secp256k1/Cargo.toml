@@ -1,0 +1,7 @@
+[package]
+name = "secp256k1"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
