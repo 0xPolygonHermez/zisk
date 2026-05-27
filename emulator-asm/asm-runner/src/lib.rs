@@ -92,6 +92,10 @@ pub fn shmem_input_name(shm_prefix: &str, service: AsmService) -> String {
     build_shmem_name(shm_prefix, service, "input")
 }
 
+pub fn shmem_input_name2(shm_prefix: &str) -> String {
+    build_shmem_name2(shm_prefix, "input")
+}
+
 pub fn shmem_input_avail_name(prefix: &str) -> String {
     build_shmem_name2(prefix, "input_avail")
 }
