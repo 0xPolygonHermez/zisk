@@ -139,6 +139,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/mops-gpu" }
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/mops-gpu" }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/mops-gpu" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/mops-gpu" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

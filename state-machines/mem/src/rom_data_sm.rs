@@ -333,7 +333,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         if distance_from_prev < MAX_RANGE_CHECK_CACHE as u32 {
             range_check_cache[distance_from_prev as usize] += 1;
         } else {
-            self.std.range_check(self.range_id, distance_from_prev as i64, 1);
+            self.std.range_check_one(self.range_id, distance_from_prev as i64);
         }
 
         if seg.offset_at(0) == 0 {
@@ -380,7 +380,7 @@ impl<F: PrimeField64> RomDataSM<F> {
                 if distance < MAX_RANGE_CHECK_CACHE as i64 {
                     range_check_cache[distance as usize] += 1;
                 } else {
-                    self.std.range_check(self.range_id, distance, 1);
+                    self.std.range_check_one(self.range_id, distance);
                 }
             } else {
                 trace[irow].set_addr_changes(false);
@@ -423,9 +423,9 @@ impl<F: PrimeField64> RomDataSM<F> {
         if distance_to_end < MAX_RANGE_CHECK_CACHE as i64 {
             range_check_cache[distance_to_end as usize] += 1;
         } else {
-            self.std.range_check(self.range_id, distance_to_end, 1);
+            self.std.range_check_one(self.range_id, distance_to_end);
         }
-        self.std.range_checks(self.range_id, range_check_cache);
+        self.std.range_check_ranged(self.range_id, None, &range_check_cache);
 
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());

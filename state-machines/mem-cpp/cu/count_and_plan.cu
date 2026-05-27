@@ -1557,7 +1557,7 @@ void CountAndPlan::reset() {
     if (d_histogram_)                CUDA_CHECK(cudaMemset(d_histogram_, 0, (size_t)N_ADDR * 4));
     if (d_max_compact_)              CUDA_CHECK(cudaMemset(d_max_compact_, 0, 3 * 4));
     if (d_invalid_mode_flag_)        CUDA_CHECK(cudaMemset(d_invalid_mode_flag_, 0, 4));
-    if (d_chunk_counters_per_chunk_) CUDA_CHECK(cudaMemset(d_chunk_counters_per_chunk_, 0,
+    if (d_chunk_counters_per_chunk_) CUDA_CHECK(cudaMemset(d_chunk_counters_per_chunk_, 0, (size_t)MAX_CHUNKS * sizeof(ChunkCounters)));
 
     if (pool_enabled_) {
         pool_stop_();

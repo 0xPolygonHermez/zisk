@@ -399,7 +399,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 if distance < MAX_RANGE_CHECK_CACHE as i64 {
                     range_check_cache[distance as usize] += 1;
                 } else {
-                    self.std.range_check(self.range_id, distance, 1);
+                    self.std.range_check_one(self.range_id, distance);
                 }
             } else {
                 trace[irow].set_addr_changes(false);
@@ -452,7 +452,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         range_16bits[value_2 as usize] += padding_size as u32;
         range_16bits[value_3 as usize] += padding_size as u32;
 
-        self.std.range_checks(self.range_id, range_check_cache);
+        self.std.range_check_ranged(self.range_id, None, &range_check_cache);
 
         let mut air_values = InputDataAirValues::<F>::new();
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -485,7 +485,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         range_16bits[distance_base_chunks[1] as usize] += 1;
         range_16bits[distance_end_chunks[0] as usize] += 1;
         range_16bits[distance_end_chunks[1] as usize] += 1;
-        self.std.range_checks(self.range_16bits_id, range_16bits);
+        self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }

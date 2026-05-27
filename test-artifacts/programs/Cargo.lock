@@ -568,6 +568,7 @@ dependencies = [
  "mem-planner-cpp",
  "named-sem",
  "proofman-common",
+ "proofman-util",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
@@ -1472,7 +1473,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "fields 1.0.0-beta",
  "num-bigint",
@@ -1844,6 +1845,7 @@ dependencies = [
  "precompiles-hints",
  "proofman",
  "proofman-common",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "sm-arith",
@@ -1930,7 +1932,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3324,7 +3326,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "colored",
  "fields 1.0.0-beta",
@@ -3679,7 +3681,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "bincode",
  "blake3",
@@ -3713,7 +3715,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "bincode",
  "borsh",
@@ -3744,7 +3746,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "fields 1.0.0-beta",
  "itoa",
@@ -3757,7 +3759,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3767,7 +3769,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3776,7 +3778,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "bincode",
  "colored",
@@ -3797,7 +3799,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta",
@@ -6369,7 +6371,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#1f2f539595e2efacc0662a852df361d2c08a08c3"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fmops-gpu#177f5577cd9ce9e8b03437e95a02654cea308b18"
 dependencies = [
  "colored",
  "fields 1.0.0-beta",
@@ -6681,6 +6683,7 @@ dependencies = [
  "precompiles-hints",
  "proofman",
  "proofman-common",
+ "proofman-starks-lib-c",
  "proofman-util",
  "proofman-verifier 1.0.0-beta",
  "rom-setup",
