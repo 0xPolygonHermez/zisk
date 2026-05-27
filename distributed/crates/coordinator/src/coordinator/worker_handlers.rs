@@ -342,10 +342,10 @@ impl Coordinator {
         // Non-KeepComputing reconnects won't produce a matching WRC, so any
         // leftover pending_recovery entry is stale and would wedge the worker
         // SettingUp via the SetupProgramAck guard.
-        if !matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing)) {
-            if self.pending_recovery.write().await.remove(&worker_id).is_some() {
-                info!("[Recovery] Cleared stale pending_recovery for {}", worker_id);
-            }
+        if !matches!(directive, Some(ReconnectionDirectiveDto::KeepComputing))
+            && self.pending_recovery.write().await.remove(&worker_id).is_some()
+        {
+            info!("[Recovery] Cleared stale pending_recovery for {}", worker_id);
         }
 
         let mut setups = self.read_all_setup_dtos().await;
