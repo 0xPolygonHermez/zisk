@@ -177,10 +177,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         }
     }
 
-    // Copy to rom
-    rom.ro_data = ro_data.clone();
-    rom.rw_data = rw_data.clone();
-
     // Convert RO data sections to 64-bit data sections, and store them in the ROM
     rom.ro_data_64 = ro_data
         .into_iter()

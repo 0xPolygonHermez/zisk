@@ -9,6 +9,7 @@ use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID, ZISK_PUBLICS,
 };
+use zisk_core::elf_extraction::DataSection;
 use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
@@ -98,13 +99,29 @@ impl<'a> Emu<'a> {
         let mut ctx = EmuContext::new(inputs, options);
 
         // Create a new read section for every RO data entry of the rom
-        for i in 0..self.rom.ro_data.len() {
-            ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].addr, &self.rom.ro_data[i].data);
+        for i in 0..self.rom.ro_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section =
+                DataSection { addr: self.rom.ro_data_64[i].addr, data: Vec::new() };
+            for j in 0..self.rom.ro_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Add the read section to the memory
+            ctx.inst_ctx.mem.add_read_section(data_section.addr, &data_section.data);
         }
 
         // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
-        for i in 0..self.rom.rw_data.len() {
-            ctx.inst_ctx.mem.init_write_section_data(&self.rom.rw_data[i]);
+        for i in 0..self.rom.rw_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section =
+                DataSection { addr: self.rom.rw_data_64[i].addr, data: Vec::new() };
+            for j in 0..self.rom.rw_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Write the data to the write section of the memory
+            ctx.inst_ctx.mem.init_write_section_data(&data_section);
         }
 
         // Sort read sections by start address to improve performance when using binary search

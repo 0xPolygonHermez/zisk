@@ -48,7 +48,6 @@
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
 //!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
-use crate::elf_extraction::DataSection;
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -76,14 +75,8 @@ pub struct ZiskRom {
     /// This map contains the instructions that are part of the program, i.e. address >= ROM_ADDR
     pub insts: BTreeMap<u64, ZiskInstBuilder>,
 
-    /// List of RO data sections as found in the ELF file, after merging adjacent sections
-    pub ro_data: Vec<DataSection>,
-
     /// RO data sections in u64
     pub ro_data_64: Vec<DataSection64>,
-
-    /// List of RW data sections as found in the ELF file, after merging adjacent sections
-    pub rw_data: Vec<DataSection>,
 
     /// RW data sections in u64
     pub rw_data_64: Vec<DataSection64>,
