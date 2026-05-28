@@ -1,8 +1,8 @@
 use cfg_if::cfg_if;
 
+use crate::scratch_accelerators::ScratchVec;
 #[cfg(zisk_guest)]
 use crate::scratch_accelerators::{new_scratch_vec, new_scratch_vec_filled};
-use crate::scratch_accelerators::ScratchVec;
 
 cfg_if! {
     if #[cfg(zisk_guest)] {
