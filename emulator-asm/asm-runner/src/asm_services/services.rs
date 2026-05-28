@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 
+use std::process::Stdio;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -87,21 +88,16 @@ impl AsmService {
             .arg("-s")
             .arg(format!("--gen={}", self.gen_index()))
             .arg("--just_create_all_shm")
-            .arg("--share_input_shm")
-            .arg("--shm_prefix")
-            .arg(shm_prefix)
-            .arg("--sem_prefix")
-            .arg(sem_prefix);
+            .arg("--share_input_shm");
+
+        command.arg("--shm_prefix").arg(shm_prefix);
+        command.arg("--sem_prefix").arg(sem_prefix);
 
         if options.verbose {
             command.arg("-v");
         }
 
-        command.stderr(if options.verbose {
-            std::process::Stdio::inherit()
-        } else {
-            std::process::Stdio::null()
-        });
+        command.stderr(if options.verbose { Stdio::inherit() } else { Stdio::null() });
 
         command
     }
