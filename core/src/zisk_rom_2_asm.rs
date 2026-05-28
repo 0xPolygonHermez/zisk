@@ -1303,6 +1303,11 @@ impl ZiskRom2Asm {
         // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
         // *s += "\tsyscall\n\n";
 
+        // Trace the ROM and RAM memory initialization operations
+        if ctx.mem_op() && ctx.pc == ROM_ENTRY {
+            Self::mem_op_rom_init_data(ctx, code, rom);
+        }
+
         // Update the rom histogram
         if ctx.rom_histogram() {
             let address = Self::get_rom_histogram_trace_address(instruction.index);
@@ -8327,6 +8332,56 @@ impl ZiskRom2Asm {
         // Increment chunk.steps.mem_reads_size
         *code +=
             &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size += 1"));
+    }
+
+    fn mem_op_rom_init_data(ctx: &mut ZiskAsmContext, code: &mut String, rom: &ZiskRom) {
+        *code += &ctx
+            .full_line_comment("Trace ROM and RAM memory initialization operations".to_string());
+
+        // Merge data sections
+        let mut data_sections = rom.ro_data_64.clone();
+        data_sections.append(&mut rom.rw_data_64.clone());
+
+        // Skip if there is no data to load
+        if data_sections.len() == 0 {
+            return;
+        }
+
+        for i in 0..data_sections.len() {
+            let address = data_sections[i].addr;
+            let length = data_sections[i].data.len() as u64;
+            let write = true;
+
+            let mops_mask: u64 = if length > 1 {
+                // compress operation in one single block
+                (if write { F_MOPS_BLOCK_WRITE } else { F_MOPS_BLOCK_READ })
+                    | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
+            } else if write {
+                F_MOPS_WRITE_8
+            } else {
+                F_MOPS_READ_8
+            };
+
+            // Load mask the mask
+            *code += &format!(
+                "\tmov {REG_VALUE}, 0x{:x} {}\n",
+                mops_mask + address,
+                ctx.comment_str("value = mem op mask + address")
+            );
+
+            // Copy read data into mem_reads_address and increment it
+            *code += &format!(
+                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {i}*8], {REG_VALUE} {}\n",
+                ctx.comment_str("mem_reads[@+size*8] = mem op")
+            );
+        }
+
+        // Increment mem_reads_size
+        *code += &format!(
+            "\tadd {REG_MEM_READS_SIZE}, {} {}\n",
+            data_sections.len(),
+            ctx.comment_str(&format!("mem_reads_size += {}", data_sections.len()))
+        );
     }
 
     fn internal_mem_op_precompiled_read(
