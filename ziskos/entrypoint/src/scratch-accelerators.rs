@@ -76,9 +76,16 @@ unsafe impl Allocator for BumpScratch {
         // SAFETY: single-threaded guest.
         let pos = unsafe { SCRATCH_POS };
         let align = layout.align();
+        // Layout guarantees align is a power of two and >= 1.
+        debug_assert!(align.is_power_of_two());
+
         // Round up to the required alignment.
-        let start = pos.wrapping_add(align - 1) & !(align - 1);
+        // Use checked_add so that a pos near usize::MAX does not silently wrap
+        // start below pos, bypassing the bounds check and returning address ~0.
+        let start = pos.checked_add(align - 1).ok_or(AllocError)? & !(align - 1);
+
         let end = start.checked_add(layout.size()).ok_or(AllocError)?;
+
         // Compute the buffer's end address from the static's address.
         // No separate SCRATCH_TOP static needed; the compiler/linker resolves
         // addr_of_mut!(SCRATCH_BUF) to a link-time constant.
