@@ -144,9 +144,9 @@ impl AsmRunnerOptions {
             command.arg("-u");
         }
 
-        if self.asm_out_file {
+        // if self.asm_out_file {
             command.arg("--redirect-output-to-file");
-        }
+        // }
 
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
