@@ -1,4 +1,4 @@
-use crate::{shmem_control_writer_name, AsmServices, SharedMemoryWriter};
+use crate::{shmem_control_writer_name, SharedMemoryWriter};
 
 use anyhow::Result;
 
@@ -20,7 +20,7 @@ impl ControlShmem {
     pub const CONTROL_WRITER_SIZE: u64 = 0x1000; // 4KB
 
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
-        let name = shmem_control_writer_name(shm_prefix, AsmServices::SERVICES[0]);
+        let name = shmem_control_writer_name(shm_prefix);
         let writer = SharedMemoryWriter::new(
             &name,
             Self::CONTROL_WRITER_SIZE as usize,

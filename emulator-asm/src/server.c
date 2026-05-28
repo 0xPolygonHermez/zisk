@@ -358,52 +358,56 @@ void server_setup (void)
         /* PRECOMPILE AVAILABLE SEMAPHORE */
         /**********************************/
 
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
+        if (!just_create_all_shm) {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Create the semaphore for precompile results available signal
-        assert(strlen(sem_prec_avail_name) > 0);
+            // Create the semaphore for precompile results available signal
+            assert(strlen(sem_prec_avail_name) > 0);
 
-        sem_unlink(sem_prec_avail_name);
+            sem_unlink(sem_prec_avail_name);
 
-        sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_avail == SEM_FAILED)
-        {
-            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-            exit(-1);
-        }
+            sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT | O_EXCL, 0666, 0);
+            if (sem_prec_avail == SEM_FAILED)
+            {
+                asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+                exit(-1);
+            }
 
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("sem_open(%s) succeeded sem_prec_avail=%p in %lu us\n", sem_prec_avail_name, sem_prec_avail, duration);
+            // Report duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("sem_open(%s) succeeded sem_prec_avail=%p in %lu us\n", sem_prec_avail_name, sem_prec_avail, duration);
+            }
         }
 
         /*****************************/
         /* PRECOMPILE READ SEMAPHORE */
         /*****************************/
 
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
+        if (!just_create_all_shm) {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Create the semaphore for precompile results read signal
-        assert(strlen(sem_prec_read_name) > 0);
+            // Create the semaphore for precompile results read signal
+            assert(strlen(sem_prec_read_name) > 0);
 
-        sem_unlink(sem_prec_read_name);
+            sem_unlink(sem_prec_read_name);
 
-        sem_prec_read = sem_open(sem_prec_read_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_read == SEM_FAILED)
-        {
-            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-            exit(-1);
-        }
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("sem_open(%s) succeeded sem_prec_read=%p in %lu us\n", sem_prec_read_name, sem_prec_read, duration);
+            sem_prec_read = sem_open(sem_prec_read_name, O_CREAT | O_EXCL, 0666, 0);
+            if (sem_prec_read == SEM_FAILED)
+            {
+                asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+                exit(-1);
+            }
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("sem_open(%s) succeeded sem_prec_read=%p in %lu us\n", sem_prec_read_name, sem_prec_read, duration);
+            }
         }
     }
 
@@ -702,7 +706,7 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    if (call_chunk_done)
+    if (call_chunk_done && !just_create_all_shm)
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -733,56 +737,60 @@ void server_setup (void)
     /* SEM SHUTDOWN DONE */
     /*********************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
-    
-    assert(strlen(sem_shutdown_done_name) > 0);
+    if (!just_create_all_shm) {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
+        
+        assert(strlen(sem_shutdown_done_name) > 0);
 
-    // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
-    sem_unlink(sem_shutdown_done_name);
-    
-    // Create the semaphore for shutdown done signal
-    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
-    if (sem_shutdown_done == SEM_FAILED)
-    {
-        asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
+        sem_unlink(sem_shutdown_done_name);
+        
+        // Create the semaphore for shutdown done signal
+        sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
+        if (sem_shutdown_done == SEM_FAILED)
+        {
+            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("sem_open(%s) succeeded in %lu us\n", sem_shutdown_done_name, duration);
+        // Report duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("sem_open(%s) succeeded in %lu us\n", sem_shutdown_done_name, duration);
+        }
     }
 
     /***********************/
     /* SEM INPUT AVAILABLE */
     /***********************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
+    if (!just_create_all_shm) {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
 
-    assert(strlen(sem_input_avail_name) > 0);
+        assert(strlen(sem_input_avail_name) > 0);
 
-    // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
-    sem_unlink(sem_input_avail_name);
+        // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
+        sem_unlink(sem_input_avail_name);
 
-    // Create the semaphore for input available signal
-    sem_input_avail = sem_open(sem_input_avail_name, O_CREAT | O_EXCL, 0666, 0);
-    if (sem_input_avail == SEM_FAILED)
-    {
-        asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Create the semaphore for input available signal
+        sem_input_avail = sem_open(sem_input_avail_name, O_CREAT | O_EXCL, 0666, 0);
+        if (sem_input_avail == SEM_FAILED)
+        {
+            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
+        // Report duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
+        }
     }
 }
 
@@ -1172,31 +1180,33 @@ void server_cleanup (void)
             }
         }
 
-        // Semaphores cleanup
-        result = sem_close(sem_prec_avail);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_avail_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_close(sem_prec_read);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_read_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-        result = sem_close(sem_input_avail);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+        if (!just_create_all_shm) {
+            // Semaphores cleanup
+            result = sem_close(sem_prec_avail);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+            }
+            result = sem_unlink(sem_prec_avail_name);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+            }
+            result = sem_close(sem_prec_read);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+            }
+            result = sem_unlink(sem_prec_read_name);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+            }
+            result = sem_close(sem_input_avail);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+            }
         }
     }
 
@@ -1232,7 +1242,7 @@ void server_cleanup (void)
     trace_cleanup();
 
     // Cleanup chunk done semaphore
-    if (call_chunk_done)
+    if (call_chunk_done && !just_create_all_shm)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
@@ -1246,23 +1256,17 @@ void server_cleanup (void)
         }
     }
 
-    // Cleanup input available semaphore
-    result = sem_unlink(sem_input_avail_name);
-    if (result == -1)
-    {
-        asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+    if (!just_create_all_shm) {
+        // Cleanup input available semaphore
+        result = sem_unlink(sem_input_avail_name);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+        }
     }
 
     // Post shutdown done semaphore
-    if (just_create_all_shm)
-    {
-        result = sem_unlink(sem_shutdown_done_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-        }
-    }
-    else{
+    if (!just_create_all_shm) {
         result = sem_post(sem_shutdown_done);
         if (result == -1)
         {

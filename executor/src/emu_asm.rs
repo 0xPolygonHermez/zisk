@@ -461,8 +461,10 @@ fn join_runner_during_cleanup<T>(label: &str, handle: std::thread::JoinHandle<Re
     match handle.join() {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
-            tracing::warn!("{label} runner returned error during MT-failure cleanup: {err:#}");
+            tracing::warn!("{label} runner returned error during failure cleanup: {err:#}");
         }
-        Err(_) => tracing::warn!("{label} runner thread panicked during MT-failure cleanup"),
+        Err(err) => {
+            tracing::error!("{label} runner thread panicked during failure cleanup: {err:?}")
+        }
     }
 }

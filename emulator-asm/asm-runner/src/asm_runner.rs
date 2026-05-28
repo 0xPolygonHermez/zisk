@@ -179,6 +179,5 @@ impl AsmRunnerOptions {
         if self.keccak_trace {
             command.arg("-k");
         }
-        println!("Command after applying options: {:?}", command);
     }
 }

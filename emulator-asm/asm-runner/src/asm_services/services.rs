@@ -79,6 +79,7 @@ impl AsmService {
         trimmed_path: &str,
         options: &AsmRunnerOptions,
         shm_prefix: &str,
+        sem_prefix: &str,
     ) -> Command {
         let mut command = Command::new(self.command_path_for(trimmed_path));
 
@@ -86,8 +87,11 @@ impl AsmService {
             .arg("-s")
             .arg(format!("--gen={}", self.gen_index()))
             .arg("--just_create_all_shm")
+            .arg("--share_input_shm")
             .arg("--shm_prefix")
-            .arg(shm_prefix);
+            .arg(shm_prefix)
+            .arg("--sem_prefix")
+            .arg(sem_prefix);
 
         if options.verbose {
             command.arg("-v");
@@ -191,7 +195,7 @@ impl AsmServices {
                 return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
             };
         // Phase 1: create shmem segments for this process.
-        Self::create_shmem(world_rank, &shm_prefix, stripped_path, &options)?;
+        Self::create_shmem(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
 
         // Phase 2: start services and wait for them to be ready.
         let stdio_service = StdioService::start_services(
@@ -268,6 +272,7 @@ impl AsmServices {
     fn create_shmem(
         world_rank: i32,
         shm_prefix: &str,
+        sem_prefix: &str,
         trimmed_path: &str,
         options: &AsmRunnerOptions,
     ) -> Result<()> {
@@ -280,7 +285,7 @@ impl AsmServices {
                     service
                 );
                 let child = service
-                    .build_create_shmem_command(trimmed_path, options, shm_prefix)
+                    .build_create_shmem_command(trimmed_path, options, shm_prefix, sem_prefix)
                     .spawn()
                     .with_context(|| {
                         format!("Failed to spawn shmem creation for service {service}")
