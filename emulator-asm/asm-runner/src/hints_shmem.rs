@@ -10,11 +10,16 @@ use crate::{
 use anyhow::Result;
 use named_sem::NamedSemaphore;
 use std::sync::{
-    atomic::{fence, AtomicUsize, Ordering},
+    atomic::{fence, AtomicU64, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 use tracing::debug;
 use zisk_common::io::StreamSink;
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_HSUBMIT_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_HSUBMIT_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+static ZDIAG_HRESET_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Per-service control-output shmem (the C side's
 /// `precompile_read_address`). Read by the parent for flow control in
@@ -198,20 +203,45 @@ impl StreamSink for HintsShmem {
             ));
         }
 
+        // ZDIAG: hang-instrumentation - remove after diagnosis
+        let _zd_seq = ZDIAG_HSUBMIT_SEQ.fetch_add(1, Ordering::Relaxed);
+        let _zd_inflight = ZDIAG_HSUBMIT_INFLIGHT.fetch_add(1, Ordering::Relaxed) + 1;
+        let _zd_start = std::time::Instant::now();
+        // Log only every 10000th call to keep volume sane in steady state; slow calls always log on exit.
+        let _zd_log_normal = _zd_seq % 10000 == 0;
+        if _zd_log_normal {
+            eprintln!(
+                "[ZDIAG HSUBMIT-ENTER] seq={} pid={} tid={:?} data_size={} inflight={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), data_size, _zd_inflight
+            );
+        }
+
+        let _zd_t_locks = std::time::Instant::now();
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
         let separate_shm = self.separate_shm.lock().expect("separate_shm mutex poisoned");
         let mut separate_sem_guard = self.separate_sem.lock().expect("separate_sem mutex poisoned");
+        let _zd_locks_ms = _zd_t_locks.elapsed().as_millis();
+        if _zd_locks_ms > 50 {
+            eprintln!(
+                "[ZDIAG HSUBMIT-LOCKS-SLOW] seq={} pid={} tid={:?} acquire_ms={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), _zd_locks_ms
+            );
+        }
         debug_assert!(separate_sem_guard.is_some(), "submit called before bind_semaphores");
 
         let active = self.active_count.load(Ordering::SeqCst);
 
         let Some(separate_sem) = separate_sem_guard.as_mut() else {
+            ZDIAG_HSUBMIT_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
             return Ok(());
         };
 
         // Read current write position once
         let write_pos = unified.control_writer.prec_hints_size();
 
+        // ZDIAG: track loop iterations to detect blocking on slowest consumer
+        let mut _zd_loop_iter: u32 = 0;
+        let mut _zd_wait_total_ms: u64 = 0;
         // Flow control: wait until all consumers have advanced enough
         // We need to wait for the slowest consumer (minimum read position)
         loop {
@@ -247,9 +277,26 @@ impl StreamSink for HintsShmem {
                 break;
             }
 
+            // ZDIAG: about to BLOCK on slowest consumer — this is the H1 hot spot.
+            // Log every iteration (these only happen under backpressure, so volume is bounded).
+            _zd_loop_iter += 1;
+            eprintln!(
+                "[ZDIAG HSUBMIT-WAIT-ENTER] seq={} iter={} pid={} tid={:?} slowest_idx={} min_read_pos={} write_pos={} occupied={} avail={} needed={} active={}",
+                _zd_seq, _zd_loop_iter, std::process::id(), std::thread::current().id(),
+                slowest_idx, min_read_pos, write_pos, occupied_space, available_space, data_size, active
+            );
+            let _zd_wait_start = std::time::Instant::now();
             // Not enough space - wait for the SLOWEST consumer to signal progress
             // Retry on interrupt (EINTR)
-            if separate_sem[slowest_idx].sem_read.wait().is_err() {
+            let wait_result = separate_sem[slowest_idx].sem_read.wait();
+            let _zd_wait_ms = _zd_wait_start.elapsed().as_millis() as u64;
+            _zd_wait_total_ms = _zd_wait_total_ms.saturating_add(_zd_wait_ms);
+            eprintln!(
+                "[ZDIAG HSUBMIT-WAIT-EXIT] seq={} iter={} pid={} tid={:?} slowest_idx={} wait_ms={} ok={}",
+                _zd_seq, _zd_loop_iter, std::process::id(), std::thread::current().id(),
+                slowest_idx, _zd_wait_ms, wait_result.is_ok()
+            );
+            if wait_result.is_err() {
                 continue;
             }
         }
@@ -271,11 +318,39 @@ impl StreamSink for HintsShmem {
             res.sem_available.post()?;
         }
 
+        // ZDIAG: emit exit log either for slow calls or every 10000th
+        let _zd_total_ms = _zd_start.elapsed().as_millis();
+        if _zd_log_normal || _zd_total_ms > 100 || _zd_loop_iter > 0 {
+            eprintln!(
+                "[ZDIAG HSUBMIT-EXIT] seq={} pid={} tid={:?} total_ms={} wait_iters={} wait_ms={} data_size={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                _zd_total_ms, _zd_loop_iter, _zd_wait_total_ms, data_size
+            );
+        }
+        ZDIAG_HSUBMIT_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+
         Ok(())
     }
 
     fn reset(&self) {
+        // ZDIAG: hang-instrumentation - remove after diagnosis
+        let _zd_seq = ZDIAG_HRESET_SEQ.fetch_add(1, Ordering::Relaxed);
+        let _zd_inflight = ZDIAG_HSUBMIT_INFLIGHT.load(Ordering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG HRESET-ENTER] seq={} pid={} tid={:?} submit_inflight_at_reset={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), _zd_inflight
+        );
+
+        let _zd_t_lock = std::time::Instant::now();
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
+        let _zd_lock_ms = _zd_t_lock.elapsed().as_millis();
+        if _zd_lock_ms > 50 {
+            eprintln!(
+                "[ZDIAG HRESET-LOCK-SLOW] seq={} pid={} tid={:?} acquire_ms={} (likely blocked behind a stuck submit)",
+                _zd_seq, std::process::id(), std::thread::current().id(), _zd_lock_ms
+            );
+        }
         unified.control_writer.reset();
         for writer in &mut unified.data_writers {
             writer.reset();
@@ -289,5 +364,11 @@ impl StreamSink for HintsShmem {
                 while res.sem_read.try_wait().is_ok() {}
             }
         }
+
+        eprintln!(
+            "[ZDIAG HRESET-EXIT] seq={} pid={} tid={:?} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
     }
 }

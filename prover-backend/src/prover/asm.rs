@@ -153,8 +153,28 @@ impl AsmProver {
         let mpi_broadcast_fn = (is_distributed && n_processes > 1 && with_hints && world_rank == 0)
             .then(|| {
                 let pctx = pctx.clone();
+                // ZDIAG: hang-instrumentation - log every broadcast via this closure
+                static ZDIAG_FN_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
                 Arc::new(move |data: &mut Vec<u8>| {
+                    let _zd_seq = ZDIAG_FN_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let _zd_start = std::time::Instant::now();
+                    let _zd_size = data.len();
+                    let _zd_log = _zd_seq % 1000 == 0;
+                    if _zd_log {
+                        eprintln!(
+                            "[ZDIAG ASM-BCAST-FN-ENTER] seq={} pid={} tid={:?} size={}",
+                            _zd_seq, std::process::id(), std::thread::current().id(), _zd_size
+                        );
+                    }
                     pctx.mpi_ctx.broadcast(data);
+                    let _zd_ms = _zd_start.elapsed().as_millis();
+                    if _zd_log || _zd_ms > 100 {
+                        eprintln!(
+                            "[ZDIAG ASM-BCAST-FN-EXIT] seq={} pid={} tid={:?} size={} elapsed_ms={}",
+                            _zd_seq, std::process::id(), std::thread::current().id(),
+                            _zd_size, _zd_ms
+                        );
+                    }
                     Ok(())
                 }) as Arc<dyn Fn(&mut Vec<u8>) -> Result<()> + Send + Sync>
             });
@@ -268,18 +288,56 @@ impl ProverEngine for AsmProver {
                 timer_stop_and_log_info!(ROM_SETUP);
                 tracing::info!("<<< ROM SETUP complete - Assembly files cached for future use");
             }
-            pctx.mpi_ctx.barrier();
+            // ZDIAG: conditional barrier — only ranks taking the !files_exist branch reach this
+            {
+                let _zd_start = std::time::Instant::now();
+                eprintln!(
+                    "[ZDIAG ASM-ROM-BARRIER-ENTER] pid={} tid={:?} rank={} (post ROM setup, conditional branch)",
+                    std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank
+                );
+                pctx.mpi_ctx.barrier();
+                eprintln!(
+                    "[ZDIAG ASM-ROM-BARRIER-EXIT] pid={} tid={:?} rank={} elapsed_ms={}",
+                    std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank,
+                    _zd_start.elapsed().as_millis()
+                );
+            }
         }
 
         // Sync all ranks.
-        pctx.mpi_ctx.barrier();
+        // ZDIAG: unconditional sync barrier — all ranks must reach this
+        {
+            let _zd_start = std::time::Instant::now();
+            eprintln!(
+                "[ZDIAG ASM-SYNC-BARRIER-ENTER] pid={} tid={:?} rank={} (sync before ASM startup)",
+                std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank
+            );
+            pctx.mpi_ctx.barrier();
+            eprintln!(
+                "[ZDIAG ASM-SYNC-BARRIER-EXIT] pid={} tid={:?} rank={} elapsed_ms={}",
+                std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank,
+                _zd_start.elapsed().as_millis()
+            );
+        }
 
         // ASM Services startup + pool registration
         let setup_result =
             self.start_asm_service(elf, zisk_rom, &program_vk, asm_mt_path, with_hints, &pctx);
 
         // Synchronize all MPI ranks and check if all succeeded.
+        // ZDIAG: collective AllReduce — every rank must call this with its setup result
+        let _zd_afo_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG ASM-ALL-FINISHED-OK-ENTER] pid={} tid={:?} rank={} local_ok={}",
+            std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank,
+            setup_result.is_ok()
+        );
         let all_ok = pctx.mpi_ctx.all_finished_ok(setup_result.is_ok());
+        eprintln!(
+            "[ZDIAG ASM-ALL-FINISHED-OK-EXIT] pid={} tid={:?} rank={} elapsed_ms={} all_ok={}",
+            std::process::id(), std::thread::current().id(), pctx.mpi_ctx.rank,
+            _zd_afo_start.elapsed().as_millis(), all_ok
+        );
 
         // If this rank failed, return its own error.
         setup_result?;
@@ -557,7 +615,21 @@ impl AsmCoreProver {
             initialize_logger(options.verbose_mode, Some(&rank_info));
         }
 
-        proofman.set_barrier();
+        // ZDIAG: initial sync barrier at AsmCoreProver::new
+        {
+            let _zd_start = std::time::Instant::now();
+            eprintln!(
+                "[ZDIAG ASM-CORE-INIT-BARRIER-ENTER] pid={} tid={:?} world_rank={} n_processes={}",
+                std::process::id(), std::thread::current().id(),
+                rank_info.world_rank, rank_info.n_processes
+            );
+            proofman.set_barrier();
+            eprintln!(
+                "[ZDIAG ASM-CORE-INIT-BARRIER-EXIT] pid={} tid={:?} world_rank={} elapsed_ms={}",
+                std::process::id(), std::thread::current().id(),
+                rank_info.world_rank, _zd_start.elapsed().as_millis()
+            );
+        }
 
         let mut snark_wrapper = None;
         if use_snark_wrapper {

@@ -8,7 +8,7 @@ use anyhow::Result;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
@@ -20,6 +20,15 @@ use zisk_common::{
 };
 
 use crate::hint_handlers::HintHandlers;
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_PROCESS_HINTS_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_WAIT_COMPLETION_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_INPUT_BCAST_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_DRAIN_BCAST_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_DRAIN_BCAST_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+static ZDIAG_INPUT_BCAST_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
+static ZDIAG_RESET_STATE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Ordered result buffer with drain state.
 ///
@@ -256,6 +265,18 @@ impl<S: StreamSink> HintsProcessor<S> {
     /// * `Ok(false)` - Batch processed successfully, no CTRL_END
     /// * `Err` - If a previous error occurred or hints are malformed
     pub fn process_hints(&self, hints: &[u64], first_batch: bool) -> Result<bool> {
+        // ZDIAG: throttled — every 200th + first_batch + slow exit. CTRL_END always logs at EXIT.
+        let _zd_seq = ZDIAG_PROCESS_HINTS_SEQ.fetch_add(1, Ordering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        let _zd_log_entry = _zd_seq % 200 == 0 || first_batch;
+        if _zd_log_entry {
+            eprintln!(
+                "[ZDIAG PROCESS-HINTS-ENTER] seq={} pid={} tid={:?} hints_u64_len={} first_batch={} stream_active={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                hints.len(), first_batch, self.stream_active.load(Ordering::Acquire)
+            );
+        }
+
         let mut has_ctrl_end = false;
 
         // Take any pending partial hint from previous batch
@@ -335,15 +356,30 @@ impl<S: StreamSink> HintsProcessor<S> {
                     continue;
                 }
                 HintCode::Ctrl(CtrlHint::End) => {
+                    eprintln!(
+                        "[ZDIAG CTRL-END-SEEN] seq={} pid={} tid={:?}",
+                        _zd_seq, std::process::id(), std::thread::current().id()
+                    );
                     // CTRL_END requires a prior CTRL_START
                     if !self.stream_active.swap(false, Ordering::AcqRel) {
+                        eprintln!(
+                            "[ZDIAG CTRL-END-NO-START] seq={} pid={} tid={:?}",
+                            _zd_seq, std::process::id(), std::thread::current().id()
+                        );
                         return Err(anyhow::anyhow!(
                             "CTRL_END received without a prior CTRL_START"
                         ));
                     }
 
                     // Control hint only; wait for completion then set flag
-                    self.wait_for_completion()?;
+                    let _zd_wfc_start = std::time::Instant::now();
+                    let wfc_result = self.wait_for_completion();
+                    eprintln!(
+                        "[ZDIAG CTRL-END-WFC-DONE] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+                        _zd_seq, std::process::id(), std::thread::current().id(),
+                        _zd_wfc_start.elapsed().as_millis(), wfc_result.is_ok()
+                    );
+                    wfc_result?;
                     has_ctrl_end = true;
                     idx += length;
 
@@ -385,7 +421,32 @@ impl<S: StreamSink> HintsProcessor<S> {
                     ))
                     .unwrap();
 
+                    // ZDIAG: H4 — main-thread broadcast for INPUT hints. Concurrent with drainer.
+                    // Throttled: every 100th + when concurrent with drainer (the smoking gun for H4).
+                    let _zd_bseq = ZDIAG_INPUT_BCAST_SEQ.fetch_add(1, Ordering::Relaxed);
+                    let _zd_drain_inflight = ZDIAG_DRAIN_BCAST_INFLIGHT.load(Ordering::Relaxed);
+                    ZDIAG_INPUT_BCAST_INFLIGHT.fetch_add(1, Ordering::Relaxed);
+                    let _zd_log = _zd_bseq % 100 == 0 || _zd_drain_inflight > 0;
+                    if _zd_log {
+                        eprintln!(
+                            "[ZDIAG INPUT-BCAST-ENTER] seq={} pid={} tid={:?} payload_bytes={} drain_bcast_inflight={}",
+                            _zd_bseq, std::process::id(), std::thread::current().id(),
+                            serialized.len(), _zd_drain_inflight
+                        );
+                    }
+                    let _zd_bstart = std::time::Instant::now();
+
                     broadcast_fn(&mut serialized).expect("MPI broadcast failed for input hint");
+
+                    let _zd_bms = _zd_bstart.elapsed().as_millis();
+                    ZDIAG_INPUT_BCAST_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+                    if _zd_log || _zd_bms > 50 {
+                        eprintln!(
+                            "[ZDIAG INPUT-BCAST-EXIT] seq={} pid={} tid={:?} elapsed_ms={} concurrent_with_drain={}",
+                            _zd_bseq, std::process::id(), std::thread::current().id(),
+                            _zd_bms, _zd_drain_inflight
+                        );
+                    }
                 }
 
                 self.inputs_sink
@@ -446,6 +507,15 @@ impl<S: StreamSink> HintsProcessor<S> {
             }
         }
 
+        let _zd_total_ms = _zd_start.elapsed().as_millis();
+        // Always log on CTRL_END (rare, very informative), slow (>50ms), or every 200th
+        if has_ctrl_end || _zd_total_ms > 50 || _zd_seq % 200 == 0 {
+            eprintln!(
+                "[ZDIAG PROCESS-HINTS-EXIT] seq={} pid={} tid={:?} total_ms={} has_ctrl_end={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                _zd_total_ms, has_ctrl_end
+            );
+        }
         Ok(has_ctrl_end)
     }
 
@@ -560,11 +630,23 @@ impl<S: StreamSink> HintsProcessor<S> {
         hints_sink: Arc<S>,
         mpi_broadcast_fn: Option<MpiBroadcastFn>,
     ) {
+        // ZDIAG: drainer start
+        eprintln!(
+            "[ZDIAG DRAINER-START] pid={} tid={:?} has_broadcast_fn={}",
+            std::process::id(), std::thread::current().id(), mpi_broadcast_fn.is_some()
+        );
+        let mut _zd_drained_total: u64 = 0;
+        let mut _zd_last_state_log = std::time::Instant::now();
+
         loop {
             let mut queue = state.queue.lock().unwrap();
 
             // Check for shutdown
             if state.shutdown.load(Ordering::Acquire) {
+                eprintln!(
+                    "[ZDIAG DRAINER-EXIT] pid={} tid={:?} drained_total={} reason=shutdown",
+                    std::process::id(), std::thread::current().id(), _zd_drained_total
+                );
                 break;
             }
 
@@ -582,11 +664,29 @@ impl<S: StreamSink> HintsProcessor<S> {
                 match res {
                     Ok(data) if !error_set => {
                         let data_to_submit = data.clone();
+                        let _zd_seq_id = queue.next_drain_seq;
+                        let _zd_q_len_before = queue.buffer.len();
                         queue.buffer.pop_front();
                         queue.next_drain_seq += 1;
                         drop(queue);
 
-                        if let Err(e) = hints_sink.submit(&data_to_submit) {
+                        // ZDIAG: log around the submit (hits HintsShmem::submit -> can block)
+                        let _zd_submit_start = std::time::Instant::now();
+                        let submit_result = hints_sink.submit(&data_to_submit);
+                        let _zd_submit_ms = _zd_submit_start.elapsed().as_millis();
+                        if _zd_submit_ms > 100 {
+                            eprintln!(
+                                "[ZDIAG DRAINER-SUBMIT-SLOW] pid={} tid={:?} seq_id={} q_len={} submit_ms={} data_size={}",
+                                std::process::id(), std::thread::current().id(),
+                                _zd_seq_id, _zd_q_len_before, _zd_submit_ms, data_to_submit.len()
+                            );
+                        }
+
+                        if let Err(e) = submit_result {
+                            eprintln!(
+                                "[ZDIAG DRAINER-SUBMIT-ERR] pid={} tid={:?} seq_id={} err={}",
+                                std::process::id(), std::thread::current().id(), _zd_seq_id, e
+                            );
                             tracing::error!("Error submitting to sink: {e}");
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
@@ -596,10 +696,37 @@ impl<S: StreamSink> HintsProcessor<S> {
                                 StreamMessage { data: data_to_submit.clone() },
                             ))
                             .unwrap();
+
+                            // ZDIAG: H4 — drainer broadcast. Concurrent with input-hint broadcast.
+                            let _zd_bseq = ZDIAG_DRAIN_BCAST_SEQ.fetch_add(1, Ordering::Relaxed);
+                            let _zd_input_inflight = ZDIAG_INPUT_BCAST_INFLIGHT.load(Ordering::Relaxed);
+                            ZDIAG_DRAIN_BCAST_INFLIGHT.fetch_add(1, Ordering::Relaxed);
+                            let _zd_bstart = std::time::Instant::now();
+                            // Log every 1000th broadcast or when slow / when concurrent with main thread
+                            let _zd_log_bcast = _zd_bseq % 1000 == 0 || _zd_input_inflight > 0;
+                            if _zd_log_bcast {
+                                eprintln!(
+                                    "[ZDIAG DRAIN-BCAST-ENTER] seq={} pid={} tid={:?} payload_bytes={} concurrent_input_bcast={}",
+                                    _zd_bseq, std::process::id(), std::thread::current().id(),
+                                    serialized.len(), _zd_input_inflight
+                                );
+                            }
+
                             broadcast_fn(&mut serialized)
                                 .expect("MPI broadcast failed in drainer thread");
+
+                            let _zd_bms = _zd_bstart.elapsed().as_millis();
+                            ZDIAG_DRAIN_BCAST_INFLIGHT.fetch_sub(1, Ordering::Relaxed);
+                            if _zd_log_bcast || _zd_bms > 100 {
+                                eprintln!(
+                                    "[ZDIAG DRAIN-BCAST-EXIT] seq={} pid={} tid={:?} elapsed_ms={} concurrent_input_bcast={}",
+                                    _zd_bseq, std::process::id(), std::thread::current().id(),
+                                    _zd_bms, _zd_input_inflight
+                                );
+                            }
                         }
 
+                        _zd_drained_total += 1;
                         queue = state.queue.lock().unwrap();
                     }
                     Ok(_) => {
@@ -610,6 +737,11 @@ impl<S: StreamSink> HintsProcessor<S> {
                     Err(e) => {
                         if !error_set {
                             tracing::error!("[seq={}] Error: {}", queue.next_drain_seq, e);
+                            eprintln!(
+                                "[ZDIAG DRAINER-HINT-ERR] pid={} tid={:?} seq_id={} err={}",
+                                std::process::id(), std::thread::current().id(),
+                                queue.next_drain_seq, e
+                            );
                             state.error_flag.store(true, Ordering::Release);
                             state.drain_signal.notify_all();
                         }
@@ -626,7 +758,22 @@ impl<S: StreamSink> HintsProcessor<S> {
 
             // Check for shutdown again before waiting
             if state.shutdown.load(Ordering::Acquire) {
+                eprintln!(
+                    "[ZDIAG DRAINER-EXIT] pid={} tid={:?} drained_total={} reason=shutdown_post_drain",
+                    std::process::id(), std::thread::current().id(), _zd_drained_total
+                );
                 break;
+            }
+
+            // ZDIAG: periodic state log so we can see a stuck drainer
+            if _zd_last_state_log.elapsed().as_secs() >= 5 {
+                eprintln!(
+                    "[ZDIAG DRAINER-PARK] pid={} tid={:?} drained_total={} q_len={} next_drain_seq={} error_flag={} stream_active=via_atomic",
+                    std::process::id(), std::thread::current().id(),
+                    _zd_drained_total, queue.buffer.len(), queue.next_drain_seq,
+                    state.error_flag.load(Ordering::Acquire)
+                );
+                _zd_last_state_log = std::time::Instant::now();
             }
 
             // Wait for notification that a hint completed
@@ -647,33 +794,101 @@ impl<S: StreamSink> HintsProcessor<S> {
     /// * `Ok(())` - All hints processed successfully
     /// * `Err` - If an error occurred during processing
     pub fn wait_for_completion(&self) -> Result<()> {
+        // ZDIAG: log entry — this is the parking point if the drainer wedges.
+        let _zd_seq = ZDIAG_WAIT_COMPLETION_SEQ.fetch_add(1, Ordering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        let _zd_initial_q_len = self.state.queue.lock().unwrap().buffer.len();
+        eprintln!(
+            "[ZDIAG WFC-ENTER] seq={} pid={} tid={:?} initial_q_len={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), _zd_initial_q_len
+        );
+
         let mut queue = self.state.queue.lock().unwrap();
+        let mut _zd_park_iter: u32 = 0;
+        let mut _zd_last_park_log = std::time::Instant::now();
 
         while !queue.buffer.is_empty() {
             if self.state.error_flag.load(Ordering::Acquire) {
+                eprintln!(
+                    "[ZDIAG WFC-EXIT-ERR] seq={} pid={} tid={:?} elapsed_ms={} q_len_at_err={}",
+                    _zd_seq, std::process::id(), std::thread::current().id(),
+                    _zd_start.elapsed().as_millis(), queue.buffer.len()
+                );
                 return Err(anyhow::anyhow!("Processing stopped due to error"));
             }
+
+            _zd_park_iter += 1;
+            // Periodic log so a stuck wait_for_completion is visible
+            if _zd_last_park_log.elapsed().as_secs() >= 3 {
+                eprintln!(
+                    "[ZDIAG WFC-STUCK] seq={} pid={} tid={:?} park_iter={} q_len={} elapsed_ms={} next_drain_seq={}",
+                    _zd_seq, std::process::id(), std::thread::current().id(),
+                    _zd_park_iter, queue.buffer.len(),
+                    _zd_start.elapsed().as_millis(),
+                    queue.next_drain_seq
+                );
+                _zd_last_park_log = std::time::Instant::now();
+            }
+
             // Wait for notification that buffer state changed
             queue = self.state.drain_signal.wait(queue).unwrap();
         }
 
         if self.state.error_flag.load(Ordering::Acquire) {
+            eprintln!(
+                "[ZDIAG WFC-EXIT-ERR-FINAL] seq={} pid={} tid={:?} elapsed_ms={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                _zd_start.elapsed().as_millis()
+            );
             return Err(anyhow::anyhow!("Processing stopped due to error"));
         }
 
+        eprintln!(
+            "[ZDIAG WFC-EXIT-OK] seq={} pid={} tid={:?} elapsed_ms={} park_iters={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), _zd_park_iter
+        );
         Ok(())
     }
 
     pub fn reset_state(&self) {
+        // ZDIAG: hang-instrumentation - reset can race a stuck drainer/submit
+        let _zd_seq = ZDIAG_RESET_STATE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        let _zd_q_len_before = self.state.queue.lock().unwrap().buffer.len();
+        let _zd_drain_inflight = ZDIAG_DRAIN_BCAST_INFLIGHT.load(Ordering::Relaxed);
+        let _zd_input_inflight = ZDIAG_INPUT_BCAST_INFLIGHT.load(Ordering::Relaxed);
+        eprintln!(
+            "[ZDIAG RESET-STATE-ENTER] seq={} pid={} tid={:?} q_len_before={} drain_bcast_inflight={} input_bcast_inflight={} stream_active_before={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_q_len_before, _zd_drain_inflight, _zd_input_inflight,
+            self.stream_active.load(Ordering::Acquire)
+        );
+
         self.num_hint.store(0, Ordering::Relaxed);
         self.state.reset();
         if let Some(stats) = self.stats.as_ref() {
             stats.lock().unwrap().clear();
         }
+        // ZDIAG: hints_sink.reset() can block behind a stuck HintsShmem::submit (H1).
+        let _zd_sink_reset_start = std::time::Instant::now();
         self.hints_sink.reset();
+        let _zd_sink_reset_ms = _zd_sink_reset_start.elapsed().as_millis();
+        if _zd_sink_reset_ms > 50 {
+            eprintln!(
+                "[ZDIAG RESET-STATE-SINK-SLOW] seq={} pid={} tid={:?} hints_sink_reset_ms={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), _zd_sink_reset_ms
+            );
+        }
         self.stream_active.store(false, Ordering::Release);
         self.instant.lock().unwrap().take();
         self.pending_partial.lock().unwrap().take();
+
+        eprintln!(
+            "[ZDIAG RESET-STATE-EXIT] seq={} pid={} tid={:?} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
     }
 
     pub fn hints_sink(&self) -> Arc<S> {
@@ -683,6 +898,14 @@ impl<S: StreamSink> HintsProcessor<S> {
 
 impl<S: StreamSink> Drop for HintsProcessor<S> {
     fn drop(&mut self) {
+        // ZDIAG: HintsProcessor being dropped — drainer thread will be joined.
+        let _zd_start = std::time::Instant::now();
+        let _zd_q_len = self.state.queue.lock().map(|q| q.buffer.len()).unwrap_or(usize::MAX);
+        eprintln!(
+            "[ZDIAG HP-DROP-ENTER] pid={} tid={:?} q_len_at_drop={} stream_active={}",
+            std::process::id(), std::thread::current().id(),
+            _zd_q_len, self.stream_active.load(Ordering::Acquire)
+        );
         // Signal drainer thread to shut down
         self.state.shutdown.store(true, Ordering::Release);
         self.state.drain_signal.notify_all();
@@ -693,6 +916,11 @@ impl<S: StreamSink> Drop for HintsProcessor<S> {
             let handle = ManuallyDrop::take(&mut self.drainer_thread);
             let _ = handle.join();
         }
+        eprintln!(
+            "[ZDIAG HP-DROP-EXIT] pid={} tid={:?} elapsed_ms={}",
+            std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
     }
 }
 

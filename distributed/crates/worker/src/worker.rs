@@ -26,9 +26,20 @@ use proofman::WitnessInfo;
 use proofman_common::ProofOptions;
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use tracing::{error, info, warn};
 
 use crate::config::ProverServiceConfigDto;
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_HANDLE_BCAST_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_SUBMIT_HINT_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_SUBMIT_INPUT_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_AWAIT_MPI_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_PREP_JOB_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_CANCEL_COMP_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_CLUSTER_BARRIER_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_MPI_BCAST_OUT_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[derive(BorshSerialize, BorshDeserialize)]
 struct SetupMessage {
@@ -313,6 +324,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             ProverClientBuilder::new().emu().prove().with_prover_options(prover_options).build()?,
         );
 
+        // ZDIAG: startup banner — emit once we know world/local rank
+        eprintln!(
+            "[ZDIAG WORKER-STARTUP] pid={} world_rank={} local_rank={} backend=Emu",
+            std::process::id(), prover.world_rank(), prover.local_rank()
+        );
+
         Ok(Worker::<Emu> {
             state: WorkerState::Disconnected,
             current_job: None,
@@ -374,6 +391,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             ProverClientBuilder::new().asm().prove().with_prover_options(prover_options).build()?,
         );
 
+        // ZDIAG: startup banner — emit once we know world/local rank
+        eprintln!(
+            "[ZDIAG WORKER-STARTUP] pid={} world_rank={} local_rank={} backend=Asm",
+            std::process::id(), prover.world_rank(), prover.local_rank()
+        );
+
         Ok(Worker::<Asm> {
             state: WorkerState::Disconnected,
             current_job: None,
@@ -422,7 +445,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
-        self.prover.mpi_broadcast(&mut serialized)?;
+
+        let _zd_seq = ZDIAG_MPI_BCAST_OUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-ENTER] seq={} pid={} tid={:?} tag=Setup payload_bytes={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), serialized.len()
+        );
+        let _bcast_result = self.prover.mpi_broadcast(&mut serialized);
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-EXIT] seq={} pid={} tid={:?} tag=Setup elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), _bcast_result.is_ok()
+        );
+        _bcast_result?;
 
         let vk = self.prover.prover.setup_internal(&new_guest_program, with_hints)?;
         self.guest_programs.insert(hash_id.to_string(), new_guest_program);
@@ -443,6 +479,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     pub fn set_state(&mut self, state: WorkerState) {
+        // ZDIAG: all worker state transitions — useful to correlate with hang time
+        eprintln!(
+            "[ZDIAG WORKER-STATE] pid={} tid={:?} world_rank={} from={:?} to={:?}",
+            std::process::id(), std::thread::current().id(),
+            self.world_rank(), self.state, state
+        );
         self.state = state;
     }
 
@@ -488,19 +530,43 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// here would block the event loop. Stream-actor shutdown runs in
     /// background.
     pub fn cancel_current_computation(&mut self) {
+        let _zd_seq = ZDIAG_CANCEL_COMP_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG CANCEL-COMP-ENTER] seq={} pid={} tid={:?} world_rank={} has_computation={} has_stream_actor={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(),
+            self.current_computation.is_some(),
+            self.stream_actor.is_some()
+        );
+
         if let Err(e) = self.prover.cancel() {
             tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
         }
 
         if self.current_computation.take().is_some() {
+            eprintln!(
+                "[ZDIAG CANCEL-COMP-NOTIFY] seq={} pid={} tid={:?} world_rank={} (sending P2P CANCEL_JOB to peers)",
+                _zd_seq, std::process::id(), std::thread::current().id(), self.world_rank()
+            );
             self.prover.notify_cluster_cancellation();
         }
 
         if let Some(stream_actor) = self.stream_actor.take() {
+            eprintln!(
+                "[ZDIAG CANCEL-COMP-DETACH-ACTOR] seq={} pid={} tid={:?} world_rank={} (spawning shutdown_and_join in blocking pool)",
+                _zd_seq, std::process::id(), std::thread::current().id(), self.world_rank()
+            );
             tokio::task::spawn_blocking(move || {
                 stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
             });
         }
+
+        eprintln!(
+            "[ZDIAG CANCEL-COMP-EXIT] seq={} pid={} tid={:?} world_rank={} elapsed_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(), _zd_start.elapsed().as_millis()
+        );
     }
 
     /// Cancels any in-flight computation (without awaiting) and clears the
@@ -518,6 +584,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         is_first_partition: bool,
     ) -> Result<()> {
+        let _zd_seq = ZDIAG_PREP_JOB_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG PREP-JOB-ENTER] seq={} pid={} tid={:?} world_rank={} hash_id={} with_hints={} first_part={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(), hash_id, with_hints, is_first_partition
+        );
+
         let program_id = self
             .guest_programs
             .get(hash_id)
@@ -525,9 +599,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .program_id
             .clone();
 
+        let _zd_t1 = std::time::Instant::now();
         self.prover.register_program(&program_id, with_hints)?;
+        let _zd_reg_ms = _zd_t1.elapsed().as_millis();
+
+        // ZDIAG: this calls AsmResources::reset which can block on stuck HintsShmem::submit (H1)
+        let _zd_t2 = std::time::Instant::now();
         self.prover.reset()?;
+        let _zd_reset_ms = _zd_t2.elapsed().as_millis();
+
+        let _zd_t3 = std::time::Instant::now();
         self.prover.set_active_services(is_first_partition)?;
+        let _zd_sas_ms = _zd_t3.elapsed().as_millis();
+
+        eprintln!(
+            "[ZDIAG PREP-JOB-EXIT] seq={} pid={} tid={:?} world_rank={} register_ms={} reset_ms={} set_active_ms={} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(), _zd_reg_ms, _zd_reset_ms, _zd_sas_ms,
+            _zd_start.elapsed().as_millis()
+        );
         Ok(())
     }
 
@@ -559,7 +649,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }));
         self.current_job = Some(current_job.clone());
 
-        self.state = WorkerState::Computing((job_id, JobPhase::Contributions));
+        // ZDIAG: direct state set bypassing set_state — log it explicitly
+        let _zd_new_state = WorkerState::Computing((job_id, JobPhase::Contributions));
+        eprintln!(
+            "[ZDIAG WORKER-STATE-DIRECT] pid={} tid={:?} world_rank={} from={:?} to={:?}",
+            std::process::id(), std::thread::current().id(),
+            self.world_rank(), self.state, _zd_new_state
+        );
+        self.state = _zd_new_state;
 
         current_job
     }
@@ -600,7 +697,20 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             })?
         };
 
-        self.prover.mpi_broadcast(&mut serialized)?;
+        // ZDIAG: outbound rank-0 broadcast of Contributions tag
+        let _zd_seq = ZDIAG_MPI_BCAST_OUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-ENTER] seq={} pid={} tid={:?} tag=Contributions payload_bytes={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), serialized.len()
+        );
+        let result = self.prover.mpi_broadcast(&mut serialized);
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-EXIT] seq={} pid={} tid={:?} tag=Contributions elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), result.is_ok()
+        );
+        result?;
         Ok(())
     }
 
@@ -641,7 +751,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             })?
         };
 
-        self.prover.mpi_broadcast(&mut serialized)?;
+        let _zd_seq = ZDIAG_MPI_BCAST_OUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-ENTER] seq={} pid={} tid={:?} tag=Execution payload_bytes={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), serialized.len()
+        );
+        let result = self.prover.mpi_broadcast(&mut serialized);
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-EXIT] seq={} pid={} tid={:?} tag=Execution elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), result.is_ok()
+        );
+        result?;
         Ok(())
     }
 
@@ -673,7 +795,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 .map_err(|e| anyhow::anyhow!("Failed to serialize Prove MPI broadcast: {}", e))?
         };
 
-        self.prover.mpi_broadcast(&mut serialized)?;
+        let _zd_seq = ZDIAG_MPI_BCAST_OUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-ENTER] seq={} pid={} tid={:?} tag=Prove payload_bytes={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), serialized.len()
+        );
+        let result = self.prover.mpi_broadcast(&mut serialized);
+        eprintln!(
+            "[ZDIAG MPI-BCAST-OUT-EXIT] seq={} pid={} tid={:?} tag=Prove elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), result.is_ok()
+        );
+        result?;
         Ok(())
     }
 
@@ -985,7 +1119,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         // partition independently). Block until every rank has finished so
         // rank 0 can't report success while peer ranks are still draining
         // stale broadcasts queued behind a previous cancel/failure.
+        // ZDIAG: log cluster_barrier — collective; any rank not reaching it hangs the cluster.
+        let _zd_seq = ZDIAG_CLUSTER_BARRIER_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG CLUSTER-BARRIER-ENTER] seq={} pid={} tid={:?} world_rank={} site=execute_execution_task",
+            _zd_seq, std::process::id(), std::thread::current().id(), prover.world_rank()
+        );
         prover.cluster_barrier();
+        eprintln!(
+            "[ZDIAG CLUSTER-BARRIER-EXIT] seq={} pid={} tid={:?} world_rank={} elapsed_ms={} site=execute_execution_task",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            prover.world_rank(), _zd_start.elapsed().as_millis()
+        );
 
         Ok((num_instances, publics_u64))
     }
@@ -1037,6 +1183,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         match &stream_data.stream_type {
             StreamMessageKind::Start => {
                 let job_id = stream_data.job_id.clone();
+                // ZDIAG: receiving Start = start of new hints stream for this job
+                eprintln!(
+                    "[ZDIAG STREAM-DATA-START] pid={} tid={:?} world_rank={} job_id={} actor_was_present={}",
+                    std::process::id(), std::thread::current().id(),
+                    self.world_rank(), job_id, self.stream_actor.is_some()
+                );
 
                 let processor = self.prover.get_hints_processor()?;
 
@@ -1045,16 +1197,40 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 // worker thread, so this assignment can't race a stale process_hints.
                 self.stream_actor = Some(StreamOrderingActor::new(processor, job_id));
             }
-            StreamMessageKind::Data | StreamMessageKind::End => match &self.stream_actor {
+            StreamMessageKind::Data => match &self.stream_actor {
                 Some(actor) => actor.send(stream_data)?,
                 None => {
+                    eprintln!(
+                        "[ZDIAG STREAM-DATA-WITHOUT-START] pid={} tid={:?} world_rank={} job_id={}",
+                        std::process::id(), std::thread::current().id(),
+                        self.world_rank(), stream_data.job_id
+                    );
                     return Err(anyhow::anyhow!(
-                        "Received stream {:?} without a prior Start for job {}",
-                        stream_data.stream_type,
+                        "Received stream Data without a prior Start for job {}",
                         stream_data.job_id
                     ));
                 }
             },
+            StreamMessageKind::End => {
+                // ZDIAG: stream End from coordinator — actor should drain remaining chunks + exit
+                eprintln!(
+                    "[ZDIAG STREAM-DATA-END] pid={} tid={:?} world_rank={} job_id={}",
+                    std::process::id(), std::thread::current().id(),
+                    self.world_rank(), stream_data.job_id
+                );
+                match &self.stream_actor {
+                    Some(actor) => actor.send(stream_data)?,
+                    None => {
+                        eprintln!(
+                            "[ZDIAG STREAM-END-WITHOUT-START] pid={} tid={:?} world_rank={}",
+                            std::process::id(), std::thread::current().id(), self.world_rank()
+                        );
+                        return Err(anyhow::anyhow!(
+                            "Received stream End without a prior Start"
+                        ));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1289,11 +1465,30 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // --------------------------------------------------------------------------
 
     pub async fn handle_mpi_broadcast_request(&mut self) -> Result<()> {
+        // ZDIAG: every iteration of non-rank-0's MPI receive loop
+        let _zd_seq = ZDIAG_HANDLE_BCAST_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_loop_start = std::time::Instant::now();
+        let _zd_world_rank = self.world_rank();
+
         let mut bytes: Vec<u8> = Vec::new();
 
+        let _zd_recv_start = std::time::Instant::now();
         self.prover.mpi_broadcast(&mut bytes)?;
+        let _zd_recv_ms = _zd_recv_start.elapsed().as_millis();
+        // Log only when slow (>500ms) or every 1000th iteration
+        if _zd_recv_ms > 500 || _zd_seq % 1000 == 0 {
+            eprintln!(
+                "[ZDIAG HANDLE-BCAST-RECV] seq={} pid={} tid={:?} world_rank={} recv_ms={} payload_bytes={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                _zd_world_rank, _zd_recv_ms, bytes.len()
+            );
+        }
 
         if bytes.is_empty() {
+            eprintln!(
+                "[ZDIAG HANDLE-BCAST-EMPTY] seq={} pid={} tid={:?} world_rank={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), _zd_world_rank
+            );
             return Err(anyhow::anyhow!("Empty MPI broadcast received"));
         }
 
@@ -1310,10 +1505,34 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             // submit_hint post. If we awaited the task here we'd never get
             // around to feeding it.
             WorkerMpiTag::ContributionsHintsStream => {
-                prover.submit_hint(&bytes)?;
+                // ZDIAG: H3 — synchronously blocking inside async task. If this stalls,
+                // the entire MPI receive loop is wedged.
+                let _zd_hseq = ZDIAG_SUBMIT_HINT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+                let _zd_hstart = std::time::Instant::now();
+                let result = prover.submit_hint(&bytes);
+                let _zd_hms = _zd_hstart.elapsed().as_millis();
+                if _zd_hms > 100 || _zd_hseq % 1000 == 0 {
+                    eprintln!(
+                        "[ZDIAG SUBMIT-HINT] seq={} pid={} tid={:?} world_rank={} elapsed_ms={} ok={} bytes={}",
+                        _zd_hseq, std::process::id(), std::thread::current().id(),
+                        _zd_world_rank, _zd_hms, result.is_ok(), bytes.len()
+                    );
+                }
+                result?;
             }
             WorkerMpiTag::ContributionsInputsStream => {
-                prover.submit_input(&bytes)?;
+                let _zd_iseq = ZDIAG_SUBMIT_INPUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+                let _zd_istart = std::time::Instant::now();
+                let result = prover.submit_input(&bytes);
+                let _zd_ims = _zd_istart.elapsed().as_millis();
+                if _zd_ims > 100 || _zd_iseq % 100 == 0 {
+                    eprintln!(
+                        "[ZDIAG SUBMIT-INPUT] seq={} pid={} tid={:?} world_rank={} elapsed_ms={} ok={} bytes={}",
+                        _zd_iseq, std::process::id(), std::thread::current().id(),
+                        _zd_world_rank, _zd_ims, result.is_ok(), bytes.len()
+                    );
+                }
+                result?;
             }
             WorkerMpiTag::Setup => {
                 self.await_current_mpi_task().await;
@@ -1458,10 +1677,25 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// Errors and panics from the joined task are logged here so the loop
     /// keeps running — the task itself already ran `run_recovery` on failure.
     async fn await_current_mpi_task(&mut self) {
+        // ZDIAG: this blocks the MPI receive loop. If the prior task is wedged, NO hints are drained.
+        let _zd_seq = ZDIAG_AWAIT_MPI_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        let _zd_has = self.current_mpi_task.is_some();
+        eprintln!(
+            "[ZDIAG AWAIT-PREV-MPI-ENTER] seq={} pid={} tid={:?} world_rank={} has_task={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(), _zd_has
+        );
         if let Some(handle) = self.current_mpi_task.take() {
             if let Err(e) = handle.await {
                 error!("MPI broadcast task join failed: {e}");
             }
         }
+        let _zd_ms = _zd_start.elapsed().as_millis();
+        eprintln!(
+            "[ZDIAG AWAIT-PREV-MPI-EXIT] seq={} pid={} tid={:?} world_rank={} elapsed_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.world_rank(), _zd_ms
+        );
     }
 }

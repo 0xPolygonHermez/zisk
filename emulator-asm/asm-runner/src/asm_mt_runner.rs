@@ -115,9 +115,28 @@ impl AsmRunnerMT {
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
 
+        // ZDIAG: heartbeat so we can see if the MT loop is making progress
+        let mut _zd_last_heartbeat = std::time::Instant::now();
+        let mut _zd_chunks_consumed: u64 = 0;
+        let mut _zd_timeouts: u64 = 0;
+        eprintln!(
+            "[ZDIAG MT-LOOP-START] pid={} tid={:?}",
+            std::process::id(), std::thread::current().id()
+        );
+
         let exit_code = loop {
+            // ZDIAG: 5-second heartbeat
+            if _zd_last_heartbeat.elapsed().as_secs() >= 5 {
+                eprintln!(
+                    "[ZDIAG MT-LOOP-HEARTBEAT] pid={} tid={:?} chunks_consumed={} timeouts={} chunk_id={}",
+                    std::process::id(), std::thread::current().id(),
+                    _zd_chunks_consumed, _zd_timeouts, chunk_id.0
+                );
+                _zd_last_heartbeat = std::time::Instant::now();
+            }
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
+                    _zd_chunks_consumed += 1;
                     stats_mark!(_stats, &_runner_scope, "MT_CHUNK_DONE", 0);
 
                     // Synchronize with memory changes from the C++ side
@@ -151,6 +170,11 @@ impl AsmRunnerMT {
                     emu_traces.push(emu_trace);
 
                     if should_exit {
+                        eprintln!(
+                            "[ZDIAG MT-LOOP-END-CHUNK] pid={} tid={:?} chunks_consumed={} final_chunk_id={}",
+                            std::process::id(), std::thread::current().id(),
+                            _zd_chunks_consumed, chunk_id.0
+                        );
                         break 0;
                     }
                     chunk_id.0 += 1;
@@ -158,17 +182,35 @@ impl AsmRunnerMT {
                 Err(named_sem::Error::WaitFailed(e))
                     if e.kind() == std::io::ErrorKind::Interrupted =>
                 {
+                    _zd_timeouts += 1;
                     continue
                 }
                 Err(e) => {
+                    eprintln!(
+                        "[ZDIAG MT-LOOP-SEM-ERR] pid={} tid={:?} chunks_consumed={} timeouts={} err={:?}",
+                        std::process::id(), std::thread::current().id(),
+                        _zd_chunks_consumed, _zd_timeouts, e
+                    );
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
                     // Flip ResetFlag + post wait sems so the C child unwinds
                     // `emulator_start` and the stdio request below can return.
                     // Then sweep any post that races our exit (end chunk).
+                    eprintln!(
+                        "[ZDIAG MT-LOOP-ON-FAILURE-ENTER] pid={} tid={:?}",
+                        std::process::id(), std::thread::current().id()
+                    );
                     if let Err(reset_err) = on_runner_failure() {
+                        eprintln!(
+                            "[ZDIAG MT-LOOP-ON-FAILURE-ERR] pid={} tid={:?} err={:#}",
+                            std::process::id(), std::thread::current().id(), reset_err
+                        );
                         error!("MT on_runner_failure failed: {reset_err:#}");
                     }
+                    eprintln!(
+                        "[ZDIAG MT-LOOP-ON-FAILURE-EXIT] pid={} tid={:?}",
+                        std::process::id(), std::thread::current().id()
+                    );
                     while sem_chunk_done.try_wait().is_ok() {}
 
                     if chunk_id.0 == 0 {

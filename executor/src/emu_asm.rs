@@ -222,15 +222,26 @@ impl EmulatorAsm {
 
         let _stats = stats.clone();
 
-        // Run the assembly Memory Operations (MO) runner thread
+        // ZDIAG: MO is C consumer index 1 in HintsShmem (matches `slowest_idx=1` in HSUBMIT-WAIT)
         let handle_mo = std::thread::spawn({
             let asm_shmem_mo = asm_resources.readers().mo.clone();
             let asm_services = asm_resources.asm_services().clone();
             move || -> Result<AsmRunnerMO> {
+                let _zd_t0 = std::time::Instant::now();
+                eprintln!(
+                    "[ZDIAG MO-RUNNER-START] pid={} tid={:?} consumer_idx=1",
+                    std::process::id(), std::thread::current().id()
+                );
                 let mut guard = asm_shmem_mo
                     .lock()
                     .map_err(|e| anyhow::anyhow!("MO shmem lock poisoned: {e}"))?;
-                AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, _stats)
+                let result = AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, _stats);
+                eprintln!(
+                    "[ZDIAG MO-RUNNER-EXIT] pid={} tid={:?} elapsed_ms={} ok={}",
+                    std::process::id(), std::thread::current().id(),
+                    _zd_t0.elapsed().as_millis(), result.is_ok()
+                );
+                result
             }
         });
 
@@ -239,26 +250,49 @@ impl EmulatorAsm {
 
         let _stats = stats.clone();
 
+        // ZDIAG: RH is C consumer index 2 (only on first partition, otherwise inactive)
         let handle_rh = (has_rom_sm).then(|| {
             let asm_shmem_rh = asm_resources.readers().rh.clone();
             let asm_services = asm_resources.asm_services().clone();
             let unlock_mapped_memory = config.unlock_mapped_memory;
             std::thread::spawn(move || -> Result<AsmRunnerRH> {
+                let _zd_t0 = std::time::Instant::now();
+                eprintln!(
+                    "[ZDIAG RH-RUNNER-START] pid={} tid={:?} consumer_idx=2",
+                    std::process::id(), std::thread::current().id()
+                );
                 let mut guard = asm_shmem_rh
                     .lock()
                     .map_err(|e| anyhow::anyhow!("RH shmem lock poisoned: {e}"))?;
 
-                AsmRunnerRH::run(
+                let result = AsmRunnerRH::run(
                     &mut guard,
                     MAX_NUM_STEPS,
                     asm_services,
                     unlock_mapped_memory,
                     _stats,
-                )
+                );
+                eprintln!(
+                    "[ZDIAG RH-RUNNER-EXIT] pid={} tid={:?} elapsed_ms={} ok={}",
+                    std::process::id(), std::thread::current().id(),
+                    _zd_t0.elapsed().as_millis(), result.is_ok()
+                );
+                result
             })
         });
 
+        // ZDIAG: MT is C consumer index 0
+        eprintln!(
+            "[ZDIAG MT-RUNNER-START] pid={} tid={:?} consumer_idx=0",
+            std::process::id(), std::thread::current().id()
+        );
+        let _zd_mt_start = std::time::Instant::now();
         let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
+        eprintln!(
+            "[ZDIAG MT-RUNNER-EXIT] pid={} tid={:?} elapsed_ms={} ok={}",
+            std::process::id(), std::thread::current().id(),
+            _zd_mt_start.elapsed().as_millis(), mt_result.is_ok()
+        );
 
         match mt_result {
             Ok((min_traces, main_count, secn_count)) => {
@@ -267,6 +301,11 @@ impl EmulatorAsm {
                 Ok((min_traces, main_count, secn_count, Some(handle_mo), handle_rh, steps))
             }
             Err(e) => {
+                // ZDIAG: MT-failure cleanup arm — this is the path that gets hit if MT crashes
+                eprintln!(
+                    "[ZDIAG MT-FAILURE-CLEANUP] pid={} tid={:?} mt_err={:#}",
+                    std::process::id(), std::thread::current().id(), e
+                );
                 // MT already self-cleaned (signaled reset + joined its stdio
                 // thread). Wake MO/RH in case they're still parked, then join
                 // so their detached threads release the shmem-reader locks
@@ -277,11 +316,25 @@ impl EmulatorAsm {
                 // join-failure logs deliberately say "MT-failure cleanup"
                 // rather than "after cancel" to avoid misattributing root cause.
                 if let Err(reset_err) = asm_resources.signal_cancellation() {
+                    eprintln!(
+                        "[ZDIAG MT-FAILURE-SIGCANCEL-ERR] pid={} err={:#}",
+                        std::process::id(), reset_err
+                    );
                     tracing::error!("execute: signal_cancellation failed: {reset_err:#}");
                 }
+                eprintln!(
+                    "[ZDIAG MT-FAILURE-JOIN-MO-ENTER] pid={}",
+                    std::process::id()
+                );
                 join_runner_during_cleanup("MO", handle_mo);
+                eprintln!(
+                    "[ZDIAG MT-FAILURE-JOIN-MO-EXIT] pid={}",
+                    std::process::id()
+                );
                 if let Some(h) = handle_rh {
+                    eprintln!("[ZDIAG MT-FAILURE-JOIN-RH-ENTER] pid={}", std::process::id());
                     join_runner_during_cleanup("RH", h);
+                    eprintln!("[ZDIAG MT-FAILURE-JOIN-RH-EXIT] pid={}", std::process::id());
                 }
                 stats_end!(stats, &_exec_scope);
                 Err(e)

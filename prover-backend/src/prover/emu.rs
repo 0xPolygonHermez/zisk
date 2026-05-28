@@ -305,7 +305,21 @@ impl EmuCoreProver {
             initialize_logger(options.verbose_mode, Some(&rank_info));
         }
 
-        proofman.set_barrier();
+        // ZDIAG: initial sync barrier at EmuCoreProver::new
+        {
+            let _zd_start = std::time::Instant::now();
+            eprintln!(
+                "[ZDIAG EMU-CORE-INIT-BARRIER-ENTER] pid={} tid={:?} world_rank={} n_processes={}",
+                std::process::id(), std::thread::current().id(),
+                rank_info.world_rank, rank_info.n_processes
+            );
+            proofman.set_barrier();
+            eprintln!(
+                "[ZDIAG EMU-CORE-INIT-BARRIER-EXIT] pid={} tid={:?} world_rank={} elapsed_ms={}",
+                std::process::id(), std::thread::current().id(),
+                rank_info.world_rank, _zd_start.elapsed().as_millis()
+            );
+        }
 
         let mut snark_wrapper = None;
         if use_snark_wrapper {

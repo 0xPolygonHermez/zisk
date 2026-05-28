@@ -50,13 +50,42 @@ impl<T: ZiskBackend + 'static> RecoveryActions for ZiskProver<T> {
 // queued behind the cancelled task.
 //
 pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()> {
-    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up
-    // signal is sent from `worker::cancel_current_computation`. All this
-    // task has to do is notify peers, drain any zombie proofman thread, and
-    // barrier with the cluster before advertising `Ready`.
+    // ZDIAG: log every step; cluster_barrier is collective and can wedge if any peer rank is stuck.
+    let _zd_start = std::time::Instant::now();
+    eprintln!(
+        "[ZDIAG RECOVERY-ENTER] pid={} tid={:?}",
+        std::process::id(), std::thread::current().id()
+    );
+
+    let _zd_t1 = std::time::Instant::now();
     prover.notify_cluster_cancellation();
+    eprintln!(
+        "[ZDIAG RECOVERY-NOTIFY-DONE] pid={} tid={:?} elapsed_ms={}",
+        std::process::id(), std::thread::current().id(),
+        _zd_t1.elapsed().as_millis()
+    );
+
+    let _zd_t2 = std::time::Instant::now();
     prover.wait_until_proofman_ready();
+    eprintln!(
+        "[ZDIAG RECOVERY-PROOFMAN-READY] pid={} tid={:?} elapsed_ms={}",
+        std::process::id(), std::thread::current().id(),
+        _zd_t2.elapsed().as_millis()
+    );
+
+    let _zd_t3 = std::time::Instant::now();
     prover.cluster_barrier();
+    eprintln!(
+        "[ZDIAG RECOVERY-BARRIER-DONE] pid={} tid={:?} elapsed_ms={}",
+        std::process::id(), std::thread::current().id(),
+        _zd_t3.elapsed().as_millis()
+    );
+
+    eprintln!(
+        "[ZDIAG RECOVERY-EXIT] pid={} tid={:?} total_ms={}",
+        std::process::id(), std::thread::current().id(),
+        _zd_start.elapsed().as_millis()
+    );
     Ok(())
 }
 
@@ -125,9 +154,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
     async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() != 0, "WorkerMpi should not be run by rank 0");
 
+        eprintln!(
+            "[ZDIAG MPI-LOOP-START] pid={} tid={:?} world_rank={} local_rank={}",
+            std::process::id(), std::thread::current().id(),
+            self.worker.world_rank(), self.worker.local_rank()
+        );
+
+        // ZDIAG: heartbeat so non-rank-0 ranks log activity even when no broadcasts arrive
+        let mut _zd_last_hb = std::time::Instant::now();
+        let mut _zd_iters: u64 = 0;
         loop {
+            _zd_iters += 1;
+            if _zd_last_hb.elapsed().as_secs() >= 10 {
+                eprintln!(
+                    "[ZDIAG MPI-LOOP-HEARTBEAT] pid={} tid={:?} world_rank={} iters={}",
+                    std::process::id(), std::thread::current().id(),
+                    self.worker.world_rank(), _zd_iters
+                );
+                _zd_last_hb = std::time::Instant::now();
+            }
             // Non-rank 0 workers are executing inside a cluster and only receives MPI requests
-            self.worker.handle_mpi_broadcast_request().await?;
+            if let Err(e) = self.worker.handle_mpi_broadcast_request().await {
+                eprintln!(
+                    "[ZDIAG MPI-LOOP-ERR] pid={} tid={:?} world_rank={} err={:#}",
+                    std::process::id(), std::thread::current().id(),
+                    self.worker.world_rank(), e
+                );
+                return Err(e);
+            }
         }
     }
 }
@@ -849,31 +903,66 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
+        eprintln!(
+            "[ZDIAG RECOVERY-SPAWN] pid={} tid={:?} worker_id={}",
+            std::process::id(), std::thread::current().id(), worker_id
+        );
         tokio::spawn(async move {
+            let _zd_start = std::time::Instant::now();
+            eprintln!(
+                "[ZDIAG RECOVERY-TASK-START] pid={} tid={:?} worker_id={}",
+                std::process::id(), std::thread::current().id(), worker_id
+            );
             warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,
                 tokio::task::spawn_blocking(move || run_recovery(&*prover)),
             )
             .await;
+            let _zd_elapsed = _zd_start.elapsed().as_millis();
             match join {
                 Ok(Ok(Ok(()))) => {
+                    eprintln!(
+                        "[ZDIAG RECOVERY-TASK-OK] pid={} tid={:?} worker_id={} elapsed_ms={}",
+                        std::process::id(), std::thread::current().id(), worker_id, _zd_elapsed
+                    );
                     info!("[Recovery] {worker_id}: cluster handshake done; signalling Ready");
                     let msg = WorkerRecoveryComplete { worker_id: worker_id.clone() };
                     if let Err(e) = loop_tx.send_recovery_complete(msg) {
+                        eprintln!(
+                            "[ZDIAG RECOVERY-SEND-FAIL] pid={} tid={:?} worker_id={} err={}",
+                            std::process::id(), std::thread::current().id(), worker_id, e
+                        );
                         error!("[Recovery] {worker_id}: enqueue RecoveryComplete failed: {e}");
                     }
                 }
-                Ok(Ok(Err(e))) => error!(
-                    "[Recovery] {worker_id}: cluster handshake failed: {e:#}; worker stays in SettingUp"
-                ),
-                Ok(Err(e)) => {
-                    error!("[Recovery] {worker_id}: recovery task panicked: {e}")
+                Ok(Ok(Err(e))) => {
+                    eprintln!(
+                        "[ZDIAG RECOVERY-TASK-ERR] pid={} tid={:?} worker_id={} elapsed_ms={} err={:#}",
+                        std::process::id(), std::thread::current().id(), worker_id, _zd_elapsed, e
+                    );
+                    error!(
+                        "[Recovery] {worker_id}: cluster handshake failed: {e:#}; worker stays in SettingUp"
+                    );
                 }
-                Err(_) => error!(
-                    "[Recovery] {worker_id}: cluster handshake timed out after {:?}; worker is wedged in SettingUp and needs operator attention",
-                    Self::RECOVERY_TIMEOUT
-                ),
+                Ok(Err(e)) => {
+                    eprintln!(
+                        "[ZDIAG RECOVERY-TASK-PANIC] pid={} tid={:?} worker_id={} elapsed_ms={} err={}",
+                        std::process::id(), std::thread::current().id(), worker_id, _zd_elapsed, e
+                    );
+                    error!("[Recovery] {worker_id}: recovery task panicked: {e}");
+                }
+                Err(_) => {
+                    eprintln!(
+                        "[ZDIAG RECOVERY-TASK-TIMEOUT] pid={} tid={:?} worker_id={} elapsed_ms={} timeout_ms={} (worker wedged in SettingUp)",
+                        std::process::id(), std::thread::current().id(), worker_id, _zd_elapsed,
+                        Self::RECOVERY_TIMEOUT.as_millis()
+                    );
+                    error!(
+                        "[Recovery] {worker_id}: cluster handshake timed out after {:?}; worker is wedged in SettingUp and needs operator attention",
+                        Self::RECOVERY_TIMEOUT
+                    );
+                }
             }
         });
     }
@@ -1551,7 +1640,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 zisk_cluster_common::StreamMessage { data: data_u64 },
             ))
             .map_err(|e| anyhow!("Failed to serialize input stream broadcast: {e}"))?;
-            self.worker.prover_arc().mpi_broadcast(&mut serialized)?;
+
+            // ZDIAG: input stream broadcast from gRPC handler (rank 0)
+            let _zd_start = std::time::Instant::now();
+            eprintln!(
+                "[ZDIAG WORKER-INPUT-STREAM-BCAST-ENTER] pid={} tid={:?} payload_bytes={}",
+                std::process::id(), std::thread::current().id(), serialized.len()
+            );
+            let bcast_result = self.worker.prover_arc().mpi_broadcast(&mut serialized);
+            eprintln!(
+                "[ZDIAG WORKER-INPUT-STREAM-BCAST-EXIT] pid={} tid={:?} elapsed_ms={} ok={}",
+                std::process::id(), std::thread::current().id(),
+                _zd_start.elapsed().as_millis(), bcast_result.is_ok()
+            );
+            bcast_result?;
         }
 
         self.worker.append_raw_input(&input_data.payload)

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
@@ -12,6 +13,11 @@ use crate::{
 };
 
 use anyhow::Result;
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_APPEND_INPUT_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_WRITE_INPUT_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_SIGNAL_RESET_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub struct InputsShmemWriter {
     writers: Vec<Mutex<SharedMemoryWriter>>,
@@ -71,20 +77,47 @@ impl InputsShmemWriter {
             return Ok(());
         }
 
+        let _zd_seq = ZDIAG_WRITE_INPUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG WRITE-INPUT] seq={} pid={} tid={:?} size={}",
+            _zd_seq, std::process::id(), std::thread::current().id(), inputs.len()
+        );
+
         for writer in &self.writers {
             writer.lock().unwrap().write_at(8, inputs)?;
         }
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
+        let _zd_ms = _zd_start.elapsed().as_millis();
+        if _zd_ms > 50 {
+            eprintln!(
+                "[ZDIAG WRITE-INPUT-SLOW] seq={} pid={} tid={:?} elapsed_ms={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), _zd_ms
+            );
+        }
         Ok(())
     }
 
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
+        let _zd_seq = ZDIAG_APPEND_INPUT_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        // Throttle: log every 100th call OR if size is large OR if slow
+        let _zd_log = _zd_seq % 100 == 0 || inputs.len() > 65536;
+
         for writer in &self.writers {
             writer.lock().unwrap().append_input(inputs)?;
         }
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
+        let _zd_ms = _zd_start.elapsed().as_millis();
+        if _zd_log || _zd_ms > 50 {
+            eprintln!(
+                "[ZDIAG APPEND-INPUT] seq={} pid={} tid={:?} size={} elapsed_ms={}",
+                _zd_seq, std::process::id(), std::thread::current().id(),
+                inputs.len(), _zd_ms
+            );
+        }
         Ok(())
     }
 
@@ -103,6 +136,11 @@ impl InputsShmemWriter {
     /// `set_reset_flag()`, so the two steps must always run together.
     /// Cleared by the next job's `reset()`.
     pub fn signal_reset(&self) -> Result<()> {
+        let _zd_seq = ZDIAG_SIGNAL_RESET_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        eprintln!(
+            "[ZDIAG INPUTS-SIGNAL-RESET] seq={} pid={} tid={:?} (sets ResetFlag + posts sem_input_avail; does NOT wake hints sem_prec_read)",
+            _zd_seq, std::process::id(), std::thread::current().id()
+        );
         self.control_writer.set_reset_flag();
         self.notify_all_services()
     }

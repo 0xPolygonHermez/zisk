@@ -18,7 +18,12 @@ use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_BACKEND_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_BACKEND_SET_BARRIER_SEQ: AtomicU64 = AtomicU64::new(0);
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
@@ -174,13 +179,24 @@ impl ProverBackend {
     }
 
     pub(crate) fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
+        let _zd_seq = ZDIAG_BACKEND_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-EXECUTE-ENTER] seq={} pid={} tid={:?}",
+            _zd_seq, std::process::id(), std::thread::current().id()
+        );
         self.executor.set_stdin(stdin)?;
 
         let start = std::time::Instant::now();
 
-        self.proofman
-            .execute_from_lib(None)
-            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
+        let _zd_pm_start = std::time::Instant::now();
+        let pm_result = self.proofman.execute_from_lib(None);
+        eprintln!(
+            "[ZDIAG BACKEND-EXECUTE-PROOFMAN-DONE] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_pm_start.elapsed().as_millis(), pm_result.is_ok()
+        );
+        pm_result.map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let elapsed = start.elapsed();
 
@@ -188,6 +204,11 @@ impl ProverBackend {
 
         let publics = self.proofman.get_publics();
 
+        eprintln!(
+            "[ZDIAG BACKEND-EXECUTE-EXIT] seq={} pid={} tid={:?} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
         Ok(ExecuteOutput::new(elapsed, result, &publics))
     }
 
@@ -212,9 +233,20 @@ impl ProverBackend {
             }
         }
 
+        // ZDIAG: split_active_processes is a collective call; inactive ranks skip downstream collectives
+        let _zd_seq = ZDIAG_BACKEND_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        eprintln!(
+            "[ZDIAG BACKEND-STATS-SPLIT] seq={} pid={} tid={:?} world_rank={} local_rank={} is_active={} mpi_node_param={:?}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            rank_info.world_rank, rank_info.local_rank, is_active, _mpi_node
+        );
         self.proofman.split_active_processes(is_active);
 
         if !is_active {
+            eprintln!(
+                "[ZDIAG BACKEND-STATS-INACTIVE-EARLY-RETURN] seq={} pid={} tid={:?} world_rank={}",
+                _zd_seq, std::process::id(), std::thread::current().id(), rank_info.world_rank
+            );
             println!(
                 "{}: {}",
                 format!("Rank {}", rank_info.local_rank).bright_yellow().bold(),
@@ -224,12 +256,17 @@ impl ProverBackend {
             return Ok((rank_info.world_rank, rank_info.n_processes, None));
         }
 
-        self.proofman
-            .compute_witness_from_lib(
-                &debug_info,
-                ProofOptions::new(false, false, false, false, false, minimal_memory),
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
+        let _zd_t1 = std::time::Instant::now();
+        let cw_result = self.proofman.compute_witness_from_lib(
+            &debug_info,
+            ProofOptions::new(false, false, false, false, false, minimal_memory),
+        );
+        eprintln!(
+            "[ZDIAG BACKEND-STATS-CW-DONE] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_t1.elapsed().as_millis(), cw_result.is_ok()
+        );
+        cw_result.map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let (_, stats): (ZiskExecutorSummary, ExecutorStatsHandle) =
             self.executor.get_execution_result();
@@ -272,16 +309,32 @@ impl ProverBackend {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
+        let _zd_seq = ZDIAG_BACKEND_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_outer_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-VERIFY-ENTER] seq={} pid={} tid={:?}",
+            _zd_seq, std::process::id(), std::thread::current().id()
+        );
         let start = std::time::Instant::now();
 
         let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
         self.executor.set_stdin(stdin)?;
 
-        self.proofman
-            .verify_proof_constraints_from_lib(&debug_info)
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+        let _zd_pm_start = std::time::Instant::now();
+        let pm_result = self.proofman.verify_proof_constraints_from_lib(&debug_info);
+        eprintln!(
+            "[ZDIAG BACKEND-VERIFY-PROOFMAN-DONE] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_pm_start.elapsed().as_millis(), pm_result.is_ok()
+        );
+        pm_result.map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
         let elapsed = start.elapsed();
+        eprintln!(
+            "[ZDIAG BACKEND-VERIFY-EXIT] seq={} pid={} tid={:?} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_outer_start.elapsed().as_millis()
+        );
 
         let (result, _stats) = self.executor.get_execution_result();
 
@@ -315,22 +368,44 @@ impl ProverBackend {
 
         self.proofman.set_partition(1, vec![0], 0)?;
 
+        // ZDIAG: barrier 1 of 2 in prove() — collective
+        let _zd_bseq = ZDIAG_BACKEND_SET_BARRIER_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_bstart = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-BARRIER1-ENTER] bseq={} pid={} tid={:?}",
+            _zd_bseq, std::process::id(), std::thread::current().id()
+        );
         self.proofman.set_barrier();
-        let proof = self
-            .proofman
-            .generate_proof_from_lib(
-                ProvePhaseInputs::Full(),
-                ProofOptions::new(
-                    false,
-                    prover_options.aggregation,
-                    true,
-                    minimal,
-                    prover_options.verify_proofs,
-                    prover_options.minimal_memory,
-                ),
-                ProvePhase::Full,
-            )
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-BARRIER1-EXIT] bseq={} pid={} tid={:?} elapsed_ms={}",
+            _zd_bseq, std::process::id(), std::thread::current().id(),
+            _zd_bstart.elapsed().as_millis()
+        );
+
+        let _zd_pseq = ZDIAG_BACKEND_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_pstart = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-PROOFMAN-ENTER] seq={} pid={} tid={:?}",
+            _zd_pseq, std::process::id(), std::thread::current().id()
+        );
+        let proof_result = self.proofman.generate_proof_from_lib(
+            ProvePhaseInputs::Full(),
+            ProofOptions::new(
+                false,
+                prover_options.aggregation,
+                true,
+                minimal,
+                prover_options.verify_proofs,
+                prover_options.minimal_memory,
+            ),
+            ProvePhase::Full,
+        );
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-PROOFMAN-EXIT] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+            _zd_pseq, std::process::id(), std::thread::current().id(),
+            _zd_pstart.elapsed().as_millis(), proof_result.is_ok()
+        );
+        let proof = proof_result.map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
 
         let proof = match proof {
             ProvePhaseResult::Full(_, proof) => proof,
@@ -345,7 +420,19 @@ impl ProverBackend {
         #[cfg(feature = "stats")]
         _stats.store_stats();
 
+        // ZDIAG: barrier 2 of 2 in prove() — collective
+        let _zd_bseq2 = ZDIAG_BACKEND_SET_BARRIER_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_bstart2 = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-BARRIER2-ENTER] bseq={} pid={} tid={:?}",
+            _zd_bseq2, std::process::id(), std::thread::current().id()
+        );
         self.proofman.set_barrier();
+        eprintln!(
+            "[ZDIAG BACKEND-PROVE-BARRIER2-EXIT] bseq={} pid={} tid={:?} elapsed_ms={}",
+            _zd_bseq2, std::process::id(), std::thread::current().id(),
+            _zd_bstart2.elapsed().as_millis()
+        );
 
         let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
 
@@ -542,15 +629,40 @@ impl ProverBackend {
     }
 
     pub(crate) fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
+        // ZDIAG: per-call timing of the actual MPI call (P2P fan-out underneath)
+        let _zd_start = std::time::Instant::now();
+        let _zd_in_size = data.len();
         self.proofman.mpi_broadcast(data);
+        let _zd_ms = _zd_start.elapsed().as_millis();
+        if _zd_ms > 500 {
+            eprintln!(
+                "[ZDIAG BACKEND-MPI-BCAST-SLOW] pid={} tid={:?} in_size={} out_size={} elapsed_ms={}",
+                std::process::id(), std::thread::current().id(),
+                _zd_in_size, data.len(), _zd_ms
+            );
+        }
         Ok(())
     }
 
     pub(crate) fn notify_cluster_cancellation(&self) {
+        eprintln!(
+            "[ZDIAG BACKEND-NOTIFY-CANCEL] pid={} tid={:?}",
+            std::process::id(), std::thread::current().id()
+        );
         self.proofman.notify_cancellation();
     }
 
     pub(crate) fn cluster_barrier(&self) {
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG BACKEND-CLUSTER-BARRIER-ENTER] pid={} tid={:?}",
+            std::process::id(), std::thread::current().id()
+        );
         self.proofman.set_barrier();
+        eprintln!(
+            "[ZDIAG BACKEND-CLUSTER-BARRIER-EXIT] pid={} tid={:?} elapsed_ms={}",
+            std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
     }
 }

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -6,6 +7,10 @@ use asm_runner::{AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
 use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
+
+// ZDIAG: hang-instrumentation - remove after diagnosis
+static ZDIAG_RESET_SEQ: AtomicU64 = AtomicU64::new(0);
+static ZDIAG_SIGCANCEL_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Configuration for assembly resources.
 #[derive(Clone)]
@@ -187,7 +192,14 @@ impl AsmResources {
     /// Call once per partition start (not per stream reset).
     /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
+        let Some(hints_stream) = &self.shared.hints_stream else {
+            eprintln!(
+                "[ZDIAG SET-ACTIVE-SERVICES-NOOP] pid={} tid={:?} world_rank={} (no hints stream)",
+                std::process::id(), std::thread::current().id(),
+                self.shared.config.world_rank
+            );
+            return Ok(());
+        };
         let processor = hints_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
@@ -197,6 +209,11 @@ impl AsmResources {
         } else {
             &AsmServices::SERVICES[..2]
         };
+        eprintln!(
+            "[ZDIAG SET-ACTIVE-SERVICES] pid={} tid={:?} world_rank={} is_first_partition={} active_count={}",
+            std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank, is_first_partition, services.len()
+        );
         processor.hints_sink().set_active_services(services)
     }
 
@@ -240,14 +257,60 @@ impl AsmResources {
     /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
     /// `RECOVERY_TIMEOUT` covers that slip.
     pub fn signal_cancellation(&self) -> Result<()> {
-        self.shared.inputs_shmem_writer.signal_reset()
+        // ZDIAG: only wakes input semaphores, NOT hints sem_read (analysis H1)
+        let _zd_seq = ZDIAG_SIGCANCEL_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG SIGCANCEL-ENTER] seq={} pid={} tid={:?} world_rank={} (note: does NOT wake hints sem_read)",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank
+        );
+        let result = self.shared.inputs_shmem_writer.signal_reset();
+        eprintln!(
+            "[ZDIAG SIGCANCEL-EXIT] seq={} pid={} tid={:?} elapsed_ms={} ok={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis(), result.is_ok()
+        );
+        result
     }
 
     pub fn reset(&self) {
+        // ZDIAG: hang-instrumentation
+        let _zd_seq = ZDIAG_RESET_SEQ.fetch_add(1, AtomicOrdering::Relaxed);
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG ASMRES-RESET-ENTER] seq={} pid={} tid={:?} world_rank={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank
+        );
+
         if let Some(s) = &self.shared.hints_stream {
-            s.lock().expect("hints_stream mutex poisoned").reset();
+            let _zd_lock_start = std::time::Instant::now();
+            let mut g = s.lock().expect("hints_stream mutex poisoned");
+            let _zd_lock_ms = _zd_lock_start.elapsed().as_millis();
+            if _zd_lock_ms > 50 {
+                eprintln!(
+                    "[ZDIAG ASMRES-RESET-LOCK-SLOW] seq={} pid={} tid={:?} hints_stream_lock_ms={} (likely behind a stuck submit/drainer)",
+                    _zd_seq, std::process::id(), std::thread::current().id(), _zd_lock_ms
+                );
+            }
+            let _zd_rs_start = std::time::Instant::now();
+            g.reset();
+            let _zd_rs_ms = _zd_rs_start.elapsed().as_millis();
+            if _zd_rs_ms > 100 {
+                eprintln!(
+                    "[ZDIAG ASMRES-RESET-HSTREAM-SLOW] seq={} pid={} tid={:?} reset_ms={}",
+                    _zd_seq, std::process::id(), std::thread::current().id(), _zd_rs_ms
+                );
+            }
         }
         self.shared.inputs_shmem_writer.reset();
+
+        eprintln!(
+            "[ZDIAG ASMRES-RESET-EXIT] seq={} pid={} tid={:?} total_ms={}",
+            _zd_seq, std::process::id(), std::thread::current().id(),
+            _zd_start.elapsed().as_millis()
+        );
     }
 
     pub fn config(&self) -> &AsmResourcesConfig {
@@ -295,6 +358,13 @@ impl AsmResources {
 
 impl Drop for AsmResources {
     fn drop(&mut self) {
+        // ZDIAG: AsmResources being dropped — tears down ASM C children + shmem
+        let _zd_start = std::time::Instant::now();
+        eprintln!(
+            "[ZDIAG ASMRES-DROP-ENTER] pid={} tid={:?} world_rank={}",
+            std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank
+        );
         // Shut down ASM microservices
         self.shared.inputs_shmem_writer.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
@@ -304,18 +374,38 @@ impl Drop for AsmResources {
         }
 
         tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.world_rank);
+        eprintln!(
+            "[ZDIAG ASMRES-DROP-STOP-SERVICES-ENTER] pid={} tid={:?} world_rank={}",
+            std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank
+        );
         if let Err(e) = self.asm_services.stop_asm_services() {
+            eprintln!(
+                "[ZDIAG ASMRES-DROP-STOP-SERVICES-ERR] pid={} tid={:?} world_rank={} err={:#}",
+                std::process::id(), std::thread::current().id(),
+                self.shared.config.world_rank, e
+            );
             tracing::error!(
                 ">>> [{}] Failed to stop ASM microservices: {}",
                 self.shared.config.world_rank,
                 e
             );
         }
+        eprintln!(
+            "[ZDIAG ASMRES-DROP-STOP-SERVICES-EXIT] pid={} tid={:?} world_rank={} elapsed_ms_so_far={}",
+            std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank, _zd_start.elapsed().as_millis()
+        );
         // The ASM service children don't unlink shmem on exit (the
         // `delete_*_shm` flags aren't set for them), so the parent must
         // unlink the `/dev/shm/{shm_prefix}*` and `sem.{sem_prefix}*`
         // entries here. Otherwise GBs of `_input`, `_ram`, `_rom` files
         // leak until the next worker startup runs `cleanup_stale_shmem`.
         self.asm_services.cleanup_my_shmem();
+        eprintln!(
+            "[ZDIAG ASMRES-DROP-EXIT] pid={} tid={:?} world_rank={} total_ms={}",
+            std::process::id(), std::thread::current().id(),
+            self.shared.config.world_rank, _zd_start.elapsed().as_millis()
+        );
     }
 }
