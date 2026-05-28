@@ -8,7 +8,7 @@ pub fn diagnostic_riscv_fd() {
         assert!(c > 3.2 && c < 3.4);
     }
     //fadd_d(1.1, 2.2, 3.3);
-    println!("diagnostic_riscv_fd() success");
+    println!("All RISC-V floating-point diagnostics passed!");
 }
 
 // fadd.d fadd.s fclass.d fclass.s fcvt.d.l fcvt.d.lu fcvt.d.s fcvt.d.w fcvt.d.wu fcvt.l.d fcvt.l.s fcvt.lu.d fcvt.lu.s fcvt.s.d fcvt.s.l fcvt.s.lu fcvt.s.w fcvt.s.wu fcvt.w.d fcvt.w.s fcvt.wu.d fcvt.wu.s fdiv.d fdiv.s feq.d feq.s fld fle.d fle.s flt.d flt.s flw fmadd.d fmadd.s fmax.d fmax.s fmin.d fmin.s fmsub.d fmsub.s fmul.d fmul.s fmv.w.x fmv.x.w fnmadd.d fnmadd.s fnmsub.d fnmsub.s fsd fsgnj.d fsgnj.s fsgnjn.d fsgnjn.s fsgnjx.d fsgnjx.s fsqrt.d fsqrt.s fsub.d fsub.s fsw

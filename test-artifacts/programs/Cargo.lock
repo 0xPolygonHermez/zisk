@@ -1645,6 +1645,7 @@ name = "diagnostic"
 version = "0.1.0"
 dependencies = [
  "ziskos",
+ "zkvm-interface",
 ]
 
 [[package]]
