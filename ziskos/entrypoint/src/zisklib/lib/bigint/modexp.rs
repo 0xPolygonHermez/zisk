@@ -1,9 +1,6 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec::Vec;
-
 use crate::scratch_accelerators::{new_scratch_vec_filled, scratch_vec_from_slice, ScratchVec};
 
 use crate::zisklib::fcall_bin_decomp;
