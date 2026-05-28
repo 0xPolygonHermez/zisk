@@ -337,16 +337,28 @@ void server_setup (void)
             exit(-1);
         }
 
-        // Map input address space
+        // The maximum input size is MAX_INPUT_SIZE = 1GB, but in most of the cases the actual input
+        // size is much smaller, so we can map this address space in two parts:
+        // - 128 MB with MAP_LOCKED to ensure it is always resident in RAM
+        // - The rest of the 1 GB without MAP_LOCKED, taking RAM physical pages only if used
+
+        // Check the input sizes
+        if (LOCKED_INPUT_SIZE > MAX_INPUT_SIZE)
+        {
+            asm_printf("ERROR: LOCKED_INPUT_SIZE=%lu is higher than MAX_INPUT_SIZE=%lu\n", LOCKED_INPUT_SIZE, MAX_INPUT_SIZE);
+            exit(-1);
+        }
+
+        // Map 128 MB of input address space locked to physical RAM
 #ifdef USE_HUGE_PAGES
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
         if (pInput == MAP_FAILED)
         {
             asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
         }
 #else
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
 #endif
         if (pInput == MAP_FAILED)
         {
@@ -356,6 +368,28 @@ void server_setup (void)
         if ((uint64_t)pInput != INPUT_ADDR)
         {
             asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
+            exit(-1);
+        }
+
+        // Map the rest of the input address space without MAP_LOCKED
+#ifdef USE_HUGE_PAGES
+        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_HUGETLB, shmem_input_fd, LOCKED_INPUT_SIZE);
+        if (pInput == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
+            pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, LOCKED_INPUT_SIZE);
+        }
+#else
+        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, LOCKED_INPUT_SIZE);
+#endif
+        if (pInput == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if ((uint64_t)pInput != INPUT_ADDR + LOCKED_INPUT_SIZE)
+        {
+            asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR + LOCKED_INPUT_SIZE);
             exit(-1);
         }
         
