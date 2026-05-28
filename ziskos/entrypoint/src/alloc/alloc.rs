@@ -34,16 +34,23 @@ pub unsafe fn inline_bump_alloc_aligned(bytes: usize, align: usize) -> *mut u8 {
     // SAFETY: Single threaded, so nothing else can touch this while we're working.
     let mut heap_pos = unsafe { HEAP_POS };
 
+    debug_assert!(align.is_power_of_two(), "align must be a power of two");
+
+    // `align - 1` is safe because align >= 1 (enforced by debug_assert above).
     let offset = heap_pos & (align - 1);
     if offset != 0 {
-        heap_pos += align - offset;
+        heap_pos = heap_pos.checked_add(align - offset).expect("heap_pos alignment overflow");
     }
 
     let ptr = heap_pos as *mut u8;
-    heap_pos += bytes;
+
+    // Guard against integer overflow in the size addition *before* the OOM check.
+    // Without this, a large `bytes` value wraps heap_pos to a tiny number, the
+    // OOM check passes on the wrapped value, and HEAP_POS is corrupted.
+    heap_pos = heap_pos.checked_add(bytes).expect("allocation size overflow");
 
     // Check to make sure heap doesn't collide with SYSTEM memory.
-    if HEAP_TOP < heap_pos {
+    if unsafe { HEAP_TOP } < heap_pos {
         panic!("OOM limit of heap with bump allocator");
     }
 
