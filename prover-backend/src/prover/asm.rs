@@ -612,8 +612,8 @@ impl ProverEngine for AsmProver {
         }
     }
 
-    fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        self.core_prover.backend.set_active_services(is_first_partition)
+    fn set_active_services(&self, is_first_process: bool) -> Result<()> {
+        self.core_prover.backend.set_active_services(is_first_process)
     }
 
     fn reset(&self) -> Result<()> {
