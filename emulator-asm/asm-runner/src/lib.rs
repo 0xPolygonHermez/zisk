@@ -122,8 +122,8 @@ pub fn sem_read_name(prefix: &str, asm_service: AsmService) -> String {
 }
 
 /// Shared memory name for precompile hints data control
-pub fn shmem_control_writer_name(shm_prefix: &str, service: AsmService) -> String {
-    build_shmem_name(shm_prefix, service, "control_input")
+pub fn shmem_control_writer_name(shm_prefix: &str) -> String {
+    build_shmem_name2(shm_prefix, "control_input")
 }
 
 pub fn shmem_control_reader_name(prefix: &str, asm_service: AsmService) -> String {
