@@ -452,13 +452,21 @@ impl Coordinator {
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!("[Setup] Failed to send SetupProgram to worker {}: {}", worker_id, e);
-                // Remove unreachable worker from pending set — don't block on it.
                 self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
                     s.pending.remove(worker_id);
                 });
+                // Best-effort disconnect: if the worker didn't receive the message, it won't ACK and the setup will never complete, so disconnect it to unblock future setups. If the worker is still alive but just flakey, it will re-register and be healthy for the next setup attempt.
+                if let Some(gen) = self.workers_pool.connection_generation(worker_id).await {
+                    if let Err(de) =
+                        self.workers_pool.disconnect_worker_if_generation(worker_id, gen).await
+                    {
+                        warn!(
+                            "[Setup] Failed to disconnect {} after failed send: {}",
+                            worker_id, de
+                        );
+                    }
+                }
             }
-            // Workers were already flipped to `SettingUp` atomically in
-            // `try_reserve_all_for_setup`; no per-worker mark needed here.
         }
 
         // Edge case: all sends failed — complete immediately with failure.
@@ -1686,8 +1694,12 @@ mod tests {
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
     }
 
+    /// A non-KeepComputing reconnect (here last_known_job_id=None, directive=None)
+    /// must drop the stale pending_recovery entry rather than rely on a WRC the
+    /// worker won't reliably send. A stray late WRC on the new stream is then a
+    /// no-op (no pending_recovery record).
     #[tokio::test]
-    async fn test_recovery_complete_survives_reconnect() {
+    async fn test_reconnect_without_live_job_clears_pending_recovery() {
         use zisk_cluster_common::WorkerReconnectRequestDto;
 
         let (coordinator, workers, job_id) =
@@ -1696,10 +1708,6 @@ mod tests {
         let w0_id = workers[0].0.clone();
 
         coordinator.fail_job(&job_id, "task failed").await.unwrap();
-        assert_eq!(
-            coordinator.workers_pool.worker_state(&w0_id).await,
-            Some(WorkerState::SettingUp)
-        );
         assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
 
         coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
@@ -1713,16 +1721,10 @@ mod tests {
         let (accepted, _msg, _directive, _setup) =
             coordinator.handle_stream_reconnection(req, Box::new(sender2)).await;
         assert!(accepted);
-
-        // Reconnect must preserve the recovery intent.
-        assert_eq!(
-            coordinator.workers_pool.worker_state(&w0_id).await,
-            Some(WorkerState::SettingUp)
-        );
-
-        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
-        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
         assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+
+        // A late WRC is now a no-op since pending_recovery is empty.
+        coordinator.handle_stream_recovery_complete(&w0_id).await.unwrap();
     }
 
     /// `WorkerRecoveryComplete` arriving on the new stream before the failure
@@ -3095,5 +3097,146 @@ mod tests {
             coordinator.workers_pool.worker_state(&worker_id).await,
             Some(WorkerState::Idle)
         );
+    }
+
+    #[tokio::test]
+    async fn test_setup_ack_drops_stale_pending_recovery() {
+        use zisk_cluster_common::SetupProgramAckDto;
+
+        let (coordinator, workers, _) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+        coordinator.pending_recovery.write().await.insert(w0_id.clone(), Utc::now());
+
+        coordinator
+            .handle_stream_setup_program_ack(SetupProgramAckDto {
+                job_id: JobId::new().as_string(),
+                worker_id: w0_id.clone(),
+                hash_id: "h".into(),
+                success: true,
+                error_message: None,
+                vk: vec![1, 2, 3],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_cancelstalejob_clears_pending_recovery() {
+        use zisk_cluster_common::{ReconnectionDirectiveDto, WorkerReconnectRequestDto};
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job(&job_id, "simulated").await.unwrap();
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+
+        coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, directive, _setup) = coordinator
+            .handle_stream_reconnection(
+                WorkerReconnectRequestDto {
+                    worker_id: w0_id.clone(),
+                    compute_capacity: ComputeCapacity::from(1u32),
+                    last_known_job_id: Some(job_id),
+                },
+                Box::new(sender),
+            )
+            .await;
+
+        assert!(accepted);
+        assert_eq!(directive, Some(ReconnectionDirectiveDto::CancelStaleJob));
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
+    #[tokio::test]
+    async fn test_reconnect_keepcomputing_preserves_pending_recovery() {
+        use zisk_cluster_common::{ReconnectionDirectiveDto, WorkerReconnectRequestDto};
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.pending_recovery.write().await.insert(w0_id.clone(), Utc::now());
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, directive, _setup) = coordinator
+            .handle_stream_reconnection(
+                WorkerReconnectRequestDto {
+                    worker_id: w0_id.clone(),
+                    compute_capacity: ComputeCapacity::from(1u32),
+                    last_known_job_id: Some(job_id),
+                },
+                Box::new(sender),
+            )
+            .await;
+
+        assert!(accepted);
+        assert_eq!(directive, Some(ReconnectionDirectiveDto::KeepComputing));
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+    }
+
+    /// Integration of Fix 1 + Fix 3 across the full OOM-restart sequence.
+    /// fail_job parks the worker; reconnect clears pending_recovery (Fix 1);
+    /// a subsequent SetupProgramAck flips it Ready (the path that was wedged
+    /// in production). active_setups is left empty here so we manually mark
+    /// SettingUp post-reconnect to mimic what `read_all_setup_dtos` does in
+    /// production with a seeded setup.
+    #[tokio::test]
+    async fn test_fail_job_then_reconnect_then_setup_ack_yields_ready() {
+        use zisk_cluster_common::{SetupProgramAckDto, WorkerReconnectRequestDto};
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Contributions, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        coordinator.fail_job(&job_id, "simulated OOM").await.unwrap();
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0_id));
+        coordinator.workers_pool.disconnect_worker(&w0_id).await.unwrap();
+
+        let (sender, _msgs) = MockMessageSender::new();
+        let (accepted, _msg, _directive, _setup) = coordinator
+            .handle_stream_reconnection(
+                WorkerReconnectRequestDto {
+                    worker_id: w0_id.clone(),
+                    compute_capacity: ComputeCapacity::from(1u32),
+                    last_known_job_id: Some(job_id),
+                },
+                Box::new(sender),
+            )
+            .await;
+        assert!(accepted);
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0_id));
+
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(&w0_id, WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        coordinator
+            .handle_stream_setup_program_ack(SetupProgramAckDto {
+                job_id: JobId::new().as_string(),
+                worker_id: w0_id.clone(),
+                hash_id: "h".into(),
+                success: true,
+                error_message: None,
+                vk: vec![1, 2, 3],
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
     }
 }
