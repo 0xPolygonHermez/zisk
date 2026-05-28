@@ -6,18 +6,16 @@ set -euo pipefail
 FAIL=0
 TARGET=riscv64ima-zisk-zkvm-elf
 
-# Unoptimised, no LTO, no debug info.
-# opt-level=0 keeps every crate as a separate ELF object with intact symbol
-# tables; LTO would merge everything into a single bitcode module where
-# per-object undefined references are no longer visible to nm, which would
-# break the global-allocator check below.  Debug symbols are suppressed to
-# keep the artifact small and the nm output clean.
+# Release+LTO: fat LTO gives the compiler full optimisation visibility.
+# The resulting archive is the production artifact.
 cargo +zisk build -p ziskos-staticlib \
   --target "$TARGET" \
-  --config 'profile.dev.debug=false'
+  --release \
+  --config 'profile.release.debug=false' \
+  --config 'profile.release.lto="fat"'
 
-LIBZISKOS="target/$TARGET/debug/libziskos_staticlib.a"
-if [ -z "$LIBZISKOS" ]; then
+LIBZISKOS="target/$TARGET/release/libziskos_staticlib.a"
+if [ ! -f "$LIBZISKOS" ]; then
   echo "FAIL: libziskos_staticlib.a not found"
   exit 1
 fi
@@ -32,8 +30,6 @@ else
 fi
 
 # Use llvm-nm from the zisk toolchain sysroot for consistent symbol output.
-# Standard nm also works for regular ELF objects (no fat LTO bitcode here),
-# but llvm-nm is already available and produces identical results.
 rustup component add llvm-tools --toolchain zisk 2>/dev/null || true
 LLVM_NM=$(rustup run zisk sh -c 'find "$(rustc --print sysroot)" -name "llvm-nm" -type f | head -1')
 if [[ -z "$LLVM_NM" ]]; then
@@ -82,58 +78,77 @@ for SYM in "${REQUIRED_SYMBOLS[@]}"; do
   fi
 done
 
-# ── No global-allocator usage in accelerator code ─────────────────────────────
-# Accelerator functions must allocate exclusively through the scratch arena
-# (BumpScratch), never through the global allocator.
-#
-# The check looks for "U __rustc::__rust_alloc" — an undefined reference to the
-# global allocator entry point — in object files that belong to the ziskos crates.
-#
-# Why this catches all global-allocator use:
-#   The alloc-crate functions that lead to __rust_alloc (Global::allocate,
-#   alloc::alloc::alloc, exchange_malloc for Box, …) are all marked #[inline].
-#   The Rust compiler emits #[inline] functions into every crate that uses them
-#   as LLVM "available_externally" definitions — even at opt-level=0 — so their
-#   bodies, which reference __rust_alloc, appear in the caller's object file as
-#   undefined (U) symbols.  Any ziskos object that uses the global allocator
-#   through any path (Vec<T, Global>, Box, String, Arc, …) therefore carries
-#   "U __rustc::__rust_alloc" in its symbol table.
-#
-# Symbol name:
-#   The raw mangled form (_RNvCsd..._7___rustc12___rust_alloc) embeds a
-#   build-specific crate hash, so -C (demangle) is required before matching.
-#
-# Filter:
-#   llvm-nm -A -C output format:
-#     <archive_path>:<member_name>: <addr> <type> <demangled_symbol>
-#   awk -F: isolates field $2 (the member filename).  Members whose name starts
-#   with "ziskos" are the project crates; alloc, core, proofman_verifier, serde,
-#   num_bigint, and other dependencies that legitimately call __rust_alloc are
-#   excluded.
-#
-# Known limitation — codegen-units=1:
-#   Building with codegen-units=1 collapses the entire ziskos crate into a
-#   single object file.  That object both defines "T __rustc::__rust_alloc"
-#   (the #[global_allocator] wrapper in alloc/bump.rs) and contains all
-#   accelerator code.  Any "U __rustc::__rust_alloc" that a violation would
-#   produce resolves internally to the definition in the same CGU and therefore
-#   does not appear as "U" — the check is completely blind to violations.
-#
-#   With codegen-units ≥ 2 (Rust's dev-profile default is 256) the allocator
-#   definition lands in its own object, separate from the accelerator CGUs, so
-#   violations remain visible as "U" symbols.  Do not add
-#   --config 'profile.dev.codegen-units=1' to this build.
-RUST_ALLOC_DIRECT=$("$LLVM_NM" -C -A "$LIBZISKOS" 2>/dev/null | \
-  grep " U __rustc::__rust_alloc" | \
-  awk -F: '$2 ~ /^ziskos/' || true)
+# Symbols used in the link test: all of REQUIRED_SYMBOLS except _start
+# (_start is provided by the archive itself, not declared as extern in main.rs)
+LINK_SYMBOLS=()
+for SYM in "${REQUIRED_SYMBOLS[@]}"; do
+  [[ "$SYM" != "_start" ]] && LINK_SYMBOLS+=("$SYM")
+done
 
-if [ -n "$RUST_ALLOC_DIRECT" ]; then
-  echo "FAIL: __rustc::__rust_alloc referenced from ziskos object files:"
-  echo "$RUST_ALLOC_DIRECT"
+# ── Link test: verify no global allocator call reaches the C consumer ──────────
+# Build a minimal no_std Cargo binary that provides main() and calls every
+# exported symbol.  The archive supplies _start (which calls main), the zisk
+# toolchain supplies the linker script and all platform symbols.
+#
+# If every exported function is allocation-free the binary links cleanly.
+# If any function transitively reaches __rust_alloc, ForbiddenAlloc's body
+# references __ziskos_forbidden_alloc — an intentionally undefined symbol —
+# and the linker fails with a clear "undefined symbol" error.
+LINK_TMPDIR=$(mktemp -d)
+mkdir -p "$LINK_TMPDIR/src"
+
+# Absolute path so the build.rs works regardless of working directory.
+LIBZISKOS_DIR=$(dirname "$(realpath "$LIBZISKOS")")
+
+cat > "$LINK_TMPDIR/Cargo.toml" << 'CARGO_EOF'
+[package]
+name = "ziskos_link_test"
+version = "0.1.0"
+edition = "2021"
+CARGO_EOF
+
+# build.rs: link against the pre-built release archive.
+cat > "$LINK_TMPDIR/build.rs" << BUILD_RS_EOF
+fn main() {
+    println!("cargo:rustc-link-search=${LIBZISKOS_DIR}");
+    println!("cargo:rustc-link-lib=static=ziskos_staticlib");
+}
+BUILD_RS_EOF
+
+# main.rs: no_std binary; main() is the user entry point, _start comes from
+# the archive.  Wrong argument types are fine — the linker only resolves names.
+{
+  printf '#![no_std]\n#![no_main]\n#![allow(improper_ctypes)]\n\nextern "C" {\n'
+  for SYM in "${LINK_SYMBOLS[@]}"; do
+    printf '    fn %s();\n' "$SYM"
+  done
+  printf '}\n\n#[no_mangle]\npub extern "C" fn main() -> i32 {\n    unsafe {\n'
+  for SYM in "${LINK_SYMBOLS[@]}"; do
+    printf '        %s();\n' "$SYM"
+  done
+  printf '    }\n    0\n}\n\n#[panic_handler]\nfn panic(_: &core::panic::PanicInfo) -> ! { loop {} }\n'
+} > "$LINK_TMPDIR/src/main.rs"
+
+cat "$LINK_TMPDIR/src/main.rs"
+
+LINK_TEST_OUTPUT=$(cargo +zisk build \
+  --manifest-path "$LINK_TMPDIR/Cargo.toml" \
+  --target "$TARGET" \
+  2>&1 || true)
+
+if echo "$LINK_TEST_OUTPUT" | grep -q "__ziskos_forbidden_alloc"; then
+  echo "FAIL: link test — global allocator reachable from exported symbols:"
+  echo "$LINK_TEST_OUTPUT" | grep "__ziskos_forbidden_alloc"
+  FAIL=1
+elif echo "$LINK_TEST_OUTPUT" | grep -qE "^error"; then
+  echo "FAIL: link test failed unexpectedly:"
+  echo "$LINK_TEST_OUTPUT"
   FAIL=1
 else
-  echo "OK: no __rustc::__rust_alloc references from ziskos object files"
+  echo "OK: link test passed — executable linked without errors"
 fi
+
+rm -rf "$LINK_TMPDIR"
 
 if [ "$FAIL" -eq 0 ]; then
   echo "OK: libziskos_staticlib.a passes all checks"
