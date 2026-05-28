@@ -184,15 +184,22 @@ impl AsmResources {
 
     /// Update the active ASM services for this partition.
     ///
-    /// Call once per partition start (not per stream reset).
-    /// `is_first_partition` controls whether the ROM histogram service (RH) is active.
+    /// Call once per partition start (not per stream reset). RH participates
+    /// in flow control only on `world_rank == 0` — the rank that actually
+    /// spawns `AsmRunnerRH` (gated by `dctx_is_first_process()` in
+    /// `EmulatorAsm::execute`). On other ranks the C RH child is alive but
+    /// idle: it never enters `_wait_for_prec_avail`, so its
+    /// `precompile_read_address` stays at 0 forever. Including it in
+    /// `HintsShmem::submit`'s slowest-consumer wait would wedge the producer
+    /// once a job's cumulative hint output exceeds the ~128 MB buffer.
     pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
         let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
         let processor = hints_stream
             .lock()
             .map_err(|e| anyhow::anyhow!("Mutex lock poisoned: {e}"))?
             .get_processor();
-        let services = if is_first_partition {
+        let has_rh_runner = self.shared.config.world_rank == 0;
+        let services = if is_first_partition && has_rh_runner {
             &AsmServices::SERVICES[..]
         } else {
             &AsmServices::SERVICES[..2]
