@@ -1,9 +1,9 @@
 # Debug build flags
 ifeq ($(dbg),1)
-      CFLAGS = -g -D DEBUG -fPIC
+      CFLAGS = -g -D DEBUG -fPIC -Wno-address-of-packed-member
       ASMFLAGS = -g
 else
-      CFLAGS = -O3 -fPIC
+      CFLAGS = -O3 -fPIC -Wno-address-of-packed-member
 endif
 
 # Platform / arch detection
@@ -113,7 +113,7 @@ $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 
 # Test binary
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(LIB_FILE)
-	gcc $(CFLAGS) $(INCLUDES) $< -lc $(LIB_FILE) -o $@ -lgmp -lstdc++ -lgmpxx
+	gcc $(CFLAGS) $(INCLUDES) $< -lc $(LIB_FILE) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
 
 # x86_64 NASM rules (used only when FIELD_BACKEND=asm_x86_64)
 $(BUILD_DIR)/%_asm.o: $(SRC_DIR)/ffiasm/%.asm | $(BUILD_DIR)
