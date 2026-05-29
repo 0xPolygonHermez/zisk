@@ -246,42 +246,45 @@ void server_setup (void)
             }
         }
 
-        // Open the input shared memory as read-only
-        shmem_input_fd = shm_open(shmem_input_name, O_RDONLY, 0666);
-        if (shmem_input_fd < 0)
+        if (!just_create_all_shm && !just_create_non_input_shm)
         {
-            asm_printf("ERROR: Failed calling input RO shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            exit(-1);
-        }
+            // Open the input shared memory as read-only
+            shmem_input_fd = shm_open(shmem_input_name, O_RDONLY, 0666);
+            if (shmem_input_fd < 0)
+            {
+                asm_printf("ERROR: Failed calling input RO shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+                exit(-1);
+            }
 
-        // Map input address space
+            // Map input address space
 #ifdef USE_HUGE_PAGES
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
-        if (pInput == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
-        }
+            void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
+            if (pInput == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            }
 #else
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
 #endif
-        if (pInput == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pInput != INPUT_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
-            exit(-1);
-        }
-        
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
+            if (pInput == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pInput != INPUT_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
+                exit(-1);
+            }
+            
+            // Report duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
+            }
         }
     }
 
