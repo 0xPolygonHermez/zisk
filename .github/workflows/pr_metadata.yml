@@ -20,11 +20,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Least-privilege: this check only reads the pull_request event payload.
-permissions:
-  contents: read
-  pull-requests: read
-
 jobs:
   check-pr-metadata:
     name: Check PR metadata
