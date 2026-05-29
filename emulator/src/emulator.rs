@@ -237,7 +237,7 @@ impl ZiskEmulator {
         with_mem_ops: bool,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, with_mem_ops);
 
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus, with_mem_ops);
@@ -253,7 +253,7 @@ impl ZiskEmulator {
         data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
 
         // Run the emulation
         emu.process_emu_traces(min_traces, chunk_id, data_bus);
