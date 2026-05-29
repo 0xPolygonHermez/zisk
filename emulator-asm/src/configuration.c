@@ -462,6 +462,11 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "--just_create_all_shm") == 0)
             {
+                if (just_create_non_input_shm) {
+                    asm_printf("ERROR: Detected both --just_create_all_shm and --just_create_non_input_shm, which is not possible since they are contradictory\n");
+                    print_usage();
+                    exit(-1);
+                }
                 // Create all shared memories...
                 create_input_shm = true;
                 create_output_shm = true;
@@ -480,6 +485,11 @@ void parse_arguments(int argc, char *argv[])
             }
             if (strcmp(argv[i], "--just_create_non_input_shm") == 0)
             {
+                if (just_create_all_shm) {
+                    asm_printf("ERROR: Detected both --just_create_all_shm and --just_create_non_input_shm, which is not possible since they are contradictory\n");
+                    print_usage();
+                    exit(-1);
+                }
                 // Create all shared memories except the input ones...
                 create_input_shm = false;
                 create_output_shm = true;
