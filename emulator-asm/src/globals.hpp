@@ -24,7 +24,10 @@ extern bool create_output_shm; // Create output shared memories.  If false, open
 extern bool delete_input_shm; // Delete input shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
 extern bool delete_internal_shm; // Delete internal shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
 extern bool delete_output_shm; // Delete output shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
+extern bool create_semaphores; // Create semaphores
+extern bool delete_semaphores; // Delete semaphores
 extern bool just_create_all_shm; // Just create all shared memories and exit, without doing any other setup or starting the server.
+extern bool just_create_non_input_shm; // Just create all shared memories escept the input ones and exit, without doing any other setup or starting the server.
 extern char input_file[4096];
 extern bool redirect_output_to_file;
 extern bool server; // Indicates that this process is a server
