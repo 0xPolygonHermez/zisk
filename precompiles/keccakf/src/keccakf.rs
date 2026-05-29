@@ -223,7 +223,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         }
         table.into_par_iter().enumerate().for_each(|(row, value)| {
             if value > 0 {
-                self.std.inc_virtual_row(self.table_id, row as u64, value as u64);
+                self.std.inc_virtual_row(self.table_id, row as u32, value);
             }
         });
         timer_stop_and_log_trace!(KECCAKF_TRACE);

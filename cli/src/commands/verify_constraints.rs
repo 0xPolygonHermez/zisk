@@ -149,7 +149,7 @@ impl ZiskVerifyConstraints {
     }
 
     pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<VerifyConstraintsOutput> {
-        let mut prover_options = BackendProverOpts::default();
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
@@ -176,7 +176,7 @@ impl ZiskVerifyConstraints {
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
     ) -> Result<VerifyConstraintsOutput> {
-        let mut prover_options = BackendProverOpts::default();
+        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {

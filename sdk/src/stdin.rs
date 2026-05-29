@@ -27,6 +27,11 @@ impl ZiskStdin {
         Ok(Self(ZiskStdinInner::from_file(path)?))
     }
 
+    /// Reads all data from the stdin buffer.
+    pub fn read_data(&self) -> Vec<u8> {
+        self.0.read_data()
+    }
+
     /// Reads and deserializes the next value from the stdin buffer.
     pub fn read<T: DeserializeOwned>(&self) -> anyhow::Result<T> {
         self.0.read()
