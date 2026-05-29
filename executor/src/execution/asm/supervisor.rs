@@ -35,7 +35,10 @@ use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
 
-use crate::error::{ExecutorError, ExecutorResult, MutexExt};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use crate::error::MutexExt;
+
+use crate::error::{ExecutorError, ExecutorResult};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crate::{AsmResources, MAX_NUM_STEPS};
 

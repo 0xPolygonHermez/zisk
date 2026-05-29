@@ -14,7 +14,6 @@ use std::sync::Arc;
 use asm_runner::HintsShmem;
 use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
-use proofman_common::ProofCtx;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AsmExecutionInfo, ExecutorStatsHandle, StatsScope,
@@ -24,7 +23,6 @@ use zisk_core::ZiskRom;
 use super::AsmResources;
 use crate::error::ExecutorResult;
 use crate::execution::output::ExecutionOutput;
-use crate::sm::StaticSMBundle;
 
 fn unsupported() -> ! {
     panic!("ASM emulator backend is only available on Linux x86_64");
@@ -83,8 +81,7 @@ impl EmulatorAsm {
         &self,
         _zisk_rom: &ZiskRom,
         _stdin: &ZiskStdin,
-        _pctx: &ProofCtx<F>,
-        _sm_bundle: &StaticSMBundle<F>,
+        _is_first_process: bool,
         _use_hints: bool,
         _stats: &ExecutorStatsHandle,
         _caller_stats_scope: &StatsScope,
