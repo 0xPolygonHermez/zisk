@@ -36,7 +36,7 @@ pub enum ZiskCmd {
     Utils(UtilsCmd),
     Toolchain(ToolchainCmd),
     Remote(RemoteCmd),
-    Embedded(Embedded),
+    Embedded(EmbeddedCmd),
 }
 
 impl ZiskCmd {

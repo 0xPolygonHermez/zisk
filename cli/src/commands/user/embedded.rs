@@ -12,7 +12,7 @@ pub use wrap::ZiskEmbeddedWrap;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run ZisK operations locally using the embedded prover
-pub struct Embedded {
+pub struct EmbeddedCmd {
     #[command(subcommand)]
     pub command: ZiskEmbeddedCommand,
 }
@@ -27,7 +27,7 @@ pub enum ZiskEmbeddedCommand {
     Wrap(ZiskEmbeddedWrap),
 }
 
-impl Embedded {
+impl EmbeddedCmd {
     pub fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskEmbeddedCommand::Prove(cmd) => cmd.run(),
