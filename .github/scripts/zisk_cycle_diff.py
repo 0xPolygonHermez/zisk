@@ -2,8 +2,9 @@
 """Render a markdown diff of `ziskemu -X` reports between two branches.
 
 Reads per-program report files produced by zisk_bench.sh from a base dir and a
-PR dir, parses the STEPS + COST DISTRIBUTION numbers, and prints one markdown
-table per program (Base Branch | Current PR | Diff | Diff (%)).
+PR dir, parses the STEPS + COST DISTRIBUTION numbers, and prints a markdown
+comment: a summary table (headline Steps + Total Cost per guest) followed by a
+collapsible full cost breakdown per guest.
 
 Usage: zisk_cycle_diff.py <BASE_DIR> <PR_DIR>
 """
@@ -47,10 +48,43 @@ def fmt(n):
     return f"{n:,}" if n is not None else "N/A"
 
 
-def table(program, base, pr):
+def delta(b, p):
+    """Return a signed percentage with a color indicator, or N/A.
+
+    🔴 increase (regression — cost went up), 🟢 decrease (improvement),
+    ➖ no change. Lower is better, so a positive diff is a regression.
+    """
+    if b is None or p is None:
+        return "N/A"
+    d = p - b
+    if d == 0:
+        return "➖ 0.00%"
+    if b == 0:
+        return "🔴 new" if d > 0 else "🟢 —"
+    dot = "🔴" if d > 0 else "🟢"
+    return f"{dot} {d / b * 100:+.2f}%"
+
+
+def summary(rows):
+    """Headline table: Steps + Total Cost (PR value and delta) per guest."""
+    out = [
+        "| Guest | Steps | Δ Steps | Total Cost | Δ Total Cost |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for prog, base, pr in rows:
+        out.append(
+            f"| {prog} "
+            f"| {fmt(pr.get('STEPS'))} | {delta(base.get('STEPS'), pr.get('STEPS'))} "
+            f"| {fmt(pr.get('TOTAL'))} | {delta(base.get('TOTAL'), pr.get('TOTAL'))} |"
+        )
+    return "\n".join(out)
+
+
+def breakdown(program, base, pr):
+    """Full per-row table for one guest, wrapped in a collapsible section."""
     lines = [
-        f"|{program:^22}|Base Branch|Current PR|Diff|Diff (%)|",
-        "|----------------------|-----------|-----------|----|--------|",
+        "| Metric | Base Branch | Current PR | Diff | Diff (%) |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for label, name in ROWS:
         b = base.get(label)
@@ -62,9 +96,14 @@ def table(program, base, pr):
         else:
             d = p - b
             diff = f"{d:,}"
-            pct = f"{(d / b * 100):.2f}" if b != 0 else "N/A"
-        lines.append(f"|{name}|{fmt(b)}|{fmt(p)}|{diff}|{pct}|")
-    return "\n".join(lines)
+            pct = f"{(d / b * 100):.2f}%" if b != 0 else "N/A"
+        lines.append(f"| {name} | {fmt(b)} | {fmt(p)} | {diff} | {pct} |")
+    table = "\n".join(lines)
+    return (
+        f"<details>\n<summary><b>{program}</b> — full cost breakdown</summary>\n\n"
+        f"{table}\n\n"
+        "</details>"
+    )
 
 
 def main():
@@ -74,20 +113,45 @@ def main():
 
     # Programs = the .txt reports present in the PR dir (fall back to base dir).
     src = pr_dir if os.path.isdir(pr_dir) else base_dir
-    programs = sorted(
-        f[:-4] for f in os.listdir(src) if f.endswith(".txt")
-    )
+    programs = sorted(f[:-4] for f in os.listdir(src) if f.endswith(".txt"))
 
-    out = ["## ZisK cycle tracking", ""]
+    rows = [
+        (
+            prog,
+            parse_report(os.path.join(base_dir, f"{prog}.txt")),
+            parse_report(os.path.join(pr_dir, f"{prog}.txt")),
+        )
+        for prog in programs
+    ]
+
+    out = ["## 🔄 ZisK Cycle Tracking", ""]
     out.append(
-        "Emulator cost report (`ziskemu -X`) for each benchmark guest, "
-        "PR vs base branch.\n"
+        "Emulator cost report (`ziskemu -X`) comparing this PR against the base "
+        "branch. **Lower is better** — a positive diff is a regression."
     )
-    for prog in programs:
-        base = parse_report(os.path.join(base_dir, f"{prog}.txt"))
-        pr = parse_report(os.path.join(pr_dir, f"{prog}.txt"))
-        out.append(table(prog, base, pr))
+    out.append("")
+
+    if not rows:
+        out.append("> ⚠️ No benchmark reports were produced.")
+        print("\n".join(out))
+        return
+
+    out.append("### Summary")
+    out.append("")
+    out.append(summary(rows))
+    out.append("")
+    out.append("### Per-guest breakdown")
+    out.append("")
+    for prog, base, pr in rows:
+        out.append(breakdown(prog, base, pr))
         out.append("")
+
+    out.append("---")
+    out.append(
+        "<sub>🔺 increase (regression) · 🔻 decrease (improvement) · ➖ no change. "
+        "`RAM USAGE` is excluded (runner-dependent); STEPS and all costs are "
+        "deterministic functions of (ELF, input).</sub>"
+    )
 
     print("\n".join(out))
 

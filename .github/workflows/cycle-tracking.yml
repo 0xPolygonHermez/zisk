@@ -47,32 +47,29 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
 
-      - name: "Build cargo-zisk"
-        run: cargo build --release -p cargo-zisk --bin cargo-zisk
-
-      - name: "Install ZisK rust toolchain"
-        run: ./target/release/cargo-zisk toolchain install
+      - name: "Stash benchmark scripts"
+        run: |
+          cp .github/scripts/zisk_bench.sh .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/"
+          chmod +x "$RUNNER_TEMP/zisk_bench.sh"
 
       - name: "Benchmark PR branch"
-        run: |
-          chmod +x .github/scripts/zisk_bench.sh
-          .github/scripts/zisk_bench.sh "$RUNNER_TEMP/pr"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/pr"
 
-      - name: "Checkout base branch sources"
+      - name: "Switch to base branch"
         run: |
           git fetch origin "${{ github.event.pull_request.base.ref }}"
-          git checkout "origin/${{ github.event.pull_request.base.ref }}" -- .
+          git checkout --detach "origin/${{ github.event.pull_request.base.ref }}"
+          git clean -fdx -e target
 
       - name: "Benchmark base branch"
-        run: |
-          .github/scripts/zisk_bench.sh "$RUNNER_TEMP/base"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/base"
 
       - name: "Build execution report"
         id: report
         run: |
           {
             echo 'EXECUTION_REPORT<<__ZISK_EOF__'
-            python3 .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr"
+            python3 "$RUNNER_TEMP/zisk_cycle_diff.py" "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr"
             echo '__ZISK_EOF__'
           } >> "$GITHUB_OUTPUT"
 

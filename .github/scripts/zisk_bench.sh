@@ -10,9 +10,8 @@
 #
 # Usage: zisk_bench.sh <OUTDIR>
 #
-# Requirements (installed by the workflow before calling this):
+# Requirement (installed by the workflow before calling this):
 #   - system deps (tools/test-env/install_deps.sh)
-#   - the ZisK rust toolchain (`cargo-zisk toolchain install`)
 #
 set -euo pipefail
 
@@ -30,11 +29,20 @@ PROGRAMS=(diagnostic modexp secp256k1 uint256)
 GUEST_VERSION="0.1.0"
 
 echo "::group::Build host tools (cargo-zisk, ziskemu)"
+# Built from the *current* tree (PR or base) so each pass uses that branch's own
+# build driver and emulator. Incremental on the PR pass; on the base pass cargo
+# recompiles whatever the PR changed.
 cargo build --release -p cargo-zisk -p ziskemu --bin cargo-zisk --bin ziskemu
 echo "::endgroup::"
 
 CARGO_ZISK="$REPO/target/release/cargo-zisk"
 ZISKEMU="$REPO/target/release/ziskemu"
+
+echo "::group::Install ZisK rust toolchain"
+# Idempotent: a no-op once the toolchain is present. Lives here (rather than in
+# the workflow) so the script is self-contained and reproducible locally.
+"$CARGO_ZISK" toolchain install
+echo "::endgroup::"
 
 echo "::group::Build guest ELFs"
 # cargo-zisk build drives `cargo +zisk build` in the current dir, emitting ELFs
