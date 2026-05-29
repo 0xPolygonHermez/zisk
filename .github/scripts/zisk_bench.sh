@@ -26,6 +26,9 @@ cd "$REPO"
 # `package.name` under test-artifacts/programs/<name> and the emitted ELF name.
 PROGRAMS=(diagnostic modexp secp256k1 uint256)
 
+# Guest crates inherit this version from test-artifacts/programs/Cargo.toml
+GUEST_VERSION="0.1.0"
+
 echo "::group::Build host tools (cargo-zisk, ziskemu)"
 cargo build --release -p cargo-zisk -p ziskemu --bin cargo-zisk --bin ziskemu
 echo "::endgroup::"
@@ -39,7 +42,11 @@ echo "::group::Build guest ELFs"
 # workspace so it picks up the right members and profile flags.
 (
   cd "$REPO/test-artifacts/programs"
-  "$CARGO_ZISK" build --release "${PROGRAMS[@]/#/--package=}"
+  specs=()
+  for prog in "${PROGRAMS[@]}"; do
+    specs+=("--package=${prog}@${GUEST_VERSION}")
+  done
+  "$CARGO_ZISK" build --release "${specs[@]}"
 )
 echo "::endgroup::"
 
