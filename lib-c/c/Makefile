@@ -55,17 +55,10 @@ LIB_NAME = libziskc.a
 LIB_FILE = $(LIB_DIR)/$(LIB_NAME)
 
 # Public C API exported by libziskc.a (the only symbols the Rust crate links).
-# Every other *strong* global symbol (the ffiasm field internals: Fr_*, RawFr,
-# RawFq, Goldilocks, ... ) is demoted to a local symbol so it cannot collide
-# with the identical symbols bundled by the proofman-starks-lib-c dependency
-# when both archives land in the same binary. Weak/COMDAT symbols (C++ template
-# and inline instantiations such as AltBn128::Engine) are deliberately left
-# untouched: they never trigger duplicate-symbol errors and must stay weak so
-# the linker can still fold them across translation units.
+# Every other strong global symbol is weakened (see the library rule below).
 PUBLIC_SYMBOLS = AddPointEc AddPointEcP InverseFpEc InverseFnEc InverseFnEcR1 \
                  SqrtFpEcParity Arith256 Add256
-COMBINED_OBJ = $(BUILD_DIR)/ziskc_combined.o
-LOCALIZE_LIST = $(BUILD_DIR)/localize_symbols.txt
+WEAKEN_LIST = $(BUILD_DIR)/weaken_symbols.txt
 
 # Field list
 FIELDS = fr fq fec fnec bls12_381 bls12_381_384 nsecp256r1 psecp256r1
@@ -122,28 +115,36 @@ $(LIB_DIR):
 
 # Library target
 #
-# On Linux (where the Rust crate links libziskc.a alongside proofman-starks-lib-c)
-# combine all objects into a single relocatable object and demote every symbol
-# except the public C API to a local symbol. Local symbols never participate in
-# cross-archive duplicate resolution, so the bundled ffiasm field code can no
-# longer clash with proofman's identical copy.
+# libziskc.a and the proofman-starks-lib-c dependency both bundle the same
+# ffiasm field / Goldilocks code, each exporting identical strong global symbols
+# (Fr_*, Fec_*, Goldilocks::*, ...). When both archives are linked into the same
+# binary rust-lld aborts with duplicate-symbol errors. (Historically this did
+# not happen only because the linker never had to pull libziskc's copies in;
+# regenerating the ffiasm sources changed the object layout and exposed the
+# latent clash.)
+#
+# On Linux we therefore weaken every global symbol except the public C API. A
+# weak definition never triggers a duplicate-symbol error and always yields to
+# proofman's strong definition, so libziskc's internal callers transparently use
+# proofman's shared copy -- exactly the behaviour that worked before. The objects
+# are kept separate (not merged) so the linker still pulls in only what it needs.
 #
 # Elsewhere (macOS, where build.rs skips the C build entirely) just archive the
-# objects directly, avoiding the GNU-binutils-specific `ld -r`/`objcopy` step.
+# objects directly, avoiding the GNU-binutils-specific `objcopy` step.
 ifeq ($(UNAME_S),Linux)
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
-	ld -r -z noexecstack -o $(COMBINED_OBJ) $(ALL_OBJS)
-	nm -g --defined-only $(COMBINED_OBJ) | awk '$$2 !~ /[vVwW]/ {print $$3}' \
-		| grep -vxF $(addprefix -e ,$(PUBLIC_SYMBOLS)) > $(LOCALIZE_LIST)
-	objcopy --localize-symbols=$(LOCALIZE_LIST) $(COMBINED_OBJ)
-	ar rcs $@ $(COMBINED_OBJ)
+	ar rcs $@ $(ALL_OBJS)
+	nm -g --defined-only $@ | awk '$$2 !~ /[vVwW]/ {print $$3}' | sort -u \
+		| grep -vxF $(addprefix -e ,$(PUBLIC_SYMBOLS)) > $(WEAKEN_LIST)
+	objcopy --weaken-symbols=$(WEAKEN_LIST) $@
 else
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 	ar rcs $@ $(ALL_OBJS)
 endif
 
-# Test binary: link the raw objects (not the symbol-trimmed archive) so the
-# benchmark in main.cpp can still reach the internal entry points.
+# Test binary: link the raw objects (not the weakened archive) so the standalone
+# benchmark in main.cpp resolves every internal entry point with no proofman
+# strong definitions around to satisfy the weakened symbols.
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(ALL_OBJS)
 	gcc $(CFLAGS) $(INCLUDES) $< -lc $(ALL_OBJS) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
 
