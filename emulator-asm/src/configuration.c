@@ -473,6 +473,11 @@ void parse_arguments(int argc, char *argv[])
                 create_internal_shm = true;
                 create_semaphores = false;
 
+                // ...but don't open them
+                open_input_shm = false;
+                open_internal_shm = false;
+                open_output_shm = false;
+
                 // ...then quit...
                 just_create_all_shm = true;
 
@@ -495,6 +500,11 @@ void parse_arguments(int argc, char *argv[])
                 create_output_shm = true;
                 create_internal_shm = true;
                 create_semaphores = false;
+
+                // ...but don't open them
+                open_input_shm = false;
+                open_internal_shm = false;
+                open_output_shm = false;
 
                 // ...then quit...
                 just_create_non_input_shm = true;
