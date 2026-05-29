@@ -8,7 +8,7 @@ use zisk_common::{
 use zisk_core::MAX_INPUT_SIZE;
 
 use crate::{
-    sem_input_avail_name, shmem_input_name2, AsmServices, ControlShmem, SharedMemoryWriter,
+    sem_input_avail_name, shmem_input_name, AsmServices, ControlShmem, SharedMemoryWriter,
 };
 
 use anyhow::Result;
@@ -30,7 +30,7 @@ impl InputsShmemWriter {
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {
-        let name = shmem_input_name2(shm_prefix);
+        let name = shmem_input_name(shm_prefix);
         let mut writer =
             SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)
                 .map_err(anyhow::Error::from)?;
