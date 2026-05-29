@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod memcpy_tests {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     use super::ziskos::memcpy;
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     fn memcpy(dst: *mut u8, src: *const u8, len: usize) -> *mut u8 {
         unsafe {
             std::ptr::copy(src, dst, len);

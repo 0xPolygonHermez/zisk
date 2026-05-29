@@ -149,6 +149,8 @@ pub struct ZiskInst {
     pub input_size: u64,
     pub sorted_pc_list_index: usize,
     pub riscv_inst: Option<String>,
+    pub index: u64, // internal field used for tracking the instruction creation order in the ROM
+    pub next_internal_inst: Option<u64>, // connection to next internal odd instruction, if any
 }
 
 /// Default constructor
@@ -187,6 +189,8 @@ impl Default for ZiskInst {
             input_size: 0,
             sorted_pc_list_index: 0,
             riscv_inst: None,
+            index: 0,
+            next_internal_inst: None,
         }
     }
 }
@@ -262,6 +266,10 @@ impl ZiskInst {
         }
         if self.m32 {
             s += &format!(" m32={}", self.m32);
+        }
+        s += &format!(" index={}", self.index);
+        if let Some(next_internal_inst) = self.next_internal_inst {
+            s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
         }
         s
     }

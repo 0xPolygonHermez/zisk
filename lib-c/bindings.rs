@@ -42,6 +42,13 @@ extern "C" {
 }
 
 extern "C" {
+    pub fn InverseFnEcR1(
+        a: *const ::std::os::raw::c_ulong,
+        r: *mut ::std::os::raw::c_ulong,
+    ) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
     pub fn SqrtFpEcParity(
         a: *const ::std::os::raw::c_ulong,
         parity: ::std::os::raw::c_ulong,
@@ -72,6 +79,10 @@ extern "C" {
 
 extern "C" {
     pub fn InverseFnEcCtx(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
+}
+
+extern "C" {
+    pub fn InverseFnEcR1Ctx(ctx: *mut FcallContext) -> ::std::os::raw::c_int;
 }
 
 extern "C" {

@@ -1,9 +1,9 @@
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 // fcall_get 0xFFE
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 pub fn ziskos_fcall_get() -> u64 {
     let value: u64;
     unsafe {

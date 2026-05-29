@@ -1,17 +1,33 @@
 mod sha256f;
-mod sha256f_bus_device;
 mod sha256f_constants;
-mod sha256f_gen_mem_inputs;
-mod sha256f_input;
-mod sha256f_instance;
-mod sha256f_manager;
-mod sha256f_planner;
+mod sha256f_mem_inputs;
 
 pub use sha256f::*;
-pub use sha256f_bus_device::*;
 pub use sha256f_constants::*;
-pub use sha256f_gen_mem_inputs::*;
-pub use sha256f_input::*;
-pub use sha256f_instance::*;
-pub use sha256f_manager::*;
-pub use sha256f_planner::*;
+
+zisk_common::zisk_precompile! {
+    name = Sha256f,
+    op_type = Sha256,
+    trace = Sha256fTrace,
+    num_available_field = num_available_sha256fs,
+    ops = [
+        (OperationSha256Data, Sha256fInput),
+    ],
+}
+
+#[cfg(test)]
+mod sha256f_tests {
+    use test_artifacts::ELF_SHA256;
+    use zisk_common::io::ZiskStdin;
+
+    /// Number of `syscall_sha256_f` invocations the guest will perform.
+    const NUM_SHA256FS: u64 = 10;
+
+    #[test]
+    fn sha256f_tests() {
+        let stdin = ZiskStdin::new();
+        stdin.write(&NUM_SHA256FS);
+
+        ELF_SHA256.run_emulation(stdin, None).expect("sha256f guest emulation failed");
+    }
+}

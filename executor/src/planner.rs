@@ -5,13 +5,13 @@
 
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use sm_main::MainPlanner;
+use sm_main::{MainPlanner, MainSmError};
 use std::{collections::BTreeMap, sync::RwLock};
 use zisk_common::{EmuTrace, InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::AirClassifier;
-use crate::{DeviceMetricsList, NestedDeviceMetricsList, StaticSMBundle};
+use crate::{NestedDeviceMetricsList, StaticSMBundle};
 
 use anyhow::Result;
 
@@ -19,8 +19,6 @@ use anyhow::Result;
 pub struct MainPlanningOutput {
     /// Plans for main instances.
     pub plans: Vec<Plan>,
-    /// Public values extracted during planning.
-    pub public_values: Vec<(u64, u32)>,
 }
 
 /// Component responsible for instance planning.
@@ -48,35 +46,33 @@ impl InstancePlanner {
     ///
     /// # Arguments
     /// * `min_traces` - Minimal traces from execution.
-    /// * `main_count` - Device metrics for main instances.
     ///
     /// # Returns
-    /// Planning output with plans and public values.
-    pub fn plan_main<F: PrimeField64>(
+    /// Planning output containing the main-instance plans, or a `MainSmError`
+    /// if the planner rejects the configuration.
+    pub fn plan_main(
         &self,
         min_traces: &[EmuTrace],
-        main_count: DeviceMetricsList,
-    ) -> MainPlanningOutput {
-        let (plans, public_values) =
-            MainPlanner::plan::<F>(min_traces, main_count, self.chunk_size);
-        MainPlanningOutput { plans, public_values }
+    ) -> std::result::Result<MainPlanningOutput, MainSmError> {
+        let plans = MainPlanner::plan(min_traces, self.chunk_size)?;
+        Ok(MainPlanningOutput { plans })
     }
 
     /// Plans secondary state machine instances.
     ///
     /// # Arguments
     /// * `sm_bundle` - State machine bundle.
-    /// * `secn_count` - Device metrics for secondary instances.
+    /// * `counters` - Device metrics for secondary instances.
     ///
     /// # Returns
     /// BTreeMap of SM type ID to plans.
     pub fn plan_secondary<F: PrimeField64>(
         &self,
         sm_bundle: &StaticSMBundle<F>,
-        secn_count: &mut NestedDeviceMetricsList,
+        counters: &mut NestedDeviceMetricsList,
         is_asm_emulator: bool,
     ) -> BTreeMap<usize, Vec<Plan>> {
-        sm_bundle.plan_sec(secn_count, is_asm_emulator)
+        sm_bundle.plan_sec(counters, is_asm_emulator)
     }
 
     /// Assigns ROM instance to the proof context.

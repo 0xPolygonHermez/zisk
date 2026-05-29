@@ -149,23 +149,21 @@ impl<F: PrimeField64> DmaSM<F> {
                 //     DmaInfo::to_string(input.encoded)
                 // );
 
-                let diff_chunk = count_diff as u16;
-                trace.set_count_diff_chunks(0, diff_chunk);
-                local_16_bits_multiplicities[diff_chunk as usize] += 1;
+                let count_diff_chunks = [count_diff as u16, (count_diff >> 16) as u16];
+                trace.set_all_count_diff_chunks(&count_diff_chunks);
+                local_16_bits_multiplicities[count_diff_chunks[0] as usize] += 1;
+                local_16_bits_multiplicities[count_diff_chunks[1] as usize] += 1;
 
-                let diff_chunk = (count_diff >> 16) as u16;
-                trace.set_count_diff_chunks(1, diff_chunk);
-                local_16_bits_multiplicities[diff_chunk as usize] += 1;
                 if pre_result_nz {
                     let result = DmaInfo::get_memcmp_res_as_u64(input.encoded);
-                    trace.set_bus_pre_result(0, result as u32);
-                    trace.set_bus_pre_result(1, (result >> 32) as u32);
+                    let bus_pre_result = [result as u32, (result >> 32) as u32];
+                    trace.set_all_bus_pre_result(&bus_pre_result);
                     result_nz = true;
                 }
                 if post_result_nz {
                     let result = DmaInfo::get_memcmp_res_as_u64(input.encoded);
-                    trace.set_bus_post_result(0, result as u32);
-                    trace.set_bus_post_result(1, (result >> 32) as u32);
+                    let bus_post_result = [result as u32, (result >> 32) as u32];
+                    trace.set_all_bus_post_result(&bus_post_result);
                     result_nz = true;
                 }
             }
@@ -309,17 +307,20 @@ impl<F: PrimeField64> DmaSM<F> {
         // ] {
         //     println!("TRACE[{i}]={:?}", trace_rows[i]);
         // }
-        self.std
-            .inc_virtual_rows_ranged(self.dual_range_7_bits_id, &global_dual_7_bits_multiplicities);
-        self.std.range_checks(self.range_24_bits_id, global_24_bits_low_values);
-        self.std.inc_virtual_rows_ranged(self.rom_table_id, &global_rom_multiplicities);
-        self.std.range_checks(self.range_16_bits_id, global_16_bits_multiplicities);
+        self.std.inc_virtual_rows_ranged(
+            self.dual_range_7_bits_id,
+            None,
+            &global_dual_7_bits_multiplicities,
+        );
+        self.std.range_check_ranged(self.range_24_bits_id, None, &global_24_bits_low_values);
+        self.std.inc_virtual_rows_ranged(self.rom_table_id, None, &global_rom_multiplicities);
+        self.std.range_check_ranged(self.range_16_bits_id, None, &global_16_bits_multiplicities);
 
         for value in global_22_bits_values {
-            self.std.range_check(self.range_22_bits_id, value as i64, 1);
+            self.std.range_check_one(self.range_22_bits_id, value);
         }
         for value in global_24_bits_values {
-            self.std.range_check(self.range_24_bits_id, value as i64, 1);
+            self.std.range_check_one(self.range_24_bits_id, value);
         }
 
         if total_inputs < num_rows {

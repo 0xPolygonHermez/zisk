@@ -36,6 +36,7 @@ struct SetupMessage {
     program_name: String,
     elf_bytes: Vec<u8>,
     with_hints: bool,
+    emulator_only: bool,
 }
 
 /// Tag byte used as the first byte of every MPI broadcast message.
@@ -402,13 +403,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hash_id: &str,
         elf_bytes: &[u8],
         with_hints: bool,
+        emulator_only: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
-        // Skip if already set up for this (hash_id, with_hints) combination.
-        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints)) {
+        // Skip if already set up for this (hash_id, with_hints, emulator_only) combination.
+        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints, emulator_only)) {
             info!(
-                "Received same guest program for setup (hash_id={}, with_hints={}). Skipping setup",
-                hash_id, with_hints
+                "Received same guest program for setup (hash_id={}, with_hints={}, emulator_only={}). Skipping setup",
+                hash_id, with_hints, emulator_only
             );
             return Ok(vk.clone());
         }
@@ -419,14 +421,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             program_name: new_guest_program.name().to_string(),
             elf_bytes: elf_bytes.to_vec(),
             with_hints,
+            emulator_only,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        let vk = self.prover.prover.setup_internal(&new_guest_program, with_hints)?;
+        let vk =
+            self.prover.prover.setup_internal(&new_guest_program, with_hints, emulator_only)?;
         self.guest_programs.insert(hash_id.to_string(), new_guest_program);
-        self.program_vks.insert(SetupKey::new(hash_id, with_hints), vk.clone());
+        self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk.clone());
         Ok(vk)
     }
 
@@ -1325,8 +1329,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
                 let gp_clone = guest_program.clone();
                 let with_hints = message.with_hints;
+                let emulator_only = message.emulator_only;
                 tokio::task::spawn_blocking(move || {
-                    prover.prover.setup_internal(&gp_clone, with_hints)
+                    prover.prover.setup_internal(&gp_clone, with_hints, emulator_only)
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;

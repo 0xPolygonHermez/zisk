@@ -55,7 +55,7 @@ uint64_t trace_get_chunk_size (uint64_t chunk_id)
 {
     if (gen_method == RomHistogram) {
         assert(chunk_id == 0);
-        return trace_size;
+        return TRACE_INITIAL_SIZE_RH;
     }
 
     if (chunk_id == 0)

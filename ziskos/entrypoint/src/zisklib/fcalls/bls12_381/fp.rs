@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+    if #[cfg(zisk_guest)] {
         use core::arch::asm;
         use crate::{
             ziskos_fcall, ziskos_fcall_param,
@@ -34,7 +34,7 @@ pub fn fcall_bls12_381_fp_inv(
     x: &[u64; 6],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 6] {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let result: [u64; 6] = bls12_381_fp_inv(x);
         #[cfg(feature = "hints")]
@@ -44,7 +44,7 @@ pub fn fcall_bls12_381_fp_inv(
         }
         result
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(x, 8);
         ziskos_fcall!(FCALL_BLS12_381_FP_INV_ID);
@@ -86,7 +86,7 @@ pub fn fcall_bls12_381_fp_sqrt(
     x: &[u64; 6],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 7] {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut result: [u64; 7] = [0; 7];
         bls12_381_fp_sqrt(x, &mut result);
@@ -97,7 +97,7 @@ pub fn fcall_bls12_381_fp_sqrt(
         }
         result
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(x, 8);
         ziskos_fcall!(FCALL_BLS12_381_FP_SQRT_ID);

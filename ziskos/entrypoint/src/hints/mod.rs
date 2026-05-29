@@ -313,7 +313,7 @@ pub(crate) fn check_main_thread() -> bool {
 #[inline(always)]
 pub fn hint_log<S: AsRef<str>>(msg: S) {
     // We check if hints are enable only for non-zisk targets, since in zisk targets hints are not used
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     if !HINT_BUFFER.is_enabled() {
         return;
     }

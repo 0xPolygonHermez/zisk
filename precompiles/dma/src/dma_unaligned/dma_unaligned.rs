@@ -116,14 +116,17 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
                 next_value = input.src_values[src_values_index];
             };
 
-            row.set_read_bytes(0, value as u8);
-            row.set_read_bytes(1, (value >> 8) as u8);
-            row.set_read_bytes(2, (value >> 16) as u8);
-            row.set_read_bytes(3, (value >> 24) as u8);
-            row.set_read_bytes(4, (value >> 32) as u8);
-            row.set_read_bytes(5, (value >> 40) as u8);
-            row.set_read_bytes(6, (value >> 48) as u8);
-            row.set_read_bytes(7, (value >> 56) as u8);
+            let read_bytes = [
+                value as u8,
+                (value >> 8) as u8,
+                (value >> 16) as u8,
+                (value >> 24) as u8,
+                (value >> 32) as u8,
+                (value >> 40) as u8,
+                (value >> 48) as u8,
+                (value >> 56) as u8,
+            ];
+            row.set_all_read_bytes(&read_bytes);
 
             // row.set_write_value(0, write_value as u32);
             // row.set_write_value(1, (write_value >> 32) as u32);
@@ -233,11 +236,11 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         } else {
             0
         };
-        self.std.range_check(self.range_16_bits_id, (last_count & 0xFFFF) as i64, 1);
-        self.std.range_check(self.range_16_bits_id, ((last_count >> 16) & 0xFFFF) as i64, 1);
+        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
+        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
 
         local_dual_byte_table[0] += (padding_size * 4) as u64;
-        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, &local_dual_byte_table);
+        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &local_dual_byte_table);
 
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_last_segment = F::from_bool(is_last_segment);

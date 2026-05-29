@@ -1,12 +1,12 @@
 //! Blake2br system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 use precompiles_helpers::blake2b_round;
 
 #[derive(Debug)]
@@ -34,10 +34,10 @@ pub extern "C" fn syscall_blake2b_round(
     params: &mut SyscallBlake2bRoundParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BLAKE2B_ROUND_ID, params);
 
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         blake2b_round(params.state, params.input, params.index as u32);
 

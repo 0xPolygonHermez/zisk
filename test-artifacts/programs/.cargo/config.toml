@@ -1,0 +1,11 @@
+# Some guests (currently `secp256r1`) overflow rustc's default 8 MB thread
+# stack during compilation:
+#   [ZisK]  note: rustc unexpectedly overflowed its stack! this is a bug
+#   [ZisK]  note: maximum backtrace depth reached, frames may have been lost
+#   [ZisK]  note: we would appreciate a report at https://github.com/rust-lang/rust
+#   [ZisK]  help: you can increase rustc's stack size by setting RUST_MIN_STACK=16777216
+#   [ZisK]  note: backtrace dumped due to SIGSEGV! resuming signal
+#
+# This configuration raise the minimum stack size.
+[env]
+RUST_MIN_STACK = "16777216"

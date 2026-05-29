@@ -1,7 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, ExecutorKind, GuestProgram, ProofKind, ProverClient, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use sha_hasher_host::ELF_SHA_HASHER;
+use zisk_sdk::{ExecutorKind, ProofKind, ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,12 +20,12 @@ async fn main() -> Result<()> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&PROGRAM).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run()?.await?;
     println!("Setup completed successfully");
 
     println!("Generating minimal proof (this may take a while)...");
     let result = client
-        .prove(&PROGRAM, stdin)
+        .prove(&ELF_SHA_HASHER, stdin)
         .executor(ExecutorKind::Assembly)
         .wrap(ProofKind::VadcopFinalMinimal)
         .run()?

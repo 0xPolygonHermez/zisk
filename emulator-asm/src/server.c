@@ -117,8 +117,7 @@ void server_signal_handler(void)
 
 // ROM histogram
 uint64_t histogram_size = 0;
-uint64_t bios_size = 0;
-uint64_t program_size = 0;
+uint64_t rom_length = 0;
 
 // Shutdown done semaphore: notifies the caller when a shutdown has been processed
 sem_t * sem_shutdown_done = NULL;
@@ -634,19 +633,16 @@ void server_setup (void)
     // If ROM histogram, configure trace size
     if (gen_method == RomHistogram)
     {
-        // Get max PC values for low and high addresses
-        uint64_t max_bios_pc = get_max_bios_pc();
-        uint64_t max_program_pc = get_max_program_pc();
-        assert(max_bios_pc >= 0x1000);
-        assert((max_bios_pc & 0x3) == 0);
-        assert(max_program_pc >= 0x80000000);
+        // Get rom length, i.e. number of instructions
+        rom_length = get_rom_length();
 
-        // Calculate sizes
-        bios_size = ((max_bios_pc - 0x1000) >> 2) + 1;
-        program_size = max_program_pc - 0x80000000 + 1;
-        histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
-        initial_trace_size = ((histogram_size/TRACE_SIZE_GRANULARITY) + 1) * TRACE_SIZE_GRANULARITY;
-        trace_size = initial_trace_size;
+        // Calculate histogram size
+        histogram_size = (4 + 1 + rom_length)*8;
+        if (histogram_size > TRACE_INITIAL_SIZE_RH)
+        {
+            asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size RH %lu\n", histogram_size, TRACE_INITIAL_SIZE_RH);
+            exit(-1);
+        }
     }
 
     // Output trace
@@ -866,7 +862,8 @@ void server_run (void)
 {
     // If ROM histogram, reset the trace area to 0 for the histogram data since it represents the
     // ROM instruction multiplicity and one of them will be increased at every executed instruction
-    if ((gen_method == RomHistogram)) {
+    if ((gen_method == RomHistogram))
+    {
         memset((void *)trace_address, 0, trace_size);
     }
 
@@ -910,13 +907,13 @@ void server_run (void)
     // response then carries result=1 back to the parent, which reports the
     // error.
     gettimeofday(&start_time,NULL);
-    if (verbose) asm_printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("Before calling emu_start() trace_address=%lx\n", trace_address);
     caught_signal = 0;
     bool emulation_aborted = false;
     if (sigsetjmp(emulation_jmp_buf, 1) == 0)
     {
         in_emulation = 1;
-        emulator_start();
+        emu_start();
         in_emulation = 0;
     }
     else
@@ -927,7 +924,7 @@ void server_run (void)
         asm_printf("WARNING: caught signal %d during emulation, aborting run\n",
                    (int)caught_signal);
     }
-    if (verbose) asm_printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("After calling emu_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 
@@ -1040,8 +1037,7 @@ void server_run (void)
         if (gen_method == RomHistogram)
         {
             pOutput[3] = MEM_STEP;
-            pOutput[4] = bios_size;
-            pOutput[4 + bios_size + 1] = program_size;
+            pOutput[4] = rom_length;
         }
         else
         {

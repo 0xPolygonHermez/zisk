@@ -21,8 +21,6 @@ path = "src/bin/hints_quic_server.rs"
 
 [dependencies]
 ziskos-hints = { workspace = true }
-lib-c = { workspace = true }
-precompiles-helpers = { workspace = true }
 anyhow = { workspace = true }
 rayon = { workspace = true }
 tracing = { workspace = true }

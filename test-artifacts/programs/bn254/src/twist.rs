@@ -1,0 +1,357 @@
+use ziskos::zisklib::{
+    add_twist_bn254, dbl_twist_bn254, is_on_curve_twist_bn254, is_on_subgroup_twist_bn254,
+    neg_twist_bn254, scalar_mul_by_x_twist_bn254, utf_endomorphism_twist_bn254,
+};
+
+use crate::constants::IDENTITY_G2;
+
+pub fn twist_tests() {
+    // Is on curve
+    let p = IDENTITY_G2;
+    let res = is_on_curve_twist_bn254(&p);
+    assert_eq!(res, false);
+
+    let p = [
+        0xB0C8A4659E12811F,
+        0x981EAF73AE42743B,
+        0xD4DE7366EE5E8456,
+        0x0D7167C04CF94BFE,
+        0x65BB4CDA6E8AAA0F,
+        0x81A4BC501E05407B,
+        0x3826F757D87922AF,
+        0x05FDE79122F5077A,
+        0xB06BC4DB14AEAEBA,
+        0x4558C55B130BB756,
+        0x4F83ADA37B6E546D,
+        0x0A9DCE9E9BCFB5F7,
+        0xA0FF953F835CD3F6,
+        0xF210CF6F4D4F15FE,
+        0xB3CE9F769163ED99,
+        0x06C69EEB80D17C3A,
+    ];
+    let res = is_on_curve_twist_bn254(&p);
+    assert_eq!(res, true);
+
+    // Is on subgroup
+    let p = [
+        0x9990C4F783E78FC5,
+        0x47B71082B0D94CED,
+        0xDFF850E44C211262,
+        0x099ECE5FA385A639,
+        0x9FA008B0854738C5,
+        0xADA5D1130460685D,
+        0x9546DBB3D53487DF,
+        0x0486687755AD3E80,
+        0x311BB2C2C86690CF,
+        0xCC56CB84BC137759,
+        0x86897C3C692D952C,
+        0x00B6884E5D02665B,
+        0x2702AB556C5EFF3E,
+        0x059E40D295EB0F4E,
+        0x51704116523CBD21,
+        0x1FA69C987C6371FF,
+    ];
+    let res = is_on_subgroup_twist_bn254(&p);
+    assert_eq!(res, true);
+
+    // Addition
+    // (same point)
+    let p1 = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let p2 = p1;
+    let res = add_twist_bn254(&p1, &p2);
+    let res_exp = [
+        0x91EECEB9942A16B1,
+        0x841F546DA44E1CD6,
+        0x650423A765F1AB33,
+        0x13F129173590B56F,
+        0x9AC57C0336B9005C,
+        0x2028676771807EA8,
+        0x1F4828A5F482DE9A,
+        0x197D16CEB2C4D1F5,
+        0xC81CE58FBE75B564,
+        0xEDF164DCFD83E82A,
+        0x1525E8AB53108890,
+        0x1C6D7892409BF129,
+        0xEE0ACB8756DCD55B,
+        0x4AA880866B8F17E4,
+        0xC14990D321ACF1DD,
+        0x27997EFD6844D793,
+    ];
+    assert_eq!(res, res_exp);
+
+    // (inverses of each other)
+    let p1 = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let p2 = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0xF98A6D829BCAC02C,
+        0xB4B5DFA8A3759BC9,
+        0x3E0888EC3A7523E9,
+        0x2DA3EF3A52087B95,
+        0xED3717AE6190F52C,
+        0xD4AE95161C46E194,
+        0xE21F7E2251DDC9BE,
+        0x06B2DE200F6BD225,
+    ];
+    let res = add_twist_bn254(&p1, &p2);
+    let res_exp = IDENTITY_G2;
+    assert_eq!(res, res_exp);
+
+    // (different)
+    let p1 = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let p2 = [
+        0xE6D797844D4EA757,
+        0xDE328FF2DFC595C1,
+        0x60CC4B964FC41A6A,
+        0x2DC6B4E382955317,
+        0xEC23745BBAF725D7,
+        0x2FED0E41362BF52F,
+        0x1F6B9AB09C4EB02A,
+        0x143CEDD3C2652ED5,
+        0xFF08A87EFABC0098,
+        0xC38BE2C847C50F4D,
+        0x8330D22F62C7E492,
+        0x255A31846948BC16,
+        0x4511E598E966E0CD,
+        0x77193577DCBC3AA9,
+        0xAC5EC477D88C5DA5,
+        0x0E8D1C2A89E2732B,
+    ];
+    let res = add_twist_bn254(&p1, &p2);
+    let res_exp = [
+        0x731DEEFA75C75FF8,
+        0xDCB96DDF6B2FC243,
+        0x30071C6D6FEE9952,
+        0x145AAC7EAB20F60F,
+        0xE7A83F214841DB08,
+        0x7D6AE8DC1EF14099,
+        0x0CC3F10157BC7CEE,
+        0x172D4A6543DB9DC2,
+        0x202CD1E188B12110,
+        0x4692A7E20EA10C78,
+        0xC065F97EA0A843F5,
+        0x0843475161C5E198,
+        0x8A8882BA407BA6E3,
+        0xE545B65C42580815,
+        0xCBFE4BB0097F8A1F,
+        0x277B19BABB867E8A,
+    ];
+    assert_eq!(res, res_exp);
+
+    // Doubling
+    let p = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let res = dbl_twist_bn254(&p);
+    let res_exp = [
+        0x91EECEB9942A16B1,
+        0x841F546DA44E1CD6,
+        0x650423A765F1AB33,
+        0x13F129173590B56F,
+        0x9AC57C0336B9005C,
+        0x2028676771807EA8,
+        0x1F4828A5F482DE9A,
+        0x197D16CEB2C4D1F5,
+        0xC81CE58FBE75B564,
+        0xEDF164DCFD83E82A,
+        0x1525E8AB53108890,
+        0x1C6D7892409BF129,
+        0xEE0ACB8756DCD55B,
+        0x4AA880866B8F17E4,
+        0xC14990D321ACF1DD,
+        0x27997EFD6844D793,
+    ];
+    assert_eq!(res, res_exp);
+
+    // Negation
+    let p = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let res = neg_twist_bn254(&p);
+    let res_exp = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0xF98A6D829BCAC02C,
+        0xB4B5DFA8A3759BC9,
+        0x3E0888EC3A7523E9,
+        0x2DA3EF3A52087B95,
+        0xED3717AE6190F52C,
+        0xD4AE95161C46E194,
+        0xE21F7E2251DDC9BE,
+        0x06B2DE200F6BD225,
+    ];
+    assert_eq!(res, res_exp);
+
+    // Scalar multiplication by x
+    let p = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let res = scalar_mul_by_x_twist_bn254(&p);
+    let res_exp = [
+        0xA8B5BFB0B693D450,
+        0xF509982175E4FA1D,
+        0xAC41D68132B0B046,
+        0x19480DFE4C11A045,
+        0xE10FD3455786D785,
+        0x46439B6564916255,
+        0x838537534BA3C9DB,
+        0x18B474A2527FC26B,
+        0x0DB09CD57088F778,
+        0xDCF640499171943B,
+        0xE1E6FCC0051D9E12,
+        0x02C66FA8257CD7E8,
+        0x2BAF47AB1EEE4D20,
+        0xF7DEE9F63AD68C16,
+        0x65AF0955CFE11829,
+        0x0A23E5B5A8AC5407,
+    ];
+    assert_eq!(res, res_exp);
+
+    // UTF endomorphism
+    let p = [
+        0x23A419D276874DF0,
+        0xDEE8930A7231C3F5,
+        0x3CA9AC3F1B665A2F,
+        0x1A47B22F85367BA3,
+        0x7F21B727F07F79E8,
+        0x6B49E36FFF53AF74,
+        0x6706BDB87949E5BE,
+        0x111FEE445B51637D,
+        0x42961E943CB23D1B,
+        0xE2CB8AE8C4FC2EC3,
+        0x7A47BCCA470C3473,
+        0x02C05F388F292494,
+        0x4EE9746876EC081B,
+        0xC2D2D57B4C2AE8F8,
+        0xD630C7942FA38E9E,
+        0x29B17052D1C5CE03,
+    ];
+    let res = utf_endomorphism_twist_bn254(&p);
+    let res_exp = [
+        0x651171DC88C717FA,
+        0x20BD9EF7752457B2,
+        0x95F4D7576F2F08B1,
+        0x24A012CC64C9CEFA,
+        0xBD933E75C8949995,
+        0x62C9ADC14E8AE6A7,
+        0x699BBE48D86DD4FD,
+        0x024D55E9D44DF93A,
+        0x035770F80B844BD2,
+        0x4DDB645381A68718,
+        0x9AB3F54A353FFA12,
+        0x203CCEB58CA2F3E5,
+        0xC0A70673430C7877,
+        0x38B20E30F1810342,
+        0x2A8D9390FAAD049A,
+        0x10945ACD1B5066E6,
+    ];
+    assert_eq!(res, res_exp);
+}

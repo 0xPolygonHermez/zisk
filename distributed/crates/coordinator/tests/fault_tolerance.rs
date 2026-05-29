@@ -206,10 +206,10 @@ async fn test_worker_disconnect_aborts_and_cancels() {
 
     assert_job_state(&s.coordinator, &s.job_id, JobState::Failed).await;
 
-    // Worker 0 is Disconnected, workers 1+2 should be Idle
+    // Workers 1+2 parked `SettingUp` until they emit `WorkerRecoveryComplete`.
     assert_worker_state(&s.coordinator, w0_id, WorkerState::Disconnected).await;
-    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::Ready).await;
-    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::Ready).await;
+    assert_worker_state(&s.coordinator, &s.workers[1].0, WorkerState::SettingUp).await;
+    assert_worker_state(&s.coordinator, &s.workers[2].0, WorkerState::SettingUp).await;
 
     // Workers 1+2 should have received cancellation messages
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
@@ -352,9 +352,9 @@ async fn test_worker_error_aborts_and_cancels() {
     assert!(get_cancellation_count(&s.workers[1].1) >= 1);
     assert!(get_cancellation_count(&s.workers[2].1) >= 1);
 
-    // All workers should be Ready after cleanup
+    // All workers parked `SettingUp` until they emit `WorkerRecoveryComplete`.
     for (wid, _) in &s.workers {
-        assert_worker_state(&s.coordinator, wid, WorkerState::Ready).await;
+        assert_worker_state(&s.coordinator, wid, WorkerState::SettingUp).await;
     }
 }
 
