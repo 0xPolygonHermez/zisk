@@ -54,16 +54,6 @@ SRC_DIR = src
 LIB_NAME = libziskc.a
 LIB_FILE = $(LIB_DIR)/$(LIB_NAME)
 
-# Public C API exported by libziskc.a (the only symbols the Rust crate links).
-# Every other *strong* global symbol (the ffiasm field internals: Fr_*, RawFr,
-# RawFq, Goldilocks, ... ) is demoted to a local symbol so it cannot collide
-# with the identical symbols bundled by the proofman-starks-lib-c dependency
-# when both archives land in the same binary. Weak/COMDAT symbols (C++ template
-# and inline instantiations such as AltBn128::Engine) are deliberately left
-# untouched: they never trigger duplicate-symbol errors and must stay weak so
-# the linker can still fold them across translation units.
-PUBLIC_SYMBOLS = AddPointEc AddPointEcP InverseFpEc InverseFnEc InverseFnEcR1 \
-                 SqrtFpEcParity Arith256 Add256
 COMBINED_OBJ = $(BUILD_DIR)/ziskc_combined.o
 LOCALIZE_LIST = $(BUILD_DIR)/localize_symbols.txt
 
@@ -107,6 +97,20 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
 
 ALL_OBJS = $(FIELD_ASM_OBJS) $(FIELD_CPP_OBJS) $(OTHER_OBJS)
 
+# Object files holding the upstream ffiasm field / Goldilocks code that the
+# proofman-starks-lib-c dependency *also* bundles. Their strong symbols (Fr_*,
+# Fec_*, Goldilocks::*, AltBn128::*, naf, ...) are what collide at link time, so
+# these are the only objects whose symbols we localize. Every other object (the
+# high-level precompile entry points: AddPointEc, Fcall, BN254*, BLS12_381*,
+# keccak, sha256, poseidon2, blake2, ...) keeps its symbols global so both the
+# Rust crate and the asm emulator (emulator-asm links -lziskc) can call them.
+FIELD_INTERNAL_OBJS = $(FIELD_ASM_OBJS) $(FIELD_CPP_OBJS) \
+                      $(BUILD_DIR)/alt_bn128.o \
+                      $(BUILD_DIR)/naf.o \
+                      $(BUILD_DIR)/splitparstr.o \
+                      $(BUILD_DIR)/misc.o \
+                      $(BUILD_DIR)/goldilocks_base_field.o
+
 # Header directories for include path
 INCLUDES = -I$(SRC_DIR)
 
@@ -122,19 +126,29 @@ $(LIB_DIR):
 
 # Library target
 #
-# On Linux (where the Rust crate links libziskc.a alongside proofman-starks-lib-c)
-# combine all objects into a single relocatable object and demote every symbol
-# except the public C API to a local symbol. Local symbols never participate in
-# cross-archive duplicate resolution, so the bundled ffiasm field code can no
-# longer clash with proofman's identical copy.
+# libziskc.a and the proofman-starks-lib-c dependency both bundle the same
+# upstream ffiasm field / Goldilocks code, each exporting identical strong
+# global symbols (Fr_*, Fec_*, Goldilocks::*, ...). When both archives are linked
+# into the same binary rust-lld aborts with duplicate-symbol errors. (This was
+# latent before; regenerating the ffiasm sources changed the object layout and
+# exposed it.)
+#
+# On Linux we combine all objects into one relocatable object and demote *only*
+# the field-internal symbols (those defined by FIELD_INTERNAL_OBJS) to local.
+# Local symbols never participate in cross-archive duplicate resolution, so our
+# copies no longer clash with proofman's. libziskc's own high-level entry points
+# reference those internals within the same combined object, so they still
+# resolve; and every entry point the Rust crate and the asm emulator call stays
+# global. (Weakening instead of localizing is wrong here: it would make our
+# precompiles defer to proofman's different same-named fields and miscompute.)
 #
 # Elsewhere (macOS, where build.rs skips the C build entirely) just archive the
 # objects directly, avoiding the GNU-binutils-specific `ld -r`/`objcopy` step.
 ifeq ($(UNAME_S),Linux)
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 	ld -r -z noexecstack -o $(COMBINED_OBJ) $(ALL_OBJS)
-	nm -g --defined-only $(COMBINED_OBJ) | awk '$$2 !~ /[vVwW]/ {print $$3}' \
-		| grep -vxF $(addprefix -e ,$(PUBLIC_SYMBOLS)) > $(LOCALIZE_LIST)
+	nm -g --defined-only $(FIELD_INTERNAL_OBJS) | awk '$$2 !~ /[vVwW]/ {print $$3}' \
+		| sort -u > $(LOCALIZE_LIST)
 	objcopy --localize-symbols=$(LOCALIZE_LIST) $(COMBINED_OBJ)
 	ar rcs $@ $(COMBINED_OBJ)
 else
