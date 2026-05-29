@@ -15,7 +15,7 @@ use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClie
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate a proof from the execution of the guest program
-pub struct ZiskProve {
+pub struct ProveCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
@@ -110,7 +110,7 @@ pub struct ZiskProve {
     pub number_threads_witness: Option<usize>,
 }
 
-impl ZiskProve {
+impl ProveCmd {
     pub fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {

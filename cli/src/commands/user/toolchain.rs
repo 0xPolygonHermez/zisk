@@ -10,7 +10,7 @@ pub use install::ZiskInstallToolchain;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Toolchain management commands
-pub struct ZiskToolchain {
+pub struct ToolchainCmd {
     #[command(subcommand)]
     pub command: ZiskToolchainCommand,
 }
@@ -23,7 +23,7 @@ pub enum ZiskToolchainCommand {
     Install(ZiskInstallToolchain),
 }
 
-impl ZiskToolchain {
+impl ToolchainCmd {
     pub fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskToolchainCommand::Build(cmd) => cmd.run(),

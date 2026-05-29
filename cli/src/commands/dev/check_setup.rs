@@ -13,7 +13,7 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Check that the proving key is correctly set up
-pub struct ZiskCheckSetup {
+pub struct CheckSetupCmd {
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
     pub proving_key: Option<PathBuf>,
@@ -40,7 +40,7 @@ pub struct ZiskCheckSetup {
     pub verbose: u8,
 }
 
-impl ZiskCheckSetup {
+impl CheckSetupCmd {
     pub fn run(&self) -> Result<()> {
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();

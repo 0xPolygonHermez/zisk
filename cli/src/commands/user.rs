@@ -29,14 +29,14 @@ pub(crate) use verify::*;
     long_about = "Cargo Zisk is the CLI for ZisK for building and proving guest programs."
 )]
 pub enum ZiskCmd {
-    New(ZiskNew),
-    Build(ZiskBuild),
-    Run(ZiskRun),
-    Verify(ZiskVerify),
-    Utils(ZiskUtils),
-    Toolchain(ZiskToolchain),
-    Remote(ZiskRemote),
-    Embedded(ZiskEmbedded),
+    New(NewCmd),
+    Build(BuildCmd),
+    Run(RunCmd),
+    Verify(VerifyCmd),
+    Utils(UtilsCmd),
+    Toolchain(ToolchainCmd),
+    Remote(RemoteCmd),
+    Embedded(Embedded),
 }
 
 impl ZiskCmd {

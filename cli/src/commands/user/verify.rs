@@ -7,7 +7,7 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify a proof
-pub struct ZiskVerify {
+pub struct VerifyCmd {
     /// Path to the proof file
     #[clap(short = 'p', long)]
     pub proof: String,
@@ -17,7 +17,7 @@ pub struct ZiskVerify {
     pub verbose: u8,
 }
 
-impl ZiskVerify {
+impl VerifyCmd {
     pub fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 

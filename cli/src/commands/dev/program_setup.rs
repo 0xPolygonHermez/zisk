@@ -18,7 +18,7 @@ use zisk_common::ZiskPaths;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Setup guest program
-pub struct ZiskProgramSetup {
+pub struct ProgramSetupCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
@@ -46,7 +46,7 @@ pub struct ZiskProgramSetup {
     pub output_dir: Option<PathBuf>,
 }
 
-impl ZiskProgramSetup {
+impl ProgramSetupCmd {
     pub fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             match detect_current_project_elf()? {

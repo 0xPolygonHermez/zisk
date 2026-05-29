@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
 
-use super::{ZiskBuild, ZiskNew, ZiskRun, ZiskToolchain, ZiskUtils, ZiskVerify};
+use super::{BuildCmd, NewCmd, RunCmd, ToolchainCmd, UtilsCmd, VerifyCmd};
 
 mod check_setup;
 mod clean;
@@ -39,24 +39,24 @@ pub(crate) use wrap::*;
 )]
 pub enum ZiskDevCmd {
     // Shared commands with cargo-zisk
-    New(ZiskNew),
-    Build(ZiskBuild),
-    Run(ZiskRun),
-    Verify(ZiskVerify),
-    Utils(ZiskUtils),
-    Toolchain(ZiskToolchain),
+    New(NewCmd),
+    Build(BuildCmd),
+    Run(RunCmd),
+    Verify(VerifyCmd),
+    Utils(UtilsCmd),
+    Toolchain(ToolchainCmd),
 
     // Dev-only commands
-    CheckSetup(ZiskCheckSetup),
-    Clean(ZiskClean),
-    Execute(ZiskExecute),
-    ExportSolidityCalldata(ZiskExportSolidityCalldata),
-    WrapProof(ZiskWrap),
-    Prove(ZiskProve),
-    ProgramSetup(ZiskProgramSetup),
-    ProofmanSetup(ZiskProofmanSetup),
-    Stats(ZiskStats),
-    VerifyConstraints(ZiskVerifyConstraints),
+    CheckSetup(CheckSetupCmd),
+    Clean(CleanCmd),
+    Execute(ExecuteCmd),
+    ExportSolidityCalldata(ExportSolidityCalldataCmd),
+    WrapProof(WrapCmd),
+    Prove(ProveCmd),
+    ProgramSetup(ProgramSetupCmd),
+    ProofmanSetup(ProofmanSetupCmd),
+    Stats(StatsCmd),
+    VerifyConstraints(VerifyConstraintsCmd),
 }
 
 impl ZiskDevCmd {

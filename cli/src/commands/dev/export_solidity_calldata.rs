@@ -12,7 +12,7 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Export the four ABI fields of a wrapped PLONK proof as JSON for the Solidity verifier.
-pub struct ZiskExportSolidityCalldata {
+pub struct ExportSolidityCalldataCmd {
     /// Path to the wrapped PLONK proof file (output of `cargo-zisk wrap-proof --plonk`)
     #[arg(short = 'p', long)]
     pub proof: PathBuf,
@@ -38,7 +38,7 @@ struct SolidityFixture {
     proof_bytes: String,
 }
 
-impl ZiskExportSolidityCalldata {
+impl ExportSolidityCalldataCmd {
     pub fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 

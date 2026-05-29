@@ -11,7 +11,7 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate a PLONK/minimal proof from a STARK (VADCOP) proof
-pub struct ZiskWrap {
+pub struct WrapCmd {
     /// Path to the STARK (VADCOP) proof file
     #[arg(short = 'p', long)]
     pub proof: PathBuf,
@@ -46,7 +46,7 @@ pub struct ZiskWrap {
     pub verbose: u8,
 }
 
-impl ZiskWrap {
+impl WrapCmd {
     pub fn run(&self) -> Result<()> {
         print_banner();
 

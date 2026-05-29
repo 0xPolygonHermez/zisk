@@ -14,7 +14,7 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
-pub struct ZiskExecute {
+pub struct ExecuteCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
@@ -61,7 +61,7 @@ pub struct ZiskExecute {
     pub no_auto_setup: bool,
 }
 
-impl ZiskExecute {
+impl ExecuteCmd {
     pub fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {

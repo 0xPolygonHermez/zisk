@@ -20,7 +20,7 @@ pub use stats::ZiskProofmanSetupStats;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Proofman proving-key setup commands (mirrors the proofman-setup binary)
-pub struct ZiskProofmanSetup {
+pub struct ProofmanSetupCmd {
     #[command(subcommand)]
     pub command: ZiskProofmanSetupCommand,
 }
@@ -45,7 +45,7 @@ pub enum ZiskProofmanSetupCommand {
     CompilePil(ZiskProofmanCompilePil),
 }
 
-impl ZiskProofmanSetup {
+impl ProofmanSetupCmd {
     pub fn run(&mut self) -> Result<()> {
         // 64 MB rayon stack — expression trees in large AIRs (e.g. ZisK) are deep.
         // Idempotent across calls; ignore the "already initialized" error.

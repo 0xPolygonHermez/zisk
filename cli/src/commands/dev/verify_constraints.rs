@@ -15,7 +15,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
-pub struct ZiskVerifyConstraints {
+pub struct VerifyConstraintsCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
@@ -67,7 +67,7 @@ pub struct ZiskVerifyConstraints {
     pub debug: Option<Option<String>>,
 }
 
-impl ZiskVerifyConstraints {
+impl VerifyConstraintsCmd {
     pub fn run(&mut self) -> Result<()> {
         // panic::set_hook(Box::new(|panic_info| {
         //     eprintln!("\x1B[31mPANIC DETECTED");

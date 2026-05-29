@@ -16,7 +16,7 @@ pub use wrap::ZiskRemoteWrap;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run ZisK operations against a remote prover service
-pub struct ZiskRemote {
+pub struct RemoteCmd {
     #[command(subcommand)]
     pub command: ZiskRemoteCommand,
 }
@@ -35,7 +35,7 @@ pub enum ZiskRemoteCommand {
     Wrap(ZiskRemoteWrap),
 }
 
-impl ZiskRemote {
+impl RemoteCmd {
     pub fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskRemoteCommand::Upload(cmd) => cmd.run(),

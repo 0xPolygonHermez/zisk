@@ -16,7 +16,7 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run the program and collect execution statistics
-pub struct ZiskStats {
+pub struct StatsCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     pub elf: Option<PathBuf>,
@@ -83,7 +83,7 @@ pub struct ZiskStats {
     pub debug: Option<Option<String>>,
 }
 
-impl ZiskStats {
+impl StatsCmd {
     pub fn run(&mut self) -> Result<()> {
         // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
@@ -427,7 +427,7 @@ impl ZiskStats {
                 stat.collect_start_time.duration_since(start_time).as_micros() as u64;
             let witness_start_time: u64 =
                 stat.witness_start_time.duration_since(start_time).as_micros() as u64;
-            let name = ZiskStats::air_name(airgroup_id, air_id);
+            let name = StatsCmd::air_name(airgroup_id, air_id);
             if stat.collect_duration > 0 {
                 let name = name.clone() + "_collect";
                 // println!(

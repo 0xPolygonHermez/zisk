@@ -10,7 +10,7 @@ use crate::common::detect_current_project_elf;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Build the program and run it using the ZisK toolchain
-pub struct ZiskRun {
+pub struct RunCmd {
     /// Space or comma separated list of features to activate
     #[arg(short = 'F', long)]
     features: Option<String>,
@@ -41,7 +41,7 @@ pub struct ZiskRun {
 }
 
 // Implement the run functionality for ZiskRun
-impl ZiskRun {
+impl RunCmd {
     pub fn run(&self) -> Result<()> {
         let elf_path = match &self.elf {
             Some(path) => path.clone(),

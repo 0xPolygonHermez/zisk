@@ -6,12 +6,12 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Create a new project that runs inside ZisK
-pub struct ZiskNew {
+pub struct NewCmd {
     /// Name of the new project to create
     name: String,
 }
 
-impl ZiskNew {
+impl NewCmd {
     pub fn run(&self) -> Result<()> {
         let root = Path::new(&self.name);
         let repo_url = "https://{}@github.com/0xPolygonHermez/zisk_template";

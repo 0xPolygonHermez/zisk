@@ -10,7 +10,7 @@ pub use convert_input::ZiskConvertInput;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Utility commands
-pub struct ZiskUtils {
+pub struct UtilsCmd {
     #[command(subcommand)]
     pub command: ZiskUtilsCommand,
 }
@@ -22,7 +22,7 @@ pub enum ZiskUtilsCommand {
     ConvertInput(ZiskConvertInput),
 }
 
-impl ZiskUtils {
+impl UtilsCmd {
     pub fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskUtilsCommand::CleanCache(cmd) => cmd.run(),
