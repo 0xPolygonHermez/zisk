@@ -29,9 +29,6 @@ PROGRAMS=(diagnostic modexp secp256k1 uint256)
 GUEST_VERSION="0.1.0"
 
 echo "::group::Build host tools (cargo-zisk, ziskemu)"
-# Built from the *current* tree (PR or base) so each pass uses that branch's own
-# build driver and emulator. Incremental on the PR pass; on the base pass cargo
-# recompiles whatever the PR changed.
 cargo build --release -p cargo-zisk -p ziskemu --bin cargo-zisk --bin ziskemu
 echo "::endgroup::"
 
@@ -39,15 +36,10 @@ CARGO_ZISK="$REPO/target/release/cargo-zisk"
 ZISKEMU="$REPO/target/release/ziskemu"
 
 echo "::group::Install ZisK rust toolchain"
-# Idempotent: a no-op once the toolchain is present. Lives here (rather than in
-# the workflow) so the script is self-contained and reproducible locally.
 "$CARGO_ZISK" toolchain install
 echo "::endgroup::"
 
 echo "::group::Build guest ELFs"
-# cargo-zisk build drives `cargo +zisk build` in the current dir, emitting ELFs
-# to target/elf/<ZISK_TARGET>/release/<name>. Run it from the nested guest
-# workspace so it picks up the right members and profile flags.
 (
   cd "$REPO/test-artifacts/programs"
   specs=()
@@ -67,8 +59,8 @@ for prog in "${PROGRAMS[@]}"; do
     exit 1
   fi
   echo "::group::Emulate $prog"
-  # -X prints the REPORT/COST DISTRIBUTION summary to stdout. No input file is
-  # needed: none of these guests read from stdin. No proving key is required.
+  # -X prints the REPORT/COST DISTRIBUTION summary to stdout. 
+  # No input file is needed: none of these guests read from stdin.
   "$ZISKEMU" -e "$elf" -X | tee "$OUTDIR/$prog.txt"
   echo "::endgroup::"
 done

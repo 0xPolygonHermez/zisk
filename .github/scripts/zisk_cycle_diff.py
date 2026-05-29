@@ -100,7 +100,7 @@ def breakdown(program, base, pr):
         lines.append(f"| {name} | {fmt(b)} | {fmt(p)} | {diff} | {pct} |")
     table = "\n".join(lines)
     return (
-        f"<details>\n<summary><b>{program}</b> — full cost breakdown</summary>\n\n"
+        f"<details>\n<summary><b>{program}</b></summary>\n\n"
         f"{table}\n\n"
         "</details>"
     )
@@ -126,8 +126,7 @@ def main():
 
     out = ["## 🔄 ZisK Cycle Tracking", ""]
     out.append(
-        "Emulator cost report (`ziskemu -X`) comparing this PR against the base "
-        "branch. **Lower is better** — a positive diff is a regression."
+        "Emulator cost report (`ziskemu -X`) comparing this PR against the base branch."
     )
     out.append("")
 
@@ -140,7 +139,7 @@ def main():
     out.append("")
     out.append(summary(rows))
     out.append("")
-    out.append("### Per-guest breakdown")
+    out.append("### Per-Guest Breakdown")
     out.append("")
     for prog, base, pr in rows:
         out.append(breakdown(prog, base, pr))
@@ -148,9 +147,8 @@ def main():
 
     out.append("---")
     out.append(
-        "<sub>🔺 increase (regression) · 🔻 decrease (improvement) · ➖ no change. "
-        "`RAM USAGE` is excluded (runner-dependent); STEPS and all costs are "
-        "deterministic functions of (ELF, input).</sub>"
+        "<sub>🔴 increase (regression) · 🟢 decrease (improvement) · ➖ no change. "
+        "`STEPS` and all `COSTS` are deterministic functions of (ELF, input).</sub>"
     )
 
     print("\n".join(out))

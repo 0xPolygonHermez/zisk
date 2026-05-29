@@ -9,6 +9,11 @@ on:
     paths-ignore:
       - 'book/**'
   workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against (manual runs only)"
+        required: false
+        default: "develop"
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
