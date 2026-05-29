@@ -358,7 +358,7 @@ void server_setup (void)
         /* PRECOMPILE AVAILABLE SEMAPHORE */
         /**********************************/
 
-        if (!just_create_all_shm) {
+        if (create_semaphores) {
             // Get the start time
             if (verbose) gettimeofday(&start_time, NULL);
 
@@ -387,7 +387,7 @@ void server_setup (void)
         /* PRECOMPILE READ SEMAPHORE */
         /*****************************/
 
-        if (!just_create_all_shm) {
+        if (create_semaphores) {
             // Get the start time
             if (verbose) gettimeofday(&start_time, NULL);
 
@@ -706,7 +706,7 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    if (call_chunk_done && !just_create_all_shm)
+    if (call_chunk_done && create_semaphores)
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -737,7 +737,7 @@ void server_setup (void)
     /* SEM SHUTDOWN DONE */
     /*********************/
 
-    if (!just_create_all_shm) {
+    if (create_semaphores) {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
         
@@ -767,7 +767,7 @@ void server_setup (void)
     /* SEM INPUT AVAILABLE */
     /***********************/
 
-    if (!just_create_all_shm) {
+    if (create_semaphores) {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
 
@@ -1180,7 +1180,7 @@ void server_cleanup (void)
             }
         }
 
-        if (!just_create_all_shm) {
+        if (delete_semaphores) {
             // Semaphores cleanup
             result = sem_close(sem_prec_avail);
             if (result == -1)
@@ -1242,7 +1242,7 @@ void server_cleanup (void)
     trace_cleanup();
 
     // Cleanup chunk done semaphore
-    if (call_chunk_done && !just_create_all_shm)
+    if (call_chunk_done && delete_semaphores)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
@@ -1256,7 +1256,7 @@ void server_cleanup (void)
         }
     }
 
-    if (!just_create_all_shm) {
+    if (delete_semaphores) {
         // Cleanup input available semaphore
         result = sem_unlink(sem_input_avail_name);
         if (result == -1)
@@ -1266,7 +1266,7 @@ void server_cleanup (void)
     }
 
     // Post shutdown done semaphore
-    if (!just_create_all_shm) {
+    if (delete_semaphores) {
         result = sem_post(sem_shutdown_done);
         if (result == -1)
         {

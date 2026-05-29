@@ -50,6 +50,7 @@ void print_usage (void)
     asm_printf("\t--open_input_shm open existing input shared memories\n");
     asm_printf("\t--open_all_shm open existing shared memories: input, output and internal ones\n");
     asm_printf("\t--just_create_all_shm just create all shared memories and exit, without doing any other setup or starting the server\n");
+    asm_printf("\t--just_create_non_input_shm just create all shared memories except the input ones and exit, without doing any other setup or starting the server\n");
 #ifdef ASM_PRECOMPILE_CACHE
     asm_printf("\t--precompile-cache-store store precompile results in cache file\n");
     asm_printf("\t--precompile-cache-load load precompile results from cache file\n");
@@ -465,6 +466,7 @@ void parse_arguments(int argc, char *argv[])
                 create_input_shm = true;
                 create_output_shm = true;
                 create_internal_shm = true;
+                create_semaphores = false;
 
                 // ...then quit...
                 just_create_all_shm = true;
@@ -473,6 +475,25 @@ void parse_arguments(int argc, char *argv[])
                 delete_input_shm = false;
                 delete_output_shm = false;
                 delete_internal_shm = false;
+                delete_semaphores = false;
+                continue;
+            }
+            if (strcmp(argv[i], "--just_create_non_input_shm") == 0)
+            {
+                // Create all shared memories except the input ones...
+                create_input_shm = false;
+                create_output_shm = true;
+                create_internal_shm = true;
+                create_semaphores = false;
+
+                // ...then quit...
+                just_create_non_input_shm = true;
+
+                // ...but don't delete any when done
+                delete_input_shm = false;
+                delete_output_shm = false;
+                delete_internal_shm = false;
+                delete_semaphores = false;
                 continue;
             }
             if (strcmp(argv[i], "--redirect-output-to-file") == 0)
@@ -1130,6 +1151,11 @@ void configure (void)
         asm_printf("\tcreate_input_shm=%u\n", create_input_shm);
         asm_printf("\tcreate_internal_shm=%u\n", create_internal_shm);
         asm_printf("\tcreate_output_shm=%u\n", create_output_shm);
+        asm_printf("\tcreate_semaphores=%u\n", create_semaphores);
+        asm_printf("\tdelete_input_shm=%u\n", delete_input_shm);
+        asm_printf("\tdelete_internal_shm=%u\n", delete_internal_shm);
+        asm_printf("\tdelete_output_shm=%u\n", delete_output_shm);
+        asm_printf("\tdelete_semaphores=%u\n", delete_semaphores);
         asm_printf("\tstdio=%u\n", stdio);
     }
 }

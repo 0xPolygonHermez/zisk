@@ -822,7 +822,7 @@ int main(int argc, char *argv[])
     server_reset_trace();
 
     // In case we just want to create the shared memories and exit, do it now after the setup and reset, and exit before starting to listen to clients
-    if (just_create_all_shm)
+    if (just_create_all_shm || just_create_non_input_shm)
     {
         server_cleanup();
         return 0;
