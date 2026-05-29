@@ -1,8 +1,9 @@
+use crate::execute_client::ExecuteClient;
 use crate::guest::ProgramId;
 use crate::GuestProgram;
 use crate::{
     check_paths_exist,
-    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
@@ -17,6 +18,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
+use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime,
 };
@@ -344,5 +346,20 @@ impl EmuCoreProver {
         );
 
         Ok(Self { backend: core, rank_info })
+    }
+}
+
+impl ExecuteClient for ZiskProver<Emu> {
+    fn setup(&self, program: &GuestProgram, _with_hints: bool) -> Result<()> {
+        ZiskProver::<Emu>::setup(self, program).run().map(|_| ())
+    }
+
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        _hints: Option<StreamSource>,
+    ) -> Result<ExecuteOutput> {
+        ZiskProver::<Emu>::execute(self, program, stdin)
     }
 }

@@ -7,7 +7,7 @@ use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use crate::{RomError, RomInstance, RomResult};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
-use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx, Planner};
+use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
@@ -59,17 +59,6 @@ impl RomSM {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
-    /// ROM does not participate in the `Planner`-trait dispatch — its
-    /// chunk set comes from the executor directly via
-    /// [`crate::RomPlanner::plan_for_chunks`]. This impl exists only
-    /// because `ComponentBuilder` requires it; calling it is a bug.
-    fn build_planner(&self) -> Box<dyn Planner> {
-        unreachable!(
-            "RomSM::build_planner: ROM planning goes through \
-             RomPlanner::plan_for_chunks, not the Planner trait"
-        );
-    }
-
     /// Builds an instance of the ROM state machine.
     ///
     /// # Arguments

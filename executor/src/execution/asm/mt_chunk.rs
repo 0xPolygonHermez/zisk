@@ -33,7 +33,7 @@ use ziskemu::ZiskEmulator;
 use crate::{
     error::{ExecutorError, ExecutorResult},
     pub_outs_collector::PubOutsCollector,
-    CountersChunkMetrics, StaticDataBus, StaticSMBundle,
+    CountersChunkMetrics, StaticDataBus,
 };
 
 /// Stateful accumulator for the per-chunk MT replay phase.
@@ -73,22 +73,12 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
         chunk_id: ChunkId,
         emu_trace: &EmuTrace,
         zisk_rom: &ZiskRom,
-        sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
         mt_scope_id: u64,
     ) {
         stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-        let mut data_bus = match StaticDataBus::from_bundle(sm_bundle, true) {
-            Ok(db) => db,
-            Err(e) => {
-                self.record_error(format!(
-                    "StaticDataBus::from_bundle failed for chunk {}: {e:#}",
-                    chunk_id.0
-                ));
-                return;
-            }
-        };
+        let mut data_bus = StaticDataBus::<_, F>::build(true);
 
         ZiskEmulator::process_emu_trace::<F, _, _>(zisk_rom, emu_trace, &mut data_bus, false);
         data_bus.on_close();

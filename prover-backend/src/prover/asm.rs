@@ -1,7 +1,8 @@
+use crate::execute_client::ExecuteClient;
 use crate::{
     check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
     guest::ProgramId,
-    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
@@ -719,5 +720,25 @@ impl AsmCoreProver {
                 n_setups: AtomicU64::new(0),
             },
         })
+    }
+}
+
+impl ExecuteClient for ZiskProver<Asm> {
+    fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+        let builder = ZiskProver::<Asm>::setup(self, program);
+        let builder = if with_hints { builder.with_hints() } else { builder };
+        builder.run().map(|_| ())
+    }
+
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        hints: Option<StreamSource>,
+    ) -> Result<ExecuteOutput> {
+        if let Some(stream) = hints {
+            ZiskProver::<Asm>::register_hints_stream(self, stream)?;
+        }
+        ZiskProver::<Asm>::execute(self, program, stdin)
     }
 }

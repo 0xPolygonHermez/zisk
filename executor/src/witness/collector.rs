@@ -258,7 +258,6 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                     Ok(None)
                 } else {
                     crate::StaticDataBusCollect::for_chunk(
-                        &self.sm_bundle,
                         pctx,
                         &secn_instances,
                         ChunkId(chunk_id),

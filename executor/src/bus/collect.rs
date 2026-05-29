@@ -23,7 +23,7 @@ use zisk_common::{
 use zisk_core::ZiskOperationType;
 
 use crate::error::{ExecutorError, ExecutorResult};
-use crate::{BuiltinCollectors, PrecompileCollectors, StaticSMBundle};
+use crate::{BuiltinCollectors, PrecompileCollectors};
 use proofman_common::ProofCtx;
 use std::collections::HashMap;
 use zisk_common::Instance;
@@ -87,16 +87,14 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     /// precompile wrapper via `try_push_collector`; on a miss the
     /// air-id is reported. Callers are expected to skip empty chunks
     /// (no `global_idxs`) themselves — this constructor always builds.
-    /// Mirrors `StaticDataBus::from_bundle` on the counter side.
     pub fn for_chunk(
-        bundle: &StaticSMBundle<F>,
         pctx: &ProofCtx<F>,
         instances: &HashMap<usize, &dyn Instance<F>>,
         chunk_id: ChunkId,
         global_idxs: &[usize],
     ) -> ExecutorResult<Self> {
-        let mut builtins = BuiltinCollectors::new(bundle)?;
-        let mut precompiles = PrecompileCollectors::new(bundle)?;
+        let mut builtins = BuiltinCollectors::<F>::new();
+        let mut precompiles = PrecompileCollectors::<F>::new();
 
         for global_idx in global_idxs {
             let global_id = *global_idx;

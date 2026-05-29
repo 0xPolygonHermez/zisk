@@ -13,11 +13,8 @@ use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
-
-use crate::sm::StaticSMBundle;
 
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.
@@ -97,31 +94,26 @@ impl ExecutionPhase {
     }
 
     /// Runs the active emulator and returns its [`ExecutionOutput`].
-    #[allow(clippy::too_many_arguments)]
+    /// `is_first_process` controls ROM-SM ownership on the ASM path.
     pub fn run<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
+        is_first_process: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
         caller_stats_scope: &StatsScope,
     ) -> ExecutorResult<ExecutionOutput> {
         match self.asm_emulator() {
-            Some(asm) => {
-                let has_rom_sm = pctx.dctx_is_first_process();
-                asm.execute(
-                    zisk_rom,
-                    stdin,
-                    sm_bundle,
-                    has_rom_sm,
-                    use_hints,
-                    stats,
-                    caller_stats_scope,
-                )
-            }
-            None => self.emulator_rust.execute(zisk_rom, stdin, sm_bundle),
+            Some(asm) => asm.execute::<F>(
+                zisk_rom,
+                stdin,
+                is_first_process,
+                use_hints,
+                stats,
+                caller_stats_scope,
+            ),
+            None => self.emulator_rust.execute::<F>(zisk_rom, stdin),
         }
     }
 }

@@ -15,18 +15,20 @@ pub use collector::*;
 pub use generator::*;
 pub use handlers::*;
 
-use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
-use zisk_common::{InstanceType, StatsScope};
+use sm_main::MainInstance;
+use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
-use crate::ports::{Dctx, GlobalId};
+use crate::ports::{Dctx, GlobalId, ProofRegistry};
 use crate::sm::StaticSMBundle;
 use crate::state::ExecutionState;
 
@@ -84,27 +86,30 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 }
 
 /// Phase-4 actor — classifies each global id and dispatches to one
-/// of five [`handlers`] modules.
+/// of five [`handlers`] modules. Also owns the witness-time
+/// materialization of instances (formerly `InstancePopulator`).
 pub struct WitnessPhase<F: PrimeField64> {
-    /// Chunk data collector for secondary instances. Shared by the
-    /// secondary + Rust ROM handlers (passed by reference).
+    /// Constructed SM bundle. Held directly so the populator-style
+    /// methods can dispatch `build_instance` / `configure_instances`
+    /// / `get_std` without going through `collector`.
+    sm_bundle: Arc<StaticSMBundle<F>>,
+
+    /// Chunk data collector for secondary instances.
     collector: ChunkDataCollector<F>,
 
     /// Witness computer for all instance types.
     witness_generator: WitnessGenerator,
 
-    /// Reusable ROM trace buffer (single allocation across runs),
-    /// shared by both ROM handlers.
+    /// Reusable ROM trace buffer (single allocation across runs).
     trace_buffer_rom: Mutex<Vec<F>>,
 }
 
 impl<F: PrimeField64> WitnessPhase<F> {
-    /// Construct the witness phase.
     pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
-        Self { collector, witness_generator, trace_buffer_rom }
+        Self { sm_bundle, collector, witness_generator, trace_buffer_rom }
     }
 
     pub fn set_rh_data(&self, rh_data: AsmRunnerRH) -> ExecutorResult<()> {
@@ -123,6 +128,90 @@ impl<F: PrimeField64> WitnessPhase<F> {
         *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
 
+        Ok(())
+    }
+
+    /// Materialise main instances into `state` and pre-stamp them as not-yet-ready on `registry`.
+    pub fn populate_main_instances(
+        &self,
+        registry: &dyn ProofRegistry,
+        state: &ExecutionState<F>,
+        assignments: Vec<(usize, Plan)>,
+    ) -> ExecutorResult<()> {
+        let mut main_instances =
+            state.instance_set.main_instances.write_or_poison("main_instances")?;
+        for (global_id, plan) in assignments {
+            main_instances.entry(global_id).or_insert_with(|| {
+                MainInstance::new(InstanceCtx::new(global_id, plan), self.sm_bundle.get_std())
+            });
+
+            let gid = GlobalId(global_id);
+            if registry.is_my_process_instance(gid)? {
+                registry.set_witness_ready(gid, false);
+            }
+        }
+        Ok(())
+    }
+
+    /// Configure secondary SMs on `pctx`. Called before flatten + GID assignment.
+    pub fn configure_sm_instances(
+        &self,
+        pctx: &ProofCtx<F>,
+        plannings: &BTreeMap<usize, Vec<Plan>>,
+    ) {
+        self.sm_bundle.configure_instances(pctx, plannings);
+    }
+
+    /// Materialise secondary instances into `state`. Plans must carry stamped `global_id`s.
+    pub fn populate_secn_instances(
+        &self,
+        state: &ExecutionState<F>,
+        plans: Vec<Plan>,
+    ) -> ExecutorResult<()> {
+        let mut secn_instances =
+            state.instance_set.secn_instances.write_or_poison("secn_instances")?;
+        for plan in plans {
+            let global_id =
+                plan.global_id.ok_or(ExecutorError::SecnPlanMissing { phase: "populate" })?;
+            if let Entry::Vacant(e) = secn_instances.entry(global_id) {
+                let instance = self.sm_bundle.build_instance(InstanceCtx::new(global_id, plan))?;
+                e.insert(instance);
+            }
+        }
+        Ok(())
+    }
+
+    /// Reset each secondary instance and register its chunks on the registry.
+    pub fn configure_checkpoints(
+        &self,
+        registry: &dyn ProofRegistry,
+        state: &ExecutionState<F>,
+        global_ids: &[usize],
+    ) -> ExecutorResult<()> {
+        let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
+
+        for &global_id in global_ids {
+            let instance = secn_instances
+                .get(&global_id)
+                .ok_or(ExecutorError::InstanceNotFound { global_id })?;
+
+            instance.reset();
+
+            if instance.instance_type() == InstanceType::Instance {
+                let chunks: Vec<usize> = match instance.check_point() {
+                    CheckPoint::None => vec![],
+                    CheckPoint::Single(chunk_id) => vec![chunk_id.as_usize()],
+                    CheckPoint::Multiple(chunk_ids) => {
+                        chunk_ids.iter().map(|id| id.as_usize()).collect()
+                    }
+                };
+
+                let gid = GlobalId(global_id);
+                let info = registry.instance_info(gid)?;
+                let is_memory_related = AirClassifier::is_memory_related(info.air_id);
+                registry.set_chunks(gid, &chunks, is_memory_related);
+            }
+        }
         Ok(())
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     pub_outs_collector::PubOutsCollector, BackendArtifacts, CountersChunkMetrics, ExecutionOutput,
-    StaticDataBus, StaticSMBundle, MAX_NUM_STEPS,
+    StaticDataBus, MAX_NUM_STEPS,
 };
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
@@ -32,7 +32,6 @@ impl EmulatorRust {
     /// # Arguments
     /// * `stdin` - Shared standard input source used to feed data into the emulator.
     /// * `_pctx` - Proof context carrying field-parameterized configuration for execution.
-    /// * `sm_bundle` - Static state machine bundle used for counting device metrics.
     /// * `_stats` - Handle to executor statistics collection.
     /// * `_caller_stats_scope` - Stats scope used to associate collected statistics with the caller.
     ///
@@ -43,7 +42,6 @@ impl EmulatorRust {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        sm_bundle: &StaticSMBundle<F>,
     ) -> ExecutorResult<ExecutionOutput> {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin)?;
 
@@ -51,7 +49,7 @@ impl EmulatorRust {
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
         timer_start_info!(COUNT);
-        let (counters, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
+        let (counters, pub_outs) = self.count::<F>(zisk_rom, &min_traces)?;
         timer_stop_and_log_info!(COUNT);
 
         Ok(ExecutionOutput {
@@ -97,12 +95,11 @@ impl EmulatorRust {
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
-        sm_bundle: &StaticSMBundle<F>,
     ) -> ExecutorResult<(CountersChunkMetrics, PubOutsCollector)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = StaticDataBus::from_bundle(sm_bundle, false)?;
+                let mut data_bus = StaticDataBus::<_, F>::build(false);
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,

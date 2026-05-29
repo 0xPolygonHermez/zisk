@@ -1,6 +1,6 @@
-//! Built-in state machines.
-//! Per-variant dispatch (`build_planner`, `configure_instances`, `build_instance`),
-//! and the typed accessors that expose each built-in from a [`crate::StaticSMBundle`].
+//! Built-in state machines: `BuiltinSMs<F>` enum + witness-time dispatch
+//! (`configure_instances`, `build_instance`) and plan-time static
+//! dispatch (`planner_for_position`).
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -13,7 +13,7 @@ use sm_rom::RomSM;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use zisk_common::{ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
@@ -64,6 +64,16 @@ const DMA_AIR_IDS_MAP: &[(usize, usize)] = &[
 /// Tuple of built-in SMs and their AIR-id coverage.
 pub type SMAirType = Cow<'static, [(usize, usize)]>;
 
+/// Bundle positions for each built-in (matches the order in [`BuiltinSMs::all`]).
+pub const ROM_POSITION: usize = 0;
+pub const MEM_POSITION: usize = 1;
+pub const BINARY_POSITION: usize = 2;
+pub const ARITH_POSITION: usize = 3;
+pub const DMA_POSITION: usize = 4;
+
+/// Number of built-in SMs registered before any precompile.
+pub const BUILTIN_COUNT: usize = 5;
+
 /// Built-in state machines.
 pub enum BuiltinSMs<F: PrimeField64> {
     /// Rom state machine
@@ -90,20 +100,17 @@ impl<F: PrimeField64> BuiltinSMs<F> {
         ]
     }
 
-    /// Builds a planner for this built-in.
-    pub(crate) fn build_planner(&self, is_asm_emulator: bool) -> Box<dyn Planner> {
-        match self {
-            Self::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_planner(sm),
-            Self::MemSM(sm) => {
-                if is_asm_emulator {
-                    (**sm).build_dummy_planner()
-                } else {
-                    (**sm).build_planner()
-                }
-            }
-            Self::BinarySM(sm) => (**sm).build_planner(),
-            Self::ArithSM(sm) => (**sm).build_planner(),
-            Self::DmaManager(sm) => (**sm).build_planner(),
+    /// Static planner dispatch by bundle position — no SM instance needed.
+    pub(crate) fn planner_for_position(position: usize, is_asm_emulator: bool) -> Box<dyn Planner> {
+        match position {
+            ROM_POSITION => unreachable!(
+                "ROM planning goes through RomPlanner::plan_for_chunks, not the Planner trait"
+            ),
+            MEM_POSITION => <Mem<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            BINARY_POSITION => <BinarySM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            ARITH_POSITION => <ArithSM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            DMA_POSITION => <DmaManager<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            _ => panic!("planner_for_position: invalid builtin position {position}"),
         }
     }
 

@@ -92,6 +92,10 @@ pub trait Dctx {
     /// Marks the witness for `gid` as ready (`true`) or not-ready
     /// (`false`).
     fn set_witness_ready(&self, gid: GlobalId, ready: bool);
+
+    /// Returns `true` if the local rank is the first process in the
+    /// distribution group. Drives ASM ROM-histogram ownership.
+    fn is_first_process(&self) -> bool;
 }
 
 /// Operations `MaterializePhase` needs from the proof context.
@@ -221,6 +225,10 @@ pub(crate) mod fakes {
 
         fn set_witness_ready(&self, gid: GlobalId, ready: bool) {
             self.witness_ready.borrow_mut().insert(gid, ready);
+        }
+
+        fn is_first_process(&self) -> bool {
+            true
         }
     }
 

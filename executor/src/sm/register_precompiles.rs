@@ -18,39 +18,22 @@
 //! * `rank_assign` — `true` if instances need `pctx.add_instance_assign` (rank-owned)
 //!   rather than the default `pctx.add_instance` (distributed). Today only `Keccakf` uses `true`.
 //!
-//! Per-precompile types derived via `paste!`:
-//! * `${Name}CounterInputGen<F>` — counter / input-generator bus device.
-//! * `${Name}Instance<F>` — witness instance (downcast target in
-//!   `try_push_collector`).
-//! * `${Name}Collector` — per-chunk collector vec element.
-//! * Methods `build_${name:snake}_counter`,
-//!   `build_${name:snake}_input_generator`, and
-//!   `build_${name:snake}_collector` on the manager / instance.
+//! Per-precompile types derived via `paste!`: `${Name}Manager<F>`,
+//! `${Name}CounterInputGen<F>`, `${Name}Instance<F>`, `${Name}Collector`.
 //!
-//! Caller must `use` each precompile crate's `Manager`, `CounterInputGen`,
-//! `Instance`, and `Collector` types so the bare identifiers the macro
-//! emits resolve correctly. The `op:` constants must also be in scope at
-//! the invocation site — typically `KECCAK_OP_TYPE_ID` etc. from `zisk_core`.
-//!
-//! Built-in SMs stay hand-written in [`super::builtins`] (their dispatch
-//! is irregular).
+//! The `op:` constants must be in scope at the invocation site —
+//! typically `KECCAK_OP_TYPE_ID` etc. from `zisk_core`. Built-in SMs
+//! stay hand-written in [`super::builtins`] (their dispatch is irregular).
 
 /// Declarative registry for precompiles.
 ///
-/// Generates, from one declaration per precompile:
-///
-/// 1. `enum Precompiles<F>` + `build_planner` / `configure_instances` /
-///    `build_instance` dispatch.
-/// 2. `struct PrecompileCounters<F>` (one field per variant, type
-///    `(usize, ${Name}CounterInputGen<F>)`) + `from_bundle` +
-///    `dispatch_op` (counter-phase bus arm) + `into_device_entries`.
-/// 3. `struct PrecompileCollectors<F>` (per-variant `Vec<(usize,
-///    ${Name}Collector)>` + `${Name}CounterInputGen<F>` input gen) +
-///    `new` + `try_push_collector` + `dispatch_op` (collect-phase
-///    bus arm) + `into_device_entries`.
-///
-/// Identity inside the bundle is the variant's *position* in the
-/// bundle's `Vec`, assigned at construction time.
+/// Emits from one declaration per precompile:
+/// * `enum Precompiles<F>` + `planner_for_air_id` / `configure_instances` /
+///   `build_instance` dispatch.
+/// * `PrecompileCounters<F>` + `build(is_asm)` (static) + `dispatch_op` + `into_device_entries`.
+/// * `PrecompileCollectors<F>` + `new()` (static) + `try_push_collector` + `dispatch_op` +
+///   `into_device_entries`.
+/// * `__PrecompileSlot` enum giving each variant a `BUILTIN_COUNT + n` bundle position.
 #[macro_export]
 macro_rules! register_precompiles {
     (
@@ -76,11 +59,18 @@ macro_rules! register_precompiles {
         }
 
         impl<F: ::fields::PrimeField64> Precompiles<F> {
-            /// Dispatches to the active variant's manager and returns its
-            /// `Planner`. See `ComponentBuilder::build_planner`.
-            pub fn build_planner(&self) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
-                match self {
-                    $( Self::$variant(sm) => (**sm).build_planner(), )*
+            /// Static planner dispatch by AIR id — no instance needed.
+            /// Used by the plan path without constructing the precompile.
+            pub fn planner_for_air_id(
+                air_id: ::std::primitive::usize,
+                is_asm_emulator: ::std::primitive::bool,
+            ) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
+                match air_id {
+                    $(
+                        id if id == $air[0] => <$mgr as
+                            ::zisk_common::ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+                    )*
+                    _ => panic!("planner_for_air_id: unknown precompile air_id {air_id}"),
                 }
             }
 
@@ -123,6 +113,12 @@ macro_rules! register_precompiles {
             }
         }
 
+        /// Variant slot index used to compute the bundle position
+        /// (`BUILTIN_COUNT + slot as usize`) for each precompile.
+        #[allow(dead_code, non_camel_case_types)]
+        #[repr(usize)]
+        enum __PrecompileSlot { $( $variant, )* }
+
         /// Air-id slice for every registered precompile, in declaration order.
         /// Macro-generated from the registration list.
         pub(crate) const PRECOMPILE_AIR_IDS: &[::std::primitive::usize] = &[
@@ -159,39 +155,17 @@ macro_rules! register_precompiles {
             }
 
             impl<F: ::fields::PrimeField64> PrecompileCounters<F> {
-                /// Iterates the bundle once, building each precompile's
-                /// counter via its `build_*_counter(is_asm)` method.
-                /// `is_asm_emulator` is supplied by the executor at
-                /// runtime so the same bundle can serve both modes.
-                pub fn from_bundle(
-                    bundle: &$crate::StaticSMBundle<F>,
-                    is_asm_emulator: bool,
-                ) -> $crate::error::ExecutorResult<Self> {
-                    $( let mut [<$variant:snake>] = ::std::option::Option::None; )*
-
-                    for (pos, (_, sm)) in bundle.entries().iter().enumerate() {
-                        if let $crate::StateMachines::Precompile(p) = sm {
-                            match p {
-                                $(
-                                    Precompiles::$variant(s) => {
-                                        [<$variant:snake>] = ::std::option::Option::Some(
-                                            (pos, s.[<build_ $variant:snake _counter>](is_asm_emulator))
-                                        );
-                                    }
-                                )*
-                            }
-                        }
-                    }
-
-                    ::std::result::Result::Ok(Self {
+                /// Build each precompile's counter via static dispatch.
+                /// Bundle position is `BUILTIN_COUNT + slot`.
+                pub fn build(is_asm_emulator: ::std::primitive::bool) -> Self {
+                    Self {
                         $(
-                            [<$variant:snake>]: [<$variant:snake>].ok_or(
-                                $crate::error::ExecutorError::BundleComponentMissing {
-                                    kind: stringify!($variant),
-                                }
-                            )?,
+                            [<$variant:snake>]: (
+                                $crate::BUILTIN_COUNT + __PrecompileSlot::$variant as usize,
+                                <$mgr as ::zisk_common::ComponentPlanBuilder<F>>::counter(is_asm_emulator),
+                            ),
                         )*
-                    })
+                    }
                 }
 
                 /// Counter-phase bus dispatch. Routes an operation by its
@@ -280,41 +254,16 @@ macro_rules! register_precompiles {
             }
 
             impl<F: ::fields::PrimeField64> PrecompileCollectors<F> {
-                /// Iterates the bundle once, building each precompile's
-                /// input generator. Collector vecs start empty —
-                /// populated by `try_push_collector` once per
-                /// global_idx in the chunk.
-                pub fn new(
-                    bundle: &$crate::StaticSMBundle<F>,
-                ) -> $crate::error::ExecutorResult<Self> {
-                    $( let mut [<$variant:snake _inputs_generator>] = ::std::option::Option::None; )*
-
-                    for (_, sm) in bundle.entries().iter() {
-                        if let $crate::StateMachines::Precompile(p) = sm {
-                            match p {
-                                $(
-                                    Precompiles::$variant(s) => {
-                                        [<$variant:snake _inputs_generator>] =
-                                            ::std::option::Option::Some(
-                                                s.[<build_ $variant:snake _input_generator>](),
-                                            );
-                                    }
-                                )*
-                            }
-                        }
-                    }
-
-                    ::std::result::Result::Ok(Self {
+                pub fn new() -> Self {
+                    Self {
                         $(
                             [<$variant:snake _collector>]: ::std::vec::Vec::new(),
                             [<$variant:snake _inputs_generator>]:
-                                [<$variant:snake _inputs_generator>].ok_or(
-                                    $crate::error::ExecutorError::BundleComponentMissing {
-                                        kind: stringify!($variant),
-                                    }
-                                )?,
+                                [<$variant CounterInputGen>]::<F>::new(
+                                    ::zisk_common::BusDeviceMode::InputGenerator,
+                                ),
                         )*
-                    })
+                    }
                 }
 
                 /// Per-chunk air-id dispatch. If `air_id` belongs to a

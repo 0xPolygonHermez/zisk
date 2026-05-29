@@ -1,6 +1,7 @@
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use asm_runner::{AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
+use asm_runner::{AsmRunnerOptions, AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
@@ -189,6 +190,34 @@ impl AsmResources {
         }
 
         Ok(Self { shared, asm_services })
+    }
+
+    /// Convenience constructor for the standalone path: spawns the ASM
+    /// services and maps shmem segments without MPI/distributed/caching
+    /// plumbing. Single process (`world_rank` / `local_rank` = 0), no MPI
+    /// broadcast, owns ROM init. Caller must serialize calls when multiple
+    /// standalone executors run in the same OS process — the shmem prefix
+    /// is per-process, not per-thread.
+    pub fn new_standalone(
+        elf_hash: String,
+        asm_mt_path: &Path,
+        with_hints: bool,
+        verbose: proofman_common::VerboseMode,
+    ) -> ExecutorResult<Self> {
+        let options = AsmRunnerOptions::new().with_local_rank(0);
+        let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
+            .map_err(ExecutorError::asm_backend)?;
+        let shared = Arc::new(AsmSharedResources::new(
+            0,
+            0,
+            false,
+            verbose,
+            None,
+            true,
+            with_hints,
+            services.shm_prefix(),
+        )?);
+        Self::new(shared, services)
     }
 
     /// Returns the concrete hints processor, or `Err` if not set up with hints.

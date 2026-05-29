@@ -1,9 +1,7 @@
 //! Collector for the built-in SMs and the per-chunk air-id dispatch that fills them.
 
 use crate::error::{ExecutorError, ExecutorResult};
-use crate::{StateMachines, StaticSMBundle};
 
-use super::state_machines::BuiltinSMs;
 use fields::PrimeField64;
 use precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
@@ -19,6 +17,7 @@ use sm_mem::{
     MemAlignWriteByteInstance, MemModuleCollector, MemModuleInstance,
 };
 use sm_rom::{RomCollector, RomInstance};
+use zisk_common::BusDeviceMode;
 use zisk_common::{ChunkId, Instance};
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
@@ -65,37 +64,9 @@ pub struct BuiltinCollectors<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BuiltinCollectors<F> {
-    /// Builds the two built-in input generators (`Arith`, `Dma`) via
-    /// the typed accessors on [`StaticSMBundle`]. Collector vecs start
-    /// empty and fill via `try_push_collector` as chunk dispatch
-    /// proceeds.
-    pub(crate) fn new(bundle: &StaticSMBundle<F>) -> ExecutorResult<Self> {
-        let mut arith_inputs_generator = None;
-        let mut dma_inputs_generator = None;
-
-        for (_, sm) in bundle.entries().iter() {
-            if let StateMachines::Builtin(b) = sm {
-                match b {
-                    BuiltinSMs::ArithSM(sm) => {
-                        check_not_duplicated(arith_inputs_generator, "Arith")?;
-                        arith_inputs_generator = Some(sm.build_arith_input_generator());
-                    }
-                    BuiltinSMs::DmaManager(sm) => {
-                        check_not_duplicated(dma_inputs_generator, "Dma")?;
-                        dma_inputs_generator = Some(sm.build_dma_input_generator());
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let arith_inputs_generator = arith_inputs_generator
-            .ok_or(ExecutorError::BundleComponentMissing { kind: "Arith" })?;
-
-        let dma_inputs_generator =
-            dma_inputs_generator.ok_or(ExecutorError::BundleComponentMissing { kind: "Dma" })?;
-
-        Ok(Self {
+    /// Builds the input generators. Collector vecs start empty.
+    pub(crate) fn new() -> Self {
+        Self {
             rom: Vec::new(),
             mem: Vec::new(),
             mem_align: Vec::new(),
@@ -103,13 +74,13 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             binary_add: Vec::new(),
             binary_extension: Vec::new(),
             arith: Vec::new(),
-            arith_inputs_generator,
+            arith_inputs_generator: ArithCounterInputGen::new(BusDeviceMode::InputGenerator),
             dma: Vec::new(),
             dma_pre_post: Vec::new(),
             dma_64_aligned: Vec::new(),
             dma_unaligned: Vec::new(),
-            dma_inputs_generator,
-        })
+            dma_inputs_generator: DmaCounterInputGen::new(BusDeviceMode::InputGenerator),
+        }
     }
 
     /// Per-chunk air-id dispatch.
@@ -344,13 +315,4 @@ fn downcast<'a, F: PrimeField64, T: 'static>(
         air_id,
         expected,
     })
-}
-
-#[inline]
-fn check_not_duplicated<T>(existing: Option<T>, kind: &'static str) -> ExecutorResult<()> {
-    if existing.is_some() {
-        Err(ExecutorError::BundleComponentDuplicate { kind })
-    } else {
-        Ok(())
-    }
 }

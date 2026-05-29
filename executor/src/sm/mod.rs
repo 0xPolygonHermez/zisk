@@ -1,15 +1,10 @@
 //! Bundle types — `StateMachines<F>` wrapper enum + `StaticSMBundle<F>` registry.
 //!
-//! The bundle holds every state machine the executor exposes, both
-//! built-in and precompile, indexed by Vec position. Per-side details:
-//!
-//! * **Built-ins** — `BuiltinSMs<F>` + `BuiltinCounters` + `BuiltinCollectors` live in [`builtins`].
-//! * **Precompiles** — declarative registry in [`precompiles`]; emits
-//!   `Precompiles<F>` + `PrecompileCounters<F>` + `PrecompileCollectors<F>` via the
-//!   `register_precompiles!` macro defined in [`register_precompiles`].
-//! * **Bus construction** — `StaticDataBus::from_bundle` /
-//!   `StaticDataBusCollect::for_chunk` consume a bundle to build the per-phase data buses.
-//! * **Canonical entry point** — `ZiskExecutor::new` in `executor.rs`.
+//! The bundle holds every constructed state machine the executor needs at
+//! **witness time** (`build_instance`, `configure_instances`, `set_rom`,
+//! `set_rh_data`). Plan-time counter/planner construction lives in this
+//! module too but goes through static dispatch ([`plan_sec`], the
+//! `ComponentPlanBuilder<F>` impls) and does not touch the bundle.
 
 mod builtins;
 mod precompiles;
@@ -26,7 +21,7 @@ use crate::error::{ExecutorError, ExecutorResult};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use asm_runner::AsmRunnerRH;
@@ -41,13 +36,6 @@ pub enum StateMachines<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> StateMachines<F> {
-    fn build_planner(&self, is_asm_emulator: bool) -> Box<dyn Planner> {
-        match self {
-            Self::Builtin(b) => b.build_planner(is_asm_emulator),
-            Self::Precompile(p) => p.build_planner(),
-        }
-    }
-
     fn configure_instances(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
         match self {
             Self::Builtin(b) => b.configure_instances(pctx, plans),
@@ -66,12 +54,6 @@ impl<F: PrimeField64> StateMachines<F> {
 pub struct StaticSMBundle<F: PrimeField64> {
     /// Every built-in and precompile SM registered in this bundle.
     sm: Vec<SMType<F>>,
-
-    /// Cached Vec position of the `RomSM` entry.
-    rom_position: usize,
-
-    /// Cached Vec position of the `MemSM` entry.
-    mem_position: usize,
 
     /// The standard library instance to be shared across built-in SMs and precompiles.
     std: Arc<Std<F>>,
@@ -92,22 +74,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             }))
             .collect();
 
-        let rom_position = sm
-            .iter()
-            .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::RomSM(_))))
-            .expect("RomSM must be in the bundle (constructed above)");
-
-        let mem_position = sm
-            .iter()
-            .position(|(_, s)| matches!(s, StateMachines::Builtin(BuiltinSMs::MemSM(_))))
-            .expect("MemSM must be in the bundle (constructed above)");
-
-        Self { sm, rom_position, mem_position, std }
-    }
-
-    /// Read-only view of all registered SMs in insertion order.
-    pub fn entries(&self) -> &[SMType<F>] {
-        &self.sm
+        Self { sm, std }
     }
 
     /// Sets the ROM for the `RomSM` in the bundle.
@@ -136,39 +103,6 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         self.std.clone()
     }
 
-    /// Extend the plans for the `MemSM` in the bundle with the given `plans`.
-    pub fn extend_mem_plans(&self, planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
-        planning.entry(self.mem_position).or_default().extend(plans);
-    }
-
-    /// Extend the plans for the secondary SMs in the bundle with the given `plans`.
-    pub fn plan_sec(
-        &self,
-        vec_counters: &mut crate::CountersChunkMetrics,
-        num_chunks: usize,
-        is_asm_emulator: bool,
-    ) -> BTreeMap<usize, Vec<Plan>> {
-        let mut plans = BTreeMap::new();
-
-        for (pos, (_, sm)) in self.sm.iter().enumerate() {
-            // ROM has no bus-side counter: its chunk set is just every
-            // executed chunk, so plan it directly from `num_chunks`
-            // instead of routing through the counters channel.
-            if pos == self.rom_position {
-                let rom_plan = sm_rom::RomPlanner::plan_for_chunks(num_chunks)
-                    .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
-                plans.insert(pos, rom_plan);
-                continue;
-            }
-
-            if let Some(counters) = vec_counters.remove(&pos) {
-                plans.insert(pos, sm.build_planner(is_asm_emulator).plan(counters));
-            }
-        }
-
-        plans
-    }
-
     /// Configure the instances of the SMs in the bundle for the given plans.
     pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
@@ -195,4 +129,42 @@ impl<F: PrimeField64> StaticSMBundle<F> {
 
         Ok(sm.build_instance(ictx))
     }
+}
+
+/// Plans secondary instances via static dispatch. Builtins use position
+/// constants; precompiles iterate `PRECOMPILE_AIR_IDS` and dispatch by
+/// air id. Drains `vec_counters` via `remove`.
+pub fn plan_sec<F: PrimeField64>(
+    vec_counters: &mut crate::CountersChunkMetrics,
+    num_chunks: usize,
+    is_asm_emulator: bool,
+) -> BTreeMap<usize, Vec<Plan>> {
+    let mut plans = BTreeMap::new();
+
+    // ROM has no bus-side counter — plan from chunk count directly.
+    let rom_plan = sm_rom::RomPlanner::plan_for_chunks(num_chunks)
+        .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
+    plans.insert(ROM_POSITION, rom_plan);
+
+    for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
+        if let Some(counters) = vec_counters.remove(&pos) {
+            let planner = BuiltinSMs::<F>::planner_for_position(pos, is_asm_emulator);
+            plans.insert(pos, planner.plan(counters));
+        }
+    }
+
+    for (i, &air_id) in PRECOMPILE_AIR_IDS.iter().enumerate() {
+        let pos = BUILTIN_COUNT + i;
+        if let Some(counters) = vec_counters.remove(&pos) {
+            let planner = Precompiles::<F>::planner_for_air_id(air_id, is_asm_emulator);
+            plans.insert(pos, planner.plan(counters));
+        }
+    }
+
+    plans
+}
+
+/// Appends mem-related plans (from the ASM MO runner) into the mem slot.
+pub fn extend_mem_plans(planning: &mut BTreeMap<usize, Vec<Plan>>, plans: Vec<Plan>) {
+    planning.entry(MEM_POSITION).or_default().extend(plans);
 }

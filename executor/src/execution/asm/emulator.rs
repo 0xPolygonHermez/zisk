@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use crate::bus::pub_outs_collector::PubOutsCollector;
 use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 use crate::execution::output::{BackendArtifacts, ExecutionOutput};
-use crate::sm::StaticSMBundle;
 use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
 
 use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
@@ -113,7 +112,6 @@ impl EmulatorAsm {
     /// # Arguments
     /// * `stdin` - Shared mutable access to the ZiskStdin providing public inputs.
     /// * `pctx` - Proof context used during execution.
-    /// * `sm_bundle` - Static shared-memory bundle used by the executor.
     /// * `stats` - Handle for collecting executor statistics.
     /// * `_caller_stats_id` - Identifier used to attribute collected statistics to the caller.
     ///
@@ -125,7 +123,6 @@ impl EmulatorAsm {
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        sm_bundle: &StaticSMBundle<F>,
         has_rom_sm: bool,
         use_hints: bool,
         stats: &ExecutorStatsHandle,
@@ -154,7 +151,7 @@ impl EmulatorAsm {
         let supervisor =
             AsmRunnerSupervisor::spawn_on(&asm_resources, self.chunk_size, has_rom_sm, stats);
 
-        let mt_result = self.run_mt_assembly(zisk_rom, sm_bundle, stats);
+        let mt_result = self.run_mt_assembly::<F>(zisk_rom, stats);
 
         let output = match mt_result {
             Ok((min_traces, counters, pub_outs)) => {
@@ -187,7 +184,6 @@ impl EmulatorAsm {
     fn run_mt_assembly<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
-        sm_bundle: &StaticSMBundle<F>,
         stats: &ExecutorStatsHandle,
     ) -> ExecutorResult<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
@@ -203,14 +199,7 @@ impl EmulatorAsm {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
                 scope.spawn(move |_| {
-                    processor_ref.process_chunk(
-                        chunk_id,
-                        &emu_trace,
-                        zisk_rom,
-                        sm_bundle,
-                        stats,
-                        mt_scope_id,
-                    );
+                    processor_ref.process_chunk(chunk_id, &emu_trace, zisk_rom, stats, mt_scope_id);
                 });
             };
 

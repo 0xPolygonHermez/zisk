@@ -4,10 +4,7 @@
 //! send data, route it to the appropriate subscribers, and manage device connections.
 use std::collections::VecDeque;
 
-use crate::error::ExecutorResult;
-use crate::{
-    pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters, StaticSMBundle,
-};
+use crate::{pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use mem_common::MemCounters;
@@ -56,15 +53,13 @@ pub struct StaticDataBus<D, F: PrimeField64> {
 }
 
 impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
-    /// Constructs a counter-phase data bus from the executor's bundle.
-    /// Iterates the bundle's entries once via `BuiltinCounters` and
-    /// `PrecompileCounters`, then wires their slots into `new`.
-    /// Mirrors the `from_bundle` constructors on the wrapper types.
-    pub fn from_bundle(bundle: &StaticSMBundle<F>, is_asm_emulator: bool) -> ExecutorResult<Self> {
-        let builtins = BuiltinCounters::from_bundle(bundle, is_asm_emulator)?;
-        let precompiles = PrecompileCounters::from_bundle(bundle, is_asm_emulator)?;
+    /// Constructs a counter-phase data bus via static dispatch — no
+    /// `StaticSMBundle` required. Callable on the standalone path.
+    pub fn build(is_asm_emulator: bool) -> Self {
+        let builtins = BuiltinCounters::build::<F>(is_asm_emulator);
+        let precompiles = PrecompileCounters::<F>::build(is_asm_emulator);
 
-        Ok(Self {
+        Self {
             process_only_operation_bus: is_asm_emulator,
             pub_outs_collector: PubOutsCollector::new(),
             mem_counter: builtins.mem,
@@ -73,7 +68,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
             dma_counter: builtins.dma,
             precompiles,
             pending_transfers: VecDeque::new(),
-        })
+        }
     }
 
     /// Drains the accumulated public outputs from the embedded `PubOutsCollector`,
