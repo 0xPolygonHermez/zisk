@@ -88,16 +88,8 @@ fn build_sem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String
     format!("/{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
-pub fn shmem_input_name(shm_prefix: &str, service: AsmService) -> String {
-    build_shmem_name(shm_prefix, service, "input")
-}
-
-pub fn shmem_input_name2(shm_prefix: &str) -> String {
+pub fn shmem_input_name(shm_prefix: &str) -> String {
     build_shmem_name2(shm_prefix, "input")
-}
-
-pub fn shmem_input_avail_name(prefix: &str) -> String {
-    build_shmem_name2(prefix, "input_avail")
 }
 
 /// Semaphore name for input availability (per service)
