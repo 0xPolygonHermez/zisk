@@ -81,14 +81,17 @@ impl AsmService {
         options: &AsmRunnerOptions,
         shm_prefix: &str,
         sem_prefix: &str,
+        create_input: bool,
     ) -> Command {
         let mut command = Command::new(self.command_path_for(trimmed_path));
 
-        command
-            .arg("-s")
-            .arg(format!("--gen={}", self.gen_index()))
-            .arg("--just_create_all_shm")
-            .arg("--share_input_shm");
+        command.arg("-s").arg(format!("--gen={}", self.gen_index())).arg("--share_input_shm");
+
+        if create_input {
+            command.arg("--just_create_all_shm");
+        } else {
+            command.arg("--just_create_non_input_shm");
+        }
 
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
@@ -274,14 +277,21 @@ impl AsmServices {
     ) -> Result<()> {
         let children: Vec<(AsmService, std::process::Child)> = Self::SERVICES
             .iter()
-            .map(|service| {
+            .enumerate()
+            .map(|(index, service)| {
                 tracing::debug!(
                     ">>> [{}] Creating shmem for service (stdio): {}",
                     world_rank,
                     service
                 );
                 let child = service
-                    .build_create_shmem_command(trimmed_path, options, shm_prefix, sem_prefix)
+                    .build_create_shmem_command(
+                        trimmed_path,
+                        options,
+                        shm_prefix,
+                        sem_prefix,
+                        index == 0,
+                    )
                     .spawn()
                     .with_context(|| {
                         format!("Failed to spawn shmem creation for service {service}")
