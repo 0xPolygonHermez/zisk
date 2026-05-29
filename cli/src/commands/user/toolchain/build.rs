@@ -107,7 +107,7 @@ impl ZiskBuildToolchain {
             }
         };
         // Install our config.toml.
-        let bootstrap_toml = include_str!("../bootstrap.toml");
+        let bootstrap_toml = include_str!("bootstrap.toml");
         let bootstrap_file = rust_dir.join("bootstrap.toml");
         std::fs::write(&bootstrap_file, bootstrap_toml)
             .with_context(|| format!("while writing configuration to {bootstrap_file:?}"))?;

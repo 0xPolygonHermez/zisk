@@ -11,6 +11,10 @@ categories = { workspace = true }
 name = "cargo-zisk"
 path = "src/bin/cargo-zisk.rs"
 
+[[bin]]
+name = "cargo-zisk-dev"
+path = "src/bin/cargo-zisk-dev.rs"
+
 [build-dependencies]
 vergen-git2.workspace = true
 
