@@ -54,6 +54,19 @@ SRC_DIR = src
 LIB_NAME = libziskc.a
 LIB_FILE = $(LIB_DIR)/$(LIB_NAME)
 
+# Public C API exported by libziskc.a (the only symbols the Rust crate links).
+# Every other *strong* global symbol (the ffiasm field internals: Fr_*, RawFr,
+# RawFq, Goldilocks, ... ) is demoted to a local symbol so it cannot collide
+# with the identical symbols bundled by the proofman-starks-lib-c dependency
+# when both archives land in the same binary. Weak/COMDAT symbols (C++ template
+# and inline instantiations such as AltBn128::Engine) are deliberately left
+# untouched: they never trigger duplicate-symbol errors and must stay weak so
+# the linker can still fold them across translation units.
+PUBLIC_SYMBOLS = AddPointEc AddPointEcP InverseFpEc InverseFnEc InverseFnEcR1 \
+                 SqrtFpEcParity Arith256 Add256
+COMBINED_OBJ = $(BUILD_DIR)/ziskc_combined.o
+LOCALIZE_LIST = $(BUILD_DIR)/localize_symbols.txt
+
 # Field list
 FIELDS = fr fq fec fnec bls12_381 bls12_381_384 nsecp256r1 psecp256r1
 
@@ -108,12 +121,31 @@ $(LIB_DIR):
 	mkdir -p $(LIB_DIR)
 
 # Library target
+#
+# On Linux (where the Rust crate links libziskc.a alongside proofman-starks-lib-c)
+# combine all objects into a single relocatable object and demote every symbol
+# except the public C API to a local symbol. Local symbols never participate in
+# cross-archive duplicate resolution, so the bundled ffiasm field code can no
+# longer clash with proofman's identical copy.
+#
+# Elsewhere (macOS, where build.rs skips the C build entirely) just archive the
+# objects directly, avoiding the GNU-binutils-specific `ld -r`/`objcopy` step.
+ifeq ($(UNAME_S),Linux)
+$(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
+	ld -r -z noexecstack -o $(COMBINED_OBJ) $(ALL_OBJS)
+	nm -g --defined-only $(COMBINED_OBJ) | awk '$$2 !~ /[vVwW]/ {print $$3}' \
+		| grep -vxF $(addprefix -e ,$(PUBLIC_SYMBOLS)) > $(LOCALIZE_LIST)
+	objcopy --localize-symbols=$(LOCALIZE_LIST) $(COMBINED_OBJ)
+	ar rcs $@ $(COMBINED_OBJ)
+else
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 	ar rcs $@ $(ALL_OBJS)
+endif
 
-# Test binary
-$(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(LIB_FILE)
-	gcc $(CFLAGS) $(INCLUDES) $< -lc $(LIB_FILE) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
+# Test binary: link the raw objects (not the symbol-trimmed archive) so the
+# benchmark in main.cpp can still reach the internal entry points.
+$(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(ALL_OBJS)
+	gcc $(CFLAGS) $(INCLUDES) $< -lc $(ALL_OBJS) -o $@ -lgmp -lstdc++ -lgmpxx -Wl,-z,noexecstack
 
 # x86_64 NASM rules (used only when FIELD_BACKEND=asm_x86_64)
 $(BUILD_DIR)/%_asm.o: $(SRC_DIR)/ffiasm/%.asm | $(BUILD_DIR)
