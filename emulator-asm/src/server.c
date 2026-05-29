@@ -333,28 +333,32 @@ void server_setup (void)
             }
         }
 
-        // Open the precompile shared memory as read-only
-        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDONLY, 0666);
-        if (shmem_precompile_fd < 0)
+        if (!just_create_all_shm && !just_create_non_input_shm)
         {
-            asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            exit(-1);
-        }
 
-        // Map precompile address space
-        void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
-        if (pPrecompile == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        shmem_precompile_address = pPrecompile;
-        precompile_results_address = (uint64_t *)pPrecompile;
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
+            // Open the precompile shared memory as read-only
+            shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDONLY, 0666);
+            if (shmem_precompile_fd < 0)
+            {
+                asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Map precompile address space
+            void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
+            if (pPrecompile == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_precompile_address = pPrecompile;
+            precompile_results_address = (uint64_t *)pPrecompile;
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
+            }
         }
 
         /**********************************/
@@ -453,38 +457,41 @@ void server_setup (void)
         }
     }
 
-    // Open the control input shared memory as read-only
-    shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
-    if (shmem_control_input_fd < 0)
+    if (!just_create_all_shm && !just_create_non_input_shm)
     {
-        asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Open the control input shared memory as read-only
+        shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
+        if (shmem_control_input_fd < 0)
+        {
+            asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Map precompile address space
-    void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
-    if (pControl == MAP_FAILED)
-    {
-        asm_printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
-        exit(-1);
-    }
-    if (pControl != (void *)CONTROL_INPUT_ADDR)
-    {
-        asm_printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
-        exit(-1);
-    }
-    shmem_control_input_address = (uint64_t *)pControl;
-    precompile_written_address = &shmem_control_input_address[0];
-    precompile_exit_address = &shmem_control_input_address[1];
-    input_written_address = &shmem_control_input_address[2];
-    precompile_reset_address = &shmem_control_input_address[3];
+        // Map precompile address space
+        void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
+        if (pControl == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if (pControl != (void *)CONTROL_INPUT_ADDR)
+        {
+            asm_printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
+            exit(-1);
+        }
+        shmem_control_input_address = (uint64_t *)pControl;
+        precompile_written_address = &shmem_control_input_address[0];
+        precompile_exit_address = &shmem_control_input_address[1];
+        input_written_address = &shmem_control_input_address[2];
+        precompile_reset_address = &shmem_control_input_address[3];
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
+        // Report duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
+        }
     }
 
     /******************/
@@ -530,7 +537,7 @@ void server_setup (void)
     }
 
     // Map precompile address space
-    pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
+    void * pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
     if (pControl == MAP_FAILED)
     {
         asm_printf("ERROR: Failed calling mmap(control_output) errno=%d=%s\n", errno, strerror(errno));
