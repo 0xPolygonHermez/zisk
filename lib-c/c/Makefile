@@ -6,6 +6,45 @@ else
       CFLAGS = -O3 -fPIC
 endif
 
+# Platform / arch detection
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+# Field backend selection:
+#   asm_x86_64  -> .asm via NASM (Linux x86_64) + .cpp wrapper
+#   asm_arm64   -> raw_arm64.s (GAS) + _generic.cpp (high-level) + .cpp wrapper
+#   generic     -> _raw_generic.cpp + _generic.cpp + .cpp wrapper (pure C, GMP mpn_*)
+ifeq ($(USE_ASM),0)
+    FIELD_BACKEND := generic
+else ifeq ($(UNAME_S),Linux)
+    ifeq ($(UNAME_M),x86_64)
+        FIELD_BACKEND := asm_x86_64
+    else ifneq (,$(filter aarch64 arm64,$(UNAME_M)))
+        FIELD_BACKEND := asm_arm64
+    else
+        FIELD_BACKEND := generic
+    endif
+else ifeq ($(UNAME_S),Darwin)
+    # macOS: NASM -felf64 won't link in a Mach-O archive; use pure-C fallback.
+    FIELD_BACKEND := generic
+else
+    FIELD_BACKEND := generic
+endif
+
+ifeq ($(FIELD_BACKEND),asm_x86_64)
+    CFLAGS += -DUSE_ASM -DARCH_X86_64
+else ifeq ($(FIELD_BACKEND),asm_arm64)
+    CFLAGS += -DUSE_ASM -DARCH_ARM64
+endif
+
+# When the system GMP uses `unsigned long` for mp_limb_t and our code uses
+# uint64_t (== unsigned long long), C++ rejects the pointer mismatch even
+# though both are 64-bit. Force GMP to typedef mp_limb_t as unsigned long
+# long so the types match. Safe on any LP64 platform with 64-bit GMP limbs.
+ifeq ($(UNAME_S),Darwin)
+    CFLAGS += -D_LONG_LONG_LIMB
+endif
+
 # Directories
 BUILD_DIR = build
 LIB_DIR = lib
@@ -15,44 +54,45 @@ SRC_DIR = src
 LIB_NAME = libziskc.a
 LIB_FILE = $(LIB_DIR)/$(LIB_NAME)
 
-# Object files
-ASM_OBJS = $(BUILD_DIR)/fec.o \
-           $(BUILD_DIR)/fnec.o \
-           $(BUILD_DIR)/fq.o \
-           $(BUILD_DIR)/fr.o \
-           $(BUILD_DIR)/bls12_381_384.o \
-           $(BUILD_DIR)/bls12_381_asm.o \
-           $(BUILD_DIR)/nsecp256r1.o \
-           $(BUILD_DIR)/psecp256r1.o
+# Field list
+FIELDS = fr fq fec fnec bls12_381 bls12_381_384 nsecp256r1 psecp256r1
 
-CPP_OBJS = $(BUILD_DIR)/fecc.o \
-           $(BUILD_DIR)/fnecc.o \
-           $(BUILD_DIR)/fqc.o \
-           $(BUILD_DIR)/frc.o \
-           $(BUILD_DIR)/bls12_381_384c.o \
-           $(BUILD_DIR)/bls12_381c.o \
-           $(BUILD_DIR)/alt_bn128.o \
-           $(BUILD_DIR)/nsecp256r1c.o \
-           $(BUILD_DIR)/psecp256r1c.o \
-		   $(BUILD_DIR)/secp256r1.o \
-           $(BUILD_DIR)/misc.o \
-           $(BUILD_DIR)/naf.o \
-           $(BUILD_DIR)/splitparstr.o \
-           $(BUILD_DIR)/ec.o \
-           $(BUILD_DIR)/bn254.o \
-           $(BUILD_DIR)/bls12_381.o \
-           $(BUILD_DIR)/fcall.o \
-           $(BUILD_DIR)/arith256.o \
-           $(BUILD_DIR)/arith384.o \
-           $(BUILD_DIR)/add256.o \
-           $(BUILD_DIR)/globals.o \
-           $(BUILD_DIR)/goldilocks_base_field.o \
-           $(BUILD_DIR)/poseidon2_goldilocks.o \
-		   $(BUILD_DIR)/blake2.o \
-		   $(BUILD_DIR)/keccak.o \
-		   $(BUILD_DIR)/bcon_sha256.o
+# Per-field object selection
+ifeq ($(FIELD_BACKEND),asm_x86_64)
+    FIELD_ASM_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _asm.o,$(FIELDS)))
+    FIELD_CPP_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _c.o,$(FIELDS)))
+else ifeq ($(FIELD_BACKEND),asm_arm64)
+    FIELD_ASM_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _raw_arm64.o,$(FIELDS)))
+    FIELD_CPP_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _c.o,$(FIELDS))) \
+                     $(addprefix $(BUILD_DIR)/,$(addsuffix _generic.o,$(FIELDS)))
+else
+    FIELD_ASM_OBJS =
+    FIELD_CPP_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _c.o,$(FIELDS))) \
+                     $(addprefix $(BUILD_DIR)/,$(addsuffix _generic.o,$(FIELDS))) \
+                     $(addprefix $(BUILD_DIR)/,$(addsuffix _raw_generic.o,$(FIELDS)))
+endif
 
-ALL_OBJS = $(ASM_OBJS) $(CPP_OBJS)
+# Non-field object files (always built)
+OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
+             $(BUILD_DIR)/secp256r1.o \
+             $(BUILD_DIR)/misc.o \
+             $(BUILD_DIR)/naf.o \
+             $(BUILD_DIR)/splitparstr.o \
+             $(BUILD_DIR)/ec.o \
+             $(BUILD_DIR)/bn254.o \
+             $(BUILD_DIR)/bls12_381.o \
+             $(BUILD_DIR)/fcall.o \
+             $(BUILD_DIR)/arith256.o \
+             $(BUILD_DIR)/arith384.o \
+             $(BUILD_DIR)/add256.o \
+             $(BUILD_DIR)/globals.o \
+             $(BUILD_DIR)/goldilocks_base_field.o \
+             $(BUILD_DIR)/poseidon2_goldilocks.o \
+             $(BUILD_DIR)/blake2.o \
+             $(BUILD_DIR)/keccak.o \
+             $(BUILD_DIR)/bcon_sha256.o
+
+ALL_OBJS = $(FIELD_ASM_OBJS) $(FIELD_CPP_OBJS) $(OTHER_OBJS)
 
 # Header directories for include path
 INCLUDES = -I$(SRC_DIR)
@@ -75,57 +115,28 @@ $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 $(BUILD_DIR)/clib: $(SRC_DIR)/main.cpp $(LIB_FILE)
 	gcc $(CFLAGS) $(INCLUDES) $< -lc $(LIB_FILE) -o $@ -lgmp -lstdc++ -lgmpxx
 
-# Assembly rules
-$(BUILD_DIR)/fec.o: $(SRC_DIR)/ffiasm/fec.asm | $(BUILD_DIR)
+# x86_64 NASM rules (used only when FIELD_BACKEND=asm_x86_64)
+$(BUILD_DIR)/%_asm.o: $(SRC_DIR)/ffiasm/%.asm | $(BUILD_DIR)
 	nasm -felf64 $< -o $@
 
-$(BUILD_DIR)/fnec.o: $(SRC_DIR)/ffiasm/fnec.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
+# ARM64 GAS rules (used only when FIELD_BACKEND=asm_arm64)
+$(BUILD_DIR)/%_raw_arm64.o: $(SRC_DIR)/ffiasm/%_raw_arm64.s | $(BUILD_DIR)
+	gcc $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/fq.o: $(SRC_DIR)/ffiasm/fq.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-$(BUILD_DIR)/fr.o: $(SRC_DIR)/ffiasm/fr.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-$(BUILD_DIR)/bls12_381_384.o: $(SRC_DIR)/ffiasm/bls12_381_384.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-$(BUILD_DIR)/bls12_381_asm.o: $(SRC_DIR)/ffiasm/bls12_381.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-$(BUILD_DIR)/nsecp256r1.o: $(SRC_DIR)/ffiasm/nsecp256r1.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-$(BUILD_DIR)/psecp256r1.o: $(SRC_DIR)/ffiasm/psecp256r1.asm | $(BUILD_DIR)
-	nasm -felf64 $< -o $@
-
-# C++ compilation rules
-$(BUILD_DIR)/fecc.o: $(SRC_DIR)/ffiasm/fec.cpp $(SRC_DIR)/ffiasm/fec.hpp | $(BUILD_DIR)
+# Field wrapper (.cpp) — always built
+$(BUILD_DIR)/%_c.o: $(SRC_DIR)/ffiasm/%.cpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/fnecc.o: $(SRC_DIR)/ffiasm/fnec.cpp $(SRC_DIR)/ffiasm/fnec.hpp | $(BUILD_DIR)
+# Field generic high-level (used by asm_arm64 and generic)
+$(BUILD_DIR)/%_generic.o: $(SRC_DIR)/ffiasm/%_generic.cpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/fqc.o: $(SRC_DIR)/ffiasm/fq.cpp $(SRC_DIR)/ffiasm/fq.hpp | $(BUILD_DIR)
+# Field generic raw (used by generic backend)
+$(BUILD_DIR)/%_raw_generic.o: $(SRC_DIR)/ffiasm/%_raw_generic.cpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BUILD_DIR)/frc.o: $(SRC_DIR)/ffiasm/fr.cpp $(SRC_DIR)/ffiasm/fr.hpp | $(BUILD_DIR)
-	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(BUILD_DIR)/bls12_381_384c.o: $(SRC_DIR)/ffiasm/bls12_381_384.cpp $(SRC_DIR)/ffiasm/bls12_381_384.hpp | $(BUILD_DIR)
-	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(BUILD_DIR)/bls12_381c.o: $(SRC_DIR)/ffiasm/bls12_381.cpp $(SRC_DIR)/ffiasm/bls12_381.hpp | $(BUILD_DIR)
-	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
-
+# Non-field C++ rules
 $(BUILD_DIR)/alt_bn128.o: $(SRC_DIR)/ffiasm/alt_bn128.cpp $(SRC_DIR)/ffiasm/alt_bn128.hpp | $(BUILD_DIR)
-	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(BUILD_DIR)/nsecp256r1c.o: $(SRC_DIR)/ffiasm/nsecp256r1.cpp $(SRC_DIR)/ffiasm/nsecp256r1.hpp | $(BUILD_DIR)
-	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(BUILD_DIR)/psecp256r1c.o: $(SRC_DIR)/ffiasm/psecp256r1.cpp $(SRC_DIR)/ffiasm/psecp256r1.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/secp256r1.o: $(SRC_DIR)/secp256r1/secp256r1.cpp $(SRC_DIR)/secp256r1/secp256r1.hpp | $(BUILD_DIR)
