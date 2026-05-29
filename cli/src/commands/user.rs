@@ -3,14 +3,18 @@ use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
 
 mod build;
+mod embedded;
 mod new;
+mod remote;
 mod run;
 mod toolchain;
 mod utils;
 mod verify;
 
 pub(crate) use build::*;
+pub(crate) use embedded::*;
 pub(crate) use new::*;
+pub(crate) use remote::*;
 pub(crate) use run::*;
 pub(crate) use toolchain::*;
 pub(crate) use utils::*;
@@ -31,6 +35,8 @@ pub enum ZiskCmd {
     Verify(ZiskVerify),
     Utils(ZiskUtils),
     Toolchain(ZiskToolchain),
+    Remote(ZiskRemote),
+    Embedded(ZiskEmbedded),
 }
 
 impl ZiskCmd {
@@ -42,6 +48,8 @@ impl ZiskCmd {
             ZiskCmd::Utils(mut cmd) => cmd.run(),
             ZiskCmd::Verify(cmd) => cmd.run(),
             ZiskCmd::Toolchain(mut cmd) => cmd.run(),
+            ZiskCmd::Remote(mut cmd) => cmd.run(),
+            ZiskCmd::Embedded(mut cmd) => cmd.run(),
         }
     }
 }
