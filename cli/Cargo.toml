@@ -29,7 +29,6 @@ colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-util = { workspace = true }
 pil2-stark-setup = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }

@@ -1020,7 +1020,6 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-util",
  "rand 0.8.6",
  "rayon",
  "reqwest",
