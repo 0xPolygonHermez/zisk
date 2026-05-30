@@ -18,7 +18,7 @@ use crate::{get_target, get_toolchain_download_url, is_supported_target};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Install the cargo-zisk toolchain
-pub struct ZiskInstallToolchain {
+pub(crate) struct ZiskInstallToolchain {
     /// Version of the toolchain to install (default: latest)
     #[arg(short = 't', long)]
     toolchain_version: Option<String>,
@@ -29,7 +29,7 @@ pub struct ZiskInstallToolchain {
 }
 
 impl ZiskInstallToolchain {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         // Setup client.
         let client = Client::builder()
             .user_agent("Mozilla/5.0")

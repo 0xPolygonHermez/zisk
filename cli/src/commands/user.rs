@@ -20,6 +20,11 @@ pub(crate) use toolchain::*;
 pub(crate) use utils::*;
 pub(crate) use verify::*;
 
+/// Parses the user-facing CLI arguments and dispatches to the selected command.
+pub fn run_cli() -> Result<()> {
+    ZiskCmd::parse().run()
+}
+
 #[derive(Parser)]
 #[command(
     name = "cargo-zisk",
@@ -28,7 +33,7 @@ pub(crate) use verify::*;
     about = "CLI for ZisK for building and proving guest programs",
     long_about = "Cargo Zisk is the CLI for ZisK for building and proving guest programs."
 )]
-pub enum ZiskCmd {
+pub(crate) enum ZiskCmd {
     New(NewCmd),
     Build(BuildCmd),
     Run(RunCmd),
@@ -40,7 +45,7 @@ pub enum ZiskCmd {
 }
 
 impl ZiskCmd {
-    pub fn run(self) -> Result<()> {
+    pub(crate) fn run(self) -> Result<()> {
         match self {
             ZiskCmd::Build(cmd) => cmd.run(),
             ZiskCmd::New(cmd) => cmd.run(),

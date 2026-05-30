@@ -7,29 +7,29 @@ use zisk_prover_backend::setup_logger;
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Rebuild every witness library (.so/.dylib) in an existing provingKey
 /// without re-running the full setup pipeline.
-pub struct ZiskProofmanRebuildWitnessLibs {
+pub(crate) struct ZiskProofmanRebuildWitnessLibs {
     /// Path to the `provingKey/` directory.
     #[arg(short = 'p', long = "proving-key")]
-    pub proving_key: String,
+    proving_key: String,
 
     /// Optional build directory for intermediate `.circom`/`.cpp` files.
     /// Defaults to a tempdir that is removed when the command finishes.
     #[arg(short = 'b', long = "build-dir")]
-    pub build_dir: Option<String>,
+    build_dir: Option<String>,
 
     /// Number of circom compiles to run in parallel (default 1 = serial).
     /// Each circom invocation is single-threaded but RAM-hungry; size by
     /// available memory rather than CPU count.
     #[arg(short = 'j', long = "jobs", default_value_t = 1, env = "REBUILD_JOBS")]
-    pub jobs: usize,
+    jobs: usize,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskProofmanRebuildWitnessLibs {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         let opts = RebuildWitnessOptions {

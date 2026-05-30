@@ -6,38 +6,38 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Compute per-AIR statistics (constraints, intermediate polynomials, etc.).
-pub struct ZiskProofmanSetupStats {
+pub(crate) struct ZiskProofmanSetupStats {
     /// Path to compiled .pilout file
     #[arg(short = 'a', long)]
-    pub airout: String,
+    airout: String,
 
     /// Output file for detailed stats (default: tmp/stats.txt)
     #[arg(short = 'o', long)]
-    pub output: Option<String>,
+    output: Option<String>,
 
     /// Path to starkstructs.json settings
     #[arg(short = 's', long)]
-    pub starkstructs: Option<String>,
+    starkstructs: Option<String>,
 
     /// Filter by airgroup names (repeat for multiple)
     #[arg(short = 'g', long = "airgroups", num_args = 1..)]
-    pub airgroups: Vec<String>,
+    airgroups: Vec<String>,
 
     /// Filter by air names (repeat for multiple)
     #[arg(short = 'i', long = "airs", num_args = 1..)]
-    pub airs: Vec<String>,
+    airs: Vec<String>,
 
     /// Show intermediate polynomial details per stage
     #[arg(short = 'm', long)]
-    pub impols: bool,
+    impols: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskProofmanSetupStats {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         let opts = StatsOptions {

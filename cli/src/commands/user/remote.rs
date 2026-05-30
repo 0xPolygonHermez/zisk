@@ -7,22 +7,22 @@ mod setup;
 mod upload;
 mod wrap;
 
-pub use execute::ZiskRemoteExecute;
-pub use prove::ZiskRemoteProve;
-pub use setup::ZiskRemoteSetup;
-pub use upload::ZiskRemoteUpload;
-pub use wrap::ZiskRemoteWrap;
+pub(crate) use execute::ZiskRemoteExecute;
+pub(crate) use prove::ZiskRemoteProve;
+pub(crate) use setup::ZiskRemoteSetup;
+pub(crate) use upload::ZiskRemoteUpload;
+pub(crate) use wrap::ZiskRemoteWrap;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run ZisK operations against a remote prover service
-pub struct RemoteCmd {
+pub(crate) struct RemoteCmd {
     #[command(subcommand)]
-    pub command: ZiskRemoteCommand,
+    command: ZiskRemoteCommand,
 }
 
 #[derive(clap::Subcommand)]
-pub enum ZiskRemoteCommand {
+pub(crate) enum ZiskRemoteCommand {
     /// Upload a guest program to the remote service
     Upload(ZiskRemoteUpload),
     /// Generate the proving setup on the remote service
@@ -36,7 +36,7 @@ pub enum ZiskRemoteCommand {
 }
 
 impl RemoteCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskRemoteCommand::Upload(cmd) => cmd.run(),
             ZiskRemoteCommand::Setup(cmd) => cmd.run(),

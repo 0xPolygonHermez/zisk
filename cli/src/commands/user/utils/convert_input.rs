@@ -11,34 +11,34 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Convert old input files to new ZiskStdin format
-pub struct ZiskConvertInput {
+pub(crate) struct ZiskConvertInput {
     /// Input file to convert
     #[arg(short = 'i', long)]
-    pub input_file: Option<PathBuf>,
+    input_file: Option<PathBuf>,
 
     /// Output file path
     #[arg(short = 'o', long)]
-    pub output_file: Option<PathBuf>,
+    output_file: Option<PathBuf>,
 
     /// Input directory containing files to convert
     #[arg(short = 'd', long)]
-    pub input_dir: Option<PathBuf>,
+    input_dir: Option<PathBuf>,
 
     /// Output directory for converted files
     #[arg(short = 't', long)]
-    pub output_dir: Option<PathBuf>,
+    output_dir: Option<PathBuf>,
 
     /// Process subdirectories recursively
     #[arg(short = 'r', long)]
-    pub recursive: bool,
+    recursive: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskConvertInput {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         print_banner();

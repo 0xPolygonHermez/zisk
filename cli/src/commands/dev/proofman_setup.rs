@@ -9,24 +9,24 @@ mod setup_recursive_test;
 mod setup_snark;
 mod stats;
 
-pub use compile_pil::ZiskProofmanCompilePil;
-pub use rebuild_witness_libs::ZiskProofmanRebuildWitnessLibs;
-pub use setup::ZiskProofmanSetupSetup;
-pub use setup_compressed_final::ZiskProofmanSetupCompressedFinal;
-pub use setup_recursive_test::ZiskProofmanSetupRecursiveTest;
-pub use setup_snark::ZiskProofmanSetupSnark;
-pub use stats::ZiskProofmanSetupStats;
+pub(crate) use compile_pil::ZiskProofmanCompilePil;
+pub(crate) use rebuild_witness_libs::ZiskProofmanRebuildWitnessLibs;
+pub(crate) use setup::ZiskProofmanSetupSetup;
+pub(crate) use setup_compressed_final::ZiskProofmanSetupCompressedFinal;
+pub(crate) use setup_recursive_test::ZiskProofmanSetupRecursiveTest;
+pub(crate) use setup_snark::ZiskProofmanSetupSnark;
+pub(crate) use stats::ZiskProofmanSetupStats;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Proofman proving-key setup commands (mirrors the proofman-setup binary)
-pub struct ProofmanSetupCmd {
+pub(crate) struct ProofmanSetupCmd {
     #[command(subcommand)]
-    pub command: ZiskProofmanSetupCommand,
+    command: ZiskProofmanSetupCommand,
 }
 
 #[derive(clap::Subcommand)]
-pub enum ZiskProofmanSetupCommand {
+pub(crate) enum ZiskProofmanSetupCommand {
     /// Run non-recursive (and optionally recursive) setup for all AIRs.
     Setup(ZiskProofmanSetupSetup),
     /// Compute per-AIR statistics (constraints, intermediate polynomials, etc.).
@@ -46,7 +46,7 @@ pub enum ZiskProofmanSetupCommand {
 }
 
 impl ProofmanSetupCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         // 64 MB rayon stack — expression trees in large AIRs (e.g. ZisK) are deep.
         // Idempotent across calls; ignore the "already initialized" error.
         rayon::ThreadPoolBuilder::new().stack_size(64 * 1024 * 1024).build_global().ok();

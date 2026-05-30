@@ -15,18 +15,18 @@ use zisk_prover_backend::{AsmOptions, BackendProverOpts, ProveOutput, ProverClie
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate a proof from the execution of the guest program
-pub struct ProveCmd {
+pub(crate) struct ProveCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
-    pub emulator: bool,
+    emulator: bool,
 
     /// Input file path for the guest. Accepts a string literal or a path to a binary file
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
-    pub inputs: Option<String>,
+    inputs: Option<String>,
 
     // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
     // #[arg(long, requires = "inputs")]
@@ -34,84 +34,84 @@ pub struct ProveCmd {
     //
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
-    pub hints: Option<String>,
+    hints: Option<String>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// Path to a precomputed PLONK proving key
     #[arg(short = 'w', long)]
-    pub proving_key_plonk: Option<PathBuf>,
+    proving_key_plonk: Option<PathBuf>,
 
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
-    pub output: Option<PathBuf>,
+    output: Option<PathBuf>,
 
     /// Disable proofs aggregation
     #[arg(short = 'a', long, default_value_t = false)]
-    pub no_aggregation: bool,
+    no_aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
     #[arg(short = 'c', long, conflicts_with = "plonk")]
-    pub minimal: bool,
+    minimal: bool,
 
     /// PLONK proof. Required for on-chain verification via the EVM verifier. Mutually exclusive with minimal
     #[arg(long, conflicts_with = "minimal")]
-    pub plonk: bool,
+    plonk: bool,
 
     /// Verify proofs after generation
     #[arg(short = 'y', long)]
-    pub verify_proofs: bool,
+    verify_proofs: bool,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
-    pub unlock_mapped_memory: bool,
+    unlock_mapped_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
     #[arg(short = 'x', long)]
-    pub max_witness_stored: Option<usize>,
+    max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
-    pub minimal_memory: bool,
+    minimal_memory: bool,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
-    pub gpu: bool,
+    gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 
     // Hidden flags
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    pub asm: Option<PathBuf>,
+    asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
     #[arg(long, hide = true, conflicts_with = "emulator")]
-    pub asm_out_file: bool,
+    asm_out_file: bool,
 
     /// Disable automatic ROM setup
     #[arg(short = 'n', long, hide = true)]
-    pub no_auto_setup: bool,
+    no_auto_setup: bool,
 
     #[arg(short = 'z', long, default_value_t = false, hide = true)]
-    pub preallocate_fixed_gpu: bool,
+    preallocate_fixed_gpu: bool,
 
     /// Maximum number of concurrent GPU streams for proving
     #[arg(short = 't', long, hide = true)]
-    pub max_streams: Option<usize>,
+    max_streams: Option<usize>,
 
     /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
-    pub number_threads_witness: Option<usize>,
+    number_threads_witness: Option<usize>,
 }
 
 impl ProveCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {
                 Some(elf) => Some(elf),
@@ -246,7 +246,7 @@ impl ProveCmd {
         Ok(())
     }
 
-    pub fn run_emu(
+    pub(crate) fn run_emu(
         &mut self,
         stdin: ZiskStdin,
         prover_options: BackendProverOpts,
@@ -270,7 +270,7 @@ impl ProveCmd {
         Ok((result, executor_time))
     }
 
-    pub fn run_asm(
+    pub(crate) fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,

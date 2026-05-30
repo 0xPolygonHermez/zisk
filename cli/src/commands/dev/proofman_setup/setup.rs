@@ -6,50 +6,50 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run non-recursive (and optionally recursive) setup for all AIRs.
-pub struct ZiskProofmanSetupSetup {
+pub(crate) struct ZiskProofmanSetupSetup {
     /// Path to compiled .pilout file
     #[arg(short = 'a', long)]
-    pub airout: String,
+    airout: String,
 
     /// Build output directory
     #[arg(short = 'b', long)]
-    pub build_dir: String,
+    build_dir: String,
 
     /// Directory containing fixed column files
     #[arg(short = 'u', long)]
-    pub fixed_dir: Option<String>,
+    fixed_dir: Option<String>,
 
     /// Enable recursive/aggregation setup
     #[arg(short = 'r', long)]
-    pub recursive: bool,
+    recursive: bool,
 
     /// Path to starkstructs.json settings
     #[arg(short = 's', long)]
-    pub stark_structs: Option<String>,
+    stark_structs: Option<String>,
 
     /// Max concurrent recursive1 air pipelines (default 1 = serial).
     /// Each slot runs one circom compile + pil2com. Size by available RAM:
     /// set to floor(available_GB / per_air_peak_GB).
     #[arg(long, default_value_t = 1, env = "RECURSIVE_JOBS")]
-    pub recursive_jobs: usize,
+    recursive_jobs: usize,
 
     /// Max concurrent AIRs during non-recursive setup (default 1 = serial).
     /// Each slot runs pil_info + file I/O. Size by available RAM.
     #[arg(long, default_value_t = 1, env = "SETUP_JOBS")]
-    pub setup_jobs: usize,
+    setup_jobs: usize,
 
     /// Output file for per-AIR stats (same format as `stats` subcommand).
     /// If omitted, no stats file is written.
     #[arg(short = 'o', long)]
-    pub output: Option<String>,
+    output: Option<String>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskProofmanSetupSetup {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         let opts = SetupOptions {

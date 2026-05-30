@@ -8,14 +8,14 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Wrap a proof on the remote service
-pub struct ZiskRemoteWrap {
+pub(crate) struct ZiskRemoteWrap {
     /// Path to the proof to wrap
     #[arg(short = 'p', long)]
-    pub proof: Option<PathBuf>,
+    proof: Option<PathBuf>,
 }
 
 impl ZiskRemoteWrap {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         print_banner();
         print_banner_command("Remote Wrap");
 

@@ -6,7 +6,7 @@ use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Build the program to a RISC-V ELF file using the ZisK toolchain
-pub struct BuildCmd {
+pub(crate) struct BuildCmd {
     /// Space or comma separated list of features to activate
     #[arg(short = 'F', long)]
     features: Option<String>,
@@ -41,7 +41,7 @@ pub struct BuildCmd {
 }
 
 impl BuildCmd {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         // Construct the cargo run command
         let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
             println!("Using toolchain_name: {name}");

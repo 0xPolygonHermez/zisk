@@ -14,18 +14,18 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
-pub struct ExecuteCmd {
+pub(crate) struct ExecuteCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
-    pub emulator: bool,
+    emulator: bool,
 
     /// Input file path for the guest. Accepts a string literal or a path to a binary file
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
-    pub inputs: Option<String>,
+    inputs: Option<String>,
 
     // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
     // #[arg(long, requires = "inputs")]
@@ -33,36 +33,36 @@ pub struct ExecuteCmd {
     //
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
-    pub hints: Option<String>,
+    hints: Option<String>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
-    pub unlock_mapped_memory: bool,
+    unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 
     // Hidden flags
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    pub asm: Option<PathBuf>,
+    asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
     #[arg(long, conflicts_with = "emulator", hide = true)]
-    pub asm_out_file: bool,
+    asm_out_file: bool,
 
     /// Disable automatic ROM setup
     #[arg(short = 'n', long, hide = true)]
-    pub no_auto_setup: bool,
+    no_auto_setup: bool,
 }
 
 impl ExecuteCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {
                 Some(elf) => Some(elf),
@@ -126,7 +126,10 @@ impl ExecuteCmd {
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
+    pub(crate) fn run_emu(
+        &mut self,
+        stdin: ZiskStdin,
+    ) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         if let Some(ref path) = self.proving_key {
@@ -146,7 +149,7 @@ impl ExecuteCmd {
         Ok((result, executor_time))
     }
 
-    pub fn run_asm(
+    pub(crate) fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,

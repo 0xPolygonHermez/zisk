@@ -16,75 +16,75 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run the program and collect execution statistics
-pub struct StatsCmd {
+pub(crate) struct StatsCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
-    pub emulator: bool,
+    emulator: bool,
 
     /// Input file path for the guest. Accepts a string literal or a path to a binary file
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
-    pub inputs: Option<String>,
+    inputs: Option<String>,
 
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
-    pub hints: Option<String>,
+    hints: Option<String>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
-    pub unlock_mapped_memory: bool,
+    unlock_mapped_memory: bool,
 
     /// Maximum memory (bytes) for witness storage during proving
     #[arg(short = 'x', long)]
-    pub max_witness_stored: Option<usize>,
+    max_witness_stored: Option<usize>,
 
     /// Reduce memory footprint during proving at the cost of speed
     #[arg(short = 'm', long)]
-    pub minimal_memory: bool,
+    minimal_memory: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 
     // Hidden flags
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    pub asm: Option<PathBuf>,
+    asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
     #[arg(long, hide = true, conflicts_with = "emulator")]
-    pub asm_out_file: bool,
+    asm_out_file: bool,
 
     /// Disable automatic ROM setup
     #[arg(short = 'n', long, hide = true)]
-    pub no_auto_setup: bool,
+    no_auto_setup: bool,
 
     /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
-    pub number_threads_witness: Option<usize>,
+    number_threads_witness: Option<usize>,
 
     /// Simulate MPI node index
     #[arg(long, hide = true)]
-    pub mpi_node: Option<usize>,
+    mpi_node: Option<usize>,
 
     /// Disable packed format for trace generation
     #[arg(short = 'a', long, hide = true)]
-    pub no_packed: bool,
+    no_packed: bool,
 
     /// Path to a debug configuration file
     #[arg(short = 'd', long, hide = true)]
-    pub debug: Option<Option<String>>,
+    debug: Option<Option<String>>,
 }
 
 impl StatsCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
@@ -163,7 +163,10 @@ impl StatsCmd {
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
+    pub(crate) fn run_emu(
+        &mut self,
+        stdin: ZiskStdin,
+    ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
         let mut prover_options = BackendProverOpts::default();
 
         if !self.no_packed {
@@ -197,7 +200,7 @@ impl StatsCmd {
         )
     }
 
-    pub fn run_asm(
+    pub(crate) fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,
@@ -257,7 +260,7 @@ impl StatsCmd {
     ///
     /// # Arguments
     /// * `stats_mutex` - A reference to the Mutex holding the stats vector.
-    pub fn print_stats(air_stats: &HashMap<usize, Stats>) {
+    pub(crate) fn print_stats(air_stats: &HashMap<usize, Stats>) {
         println!("    Number of airs: {}", air_stats.len());
         println!();
         println!("    Stats by Air:");
@@ -409,7 +412,7 @@ impl StatsCmd {
     ///
     /// # Arguments
     /// * `stats` - A reference to the stats vector.
-    pub fn store_stats(start_time: Instant, stats: &[(usize, usize, Stats)]) {
+    pub(crate) fn store_stats(start_time: Instant, stats: &[(usize, usize, Stats)]) {
         #[derive(Serialize, Deserialize, Debug)]
         struct Task {
             name: String,

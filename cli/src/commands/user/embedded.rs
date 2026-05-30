@@ -5,20 +5,20 @@ mod execute;
 mod prove;
 mod wrap;
 
-pub use execute::ZiskEmbeddedExecute;
-pub use prove::ZiskEmbeddedProve;
-pub use wrap::ZiskEmbeddedWrap;
+pub(crate) use execute::ZiskEmbeddedExecute;
+pub(crate) use prove::ZiskEmbeddedProve;
+pub(crate) use wrap::ZiskEmbeddedWrap;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run ZisK operations locally using the embedded prover
-pub struct EmbeddedCmd {
+pub(crate) struct EmbeddedCmd {
     #[command(subcommand)]
-    pub command: ZiskEmbeddedCommand,
+    command: ZiskEmbeddedCommand,
 }
 
 #[derive(clap::Subcommand)]
-pub enum ZiskEmbeddedCommand {
+pub(crate) enum ZiskEmbeddedCommand {
     /// Generate a proof locally
     Prove(ZiskEmbeddedProve),
     /// Execute a guest program locally
@@ -28,7 +28,7 @@ pub enum ZiskEmbeddedCommand {
 }
 
 impl EmbeddedCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         match &mut self.command {
             ZiskEmbeddedCommand::Prove(cmd) => cmd.run(),
             ZiskEmbeddedCommand::Execute(cmd) => cmd.run(),

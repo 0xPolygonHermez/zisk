@@ -18,36 +18,36 @@ use zisk_common::ZiskPaths;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Setup guest program
-pub struct ProgramSetupCmd {
+pub(crate) struct ProgramSetupCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// Enable precompile hints in assembly generation
     #[arg(short = 'n', long)]
-    pub hints: bool,
+    hints: bool,
 
     /// Enable GPU acceleration in assembly generation
     #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
-    pub gpu: bool,
+    gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 
     // Hidden flags
     /// Output dir path
     #[arg(short = 'o', long, hide = true)]
-    pub output_dir: Option<PathBuf>,
+    output_dir: Option<PathBuf>,
 }
 
 impl ProgramSetupCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         if self.elf.is_none() {
             match detect_current_project_elf()? {
                 Some(elf) => self.elf = Some(elf),

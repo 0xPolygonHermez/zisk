@@ -15,60 +15,60 @@ use crate::ux::{print_banner, print_banner_command, print_banner_field, print_ex
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify the constraints of the guest program execution without generating a proof
-pub struct VerifyConstraintsCmd {
+pub(crate) struct VerifyConstraintsCmd {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Use prebuilt emulator (mutually exclusive with `--asm`)
     #[arg(short = 'l', long, conflicts_with = "asm")]
-    pub emulator: bool,
+    emulator: bool,
 
     /// Input file path for the guest. Accepts a string literal or a path to a binary file
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
-    pub inputs: Option<String>,
+    inputs: Option<String>,
 
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
-    pub hints: Option<String>,
+    hints: Option<String>,
 
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
-    pub unlock_mapped_memory: bool,
+    unlock_mapped_memory: bool,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
-    pub gpu: bool,
+    gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 
     // Hidden flags
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    pub asm: Option<PathBuf>,
+    asm: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
     #[arg(long, hide = true, conflicts_with = "emulator")]
-    pub asm_out_file: bool,
+    asm_out_file: bool,
 
     /// Disable automatic ROM setup
     #[arg(short = 'n', long, hide = true)]
-    pub no_auto_setup: bool,
+    no_auto_setup: bool,
 
     /// Path to a debug configuration file
     #[clap(short = 'd', long, hide = true)]
-    pub debug: Option<Option<String>>,
+    debug: Option<Option<String>>,
 }
 
 impl VerifyConstraintsCmd {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         // panic::set_hook(Box::new(|panic_info| {
         //     eprintln!("\x1B[31mPANIC DETECTED");
         //     eprintln!("{} at {:?}", panic_info, panic_info.location());
@@ -147,7 +147,7 @@ impl VerifyConstraintsCmd {
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<VerifyConstraintsOutput> {
+    pub(crate) fn run_emu(&mut self, stdin: ZiskStdin) -> Result<VerifyConstraintsOutput> {
         let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
 
         #[cfg(not(feature = "cpu-only"))]
@@ -170,7 +170,7 @@ impl VerifyConstraintsCmd {
         prover.verify_constraints(&guest_program, stdin, self.debug.clone())
     }
 
-    pub fn run_asm(
+    pub(crate) fn run_asm(
         &mut self,
         stdin: ZiskStdin,
         hints_stream: Option<StreamSource>,

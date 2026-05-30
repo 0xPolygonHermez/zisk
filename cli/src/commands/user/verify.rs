@@ -7,18 +7,18 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Verify a proof
-pub struct VerifyCmd {
+pub(crate) struct VerifyCmd {
     /// Path to the proof file
     #[clap(short = 'p', long)]
-    pub proof: String,
+    proof: String,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl VerifyCmd {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         tracing::info!(

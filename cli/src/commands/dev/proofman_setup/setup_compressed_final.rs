@@ -10,18 +10,18 @@ use zisk_prover_backend::setup_logger;
 /// Re-run only the `vadcop_final_compressed` stage on top of an existing
 /// provingKey/<name>/vadcop_final/. Useful for iterating on compressed_final
 /// without re-running the full recursive setup.
-pub struct ZiskProofmanSetupCompressedFinal {
+pub(crate) struct ZiskProofmanSetupCompressedFinal {
     /// Build directory containing `provingKey/<name>/vadcop_final/`.
     #[arg(short = 'b', long)]
-    pub build_dir: String,
+    build_dir: String,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskProofmanSetupCompressedFinal {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         let opts = SetupCompressedFinalOptions { build_dir: self.build_dir.clone() };

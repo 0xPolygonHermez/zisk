@@ -6,34 +6,34 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate final SNARK setup (recursivef + fflonk/plonk final).
-pub struct ZiskProofmanSetupSnark {
+pub(crate) struct ZiskProofmanSetupSnark {
     /// Build directory (must already contain provingKey/ from a previous setup run)
     #[arg(short = 'b', long)]
-    pub build_dir: String,
+    build_dir: String,
 
     /// Powers-of-tau (.ptau) file for snarkjs setup
     #[arg(long)]
-    pub powers_of_tau: Option<String>,
+    powers_of_tau: Option<String>,
 
     /// Final SNARK type: plonk (default) or fflonk
     #[arg(long, default_value = "plonk")]
-    pub final_snark: String,
+    final_snark: String,
 
     /// Path to publics hash info JSON (optional)
     #[arg(long)]
-    pub publics_info: Option<String>,
+    publics_info: Option<String>,
 
     /// Only generate the recursivef step; skip the final SNARK
     #[arg(long)]
-    pub only_recursive_final: bool,
+    only_recursive_final: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl ZiskProofmanSetupSnark {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
         let opts = SetupSnarkOptions {

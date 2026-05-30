@@ -26,6 +26,11 @@ pub(crate) use stats::*;
 pub(crate) use verify_constraints::*;
 pub(crate) use wrap::*;
 
+/// Parses developer CLI arguments and dispatches to the selected command.
+pub fn run_cli_dev() -> Result<()> {
+    ZiskDevCmd::parse().run()
+}
+
 #[derive(Parser)]
 #[command(
     name = "cargo-zisk-dev",
@@ -37,7 +42,7 @@ pub(crate) use wrap::*;
                   used to develop, debug, and benchmark ZisK itself. \
                   End-user workflows for building and proving guest programs should use cargo-zisk."
 )]
-pub enum ZiskDevCmd {
+pub(crate) enum ZiskDevCmd {
     // Shared commands with cargo-zisk
     New(NewCmd),
     Build(BuildCmd),
@@ -60,7 +65,7 @@ pub enum ZiskDevCmd {
 }
 
 impl ZiskDevCmd {
-    pub fn run(self) -> Result<()> {
+    pub(crate) fn run(self) -> Result<()> {
         match self {
             ZiskDevCmd::Build(cmd) => cmd.run(),
             ZiskDevCmd::CheckSetup(cmd) => cmd.run(),

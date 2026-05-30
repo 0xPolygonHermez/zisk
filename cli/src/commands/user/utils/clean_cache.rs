@@ -16,18 +16,18 @@ use crate::{
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Clean the zisk cache directory for a specific program or the entire cache
-pub struct ZiskCleanCache {
+pub(crate) struct ZiskCleanCache {
     /// Path of the program ELF file to clean cache for. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long, conflicts_with = "all")]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 
     /// Clean cache for all programs (mutually exclusive with `--elf`)
     #[arg(short = 'a', long, conflicts_with = "elf")]
-    pub all: bool,
+    all: bool,
 }
 
 impl ZiskCleanCache {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         setup_logger(VerboseMode::Info);
 
         print_banner();

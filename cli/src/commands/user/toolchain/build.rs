@@ -7,7 +7,7 @@ use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Build the cargo-zisk toolchain
-pub struct ZiskBuildToolchain {
+pub(crate) struct ZiskBuildToolchain {
     /// Name for the toolchain in rustup
     #[arg(short = 'n', long)]
     name: Option<String>,
@@ -22,7 +22,7 @@ pub struct ZiskBuildToolchain {
 }
 
 impl ZiskBuildToolchain {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         println!("Building toolchain...");
         // Get environment variables.
         let build_dir = std::env::var("ZISK_BUILD_DIR");

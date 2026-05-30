@@ -13,35 +13,35 @@ use zisk_prover_backend::setup_logger;
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Check that the proving key is correctly set up
-pub struct CheckSetupCmd {
+pub(crate) struct CheckSetupCmd {
     /// Path to a precomputed proving key
     #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
+    proving_key: Option<PathBuf>,
 
     /// Path to a precomputed PLONK proving key
     #[arg(short = 'w', long)]
-    pub proving_key_plonk: Option<PathBuf>,
+    proving_key_plonk: Option<PathBuf>,
 
     /// Disable proofs aggregation
     #[arg(short = 'a', long)]
-    pub no_aggregation: bool,
+    no_aggregation: bool,
 
     /// Enable PLONK proofs
     #[arg(short = 's', long)]
-    pub plonk: bool,
+    plonk: bool,
 
     /// Use GPU acceleration
     #[cfg(not(feature = "cpu-only"))]
     #[arg(short = 'g', long)]
-    pub gpu: bool,
+    gpu: bool,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
-    pub verbose: u8,
+    verbose: u8,
 }
 
 impl CheckSetupCmd {
-    pub fn run(&self) -> Result<()> {
+    pub(crate) fn run(&self) -> Result<()> {
         println!("{} CheckSetup", format!("{: >12}", "Command").bright_green().bold());
         println!();
 

@@ -8,14 +8,14 @@ use crate::ux::{print_banner, print_banner_command};
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Generate the proving setup for a guest program on the remote service
-pub struct ZiskRemoteSetup {
+pub(crate) struct ZiskRemoteSetup {
     /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
-    pub elf: Option<PathBuf>,
+    elf: Option<PathBuf>,
 }
 
 impl ZiskRemoteSetup {
-    pub fn run(&mut self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         print_banner();
         print_banner_command("Remote Setup");
 
