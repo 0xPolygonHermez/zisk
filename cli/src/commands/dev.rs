@@ -26,11 +26,6 @@ pub(crate) use stats::*;
 pub(crate) use verify_constraints::*;
 pub(crate) use wrap::*;
 
-/// Parses developer CLI arguments and dispatches to the selected command.
-pub fn run_cli_dev() -> Result<()> {
-    ZiskCliDevCmd::parse().run()
-}
-
 #[derive(Parser)]
 #[command(
     name = "cargo-zisk-dev",

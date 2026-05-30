@@ -22,11 +22,6 @@ pub(crate) use verify::*;
 
 use super::SharedCmd;
 
-/// Parses the user-facing CLI arguments and dispatches to the selected command.
-pub fn run_cli() -> Result<()> {
-    ZiskCliCmd::parse().run()
-}
-
 #[derive(Parser)]
 #[command(
     name = "cargo-zisk",
