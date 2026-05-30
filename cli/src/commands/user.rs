@@ -20,6 +20,8 @@ pub(crate) use toolchain::*;
 pub(crate) use utils::*;
 pub(crate) use verify::*;
 
+use super::SharedCmd;
+
 /// Parses the user-facing CLI arguments and dispatches to the selected command.
 pub fn run_cli() -> Result<()> {
     ZiskCliCmd::parse().run()
@@ -34,12 +36,11 @@ pub fn run_cli() -> Result<()> {
     long_about = "Cargo Zisk is the CLI for ZisK for building and proving guest programs."
 )]
 pub(crate) enum ZiskCliCmd {
-    New(NewCmd),
-    Build(BuildCmd),
-    Run(RunCmd),
-    Verify(VerifyCmd),
-    Utils(UtilsCmd),
-    Toolchain(ToolchainCmd),
+    // Commands shared with cargo-zisk-dev
+    #[command(flatten)]
+    Shared(SharedCmd),
+
+    // User-only commands
     Remote(RemoteCmd),
     Embedded(EmbeddedCmd),
 }
@@ -47,12 +48,7 @@ pub(crate) enum ZiskCliCmd {
 impl ZiskCliCmd {
     pub(crate) fn run(self) -> Result<()> {
         match self {
-            ZiskCliCmd::Build(cmd) => cmd.run(),
-            ZiskCliCmd::New(cmd) => cmd.run(),
-            ZiskCliCmd::Run(cmd) => cmd.run(),
-            ZiskCliCmd::Utils(mut cmd) => cmd.run(),
-            ZiskCliCmd::Verify(cmd) => cmd.run(),
-            ZiskCliCmd::Toolchain(mut cmd) => cmd.run(),
+            ZiskCliCmd::Shared(cmd) => cmd.run(),
             ZiskCliCmd::Remote(mut cmd) => cmd.run(),
             ZiskCliCmd::Embedded(mut cmd) => cmd.run(),
         }

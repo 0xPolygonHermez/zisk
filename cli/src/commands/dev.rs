@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
 
-use super::{BuildCmd, NewCmd, RunCmd, ToolchainCmd, UtilsCmd, VerifyCmd};
+use super::SharedCmd;
 
 mod check_setup;
 mod clean;
@@ -43,13 +43,9 @@ pub fn run_cli_dev() -> Result<()> {
                   End-user workflows for building and proving guest programs should use cargo-zisk."
 )]
 pub(crate) enum ZiskCliDevCmd {
-    // Shared commands with cargo-zisk
-    New(NewCmd),
-    Build(BuildCmd),
-    Run(RunCmd),
-    Verify(VerifyCmd),
-    Utils(UtilsCmd),
-    Toolchain(ToolchainCmd),
+    // Commands shared with cargo-zisk
+    #[command(flatten)]
+    Shared(SharedCmd),
 
     // Dev-only commands
     CheckSetup(CheckSetupCmd),
@@ -67,21 +63,16 @@ pub(crate) enum ZiskCliDevCmd {
 impl ZiskCliDevCmd {
     pub(crate) fn run(self) -> Result<()> {
         match self {
-            ZiskCliDevCmd::Build(cmd) => cmd.run(),
+            ZiskCliDevCmd::Shared(cmd) => cmd.run(),
             ZiskCliDevCmd::CheckSetup(cmd) => cmd.run(),
             ZiskCliDevCmd::Clean(cmd) => cmd.run(),
-            ZiskCliDevCmd::New(cmd) => cmd.run(),
             ZiskCliDevCmd::Prove(mut cmd) => cmd.run(),
             ZiskCliDevCmd::WrapProof(cmd) => cmd.run(),
             ZiskCliDevCmd::ProgramSetup(mut cmd) => cmd.run(),
             ZiskCliDevCmd::ProofmanSetup(mut cmd) => cmd.run(),
-            ZiskCliDevCmd::Run(cmd) => cmd.run(),
             ZiskCliDevCmd::Stats(mut cmd) => cmd.run(),
-            ZiskCliDevCmd::Toolchain(mut cmd) => cmd.run(),
-            ZiskCliDevCmd::Utils(mut cmd) => cmd.run(),
             ZiskCliDevCmd::Execute(mut cmd) => cmd.run(),
             ZiskCliDevCmd::ExportSolidityCalldata(cmd) => cmd.run(),
-            ZiskCliDevCmd::Verify(cmd) => cmd.run(),
             ZiskCliDevCmd::VerifyConstraints(mut cmd) => cmd.run(),
         }
     }
