@@ -28,7 +28,7 @@ pub(crate) use wrap::*;
 
 /// Parses developer CLI arguments and dispatches to the selected command.
 pub fn run_cli_dev() -> Result<()> {
-    ZiskDevCmd::parse().run()
+    ZiskCliDevCmd::parse().run()
 }
 
 #[derive(Parser)]
@@ -42,7 +42,7 @@ pub fn run_cli_dev() -> Result<()> {
                   used to develop, debug, and benchmark ZisK itself. \
                   End-user workflows for building and proving guest programs should use cargo-zisk."
 )]
-pub(crate) enum ZiskDevCmd {
+pub(crate) enum ZiskCliDevCmd {
     // Shared commands with cargo-zisk
     New(NewCmd),
     Build(BuildCmd),
@@ -64,25 +64,25 @@ pub(crate) enum ZiskDevCmd {
     VerifyConstraints(VerifyConstraintsCmd),
 }
 
-impl ZiskDevCmd {
+impl ZiskCliDevCmd {
     pub(crate) fn run(self) -> Result<()> {
         match self {
-            ZiskDevCmd::Build(cmd) => cmd.run(),
-            ZiskDevCmd::CheckSetup(cmd) => cmd.run(),
-            ZiskDevCmd::Clean(cmd) => cmd.run(),
-            ZiskDevCmd::New(cmd) => cmd.run(),
-            ZiskDevCmd::Prove(mut cmd) => cmd.run(),
-            ZiskDevCmd::WrapProof(cmd) => cmd.run(),
-            ZiskDevCmd::ProgramSetup(mut cmd) => cmd.run(),
-            ZiskDevCmd::ProofmanSetup(mut cmd) => cmd.run(),
-            ZiskDevCmd::Run(cmd) => cmd.run(),
-            ZiskDevCmd::Stats(mut cmd) => cmd.run(),
-            ZiskDevCmd::Toolchain(mut cmd) => cmd.run(),
-            ZiskDevCmd::Utils(mut cmd) => cmd.run(),
-            ZiskDevCmd::Execute(mut cmd) => cmd.run(),
-            ZiskDevCmd::ExportSolidityCalldata(cmd) => cmd.run(),
-            ZiskDevCmd::Verify(cmd) => cmd.run(),
-            ZiskDevCmd::VerifyConstraints(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::Build(cmd) => cmd.run(),
+            ZiskCliDevCmd::CheckSetup(cmd) => cmd.run(),
+            ZiskCliDevCmd::Clean(cmd) => cmd.run(),
+            ZiskCliDevCmd::New(cmd) => cmd.run(),
+            ZiskCliDevCmd::Prove(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::WrapProof(cmd) => cmd.run(),
+            ZiskCliDevCmd::ProgramSetup(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::ProofmanSetup(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::Run(cmd) => cmd.run(),
+            ZiskCliDevCmd::Stats(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::Toolchain(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::Utils(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::Execute(mut cmd) => cmd.run(),
+            ZiskCliDevCmd::ExportSolidityCalldata(cmd) => cmd.run(),
+            ZiskCliDevCmd::Verify(cmd) => cmd.run(),
+            ZiskCliDevCmd::VerifyConstraints(mut cmd) => cmd.run(),
         }
     }
 }
