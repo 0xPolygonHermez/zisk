@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "921a1548756c4957d14c3e75a7d7f272379ef98f99d963ddcf020851376e17e5";
+pub const PILOUT_HASH: &str = "f2a79122e29607505a7de5b1acb295d2798312d67b20645651c4c426423dc573";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -375,7 +375,7 @@ trace_row!(ArithFixedRow<F> {
 pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 21>;
 
 trace_row!(ArithTraceRow<F> {
- carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
+ carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow_mul_rz:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
 });
 
 pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 21>;

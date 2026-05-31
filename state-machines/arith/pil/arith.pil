@@ -45,14 +45,17 @@ airtemplate Arith(const int N = 2**18) {
     col witness bits(1) signed;
 
     col witness bits(1) div_by_zero;
-    col witness bits(1) div_overflow;
+    col witness bits(1) div_overflow_mul_rz;
+
+    const expr div_overflow = div_overflow_mul_rz * div;
+    const expr rz = div_overflow_mul_rz * (1 - div);
 
     main_div * (main_div - 1) === 0;
     main_mul * (main_mul - 1) === 0;
     main_mul * main_div === 0;
     signed * (1 - signed) === 0;
     div_by_zero * (1 - div_by_zero) === 0;
-    div_overflow * (1 - div_overflow) === 0;
+    div_overflow_mul_rz * (1 - div_overflow_mul_rz) === 0;
 
     // factor ab € {-1, 1}
     fab === 1 - 2 * na - 2 * nb + 4 * na * nb;
@@ -99,7 +102,6 @@ airtemplate Arith(const int N = 2**18) {
     div_overflow * (1 - signed) === 0;
 
     div_overflow * div_by_zero === 0;
-    div_by_zero * div_overflow === 0;
 
     const expr eq[CHUNKS_OP];
 
@@ -217,6 +219,16 @@ airtemplate Arith(const int N = 2**18) {
     np * (1 - np) === 0;
     sext * (1 - sext) === 0;
 
+    // rz (result zero): when active, forces all chunks of c and d to zero.
+    // No completeness needed: the table rejects dangerous sign combinations when rz=0,
+    // so the prover is forced to set rz=1 when the result is zero and signs are ambiguous.
+    // Since all c[i],d[i] are range-checked to 16 bits (non-negative), sum_cd=0 implies each chunk=0.
+    expr sum_cd = 0;
+    for (int i = 0; i < length(c); ++i) {
+        sum_cd = sum_cd + c[i] + d[i];
+    }
+    rz * sum_cd === 0;
+
     col witness bits(8) op;
 
     // div m32 sa  sb  primary  secondary  opcodes              na   nb   np   nr   sext(c)
@@ -283,7 +295,7 @@ airtemplate Arith(const int N = 2**18) {
     col witness bits(7) range_ab;
     col witness bits(7) range_cd;
 
-    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow, main_mul,
+    arith_table_assumes(op, m32, div, na, nb, np, nr, sext, div_by_zero, div_overflow_mul_rz, main_mul,
                         main_div, signed, range_ab, range_cd);
 
     const expr range_a3 = range_ab;
