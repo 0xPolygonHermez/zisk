@@ -66,12 +66,11 @@ main() {
         '/^ziskos[[:space:]]*=[[:space:]]*[{][[:space:]]*path/d' \
         "${GUEST_CARGO_TOML}" || return 1
 
-    # Append a new uncommented ziskos path entry below the existing commented one,
-    # pointing to the resolved absolute path so it works regardless of where the ZisK
-    # repo lives (e.g. in GHA the container mounts it outside WORKSPACE_DIR)
+    # Insert a new uncommented ziskos path entry right after the (now) commented git dependency,
+    # pointing to the resolved absolute path so it works regardless of where the ZisK repo lives.
     ZISKOS_NEW_LINE="ziskos = { path = \"${ZISKOS_ENTRYPOINT_PATH}\" }"
     ensure sed "${SED_PARAMS[@]}" \
-        "/^#[[:space:]]*ziskos[[:space:]]*=[[:space:]]*[{][[:space:]]*path/a\\
+        "/^#[[:space:]]*ziskos[[:space:]]*=[[:space:]]*[{][[:space:]]*git/a\\
 ${ZISKOS_NEW_LINE}" \
         "${GUEST_CARGO_TOML}" || return 1
 
@@ -80,13 +79,10 @@ ${ZISKOS_NEW_LINE}" \
         err "Failed to comment 'ziskos = { git = ... }' line in ${GUEST_CARGO_TOML}"
         return 1
     fi
-    if ! grep -qE '^#[[:space:]]*ziskos[[:space:]]*=[[:space:]]*[{][[:space:]]*path' "${GUEST_CARGO_TOML}"; then
-        err "Original commented 'ziskos = { path = ... }' line missing in ${GUEST_CARGO_TOML}"
-        return 1
-    fi
     if ! grep -qF "${ZISKOS_NEW_LINE}" "${GUEST_CARGO_TOML}"; then
         err "Failed to add ziskos path entry pointing to ${ZISKOS_ENTRYPOINT_PATH} in ${GUEST_CARGO_TOML}"
         return 1
+    fi
     fi
 
     step "Building zec-reth ELF..."
