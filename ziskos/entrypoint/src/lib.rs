@@ -93,6 +93,18 @@ pub extern "C" fn zkvm_deinit() {
     }
 }
 
+#[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
+pub fn zkvm_init_socket(
+    socket_path: std::path::PathBuf,
+    debug_file: Option<std::path::PathBuf>,
+    write_flush_threshold: Option<usize>,
+    ready: Option<tokio::sync::oneshot::Sender<()>>,
+) -> anyhow::Result<()> {
+    read_input_reset();
+    crate::zisklib::zkvm_io::reset();
+    crate::hints::init_hints_socket(socket_path, debug_file, write_flush_threshold, ready)
+}
+
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
