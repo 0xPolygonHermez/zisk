@@ -31,7 +31,7 @@ pub struct ArithOperation {
     pub range_ab: u8,
     pub range_cd: u8,
     pub div_by_zero: bool,
-    pub div_overflow: bool,
+    pub div_overflow_mul_rz: bool,
 }
 
 /// Provides a default implementation for `ArithOperation`.
@@ -68,8 +68,8 @@ impl fmt::Debug for ArithOperation {
         if self.div_by_zero {
             flags += "div_by_zero "
         };
-        if self.div_overflow {
-            flags += "div_overflow "
+        if self.div_overflow_mul_rz {
+            flags += "div_overflow_mul_rz "
         };
         if self.main_mul {
             flags += "main_mul "
@@ -132,7 +132,7 @@ impl ArithOperation {
             nr: false,
             sext: false,
             div_by_zero: false,
-            div_overflow: false,
+            div_overflow_mul_rz: false,
             main_mul: false,
             main_div: false,
             signed: false,
@@ -156,7 +156,7 @@ impl ArithOperation {
                 || op == ZiskOp::DivuW.code()
                 || op == ZiskOp::RemuW.code());
 
-        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
+        self.div_overflow_mul_rz = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
             && input_a == 0x8000_0000_0000_0000
             && input_b == 0xFFFF_FFFF_FFFF_FFFF)
             || ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code())
@@ -400,24 +400,31 @@ impl ArithOperation {
         match zisk_op {
             ZiskOp::Mulu => {
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
-            ZiskOp::Muluh => {}
+            ZiskOp::Muluh => {
+                self.div_overflow_mul_rz = c == 0 && d == 0;
+            }
             ZiskOp::Mulsuh => {
                 sa = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Mul => {
                 sa = true;
                 sb = true;
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Mulh => {
                 sa = true;
                 sb = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::MulW => {
                 self.m32 = true;
                 self.sext = ((a * b) & 0xFFFF_FFFF) & 0x8000_0000 != 0;
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Divu => {
                 self.div = true;

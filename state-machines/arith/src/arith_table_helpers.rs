@@ -34,7 +34,7 @@ impl ArithTableHelpers {
         nr: bool,
         sext: bool,
         div_by_zero: bool,
-        div_overflow: bool,
+        div_overflow_mul_rz: bool,
     ) -> usize {
         // Calculate the index into the ARITH_TABLE_ROWS lookup table.
         let index = (op - FIRST_OP) as u64 * 128
@@ -44,7 +44,7 @@ impl ArithTableHelpers {
             + nr as u64 * 8
             + sext as u64 * 16
             + div_by_zero as u64 * 32
-            + div_overflow as u64 * 64;
+            + div_overflow_mul_rz as u64 * 64;
 
         // Ensure the index is within the valid range.
         debug_assert!(index < ARITH_TABLE_ROWS.len() as u64);
@@ -55,7 +55,7 @@ impl ArithTableHelpers {
         // Ensure the retrieved row is valid.
         debug_assert!(
             row < 255,
-            "INVALID ROW row:{} op:0x{:x} na:{} nb:{} np:{} nr:{} sext:{} div_by_zero:{} div_overflow:{} index:{}",
+            "INVALID ROW row:{} op:0x{:x} na:{} nb:{} np:{} nr:{} sext:{} div_by_zero:{} div_overflow_mul_rz:{} index:{}",
             row,
             op,
             na as u8,
@@ -64,7 +64,7 @@ impl ArithTableHelpers {
             nr as u8,
             sext as u8,
             div_by_zero as u8,
-            div_overflow as u8,
+            div_overflow_mul_rz as u8,
             index
         );
         row as usize
@@ -115,7 +115,7 @@ impl ArithTableHelpers {
         nr: bool,
         sext: bool,
         div_by_zero: bool,
-        div_overflow: bool,
+        div_overflow_mul_rz: bool,
         m32: bool,
         div: bool,
         main_mul: bool,
@@ -135,13 +135,13 @@ impl ArithTableHelpers {
             + if nr { 32 } else { 0 }
             + if sext { 64 } else { 0 }
             + if div_by_zero { 128 } else { 0 }
-            + if div_overflow { 256 } else { 0 }
+            + if div_overflow_mul_rz { 256 } else { 0 }
             + if main_mul { 512 } else { 0 }
             + if main_div { 1024 } else { 0 }
             + if signed { 2048 } else { 0 };
 
         // Retrieve the row using the direct method.
-        let row = Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow);
+        let row = Self::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow_mul_rz);
 
         // Validate the row against the ARITH_TABLE for correctness.
         assert_eq!(
@@ -202,7 +202,7 @@ impl ArithTableHelpers {
             result += " div_by_zero";
         }
         if flags & 256 != 0 {
-            result += " div_overflow";
+            result += " div_overflow_mul_rz";
         }
         if flags & 512 != 0 {
             result += " main_mul";
@@ -256,10 +256,18 @@ impl ArithTableInputs {
         nr: bool,
         sext: bool,
         div_by_zero: bool,
-        div_overflow: bool,
+        div_overflow_mul_rz: bool,
     ) {
-        let row =
-            ArithTableHelpers::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow);
+        let row = ArithTableHelpers::direct_get_row(
+            op,
+            na,
+            nb,
+            np,
+            nr,
+            sext,
+            div_by_zero,
+            div_overflow_mul_rz,
+        );
         assert!(row < ROWS);
         self.multiplicity[row] += 1;
     }
@@ -284,10 +292,18 @@ impl ArithTableInputs {
         nr: bool,
         sext: bool,
         div_by_zero: bool,
-        div_overflow: bool,
+        div_overflow_mul_rz: bool,
     ) {
-        let row =
-            ArithTableHelpers::direct_get_row(op, na, nb, np, nr, sext, div_by_zero, div_overflow);
+        let row = ArithTableHelpers::direct_get_row(
+            op,
+            na,
+            nb,
+            np,
+            nr,
+            sext,
+            div_by_zero,
+            div_overflow_mul_rz,
+        );
         self.multiplicity[row] += times as u64;
     }
 
