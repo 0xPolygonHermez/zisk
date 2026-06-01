@@ -168,12 +168,20 @@ jobs:
               ./test_diagnostic.sh
             '
 
+      - name: Build zec-reth ELF file
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zec_reth.sh
+            '
+
       - name: Prove Ethereum block
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -184,8 +192,6 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
-            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
@@ -195,8 +201,6 @@ jobs:
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -e ENABLE_HINTS="1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
@@ -237,6 +241,11 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
+
+      - name: Build zec-reth ELF file
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zec_reth.sh
 
       - name: Test sha_hasher
         run: |
