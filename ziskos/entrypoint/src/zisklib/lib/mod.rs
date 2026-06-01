@@ -25,6 +25,7 @@ mod uint256;
 mod utils;
 mod zisk_verifier;
 pub mod zkvm_accelerators;
+pub mod zkvm_accelerators_ext;
 pub mod zkvm_io;
 
 // For public consumption

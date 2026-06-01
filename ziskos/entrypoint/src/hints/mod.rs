@@ -1,3 +1,4 @@
+mod bigint;
 mod blake2b;
 mod bls12_381;
 mod bn254;
@@ -7,11 +8,11 @@ mod input_data;
 mod keccak256;
 mod kzg;
 mod macros;
-mod modexp;
 mod ripemd160;
 mod secp256k1;
 mod secp256r1;
 mod sha256f;
+mod uint256;
 
 #[cfg(zisk_hints_metrics)]
 mod metrics;
@@ -38,6 +39,7 @@ use std::sync::Mutex;
 #[cfg(zisk_hints_single_thread)]
 use std::thread::ThreadId;
 
+pub use bigint::*;
 pub use blake2b::*;
 pub use bls12_381::*;
 pub use bn254::*;
@@ -45,11 +47,11 @@ pub use custom::*;
 pub use input_data::*;
 pub use keccak256::*;
 pub use kzg::*;
-pub use modexp::*;
 pub use ripemd160::*;
 pub use secp256k1::*;
 pub use secp256r1::*;
 pub use sha256f::*;
+pub use uint256::*;
 
 pub const CLIENT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const WAIT_FOR_CLIENT_RETRY_DELAY: Duration = Duration::from_millis(5);
