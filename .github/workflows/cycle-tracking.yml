@@ -1,0 +1,120 @@
+name: "Cycle tracking"
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths-ignore:
+      - 'book/**'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against (manual runs only)"
+        required: false
+        default: "develop"
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  cycle-tracking:
+    name: "Compare emulator cost vs base branch"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: "Free disk space"
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: "Checkout sources"
+        uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+
+      - name: "Install dependencies"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: "Stash benchmark scripts"
+        run: |
+          cp .github/scripts/zisk_bench.sh .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/"
+          chmod +x "$RUNNER_TEMP/zisk_bench.sh"
+
+      - name: "Benchmark PR branch"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/pr"
+
+      - name: "Switch to base branch"
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git checkout --detach "origin/$BASE_REF"
+          git clean -fdx -e target
+
+      - name: "Benchmark base branch"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/base"
+
+      - name: "Build execution report"
+        id: report
+        run: |
+          python3 "$RUNNER_TEMP/zisk_cycle_diff.py" "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr" > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          # Expose it as a step output for the PR-comment step.
+          {
+            echo 'EXECUTION_REPORT<<__ZISK_EOF__'
+            cat "$RUNNER_TEMP/report.md"
+            echo '__ZISK_EOF__'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: "Post / update PR comment"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          EXECUTION_REPORT: ${{ steps.report.outputs.EXECUTION_REPORT }}
+        with:
+          script: |
+            const { EXECUTION_REPORT } = process.env;
+            const marker = '<!-- zisk-cycle-tracking -->';
+            const body = `${marker}\n${EXECUTION_REPORT}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
