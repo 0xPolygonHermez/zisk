@@ -2569,7 +2569,10 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
         panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
     }
     if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
-        panic!("opc_fcall_get() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
+        panic!(
+            "opc_fcall_get() called with ctx.fcall.result_size=={}>{}",
+            ctx.fcall.result_size, FCALL_RESULT_MAX_SIZE
+        );
     }
     if ctx.fcall.result_got > ctx.fcall.result_size {
         panic!(

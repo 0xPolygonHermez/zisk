@@ -23,7 +23,7 @@ cd "$REPO"
 
 # The set of guest programs to benchmark. Each name must match both the crate
 # `package.name` under test-artifacts/programs/<name> and the emitted ELF name.
-PROGRAMS=(diagnostic modexp secp256k1 uint256)
+PROGRAMS=(bigint bls12_381 bn254 diagnostic hashes secp256k1 secp256r1 uint256)
 
 # Guest crates inherit this version from test-artifacts/programs/Cargo.toml
 GUEST_VERSION="0.1.0"
