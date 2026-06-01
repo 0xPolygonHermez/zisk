@@ -3,7 +3,7 @@ use crate::zisklib::fcall_bin_decomp;
 use crate::zisklib::fcall_uint256_inv_mod;
 use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
-    utils::{be_bytes_to_u64_4, gt, is_one, is_zero, u64_4_to_be_bytes},
+    utils::{be_bytes_to_u64_4, is_one, is_zero, lt, u64_4_to_be_bytes},
 };
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
@@ -16,7 +16,11 @@ pub fn reduce_mod256(
         return ZERO;
     }
 
-    if gt(a, modulus) {
+    // Only `a < modulus` is already reduced; `a == modulus` and `a > modulus` both need the
+    // syscall (e.g. `m mod m = 0`, which the strict-`gt` short-circuit used to miss).
+    if lt(a, modulus) {
+        *a
+    } else {
         let mut d = ZERO;
         let mut params =
             SyscallArith256ModParams { a, b: &ONE, c: &ZERO, module: modulus, d: &mut d };
@@ -26,8 +30,6 @@ pub fn reduce_mod256(
             hints,
         );
         d
-    } else {
-        *a
     }
 }
 
@@ -99,13 +101,23 @@ pub fn pow_mod256(
         return ZERO;
     }
 
-    // Early returns
+    // Modulo 1 every result is 0, including the base^0 / 1^exp fast paths below.
+    if is_one(modulus) {
+        return ZERO;
+    }
+
+    // Early returns (modulus > 1 from here on, so `1` and `0` are already reduced)
     if is_zero(exp) {
         // base^0 = 1 (includes 0^0)
         return ONE;
     } else if is_one(exp) {
-        // base^1 = base
-        return *base;
+        // base^1 = base (mod modulus); `base` may be >= modulus and must be reduced
+        return reduce_mod256(
+            base,
+            modulus,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     if is_zero(base) {
@@ -332,6 +344,138 @@ pub unsafe extern "C" fn mul_mod_bytes256_c(
     // Convert result back to big-endian bytes
     let result_bytes = &mut *(result_ptr as *mut [u8; 32]);
     *result_bytes = u64_4_to_be_bytes(&result);
+}
+
+/// 256-bit modular reduction `a mod m`, big-endian byte operands.
+///
+/// # Safety
+/// - `a_ptr`, `m_ptr` must each point to a valid array of 32 bytes (big endian)
+/// - `result_ptr` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_reduce_mod_bytes256_c")]
+pub unsafe extern "C" fn reduce_mod_bytes256_c(
+    a_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = be_bytes_to_u64_4(&*(a_ptr as *const [u8; 32]));
+    let m = be_bytes_to_u64_4(&*(m_ptr as *const [u8; 32]));
+    let result = reduce_mod256(
+        &a,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    *(result_ptr as *mut [u8; 32]) = u64_4_to_be_bytes(&result);
+}
+
+/// 256-bit modular addition `(a + b) mod m`, big-endian byte operands.
+///
+/// # Safety
+/// - `a_ptr`, `b_ptr`, `m_ptr` must each point to a valid array of 32 bytes (big endian)
+/// - `result_ptr` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_mod_bytes256_c")]
+pub unsafe extern "C" fn add_mod_bytes256_c(
+    a_ptr: *const u8,
+    b_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = be_bytes_to_u64_4(&*(a_ptr as *const [u8; 32]));
+    let b = be_bytes_to_u64_4(&*(b_ptr as *const [u8; 32]));
+    let m = be_bytes_to_u64_4(&*(m_ptr as *const [u8; 32]));
+    let result = add_mod256(
+        &a,
+        &b,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    *(result_ptr as *mut [u8; 32]) = u64_4_to_be_bytes(&result);
+}
+
+/// 256-bit modular squaring `a² mod m`, big-endian byte operands.
+///
+/// # Safety
+/// - `a_ptr`, `m_ptr` must each point to a valid array of 32 bytes (big endian)
+/// - `result_ptr` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_square_mod_bytes256_c")]
+pub unsafe extern "C" fn square_mod_bytes256_c(
+    a_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let a = be_bytes_to_u64_4(&*(a_ptr as *const [u8; 32]));
+    let m = be_bytes_to_u64_4(&*(m_ptr as *const [u8; 32]));
+    let result = square_mod256(
+        &a,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    *(result_ptr as *mut [u8; 32]) = u64_4_to_be_bytes(&result);
+}
+
+/// 256-bit modular exponentiation `base^exp mod m`, big-endian byte operands.
+///
+/// # Safety
+/// - `base_ptr`, `exp_ptr`, `m_ptr` must each point to a valid array of 32 bytes (big endian)
+/// - `result_ptr` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_pow_mod_bytes256_c")]
+pub unsafe extern "C" fn pow_mod_bytes256_c(
+    base_ptr: *const u8,
+    exp_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let base = be_bytes_to_u64_4(&*(base_ptr as *const [u8; 32]));
+    let exp = be_bytes_to_u64_4(&*(exp_ptr as *const [u8; 32]));
+    let m = be_bytes_to_u64_4(&*(m_ptr as *const [u8; 32]));
+    let result = pow_mod256(
+        &base,
+        &exp,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    *(result_ptr as *mut [u8; 32]) = u64_4_to_be_bytes(&result);
+}
+
+/// 256-bit modular inverse `a⁻¹ mod m`, big-endian byte operands.
+/// Returns 1 if the inverse exists, 0 otherwise.
+///
+/// # Safety
+/// - `a_ptr`, `m_ptr` must each point to a valid array of 32 bytes (big endian)
+/// - `result_ptr` must point to a valid array of at least 32 bytes
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_inv_mod_bytes256_c")]
+pub unsafe extern "C" fn inv_mod_bytes256_c(
+    a_ptr: *const u8,
+    m_ptr: *const u8,
+    result_ptr: *mut u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let a = be_bytes_to_u64_4(&*(a_ptr as *const [u8; 32]));
+    let m = be_bytes_to_u64_4(&*(m_ptr as *const [u8; 32]));
+    match inv_mod256(
+        &a,
+        &m,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Some(res) => {
+            *(result_ptr as *mut [u8; 32]) = u64_4_to_be_bytes(&res);
+            1
+        }
+        None => 0,
+    }
 }
 
 /// 256-bit modular squaring.
