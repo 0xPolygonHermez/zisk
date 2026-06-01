@@ -45,7 +45,7 @@ main() {
     cd ..
 
     step "Deploying ZisK coordinator and worker services..."
-    deploy_distributed
+    deploy_distributed || return 1
 
     step "Executing ethproofs-client tests..."
     ensure cd zisk-ethproofs || return 1
