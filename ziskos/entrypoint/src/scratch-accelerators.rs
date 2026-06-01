@@ -9,6 +9,8 @@
 //! to preserve the call-site convention in `_zisk_main`.
 
 #[cfg(zisk_guest)]
+use crate::ziskos_memcpy;
+#[cfg(zisk_guest)]
 use core::{
     alloc::{AllocError, Allocator, Layout},
     ptr::NonNull,
@@ -101,8 +103,52 @@ unsafe impl Allocator for BumpScratch {
     }
 
     #[inline(always)]
+    fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+        // Newly allocated memory is already zero-initialized (never released), so
+        // zeroing is unnecessary.
+        self.allocate(layout)
+    }
+
+    #[inline(always)]
     unsafe fn deallocate(&self, _ptr: NonNull<u8>, _layout: Layout) {
         // Bulk-reset on the next accelerator entry; no per-dealloc cost.
+    }
+
+    #[inline(always)]
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        let new_ptr = self.allocate(new_layout)?;
+        let dst = new_ptr.as_ptr() as *mut u8;
+        let src = ptr.as_ptr();
+        ziskos_memcpy!(ptr: dst, src, old_layout.size());
+        Ok(new_ptr)
+    }
+
+    #[inline(always)]
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        // Bytes beyond old_layout.size() are already zero-initialized.
+        self.grow(ptr, old_layout, new_layout)
+    }
+
+    #[inline(always)]
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        _old_layout: Layout,
+        new_layout: Layout,
+    ) -> Result<NonNull<[u8]>, AllocError> {
+        // Bump memory is never released; tail bytes of the old slot are simply
+        // left unused until the next reset().  No allocation or copy needed.
+        Ok(NonNull::slice_from_raw_parts(ptr, new_layout.size()))
     }
 }
 
