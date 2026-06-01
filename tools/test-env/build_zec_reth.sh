@@ -83,7 +83,6 @@ ${ZISKOS_NEW_LINE}" \
         err "Failed to add ziskos path entry pointing to ${ZISKOS_ENTRYPOINT_PATH} in ${GUEST_CARGO_TOML}"
         return 1
     fi
-    fi
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1
