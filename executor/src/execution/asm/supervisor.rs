@@ -165,6 +165,7 @@ fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<ExecutorResult<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ExecutorError;
     use asm_runner::AsmRHData;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
