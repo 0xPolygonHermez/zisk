@@ -17,10 +17,10 @@ mod secp256k1;
 mod secp256r1;
 mod sha256f;
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 fn main() {}
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 fn main() {
     // Basic instructions
     riscv_c::diagnostic_riscv_c();

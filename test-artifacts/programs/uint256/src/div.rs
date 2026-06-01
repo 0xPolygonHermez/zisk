@@ -1,6 +1,6 @@
 use super::common::*;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 extern "C" {
     fn checked_div256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
 
@@ -17,7 +17,7 @@ extern "C" {
 
 fn checked_div(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_div, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success =
@@ -30,7 +30,7 @@ fn checked_div(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -41,7 +41,7 @@ fn checked_div(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
 
 fn checked_rem(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_rem, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success =
@@ -54,7 +54,7 @@ fn checked_rem(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -65,7 +65,7 @@ fn checked_rem(base: [u64; 4], exp: [u64; 4]) -> Option<[u64; 4]> {
 
 fn wrapping_div(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_div, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_div256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -73,7 +73,7 @@ fn wrapping_div(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -84,7 +84,7 @@ fn wrapping_div(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_rem(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_rem, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_rem256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -92,7 +92,7 @@ fn wrapping_rem(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -103,7 +103,7 @@ fn wrapping_rem(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn div_rem(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
     profile_block!(div_rem, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut quo = [0u64; 4];
             let mut rem = [0u64; 4];
@@ -112,7 +112,7 @@ fn div_rem(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -124,7 +124,7 @@ fn div_rem(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
 
 fn div_ceil(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     profile_block!(div_ceil, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { div_ceil256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -132,7 +132,7 @@ fn div_ceil(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {

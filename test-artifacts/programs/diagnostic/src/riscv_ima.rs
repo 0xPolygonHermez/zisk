@@ -1,4 +1,4 @@
-#![cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#![cfg(zisk_guest)]
 
 use std::arch::asm;
 use std::num::Wrapping;

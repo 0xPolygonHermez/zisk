@@ -1,6 +1,6 @@
 use super::common::*;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 extern "C" {
     fn reduce_mod256_c(a: *const u64, modulus: *const u64, result: *mut u64);
 
@@ -17,7 +17,7 @@ extern "C" {
 
 fn reduce_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     profile_block!(reduce_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { reduce_mod256_c(a.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
@@ -25,7 +25,7 @@ fn reduce_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -36,7 +36,7 @@ fn reduce_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 
 fn add_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     profile_block!(add_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { add_mod256_c(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
@@ -44,7 +44,7 @@ fn add_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -57,7 +57,7 @@ fn add_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 
 fn mul_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     profile_block!(mul_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { mul_mod256_c(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
@@ -65,7 +65,7 @@ fn mul_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -78,7 +78,7 @@ fn mul_mod(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 
 fn square_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     profile_block!(square_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { square_mod256_c(a.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
@@ -86,7 +86,7 @@ fn square_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -98,7 +98,7 @@ fn square_mod(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 
 fn pow_mod(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     profile_block!(pow_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe {
@@ -108,7 +108,7 @@ fn pow_mod(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -121,7 +121,7 @@ fn pow_mod(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 
 fn inv_mod(a: &[u64; 4], modulus: &[u64; 4]) -> Option<[u64; 4]> {
     profile_block!(inv_mod, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success =
@@ -134,7 +134,7 @@ fn inv_mod(a: &[u64; 4], modulus: &[u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {

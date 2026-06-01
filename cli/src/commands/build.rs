@@ -2,6 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
 use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
+use crate::common::ensure_zisk_target_installed;
+
+use super::utils::ZISK_LINKER_SCRIPT;
+
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -34,27 +38,33 @@ pub struct ZiskBuild {
     /// Build only the specified package (repeat for multiple)
     #[arg(short = 'p', long = "package", value_name = "PACKAGE")]
     packages: Vec<String>,
-
-    /// Toolchain name to use
-    #[arg(long, hide = true)]
-    toolchain_name: Option<String>,
 }
 
 impl ZiskBuild {
     pub fn run(&self) -> Result<()> {
-        // Construct the cargo run command
-        let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
-            println!("Using toolchain_name: {name}");
-            name
-        } else {
-            "zisk"
-        };
-        let mut command = Command::new("cargo");
-        command.args([&format!("+{toolchain_name}"), "build"]);
+        // Ensure the Zisk Rust target is installed before invoking cargo
+        ensure_zisk_target_installed()?;
 
-        // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
-        let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
-        command.env("RUSTFLAGS", flags.trim());
+        // Construct the cargo build command
+        let mut command = Command::new("cargo");
+        command.arg("build");
+
+        // Generate the linker script from the embedded bytes and write it to a temporary file
+        let linker_script_path = std::env::temp_dir().join("zisk.ld");
+        std::fs::write(&linker_script_path, ZISK_LINKER_SCRIPT)
+            .context("Failed to write Zisk linker script to temp dir")?;
+
+        // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
+        let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+        let rust_flags = format!(
+            "{} --cfg zisk_guest -C link-arg=-T{}",
+            current_rust_flags.trim(),
+            linker_script_path.display()
+        )
+        .trim()
+        .to_string();
+
+        command.env("RUSTFLAGS", rust_flags);
 
         command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
 
@@ -86,6 +96,24 @@ impl ZiskBuild {
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
+
+        // Debug: print the cargo invocation (env overrides + program + args)
+        let env_overrides = command
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|v| format!("{}={:?}", k.to_string_lossy(), v.to_string_lossy())))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let args = command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        println!(
+            "Running: {} {} {}",
+            env_overrides,
+            command.get_program().to_string_lossy(),
+            args,
+        );
 
         // Execute the command
         let status = command.status().context("Failed to execute cargo build command")?;

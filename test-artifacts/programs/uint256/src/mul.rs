@@ -1,6 +1,6 @@
 use super::common::*;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 extern "C" {
     fn checked_mul256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
 
@@ -23,7 +23,7 @@ extern "C" {
 
 fn checked_mul(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_mul, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { checked_mul256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -35,7 +35,7 @@ fn checked_mul(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -46,7 +46,7 @@ fn checked_mul(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
 
 fn checked_square(a: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_square, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { checked_square256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -58,7 +58,7 @@ fn checked_square(a: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -69,7 +69,7 @@ fn checked_square(a: [u64; 4]) -> Option<[u64; 4]> {
 
 fn overflowing_mul(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
     profile_block!(overflowing_mul, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let overflow =
@@ -78,7 +78,7 @@ fn overflowing_mul(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -90,7 +90,7 @@ fn overflowing_mul(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
 
 fn overflowing_square(a: [u64; 4]) -> ([u64; 4], bool) {
     profile_block!(overflowing_square, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let overflow = unsafe { overflowing_square256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -98,7 +98,7 @@ fn overflowing_square(a: [u64; 4]) -> ([u64; 4], bool) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -110,7 +110,7 @@ fn overflowing_square(a: [u64; 4]) -> ([u64; 4], bool) {
 
 fn saturating_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(saturating_mul, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { saturating_mul256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -118,7 +118,7 @@ fn saturating_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -129,7 +129,7 @@ fn saturating_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn saturating_square(a: [u64; 4]) -> [u64; 4] {
     profile_block!(saturating_square, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { saturating_square256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -137,7 +137,7 @@ fn saturating_square(a: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -148,7 +148,7 @@ fn saturating_square(a: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_mul, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_mul256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -156,7 +156,7 @@ fn wrapping_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -167,7 +167,7 @@ fn wrapping_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_square(a: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_square, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_square256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -175,7 +175,7 @@ fn wrapping_square(a: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -186,7 +186,7 @@ fn wrapping_square(a: [u64; 4]) -> [u64; 4] {
 
 fn inv(a: &[u64; 4]) -> Option<[u64; 4]> {
     profile_block!(inv, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { inv256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -198,7 +198,7 @@ fn inv(a: &[u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {

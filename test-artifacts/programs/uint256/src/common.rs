@@ -31,5 +31,5 @@ pub(crate) const MAX_MINUS_ONE: [u64; 4] = [u64::MAX - 1, u64::MAX, u64::MAX, u6
 pub(crate) const POW2_64: [u64; 4] = [0, 1, 0, 0]; // 2^64
 pub(crate) const POW2_128: [u64; 4] = [0, 0, 1, 0]; // 2^128
 
-#[cfg(any(not(all(target_os = "zkvm", target_vendor = "zisk")), feature = "ruint-fallback"))]
+#[cfg(any(not(zisk_guest), feature = "ruint-fallback"))]
 pub(crate) type RU256 = ruint::Uint<256, 4>;

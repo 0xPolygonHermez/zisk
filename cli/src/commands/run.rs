@@ -4,7 +4,9 @@ use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::{GuestProgram, ProfilingMode};
 
-use crate::common::detect_current_project_elf;
+use crate::common::{detect_current_project_elf, ensure_zisk_target_installed};
+
+use super::utils::ZISK_LINKER_SCRIPT;
 
 // Structure representing the 'run' subcommand of cargo-zisk
 #[derive(clap::Args)]
@@ -46,9 +48,30 @@ impl ZiskRun {
         let elf_path = match &self.elf {
             Some(path) => path.clone(),
             None => {
+                // Ensure the Zisk Rust target is installed before invoking cargo
+                ensure_zisk_target_installed()?;
+
                 // Build first, then detect the resulting ELF
                 let mut command = Command::new("cargo");
-                command.args(["+zisk", "build"]);
+                command.arg("build");
+
+                // Generate the linker script from the embedded bytes and write it to a temporary file
+                let linker_script_path = std::env::temp_dir().join("zisk.ld");
+                std::fs::write(&linker_script_path, ZISK_LINKER_SCRIPT)
+                    .context("Failed to write Zisk linker script to temp dir")?;
+
+                // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
+                let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+                let rust_flags = format!(
+                    "{} --cfg zisk_guest -C link-arg=-T{}",
+                    current_rust_flags.trim(),
+                    linker_script_path.display()
+                )
+                .trim()
+                .to_string();
+
+                command.env("RUSTFLAGS", rust_flags);
+
                 command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
                 if let Some(features) = &self.features {
                     command.arg("--features").arg(features);

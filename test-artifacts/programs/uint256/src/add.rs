@@ -1,6 +1,6 @@
 use super::common::*;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 extern "C" {
     fn checked_add256_c(a: *const u64, b: *const u64, result: *mut u64) -> u8;
 
@@ -27,7 +27,7 @@ extern "C" {
 
 fn checked_add(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_add, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { checked_add256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -39,7 +39,7 @@ fn checked_add(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -50,7 +50,7 @@ fn checked_add(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
 
 fn checked_sub(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_sub, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { checked_sub256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -62,7 +62,7 @@ fn checked_sub(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -73,7 +73,7 @@ fn checked_sub(a: [u64; 4], b: [u64; 4]) -> Option<[u64; 4]> {
 
 fn checked_neg(a: [u64; 4]) -> Option<[u64; 4]> {
     profile_block!(checked_neg, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let success = unsafe { checked_neg256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -85,7 +85,7 @@ fn checked_neg(a: [u64; 4]) -> Option<[u64; 4]> {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -96,7 +96,7 @@ fn checked_neg(a: [u64; 4]) -> Option<[u64; 4]> {
 
 fn overflowing_add(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
     profile_block!(overflowing_add, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let overflow =
@@ -105,7 +105,7 @@ fn overflowing_add(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -117,7 +117,7 @@ fn overflowing_add(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
 
 fn overflowing_sub(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
     profile_block!(overflowing_sub, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let overflow =
@@ -126,7 +126,7 @@ fn overflowing_sub(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -138,7 +138,7 @@ fn overflowing_sub(a: [u64; 4], b: [u64; 4]) -> ([u64; 4], bool) {
 
 fn overflowing_neg(a: [u64; 4]) -> ([u64; 4], bool) {
     profile_block!(overflowing_neg, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             let overflow = unsafe { overflowing_neg256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -146,7 +146,7 @@ fn overflowing_neg(a: [u64; 4]) -> ([u64; 4], bool) {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -158,7 +158,7 @@ fn overflowing_neg(a: [u64; 4]) -> ([u64; 4], bool) {
 
 pub fn saturating_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(saturating_add, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { saturating_add256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -166,7 +166,7 @@ pub fn saturating_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -177,7 +177,7 @@ pub fn saturating_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn saturating_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(saturating_sub, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { saturating_sub256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -185,7 +185,7 @@ fn saturating_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -196,7 +196,7 @@ fn saturating_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_add, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_add256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -204,7 +204,7 @@ fn wrapping_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -215,7 +215,7 @@ fn wrapping_add(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_sub, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_sub256_c(a.as_ptr(), b.as_ptr(), result.as_mut_ptr()) };
@@ -223,7 +223,7 @@ fn wrapping_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {
@@ -234,7 +234,7 @@ fn wrapping_sub(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 
 fn wrapping_neg(a: [u64; 4]) -> [u64; 4] {
     profile_block!(wrapping_neg, {
-        #[cfg(all(target_os = "zkvm", target_vendor = "zisk", not(feature = "ruint-fallback")))]
+        #[cfg(all(zisk_guest, not(feature = "ruint-fallback")))]
         {
             let mut result = [0u64; 4];
             unsafe { wrapping_neg256_c(a.as_ptr(), result.as_mut_ptr()) };
@@ -242,7 +242,7 @@ fn wrapping_neg(a: [u64; 4]) -> [u64; 4] {
         }
 
         #[cfg(any(
-            not(all(target_os = "zkvm", target_vendor = "zisk")),
+            not(zisk_guest),
             feature = "ruint-fallback"
         ))]
         {

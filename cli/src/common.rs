@@ -1,7 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use zisk_build::ZISK_TARGET;
 
 /// If the target_os is macOS returns an error indicating that the command is not supported.
@@ -11,6 +12,35 @@ pub fn cli_fail_if_macos() -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// Verify that the target (`riscv64imac-unknown-none-elf`) is installed
+/// for the rustup active toolchain.
+pub fn ensure_zisk_target_installed() -> Result<()> {
+    let output = Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .with_context(|| "Failed to invoke `rustup` to list installed targets")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!(
+            "`rustup target list --installed` failed: {}",
+            stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.lines().any(|line| line.trim() == ZISK_TARGET) {
+        return Ok(());
+    }
+
+    Err(anyhow::anyhow!(
+        "The Rust target `{}` is not installed for the active toolchain.\n\
+         Install it with:\n    rustup target add {}",
+        ZISK_TARGET,
+        ZISK_TARGET
+    ))
 }
 
 pub fn resolve_elf_path(elf: &Option<PathBuf>) -> Result<&PathBuf> {

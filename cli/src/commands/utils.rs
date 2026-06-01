@@ -7,6 +7,8 @@ mod convert_input;
 pub use clean_cache::ZiskCleanCache;
 pub use convert_input::ZiskConvertInput;
 
+pub const ZISK_LINKER_SCRIPT: &[u8] = include_bytes!("zisk.ld");
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Utility commands
