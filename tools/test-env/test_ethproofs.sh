@@ -38,7 +38,7 @@ main() {
     fi
 
     step "Building zisk-ethproofs..."
-    ensure cd zisk-ethproofs
+    ensure cd zisk-ethproofs || return 1
     local cfg_hints=""
     [[ "${ENABLE_HINTS:-}" == "1" ]] && cfg_hints="RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread'"
     ensure eval "$cfg_hints cargo build --release" || return 1
@@ -48,7 +48,7 @@ main() {
     deploy_distributed
 
     step "Executing ethproofs-client tests..."
-    ensure cd zisk-ethproofs
+    ensure cd zisk-ethproofs || return 1
     local input_files_arg=""
     if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
         [[ -n "${BLOCK_INPUTS_ETHPROOFS_HINTS:-}" ]] && input_files_arg="--folder.input-files ${BLOCK_INPUTS_ETHPROOFS_HINTS}"
