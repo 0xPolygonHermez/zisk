@@ -37,11 +37,14 @@
         global Fr_rawSub
         global Fr_rawNeg
         global Fr_rawMMul
+        global Fr_rawMMul1
         global Fr_rawMSquare
         global Fr_rawToMontgomery
         global Fr_rawFromMontgomery
         global Fr_rawIsEq
         global Fr_rawIsZero
+        global Fr_rawShr
+        global Fr_rawShl
         global Fr_rawq
         global Fr_rawR3
 
@@ -49,6 +52,10 @@
         DEFAULT REL
 
         section .text
+
+
+
+
 
 
 
@@ -284,15 +291,12 @@ Fr_long:
         jnc     Fr_longNormal
 Fr_longMontgomery:
 
-        mov  r8, rdi
         sub  rsp, 40
-        mov  rdi, rsp
-        push rdx
-        push r8
-        call Fr_toNormal
+        push rsi
         mov  rsi, rdi
-        pop  rdi
-        pop  rdx
+        mov  rdi, rsp
+        call Fr_toNormal
+        pop  rsi
 
 
 Fr_longNormal:
@@ -6541,6 +6545,7 @@ tmp_107:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+Fr_rawShr:
 rawShr:
         cmp rdx, 0
         je Fr_rawCopy
@@ -6741,6 +6746,7 @@ rawShr_endif3_3:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+Fr_rawShl:
 rawShl:
         cmp rdx, 0
         je Fr_rawCopy
@@ -8791,6 +8797,3 @@ R3      dq      0x5e94d8e1b4bf0040,0x2a489cbe1cfbb6b8,0x893cc664a19fcfed,0x0cf85
 lboMask dq      0x3fffffffffffffff
 np      dq      0xc2e1f593efffffff
 
-
-; Mark stack as non-executable
-section .note.GNU-stack noalloc noexec nowrite progbits
