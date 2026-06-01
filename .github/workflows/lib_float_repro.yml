@@ -1,0 +1,65 @@
+name: lib-float reproducibility
+
+# Guards the reproducibility of lib-float's artifacts. ziskfloat.elf is compiled
+# inside a pinned Docker image (lib-float/c/docker/Dockerfile) and feeds the
+# program vk via include_bytes! in core/src/elf2rom.rs, so its bytes must be
+# both deterministic (same image -> same bytes) and stable unless changed
+# deliberately (locked by the committed per-artifact lib-float/c/*.md5).
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths:
+      - "lib-float/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  reproducible-ziskfloat:
+    name: ziskfloat reproducible build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: lib-float/c
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Build in pinned Docker image (run 1)
+        run: |
+          set -euxo pipefail
+          make clean
+          make docker
+          md5sum lib/ziskfloat.elf lib/libziskfloat.a > "$RUNNER_TEMP/run1.md5"
+
+      - name: Rebuild from scratch (run 2) and assert determinism
+        run: |
+          set -euxo pipefail
+          make clean
+          make docker
+          md5sum lib/ziskfloat.elf lib/libziskfloat.a > "$RUNNER_TEMP/run2.md5"
+          if ! diff -u "$RUNNER_TEMP/run1.md5" "$RUNNER_TEMP/run2.md5"; then
+            echo "::error::Non-deterministic build: two clean builds in the pinned image produced different artifacts."
+            exit 1
+          fi
+          echo "Determinism OK: both clean builds produced identical artifacts."
+
+      - name: Verify artifacts match md5 references
+        run: |
+          set -euo pipefail
+          if ! make check-hashes; then
+            echo "::error::ziskfloat artifacts changed vs the committed lib-float/c/*.md5 -> the code has changed. If this is intended, run 'make -C lib-float/c docker && make -C lib-float/c update-hashes' and commit the updated lib-float/c/*.md5 in this PR."
+            exit 1
+          fi
+          echo "OK: artifacts match the committed c/*.md5 files."
