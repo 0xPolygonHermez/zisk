@@ -181,6 +181,47 @@ pub fn new_scratch_vec<T>(capacity: usize) -> ScratchVec<T> {
     }
 }
 
+/// Reports whether a value's bit pattern is all zeros.
+///
+/// Used by [`new_scratch_vec_filled_z`] to skip per-element initialisation:
+/// when `is_zero` returns `true`, `set_len` is called without running any
+/// constructors, relying on the backing memory already being zero.
+///
+/// # Safety
+/// `is_zero` must return `true` only when an all-zero bit pattern is a valid,
+/// fully-initialised `T`.  A wrong implementation causes undefined behaviour in
+/// [`new_scratch_vec_filled_z`], which is otherwise a safe function.
+pub unsafe trait IsZero {
+    fn is_zero(&self) -> bool;
+}
+
+unsafe impl IsZero for u64 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+}
+
+/// Create a `ScratchVec<T>` of `len` elements all set to `value`, with a zero
+/// fast-path: when `value.is_zero()` is `true` (constant-folded by LLVM for
+/// compile-time constants), on guest only `set_len` is called (O(1)); on host
+/// `write_bytes` zeroes the block once before `set_len`.
+#[inline(always)]
+pub fn new_scratch_vec_filled_z<T: Clone + IsZero>(len: usize, value: T) -> ScratchVec<T> {
+    let mut v = new_scratch_vec(len);
+    if value.is_zero() {
+        // SAFETY: T: IsZero guarantees all-zeros is a valid, fully-initialised T.
+        unsafe {
+            #[cfg(not(zisk_guest))]
+            core::ptr::write_bytes(v.as_mut_ptr(), 0, len);
+            v.set_len(len);
+        }
+    } else {
+        v.resize(len, value);
+    }
+    v
+}
+
 /// Create a `ScratchVec<T>` of `len` elements all initialised to `value`.
 ///
 /// Equivalent to `vec![value; len]` but backed by the scratch arena on guest.

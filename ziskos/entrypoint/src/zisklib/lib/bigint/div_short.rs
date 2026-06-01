@@ -1,7 +1,9 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::scratch_accelerators::{new_scratch_vec_filled, scratch_vec_from_slice, ScratchVec};
+use crate::scratch_accelerators::{
+    new_scratch_vec_filled, new_scratch_vec_filled_z, scratch_vec_from_slice, ScratchVec,
+};
 
 use crate::zisklib::fcall_bigint_div;
 
@@ -35,7 +37,7 @@ pub fn div_short(
     if len_a == 1 {
         let a = a[0];
         if a.is_zero() || a.lt(b) {
-            return (new_scratch_vec_filled(1, U256::ZERO), a);
+            return (new_scratch_vec_filled_z(1, U256::ZERO), a);
         } else if a.eq(b) {
             return (new_scratch_vec_filled(1, U256::ONE), U256::ZERO);
         }
@@ -46,7 +48,7 @@ pub fn div_short(
     let a_flat = U256::slice_to_flat(a);
 
     // Hint the quotient and remainder
-    let mut quo_flat = new_scratch_vec_filled(len_a * 4, 0u64);
+    let mut quo_flat = new_scratch_vec_filled_z(len_a * 4, 0u64);
     let mut rem_flat = [0u64; 4];
     let (limbs_quo, _) = fcall_bigint_div(
         a_flat,
@@ -68,7 +70,7 @@ pub fn div_short(
     assert!(!quo[len_quo - 1].is_zero(), "Quotient must not have leading zeros");
 
     // Multiply the quotient by b
-    let mut q_b = new_scratch_vec_filled(len_a + 1, U256::ZERO); // The +1 is because mul_short is a general purpose function
+    let mut q_b = new_scratch_vec_filled_z(len_a + 1, U256::ZERO); // The +1 is because mul_short is a general purpose function
     let q_b_len = mul_short(
         quo,
         b,
@@ -84,7 +86,7 @@ pub fn div_short(
         // If the remainder is non-zero, then we should check that a must be equal to q·b + r and r < b
         assert!(rem.lt(b), "Remainder must be less than divisor");
 
-        let mut q_b_r = new_scratch_vec_filled(len_a + 1, U256::ZERO); // The +1 is because add_short is a general purpose function
+        let mut q_b_r = new_scratch_vec_filled_z(len_a + 1, U256::ZERO); // The +1 is because add_short is a general purpose function
         let q_b_r_len = add_short(
             &q_b[..q_b_len],
             &rem,

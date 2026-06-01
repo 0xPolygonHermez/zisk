@@ -2,7 +2,9 @@ use cfg_if::cfg_if;
 
 use crate::scratch_accelerators::ScratchVec;
 #[cfg(zisk_guest)]
-use crate::scratch_accelerators::{new_scratch_vec, new_scratch_vec_filled};
+use crate::scratch_accelerators::{
+    new_scratch_vec, new_scratch_vec_filled, new_scratch_vec_filled_z,
+};
 
 cfg_if! {
     if #[cfg(zisk_guest)] {
@@ -61,7 +63,7 @@ pub fn fcall_bin_decomp(
         let len_bits = ziskos_fcall_get() as usize;
         #[cfg(not(feature = "inputcpy"))]
         {
-            let mut bits = new_scratch_vec_filled(len_bits, 0u64);
+            let mut bits = new_scratch_vec_filled_z(len_bits, 0u64);
             for i in 0..len_bits {
                 bits[i] = ziskos_fcall_get();
             }

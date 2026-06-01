@@ -6,7 +6,17 @@ use core::{
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::scratch_accelerators::{new_scratch_vec_filled, ScratchVec};
+use crate::scratch_accelerators::{
+    new_scratch_vec_filled, new_scratch_vec_filled_z, IsZero, ScratchVec,
+};
+
+// SAFETY: U256 is [u64; 4]; all-zeros is a valid, fully-initialised value.
+unsafe impl IsZero for U256 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
+    }
+}
 
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
@@ -208,10 +218,10 @@ impl RemLongScratch {
         let max_rem = len_m * 4;
         let max_prod = 2 * len_m;
         Self {
-            quo: new_scratch_vec_filled(max_quo, 0u64),
-            rem: new_scratch_vec_filled(max_rem, 0u64),
-            q_b: new_scratch_vec_filled(max_prod, U256::ZERO),
-            q_b_r: new_scratch_vec_filled(max_prod, U256::ZERO),
+            quo: new_scratch_vec_filled_z(max_quo, 0u64),
+            rem: new_scratch_vec_filled_z(max_rem, 0u64),
+            q_b: new_scratch_vec_filled_z(max_prod, U256::ZERO),
+            q_b_r: new_scratch_vec_filled_z(max_prod, U256::ZERO),
         }
     }
 }
@@ -225,6 +235,6 @@ pub struct LongScratch {
 impl LongScratch {
     pub fn new(len_m: usize) -> Self {
         let max_mul = 2 * len_m;
-        Self { rem: RemLongScratch::new(len_m), mul: new_scratch_vec_filled(max_mul, U256::ZERO) }
+        Self { rem: RemLongScratch::new(len_m), mul: new_scratch_vec_filled_z(max_mul, U256::ZERO) }
     }
 }

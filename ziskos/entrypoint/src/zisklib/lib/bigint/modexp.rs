@@ -1,7 +1,9 @@
 // TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
-use crate::scratch_accelerators::{new_scratch_vec_filled, scratch_vec_from_slice, ScratchVec};
+use crate::scratch_accelerators::{
+    new_scratch_vec_filled, new_scratch_vec_filled_z, scratch_vec_from_slice, ScratchVec,
+};
 
 use crate::zisklib::fcall_bin_decomp;
 
@@ -43,12 +45,12 @@ pub fn modexp(
 
     // If modulus == 0, return zeros
     if len_m == 1 && modulus[0].is_zero() {
-        return new_scratch_vec_filled(1, U256::ZERO);
+        return new_scratch_vec_filled_z(1, U256::ZERO);
     }
 
     // If modulus == 1, then base^exp (mod 1) is always 0
     if len_m == 1 && modulus[0].is_one() {
-        return new_scratch_vec_filled(1, U256::ZERO);
+        return new_scratch_vec_filled_z(1, U256::ZERO);
     }
 
     // If exp == 0, then base^0 (mod modulus) is 1
@@ -59,7 +61,7 @@ pub fn modexp(
     if len_b == 1 {
         // If base == 0, then 0^exp (mod modulus) is 0
         if base[0].is_zero() {
-            return new_scratch_vec_filled(1, U256::ZERO);
+            return new_scratch_vec_filled_z(1, U256::ZERO);
         }
 
         // If base == 1, then 1^exp (mod modulus) is 1
@@ -114,7 +116,7 @@ fn modexp_short(
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
-    let mut rec_exp = new_scratch_vec_filled(len_e, 0u64);
+    let mut rec_exp = new_scratch_vec_filled_z(len_e, 0u64);
 
     // Recompose the MSB
     let bits_pos = len - 1;
@@ -129,7 +131,7 @@ fn modexp_short(
     let mut out = base;
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.is_zero() {
-            return new_scratch_vec_filled(1, U256::ZERO);
+            return new_scratch_vec_filled_z(1, U256::ZERO);
         }
 
         // Compute out = out² (mod modulus)
@@ -192,7 +194,7 @@ fn modexp_long(
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
-    let mut rec_exp = new_scratch_vec_filled(len_e, 0u64);
+    let mut rec_exp = new_scratch_vec_filled_z(len_e, 0u64);
 
     // Recompose the MSB
     let bits_pos = len - 1;
@@ -207,7 +209,7 @@ fn modexp_long(
     let mut out = base.clone();
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.len() == 1 && out[0].is_zero() {
-            return new_scratch_vec_filled(1, U256::ZERO);
+            return new_scratch_vec_filled_z(1, U256::ZERO);
         }
 
         // Compute out = out² (mod modulus)
@@ -323,8 +325,8 @@ pub unsafe extern "C" fn modexp_u64_c(
     let base_len = base_flat.len().next_multiple_of(4);
     let modulus_len = modulus_flat.len().next_multiple_of(4);
 
-    let mut base_padded = new_scratch_vec_filled(base_len, 0u64);
-    let mut modulus_padded = new_scratch_vec_filled(modulus_len, 0u64);
+    let mut base_padded = new_scratch_vec_filled_z(base_len, 0u64);
+    let mut modulus_padded = new_scratch_vec_filled_z(modulus_len, 0u64);
 
     base_padded[..base_flat.len()].copy_from_slice(base_flat);
     modulus_padded[..modulus_flat.len()].copy_from_slice(modulus_flat);
@@ -353,7 +355,7 @@ pub unsafe extern "C" fn modexp_u64_c(
 #[allow(dead_code)]
 fn bytes_be_to_u64_le(bytes: &[u8]) -> ScratchVec<u64> {
     if bytes.is_empty() {
-        return new_scratch_vec_filled(1, 0u64);
+        return new_scratch_vec_filled_z(1, 0u64);
     }
 
     // Skip leading zeros but keep at least one limb
@@ -361,12 +363,12 @@ fn bytes_be_to_u64_le(bytes: &[u8]) -> ScratchVec<u64> {
     let bytes = &bytes[first_nonzero..];
 
     if bytes.is_empty() {
-        return new_scratch_vec_filled(1, 0u64);
+        return new_scratch_vec_filled_z(1, 0u64);
     }
 
     // Process bytes into u64 limbs
     let num_limbs = bytes.len().div_ceil(8);
-    let mut result = new_scratch_vec_filled(num_limbs, 0u64);
+    let mut result = new_scratch_vec_filled_z(num_limbs, 0u64);
     for (i, &byte) in bytes.iter().rev().enumerate() {
         let limb_idx = i / 8;
         let byte_idx = i % 8;
@@ -383,7 +385,7 @@ fn bytes_be_to_u256_le(bytes: &[u8]) -> ScratchVec<U256> {
 
     // Pad to multiple of 4 u64s
     let padded_len = u64_le.len().next_multiple_of(4);
-    let mut padded = new_scratch_vec_filled(padded_len, 0u64);
+    let mut padded = new_scratch_vec_filled_z(padded_len, 0u64);
     padded[..u64_le.len()].copy_from_slice(&u64_le);
 
     scratch_vec_from_slice(U256::flat_to_slice(&padded))
