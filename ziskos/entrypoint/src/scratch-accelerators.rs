@@ -11,6 +11,8 @@
 #[cfg(zisk_guest)]
 use crate::ziskos_memcpy;
 #[cfg(zisk_guest)]
+use crate::ziskos_memset;
+#[cfg(zisk_guest)]
 use core::{
     alloc::{AllocError, Allocator, Layout},
     ptr::NonNull,
@@ -104,9 +106,9 @@ unsafe impl Allocator for BumpScratch {
 
     #[inline(always)]
     fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        // Newly allocated memory is already zero-initialized (never released), so
-        // zeroing is unnecessary.
-        self.allocate(layout)
+        let ptr = self.allocate(layout)?;
+        ziskos_memset!(ptr: ptr.as_ptr() as *mut u8, 0, layout.size());
+        Ok(ptr)
     }
 
     #[inline(always)]
@@ -135,8 +137,11 @@ unsafe impl Allocator for BumpScratch {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // Bytes beyond old_layout.size() are already zero-initialized.
-        self.grow(ptr, old_layout, new_layout)
+        let new_ptr = self.grow(ptr, old_layout, new_layout)?;
+        let extra_start = (new_ptr.as_ptr() as *mut u8).add(old_layout.size());
+        let extra_len = new_layout.size() - old_layout.size();
+        ziskos_memset!(ptr: extra_start, 0, extra_len);
+        Ok(new_ptr)
     }
 
     #[inline(always)]
@@ -183,9 +188,8 @@ pub fn new_scratch_vec<T>(capacity: usize) -> ScratchVec<T> {
 
 /// Reports whether a value's bit pattern is all zeros.
 ///
-/// Used by [`new_scratch_vec_filled_z`] to skip per-element initialisation:
-/// when `is_zero` returns `true`, `set_len` is called without running any
-/// constructors, relying on the backing memory already being zero.
+/// Used by [`new_scratch_vec_filled_z`] to choose bulk-zero initialisation
+/// (a single `memset`) over per-element cloning when the fill value is zero.
 ///
 /// # Safety
 /// `is_zero` must return `true` only when an all-zero bit pattern is a valid,
@@ -204,13 +208,16 @@ unsafe impl IsZero for u64 {
 
 /// Create a `ScratchVec<T>` of `len` elements all set to `value`, with a zero
 /// fast-path: when `value.is_zero()` is `true` (constant-folded by LLVM for
-/// compile-time constants), on guest only `set_len` is called (O(1)); on host
-/// `write_bytes` zeroes the block once before `set_len`.
+/// compile-time constants), the entire block is zeroed with a single
+/// `ziskos_memset!` (guest) or `write_bytes` (host) before `set_len`,
+/// avoiding per-element cloning.
 #[inline(always)]
 pub fn new_scratch_vec_filled_z<T: Clone + IsZero>(len: usize, value: T) -> ScratchVec<T> {
     let mut v = new_scratch_vec(len);
     if value.is_zero() {
         // SAFETY: T: IsZero guarantees all-zeros is a valid, fully-initialised T.
+        #[cfg(zisk_guest)]
+        ziskos_memset!(ptr: v.as_mut_ptr() as *mut u8, 0, len * core::mem::size_of::<T>());
         unsafe {
             #[cfg(not(zisk_guest))]
             core::ptr::write_bytes(v.as_mut_ptr(), 0, len);
