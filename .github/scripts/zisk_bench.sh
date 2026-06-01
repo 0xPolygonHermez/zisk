@@ -39,27 +39,33 @@ echo "::group::Install ZisK rust toolchain"
 "$CARGO_ZISK" toolchain install
 echo "::endgroup::"
 
-echo "::group::Build guest ELFs"
-(
-  cd "$REPO/test-artifacts/programs"
-  specs=()
-  for prog in "${PROGRAMS[@]}"; do
-    specs+=("--package=${prog}@${GUEST_VERSION}")
-  done
-  "$CARGO_ZISK" build --release "${specs[@]}"
-)
-echo "::endgroup::"
-
 ELF_DIR="$REPO/test-artifacts/programs/target/elf/riscv64ima-zisk-zkvm-elf/release"
 
+echo "::group::Build guest ELFs"
+# Build each guest individually and tolerate failures: a guest that is new in
+# this PR does not exist on the base branch, so its build fails on the base pass
+# with "did not match any packages". Skipping (rather than aborting) lets the
+# rest still benchmark; the diff renders the missing base side as N/A.
+built=()
+pushd "$REPO/test-artifacts/programs" >/dev/null
 for prog in "${PROGRAMS[@]}"; do
+  if "$CARGO_ZISK" build --release "--package=${prog}@${GUEST_VERSION}"; then
+    built+=("$prog")
+  else
+    echo "WARNING: build failed for '$prog'; skipping" >&2
+  fi
+done
+popd >/dev/null
+echo "::endgroup::"
+
+for prog in "${built[@]}"; do
   elf="$ELF_DIR/$prog"
   if [[ ! -f "$elf" ]]; then
-    echo "ERROR: expected ELF not found: $elf" >&2
-    exit 1
+    echo "WARNING: build reported success but no ELF for '$prog'; skipping" >&2
+    continue
   fi
   echo "::group::Emulate $prog"
-  # -X prints the REPORT/COST DISTRIBUTION summary to stdout. 
+  # -X prints the REPORT/COST DISTRIBUTION summary to stdout.
   # No input file is needed: none of these guests read from stdin.
   "$ZISKEMU" -e "$elf" -X | tee "$OUTDIR/$prog.txt"
   echo "::endgroup::"
