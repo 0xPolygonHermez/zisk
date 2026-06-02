@@ -1,0 +1,91 @@
+name: "Cycle tracking"
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths-ignore:
+      - 'book/**'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against (manual runs only)"
+        required: false
+        default: "develop"
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cycle-tracking:
+    name: "Compare emulator cost vs base branch"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: "Free disk space"
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: "Checkout sources"
+        uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+
+      - name: "Install dependencies"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: "Stash benchmark scripts"
+        run: |
+          cp .github/scripts/zisk_bench.sh .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/"
+          chmod +x "$RUNNER_TEMP/zisk_bench.sh"
+
+      - name: "Benchmark PR branch"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/pr"
+
+      - name: "Switch to base branch"
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          git checkout --detach "origin/$BASE_REF"
+          git clean -fdx -e target
+
+      - name: "Benchmark base branch"
+        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/base"
+
+      - name: "Build execution report"
+        run: |
+          python3 "$RUNNER_TEMP/zisk_cycle_diff.py" "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr" > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "Stage report artifact"
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p "$RUNNER_TEMP/cycle-tracking-artifact"
+          cp "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/cycle-tracking-artifact/report.md"
+          echo "${{ github.event.pull_request.number }}" > "$RUNNER_TEMP/cycle-tracking-artifact/pr-number.txt"
+
+      - name: "Upload report artifact"
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-tracking-report
+          path: ${{ runner.temp }}/cycle-tracking-artifact
+          retention-days: 7

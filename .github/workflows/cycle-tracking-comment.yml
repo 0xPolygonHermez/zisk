@@ -1,0 +1,73 @@
+name: "Cycle tracking comment"
+
+on:
+  workflow_run:
+    workflows: ["Cycle tracking"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: "Post / update PR comment"
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: "Download report artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: cycle-tracking-report
+          path: ${{ runner.temp }}/cycle-tracking-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: "Post / update PR comment"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = `${process.env.RUNNER_TEMP}/cycle-tracking-artifact`;
+
+            const prNumber = parseInt(
+              fs.readFileSync(path.join(dir, 'pr-number.txt'), 'utf8').trim(),
+              10,
+            );
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.setFailed(`Invalid PR number in artifact: ${prNumber}`);
+              return;
+            }
+            const report = fs.readFileSync(path.join(dir, 'report.md'), 'utf8');
+
+            const marker = '<!-- zisk-cycle-tracking -->';
+            const body = `${marker}\n${report}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
