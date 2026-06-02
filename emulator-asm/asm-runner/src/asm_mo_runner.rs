@@ -12,7 +12,7 @@ use crate::TRACE_INITIAL_SIZE;
 use crate::TRACE_MAX_SIZE;
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices,
+    AsmRunError, AsmService, AsmServices, GpuBufferSource,
 };
 use mem_planner_cpp::MemPlanner;
 #[cfg(gpu)]
@@ -59,8 +59,7 @@ impl MOShMemReader {
     pub fn new(
         shm_prefix: &str,
         unlock_mapped_memory: bool,
-        gpu_buf_ptr: usize,
-        gpu_buf_size: u64,
+        gpu_buffer: GpuBufferSource,
     ) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
@@ -74,9 +73,9 @@ impl MOShMemReader {
         )?;
 
         #[cfg(gpu)]
-        let gpu_count_and_plan = setup_gpu_count_and_plan(gpu_buf_ptr, gpu_buf_size);
+        let gpu_count_and_plan = setup_gpu_count_and_plan(gpu_buffer);
         #[cfg(not(gpu))]
-        let _ = (gpu_buf_ptr, gpu_buf_size);
+        let _ = gpu_buffer;
 
         Ok(Self {
             output_shmem: output_shared_memory,
@@ -91,25 +90,38 @@ impl MOShMemReader {
 }
 
 #[cfg(gpu)]
-fn setup_gpu_count_and_plan(gpu_buf_ptr: usize, gpu_buf_size: u64) -> Option<GpuCountAndPlan> {
-    if gpu_buf_ptr == 0 || gpu_buf_size == 0 {
-        tracing::info!(
-            "[gpu] no borrowed buffer (--gpu not set at runtime); using CPU mem_planner path"
-        );
-        return None;
-    }
+fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPlan> {
+    let (d_buf, bytes): (*mut c_void, usize) = match gpu_buffer {
+        GpuBufferSource::Cpu => {
+            tracing::info!("[gpu] no GPU buffer requested; using CPU mem_planner path");
+            return None;
+        }
+        GpuBufferSource::Borrowed { ptr, size } if ptr == 0 || size == 0 => {
+            tracing::info!(
+                "[gpu] borrowed buffer is empty (--gpu not set at runtime); using CPU mem_planner path"
+            );
+            return None;
+        }
+        GpuBufferSource::Borrowed { ptr, size } => (ptr as *mut c_void, size),
+        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0),
+    };
+
     let gp = GpuCountAndPlan::new();
-    if !gp.setup(gpu_buf_ptr as *mut c_void, gpu_buf_size as usize, 1, 0) {
-        tracing::error!(
-            "[gpu] GpuCountAndPlan::setup returned false (size={} bytes); falling back to CPU",
-            gpu_buf_size,
-        );
+    if !gp.setup(d_buf, bytes, 1, 0) {
+        tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
         return None;
     }
-    tracing::info!(
-        "[gpu] GpuCountAndPlan set up (borrowed {:.3} GB)",
-        gpu_buf_size as f64 / (1024.0 * 1024.0 * 1024.0),
-    );
+    match gpu_buffer {
+        GpuBufferSource::SelfAllocated => {
+            tracing::info!("[gpu] GpuCountAndPlan set up (self-allocated device arena)");
+        }
+        _ => {
+            tracing::info!(
+                "[gpu] GpuCountAndPlan set up (borrowed {:.3} GB)",
+                bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+            );
+        }
+    }
     Some(gp)
 }
 

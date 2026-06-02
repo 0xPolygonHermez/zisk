@@ -24,11 +24,7 @@ pub fn save_gpu_metas(metas: &[GpuInstanceMeta], path: &str) -> bool {
         return false;
     };
     unsafe {
-        gpu_bindings::count_and_plan_save_metas(
-            metas.as_ptr(),
-            metas.len() as u32,
-            c_path.as_ptr(),
-        )
+        gpu_bindings::count_and_plan_save_metas(metas.as_ptr(), metas.len() as u32, c_path.as_ptr())
     }
 }
 
@@ -88,12 +84,18 @@ impl GpuCountAndPlan {
 
     pub fn register_input_pinned(&self, ptr: *const c_void, bytes: usize) -> bool {
         unsafe {
-            gpu_bindings::count_and_plan_register_input_pinned(self.inner, ptr as *mut c_void, bytes)
+            gpu_bindings::count_and_plan_register_input_pinned(
+                self.inner,
+                ptr as *mut c_void,
+                bytes,
+            )
         }
     }
 
     pub fn unregister_input_pinned(&self, ptr: *const c_void) {
-        unsafe { gpu_bindings::count_and_plan_unregister_input_pinned(self.inner, ptr as *mut c_void) };
+        unsafe {
+            gpu_bindings::count_and_plan_unregister_input_pinned(self.inner, ptr as *mut c_void)
+        };
     }
 
     /// Returns a borrowed slice of metas owned by the C++ side. Valid until the next `reset` (or drop).

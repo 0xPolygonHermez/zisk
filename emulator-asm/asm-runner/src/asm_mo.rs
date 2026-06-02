@@ -24,3 +24,14 @@ pub struct AsmMOChunk {
     pub end: u64,
     pub mem_ops_size: u64,
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum GpuBufferSource {
+    #[default]
+    Cpu,
+    Borrowed {
+        ptr: usize,
+        size: usize,
+    },
+    SelfAllocated,
+}

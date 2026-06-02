@@ -1,12 +1,13 @@
+use crate::execute_client::ExecuteClient;
 use crate::{
     check_paths_exist, ensure_program_vk, get_asm_paths, get_rom_bin_path,
     guest::ProgramId,
-    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, ZiskExecutor};
+use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -203,7 +204,6 @@ impl AsmProver {
         let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
 
         let shared = Arc::new(AsmSharedResources::new(
-            world_rank,
             local_rank,
             unlock_mapped_memory,
             verbose_mode,
@@ -211,8 +211,7 @@ impl AsmProver {
             init_rom,
             with_hints,
             asm_services.shm_prefix(),
-            gpu_buf_ptr,
-            gpu_buf_size,
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize },
         )?);
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
@@ -246,7 +245,7 @@ impl AsmProver {
                 })?
         };
 
-        self.core_prover.backend.clear_asm_resources();
+        self.core_prover.backend.clear_asm_resources()?;
 
         let pctx = self.core_prover.backend.get_pctx()?;
         let rom_bin_path = get_rom_bin_path(&pctx, program_id)?;
@@ -425,7 +424,7 @@ impl ProverEngine for AsmProver {
 
         match resources {
             Some(r) => self.core_prover.backend.set_asm_resources(r)?,
-            None => self.core_prover.backend.clear_asm_resources(),
+            None => self.core_prover.backend.clear_asm_resources()?,
         }
 
         self.current_with_hints.store(with_hints, Ordering::SeqCst);
@@ -700,9 +699,13 @@ impl AsmCoreProver {
             )?);
         }
 
-        let executor = ZiskExecutor::new(&proofman.get_wcm(), options.verbose_mode, shared_tables)?;
-
-        executor.set_packed(options.packed);
+        let executor = ZiskExecutor::new(
+            &proofman.get_wcm(),
+            options.verbose_mode,
+            shared_tables,
+            true,
+            options.packed,
+        )?;
 
         let core = ProverBackend::new(
             proofman,
@@ -724,5 +727,25 @@ impl AsmCoreProver {
                 n_setups: AtomicU64::new(0),
             },
         })
+    }
+}
+
+impl ExecuteClient for ZiskProver<Asm> {
+    fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
+        let builder = ZiskProver::<Asm>::setup(self, program);
+        let builder = if with_hints { builder.with_hints() } else { builder };
+        builder.run().map(|_| ())
+    }
+
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        hints: Option<StreamSource>,
+    ) -> Result<ExecuteOutput> {
+        if let Some(stream) = hints {
+            ZiskProver::<Asm>::register_hints_stream(self, stream)?;
+        }
+        ZiskProver::<Asm>::execute(self, program, stdin)
     }
 }

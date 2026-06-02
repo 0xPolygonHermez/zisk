@@ -1,11 +1,14 @@
 //! Embedded backend client
 
 pub(crate) mod execute;
+pub(crate) mod execute_only;
 pub(crate) mod prove;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod verify_constraints;
 pub(crate) mod wrap;
+
+pub use execute_only::{EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -120,6 +123,11 @@ impl EmbeddedClientBuilder {
     pub fn proving_key_plonk(mut self, path: impl Into<PathBuf>) -> Self {
         self.proving_key_snark = Some(path.into());
         self
+    }
+
+    #[must_use]
+    pub fn execute_only(self) -> EmbeddedExecuteOnlyBuilder {
+        EmbeddedExecuteOnlyBuilder::from_parts(self.executor, self.asm_options)
     }
 
     /// Build the [`EmbeddedClient`].

@@ -18,7 +18,9 @@ mod wrap;
 
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
-pub use embedded::{EmbeddedClient, EmbeddedClientBuilder};
+pub use embedded::{
+    EmbeddedClient, EmbeddedClientBuilder, EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient,
+};
 pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;

@@ -3,17 +3,25 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{info, warn};
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::ZiskExecutorTime;
-use zisk_prover_backend::GuestProgram;
-use zisk_prover_backend::{AsmOptions, BackendProverOpts, ExecuteOutput, ProverClientBuilder};
+use zisk_prover_backend::{
+    AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
+};
 
 use crate::common::detect_current_project_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use zisk_common::io::{StreamSource, ZiskStdin};
 
+/// Rank-0 check for output gating under `mpirun`. Defaults to true when the env
+/// var is absent so non-MPI runs print normally.
+fn is_rank_zero() -> bool {
+    std::env::var("OMPI_COMM_WORLD_RANK").map(|s| s == "0").unwrap_or(true)
+}
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Execute the guest program through the same pipeline that prove command uses but without generating a proof
+/// Execute the guest program. Defaults to the full prover path (loads proving
+/// key, supports MPI under `mpirun`). Pass `--standalone` for a fast no-keys
+/// run intended for dev iteration.
 pub struct ZiskExecute {
     /// Path to the program ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
@@ -27,17 +35,9 @@ pub struct ZiskExecute {
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     pub inputs: Option<String>,
 
-    // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
-    // #[arg(long, requires = "inputs")]
-    // pub save_inputs: bool,
-    //
     /// Precompiles hints file path for the guest
     #[arg(long, conflicts_with = "inputs")]
     pub hints: Option<String>,
-
-    /// Path to a precomputed proving key
-    #[arg(short = 'k', long)]
-    pub proving_key: Option<PathBuf>,
 
     /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
     #[arg(short = 'u', long, conflicts_with = "emulator")]
@@ -47,6 +47,23 @@ pub struct ZiskExecute {
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Skip loading proving keys. Single-process only — no MPI. Faster startup
+    /// for dev iteration and cargo tests; prints a plan summary.
+    #[arg(long, conflicts_with = "proving_key")]
+    pub standalone: bool,
+
+    /// Run the memory-ops count-and-plan on the GPU. On `--standalone` the
+    /// executor self-allocates its own device arena; on the proofman path it
+    /// borrows proofman's unified buffer. Requires a CUDA build and a usable
+    /// GPU; falls back to the CPU planner otherwise. Defaults to CPU.
+    #[arg(long)]
+    pub gpu: bool,
+
+    /// Path to the proving key. Defaults to the standard install location.
+    /// Ignored under `--standalone`.
+    #[arg(short = 'k', long)]
+    pub proving_key: Option<PathBuf>,
+
     // Hidden flags
     /// ASM file path
     #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
@@ -55,10 +72,6 @@ pub struct ZiskExecute {
     /// Redirect ASM emulator output to file
     #[arg(long, conflicts_with = "emulator", hide = true)]
     pub asm_out_file: bool,
-
-    /// Disable automatic ROM setup
-    #[arg(short = 'n', long, hide = true)]
-    pub no_auto_setup: bool,
 }
 
 impl ZiskExecute {
@@ -74,21 +87,23 @@ impl ZiskExecute {
             };
         }
 
-        // Check if the deprecated alias was used
         if std::env::args().any(|arg| arg == "--input") {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
-        print_banner();
+        let rank_zero = is_rank_zero();
 
-        print_banner_command("Execute");
-        print_banner_field("Elf", self.elf.as_ref().unwrap().display());
+        if rank_zero {
+            print_banner();
+            print_banner_command("Execute");
+            print_banner_field("Elf", self.elf.as_ref().unwrap().display());
 
-        let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
-        print_banner_field("Input", inputs_str);
+            let inputs_str = self.inputs.clone().unwrap_or_else(|| "None".dimmed().to_string());
+            print_banner_field("Input", inputs_str);
 
-        if let Some(hints) = &self.hints {
-            print_banner_field("Prec. Hints", hints);
+            if let Some(hints) = &self.hints {
+                print_banner_field("Prec. Hints", hints);
+            }
         }
 
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -105,7 +120,7 @@ impl ZiskExecute {
         };
 
         let emulator = if cfg!(target_os = "macos") {
-            if !self.emulator {
+            if !self.emulator && rank_zero {
                 warn!("Emulator mode is forced on macOS due to lack of ASM support.");
             }
             true
@@ -113,83 +128,98 @@ impl ZiskExecute {
             self.emulator
         };
 
-        let (result, executor_time) =
-            if emulator { self.run_emu(stdin)? } else { self.run_asm(stdin, hints_stream)? };
+        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
+        let prover_options = self.make_prover_options();
+        let with_hints = hints_stream.is_some();
 
-        info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
-        print_execution_summary(
-            &executor_time,
-            result.get_execution_time(),
-            result.get_execution_steps(),
-        );
+        let prover: Box<dyn ExecuteClient> = match (self.standalone, emulator) {
+            (true, true) => Box::new(
+                ProverClientBuilder::new()
+                    .emu()
+                    .with_prover_options(prover_options)
+                    .execute_only()
+                    .build()?,
+            ),
+            (true, false) => Box::new(
+                ProverClientBuilder::new()
+                    .asm()
+                    .with_prover_options(prover_options.with_asm_options(self.make_asm_options()))
+                    .execute_only()
+                    .build()?,
+            ),
+            (false, true) => Box::new(
+                ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?,
+            ),
+            (false, false) => Box::new(
+                ProverClientBuilder::new()
+                    .asm()
+                    .with_prover_options(prover_options.with_asm_options(self.make_asm_options()))
+                    .build()?,
+            ),
+        };
+
+        let start = std::time::Instant::now();
+        prover.setup(&guest_program, with_hints)?;
+        let result: ExecuteOutput = prover.execute(&guest_program, stdin, hints_stream)?;
+        let total_duration = start.elapsed().as_millis() as u64;
+
+        if rank_zero {
+            if let Some(plan) = result.get_plan() {
+                let total: usize = plan.iter().map(|e| e.count).sum();
+                info!("{}", "--- PLAN SUMMARY --------------".bright_green().bold());
+                use std::collections::BTreeMap;
+                let mut by_group: BTreeMap<usize, Vec<&zisk_prover_backend::PlanSummaryEntry>> =
+                    BTreeMap::new();
+                for entry in plan {
+                    by_group.entry(entry.airgroup_id).or_default().push(entry);
+                }
+                for (airgroup_id, entries) in &by_group {
+                    let group_name = if *airgroup_id == 0 { "Zisk" } else { "Unknown" };
+                    let parts: Vec<String> =
+                        entries.iter().map(|e| format!("{}: {}", e.name, e.count)).collect();
+                    info!(
+                        "{} | {} | Total instances: {}",
+                        group_name.bright_white().bold(),
+                        parts.join(" | "),
+                        total
+                    );
+                }
+            }
+
+            info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
+            print_execution_summary(
+                result.get_executor_time(),
+                total_duration,
+                result.get_execution_steps(),
+                if self.standalone { "Setup" } else { "Proofman" },
+            );
+        }
 
         Ok(())
     }
 
-    pub fn run_emu(&mut self, stdin: ZiskStdin) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
-        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
-
+    fn make_prover_options(&self) -> BackendProverOpts {
+        let mut opts = BackendProverOpts::default().verbose(self.verbose);
         if let Some(ref path) = self.proving_key {
-            prover_options = prover_options.proving_key(path.clone());
+            opts = opts.proving_key(path.clone());
         }
-
-        let prover = ProverClientBuilder::new()
-            .emu()
-            .witness()
-            .with_prover_options(prover_options)
-            .build()?;
-
-        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
-        prover.setup(&guest_program).run()?;
-        let result = prover.execute(&guest_program, stdin)?;
-        let executor_time = prover.get_executor_time()?;
-        Ok((result, executor_time))
+        if self.gpu {
+            opts = opts.gpu();
+        }
+        opts
     }
 
-    pub fn run_asm(
-        &mut self,
-        stdin: ZiskStdin,
-        hints_stream: Option<StreamSource>,
-    ) -> Result<(ExecuteOutput, ZiskExecutorTime)> {
-        let mut prover_options = BackendProverOpts::default().verbose(self.verbose);
-
-        if let Some(ref path) = self.proving_key {
-            prover_options = prover_options.proving_key(path.clone());
-        }
-
-        // ASM-specific options (only used if not emulator)
-        let mut asm_options = AsmOptions::default();
+    fn make_asm_options(&self) -> AsmOptions {
+        let mut a = AsmOptions::default();
         if let Some(ref path) = self.asm {
-            asm_options = asm_options.asm_path(path.clone());
-        }
-        if self.no_auto_setup {
-            asm_options = asm_options.no_auto_setup();
+            a = a.asm_path(path.clone());
         }
         if self.unlock_mapped_memory {
-            asm_options = asm_options.unlock_mapped_memory();
+            a = a.unlock_mapped_memory();
         }
         if self.asm_out_file {
-            asm_options = asm_options.asm_out_file();
+            a = a.asm_out_file();
         }
-        prover_options = prover_options.with_asm_options(asm_options);
-
-        let prover = ProverClientBuilder::new()
-            .asm()
-            .witness()
-            .with_prover_options(prover_options)
-            .build()?;
-
-        let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
-        if hints_stream.is_some() {
-            prover.setup(&guest_program).with_hints().run()?;
-        } else {
-            prover.setup(&guest_program).run()?;
-        }
-        if let Some(hints_stream) = hints_stream {
-            prover.register_hints_stream(hints_stream)?;
-        }
-        let result = prover.execute(&guest_program, stdin)?;
-        let executor_time = prover.get_executor_time()?;
-        Ok((result, executor_time))
+        a
     }
 }

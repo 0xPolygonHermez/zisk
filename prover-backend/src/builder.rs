@@ -1,8 +1,11 @@
 use std::path::Path;
 
-use crate::{Asm, AsmProver, BackendProverOpts, Emu, EmuProver, ZiskProver};
+use crate::{
+    Asm, AsmExecClient, AsmProver, BackendProverOpts, Emu, EmuExecClient, EmuProver, ZiskProver,
+};
 use colored::Colorize;
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
+use proofman_common::VerboseMode;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::ZiskPaths;
 
@@ -11,6 +14,13 @@ use anyhow::Result;
 // Typestate markers
 pub struct EmuB;
 pub struct AsmB;
+/// EMU backend + execute-only mode (no proving keys, no `Std`, no `SetupCtx`).
+/// Reached via `ProverClientBuilder::new().emu().execute_only()`.
+pub struct EmuExecOnlyB;
+/// ASM backend + execute-only mode (no proving keys; ASM binaries
+/// auto-generated on first execute if not cached). Reached via
+/// `ProverClientBuilder::new().asm().execute_only()`.
+pub struct AsmExecOnlyB;
 
 /// Operation mode for the prover builder
 #[derive(Debug, Clone, Copy, Default)]
@@ -137,6 +147,16 @@ impl ProverClientBuilder<EmuB> {
     pub fn build(self) -> Result<ZiskProver<Emu>> {
         self.build_emu()
     }
+
+    /// Switch to execute-only mode. The resulting builder's `.build()`
+    /// returns an [`EmuExecClient`] that loads no proving keys, no
+    /// `Std`, no `SetupCtx`. Useful for tests, dry-runs, instance
+    /// counting, plan inspection.
+    #[must_use]
+    pub fn execute_only(self) -> ProverClientBuilder<EmuExecOnlyB> {
+        self.into()
+    }
+
     fn build_emu(self) -> Result<ZiskProver<Emu>> {
         let proving_key = ZiskPaths::get_proving_key(self.prover_options.proving_key.as_ref());
         let proving_key_snark =
@@ -204,6 +224,15 @@ impl ProverClientBuilder<AsmB> {
     {
         self.build_asm()
     }
+
+    /// Switch to execute-only mode. The resulting builder's `.build()`
+    /// returns an [`AsmExecClient`] that loads no proving keys; ASM
+    /// binaries are auto-generated on first execute if not cached.
+    #[must_use]
+    pub fn execute_only(self) -> ProverClientBuilder<AsmExecOnlyB> {
+        self.into()
+    }
+
     fn build_asm<F>(self) -> Result<ZiskProver<Asm>>
     where
         F: PrimeField64,
@@ -248,6 +277,23 @@ impl ProverClientBuilder<AsmB> {
     }
 }
 
+// Build methods for execute-only EMU
+impl ProverClientBuilder<EmuExecOnlyB> {
+    pub fn build(self) -> Result<EmuExecClient> {
+        let verbose: VerboseMode = self.prover_options.verbose.into();
+        EmuExecClient::new(verbose)
+    }
+}
+
+// Build methods for execute-only ASM
+impl ProverClientBuilder<AsmExecOnlyB> {
+    pub fn build(self) -> Result<AsmExecClient> {
+        let verbose: VerboseMode = self.prover_options.verbose.into();
+        let cache = self.prover_options.asm_options.asm_path.clone();
+        AsmExecClient::new(verbose, cache, self.prover_options.gpu)
+    }
+}
+
 // Safe state transitions using From trait
 impl From<ProverClientBuilder<()>> for ProverClientBuilder<EmuB> {
     fn from(builder: ProverClientBuilder<()>) -> Self {
@@ -262,6 +308,28 @@ impl From<ProverClientBuilder<()>> for ProverClientBuilder<EmuB> {
 
 impl From<ProverClientBuilder<()>> for ProverClientBuilder<AsmB> {
     fn from(builder: ProverClientBuilder<()>) -> Self {
+        Self {
+            prover_options: builder.prover_options,
+            logging_config: builder.logging_config,
+            operation_mode: builder.operation_mode,
+            _backend: std::marker::PhantomData,
+        }
+    }
+}
+
+impl From<ProverClientBuilder<EmuB>> for ProverClientBuilder<EmuExecOnlyB> {
+    fn from(builder: ProverClientBuilder<EmuB>) -> Self {
+        Self {
+            prover_options: builder.prover_options,
+            logging_config: builder.logging_config,
+            operation_mode: builder.operation_mode,
+            _backend: std::marker::PhantomData,
+        }
+    }
+}
+
+impl From<ProverClientBuilder<AsmB>> for ProverClientBuilder<AsmExecOnlyB> {
+    fn from(builder: ProverClientBuilder<AsmB>) -> Self {
         Self {
             prover_options: builder.prover_options,
             logging_config: builder.logging_config,
