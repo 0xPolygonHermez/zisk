@@ -21,6 +21,12 @@ mkdir -p "$OUTDIR"
 REPO="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
 cd "$REPO"
 
+# If the expected guest ELF directory doesn't exist, skip the benchmarks.
+if [[ ! -d "$REPO/test-artifacts/programs" ]]; then
+  echo "WARNING: '$REPO/test-artifacts/programs' not found; skipping benchmarks (no reports produced)." >&2
+  exit 0
+fi
+
 # The set of guest programs to benchmark. Each name must match both the crate
 # `package.name` under test-artifacts/programs/<name> and the emitted ELF name.
 PROGRAMS=(bigint bls12_381 bn254 diagnostic hashes secp256k1 secp256r1 uint256)
