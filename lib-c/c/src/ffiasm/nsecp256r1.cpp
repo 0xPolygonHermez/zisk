@@ -166,6 +166,9 @@ void nSecp256r1_fail() {
     assert(false);
 }
 
+void nSecp256r1_longErr() {
+    nSecp256r1_fail();
+}
 
 RawnSecp256r1::RawnSecp256r1() {
     nSecp256r1_init();
@@ -212,7 +215,7 @@ void RawnSecp256r1::set(Element &r, int value) {
   }
 
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-      
+
   for (int i=0; i<nSecp256r1_N64; i++) r.v[i] = 0;
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
   nSecp256r1_rawToMontgomery(r.v,r.v);
@@ -242,7 +245,7 @@ void RawnSecp256r1::inv(Element &r, const Element &a) {
     for (int i=0; i<nSecp256r1_N64; i++) r.v[i] = 0;
     mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
 
-    nSecp256r1_rawMMul(r.v, r.v,nSecp256r1_rawR3);
+    nSecp256r1_rawMMul(r.v, r.v,nSecp256r1_R3.longVal);
     mpz_clear(mr);
 }
 
@@ -294,11 +297,11 @@ int RawnSecp256r1::toRprBE(const Element &element, uint8_t *data, int bytes)
 
     mpz_t r;
     mpz_init(r);
-  
+
     toMpz(r, element);
-    
+   
     mpz_export(data, NULL, 1, bytes, 1, 0, r);
-  
+
     return nSecp256r1_N64 * 8;
 }
 

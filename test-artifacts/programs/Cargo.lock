@@ -749,6 +749,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigint"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2222,6 +2229,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashes"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2950,13 +2964,6 @@ dependencies = [
 
 [[package]]
 name = "missing_entrypoint"
-version = "0.1.0"
-dependencies = [
- "ziskos",
-]
-
-[[package]]
-name = "modexp"
 version = "0.1.0"
 dependencies = [
  "ziskos",

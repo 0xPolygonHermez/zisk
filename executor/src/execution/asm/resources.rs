@@ -12,8 +12,6 @@ use crate::error::{ExecutorError, ExecutorResult, MutexExt};
 /// Configuration for assembly resources.
 #[derive(Clone)]
 pub struct AsmResourcesConfig {
-    /// World rank of the process.
-    pub world_rank: i32,
     /// Local rank of the process (e.g., within a node).
     pub local_rank: i32,
     /// Whether to unlock mapped memory.
@@ -62,7 +60,7 @@ pub struct AsmSharedResources {
     config: AsmResourcesConfig,
 
     /// Shared memory writer for inputs (shmem mapped once; semaphores bound per-program).
-    pub inputs_shmem_writer: Arc<InputsShmemWriter>,
+    pub shmem_inputs: Arc<InputsShmemWriter>,
 
     /// Hints processing pipeline — `Some` only when the program was set up with hints.
     /// The precompile shmem segments are created by the C binary only in hints mode;
@@ -97,7 +95,6 @@ impl AsmSharedResources {
     /// without the C binary having created them will panic in `SharedMemoryWriter::new`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        world_rank: i32,
         local_rank: i32,
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
@@ -114,15 +111,14 @@ impl AsmSharedResources {
                 .map_err(ExecutorError::asm_backend)?,
         );
 
-        let config = AsmResourcesConfig { world_rank, local_rank, unlock_mapped_memory };
+        let config = AsmResourcesConfig { local_rank, unlock_mapped_memory };
 
-        let inputs_shmem_writer = Arc::new(
+        let shmem_inputs = Arc::new(
             InputsShmemWriter::new(shm_prefix, unlock_mapped_memory, control_writer.clone())
                 .map_err(ExecutorError::asm_backend)?,
         );
 
-        let inputs_stream =
-            Arc::new(Mutex::new(ZiskStream::from_arc(Arc::clone(&inputs_shmem_writer))));
+        let inputs_stream = Arc::new(Mutex::new(ZiskStream::from_arc(Arc::clone(&shmem_inputs))));
 
         let hints_stream = if with_hints {
             let active_services =
@@ -133,9 +129,8 @@ impl AsmSharedResources {
                     .map_err(ExecutorError::asm_backend)?,
             );
 
-            let mut builder =
-                HintsProcessor::builder(hints_shmem, Some(inputs_shmem_writer.clone()))
-                    .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
+            let mut builder = HintsProcessor::builder(hints_shmem, Some(shmem_inputs.clone()))
+                .enable_stats(verbose_mode != proofman_common::VerboseMode::Info);
 
             if let Some(broadcast_fn) = mpi_broadcast_fn {
                 builder = builder.with_mpi_broadcast(move |data| broadcast_fn(data));
@@ -153,7 +148,7 @@ impl AsmSharedResources {
             inputs_stream,
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             readers,
-            inputs_shmem_writer,
+            shmem_inputs,
         })
     }
 }
@@ -176,10 +171,7 @@ impl AsmResources {
     /// Create per-program resources by binding semaphores on the shared shmem.
     pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> ExecutorResult<Self> {
         let sem_prefix = asm_services.sem_prefix();
-        shared
-            .inputs_shmem_writer
-            .bind_semaphores(sem_prefix)
-            .map_err(ExecutorError::asm_backend)?;
+        shared.shmem_inputs.bind_semaphores(sem_prefix).map_err(ExecutorError::asm_backend)?;
 
         if let Some(hints_stream) = &shared.hints_stream {
             let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
@@ -208,7 +200,6 @@ impl AsmResources {
         let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
         let shared = Arc::new(AsmSharedResources::new(
-            0,
             0,
             false,
             verbose,
@@ -292,7 +283,7 @@ impl AsmResources {
     /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
     /// `RECOVERY_TIMEOUT` covers that slip.
     pub fn signal_cancellation(&self) -> ExecutorResult<()> {
-        self.shared.inputs_shmem_writer.signal_reset().map_err(ExecutorError::asm_backend)
+        self.shared.shmem_inputs.signal_reset().map_err(ExecutorError::asm_backend)
     }
 
     /// Resets the Hints Stream and the inputs shared memory writer, preparing for the next execution.
@@ -300,7 +291,7 @@ impl AsmResources {
         if let Some(s) = &self.shared.hints_stream {
             s.lock().expect("hints_stream mutex poisoned").reset();
         }
-        self.shared.inputs_shmem_writer.reset();
+        self.shared.shmem_inputs.reset();
     }
 
     /// Returns the configuration for the ASM resources.
@@ -339,15 +330,12 @@ impl AsmResources {
 
     /// Writes input data to the inputs shared memory segment.
     pub fn write_input(&self, stdin: &ZiskStdin) -> ExecutorResult<()> {
-        self.shared
-            .inputs_shmem_writer
-            .write_input(&stdin.read_data())
-            .map_err(ExecutorError::asm_backend)
+        self.shared.shmem_inputs.write_input(&stdin.read_data()).map_err(ExecutorError::asm_backend)
     }
 
     /// Appends raw input data to the inputs shared memory segment.
     pub fn append_raw_input(&self, bytes: &[u8]) -> ExecutorResult<()> {
-        self.shared.inputs_shmem_writer.append_input(bytes).map_err(ExecutorError::asm_backend)
+        self.shared.shmem_inputs.append_input(bytes).map_err(ExecutorError::asm_backend)
     }
 
     /// Gets the current ASM shmem readers.
@@ -360,18 +348,18 @@ impl AsmResources {
 impl Drop for AsmResources {
     fn drop(&mut self) {
         // Shut down ASM microservices
-        self.shared.inputs_shmem_writer.unbind_semaphores();
+        self.shared.shmem_inputs.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
             if let Ok(g) = hints_stream.lock() {
                 g.get_processor().hints_sink().unbind_semaphores();
             }
         }
 
-        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.world_rank);
+        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.local_rank);
         if let Err(e) = self.asm_services.stop_asm_services() {
             tracing::error!(
                 ">>> [{}] Failed to stop ASM microservices: {}",
-                self.shared.config.world_rank,
+                self.shared.config.local_rank,
                 e
             );
         }

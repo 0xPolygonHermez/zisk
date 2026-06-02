@@ -51,8 +51,8 @@ template <typename Curve>
 void ParallelMultiexp<Curve>::processChunk(uint64_t idChunk, uint64_t nX, uint64_t size[]) {
     #pragma omp parallel for
     for(uint64_t i=0; i<n; i++) {
-        uint mod = i % nX;
-        uint len = size[mod] - 1;
+        unsigned int mod = i % nX;
+        unsigned int len = size[mod] - 1;
         if (i < 0 || i > len * nX + mod) continue;
         if (g.isZero(bases[i])) continue;
         int idThread = omp_get_thread_num();

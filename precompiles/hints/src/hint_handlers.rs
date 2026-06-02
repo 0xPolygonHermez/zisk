@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use zisk_common::{BuiltInHint, HintCode, PrecompileHint};
+use ziskos_hints::handlers::bigint::modexp_hint;
 use ziskos_hints::handlers::blake2b::blake2b_compress_hint;
 use ziskos_hints::handlers::bls381::{
     bls12_381_fp2_to_g2_hint, bls12_381_fp_to_g1_hint, bls12_381_g1_add_hint,
@@ -12,11 +13,14 @@ use ziskos_hints::handlers::bn254::{
 };
 use ziskos_hints::handlers::keccak256::keccak256_hint;
 use ziskos_hints::handlers::kzg::verify_kzg_proof_hint;
-use ziskos_hints::handlers::modexp::modexp_hint;
 use ziskos_hints::handlers::ripemd160::ripemd160_hint;
 use ziskos_hints::handlers::secp256k1::{secp256k1_ecdsa_verify_hint, secp256k1_ecrecover_hint};
 use ziskos_hints::handlers::secp256r1::secp256r1_ecdsa_verify_hint;
 use ziskos_hints::handlers::sha256::sha256_hint;
+use ziskos_hints::handlers::uint256::{
+    add_mod256_hint, inv_mod256_hint, mulmod256_hint, pow_mod256_hint, reduce_mod256_hint,
+    square_mod256_hint,
+};
 
 /// Type alias for custom hint handler functions.
 pub type CustomHintHandler = Box<dyn Fn(&[u64]) -> Result<Vec<u64>> + Send + Sync>;
@@ -99,6 +103,12 @@ impl HintHandlers {
 
             // Modular Exponentiation Hint Codes
             BuiltInHint::ModExp => modexp_hint(&data),
+            BuiltInHint::MulMod256 => mulmod256_hint(&data),
+            BuiltInHint::ReduceMod256 => reduce_mod256_hint(&data),
+            BuiltInHint::AddMod256 => add_mod256_hint(&data),
+            BuiltInHint::SquareMod256 => square_mod256_hint(&data),
+            BuiltInHint::PowMod256 => pow_mod256_hint(&data),
+            BuiltInHint::InvMod256 => inv_mod256_hint(&data),
 
             // KZG Hint Codes
             BuiltInHint::VerifyKzgProof => verify_kzg_proof_hint(&data),
