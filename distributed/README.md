@@ -115,7 +115,7 @@ The coordinator is configured via a TOML file. The search order (later entries o
 | `metrics.port` | `--metrics-port` / `ZISK_COORDINATOR_METRICS_PORT` | `9090` | Metrics listen port |
 | `logging.level` | `--log-level` / `RUST_LOG` | `info` | `trace` \| `debug` \| `info` \| `warn` \| `error` |
 | `logging.format` | — | `pretty` | `pretty` \| `json` \| `compact` |
-| `coordinator.port` | `--cluster-port` / `ZISK_COORDINATOR_CLUSTER_PORT` | `50051` | Worker-facing cluster port |
+| `coordinator.cluster_port` | `--cluster-port` / `ZISK_COORDINATOR_CLUSTER_PORT` | `50051` | Worker-facing cluster port |
 | `coordinator.config_file` | — | — | Optional path to a coordinator TOML config |
 
 #### Example: development config
