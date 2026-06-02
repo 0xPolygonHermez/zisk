@@ -10,7 +10,6 @@ use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 /// Configuration for assembly resources.
 #[derive(Clone)]
 pub struct AsmResourcesConfig {
-    pub world_rank: i32,
     pub local_rank: i32,
     pub unlock_mapped_memory: bool,
 }
@@ -48,7 +47,7 @@ pub struct AsmSharedResources {
     config: AsmResourcesConfig,
 
     /// Shared memory writer for inputs (shmem mapped once; semaphores bound per-program).
-    pub inputs_shmem_writer: Arc<InputsShmemWriter>,
+    pub shmem_inputs: Arc<InputsShmemWriter>,
 
     /// Hints processing pipeline — `Some` only when the program was set up with hints.
     /// The precompile shmem segments are created by the C binary only in hints mode;
@@ -82,7 +81,6 @@ impl AsmSharedResources {
     /// without the C binary having created them will panic in `SharedMemoryWriter::new`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        world_rank: i32,
         local_rank: i32,
         unlock_mapped_memory: bool,
         verbose_mode: proofman_common::VerboseMode,
@@ -96,7 +94,7 @@ impl AsmSharedResources {
 
         let control_writer = Arc::new(ControlShmem::new(shm_prefix, unlock_mapped_memory)?);
 
-        let config = AsmResourcesConfig { world_rank, local_rank, unlock_mapped_memory };
+        let config = AsmResourcesConfig { local_rank, unlock_mapped_memory };
 
         let inputs_shmem_writer = Arc::new(InputsShmemWriter::new(
             shm_prefix,
@@ -138,7 +136,7 @@ impl AsmSharedResources {
             inputs_stream,
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             readers,
-            inputs_shmem_writer,
+            shmem_inputs: inputs_shmem_writer,
         })
     }
 }
@@ -161,7 +159,7 @@ impl AsmResources {
     /// Create per-program resources by binding semaphores on the shared shmem.
     pub fn new(shared: Arc<AsmSharedResources>, asm_services: AsmServices) -> Result<Self> {
         let sem_prefix = asm_services.sem_prefix();
-        shared.inputs_shmem_writer.bind_semaphores(sem_prefix)?;
+        shared.shmem_inputs.bind_semaphores(sem_prefix)?;
 
         if let Some(hints_stream) = &shared.hints_stream {
             let processor = hints_stream.lock().unwrap().get_processor();
@@ -240,14 +238,14 @@ impl AsmResources {
     /// `c_provided.c::_wait_for_prec_avail`) when they re-check the flag.
     /// `RECOVERY_TIMEOUT` covers that slip.
     pub fn signal_cancellation(&self) -> Result<()> {
-        self.shared.inputs_shmem_writer.signal_reset()
+        self.shared.shmem_inputs.signal_reset()
     }
 
     pub fn reset(&self) {
         if let Some(s) = &self.shared.hints_stream {
             s.lock().expect("hints_stream mutex poisoned").reset();
         }
-        self.shared.inputs_shmem_writer.reset();
+        self.shared.shmem_inputs.reset();
     }
 
     pub fn config(&self) -> &AsmResourcesConfig {
@@ -280,11 +278,11 @@ impl AsmResources {
     }
 
     pub fn write_input(&self, stdin: &ZiskStdin) -> Result<()> {
-        self.shared.inputs_shmem_writer.write_input(&stdin.read_data())
+        self.shared.shmem_inputs.write_input(&stdin.read_data())
     }
 
     pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
-        self.shared.inputs_shmem_writer.append_input(bytes)
+        self.shared.shmem_inputs.append_input(bytes)
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -296,18 +294,18 @@ impl AsmResources {
 impl Drop for AsmResources {
     fn drop(&mut self) {
         // Shut down ASM microservices
-        self.shared.inputs_shmem_writer.unbind_semaphores();
+        self.shared.shmem_inputs.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
             if let Ok(g) = hints_stream.lock() {
                 g.get_processor().hints_sink().unbind_semaphores();
             }
         }
 
-        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.world_rank);
+        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.local_rank);
         if let Err(e) = self.asm_services.stop_asm_services() {
             tracing::error!(
                 ">>> [{}] Failed to stop ASM microservices: {}",
-                self.shared.config.world_rank,
+                self.shared.config.local_rank,
                 e
             );
         }

@@ -196,7 +196,6 @@ impl AsmProver {
         )?;
 
         let shared = Arc::new(AsmSharedResources::new(
-            world_rank,
             local_rank,
             unlock_mapped_memory,
             verbose_mode,
