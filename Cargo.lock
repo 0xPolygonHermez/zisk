@@ -1036,6 +1036,7 @@ dependencies = [
  "zisk-common",
  "zisk-pil",
  "zisk-prover-backend",
+ "zisk-sdk",
 ]
 
 [[package]]

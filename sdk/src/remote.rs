@@ -133,7 +133,7 @@ impl RemoteClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, stdin)
+        ProveRequest::new(self, program, stdin, ExecutorKind::default())
     }
 
     /// Submit an execute request (dry-run, no proof).
@@ -143,7 +143,7 @@ impl RemoteClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, stdin)
+        ExecuteRequest::new(self, program, stdin, ExecutorKind::default())
     }
 
     /// Submit a ROM setup request.

@@ -36,8 +36,14 @@ pub(crate) enum ZiskCliCmd {
     Shared(SharedCmd),
 
     // User-only commands
+    /// cargo-zisk remote commands for interacting with a remote prover service
     Remote(RemoteCmd),
+
+    /// cargo-zisk embedded commands for running the embedded prover locally
     Embedded(EmbeddedCmd),
+    // if no subcommand is provided, default to the embedded prover
+    #[command(flatten)]
+    EmbeddedDefault(ZiskEmbeddedCmd),
 }
 
 impl ZiskCliCmd {
@@ -46,6 +52,7 @@ impl ZiskCliCmd {
             ZiskCliCmd::Shared(cmd) => cmd.run(),
             ZiskCliCmd::Remote(mut cmd) => cmd.run(),
             ZiskCliCmd::Embedded(mut cmd) => cmd.run(),
+            ZiskCliCmd::EmbeddedDefault(mut cmd) => cmd.run(),
         }
     }
 }

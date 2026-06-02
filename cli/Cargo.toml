@@ -22,6 +22,7 @@ vergen-git2.workspace = true
 zisk-common = { workspace = true }
 zisk-build = { workspace = true }
 zisk-prover-backend = { workspace = true }
+zisk-sdk = { workspace = true }
 rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 

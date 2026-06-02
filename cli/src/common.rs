@@ -4,24 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use zisk_build::ZISK_TARGET;
 
-/// If the target_os is macOS returns an error indicating that the command is not supported.
-pub fn cli_fail_if_macos() -> Result<()> {
-    if cfg!(target_os = "macos") {
-        Err(anyhow::anyhow!("Command is not supported on macOS"))
-    } else {
-        Ok(())
-    }
-}
-
-pub fn resolve_elf_path(elf: &Option<PathBuf>) -> Result<&PathBuf> {
-    elf.as_ref().ok_or_else(|| {
-        anyhow::anyhow!(
-            "No ELF available. Pass --elf or run from a Rust project with a built guest at target/elf/riscv64ima-zisk-zkvm-elf/<binary-name>."
-        )
-    })
-}
-
-pub fn detect_current_project_elf() -> Result<Option<PathBuf>> {
+pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
     let current_dir = env::current_dir()?;
     let cargo_toml = current_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
@@ -47,6 +30,27 @@ pub fn detect_current_project_elf() -> Result<Option<PathBuf>> {
         Ok(Some(debug_candidate))
     } else {
         Ok(None)
+    }
+}
+
+/// Reject a `quic://` hints URI — the CLI has no event loop to host a live QUIC
+/// stream, so it cannot serve QUIC hints to either the embedded or remote backend.
+pub(crate) fn reject_quic_hints(hints: Option<&str>) -> Result<()> {
+    if hints.is_some_and(|uri| uri.starts_with("quic://")) {
+        anyhow::bail!("QUIC hints source is not supported in CLI mode.");
+    }
+    Ok(())
+}
+
+/// Resolve the guest ELF: explicit path, otherwise auto-detect from the current project.
+pub(crate) fn resolve_elf(elf: Option<PathBuf>) -> Result<PathBuf> {
+    match elf {
+        Some(elf) => Ok(elf),
+        None => detect_current_project_elf()?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+            )
+        }),
     }
 }
 

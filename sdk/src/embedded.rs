@@ -27,7 +27,7 @@ use crate::{
     setup::SetupRequest,
     upload::UploadRequest,
     wrap::WrapRequest,
-    Client, ExecutorKind,
+    Client, ClientSync, ExecutorKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
@@ -42,6 +42,7 @@ pub struct EmbeddedClientBuilder {
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
+    verbose: u8,
 }
 
 impl Default for EmbeddedClientBuilder {
@@ -54,6 +55,7 @@ impl Default for EmbeddedClientBuilder {
             asm_options: None,
             proving_key: None,
             proving_key_snark: None,
+            verbose: 0,
         }
     }
 }
@@ -122,6 +124,13 @@ impl EmbeddedClientBuilder {
         self
     }
 
+    /// Set the prover verbosity level (`0` = quiet, higher = more verbose).
+    #[must_use]
+    pub fn verbose(mut self, level: u8) -> Self {
+        self.verbose = level;
+        self
+    }
+
     /// Build the [`EmbeddedClient`].
     pub fn build(self) -> Result<EmbeddedClient> {
         crate::client::ensure_single_instance();
@@ -139,6 +148,9 @@ impl EmbeddedClientBuilder {
             embedded_opts.proving_key_snark = Some(pk);
         }
         let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
+        if self.verbose > 0 {
+            backend_opts = backend_opts.verbose(self.verbose);
+        }
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
         }
@@ -210,10 +222,6 @@ impl Clone for EmbeddedClient {
 }
 
 impl Client for EmbeddedClient {
-    fn default_executor(&self) -> ExecutorKind {
-        self.executor
-    }
-
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
         self.do_upload(program)
     }
@@ -267,6 +275,52 @@ impl Client for EmbeddedClient {
     }
 }
 
+impl ClientSync for EmbeddedClient {
+    fn run_setup_sync(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+        subs: SubscriberList,
+    ) -> Result<SetupResult> {
+        self.do_setup_sync(program, with_hints, emulator_only, subs)
+    }
+
+    fn run_prove_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        subs: SubscriberList,
+    ) -> Result<crate::prove::ProveResult> {
+        self.do_prove_sync(program, stdin, hints, executor, proof_kind, subs)
+    }
+
+    fn run_execute_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        subs: SubscriberList,
+    ) -> Result<ExecuteResult> {
+        self.do_execute_sync(program, stdin, hints, executor, subs)
+    }
+
+    fn run_wrap_sync(
+        &self,
+        proof: &Proof,
+        proof_kind: ProofKind,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
+        subs: SubscriberList,
+    ) -> Result<crate::prove::ProveResult> {
+        self.do_wrap_sync(proof, proof_kind, override_publics, override_program_vk, subs)
+    }
+}
+
 impl EmbeddedClient {
     /// Submit a prove request.
     #[must_use]
@@ -275,7 +329,7 @@ impl EmbeddedClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, stdin)
+        ProveRequest::new(self, program, stdin, self.executor)
     }
 
     /// Submit an execute request (dry-run, no proof).
@@ -285,7 +339,7 @@ impl EmbeddedClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, stdin)
+        ExecuteRequest::new(self, program, stdin, self.executor)
     }
 
     /// Submit a ROM setup request.

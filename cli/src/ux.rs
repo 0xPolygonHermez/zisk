@@ -3,7 +3,7 @@ use sysinfo::System;
 use tracing::info;
 use zisk_common::ZiskExecutorTime;
 
-pub fn print_banner() {
+pub(crate) fn print_banner() {
     println!();
     println!(
         "{}",
@@ -52,15 +52,37 @@ pub fn print_banner() {
     // );
 }
 
-pub fn print_banner_command(command: impl std::fmt::Display) {
+pub(crate) fn print_banner_command(command: impl std::fmt::Display) {
     print_banner_field("Command", command);
 }
 
-pub fn print_banner_field(label: &str, value: impl std::fmt::Display) {
+pub(crate) fn print_banner_field(label: &str, value: impl std::fmt::Display) {
     println!("{} {}", format!("{: >12}", label).bright_green().bold(), value);
 }
 
-pub fn print_execution_summary(executor_time: &ZiskExecutorTime, total_duration: u64, steps: u64) {
+/// Print the standard command banner shared by the embedded and remote command
+/// trees: the ZisK banner, the command name, and the ELF / input / hints fields.
+pub(crate) fn print_job_banner(
+    command: &str,
+    elf: &std::path::Path,
+    inputs: Option<&str>,
+    hints: Option<&str>,
+) {
+    print_banner();
+    print_banner_command(command);
+    print_banner_field("Elf", elf.display());
+    let inputs_str = inputs.map_or_else(|| "None".dimmed().to_string(), str::to_string);
+    print_banner_field("Input", inputs_str);
+    if let Some(hints) = hints {
+        print_banner_field("Prec. Hints", hints);
+    }
+}
+
+pub(crate) fn print_execution_summary(
+    executor_time: &ZiskExecutorTime,
+    total_duration: u64,
+    steps: u64,
+) {
     info!("Execution completed in {}ms, steps: {}", total_duration, steps);
     info!(
         "Execution summary: {} {}ms + {} {}ms + {} {}ms + {} {}ms",

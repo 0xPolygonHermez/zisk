@@ -1,6 +1,6 @@
 use std::{path::PathBuf, process::Command};
 
-use crate::{get_target, CommandExecutor};
+use super::support::{get_target, CommandExecutor};
 use anyhow::{Context, Result};
 use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
 

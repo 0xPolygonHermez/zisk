@@ -80,12 +80,6 @@ pub enum ExecutorKind {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) trait Client: Clone + Send + Sync + 'static {
-    /// Default executor configured on the client builder. Used when a
-    /// per-call request does not explicitly override it.
-    fn default_executor(&self) -> ExecutorKind {
-        ExecutorKind::default()
-    }
-
     fn run_upload(&self, program: &GuestProgram) -> Result<UploadResult>;
 
     fn run_setup(
@@ -127,4 +121,58 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
+}
+
+/// Synchronous counterpart to [`Client`], implemented only by backends whose
+/// work is genuinely synchronous (currently the embedded client).
+///
+/// Each method mirrors a [`Client`] `run_*` method but runs the job on the
+/// calling thread and returns the result directly — no async runtime required.
+/// Remote backends deliberately do not implement this: a remote call is network
+/// I/O and has no honest synchronous form, so `run_sync()` is unavailable there
+/// at compile time.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not support synchronous execution",
+    note = "`run_sync()` is only available on `EmbeddedClient` — a `RemoteClient` \
+            performs network I/O and has no synchronous form; use `run()` and \
+            `.await` the returned `JobHandle` instead",
+    label = "this client cannot run synchronously"
+)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) trait ClientSync {
+    fn run_setup_sync(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+        subs: job_handle::SubscriberList,
+    ) -> Result<SetupResult>;
+
+    fn run_prove_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        subs: job_handle::SubscriberList,
+    ) -> Result<ProveResult>;
+
+    fn run_execute_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        subs: job_handle::SubscriberList,
+    ) -> Result<ExecuteResult>;
+
+    fn run_wrap_sync(
+        &self,
+        proof: &Proof,
+        proof_kind: ProofKind,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<crate::prove::ProveResult>;
 }

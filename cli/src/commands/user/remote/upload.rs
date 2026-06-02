@@ -1,9 +1,13 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
+use colored::Colorize;
+use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
+use zisk_sdk::{GuestProgram, RemoteClient};
 
-use crate::ux::{print_banner, print_banner_command};
+use crate::common::resolve_elf;
+use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -15,10 +19,19 @@ pub(crate) struct ZiskRemoteUpload {
 }
 
 impl ZiskRemoteUpload {
-    pub(crate) fn run(&mut self) -> Result<()> {
+    pub(crate) async fn run(&mut self, client: &RemoteClient) -> Result<()> {
+        let elf = resolve_elf(self.elf.take())?;
+
         print_banner();
         print_banner_command("Remote Upload");
+        print_banner_field("Elf", elf.display());
 
-        bail!("`cargo-zisk remote upload` is not implemented yet");
+        let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
+        let result = client.upload(&program).run()?;
+
+        info!("{}", "--- UPLOAD SUMMARY ------------".bright_green().bold());
+        info!("Program registered. hash_id: {}", result.hash_id());
+
+        Ok(())
     }
 }

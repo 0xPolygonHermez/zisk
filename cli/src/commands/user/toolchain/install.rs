@@ -1,4 +1,3 @@
-use crate::download_file;
 use anyhow::Result;
 use rand::{distributions::Alphanumeric, Rng};
 use reqwest::Client;
@@ -13,7 +12,7 @@ use zisk_common::{BIN_DIR, CACHE_DIR, PROVING_KEY_DIR, TOOLCHAINS_DIR, VERIFY_KE
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::{get_target, get_toolchain_download_url, is_supported_target};
+use super::support::{download_file, get_target, get_toolchain_download_url, is_supported_target};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

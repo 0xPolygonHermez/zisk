@@ -3,6 +3,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 
 mod build;
 mod install;
+mod support;
 
 pub(crate) use build::ZiskBuildToolchain;
 pub(crate) use install::ZiskInstallToolchain;
