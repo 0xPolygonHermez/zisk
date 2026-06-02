@@ -1,20 +1,18 @@
 use std::collections::HashMap;
 
+use crate::{
+    pub_outs_collector::PubOutsCollector, BackendArtifacts, CountersChunkMetrics, ExecutionOutput,
+    StaticDataBus, MAX_NUM_STEPS,
+};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
-use proofman_common::ProofCtx;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
-use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace, ExecutorStatsHandle};
+use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace};
 use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, ZiskEmulator};
 
-use crate::{
-    pub_outs_collector::PubOutsCollector, EmulatorResult, NestedDeviceMetricsList, StaticDataBus,
-    StaticSMBundle, MAX_NUM_STEPS,
-};
-
-use anyhow::Result;
+use crate::error::ExecutorResult;
 
 pub struct EmulatorRust {
     /// Chunk size for processing.
@@ -29,44 +27,38 @@ impl EmulatorRust {
         Self { chunk_size }
     }
 
-    pub fn get_chunk_size(&self) -> u64 {
-        self.chunk_size
-    }
-
     /// Computes minimal traces by processing the ZisK ROM with the given public inputs.
     ///
     /// # Arguments
     /// * `stdin` - Shared standard input source used to feed data into the emulator.
     /// * `_pctx` - Proof context carrying field-parameterized configuration for execution.
-    /// * `sm_bundle` - Static state machine bundle used for counting device metrics.
     /// * `_stats` - Handle to executor statistics collection.
     /// * `_caller_stats_scope` - Stats scope used to associate collected statistics with the caller.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// * `Vec<EmuTrace>` - The minimal traces produced by the emulator.
-    /// * `NestedDeviceMetricsList` - Metrics for secondary/nested devices.
-    /// * `None` - Placeholder for optional `AsmRunnerMO` join handle (not used in this implementation).
-    /// * `None` - Placeholder for optional `AsmRunnerRH` join handle (not used in this implementation).
-    /// * `u64` - Total number of steps.
-    /// * `PubOutsCollector` - Collected public outputs from the emulator execution.
-    #[allow(clippy::type_complexity)]
+    /// A [`ExecutionOutput`] whose `backend` is [`BackendArtifacts::Rust`] —
+    /// no async runners on the native path.
     pub fn execute<F: PrimeField64>(
         &self,
         zisk_rom: &ZiskRom,
         stdin: &ZiskStdin,
-        sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<EmulatorResult> {
+    ) -> ExecutorResult<ExecutionOutput> {
         let min_traces = self.run_emulator(zisk_rom, Self::NUM_THREADS, stdin)?;
 
         // Store execute steps
         let steps = min_traces.iter().map(|trace| trace.steps).sum::<u64>();
 
         timer_start_info!(COUNT);
-        let (counters, pub_outs) = self.count(zisk_rom, &min_traces, sm_bundle)?;
+        let (counters, pub_outs) = self.count::<F>(zisk_rom, &min_traces)?;
         timer_stop_and_log_info!(COUNT);
 
-        Ok((min_traces, counters, None, None, steps, pub_outs))
+        Ok(ExecutionOutput {
+            min_traces,
+            counters,
+            pub_outs,
+            steps,
+            backend: BackendArtifacts::Rust,
+        })
     }
 
     fn run_emulator(
@@ -74,7 +66,7 @@ impl EmulatorRust {
         zisk_rom: &ZiskRom,
         num_threads: usize,
         stdin: &ZiskStdin,
-    ) -> Result<Vec<EmuTrace>> {
+    ) -> ExecutorResult<Vec<EmuTrace>> {
         // Call emulate with these options
         let input_data = stdin.read_data();
 
@@ -103,12 +95,11 @@ impl EmulatorRust {
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
-        sm_bundle: &StaticSMBundle<F>,
-    ) -> Result<(NestedDeviceMetricsList, PubOutsCollector)> {
+    ) -> ExecutorResult<(CountersChunkMetrics, PubOutsCollector)> {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = StaticDataBus::from_bundle(sm_bundle, false)?;
+                let mut data_bus = StaticDataBus::<_, F>::build(false);
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,
@@ -127,7 +118,7 @@ impl EmulatorRust {
 
                 Ok((counters, pub_outs_chunk))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<ExecutorResult<Vec<_>>>()?;
 
         let mut counters = HashMap::new();
         let mut pub_outs = PubOutsCollector::new();
@@ -135,33 +126,10 @@ impl EmulatorRust {
         for (chunk_id, (counter_slice, pub_outs_chunk)) in metrics_slices.into_iter().enumerate() {
             pub_outs.0.extend(pub_outs_chunk.0);
             for (idx, counter) in counter_slice.into_iter() {
-                let idx = idx.ok_or_else(|| {
-                    anyhow::anyhow!("unexpected unindexed counter for chunk {chunk_id}")
-                })?;
-                counters.entry(idx).or_insert_with(Vec::new).push((
-                    ChunkId(chunk_id),
-                    counter.ok_or_else(|| {
-                        anyhow::anyhow!("secondary counter is None for chunk {chunk_id}, idx {idx}")
-                    })?,
-                ));
+                counters.entry(idx).or_insert_with(Vec::new).push((ChunkId(chunk_id), counter));
             }
         }
 
         Ok((counters, pub_outs))
-    }
-}
-
-impl<F: PrimeField64> crate::Emulator<F> for EmulatorRust {
-    fn execute(
-        &self,
-        zisk_rom: &ZiskRom,
-        stdin: &ZiskStdin,
-        _pctx: &ProofCtx<F>,
-        sm_bundle: &StaticSMBundle<F>,
-        _use_hints: bool,
-        _stats: &ExecutorStatsHandle,
-        _caller_stats_scope: &zisk_common::StatsScope,
-    ) -> Result<EmulatorResult> {
-        self.execute(zisk_rom, stdin, sm_bundle)
     }
 }

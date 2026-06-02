@@ -16,6 +16,10 @@ unsafe impl Send for AsmRunnerMO {}
 unsafe impl Sync for AsmRunnerMO {}
 
 impl AsmRunnerMO {
+    pub fn new(plans: Vec<Plan>) -> Self {
+        AsmRunnerMO { plans }
+    }
+
     pub fn run(
         _: &mut PreloadedMO,
         _: u64,

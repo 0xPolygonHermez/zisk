@@ -23,4 +23,4 @@ pub use custom_rom::CustomRom;
 pub use error::*;
 pub use rom::*;
 pub use rom_instance::*;
-use rom_planner::*;
+pub use rom_planner::RomPlanner;

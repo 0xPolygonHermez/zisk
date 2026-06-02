@@ -4,11 +4,7 @@
 //! send data, route it to the appropriate subscribers, and manage device connections.
 use std::collections::VecDeque;
 
-use crate::{
-    pub_outs_collector::PubOutsCollector, BuiltinCounters, DummyCounter, PrecompileCounters,
-    StaticSMBundle,
-};
-use anyhow::Result;
+use crate::{pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters};
 use data_bus::DataBusTrait;
 use fields::PrimeField64;
 use mem_common::MemCounters;
@@ -18,9 +14,7 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
-    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
-    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, BLAKE2_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
-    POSEIDON2_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -37,57 +31,42 @@ pub struct StaticDataBus<D, F: PrimeField64> {
     process_only_operation_bus: bool,
 
     /// List of devices connected to the bus.
-    pub pub_outs_collector: PubOutsCollector,
-    pub mem_counter: (usize, Option<MemCounters>),
-    pub binary_counter: (usize, BinaryCounter),
-    pub arith_counter: (usize, ArithCounterInputGen),
-    pub precompiles: PrecompileCounters<F>,
-    pub dma_counter: (usize, DmaCounterInputGen),
-    pub rom_counter_id: Option<usize>,
+    pub_outs_collector: PubOutsCollector,
+
+    /// Memory-related counter.
+    mem_counter: (usize, Option<MemCounters>),
+
+    /// Arithmetic operation counter.
+    arith_counter: (usize, ArithCounterInputGen),
+
+    /// Binary operation counter.
+    binary_counter: (usize, BinaryCounter),
+
+    /// DMA operation counter.
+    dma_counter: (usize, DmaCounterInputGen),
+
+    /// Precompile operation counters.
+    precompiles: PrecompileCounters<F>,
+
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 }
 
 impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
-    /// Constructs a counter-phase data bus from the executor's bundle.
-    /// Iterates the bundle's entries once via `BuiltinCounters` and
-    /// `PrecompileCounters`, then wires their slots into `new`.
-    /// Mirrors the `from_bundle` constructors on the wrapper types.
-    pub fn from_bundle(bundle: &StaticSMBundle<F>, is_asm_emulator: bool) -> Result<Self> {
-        let builtins = BuiltinCounters::from_bundle(bundle, is_asm_emulator)?;
-        let precompiles = PrecompileCounters::from_bundle(bundle, is_asm_emulator)?;
+    /// Constructs a counter-phase data bus via static dispatch — no
+    /// `StaticSMBundle` required. Callable on the standalone path.
+    pub fn build(is_asm_emulator: bool) -> Self {
+        let builtins = BuiltinCounters::build::<F>(is_asm_emulator);
+        let precompiles = PrecompileCounters::<F>::build(is_asm_emulator);
 
-        Ok(Self::new(
-            is_asm_emulator,
-            builtins.mem,
-            builtins.binary,
-            builtins.arith,
-            precompiles,
-            builtins.dma,
-            Some(0),
-        ))
-    }
-
-    /// Creates a new `DataBus` instance.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        process_only_operation_bus: bool,
-        mem_counter: (usize, Option<MemCounters>),
-        binary_counter: (usize, BinaryCounter),
-        arith_counter: (usize, ArithCounterInputGen),
-        precompiles: PrecompileCounters<F>,
-        dma_counter: (usize, DmaCounterInputGen),
-        rom_counter_id: Option<usize>,
-    ) -> Self {
         Self {
-            process_only_operation_bus,
+            process_only_operation_bus: is_asm_emulator,
             pub_outs_collector: PubOutsCollector::new(),
-            mem_counter,
-            binary_counter,
-            arith_counter,
+            mem_counter: builtins.mem,
+            arith_counter: builtins.arith,
+            binary_counter: builtins.binary,
+            dma_counter: builtins.dma,
             precompiles,
-            dma_counter,
-            rom_counter_id,
             pending_transfers: VecDeque::new(),
         }
     }
@@ -139,48 +118,13 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
                 ARITH_OP_TYPE_ID => {
                     self.arith_counter.1.process_data(&bus_id, data, &mut self.pending_transfers)
                 }
-                KECCAK_OP_TYPE_ID => self.precompiles.keccakf.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                SHA256_OP_TYPE_ID => self.precompiles.sha256f.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                POSEIDON2_OP_TYPE_ID => self.precompiles.poseidon2.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                BLAKE2_OP_TYPE_ID => self.precompiles.blake2.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                ARITH_EQ_OP_TYPE_ID => self.precompiles.arith_eq.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                ARITH_EQ_384_OP_TYPE_ID => self.precompiles.arith_eq384.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
-                BIG_INT_OP_TYPE_ID => self.precompiles.add256.1.process_data(
-                    &bus_id,
-                    data,
-                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
-                ),
                 DMA_OP_TYPE_ID => self.dma_counter.1.process_data(
                     &bus_id,
                     data,
                     data_ext,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
-                _ => true,
+                op => self.precompiles.dispatch_op(op, &bus_id, data, self.mem_counter.1.as_mut()),
             },
             _ => true,
         }
@@ -212,25 +156,20 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
         }
     }
 
-    fn into_devices(
-        mut self,
-        execute_on_close: bool,
-    ) -> Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> {
+    fn into_devices(mut self, execute_on_close: bool) -> Vec<(usize, Box<dyn BusDeviceMetrics>)> {
         if execute_on_close {
             self.on_close();
         }
 
-        #[allow(clippy::type_complexity)]
-        let mut counters: Vec<(Option<usize>, Option<Box<dyn BusDeviceMetrics>>)> = vec![
-            (self.rom_counter_id, Some(Box::new(DummyCounter {}))),
-            (Some(self.binary_counter.0), Some(Box::new(self.binary_counter.1))),
-            (Some(self.arith_counter.0), Some(Box::new(self.arith_counter.1))),
+        let mut counters: Vec<(usize, Box<dyn BusDeviceMetrics>)> = vec![
+            (self.binary_counter.0, Box::new(self.binary_counter.1)),
+            (self.arith_counter.0, Box::new(self.arith_counter.1)),
         ];
         counters.extend(self.precompiles.into_device_entries());
-        counters.push((Some(self.dma_counter.0), Some(Box::new(self.dma_counter.1))));
+        counters.push((self.dma_counter.0, Box::new(self.dma_counter.1)));
 
         if let Some(mem_counter) = self.mem_counter.1 {
-            counters.insert(1, (Some(self.mem_counter.0), Some(Box::new(mem_counter))));
+            counters.insert(0, (self.mem_counter.0, Box::new(mem_counter)));
         }
 
         counters

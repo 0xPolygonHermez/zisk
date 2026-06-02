@@ -13,7 +13,10 @@ zisk_common::zisk_precompile! {
     name = Keccakf,
     op_type = Keccak,
     trace = KeccakfTrace,
-    num_available_field = num_available_keccakfs,
+    num_available = {
+        ::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS
+            - (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS % CLOCKS != 0) as usize
+    },
     ops = [
         (OperationKeccakData, KeccakfInput),
     ],
