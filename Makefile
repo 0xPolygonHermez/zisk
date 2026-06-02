@@ -1,3 +1,8 @@
+.PHONY: all clean
+
+all:
+	@echo "Use 'make clean' to remove build artifacts."
+
 clean:
 	cargo clean
-	rm -rf lib-c/c/lib
+	$(MAKE) -C lib-c/c clean
