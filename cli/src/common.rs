@@ -3,6 +3,25 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use zisk_build::ZISK_TARGET;
+use zisk_sdk::ProofKind;
+
+/// Build the default proof output filename when the user passes no `--output`.
+///
+/// Format: `<timestamp>-<jobid if any>-proof[-plonk].bin`, where `<timestamp>`
+/// is the current Unix time in seconds and the `-plonk` suffix is added only
+/// for PLONK proofs.
+pub(crate) fn default_proof_filename(
+    job_id: Option<impl std::fmt::Display>,
+    proof_kind: ProofKind,
+) -> PathBuf {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let job_segment = job_id.map(|id| format!("{id}-")).unwrap_or_default();
+    let kind_segment = if proof_kind == ProofKind::Plonk { "-plonk" } else { "" };
+    PathBuf::from(format!("{timestamp}-{job_segment}proof{kind_segment}.bin"))
+}
 
 pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
     let current_dir = env::current_dir()?;

@@ -7,6 +7,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{Proof, ProofKind, RemoteClient};
 
+use crate::common::default_proof_filename;
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -47,9 +48,9 @@ impl ZiskRemoteWrap {
         } else {
             anyhow::bail!("Either --plonk or --minimal must be specified.");
         };
-        let (default_output, kind_label) = match proof_kind {
-            ProofKind::Plonk => ("vadcop_final_proof_plonk.bin", "PLONK"),
-            _ => ("vadcop_final_proof_minimal.bin", "minimal"),
+        let kind_label = match proof_kind {
+            ProofKind::Plonk => "PLONK",
+            _ => "minimal",
         };
 
         let zisk_proof = Proof::load(&self.proof).map_err(|e| {
@@ -62,7 +63,10 @@ impl ZiskRemoteWrap {
         }
         let result = request.run()?.await?;
 
-        let output_file = self.output.clone().unwrap_or_else(|| PathBuf::from(default_output));
+        let output_file = self
+            .output
+            .clone()
+            .unwrap_or_else(|| default_proof_filename(result.job_id(), proof_kind));
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

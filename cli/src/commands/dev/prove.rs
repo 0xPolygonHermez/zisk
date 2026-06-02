@@ -1,4 +1,4 @@
-use crate::common::detect_current_project_elf;
+use crate::common::{default_proof_filename, detect_current_project_elf};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
 
@@ -225,14 +225,10 @@ impl ProveCmd {
         if !result.get_proof().is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
-            let output_file: PathBuf = match result.get_proof().kind() {
-                ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
-                    self.output.clone().unwrap_or_else(|| PathBuf::from("vadcop_final_proof.bin"))
-                }
-                ProofKind::Plonk => {
-                    self.output.clone().unwrap_or_else(|| PathBuf::from("final_plonk_proof.bin"))
-                }
-            };
+            let output_file: PathBuf = self
+                .output
+                .clone()
+                .unwrap_or_else(|| default_proof_filename(None::<&str>, result.get_proof().kind()));
             result.save_proof(&output_file)?;
             info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
 

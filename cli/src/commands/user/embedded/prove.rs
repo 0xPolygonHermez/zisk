@@ -7,7 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ProofKind, ZiskHints, ZiskStdin};
 
 use super::{run_embedded_setup, validate_asm_hints};
-use crate::common::resolve_elf;
+use crate::common::{default_proof_filename, resolve_elf};
 use crate::ux::print_job_banner;
 
 #[derive(clap::Args, Debug)]
@@ -100,12 +100,10 @@ impl ZiskEmbeddedProve {
         }
         let result = request.run_sync()?;
 
-        let output_file = self.output.clone().unwrap_or_else(|| match proof_kind {
-            ProofKind::Plonk => PathBuf::from("final_plonk_proof.bin"),
-            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => {
-                PathBuf::from("vadcop_final_proof.bin")
-            }
-        });
+        let output_file = self
+            .output
+            .clone()
+            .unwrap_or_else(|| default_proof_filename(result.job_id(), proof_kind));
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;
