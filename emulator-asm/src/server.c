@@ -162,6 +162,14 @@ void server_setup (void)
             // Sync
             fsync(shmem_rom_fd);
 
+            // Close the descriptor
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_rom_fd = -1;
+
             // Log duration
             if (verbose)
             {
@@ -573,6 +581,14 @@ void server_setup (void)
         // Sync
         fsync(shmem_control_output_fd);
 
+        // Close the descriptor
+        if (close(shmem_control_output_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_control_output_fd = -1;
+
         // Log duration
         if (verbose)        {
             gettimeofday(&stop_time, NULL);
@@ -610,6 +626,14 @@ void server_setup (void)
         precompile_read_address = &shmem_control_output_address[0];
         waiting_for_precompile_address = &shmem_control_output_address[1];
         waiting_for_input_address = &shmem_control_output_address[2];
+
+        // Close the descriptor since we don't need it anymore after mapping
+        if (close(shmem_control_output_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_control_output_fd = -1;
 
         // Log duration
         if (verbose)
@@ -652,6 +676,14 @@ void server_setup (void)
 
             // Sync
             fsync(shmem_ram_fd);
+
+            // Close the descriptor
+            if (close(shmem_ram_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_ram_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_ram_fd = -1;
         }
         
         if (open_internal_shm)
