@@ -82,6 +82,8 @@ pub trait WitnessBuilderExt: Sized {
     #[must_use]
     fn no_aggregation(self) -> Self;
 
+    /// Configure the client for constraint verification, a witness-only workload.
+    #[must_use]
     fn verify_constraints(self) -> Self;
 }
 

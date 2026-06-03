@@ -149,7 +149,7 @@ impl BackendProverOpts {
 
         options.verbose_mode(self.verbose.into());
 
-        if !self.aggregation {
+        if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
         }
 
