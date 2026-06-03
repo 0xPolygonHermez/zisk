@@ -3049,6 +3049,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
+                // Check if address is constant and calculate it if so, to optimize code and get alignment info
                 let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
                 let address_constant_value = if address_is_constant {
                     (ctx.a.constant_value as i64 + instruction.store_offset) as u64
@@ -3544,7 +3545,7 @@ impl ZiskRom2Asm {
                 }
 
                 if ctx.mem_op() {
-                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width);
+                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width, reg_address);
                 }
             }
             _ => panic!(
@@ -8236,7 +8237,12 @@ impl ZiskRom2Asm {
         *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
     }
 
-    fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
+    fn c_store_ind_mem_op(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        width: u64,
+        reg_address: &str,
+    ) {
         // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         // With this information, the mem_planner can use a specific state machine for
         // this kind of byte writes
@@ -8260,7 +8266,7 @@ impl ZiskRom2Asm {
                     }
             };
             *code += &format!(
-                "\tmov {REG_ADDRESS}, 0x{mops:x} {}\n",
+                "\tmov {reg_address}, 0x{mops:x} {}\n",
                 ctx.comment_str("aux = constant mem op")
             );
         } else {
@@ -8274,7 +8280,7 @@ impl ZiskRom2Asm {
             *code +=
                 &format!("\tmov {REG_AUX}, 0x{mops:x} {}\n", ctx.comment_str("aux = mem op mask"));
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= mem op mask")
             );
         }
@@ -8293,7 +8299,7 @@ impl ZiskRom2Asm {
                 ctx.comment_str("aux = F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
@@ -8301,7 +8307,7 @@ impl ZiskRom2Asm {
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_ADDRESS} {}\n",
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_address} {}\n",
             ctx.comment_str("mem_reads[@+size*8] = mem op")
         );
 
