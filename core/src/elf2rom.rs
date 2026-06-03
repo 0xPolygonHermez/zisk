@@ -13,7 +13,7 @@ use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    // Load the embedded float library
+    // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
 

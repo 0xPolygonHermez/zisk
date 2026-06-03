@@ -2668,7 +2668,10 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.j(4 * 68, 4 * 68);
     #[cfg(not(feature = "float"))]
     zib.j(4 * 2, 4 * 2);
+    #[cfg(feature = "float")]
     zib.verbose("Jump over end instruction and float handler");
+    #[cfg(not(feature = "float"))]
+    zib.verbose("Jump over end instruction");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
