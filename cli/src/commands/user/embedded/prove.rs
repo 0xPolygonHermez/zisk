@@ -107,10 +107,7 @@ impl ZiskEmbeddedProve {
         }
         let result = request.run_sync()?;
 
-        let output_file = self
-            .output
-            .clone()
-            .unwrap_or_else(|| default_proof_filename(result.job_id(), proof_kind));
+        let output_file = self.output.clone().unwrap_or(default_proof_filename(result.job_id()));
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

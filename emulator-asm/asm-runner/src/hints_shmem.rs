@@ -58,7 +58,7 @@ struct UnifiedResources {
     control_writer: Arc<ControlShmem>,
     /// One data writer per service — each C service has its own precompile shmem segment,
     /// so Rust writes the same hint data to all of them to keep them in sync.
-    data_writers: Vec<SharedMemoryWriter>,
+    data_writer: SharedMemoryWriter,
 }
 
 // SAFETY: writes are serialized by the enclosing `Mutex<UnifiedResources>`.
@@ -153,19 +153,15 @@ impl HintsShmem {
         control_writer: Arc<ControlShmem>,
     ) -> Result<UnifiedResources> {
         debug!("Initializing unified resources for precompile hints");
-        let data_writers = AsmServices::SERVICES
-            .iter()
-            .map(|service| {
-                let name = shmem_precompile_name(shm_prefix, *service);
-                SharedMemoryWriter::new(
-                    &name,
-                    Self::MAX_PRECOMPILE_SIZE as usize,
-                    unlock_mapped_memory,
-                )
-                .map_err(anyhow::Error::from)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        Ok(UnifiedResources { control_writer, data_writers })
+
+        let name = shmem_precompile_name(shm_prefix);
+        let data_writer = SharedMemoryWriter::new(
+            &name,
+            Self::MAX_PRECOMPILE_SIZE as usize,
+            unlock_mapped_memory,
+        )?;
+
+        Ok(UnifiedResources { control_writer, data_writer })
     }
 }
 
@@ -255,9 +251,7 @@ impl StreamSink for HintsShmem {
         }
 
         // Write data to each service's precompile buffer (same data, keeps all in sync)
-        for writer in &mut unified.data_writers {
-            writer.write_ring_buffer(processed)?;
-        }
+        unified.data_writer.write_ring_buffer(processed)?;
 
         fence(Ordering::Release);
 
@@ -277,9 +271,7 @@ impl StreamSink for HintsShmem {
     fn reset(&self) {
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
         unified.control_writer.reset();
-        for writer in &mut unified.data_writers {
-            writer.reset();
-        }
+        unified.data_writer.reset();
 
         // Drain any leftover semaphore counts from the previous run.
         if let Some(sems) = self.separate_sem.lock().expect("separate_sem mutex poisoned").as_mut()

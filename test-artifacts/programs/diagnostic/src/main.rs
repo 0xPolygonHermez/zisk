@@ -25,6 +25,7 @@ fn main() {
     fcalls::diagnostic_bigint();
     fcalls::diagnostic_bls12_381();
     fcalls::diagnostic_bn254();
+    fcalls::diagnostic_fcall_limits();
     fcalls::diagnostic_msb();
     fcalls::diagnostic_secp256k1();
     fcalls::diagnostic_secp256r1();

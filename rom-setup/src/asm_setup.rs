@@ -164,13 +164,23 @@ pub fn get_assembly_file_paths(
         .context("Failed to extract file stem from ELF path")?
         .to_str()
         .context("Failed to convert ELF file stem to string")?;
-    let base = asm_file_base(elf_name, &elf_hash, hints);
+    Ok(get_assembly_file_paths_from_id(elf_name, &elf_hash, output_path, hints).to_vec())
+}
 
-    Ok(vec![
+/// Variant of [`get_assembly_file_paths`] that takes the ELF name + hash
+/// directly (caller already computed them). Returns `[mt, rh, mo]`.
+pub fn get_assembly_file_paths_from_id(
+    elf_name: &str,
+    elf_hash: &str,
+    output_path: &Path,
+    hints: bool,
+) -> [PathBuf; 3] {
+    let base = asm_file_base(elf_name, elf_hash, hints);
+    [
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
         output_path.join(format!("{base}-mo.bin")),
-    ])
+    ]
 }
 
 /// Check if all assembly binary files exist for a given ELF and output path

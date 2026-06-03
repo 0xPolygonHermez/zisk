@@ -85,8 +85,7 @@ impl WrapCmd {
 
         let result = prover.wrap_proof(&zisk_proof, proof_kind).run()?;
 
-        let output_file =
-            self.output.clone().unwrap_or_else(|| default_proof_filename(None::<&str>, proof_kind));
+        let output_file = self.output.clone().unwrap_or(default_proof_filename(None::<&str>));
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

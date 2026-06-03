@@ -134,11 +134,12 @@ void server_setup (void)
     /*******/
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
 
         if (create_internal_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Make sure the rom shared memory is deleted
             shm_unlink(shmem_rom_name);
 
@@ -160,9 +161,21 @@ void server_setup (void)
 
             // Sync
             fsync(shmem_rom_fd);
+
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("Created ROM shmem %s with size %lu B in %lu us\n", shmem_rom_name, ROM_SIZE, duration);
+            }
         }
-        else
+        
+        if (open_internal_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Open the rom shared memory
             shmem_rom_fd = shm_open(shmem_rom_name, O_RDWR, 0666);
             if (shmem_rom_fd < 0)
@@ -170,38 +183,39 @@ void server_setup (void)
                 asm_printf("ERROR: Failed opening rom RW shm_open(%s) as read-write errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
                 exit(-1);
             }
-        }
 
 #ifdef USE_HUGE_PAGES
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
-        }
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
 #else
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
 #endif
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pRom != ROM_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
-            exit(-1);
-        }
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
 
-        // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_rom_fd);
-        shmem_rom_fd = -1;
+            // Close the descriptor since we don't need it anymore after mapping
+            close(shmem_rom_fd);
+            shmem_rom_fd = -1;
 
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+            }
         }
     }
 
@@ -211,11 +225,11 @@ void server_setup (void)
 
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
         if (create_input_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Make sure the input shared memory is deleted
             shm_unlink(shmem_input_name);
 
@@ -244,44 +258,58 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
                 exit(-1);
             }
+
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("Created input shmem %s with size %lu B in %lu us\n", shmem_input_name, MAX_INPUT_SIZE, duration);
+            }
         }
 
-        // Open the input shared memory as read-only
-        shmem_input_fd = shm_open(shmem_input_name, O_RDONLY, 0666);
-        if (shmem_input_fd < 0)
+        if (open_input_shm)
         {
-            asm_printf("ERROR: Failed calling input RO shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
-            exit(-1);
-        }
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Map input address space
+            // Open the input shared memory as read-only
+            shmem_input_fd = shm_open(shmem_input_name, O_RDONLY, 0666);
+            if (shmem_input_fd < 0)
+            {
+                asm_printf("ERROR: Failed calling input RO shm_open(%s) as read-only errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Map input address space
 #ifdef USE_HUGE_PAGES
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
-        if (pInput == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
-        }
+            void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
+            if (pInput == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            }
 #else
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
 #endif
-        if (pInput == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pInput != INPUT_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
-            exit(-1);
-        }
-        
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
+            if (pInput == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pInput != INPUT_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
+                exit(-1);
+            }
+            
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(input) mapped %lu B and returned address %p in %lu us\n", MAX_INPUT_SIZE, pInput, duration);
+            }
         }
     }
 
@@ -295,11 +323,11 @@ void server_setup (void)
         /* PRECOMPILE */
         /**************/
 
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
         if (create_input_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Make sure the precompile results shared memory is deleted
             shm_unlink(shmem_precompile_name);
 
@@ -328,82 +356,102 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
                 exit(-1);
             }
+
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("Created precompile results shmem %s with size %lu B in %lu us\n", shmem_precompile_name, MAX_PRECOMPILE_SIZE, duration);
+            }
         }
 
-        // Open the precompile shared memory as read-only
-        shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDONLY, 0666);
-        if (shmem_precompile_fd < 0)
+        if (open_input_shm)
         {
-            asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
-            exit(-1);
-        }
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Map precompile address space
-        void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
-        if (pPrecompile == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        shmem_precompile_address = pPrecompile;
-        precompile_results_address = (uint64_t *)pPrecompile;
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
+            // Open the precompile shared memory as read-only
+            shmem_precompile_fd = shm_open(shmem_precompile_name, O_RDONLY, 0666);
+            if (shmem_precompile_fd < 0)
+            {
+                asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Map precompile address space
+            void * pPrecompile = mmap(NULL, MAX_PRECOMPILE_SIZE, PROT_READ, MAP_SHARED | map_locked_flag, shmem_precompile_fd, 0);
+            if (pPrecompile == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_precompile_address = pPrecompile;
+            precompile_results_address = (uint64_t *)pPrecompile;
+
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(precompile) mapped %lu B and returned address %p in %lu us\n", MAX_PRECOMPILE_SIZE, precompile_results_address, duration);
+            }
         }
 
         /**********************************/
         /* PRECOMPILE AVAILABLE SEMAPHORE */
         /**********************************/
 
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
+        if (create_semaphores) {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Create the semaphore for precompile results available signal
-        assert(strlen(sem_prec_avail_name) > 0);
+            // Create the semaphore for precompile results available signal
+            assert(strlen(sem_prec_avail_name) > 0);
 
-        sem_unlink(sem_prec_avail_name);
+            sem_unlink(sem_prec_avail_name);
 
-        sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_avail == SEM_FAILED)
-        {
-            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-            exit(-1);
-        }
+            sem_prec_avail = sem_open(sem_prec_avail_name, O_CREAT | O_EXCL, 0666, 0);
+            if (sem_prec_avail == SEM_FAILED)
+            {
+                asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+                exit(-1);
+            }
 
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("sem_open(%s) succeeded sem_prec_avail=%p in %lu us\n", sem_prec_avail_name, sem_prec_avail, duration);
+            // Report duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("sem_open(%s) succeeded sem_prec_avail=%p in %lu us\n", sem_prec_avail_name, sem_prec_avail, duration);
+            }
         }
 
         /*****************************/
         /* PRECOMPILE READ SEMAPHORE */
         /*****************************/
 
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
+        if (create_semaphores) {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
 
-        // Create the semaphore for precompile results read signal
-        assert(strlen(sem_prec_read_name) > 0);
+            // Create the semaphore for precompile results read signal
+            assert(strlen(sem_prec_read_name) > 0);
 
-        sem_unlink(sem_prec_read_name);
+            sem_unlink(sem_prec_read_name);
 
-        sem_prec_read = sem_open(sem_prec_read_name, O_CREAT | O_EXCL, 0666, 0);
-        if (sem_prec_read == SEM_FAILED)
-        {
-            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-            exit(-1);
-        }
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("sem_open(%s) succeeded sem_prec_read=%p in %lu us\n", sem_prec_read_name, sem_prec_read, duration);
+            sem_prec_read = sem_open(sem_prec_read_name, O_CREAT | O_EXCL, 0666, 0);
+            if (sem_prec_read == SEM_FAILED)
+            {
+                asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+                exit(-1);
+            }
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("sem_open(%s) succeeded sem_prec_read=%p in %lu us\n", sem_prec_read_name, sem_prec_read, duration);
+            }
         }
     }
 
@@ -411,11 +459,11 @@ void server_setup (void)
     /* CONTROL INPUT */
     /*****************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
-
     if (create_input_shm)
     {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
+
         // Make sure the precompile results shared memory is deleted
         shm_unlink(shmem_control_input_name);
 
@@ -444,51 +492,65 @@ void server_setup (void)
             asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
             exit(-1);
         }
+
+        // Log duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("Created control input shmem %s with size %lu B in %lu us\n", shmem_control_input_name, CONTROL_INPUT_SIZE, duration);
+        }
     }
 
-    // Open the control input shared memory as read-only
-    shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
-    if (shmem_control_input_fd < 0)
+    if (open_input_shm)
     {
-        asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
 
-    // Map precompile address space
-    void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
-    if (pControl == MAP_FAILED)
-    {
-        asm_printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
-        exit(-1);
-    }
-    if (pControl != (void *)CONTROL_INPUT_ADDR)
-    {
-        asm_printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
-        exit(-1);
-    }
-    shmem_control_input_address = (uint64_t *)pControl;
-    precompile_written_address = &shmem_control_input_address[0];
-    precompile_exit_address = &shmem_control_input_address[1];
-    input_written_address = &shmem_control_input_address[2];
-    precompile_reset_address = &shmem_control_input_address[3];
+        // Open the control input shared memory as read-only
+        shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
+        if (shmem_control_input_fd < 0)
+        {
+            asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
+        // Map precompile address space
+        void * pControl = mmap((void *)CONTROL_INPUT_ADDR, CONTROL_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_input_fd, 0);
+        if (pControl == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(control_input) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if (pControl != (void *)CONTROL_INPUT_ADDR)
+        {
+            asm_printf("ERROR: Called mmap(control_input) but returned address = %p != 0x%08lx\n", pControl, CONTROL_INPUT_ADDR);
+            exit(-1);
+        }
+        shmem_control_input_address = (uint64_t *)pControl;
+        precompile_written_address = &shmem_control_input_address[0];
+        precompile_exit_address = &shmem_control_input_address[1];
+        input_written_address = &shmem_control_input_address[2];
+        precompile_reset_address = &shmem_control_input_address[3];
+
+        // Log duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("mmap(control_input) mapped %lu B and returned address %p in %lu us\n", CONTROL_INPUT_SIZE, shmem_control_input_address, duration);
+        }
     }
 
     /******************/
     /* CONTROL OUTPUT */
     /******************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
-
     if (create_output_shm)
     {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
+
         // Make sure the precompile results shared memory is deleted
         shm_unlink(shmem_control_output_name);
 
@@ -510,9 +572,20 @@ void server_setup (void)
 
         // Sync
         fsync(shmem_control_output_fd);
+
+        // Log duration
+        if (verbose)        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("Created control output shmem %s with size %lu B in %lu us\n", shmem_control_output_name, CONTROL_OUTPUT_SIZE, duration);
+        }
     }
-    else
+    
+    if (open_output_shm)
     {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
+
         // Open the control output shared memory as read-write
         shmem_control_output_fd = shm_open(shmem_control_output_name, O_RDWR, 0666);
         if (shmem_control_output_fd < 0)
@@ -520,31 +593,31 @@ void server_setup (void)
             asm_printf("ERROR: Failed opening control shm_open(%s) as read-write errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
             exit(-1);
         }
-    }
 
-    // Map precompile address space
-    pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
-    if (pControl == MAP_FAILED)
-    {
-        asm_printf("ERROR: Failed calling mmap(control_output) errno=%d=%s\n", errno, strerror(errno));
-        exit(-1);
-    }
-    if (pControl != (void *)CONTROL_OUTPUT_ADDR)
-    {
-        asm_printf("ERROR: Called mmap(control_output) but returned address = %p != 0x%08lx\n", pControl, CONTROL_OUTPUT_ADDR);
-        exit(-1);
-    }
-    shmem_control_output_address = (uint64_t *)pControl;
-    precompile_read_address = &shmem_control_output_address[0];
-    waiting_for_precompile_address = &shmem_control_output_address[1];
-    waiting_for_input_address = &shmem_control_output_address[2];
+        // Map precompile address space
+        void * pControl = mmap((void *)CONTROL_OUTPUT_ADDR, CONTROL_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_control_output_fd, 0);
+        if (pControl == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(control_output) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if (pControl != (void *)CONTROL_OUTPUT_ADDR)
+        {
+            asm_printf("ERROR: Called mmap(control_output) but returned address = %p != 0x%08lx\n", pControl, CONTROL_OUTPUT_ADDR);
+            exit(-1);
+        }
+        shmem_control_output_address = (uint64_t *)pControl;
+        precompile_read_address = &shmem_control_output_address[0];
+        waiting_for_precompile_address = &shmem_control_output_address[1];
+        waiting_for_input_address = &shmem_control_output_address[2];
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("mmap(control_output) mapped %lu B and returned address %p in %lu us\n", CONTROL_OUTPUT_SIZE, shmem_control_output_address, duration);
+        // Log duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("mmap(control_output) mapped %lu B and returned address %p in %lu us\n", CONTROL_OUTPUT_SIZE, shmem_control_output_address, duration);
+        }
     }
 
     /*******/
@@ -553,11 +626,11 @@ void server_setup (void)
 
     if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
         if (create_internal_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Make sure the ram shared memory is deleted
             shm_unlink(shmem_ram_name);
 
@@ -580,8 +653,12 @@ void server_setup (void)
             // Sync
             fsync(shmem_ram_fd);
         }
-        else
+        
+        if (open_internal_shm)
         {
+            // Get the start time
+            if (verbose) gettimeofday(&start_time, NULL);
+
             // Open the ram shared memory as read-write
             shmem_ram_fd = shm_open(shmem_ram_name, O_RDWR, 0666);
             if (shmem_ram_fd < 0)
@@ -589,40 +666,40 @@ void server_setup (void)
                 asm_printf("ERROR: Failed opening ram shm_open(%s) as read-write errno=%d=%s\n", shmem_ram_name, errno, strerror(errno));
                 exit(-1);
             }
-        }
 
-        // Map it to the ram address
+            // Map it to the ram address
 #ifdef USE_HUGE_PAGES
-        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_ram_fd, 0);
-        if (pRam == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(ram) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_ram_fd, 0);
-        }
+            void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_ram_fd, 0);
+            if (pRam == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(ram) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_ram_fd, 0);
+            }
 #else
-        void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_ram_fd, 0);
+            void * pRam = mmap((void *)RAM_ADDR, RAM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_ram_fd, 0);
 #endif
-        if (pRam == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pRam != RAM_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
-            exit(-1);
-        }
-        
-        // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_ram_fd);
-        shmem_ram_fd = -1;
+            if (pRam == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(ram) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRam != RAM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(ram) but returned address = %p != 0x%08lx\n", pRam, RAM_ADDR);
+                exit(-1);
+            }
+            
+            // Close the descriptor since we don't need it anymore after mapping
+            close(shmem_ram_fd);
+            shmem_ram_fd = -1;
 
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(ram) mapped %lu B and returned address %p in %lu us\n", RAM_SIZE, pRam, duration);
+            // Log duration
+            if (verbose)
+            {
+                gettimeofday(&stop_time, NULL);
+                duration = TimeDiff(start_time, stop_time);
+                asm_printf("mmap(ram) mapped %lu B and returned address %p in %lu us\n", RAM_SIZE, pRam, duration);
+            }
         }
     }
 
@@ -655,7 +732,10 @@ void server_setup (void)
         (gen_method == MemReads) ||
         (gen_method == ChunkPlayerMemReadsCollectMain))
     {
-        trace_map_initialize();
+        if (create_output_shm || open_output_shm)
+        {
+            trace_map_initialize();
+        }
     }
 
     /***********************/
@@ -702,7 +782,7 @@ void server_setup (void)
     /* SEM CHUNK DONE */
     /******************/
 
-    if (call_chunk_done)
+    if (call_chunk_done && create_semaphores)
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -733,56 +813,60 @@ void server_setup (void)
     /* SEM SHUTDOWN DONE */
     /*********************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
-    
-    assert(strlen(sem_shutdown_done_name) > 0);
+    if (create_semaphores) {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
+        
+        assert(strlen(sem_shutdown_done_name) > 0);
 
-    // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
-    sem_unlink(sem_shutdown_done_name);
-    
-    // Create the semaphore for shutdown done signal
-    sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
-    if (sem_shutdown_done == SEM_FAILED)
-    {
-        asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
+        sem_unlink(sem_shutdown_done_name);
+        
+        // Create the semaphore for shutdown done signal
+        sem_shutdown_done = sem_open(sem_shutdown_done_name, O_CREAT | O_EXCL, 0666, 0);
+        if (sem_shutdown_done == SEM_FAILED)
+        {
+            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("sem_open(%s) succeeded in %lu us\n", sem_shutdown_done_name, duration);
+        // Report duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("sem_open(%s) succeeded in %lu us\n", sem_shutdown_done_name, duration);
+        }
     }
 
     /***********************/
     /* SEM INPUT AVAILABLE */
     /***********************/
 
-    // Get the start time
-    if (verbose) gettimeofday(&start_time, NULL);
+    if (create_semaphores) {
+        // Get the start time
+        if (verbose) gettimeofday(&start_time, NULL);
 
-    assert(strlen(sem_input_avail_name) > 0);
+        assert(strlen(sem_input_avail_name) > 0);
 
-    // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
-    sem_unlink(sem_input_avail_name);
+        // Delete the semaphore if it already exists since we are going to create it with O_CREAT | O_EXCL and want to make sure it succeeds
+        sem_unlink(sem_input_avail_name);
 
-    // Create the semaphore for input available signal
-    sem_input_avail = sem_open(sem_input_avail_name, O_CREAT | O_EXCL, 0666, 0);
-    if (sem_input_avail == SEM_FAILED)
-    {
-        asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
-        exit(-1);
-    }
+        // Create the semaphore for input available signal
+        sem_input_avail = sem_open(sem_input_avail_name, O_CREAT | O_EXCL, 0666, 0);
+        if (sem_input_avail == SEM_FAILED)
+        {
+            asm_printf("ERROR: Failed calling sem_open(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+            exit(-1);
+        }
 
-    // Report duration
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-        asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
+        // Report duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
+        }
     }
 }
 
@@ -1110,11 +1194,16 @@ void server_run (void)
 
 void server_cleanup (void)
 {
+    int result;
+
     // Cleanup ROM
-    int result = munmap((void *)ROM_ADDR, ROM_SIZE);
-    if (result == -1)
+    if (open_internal_shm)
     {
-        asm_printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+        result = munmap((void *)ROM_ADDR, ROM_SIZE);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+        }
     }
     if (delete_internal_shm)
     {
@@ -1126,10 +1215,13 @@ void server_cleanup (void)
     }
 
     // Cleanup RAM
-    result = munmap((void *)RAM_ADDR, RAM_SIZE);
-    if (result == -1)
+    if (open_internal_shm)
     {
-        asm_printf("ERROR: Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
+        result = munmap((void *)RAM_ADDR, RAM_SIZE);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling munmap(ram) errno=%d=%s\n", errno, strerror(errno));
+        }
     }
     if (delete_internal_shm)
     {
@@ -1141,10 +1233,13 @@ void server_cleanup (void)
     }
 
     // Cleanup INPUT
-    result = munmap((void *)INPUT_ADDR, MAX_INPUT_SIZE);
-    if (result == -1)
+    if (open_input_shm)
     {
-        asm_printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        result = munmap((void *)INPUT_ADDR, MAX_INPUT_SIZE);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling munmap(input) errno=%d=%s\n", errno, strerror(errno));
+        }
     }
     if (delete_input_shm)
     {
@@ -1158,10 +1253,13 @@ void server_cleanup (void)
     if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Cleanup PRECOMPILE
-        result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);
-        if (result == -1)
+        if (open_input_shm)
         {
-            asm_printf("ERROR: Failed calling munmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+            result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling munmap(precompile) errno=%d=%s\n", errno, strerror(errno));
+            }
         }
         if (delete_input_shm)
         {
@@ -1172,39 +1270,44 @@ void server_cleanup (void)
             }
         }
 
-        // Semaphores cleanup
-        result = sem_close(sem_prec_avail);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_avail_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
-        }
-        result = sem_close(sem_prec_read);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-        result = sem_unlink(sem_prec_read_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
-        }
-        result = sem_close(sem_input_avail);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+        if (delete_semaphores) {
+            // Semaphores cleanup
+            result = sem_close(sem_prec_avail);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+            }
+            result = sem_unlink(sem_prec_avail_name);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_avail_name, errno, strerror(errno));
+            }
+            result = sem_close(sem_prec_read);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+            }
+            result = sem_unlink(sem_prec_read_name);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_prec_read_name, errno, strerror(errno));
+            }
+            result = sem_close(sem_input_avail);
+            if (result == -1)
+            {
+                asm_printf("ERROR: Failed calling sem_close(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+            }
         }
     }
 
-    // Cleanup CONTROL
-    result = munmap((void *)shmem_control_input_address, CONTROL_INPUT_SIZE);
-    if (result == -1)
+    // Cleanup CONTROL INPUT
+    if (open_input_shm)
     {
-        asm_printf("ERROR: Failed calling munmap(control_input) errno=%d=%s\n", errno, strerror(errno));
+        result = munmap((void *)shmem_control_input_address, CONTROL_INPUT_SIZE);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling munmap(control_input) errno=%d=%s\n", errno, strerror(errno));
+        }
     }
     if (!wait_flag && delete_input_shm)
     {
@@ -1214,10 +1317,15 @@ void server_cleanup (void)
             asm_printf("ERROR: Failed calling shm_unlink(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
         }
     }
-    result = munmap((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE);
-    if (result == -1)
+
+    // Cleanup CONTROL OUTPUT
+    if (open_output_shm)
     {
-        asm_printf("ERROR: Failed calling munmap(control_output) errno=%d=%s\n", errno, strerror(errno));
+        result = munmap((void *)shmem_control_output_address, CONTROL_OUTPUT_SIZE);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling munmap(control_output) errno=%d=%s\n", errno, strerror(errno));
+        }
     }
     if (!wait_flag && delete_output_shm)
     {
@@ -1229,10 +1337,13 @@ void server_cleanup (void)
     }
 
     // Cleanup trace
-    trace_cleanup();
+    if (delete_output_shm || open_output_shm)
+    {
+        trace_cleanup();
+    }
 
     // Cleanup chunk done semaphore
-    if (call_chunk_done)
+    if (call_chunk_done && delete_semaphores)
     {
         result = sem_close(sem_chunk_done);
         if (result == -1)
@@ -1246,23 +1357,17 @@ void server_cleanup (void)
         }
     }
 
-    // Cleanup input available semaphore
-    result = sem_unlink(sem_input_avail_name);
-    if (result == -1)
-    {
-        asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+    if (delete_semaphores) {
+        // Cleanup input available semaphore
+        result = sem_unlink(sem_input_avail_name);
+        if (result == -1)
+        {
+            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_input_avail_name, errno, strerror(errno));
+        }
     }
 
     // Post shutdown done semaphore
-    if (just_create_all_shm)
-    {
-        result = sem_unlink(sem_shutdown_done_name);
-        if (result == -1)
-        {
-            asm_printf("ERROR: Failed calling sem_unlink(%s) errno=%d=%s\n", sem_shutdown_done_name, errno, strerror(errno));
-        }
-    }
-    else{
+    if (delete_semaphores) {
         result = sem_post(sem_shutdown_done);
         if (result == -1)
         {

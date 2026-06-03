@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     client.setup(&ELF_FIB_MOD).run()?.await?;
 
     println!("Executing first invocation (n=1000, module=233)...");
-    let result = client.execute(&ELF_FIB_MOD, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for first invocation...");
-    let vadcop_result = client.prove(&ELF_FIB_MOD, stdin).run()?.await?;
+    let vadcop_result = client.prove(&ELF_FIB_MOD, &stdin).run()?.await?;
 
     println!("Verifying proof...");
     let vkey = ELF_FIB_MOD.vk()?;
@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
     stdin2.write(&253u32);
 
     println!("Executing second invocation (n=2000, module=253)...");
-    let result2 = client.execute(&ELF_FIB_MOD, stdin2.clone()).run()?.await?;
+    let result2 = client.execute(&ELF_FIB_MOD, &stdin2).run()?.await?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result2.get_execution_steps(),
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof for second invocation...");
-    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run()?.await?;
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, &stdin2).run()?.await?;
 
     println!("Verifying proof...");
     vadcop_result2.with_program_vk(&vkey).verify()?;

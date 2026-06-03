@@ -1,12 +1,25 @@
 use anyhow::Result;
+use executor::PlanSummaryEntry;
 use std::time::Duration;
 use std::{fmt::Display, path::Path};
 use zisk_common::{
     ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskVerifyBuilder,
+    ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 
 pub use zisk_common::Proof;
+
+fn pairs_to_publics(pairs: &[(u64, u32)]) -> PublicValues {
+    let mut buf = vec![0u8; 32 + ZISK_PUBLICS * 8];
+    for &(index, value) in pairs {
+        let idx = index as usize;
+        if idx < ZISK_PUBLICS {
+            let off = 32 + idx * 8;
+            buf[off..off + 4].copy_from_slice(&value.to_le_bytes());
+        }
+    }
+    PublicValues::new(&buf)
+}
 
 /// Shared execution statistics captured after any run (execute, prove, verify_constraints).
 pub(crate) struct ExecutionSummary {
@@ -58,8 +71,12 @@ macro_rules! impl_public_outputs {
 }
 
 pub struct ExecuteOutput {
-    summary: ExecutionSummary,
+    steps: u64,
+    time: u64,
+    cost: Option<u64>,
+    executor_time: ZiskExecutorTime,
     publics: PublicValues,
+    plan: Option<Vec<PlanSummaryEntry>>,
 }
 
 impl ExecuteOutput {
@@ -69,21 +86,57 @@ impl ExecuteOutput {
         publics: &[u8],
     ) -> Self {
         Self {
-            summary: ExecutionSummary::new(execution_time, &executor_summary),
+            steps: executor_summary.steps,
+            time: execution_time.as_millis() as u64,
+            cost: Some(executor_summary.cost_per_type.total_cost()),
+            executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
+            plan: None,
+        }
+    }
+
+    /// Constructor for the standalone path. No `SetupCtx` → no cost
+    /// breakdown; carries the executor-produced plan summary and the
+    /// raw `(index, value)` public-output pairs.
+    pub fn new_standalone(
+        execution_time: Duration,
+        executor_summary: ZiskExecutorSummary,
+        pub_outs: &[(u64, u32)],
+        plan: Vec<PlanSummaryEntry>,
+    ) -> Self {
+        Self {
+            steps: executor_summary.steps,
+            time: execution_time.as_millis() as u64,
+            cost: None,
+            executor_time: executor_summary.executor_time,
+            publics: pairs_to_publics(pub_outs),
+            plan: Some(plan),
         }
     }
 
     pub fn get_execution_steps(&self) -> u64 {
-        self.summary.steps
+        self.steps
     }
 
-    pub fn get_execution_cost(&self) -> u64 {
-        self.summary.cost
+    /// Returns the total execution cost when available. `None` in
+    /// standalone mode (no `SetupCtx` means no cost weights).
+    pub fn get_execution_cost(&self) -> Option<u64> {
+        self.cost
     }
 
     pub fn get_execution_time(&self) -> u64 {
-        self.summary.time
+        self.time
+    }
+
+    /// Per-phase executor timing breakdown.
+    pub fn get_executor_time(&self) -> &ZiskExecutorTime {
+        &self.executor_time
+    }
+
+    /// Per-AIR plan summary. `Some` only in standalone mode; the full
+    /// proofman path emits its own plan via tracing.
+    pub fn get_plan(&self) -> Option<&[PlanSummaryEntry]> {
+        self.plan.as_deref()
     }
 
     /// Construct a result from a remote coordinator response.
@@ -94,8 +147,12 @@ impl ExecuteOutput {
         publics: &[u8],
     ) -> Self {
         Self {
-            summary: ExecutionSummary::from_remote(execution_time, steps, &cost_per_type),
+            steps,
+            time: execution_time.as_millis() as u64,
+            cost: Some(cost_per_type.total_cost()),
+            executor_time: ZiskExecutorTime::default(),
             publics: PublicValues::new(publics),
+            plan: None,
         }
     }
 }
@@ -104,13 +161,18 @@ impl_public_outputs!(ExecuteOutput, publics);
 
 impl Display for ExecuteOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        writeln!(
             f,
-            "Execution completed in {}ms, steps: {}, cost: {}",
+            "Execution completed in {}ms , steps: {}{}",
             self.get_execution_time(),
             self.get_execution_steps(),
-            self.get_execution_cost()
-        )
+            if let Some(cost) = self.get_execution_cost() {
+                format!(", cost: {}", cost)
+            } else {
+                String::new()
+            }
+        )?;
+        Ok(())
     }
 }
 

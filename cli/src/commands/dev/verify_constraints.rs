@@ -143,6 +143,7 @@ impl VerifyConstraintsCmd {
             result.get_executor_time(),
             result.get_duration(),
             result.get_execution_steps(),
+            "Proofman",
         );
 
         Ok(())

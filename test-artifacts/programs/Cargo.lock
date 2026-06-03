@@ -749,6 +749,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigint"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1851,6 +1858,7 @@ dependencies = [
  "sm-main",
  "sm-mem",
  "sm-rom",
+ "thiserror 2.0.18",
  "tracing",
  "witness",
  "zisk-common",
@@ -2218,6 +2226,13 @@ dependencies = [
  "foldhash 0.2.0",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "hashes"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]
@@ -2949,13 +2964,6 @@ dependencies = [
 
 [[package]]
 name = "missing_entrypoint"
-version = "0.1.0"
-dependencies = [
- "ziskos",
-]
-
-[[package]]
-name = "modexp"
 version = "0.1.0"
 dependencies = [
  "ziskos",

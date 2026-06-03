@@ -4,11 +4,12 @@ edition = "2021"
 
 [workspace]
 members = [
+  "bigint",
   "bls12_381",
   "bn254",
   "examples/*",
   "diagnostic",
-  "modexp",
+  "hashes",
   "secp256k1",
   "secp256r1",
   "syscalls/*",

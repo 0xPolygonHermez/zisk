@@ -226,10 +226,8 @@ impl ProveCmd {
         if !result.get_proof().is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
-            let output_file: PathBuf = self
-                .output
-                .clone()
-                .unwrap_or_else(|| default_proof_filename(None::<&str>, result.get_proof().kind()));
+            let output_file: PathBuf =
+                self.output.clone().unwrap_or(default_proof_filename(None::<&str>));
             result.save_proof(&output_file)?;
             info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
 
@@ -237,6 +235,7 @@ impl ProveCmd {
                 &executor_time,
                 result.get_proving_time(),
                 result.get_execution_steps(),
+                "Proofman",
             );
         }
 

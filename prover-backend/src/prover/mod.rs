@@ -1,10 +1,14 @@
 mod asm;
+mod asm_exec;
 mod backend;
 mod emu;
+mod emu_exec;
 use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
+pub use asm_exec::*;
 use backend::*;
 pub use emu::*;
+pub use emu_exec::*;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };

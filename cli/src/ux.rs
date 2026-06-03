@@ -82,11 +82,12 @@ pub(crate) fn print_execution_summary(
     executor_time: &ZiskExecutorTime,
     total_duration: u64,
     steps: u64,
+    overhead_label: &str,
 ) {
     info!("Execution completed in {}ms, steps: {}", total_duration, steps);
     info!(
         "Execution summary: {} {}ms + {} {}ms + {} {}ms + {} {}ms",
-        "Proofman".dimmed(),
+        overhead_label.dimmed(),
         total_duration - executor_time.total_duration,
         "Execution".dimmed(),
         executor_time.execution_duration,
