@@ -13,8 +13,9 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 Ensure the following tools are installed:
 * [Rust](https://www.rust-lang.org/tools/install)
 * [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+* [Docker](https://docs.docker.com/engine/install/) — required only on **Linux x86_64** to build ZisK from source.
 * To enable GPU support in ZisK, you must have NVIDIA Driver version 525.60.13 or later installed.
-* If you use `zisk-sdk` crate, you must also have CUDA Toolkit version 12.9 or later installed.
+* If you use the `zisk-sdk` crate, you must also have CUDA Toolkit version 12.9 or later installed.
 
 ## Installing Dependencies
 
