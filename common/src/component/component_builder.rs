@@ -1,26 +1,31 @@
-//! The `ComponentBuilder` trait defines a blueprint for constructing various components
-//! involved in managing and monitoring operations within a state machine or execution pipeline.
+//! Plan-time and witness-time builder traits.
 //!
-//! This trait provides methods to create counters, planners, input collectors, and optional
-//! input generators, enabling flexible and modular integration of components.
+//! * [`ComponentPlanBuilder`] — static (associated functions). Used by
+//!   the executor's count + plan phase; needs no constructed SM.
+//! * [`ComponentBuilder`] — instance-level. Used at witness time when
+//!   `build_instance` / `configure_instances` need the constructed SM.
 
-use crate::{Instance, InstanceCtx, Plan, Planner};
+use crate::{BusDeviceMetrics, Instance, InstanceCtx, Plan, Planner};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 
-/// The `ComponentBuilder` trait provides an interface for building components
-/// such as counters, planners, input collectors, and optional input generators.
-///
-/// # Type Parameters
-/// * `F` - A type that implements the `PrimeField64` trait, representing the field over which
-///   operations are performed.
-pub trait ComponentBuilder<F: PrimeField64>: Send + Sync {
-    /// Builds a planner for planning execution instances.
-    ///
-    /// # Returns
-    /// A boxed implementation of `Planner`.
-    fn build_planner(&self) -> Box<dyn Planner>;
+/// Static (no-`self`) plan-time builders.
+pub trait ComponentPlanBuilder<F: PrimeField64> {
+    /// Concrete counter type — kept concrete so planners can
+    /// `downcast_ref::<...>()` it via `Metrics::as_any()`.
+    type Counter: BusDeviceMetrics + 'static;
 
+    /// Builds the per-execution bus counter. `is_asm_emulator` is
+    /// uniform; implementations that don't care just ignore it.
+    fn counter(is_asm_emulator: bool) -> Self::Counter;
+
+    /// Builds the planner. `is_asm_emulator` is uniform; only `Mem`
+    /// branches on it today (selecting `DummyMemPlanner`).
+    fn planner(is_asm_emulator: bool) -> Box<dyn Planner>;
+}
+
+/// Instance-level (witness-time) builders.
+pub trait ComponentBuilder<F: PrimeField64>: Send + Sync {
     /// Prepares and configures instances using the provided plans before their creation.
     ///
     /// # Arguments

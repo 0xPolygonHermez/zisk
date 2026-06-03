@@ -20,7 +20,9 @@ zisk_precompile! {
     name = ArithEq,
     op_type = ArithEq,
     trace = ArithEqTrace,
-    num_available_field = num_available_ops,
+    num_available = {
+        ::zisk_pil::ArithEqTrace::<()>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP
+    },
     ops = [
         (OperationArith256Data        => Arith256,        Arith256Input),
         (OperationArith256ModData     => Arith256Mod,     Arith256ModInput),

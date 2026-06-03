@@ -150,6 +150,7 @@ $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 	nm -g --defined-only $(FIELD_INTERNAL_OBJS) | awk '$$2 !~ /[vVwW]/ {print $$3}' \
 		| sort -u > $(LOCALIZE_LIST)
 	objcopy --localize-symbols=$(LOCALIZE_LIST) $(COMBINED_OBJ)
+	rm -f $@
 	ar rcs $@ $(COMBINED_OBJ)
 else
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
