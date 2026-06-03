@@ -149,25 +149,41 @@ impl AsmRunnerMO {
                 as *const AsmMOChunk
         };
 
-        let exit_code = loop {
+        let mut on_runner_failure = Some(on_runner_failure);
+        let mut signal_runner_failure = || {
+            if let Some(on_failure) = on_runner_failure.take() {
+                if let Err(reset_err) = on_failure() {
+                    error!("MO on_runner_failure failed: {reset_err:#}");
+                }
+            }
+        };
+
+        let loop_result: Result<u64> = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
                     // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold
-                        && preloaded.output_shmem.check_size_changed().context(
-                            "Failed to check and map new shared memory files for MO trace",
-                        )?
-                    {
-                        // Update threshold based on new total mapped size
-                        threshold =
-                            unsafe {
-                                preloaded.output_shmem.mapped_ptr().add(
-                                    preloaded.output_shmem.total_mapped_size() - threshold_bytes,
-                                ) as *const AsmMOChunk
-                            };
+                    if data_ptr >= threshold {
+                        match preloaded.output_shmem.check_size_changed() {
+                            Ok(true) => {
+                                // Update threshold based on new total mapped size
+                                threshold = unsafe {
+                                    preloaded.output_shmem.mapped_ptr().add(
+                                        preloaded.output_shmem.total_mapped_size()
+                                            - threshold_bytes,
+                                    ) as *const AsmMOChunk
+                                };
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                signal_runner_failure();
+                                break Err(e).context(
+                                    "Failed to check and map new shared memory files for MO trace",
+                                );
+                            }
+                        }
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
@@ -179,7 +195,7 @@ impl AsmRunnerMO {
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
-                        break 0;
+                        break Ok(0);
                     }
 
                     data_ptr = unsafe {
@@ -194,11 +210,9 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    if let Err(reset_err) = on_runner_failure() {
-                        error!("MO on_runner_failure failed: {reset_err:#}");
-                    }
+                    signal_runner_failure();
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    break Ok(preloaded.output_shmem.map_header().exit_code);
                 }
             }
         };
@@ -217,6 +231,7 @@ impl AsmRunnerMO {
         // Compute the result; on any error we still fall through to the
         // single re-stash point below so the next job has a planner ready.
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
+            let exit_code = loop_result?;
             if exit_code != 0 {
                 return Err(AsmRunError::ExitCode(exit_code as u32))
                     .context("Child process returned error");

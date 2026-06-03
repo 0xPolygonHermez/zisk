@@ -60,7 +60,7 @@ impl AsmRunnerMT {
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
     where
         F: FnMut(usize, Arc<EmuTrace>),
-        R: Fn() -> Result<()>,
+        R: FnOnce() -> Result<()>,
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
@@ -115,6 +115,15 @@ impl AsmRunnerMT {
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
 
+        let mut on_runner_failure = Some(on_runner_failure);
+        let mut signal_runner_failure = || {
+            if let Some(on_failure) = on_runner_failure.take() {
+                if let Err(reset_err) = on_failure() {
+                    error!("MT on_runner_failure failed: {reset_err:#}");
+                }
+            }
+        };
+
         let loop_result: Result<u64> = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
@@ -137,9 +146,7 @@ impl AsmRunnerMT {
                             }
                             Ok(false) => {}
                             Err(e) => {
-                                if let Err(reset_err) = on_runner_failure() {
-                                    error!("MT on_runner_failure failed: {reset_err:#}");
-                                }
+                                signal_runner_failure();
                                 break Err(e).context(
                                     "Failed to check and map new shared memory files for MT trace",
                                 );
@@ -166,9 +173,7 @@ impl AsmRunnerMT {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    if let Err(reset_err) = on_runner_failure() {
-                        error!("MT on_runner_failure failed: {reset_err:#}");
-                    }
+                    signal_runner_failure();
 
                     if chunk_id.0 == 0 {
                         break Ok(1);
@@ -183,8 +188,8 @@ impl AsmRunnerMT {
 
         crate::drain_chunk_done(&mut sem_chunk_done);
 
-        let exit_code = loop_result?;
         let (handle, elapsed) = join_outcome.map_err(|_| AsmRunError::JoinPanic)?;
+        let exit_code = loop_result?;
 
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
