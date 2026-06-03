@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
+use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{default_proof_filename, reject_quic_hints, resolve_elf};
 use crate::ux::print_job_banner;
@@ -54,7 +54,16 @@ impl ZiskRemoteProve {
         let elf = resolve_elf(self.elf.take())?;
         reject_quic_hints(self.hints.as_deref())?;
 
-        print_job_banner("Remote Prove", &elf, self.inputs.as_deref(), self.hints.as_deref());
+        print_job_banner(
+            &format!("{} Prove", "REMOTE".bold()),
+            &elf,
+            self.inputs.as_deref(),
+            self.hints.as_deref(),
+        );
+
+        println!();
+
+        setup_logger(zisk_sdk::VerboseMode::Info);
 
         let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;

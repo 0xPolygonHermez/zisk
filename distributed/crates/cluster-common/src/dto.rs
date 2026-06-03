@@ -23,6 +23,7 @@ pub enum InputsModeDto {
 }
 
 pub use zisk_common::ProofKind;
+pub use zisk_common::StatsCostPerType;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HintsModeDto {
@@ -242,6 +243,7 @@ pub struct ExecutionResultDataDto {
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTimeDto,
     pub publics: Vec<u64>,
+    pub cost_per_type: StatsCostPerType,
 }
 
 pub struct AggParamsDto {
@@ -278,6 +280,7 @@ pub struct ContributionsResultDataDto {
     pub challenges: Vec<ChallengesDto>,
     pub witness_info: WitnessInfoDto,
     pub zisk_executor_time: ZiskExecutorTimeDto,
+    pub cost_per_type: StatsCostPerType,
 }
 
 pub enum ExecuteTaskResponseResultDataDto {

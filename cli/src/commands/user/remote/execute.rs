@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
+use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf};
 use crate::ux::print_job_banner;
@@ -42,7 +42,15 @@ impl ZiskRemoteExecute {
         let elf = resolve_elf(self.elf.take())?;
         reject_quic_hints(self.hints.as_deref())?;
 
-        print_job_banner("Remote Execute", &elf, self.inputs.as_deref(), self.hints.as_deref());
+        print_job_banner(
+            &format!("{} Execute", "REMOTE".bold()),
+            &elf,
+            self.inputs.as_deref(),
+            self.hints.as_deref(),
+        );
+        println!();
+
+        setup_logger(zisk_sdk::VerboseMode::Info);
 
         let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -58,11 +66,7 @@ impl ZiskRemoteExecute {
         let result = request.run()?.await?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
-        info!(
-            "Execution completed in {}ms, steps: {}",
-            result.get_execution_time(),
-            result.get_execution_steps()
-        );
+        info!("{}", result.output());
 
         Ok(())
     }

@@ -18,7 +18,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
-    io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime,
+    io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, StatsCostPerType,
+    ZiskExecutorTime,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -137,6 +138,14 @@ impl ProverEngine for EmuProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
+    }
+
+    fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {

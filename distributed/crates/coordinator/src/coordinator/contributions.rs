@@ -794,6 +794,7 @@ impl Coordinator {
                             as u32,
                     ),
                     instances: ch_list.witness_info.total_instances,
+                    cost_per_type: ch_list.cost_per_type,
                 }))
             }
             _ => Err(CoordinatorError::InvalidRequest(
@@ -830,6 +831,7 @@ impl Coordinator {
                     zisk_executor_time,
                     task_received_time,
                     public_outputs: Self::publics_u64_to_bytes(&exec_data.publics),
+                    cost_per_type: exec_data.cost_per_type,
                 }))
             }
             _ => {

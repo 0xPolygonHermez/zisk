@@ -5,7 +5,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{Proof, ProofKind, RemoteClient};
+use zisk_sdk::{setup_logger, Proof, ProofKind, RemoteClient};
 
 use crate::common::default_proof_filename;
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
@@ -38,8 +38,12 @@ pub(crate) struct ZiskRemoteWrap {
 impl ZiskRemoteWrap {
     pub(crate) async fn run(&mut self, client: &RemoteClient) -> Result<()> {
         print_banner();
-        print_banner_command("Remote Wrap");
+        print_banner_command(format!("{} Wrap", "REMOTE".bold()));
         print_banner_field("Proof", self.proof.display());
+
+        println!();
+
+        setup_logger(zisk_sdk::VerboseMode::Info);
 
         let proof_kind = if self.plonk {
             ProofKind::Plonk

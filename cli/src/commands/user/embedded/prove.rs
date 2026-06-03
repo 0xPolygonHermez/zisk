@@ -66,7 +66,13 @@ impl ZiskEmbeddedProve {
         let elf = resolve_elf(self.elf.take())?;
         validate_asm_hints(self.asm, self.hints.as_deref())?;
 
-        print_job_banner("Embedded Prove", &elf, self.inputs.as_deref(), self.hints.as_deref());
+        print_job_banner(
+            &format!("{} Prove", "EMBEDDED".bold()),
+            &elf,
+            self.inputs.as_deref(),
+            self.hints.as_deref(),
+        );
+        println!();
 
         let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;

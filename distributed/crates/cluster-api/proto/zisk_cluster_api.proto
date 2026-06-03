@@ -239,10 +239,20 @@ message ZiskExecuteTime {
   double task_received_time = 6; // Time when task was received by worker (in milliseconds since UNIX epoch)
 }
 
+message CostPerType {
+  uint64 main       = 1;
+  uint64 opcode     = 2;
+  uint64 memory     = 3;
+  uint64 precompile = 4;
+  uint64 tables     = 5;
+  uint64 other      = 6;
+}
+
 message ChallengesList {
   repeated Challenges challenges = 1;
   WitnessExecInfo witness_info = 2;
   ZiskExecuteTime zisk_execution_time = 3;
+  CostPerType cost_per_type = 4;
 }
 
 message Execution {
@@ -250,6 +260,7 @@ message Execution {
   uint64 executed_steps = 2;
   ZiskExecuteTime zisk_execution_time = 3;
   optional WitnessExecInfo witness_info = 4;
+  CostPerType cost_per_type = 5;
 }
 
 message Challenges {

@@ -50,7 +50,13 @@ impl ZiskEmbeddedExecute {
         let elf = resolve_elf(self.elf.take())?;
         validate_asm_hints(self.asm, self.hints.as_deref())?;
 
-        print_job_banner("Embedded Execute", &elf, self.inputs.as_deref(), self.hints.as_deref());
+        print_job_banner(
+            &format!("{} Execute", "EMBEDDED".bold()),
+            &elf,
+            self.inputs.as_deref(),
+            self.hints.as_deref(),
+        );
+        println!();
 
         let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
@@ -71,11 +77,7 @@ impl ZiskEmbeddedExecute {
         let result = request.run_sync()?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
-        info!(
-            "Execution completed in {}ms, steps: {}",
-            result.get_execution_time(),
-            result.get_execution_steps()
-        );
+        info!("{}", result.output());
 
         Ok(())
     }

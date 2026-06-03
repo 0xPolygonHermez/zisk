@@ -4,7 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{GuestProgram, RemoteClient};
+use zisk_sdk::{setup_logger, GuestProgram, RemoteClient};
 
 use crate::common::resolve_elf;
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
@@ -23,8 +23,11 @@ impl ZiskRemoteUpload {
         let elf = resolve_elf(self.elf.take())?;
 
         print_banner();
-        print_banner_command("Remote Upload");
+        print_banner_command(format!("{} Upload", "REMOTE".bold()));
         print_banner_field("Elf", elf.display());
+        println!();
+
+        setup_logger(zisk_sdk::VerboseMode::Info);
 
         let program = GuestProgram::from_uri(elf.to_str().unwrap())?;
         let result = client.upload(&program).run()?;

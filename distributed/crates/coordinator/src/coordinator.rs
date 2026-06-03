@@ -56,8 +56,9 @@ use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
-    PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
+    JobExecutionMode, JobId, JobPhase, JobResultData, JobState, LaunchProofRequestDto,
+    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, StatsCostPerType, WorkerId,
+    WorkerState,
 };
 use zisk_common::{SetupKey, ZiskPaths};
 
@@ -172,11 +173,36 @@ struct TerminationOutcome {
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
+    let cost = cost_per_type_from_job(job);
     CoordinatorExecutionStats {
         steps: job.executed_steps.unwrap_or(0),
         duration_nanos: job.duration_ms.unwrap_or(0).saturating_mul(1_000_000),
-        ..Default::default()
+        main_cost: cost.main_cost,
+        opcode_cost: cost.opcode_cost,
+        memory_cost: cost.memory_cost,
+        precompile_cost: cost.precompile_cost,
+        tables_cost: cost.tables_cost,
+        other_cost: cost.other_cost,
     }
+}
+
+/// Extracts the per-type execution cost from a job's stored worker results.
+///
+/// Execute-only jobs store the cost on the `Execution` result; prove jobs carry
+/// it on the `Challenges` (contributions) result. The cost reflects the whole
+/// program (computed from full execution stats), so any one worker's result is
+/// representative.
+fn cost_per_type_from_job(job: &Job) -> StatsCostPerType {
+    let from_phase = |phase: &JobPhase| {
+        job.results.get(phase).and_then(|m| m.values().next()).and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.cost_per_type.clone()),
+            JobResultData::Challenges(c) => Some(c.cost_per_type.clone()),
+            _ => None,
+        })
+    };
+    from_phase(&JobPhase::Execution)
+        .or_else(|| from_phase(&JobPhase::Contributions))
+        .unwrap_or_default()
 }
 
 impl Coordinator {
@@ -1648,6 +1674,7 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
                 },
             )),
             worker_in_recovery: false,
@@ -2214,6 +2241,7 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
                 },
             )),
             worker_in_recovery: false,
@@ -2842,6 +2870,7 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
                 },
             )),
             worker_in_recovery: false,

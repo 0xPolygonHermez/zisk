@@ -22,6 +22,10 @@ impl ExecuteResult {
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
+
+    pub fn output(&self) -> &ExecuteOutput {
+        &self.output
+    }
 }
 
 impl Deref for ExecuteResult {

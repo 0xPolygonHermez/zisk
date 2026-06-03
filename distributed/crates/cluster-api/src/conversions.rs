@@ -11,13 +11,39 @@
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
     execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
-    ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
-    HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
+    ContributionParams, CoordinatorMessage, CostPerType, ExecuteTaskRequest, ExecuteTaskResponse,
+    Heartbeat, HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
     ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
     StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
     WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
+
+impl From<StatsCostPerType> for CostPerType {
+    fn from(cost: StatsCostPerType) -> Self {
+        CostPerType {
+            main: cost.main_cost,
+            opcode: cost.opcode_cost,
+            memory: cost.memory_cost,
+            precompile: cost.precompile_cost,
+            tables: cost.tables_cost,
+            other: cost.other_cost,
+        }
+    }
+}
+
+impl From<CostPerType> for StatsCostPerType {
+    fn from(cost: CostPerType) -> Self {
+        StatsCostPerType {
+            main_cost: cost.main,
+            opcode_cost: cost.opcode,
+            memory_cost: cost.memory,
+            precompile_cost: cost.precompile,
+            tables_cost: cost.tables,
+            other_cost: cost.other,
+        }
+    }
+}
 
 impl From<ComputeCapacity> for GrpcComputeCapacity {
     fn from(capacity: ComputeCapacity) -> Self {
@@ -321,6 +347,10 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                     witness_info,
                     challenges,
                     zisk_executor_time,
+                    cost_per_type: challenges_list
+                        .cost_per_type
+                        .map(Into::into)
+                        .unwrap_or_default(),
                 }))
             }
             Some(execute_task_response::ResultData::Execution(exec_data)) => {
@@ -344,6 +374,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                             },
                         ),
                     },
+                    cost_per_type: exec_data.cost_per_type.map(Into::into).unwrap_or_default(),
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {

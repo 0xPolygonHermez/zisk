@@ -1,6 +1,6 @@
 use anyhow::Result;
-use std::path::Path;
 use std::time::Duration;
+use std::{fmt::Display, path::Path};
 use zisk_common::{
     ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
     ZiskVerifyBuilder,
@@ -101,6 +101,18 @@ impl ExecuteOutput {
 }
 
 impl_public_outputs!(ExecuteOutput, publics);
+
+impl Display for ExecuteOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Execution completed in {}ms, steps: {}, cost: {}",
+            self.get_execution_time(),
+            self.get_execution_steps(),
+            self.get_execution_cost()
+        )
+    }
+}
 
 pub struct ProveOutput {
     summary: ExecutionSummary,
