@@ -25,6 +25,7 @@ panic = "abort"
 
 [workspace.dependencies]
 ziskos = { path = "../../ziskos/entrypoint" }
+zisk-core = { path = "../../core" }
 zisk-sdk = { path = "../../sdk" }
 precompiles-helpers = { path = "../../precompiles/helpers" }
 

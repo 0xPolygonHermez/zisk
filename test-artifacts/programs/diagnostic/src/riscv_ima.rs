@@ -1,5 +1,6 @@
 use std::arch::asm;
 use std::num::Wrapping;
+use zisk_core::zisk_ops::ZiskOp;
 
 pub fn diagnostic_riscv_ima() {
     // minu belongs to Zbb extension, not IMA
@@ -174,6 +175,42 @@ pub fn diagnostic_riscv_ima() {
     riscv_csrrci();
 
     println!("diagnostic_riscv_ima() success");
+}
+
+const MIN_N_64: u64 = 0x8000_0000_0000_0000;
+const MIN_N_32: u64 = 0x0000_0000_8000_0000;
+const MAX_P_64: u64 = 0x7FFF_FFFF_FFFF_FFFF;
+const MAX_P_32: u64 = 0x0000_0000_7FFF_FFFF;
+const MAX_32: u64 = 0x0000_0000_FFFF_FFFF;
+const MAX_64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+
+const ALL_VALUES: [u64; 16] = [
+    0,
+    1,
+    2,
+    3,
+    MAX_P_32 - 1,
+    MAX_P_32,
+    MIN_N_32,
+    MAX_32 - 1,
+    MAX_32,
+    MAX_32 + 1,
+    MAX_P_64 - 1,
+    MAX_P_64,
+    MAX_64 - 1,
+    MIN_N_64,
+    MIN_N_64 + 1,
+    MAX_64,
+];
+
+//#[cfg(guest)]
+pub fn diagnostic_riscv_m_combinations() {
+    use zisk_definitions::*;
+    for a in ALL_VALUES {
+        for b in ALL_VALUES {
+            mul(a.try_into().unwrap(), b.try_into().unwrap(), ZiskOp::Mul::call_ab(a, b).0);
+        }
+    }
 }
 
 #[allow(dead_code)]

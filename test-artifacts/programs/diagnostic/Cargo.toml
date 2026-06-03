@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ziskos.workspace = true
+zisk-core.workspace = true
 
 [lints]
 workspace = true
