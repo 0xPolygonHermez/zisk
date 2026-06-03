@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 #
 # Dev orchestrator: drive compile-pil, setup, setup-snark, and stats from a
-# single entry point. Always builds locally — never reaches into the bucket.
-# To download a published proving key, use ./scripts/fetch-setup.sh.
-# Uploads are done by package-proving-key.sh.
+# single entry point. Builds locally only — no bucket / network access. An
+# optional local artifact cache (--cache-dir) lets a repeat build reuse a
+# previously built provingKey/ keyed by the input hash, instead of rebuilding.
+# To package the result (provingKey/circom/snark tarballs), use
+# tools/test-env/package_setup.sh.
 #
 # Modes (mutually exclusive)
 # --------------------------
-#   (default)          run setup --recursive. Writes <build-dir>/.input-hash
-#                      so a follow-up package-proving-key.sh run can publish
-#                      the sidecar.
+#   (default)          run setup --recursive.
 #   --no-aggregation   run setup without -r.
 #   --snark            run setup-snark on top of an existing
 #                      <build-dir>/provingKey/. Errors out if that directory
 #                      is missing — populate it first with build-setup.sh
-#                      (no flag) or fetch-setup.sh.
+#                      (no flag).
 #   --compile-pil      run only frops + compile-pil + regenerate
 #                      pil/src/pil_helpers/traces.rs. No setup.
+#   --compressed-final re-run only vadcop_final_compressed on top of an existing
+#                      <build-dir>/provingKey/<name>/vadcop_final/.
 #   --stats            run frops + compile-pil + proofman-setup stats.
 #
 # pil-helpers (pil/src/pil_helpers/traces.rs) is regenerated as the last step
@@ -24,18 +26,15 @@
 # sync with the freshly built pil/zisk.pilout. --skip-compile-pil skips both
 # steps together (the on-disk traces.rs is assumed to match the reused pilout).
 #
-# Input hash (for the sidecar uploaded later by package-proving-key.sh)
-# ---------------------------------------------------------------------
+# Input hash (the --cache-dir cache key)
+# --------------------------------------
 # An input-side sha256 over:
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
 #   - state-machines/starkstructs.json
 #   - the three *_fixed.bin files written by the frops generators
 #   - pil2-compiler dep ref from ${PROOFMAN_DIR}/package.json
-#   - pil2-stark-setup source string from `cargo metadata`
-#
-# Written to <build-dir>/.input-hash after a successful build; package-proving-key.sh
-# reads it to upload the matching zisk-provingkey-<VERSION>.input-hash sidecar.
+#   - pil2-stark-setup source string from Cargo.lock
 #
 # Env vars
 #   PROOFMAN_DIR    override path to a pil2-proofman checkout. By default the
@@ -46,17 +45,19 @@ set -euo pipefail
 
 usage() {
   cat <<EOF >&2
-usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [--release] [-v|-vv|--verbose]
+usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
+         [--skip-compile-pil] [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
                          output and by --snark / --compressed-final as input.
-  --release              Use the release-namespace artifact name
-                         (zisk-provingkey-<VERSION>.input-hash). Without this
-                         flag, the "pre-<VERSION>" namespace is used,
-                         matching the default upload namespace of
-                         package-proving-key.sh.
+  --cache-dir DIR        Local artifact cache root (default/--no-aggregation
+                         only). On a cache hit the matching provingKey/ is
+                         copied into <build-dir> and compile-pil + setup are
+                         skipped; on a miss the fresh build is copied back in.
+                         The cache key is PLATFORM/<input-hash>, so changing any
+                         hashed input (see below) misses the cache. No bucket /
+                         network access — this is a plain filesystem cache.
   --recursive-jobs N     Concurrent recursive1 air pipelines (circom + pil2com).
                          Default 1. Each job can use several GB; size by RAM.
                          Also settable via RECURSIVE_JOBS env var.
@@ -67,37 +68,35 @@ usage: $0 [--build-dir DIR] [--recursive-jobs N] [--setup-jobs N]
                          maximum verbosity. Forwarded to compile-pil and stats.
   --skip-compile-pil     Reuse the existing pil/zisk.pilout instead of
                          recompiling. Also skips the pil-helpers regen step.
-                         Faster local iteration. The <build-dir>/.input-hash
-                         sidecar is NOT written (hash would not match the
-                         reused pilout), so a follow-up package-proving-key.sh
-                         will skip the sidecar upload.
+                         Faster local iteration. With --cache-dir, the cache is
+                         NOT populated (the reused pilout may not match the
+                         computed input hash).
   --compile-pil          Run only frops + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
   --no-aggregation       Setup without -r.
   --snark                Run setup-snark on top of an existing
                          <build-dir>/provingKey/. Errors out if missing —
-                         build it locally (./scripts/build-setup.sh) or
-                         fetch it (./scripts/fetch-setup.sh) first.
+                         build it locally (./tools/setup/build-setup.sh) first.
   --compressed-final     Re-run only vadcop_final_compressed on top of an
                          existing <build-dir>/provingKey/<name>/vadcop_final/.
   --stats                Run proofman-setup stats.
 
-To download a published proving key instead of building one:
-  ./scripts/fetch-setup.sh
-
-To publish after a successful build, run:
-  ./scripts/package-proving-key.sh --build-dir <build-dir>
+To package the result (provingKey + circom + snark tarballs), run:
+  (cd tools/test-env && ./package_setup.sh)
 EOF
   exit 1
 }
 
 MODE="build"   # build | no_aggregation | snark | compressed_final | stats | compile_pil
 BUILD_DIR="build"
-RECURSIVE_JOBS_ARG=""
-SETUP_JOBS_ARG=""
+CACHE_DIR=""
+CACHE_HIT=0
+CACHE_ENTRY=""
+# Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
+RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
+SETUP_JOBS_ARG="${SETUP_JOBS:-}"
 SKIP_COMPILE_PIL=0
-RELEASE=0
 VERBOSE_COUNT=0
 
 set_mode() {
@@ -111,10 +110,10 @@ set_mode() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --build-dir)         BUILD_DIR="$2";          shift 2 ;;
+    --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
-    --release)           RELEASE=1;               shift ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
@@ -138,35 +137,41 @@ for ((i = 0; i < VERBOSE_COUNT; i++)); do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# This script lives at tools/setup/, so the repo root is two levels up.
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT_DIR"
-
-command -v jq >/dev/null || { echo "jq not on PATH" >&2; exit 1; }
 
 # Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets
 # VERSION / INCLUDE_PATHS. See lib/setup-common.sh for the contract.
 . "$SCRIPT_DIR/lib/setup-common.sh"
 
-# compile-pil shells into pil2-compiler from $PROOFMAN_DIR/node_modules. The
-# cargo-managed checkout starts empty; install on demand so the user doesn't have to.
-if [ ! -d "$PROOFMAN_DIR/node_modules" ]; then
-  command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
-  echo "==> npm install in $PROOFMAN_DIR (one-time)"
-  (cd "$PROOFMAN_DIR" && npm install)
-fi
+# node/npm are only needed to run compile-pil (pil2com) and setup-snark (snarkjs),
+# both from $PROOFMAN_DIR/node_modules. Set them up lazily — a --cache-dir hit or
+# --skip-compile-pil never compiles or snarks, so it must not require node at all.
+NODE_DEPS_READY=0
+ensure_node_deps() {
+  [ "$NODE_DEPS_READY" -eq 1 ] && return 0
+  # The cargo-managed checkout starts empty; install on demand so the user doesn't have to.
+  if [ ! -d "$PROOFMAN_DIR/node_modules" ]; then
+    command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
+    echo "==> npm install in $PROOFMAN_DIR (one-time)"
+    (cd "$PROOFMAN_DIR" && npm install)
+  fi
+  # compile-pil resolves pil2com via PIL2C_EXEC, then ./node_modules/.bin (cwd), then
+  # walks up from the binary, then PATH. None of those reach the cargo git checkout,
+  # so point it at the binary explicitly.
+  local pil2c="$PROOFMAN_DIR/node_modules/.bin/pil2com"
+  [ -x "$pil2c" ] || [ -L "$pil2c" ] \
+    || { echo "pil2com missing at $pil2c after npm install" >&2; exit 1; }
+  export PIL2C_EXEC="$pil2c"
 
-# compile-pil resolves pil2com via PIL2C_EXEC, then ./node_modules/.bin (cwd), then
-# walks up from the binary, then PATH. None of those reach the cargo git checkout,
-# so point it at the binary explicitly.
-PIL2C_EXEC_PATH="$PROOFMAN_DIR/node_modules/.bin/pil2com"
-[ -x "$PIL2C_EXEC_PATH" ] || [ -L "$PIL2C_EXEC_PATH" ] \
-  || { echo "pil2com missing at $PIL2C_EXEC_PATH after npm install" >&2; exit 1; }
-export PIL2C_EXEC="$PIL2C_EXEC_PATH"
+  local snarkjs="$PROOFMAN_DIR/node_modules/snarkjs"
+  [ -d "$snarkjs" ] \
+    || { echo "snarkjs missing at $snarkjs after npm install" >&2; exit 1; }
+  export SNARKJS_PATH="$snarkjs"
 
-SNARKJS_PATH_DIR="$PROOFMAN_DIR/node_modules/snarkjs"
-[ -d "$SNARKJS_PATH_DIR" ] \
-  || { echo "snarkjs missing at $SNARKJS_PATH_DIR after npm install" >&2; exit 1; }
-export SNARKJS_PATH="$SNARKJS_PATH_DIR"
+  NODE_DEPS_READY=1
+}
 
 echo "version: $VERSION  mode: $MODE"
 
@@ -176,6 +181,7 @@ run_compile_pil() {
     echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
+  ensure_node_deps
   echo "==> compile-pil"
   # --no-proto-fixed-data keeps fixed-column values out of the pilout protobuf
   # (they live on disk under tmp/fixed/ via --fixed-dir + --fixed-to-file). Avoids
@@ -232,8 +238,7 @@ case "$MODE" in
   snark)
     if [ ! -d "$BUILD_DIR/provingKey" ]; then
       echo "missing $BUILD_DIR/provingKey/ — populate it first:" >&2
-      echo "  ./scripts/build-setup.sh --build-dir $BUILD_DIR    # build locally" >&2
-      echo "  ./scripts/fetch-setup.sh --build-dir $BUILD_DIR    # download published key" >&2
+      echo "  ./tools/setup/build-setup.sh --build-dir $BUILD_DIR    # build locally" >&2
       exit 1
     fi
     echo "using existing $BUILD_DIR/provingKey/"
@@ -244,23 +249,24 @@ case "$MODE" in
     PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_27.ptau}"
     [ -f "$PTAU_PATH" ] || { echo "missing $PTAU_PATH — set PTAU_PATH=/path/to/ptau if elsewhere" >&2; exit 1; }
 
+    ensure_node_deps   # setup-snark needs snarkjs
     echo "==> proofman-setup setup-snark"
     cargo run --release -p cargo-zisk -- proofman-setup setup-snark \
       --build-dir "$BUILD_DIR" \
       --publics-info "$PUBLICS_INFO" \
       --powers-of-tau "$PTAU_PATH"
 
-    echo "done. to publish: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR --snark"
+    echo "done. provingKeySnark/ under $BUILD_DIR/ — package with (cd tools/test-env && ./package_setup.sh)"
     exit 0
     ;;
 
   compressed_final)
     [ -d "$BUILD_DIR/provingKey" ] || { echo "$BUILD_DIR/provingKey not found — run setup --recursive first" >&2; exit 1; }
+    ensure_node_deps
     echo "==> proofman-setup setup-compressed-final"
     cargo run --release -p cargo-zisk -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
     echo "done. vadcop_final_compressed/ regenerated under $BUILD_DIR/provingKey/"
-    echo "to republish the updated provingKey/: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR"
-    echo "(this re-uploads the full provingKey tarball, not just vadcop_final_compressed/)"
+    echo "to repackage the updated provingKey/: (cd tools/test-env && ./package_setup.sh)"
     exit 0
     ;;
 
@@ -268,46 +274,71 @@ case "$MODE" in
     generate_frops
     LOCAL_HASH="$(compute_input_hash)"
     echo "local input hash: $LOCAL_HASH"
+
+    # ----- local artifact cache lookup (opt-in via --cache-dir) --------------
+    if [ -n "$CACHE_DIR" ]; then
+      # PLATFORM mirrors tools/test-env's get_platform: ZISKUP_PLATFORM override,
+      # else lowercased `uname -s`. The aggregation mode is part of the key so a
+      # recursive build and a --no-aggregation build never collide (the input
+      # hash itself does not encode -r).
+      cache_platform="$(printf '%s' "${ZISKUP_PLATFORM:-$(uname -s)}" | tr '[:upper:]' '[:lower:]')"
+      cache_key="$LOCAL_HASH"
+      [ "$MODE" = "no_aggregation" ] && cache_key="${LOCAL_HASH}-no-aggregation"
+      CACHE_ENTRY="$CACHE_DIR/$cache_platform/$cache_key"
+
+      if [ -d "$CACHE_ENTRY/provingKey" ]; then
+        echo "==> cache hit: $CACHE_ENTRY (skipping compile-pil + setup)"
+        rm -rf "$BUILD_DIR/provingKey"
+        mkdir -p "$BUILD_DIR"
+        cp -R "$CACHE_ENTRY/provingKey" "$BUILD_DIR/provingKey"
+        CACHE_HIT=1
+      else
+        echo "==> cache miss: $CACHE_ENTRY (will build, then populate)"
+      fi
+    fi
     ;;
 
 esac
 
 # ----- build / no-aggregation ------------------------------------------------
 
-run_compile_pil
+if [ "$CACHE_HIT" -eq 0 ]; then
+  run_compile_pil
 
-if [ "$MODE" = "build" ]; then
-  echo "==> proofman-setup setup --recursive"
-  setup_recursive_flag=(--recursive)
-else
-  echo "==> proofman-setup setup (no aggregation)"
-  setup_recursive_flag=()
+  if [ "$MODE" = "build" ]; then
+    echo "==> proofman-setup setup --recursive"
+    setup_recursive_flag=(--recursive)
+  else
+    echo "==> proofman-setup setup (no aggregation)"
+    setup_recursive_flag=()
+  fi
+
+  setup_jobs_flags=()
+  [ -n "$RECURSIVE_JOBS_ARG" ] && setup_jobs_flags+=(--recursive-jobs "$RECURSIVE_JOBS_ARG")
+  [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
+
+  rm -rf "$BUILD_DIR/provingKey"
+  cargo run --release -p cargo-zisk -- proofman-setup setup \
+    --airout pil/zisk.pilout \
+    --build-dir "$BUILD_DIR" \
+    --fixed-dir tmp/fixed \
+    --stark-structs state-machines/starkstructs.json \
+    "${setup_recursive_flag[@]}" \
+    "${setup_jobs_flags[@]}"
+
+  # Populate the local cache with the freshly built provingKey, keyed by the
+  # input hash. --skip-compile-pil reuses a prior pilout that may not match the
+  # computed hash, so don't poison the cache in that case.
+  if [ -n "$CACHE_DIR" ] && [ $SKIP_COMPILE_PIL -eq 0 ]; then
+    echo "==> caching provingKey to $CACHE_ENTRY"
+    rm -rf "$CACHE_ENTRY"
+    mkdir -p "$CACHE_ENTRY"
+    cp -R "$BUILD_DIR/provingKey" "$CACHE_ENTRY/provingKey"
+  fi
 fi
 
-setup_jobs_flags=()
-[ -n "$RECURSIVE_JOBS_ARG" ] && setup_jobs_flags+=(--recursive-jobs "$RECURSIVE_JOBS_ARG")
-[ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
-
-rm -rf "$BUILD_DIR/provingKey"
-cargo run --release -p cargo-zisk -- proofman-setup setup \
-  --airout pil/zisk.pilout \
-  --build-dir "$BUILD_DIR" \
-  --fixed-dir tmp/fixed \
-  --stark-structs state-machines/starkstructs.json \
-  "${setup_recursive_flag[@]}" \
-  "${setup_jobs_flags[@]}"
-
-# Drop the hash sidecar for package-proving-key.sh to pick up — but only when we
-# really did a fresh build mode run from a current pilout. --skip-compile-pil
-# reuses pil/zisk.pilout from a prior run, so the hash we computed wouldn't
-# necessarily match the artifacts; better to leave no sidecar than a wrong one.
-if [ "$MODE" = "build" ] && [ $SKIP_COMPILE_PIL -eq 0 ]; then
-  echo "$LOCAL_HASH" > "$BUILD_DIR/.input-hash"
-  echo "wrote $BUILD_DIR/.input-hash ($LOCAL_HASH)"
-fi
-
 if [ "$MODE" = "build" ]; then
-  echo "done. to publish: ./scripts/package-proving-key.sh --build-dir $BUILD_DIR"
+  echo "done. to package: (cd tools/test-env && ./package_setup.sh)"
 else
   echo "done."
 fi

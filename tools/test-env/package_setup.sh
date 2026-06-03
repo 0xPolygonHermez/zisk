@@ -3,6 +3,26 @@
 source ./utils.sh
 export -f ensure
 
+# Package the setup artifacts produced under <zisk-repo>/build into tarballs in
+# ${OUTPUT_DIR}. Always produced (provingKey is required):
+#   provingKey/                              -> zisk-provingkey-<VER>.tar.gz   (+ .md5)
+#   provingKey/.../vadcop_final.verkey.bin   -> zisk-verifykey-<VER>.tar.gz    (+ .md5)
+# Produced when present (recursive setup / setup-snark):
+#   circom/                                  -> zisk-circuits-<VER>.tar.gz     (+ .md5)
+#   provingKeySnark/                         -> zisk-provingkey-plonk-<VER>.tar.gz (+ .md5)
+#
+# <VER> = PACKAGE_SETUP_VERSION.
+#
+# Env vars:
+#   SETUP_ADD_DYLIBS=1     merge macOS *.dylib from ${OUTPUT_DIR}/macos/provingKey
+#                          into build/provingKey before packing.
+#   PACKAGE_SETUP_UPLOAD=1 after writing the tarballs to ${OUTPUT_DIR}, also
+#                          upload them to gs://zisk-setup via `gcloud storage`
+#                          (requires gcloud auth). Off by default — packaging is
+#                          local-only unless this is set.
+
+BUCKET="gs://zisk-setup"
+
 # Copy all *.dylib files from a source directory (including subdirectories)
 # to a destination directory while preserving the same directory structure.
 #
@@ -39,25 +59,43 @@ copy_dylibs() {
     ' sh "$SRC_DIR" "$DEST_DIR" {} +
 }
 
+pack_dir() {
+    local src="$1" tarball="$2"
+    if [[ ! -d "${src}" ]]; then
+        warn "skipping ${tarball} — ${src}/ not found in $(pwd)"
+        return 0
+    fi
+    ensure tar -czvf "${tarball}" "${src}/" || return 1
+    md5sum "${tarball}" > "${tarball}.md5" || { err "md5sum failed for ${tarball}"; return 1; }
+    ARTIFACTS+=("${tarball}" "${tarball}.md5")
+}
+
 main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_dir=$(pwd)
 
+    # base steps: load env, pack provingKey, pack verifyKey, move = 4. The count
+    # is cosmetic and finalized just below — ZISK_REPO_DIR may come from .env, so
+    # the repo (and the build-dir probes) must be resolved AFTER load_env.
     current_step=1
-    if [[ "$SETUP_ADD_DYLIBS" == "1" ]]; then
-      total_steps=7
-    else
-      total_steps=5
-    fi
+    total_steps=4
 
     step "Loading environment variables..."
     load_env || return 1
 
-    cd "$(get_zisk_repo_dir)"
+    ZISK_REPO="$(get_zisk_repo_dir)"
+    cd "${ZISK_REPO}"
+
+    [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]] && total_steps=$((total_steps + 2))
+    [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
+    [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
+    [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]] && total_steps=$((total_steps + 1))
 
     PROVINGKEY_FILE="zisk-provingkey-${PACKAGE_SETUP_VERSION}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${PACKAGE_SETUP_VERSION}.tar.gz"
+    CIRCUITS_FILE="zisk-circuits-${PACKAGE_SETUP_VERSION}.tar.gz"
+    SNARK_FILE="zisk-provingkey-plonk-${PACKAGE_SETUP_VERSION}.tar.gz"
 
     if [[ "$SETUP_ADD_DYLIBS" == "1" ]]; then
       step "Extracting macos proving key to ${OUTPUT_DIR}/macos/provingKey..."
@@ -71,27 +109,41 @@ main() {
       copy_dylibs ${OUTPUT_DIR}/macos/provingKey build/provingKey
     fi
 
-    step "Compress proving key..."
     cd build
-    ensure tar -czvf "${PROVINGKEY_FILE}" provingKey/ || return 1
+
+    ARTIFACTS=()
+
+    step "Compress proving key..."
+    [[ -d provingKey ]] || { err "build/provingKey not found — run the setup first"; return 1; }
+    pack_dir provingKey "${PROVINGKEY_FILE}" || return 1
 
     step "Compress verify key..."
     ensure tar -czvf "${VERIFYKEY_FILE}" \
       provingKey/zisk/vadcop_final/vadcop_final.verkey.bin || return 1
+    md5sum "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5sum failed for ${VERIFYKEY_FILE}"; return 1; }
+    ARTIFACTS+=("${VERIFYKEY_FILE}" "${VERIFYKEY_FILE}.md5")
 
-    step "Generate checksums..."
-    md5sum "${PROVINGKEY_FILE}" > "${PROVINGKEY_FILE}.md5" || return 1
-    md5sum "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || return 1
+    if [[ -d circom ]]; then
+      step "Compress circom circuits..."
+      pack_dir circom "${CIRCUITS_FILE}" || return 1
+    fi
+
+    if [[ -d provingKeySnark ]]; then
+      step "Compress snark proving key..."
+      pack_dir provingKeySnark "${SNARK_FILE}" || return 1
+    fi
 
     step "Move files to output folder..."
-    rm -rf "${OUTPUT_DIR}/${PROVINGKEY_FILE}"
-    ensure mv "${PROVINGKEY_FILE}" "${OUTPUT_DIR}" || return 1
-    rm -rf "${OUTPUT_DIR}/${VERIFYKEY_FILE}"
-    ensure mv "${VERIFYKEY_FILE}" "${OUTPUT_DIR}" || return 1
-    rm -rf "${OUTPUT_DIR}/${PROVINGKEY_FILE}.md5"
-    ensure mv "${PROVINGKEY_FILE}.md5" "${OUTPUT_DIR}" || return 1
-    rm -rf "${OUTPUT_DIR}/${VERIFYKEY_FILE}.md5"
-    ensure mv "${VERIFYKEY_FILE}.md5" "${OUTPUT_DIR}" || return 1
+    for f in "${ARTIFACTS[@]}"; do
+      rm -rf "${OUTPUT_DIR}/${f}"
+      ensure mv "${f}" "${OUTPUT_DIR}" || return 1
+    done
+
+    if [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]]; then
+      step "Uploading artifacts to ${BUCKET}/..."
+      command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed for PACKAGE_SETUP_UPLOAD=1)"; return 1; }
+      ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${ARTIFACTS[@]}" "${BUCKET}/" ) || return 1
+    fi
 
     cd "${current_dir}"
 

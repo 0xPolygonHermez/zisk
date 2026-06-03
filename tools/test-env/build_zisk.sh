@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=9
+    total_steps=8
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
@@ -23,26 +23,10 @@ main() {
     # Load environment variables from .env file
     load_env || return 1
 
-    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
-    if is_gha; then
-        unset PIL2_PROOFMAN_BRANCH
-    fi
+    # pil2-proofman is consumed as the git dependency pinned in the ZisK
+    # Cargo.toml / Cargo.lock — it is never cloned or path-patched here.
 
     cd "${WORKSPACE_DIR}"
-
-    step "Cloning pil2-proofman repository..."
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
-            warn "Skipping cloning pil2-proofman repository as DISABLE_CLONE_REPO is set to 1"
-        else
-            # Remove existing directory if it exists
-            rm -rf pil2-proofman
-            # Clone pil2-proofman repository
-            ensure git clone --branch "$PIL2_PROOFMAN_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-        fi
-    else
-        info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
-    fi
 
     step "Setting up ZisK repository..."
     if [[ -n "${ZISK_REPO_DIR}" ]]; then
@@ -68,41 +52,6 @@ main() {
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
             ensure cd zisk
         fi
-    fi
-
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
-
-        PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
-
-        replacements="
-            proofman          | { path = \"${PIL2_PROOFMAN_DIR}/proofman\" }
-            proofman-common   | { path = \"${PIL2_PROOFMAN_DIR}/common\" }
-            proofman-macros   | { path = \"${PIL2_PROOFMAN_DIR}/macros\" }
-            proofman-verifier | { path = \"${PIL2_PROOFMAN_DIR}/verifier\" }
-            proofman-util     | { path = \"${PIL2_PROOFMAN_DIR}/util\" }
-            pil-std-lib       | { path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }
-            witness           | { path = \"${PIL2_PROOFMAN_DIR}/witness\" }
-            fields            | { path = \"${PIL2_PROOFMAN_DIR}/fields\" }
-        "
-
-        if [[ "${PLATFORM}" == "linux" ]]; then
-            # GNU sed
-            SED_PARAMS=( -i -E )
-        else
-            # BSD sed (macOS)
-            SED_PARAMS=( -i "" -E )
-        fi
-
-        # Iterate through the list of replacements and update Cargo.toml
-        while IFS='|' read -r crate repl; do
-            [[ -z "$crate" ]] && continue
-
-            pattern="^${crate//[[:space:]]/} = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
-            replacement="${crate//[[:space:]]/} = ${repl}"
-
-            ensure sed "${SED_PARAMS[@]}" "s~${pattern}~${replacement}~" Cargo.toml
-        done <<< "$replacements"
     fi
 
     step  "Building ZisK tools..."

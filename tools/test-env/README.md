@@ -32,11 +32,11 @@ This will run the Docker container and open the ZisK test menu inside the contai
    These variables let you specify the repository branches to use, the setup version to generate or install, and the parameters to use when proving in distributed mode.
 
 2. **Build ZisK from source**
-   Builds ZisK using the `zisk` and `pil2-proofman` repository sources (checking out the branches specified in the environment variables).
+   Builds ZisK from the `zisk` repository source (the branch in `ZISK_BRANCH`, unless a local `ZISK_REPO_DIR` is used). pil2-proofman is consumed as the git dependency pinned in ZisK's `Cargo.toml` / `Cargo.lock` — it is no longer cloned or branch-overridden.
    After building, it installs the CLI tools and necessary files to the `$HOME/.zisk` folder and adds that folder to the `$PATH` environment variable.
 
 3. **Build setup from source**
-   Builds the setup files (proving key) using the `pil2-proofman`, `pil2-proofman-js`, and `pil2-compiler` repository sources (checking out the branches specified in the environment variables).
+   Builds the setup files (proving key) by delegating to `tools/setup/build-setup.sh`, which runs the `cargo-zisk` proving-key pipeline (`compile-pil` + `setup`). It no longer clones `pil2-proofman-js` / `pil2-compiler` or shells into node — `pil2-compiler` is pulled via npm at the version pinned in `pil2-proofman`'s `package.json`, and the proofman checkout is whatever `Cargo.toml` resolves to (set up by option 2). With `USE_CACHE_SETUP=1` a local artifact cache under `${HOME}/output` is reused/populated, keyed by the input hash.
    After building, it installs the proving key to the `$HOME/.zisk` folder and generates the constant files using the `cargo-zisk check-setup` command.
 
 4. **Build zec-reth ELF**
@@ -44,8 +44,8 @@ This will run the Docker container and open the ZisK test menu inside the contai
    The resulting ELF is consumed by options **8. Test Ethereum Block** and **9. Test EthProofs**, so this option must be run before either of them.
 
 5. **Package setup outcome**
-   Packages the setup artifacts (`.tar.gz` and `.md5` files for the proving key and verify key) using the setup files generated in option 3.
-   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally.
+   Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option 3: the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`.
+   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally. Set `PACKAGE_SETUP_UPLOAD=1` to also upload them to `gs://zisk-setup` (requires `gcloud` auth); by default packaging is local-only.
 
 6. **Install ZisK from binaries**
    Installs ZisK from binaries using the latest official release via `ziskup`.
@@ -67,7 +67,7 @@ This will run the Docker container and open the ZisK test menu inside the contai
     Clones the `zisk-testvectors` repository and runs the diagnostic ELF (`diagnostic.elf`) through the full proving pipeline using `test_elf` (verify-constraints, prove, verify) with no input file.
 
 11. **Install setup from public packages**
-    Downloads and installs the proving key files from the public packages corresponding to the `SETUP_VERSION` environment variable.
+    Downloads and installs the proving key files from the public packages corresponding to the `ZISK_SETUP_FILE` environment variable (falling back to a name derived from the installed `cargo-zisk` version when unset).
     After installation, it generates the constant files using the `cargo-zisk check-setup` command.
 
 12. **Install setup from local packages**
