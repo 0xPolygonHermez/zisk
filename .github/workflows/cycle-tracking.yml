@@ -1,4 +1,4 @@
-name: "Cycle tracking"
+name: "Cycle Tracking"
 
 on:
   pull_request:
@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 120
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      WS: ${{ github.workspace }}/.zk-setup
     steps:
       - name: "Free disk space"
         uses: jlumbroso/free-disk-space@v1.3.1
@@ -51,41 +52,31 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           sudo ./install_deps.sh
 
-      - name: "Stash benchmark scripts"
-        run: |
-          cp .github/scripts/zisk_bench.sh .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/"
-          chmod +x "$RUNNER_TEMP/zisk_bench.sh"
-
       - name: "Benchmark PR branch"
-        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/pr"
+        run: bash .github/scripts/zisk_bench.sh "$RUNNER_TEMP/pr"
 
-      - name: "Switch to base branch"
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
-        run: |
-          git fetch origin "$BASE_REF"
-          git checkout --detach "origin/$BASE_REF"
-          git clean -fdx -e target
+      - name: "Checkout base branch"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+          path: base-tree
 
       - name: "Benchmark base branch"
-        run: bash "$RUNNER_TEMP/zisk_bench.sh" "$RUNNER_TEMP/base"
+        env:
+          BENCH_REPO_DIR: ${{ github.workspace }}/base-tree
+        run: bash .github/scripts/zisk_bench.sh "$RUNNER_TEMP/base"
 
       - name: "Build execution report"
         run: |
-          python3 "$RUNNER_TEMP/zisk_cycle_diff.py" "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr" > "$RUNNER_TEMP/report.md"
+          python3 .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr" > "$RUNNER_TEMP/report.md"
+          # Always show the report in this run's summary.
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: "Stage report artifact"
-        if: github.event_name == 'pull_request'
-        run: |
-          mkdir -p "$RUNNER_TEMP/cycle-tracking-artifact"
-          cp "$RUNNER_TEMP/report.md" "$RUNNER_TEMP/cycle-tracking-artifact/report.md"
-          echo "${{ github.event.pull_request.number }}" > "$RUNNER_TEMP/cycle-tracking-artifact/pr-number.txt"
 
       - name: "Upload report artifact"
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: cycle-tracking-report
-          path: ${{ runner.temp }}/cycle-tracking-artifact
+          path: ${{ runner.temp }}/report.md
+          if-no-files-found: error
           retention-days: 7
