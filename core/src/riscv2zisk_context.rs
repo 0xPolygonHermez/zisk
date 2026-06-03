@@ -17,9 +17,11 @@ use zisk_definitions::{
 
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
-    EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0,
-    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, REG_X0, ROM_ENTRY, ROM_EXIT,
+    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
 };
+
+#[cfg(feature = "float")]
+use crate::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, REG_X0};
 
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
@@ -64,7 +66,9 @@ const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
 
 const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
+#[cfg(feature = "float")]
 const FLOAT_HANDLER_ADDR: u64 = 0x1008;
+#[cfg(feature = "float")]
 const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs + set sp + set ra + jump to zisk_float
 
 /// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
@@ -360,9 +364,13 @@ impl Riscv2ZiskContext<'_> {
             "c.ebreak" => self.nop(riscv_instruction, 2),
 
             // C.D: Double-Precision Floating-Point:
+            #[cfg(feature = "float")]
             "c.fld" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            #[cfg(feature = "float")]
             "c.fsd" => self.store_op(riscv_instruction, "copyb", 8, 2),
+            #[cfg(feature = "float")]
             "c.fldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            #[cfg(feature = "float")]
             "c.fsdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
@@ -371,70 +379,132 @@ impl Riscv2ZiskContext<'_> {
 
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
+            #[cfg(feature = "float")]
             "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            #[cfg(feature = "float")]
             "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
+            #[cfg(feature = "float")]
             "fadd.s" => self.float(riscv_instruction, "fadd.s", 4),
+            #[cfg(feature = "float")]
             "fsub.s" => self.float(riscv_instruction, "fsub.s", 4),
+            #[cfg(feature = "float")]
             "fmul.s" => self.float(riscv_instruction, "fmul.s", 4),
+            #[cfg(feature = "float")]
             "fdiv.s" => self.float(riscv_instruction, "fdiv.s", 4),
+            #[cfg(feature = "float")]
             "fsqrt.s" => self.float(riscv_instruction, "fsqrt.s", 4),
+            #[cfg(feature = "float")]
             "fmax.s" => self.float(riscv_instruction, "fmax.s", 4),
+            #[cfg(feature = "float")]
             "fmin.s" => self.float(riscv_instruction, "fmin.s", 4),
+            #[cfg(feature = "float")]
             "feq.s" => self.float(riscv_instruction, "feq.s", 4),
+            #[cfg(feature = "float")]
             "fle.s" => self.float(riscv_instruction, "fle.s", 4),
+            #[cfg(feature = "float")]
             "flt.s" => self.float(riscv_instruction, "flt.s", 4),
+            #[cfg(feature = "float")]
             "fclass.s" => self.float(riscv_instruction, "fclass.s", 4),
+            #[cfg(feature = "float")]
             "fcvt.s.w" => self.float(riscv_instruction, "fcvt.s.w", 4),
+            #[cfg(feature = "float")]
             "fcvt.s.wu" => self.float(riscv_instruction, "fcvt.s.wu", 4),
+            #[cfg(feature = "float")]
             "fcvt.w.s" => self.float(riscv_instruction, "fcvt.w.s", 4),
+            #[cfg(feature = "float")]
             "fcvt.wu.s" => self.float(riscv_instruction, "fcvt.wu.s", 4),
+            #[cfg(feature = "float")]
             "fcvt.s.l" => self.float(riscv_instruction, "fcvt.s.l", 4),
+            #[cfg(feature = "float")]
             "fcvt.l.s" => self.float(riscv_instruction, "fcvt.l.s", 4),
+            #[cfg(feature = "float")]
             "fcvt.s.lu" => self.float(riscv_instruction, "fcvt.s.lu", 4),
+            #[cfg(feature = "float")]
             "fcvt.lu.s" => self.float(riscv_instruction, "fcvt.lu.s", 4),
+            #[cfg(feature = "float")]
             "fsgnj.s" => self.float(riscv_instruction, "fsgnj.s", 4),
+            #[cfg(feature = "float")]
             "fsgnjn.s" => self.float(riscv_instruction, "fsgnjn.s", 4),
+            #[cfg(feature = "float")]
             "fsgnjx.s" => self.float(riscv_instruction, "fsgnjx.s", 4),
+            #[cfg(feature = "float")]
             "fmadd.s" => self.float(riscv_instruction, "fmadd.s", 4),
+            #[cfg(feature = "float")]
             "fmsub.s" => self.float(riscv_instruction, "fmsub.s", 4),
+            #[cfg(feature = "float")]
             "fnmadd.s" => self.float(riscv_instruction, "fnmadd.s", 4),
+            #[cfg(feature = "float")]
             "fnmsub.s" => self.float(riscv_instruction, "fnmsub.s", 4),
+            #[cfg(feature = "float")]
             "fmv.w.x" => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
+            #[cfg(feature = "float")]
             "fmv.x.w" => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
 
             // D: Double-Precision Floating-Point
             /////////////////////////////////////
+            #[cfg(feature = "float")]
             "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
+            #[cfg(feature = "float")]
             "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
+            #[cfg(feature = "float")]
             "fadd.d" => self.float(riscv_instruction, "fadd.d", 4),
+            #[cfg(feature = "float")]
             "fsub.d" => self.float(riscv_instruction, "fsub.d", 4),
+            #[cfg(feature = "float")]
             "fmul.d" => self.float(riscv_instruction, "fmul.d", 4),
+            #[cfg(feature = "float")]
             "fdiv.d" => self.float(riscv_instruction, "fdiv.d", 4),
+            #[cfg(feature = "float")]
             "fsqrt.d" => self.float(riscv_instruction, "fsqrt.d", 4),
+            #[cfg(feature = "float")]
             "fmax.d" => self.float(riscv_instruction, "fmax.d", 4),
+            #[cfg(feature = "float")]
             "fmin.d" => self.float(riscv_instruction, "fmin.d", 4),
+            #[cfg(feature = "float")]
             "feq.d" => self.float(riscv_instruction, "feq.d", 4),
+            #[cfg(feature = "float")]
             "fle.d" => self.float(riscv_instruction, "fle.d", 4),
+            #[cfg(feature = "float")]
             "flt.d" => self.float(riscv_instruction, "flt.d", 4),
+            #[cfg(feature = "float")]
             "fclass.d" => self.float(riscv_instruction, "fclass.d", 4),
+            #[cfg(feature = "float")]
             "fcvt.d.s" => self.float(riscv_instruction, "fcvt.d.s", 4),
+            #[cfg(feature = "float")]
             "fcvt.d.w" => self.float(riscv_instruction, "fcvt.d.w", 4),
+            #[cfg(feature = "float")]
             "fcvt.d.wu" => self.float(riscv_instruction, "fcvt.d.wu", 4),
+            #[cfg(feature = "float")]
             "fcvt.s.d" => self.float(riscv_instruction, "fcvt.s.d", 4),
+            #[cfg(feature = "float")]
             "fcvt.w.d" => self.float(riscv_instruction, "fcvt.w.d", 4),
+            #[cfg(feature = "float")]
             "fcvt.wu.d" => self.float(riscv_instruction, "fcvt.wu.d", 4),
+            #[cfg(feature = "float")]
             "fcvt.d.l" => self.float(riscv_instruction, "fcvt.d.l", 4),
+            #[cfg(feature = "float")]
             "fcvt.l.d" => self.float(riscv_instruction, "fcvt.l.d", 4),
+            #[cfg(feature = "float")]
             "fcvt.d.lu" => self.float(riscv_instruction, "fcvt.d.lu", 4),
+            #[cfg(feature = "float")]
             "fcvt.lu.d" => self.float(riscv_instruction, "fcvt.lu.d", 4),
+            #[cfg(feature = "float")]
             "fsgnj.d" => self.float(riscv_instruction, "fsgnj.d", 4),
+            #[cfg(feature = "float")]
             "fsgnjn.d" => self.float(riscv_instruction, "fsgnjn.d", 4),
+            #[cfg(feature = "float")]
             "fsgnjx.d" => self.float(riscv_instruction, "fsgnjx.d", 4),
+            #[cfg(feature = "float")]
             "fmadd.d" => self.float(riscv_instruction, "fmadd.d", 4),
+            #[cfg(feature = "float")]
             "fnmadd.d" => self.float(riscv_instruction, "fnmadd.d", 4),
+            #[cfg(feature = "float")]
             "fmsub.d" => self.float(riscv_instruction, "fmsub.d", 4),
+            #[cfg(feature = "float")]
             "fnmsub.d" => self.float(riscv_instruction, "fnmsub.d", 4),
+            #[cfg(feature = "float")]
             "fmv.d.x" => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
+            #[cfg(feature = "float")]
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
             // Special ZisK instructions
@@ -830,12 +900,16 @@ impl Riscv2ZiskContext<'_> {
         zib.ind_width(w);
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
+        #[cfg(feature = "float")]
         let reg_offset: i64 =
             if i.inst == "fld" || i.inst == "flw" || i.inst == "c.fld" || i.inst == "c.fldsp" {
                 ((FREG_F0 - REG_X0) >> 3) as i64
             } else {
                 0
             };
+
+        #[cfg(not(feature = "float"))]
+        let reg_offset: i64 = 0;
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
@@ -849,12 +923,16 @@ impl Riscv2ZiskContext<'_> {
     /// and stores the result in memory
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
+        #[cfg(feature = "float")]
         let reg_offset: u64 =
             if i.inst == "fsd" || i.inst == "fsw" || i.inst == "c.fsd" || i.inst == "c.fsdsp" {
                 (FREG_F0 - REG_X0) >> 3
             } else {
                 0
             };
+        #[cfg(not(feature = "float"))]
+        let reg_offset: u64 = 0;
+
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
@@ -1957,6 +2035,7 @@ impl Riscv2ZiskContext<'_> {
 
     /// Implements a float or double function, for both 16-bit and 32-bit instruction sizes.
     /// Implemented via integger operations
+    #[cfg(feature = "float")]
     pub fn float(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         let rom_address = i.rom_address;
@@ -2585,7 +2664,10 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.src_a("imm", 0, false);
     zib.src_b("imm", 0, false);
     zib.op("copyb").unwrap();
+    #[cfg(feature = "float")]
     zib.j(4 * 68, 4 * 68);
+    #[cfg(not(feature = "float"))]
+    zib.j(4 * 2, 4 * 2);
     zib.verbose("Jump over end instruction and float handler");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
@@ -2604,83 +2686,86 @@ pub fn add_end_and_lib(rom: &mut ZiskRom) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // Float handler
-    // RISC-V float instructions are handled here
-    // The instruction to be handled is in register FREG_INST
-    // The return address is in register FREG_RA
-    // We must save integer registers before calling the zisk_float function
-    assert!(rom.next_init_inst_addr == FLOAT_HANDLER_ADDR);
-    for i in 1..32 {
+    #[cfg(feature = "float")]
+    {
+        // Float handler
+        // RISC-V float instructions are handled here
+        // The instruction to be handled is in register FREG_INST
+        // The return address is in register FREG_RA
+        // We must save integer registers before calling the zisk_float function
+        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_ADDR);
+        for i in 1..32 {
+            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", i, false);
+            zib.op("copyb").unwrap();
+            zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
+            zib.j(4, 4);
+            zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
+            zib.build(rom);
+            rom.next_init_inst_addr += 4;
+        }
+
+        // Set sp to the top of the float library stack
         let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
         zib.src_a("imm", 0, false);
-        zib.src_b("reg", i, false);
+        zib.src_b("imm", FLOAT_LIB_SP, false);
         zib.op("copyb").unwrap();
-        zib.store("mem", FREG_X0 as i64 + (i * 8) as i64, false, false);
+        zib.store("reg", 2, false, false);
         zib.j(4, 4);
-        zib.verbose(&format!("Float: save r{i} into freg_x{i}"));
+        zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
+        zib.build(rom);
+        rom.next_init_inst_addr += 4;
+
+        // Set the return address to the FLOAT_HANDLER_RETURN_ADDR
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", FLOAT_HANDLER_RETURN_ADDR, false);
+        zib.op("copyb").unwrap();
+        zib.store("reg", 1, false, false);
+        zib.j(4, 4);
+        zib.verbose(&format!(
+            "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
+        ));
+        zib.build(rom);
+        rom.next_init_inst_addr += 4;
+
+        // Jump back to the zisk_float function address
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", FLOAT_LIB_ROM_ADDR, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
+        zib.build(rom);
+        rom.next_init_inst_addr += 4;
+
+        // We must retrieve integer registers after calling the zisk_float function
+        assert!(rom.next_init_inst_addr == FLOAT_HANDLER_RETURN_ADDR);
+        for i in 1..32 {
+            let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+            zib.src_a("imm", 0, false);
+            zib.src_b("mem", FREG_X0 + (i * 8), false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", i as i64, false, false);
+            zib.j(4, 4);
+            zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
+            zib.build(rom);
+            rom.next_init_inst_addr += 4;
+        }
+
+        // Jump back to the address previously stored in FREG_RA
+        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+        zib.src_a("imm", 0, false);
+        zib.src_b("mem", FREG_RA, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.verbose("Float: jump to FREG_RA");
         zib.build(rom);
         rom.next_init_inst_addr += 4;
     }
-
-    // Set sp to the top of the float library stack
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", FLOAT_LIB_SP, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 2, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!("Float: save FLOAT_LIB_SP={FLOAT_LIB_SP:x} into reg[2]"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // Set the return address to the FLOAT_HANDLER_RETURN_ADDR
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", FLOAT_HANDLER_RETURN_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.store("reg", 1, false, false);
-    zib.j(4, 4);
-    zib.verbose(&format!(
-        "Float: save FLOAT_HANDLER_RETURN_ADDR={FLOAT_HANDLER_RETURN_ADDR:x} into reg[1]"
-    ));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // Jump back to the zisk_float function address
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("imm", FLOAT_LIB_ROM_ADDR, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 4);
-    zib.verbose(&format!("Float: jump to FLOAT_LIB_ROM_ADDR={FLOAT_LIB_ROM_ADDR:x}"));
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
-
-    // We must retrieve integer registers after calling the zisk_float function
-    assert!(rom.next_init_inst_addr == FLOAT_HANDLER_RETURN_ADDR);
-    for i in 1..32 {
-        let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-        zib.src_a("imm", 0, false);
-        zib.src_b("mem", FREG_X0 + (i * 8), false);
-        zib.op("copyb").unwrap();
-        zib.store("reg", i as i64, false, false);
-        zib.j(4, 4);
-        zib.verbose(&format!("Float: restore r{i} from freg_x{i}"));
-        zib.build(rom);
-        rom.next_init_inst_addr += 4;
-    }
-
-    // Jump back to the address previously stored in FREG_RA
-    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", 0, false);
-    zib.src_b("mem", FREG_RA, false);
-    zib.op("copyb").unwrap();
-    zib.set_pc();
-    zib.j(0, 4);
-    zib.verbose("Float: jump to FREG_RA");
-    zib.build(rom);
-    rom.next_init_inst_addr += 4;
 
     // Check resulting rom address does not exceed max
     if rom.next_init_inst_addr > MAX_ZISK_OS_ROM_ADDR {
