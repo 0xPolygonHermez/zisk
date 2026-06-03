@@ -11,12 +11,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use zisk_common::io::StreamSource;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
 
-use crate::{ExecutorKind, ZiskStdin};
+use crate::{ExecutorKind, ZiskHints, ZiskStdin};
 
 /// Builder for an [`EmbeddedExecuteOnlyClient`].
 ///
@@ -162,11 +161,11 @@ impl EmbeddedExecuteOnlyClient {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
-        hints: Option<StreamSource>,
+        hints: Option<ZiskHints>,
     ) -> Result<ExecuteOutput> {
         if hints.is_some() && self.executor == ExecutorKind::Emulator {
             anyhow::bail!("Hints require the Assembly executor");
         }
-        self.prover.execute(program, stdin.into_inner(), hints)
+        self.prover.execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner))
     }
 }
