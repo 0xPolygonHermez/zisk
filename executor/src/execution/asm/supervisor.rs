@@ -31,6 +31,9 @@
 
 use std::thread::JoinHandle;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use std::sync::Arc;
+
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
@@ -75,7 +78,7 @@ impl AsmRunnerSupervisor {
     /// platforms construct the supervisor directly via `Self::new`.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn spawn_on(
-        resources: &AsmResources,
+        resources: &Arc<AsmResources>,
         chunk_size: u64,
         has_rom_sm: bool,
         stats: &ExecutorStatsHandle,
@@ -84,10 +87,20 @@ impl AsmRunnerSupervisor {
             let asm_shmem_mo = resources.readers().mo.clone();
             let asm_services = resources.asm_services().clone();
             let stats_mo = stats.clone();
+            let resources_for_failure = Arc::clone(resources);
             move || -> ExecutorResult<AsmRunnerMO> {
                 let mut guard = asm_shmem_mo.lock_or_poison("mo_shmem")?;
-                AsmRunnerMO::run(&mut guard, MAX_NUM_STEPS, chunk_size, asm_services, stats_mo)
-                    .map_err(ExecutorError::asm_backend)
+                AsmRunnerMO::run(
+                    &mut guard,
+                    MAX_NUM_STEPS,
+                    chunk_size,
+                    move || {
+                        resources_for_failure.signal_cancellation().map_err(anyhow::Error::from)
+                    },
+                    asm_services,
+                    stats_mo,
+                )
+                .map_err(ExecutorError::asm_backend)
             }
         });
 

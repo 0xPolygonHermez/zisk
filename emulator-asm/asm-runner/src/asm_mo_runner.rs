@@ -74,13 +74,17 @@ impl AsmRunnerMO {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run(
+    pub fn run<R>(
         preloaded: &mut MOShMemReader,
         max_steps: u64,
         chunk_size: u64,
+        on_runner_failure: R,
         asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        R: FnOnce() -> Result<()>,
+    {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
         let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
@@ -190,6 +194,10 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
+                    if let Err(reset_err) = on_runner_failure() {
+                        error!("MO on_runner_failure failed: {reset_err:#}");
+                    }
+
                     break preloaded.output_shmem.map_header().exit_code;
                 }
             }
@@ -202,6 +210,10 @@ impl AsmRunnerMO {
         mem_planner.set_completed();
         mem_planner.wait();
 
+        let joined = handle.join();
+
+        crate::drain_chunk_done(&mut sem_chunk_done);
+
         // Compute the result; on any error we still fall through to the
         // single re-stash point below so the next job has a planner ready.
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
@@ -210,10 +222,8 @@ impl AsmRunnerMO {
                     .context("Child process returned error");
             }
 
-            let response = handle
-                .join()
-                .map_err(|_| AsmRunError::JoinPanic)?
-                .map_err(AsmRunError::ServiceError)?;
+            let response =
+                joined.map_err(|_| AsmRunError::JoinPanic)?.map_err(AsmRunError::ServiceError)?;
 
             if response.result != 0 {
                 return Err(anyhow::anyhow!(

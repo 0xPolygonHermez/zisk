@@ -60,7 +60,7 @@ impl AsmRunnerMT {
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
     where
         F: FnMut(usize, Arc<EmuTrace>),
-        R: FnOnce() -> Result<()>,
+        R: Fn() -> Result<()>,
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
 
@@ -115,7 +115,7 @@ impl AsmRunnerMT {
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
 
-        let exit_code = loop {
+        let loop_result: Result<u64> = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     stats_mark!(_stats, &_runner_scope, "MT_CHUNK_DONE", 0);
@@ -123,25 +123,28 @@ impl AsmRunnerMT {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    // Check if we need to remap the shared memory
-                    // preloaded
-                    //     .output_shmem
-                    //     .check_size_changed(&mut data_ptr)
-                    //     .context("Failed to check and remap shared memory for MT trace")?;
-
                     // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold
-                        && preloaded.output_shmem.check_size_changed().context(
-                            "Failed to check and map new shared memory files for MT trace",
-                        )?
-                    {
-                        // Update threshold based on new total mapped size
-                        threshold =
-                            unsafe {
-                                preloaded.output_shmem.mapped_ptr().add(
-                                    preloaded.output_shmem.total_mapped_size() - threshold_bytes,
-                                ) as *const AsmMTChunk
-                            };
+                    if data_ptr >= threshold {
+                        match preloaded.output_shmem.check_size_changed() {
+                            Ok(true) => {
+                                // Update threshold based on new total mapped size
+                                threshold = unsafe {
+                                    preloaded.output_shmem.mapped_ptr().add(
+                                        preloaded.output_shmem.total_mapped_size()
+                                            - threshold_bytes,
+                                    ) as *const AsmMTChunk
+                                };
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                if let Err(reset_err) = on_runner_failure() {
+                                    error!("MT on_runner_failure failed: {reset_err:#}");
+                                }
+                                break Err(e).context(
+                                    "Failed to check and map new shared memory files for MT trace",
+                                );
+                            }
+                        }
                     }
 
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
@@ -151,7 +154,7 @@ impl AsmRunnerMT {
                     emu_traces.push(emu_trace);
 
                     if should_exit {
-                        break 0;
+                        break Ok(0);
                     }
                     chunk_id.0 += 1;
                 }
@@ -163,28 +166,25 @@ impl AsmRunnerMT {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    // Flip ResetFlag + post wait sems so the C child unwinds
-                    // `emulator_start` and the stdio request below can return.
-                    // Then sweep any post that races our exit (end chunk).
                     if let Err(reset_err) = on_runner_failure() {
                         error!("MT on_runner_failure failed: {reset_err:#}");
                     }
-                    while sem_chunk_done.try_wait().is_ok() {}
 
                     if chunk_id.0 == 0 {
-                        break 1;
+                        break Ok(1);
                     }
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    break Ok(preloaded.output_shmem.map_header().exit_code);
                 }
             }
         };
 
-        // Always join the stdio thread before evaluating the exit code: on
-        // the error path `on_runner_failure` woke the C child, so this no
-        // longer deadlocks, and joining keeps the spawned thread from
-        // outliving us into the next job.
-        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
+        let join_outcome = handle.join();
+
+        crate::drain_chunk_done(&mut sem_chunk_done);
+
+        let exit_code = loop_result?;
+        let (handle, elapsed) = join_outcome.map_err(|_| AsmRunError::JoinPanic)?;
 
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))
