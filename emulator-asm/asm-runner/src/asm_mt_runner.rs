@@ -8,7 +8,7 @@ use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiSharedMemory,
@@ -68,6 +68,13 @@ impl AsmRunnerMT {
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
+
+        let stale = crate::drain_chunk_done(&mut sem_chunk_done);
+        if stale > 0 {
+            warn!(
+                "MT semaphore '{sem_chunk_done_name}' had {stale} stale chunk_done post(s) at run start; a prior run skipped its end-side cleanup"
+            );
+        }
 
         // Capture parent id for thread
         let _parent_id = _runner_scope.id();
