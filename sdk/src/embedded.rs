@@ -46,6 +46,7 @@ pub struct EmbeddedClientBuilder {
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
     no_aggregation: bool,
+    verify_constraints: bool,
 }
 
 impl Default for EmbeddedClientBuilder {
@@ -59,6 +60,7 @@ impl Default for EmbeddedClientBuilder {
             proving_key: None,
             proving_key_snark: None,
             no_aggregation: false,
+            verify_constraints: false,
         }
     }
 }
@@ -79,11 +81,18 @@ pub trait WitnessBuilderExt: Sized {
     /// proof generation requires the aggregation setup this skips.
     #[must_use]
     fn no_aggregation(self) -> Self;
+
+    fn verify_constraints(self) -> Self;
 }
 
 impl WitnessBuilderExt for EmbeddedClientBuilder {
     fn no_aggregation(mut self) -> Self {
         self.no_aggregation = true;
+        self
+    }
+
+    fn verify_constraints(mut self) -> Self {
+        self.verify_constraints = true;
         self
     }
 }
@@ -176,6 +185,9 @@ impl EmbeddedClientBuilder {
         let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
         if self.no_aggregation {
             backend_opts = backend_opts.no_aggregation();
+        }
+        if self.verify_constraints {
+            backend_opts = backend_opts.verify_constraints();
         }
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
