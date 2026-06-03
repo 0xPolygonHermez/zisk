@@ -49,7 +49,7 @@ jobs:
                 repo: context.repo.repo,
                 commit_sha: run.head_sha,
               });
-              prNumber = prs.find((p) => p.state === 'open')?.number;
+               prNumber = prs.find((p) => p.state === 'open' && p.head?.sha === run.head_sha)?.number;
             }
             if (!Number.isInteger(prNumber)) {
               core.setFailed(`Could not resolve a PR for workflow_run ${run.id} (head_sha ${run.head_sha})`);

@@ -29,7 +29,6 @@ jobs:
     timeout-minutes: 120
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      WS: ${{ github.workspace }}/.zk-setup
     steps:
       - name: "Free disk space"
         uses: jlumbroso/free-disk-space@v1.3.1
