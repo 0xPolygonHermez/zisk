@@ -282,8 +282,9 @@ case "$MODE" in
       # recursive build and a --no-aggregation build never collide (the input
       # hash itself does not encode -r).
       cache_platform="$(printf '%s' "${ZISKUP_PLATFORM:-$(uname -s)}" | tr '[:upper:]' '[:lower:]')"
-      cache_key="$LOCAL_HASH"
-      [ "$MODE" = "no_aggregation" ] && cache_key="${LOCAL_HASH}-no-aggregation"
+      short_hash="${LOCAL_HASH:0:4}${LOCAL_HASH: -4}"
+      cache_key="$short_hash"
+      [ "$MODE" = "no_aggregation" ] && cache_key="${short_hash}-no-aggregation"
       CACHE_ENTRY="$CACHE_DIR/$cache_platform/$cache_key"
 
       if [ -d "$CACHE_ENTRY/provingKey" ]; then

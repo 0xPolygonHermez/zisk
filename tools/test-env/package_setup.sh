@@ -59,6 +59,18 @@ copy_dylibs() {
     ' sh "$SRC_DIR" "$DEST_DIR" {} +
 }
 
+write_md5() {
+    local file="$1"
+    if command -v md5sum >/dev/null 2>&1; then
+        md5sum "$file"
+    elif command -v md5 >/dev/null 2>&1; then
+        md5 -r "$file"
+    else
+        echo "no md5 utility found (need md5sum or md5)" >&2
+        return 1
+    fi
+}
+
 pack_dir() {
     local src="$1" tarball="$2"
     if [[ ! -d "${src}" ]]; then
@@ -66,7 +78,7 @@ pack_dir() {
         return 0
     fi
     ensure tar -czvf "${tarball}" "${src}/" || return 1
-    md5sum "${tarball}" > "${tarball}.md5" || { err "md5sum failed for ${tarball}"; return 1; }
+    write_md5 "${tarball}" > "${tarball}.md5" || { err "md5 failed for ${tarball}"; return 1; }
     ARTIFACTS+=("${tarball}" "${tarball}.md5")
 }
 
@@ -85,7 +97,7 @@ main() {
     load_env || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
-    cd "${ZISK_REPO}"
+    ensure cd "${ZISK_REPO}" || return 1
 
     [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]] && total_steps=$((total_steps + 2))
     [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
@@ -109,7 +121,7 @@ main() {
       copy_dylibs ${OUTPUT_DIR}/macos/provingKey build/provingKey
     fi
 
-    cd build
+    ensure cd build || return 1
 
     ARTIFACTS=()
 
@@ -120,7 +132,7 @@ main() {
     step "Compress verify key..."
     ensure tar -czvf "${VERIFYKEY_FILE}" \
       provingKey/zisk/vadcop_final/vadcop_final.verkey.bin || return 1
-    md5sum "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5sum failed for ${VERIFYKEY_FILE}"; return 1; }
+    write_md5 "${VERIFYKEY_FILE}" > "${VERIFYKEY_FILE}.md5" || { err "md5 failed for ${VERIFYKEY_FILE}"; return 1; }
     ARTIFACTS+=("${VERIFYKEY_FILE}" "${VERIFYKEY_FILE}.md5")
 
     if [[ -d circom ]]; then

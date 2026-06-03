@@ -2,8 +2,10 @@
 
 `build-setup.sh` builds the Zisk proving key locally (`compile-pil` + `setup`)
 via the `cargo-zisk` pipeline. An optional `--cache-dir` reuses a previously
-built `provingKey/` keyed by the input hash. It never touches any bucket /
-network.
+built `provingKey/` keyed by the input hash. It never reads from or writes to the
+proving-key bucket — but the build itself is not fully offline: it runs
+`cargo fetch` and a one-time `npm install` (for pil2-compiler) to retrieve
+dependencies.
 
 To **package** the result into tarballs (and optionally upload), use
 [`tools/test-env/package_setup.sh`](../test-env/package_setup.sh).
@@ -68,13 +70,14 @@ Runs frops generators, `compile-pil`, then `setup --recursive`. Result lands in
 ./tools/setup/build-setup.sh --cache-dir /path/to/cache
 ```
 
-On a cache hit (`<cache-dir>/<platform>/<input-hash>/provingKey/` exists), that
+On a cache hit (`<cache-dir>/<platform>/<short-hash>/provingKey/` exists), that
 `provingKey/` is copied into `build/` and `compile-pil` + `setup` are skipped. On
-a miss, the fresh build is copied back into the cache. The key is
-`PLATFORM/<input-hash>` (the aggregation mode is folded in, so a recursive and a
-`--no-aggregation` build never collide). This is a plain filesystem cache — no
-bucket or network access. Used by `tools/test-env/build_setup.sh` to make repeat
-CI runs cheap.
+a miss, the fresh build is copied back into the cache. The folder name is the
+truncated input hash — first 4 + last 4 hex chars (e.g. `1f2f08c3`), matching the
+historical test-env layout — with `-no-aggregation` appended for that mode (so a
+recursive and a `--no-aggregation` build never collide). This is a plain
+filesystem cache — no bucket or network access. Used by
+`tools/test-env/build_setup.sh` to make repeat CI runs cheap.
 
 ### Build without aggregation (debug / fast iteration)
 
