@@ -17,48 +17,50 @@ fn main() {
     let lib_file = library_folder.join(format!("lib{library_name}.a"));
     let elf_file = library_folder.join(format!("{library_name}.elf"));
 
-    // The committed `lib/ziskfloat.elf` is the source of truth: it determines the program vk
-    // (see core/src/elf2rom.rs `include_bytes!`). Rebuilding it on a consumer machine with a
-    // different riscv64-unknown-elf-gcc would produce different bytes and break vk
-    // reproducibility across hosts. Distinguish workspace dev vs cargo dep by checking whether
-    // the manifest dir lives under cargo's git/registry caches.
+    // The committed `lib/ziskfloat.elf` is the source of truth: its bytes determine the
+    // program vk (see core/src/elf2rom.rs `include_bytes!`). On Linux it is regenerated
+    // reproducibly from source inside the pinned Docker image (see c/docker/Dockerfile:
+    // fixed Ubuntu digest + fixed riscv64 gcc/binutils versions), so any build host
+    // produces the exact same bytes. Distinguish workspace dev vs cargo dep by checking
+    // whether the manifest dir lives under cargo's git/registry caches.
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let is_consumer = manifest_dir.contains("/.cargo/git/checkouts/")
         || manifest_dir.contains("/.cargo/registry/src/");
 
-    if is_consumer {
-        if !lib_file.exists() || !elf_file.exists() {
-            println!(
-                "cargo:warning=ziskfloat artifacts missing in cargo cache; rebuilding from source"
-            );
-            run_command("make", &["clean"], &c_path);
-            run_command("make", &[], &c_path);
-        } else {
-            println!("ziskfloat artifacts already present, skipping rebuild.");
-        }
+    let rebuild = if is_consumer {
+        // mtimes are unreliable in cargo's git/registry checkouts, so rebuild only when
+        // the artifacts are missing.
+        !lib_file.exists() || !elf_file.exists()
     } else {
-        // Workspace dev: only rebuild when a C source has actually changed since
-        // libziskfloat.a was last produced. Mtimes are reliable here (unlike cargo
-        // git/registry checkouts), so this skips unnecessary C rebuilds on `cargo build`.
+        // Workspace dev: rebuild when a C source has changed since the artifacts were last
+        // produced, or when they are missing (e.g. a fresh checkout). Mtimes are reliable
+        // here, so this skips unnecessary rebuilds on `cargo build`.
         let cpp_files = find_cpp_files(&c_path);
-        if cpp_files_have_changed(&cpp_files, &lib_file) {
-            eprintln!("Changes detected! Running `make clean` and recompiling...");
-            run_command("make", &["clean"], &c_path);
-            run_command("make", &[], &c_path);
-        } else {
-            println!("No C++ source changes detected, skipping rebuild.");
-        }
-    }
+        !lib_file.exists() || !elf_file.exists() || cpp_files_have_changed(&cpp_files, &lib_file)
+    };
 
-    // Absolute path to the library
-    let abs_lib_path = library_folder.canonicalize().unwrap_or_else(|_| library_folder.clone());
+    if rebuild {
+        eprintln!("Building ziskfloat artifacts inside the pinned Docker image...");
+        run_command("make", &["clean"], &c_path);
+        run_command("make", &["docker"], &c_path);
+    } else {
+        println!(
+            "ziskfloat artifacts already present or source code not changed, skipping rebuild."
+        );
+    }
 
     if !lib_file.exists() {
         panic!("`{}` was not found", lib_file.display());
     }
+    if !elf_file.exists() {
+        panic!("`{}` was not found", elf_file.display());
+    }
 
-    // Ensure Rust triggers a rebuild if the C++ source code changes
+    // Ensure Rust triggers a rebuild if the C/C++ source code (or the pinned Docker image)
+    // changes.
     track_cpp_changes(&c_path);
+
+    let abs_lib_path = library_folder.canonicalize().unwrap_or_else(|_| library_folder.clone());
 
     // Link the static library
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
@@ -88,6 +90,8 @@ fn run_command(cmd: &str, args: &[&str], dir: &Path) {
 /// Tracks changes in the `pil2-stark` directory to trigger recompilation only when needed
 fn track_cpp_changes(c_path: &Path) {
     println!("cargo:rerun-if-changed={}", c_path.join("Makefile").display());
+    // Pinned toolchain/base image: changing it must regenerate the artifacts.
+    println!("cargo:rerun-if-changed={}", c_path.join("docker/Dockerfile").display());
     let cpp_files = find_cpp_files(c_path);
     // Print tracked files for debugging
     eprintln!("Tracking {} C++ source files:", cpp_files.len());

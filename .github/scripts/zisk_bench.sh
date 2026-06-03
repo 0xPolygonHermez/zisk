@@ -5,21 +5,32 @@
 # REPORT (STEPS + COST DISTRIBUTION) into <OUTDIR>/<program>.txt.
 #
 # It is run twice by the cycle-tracking workflow: once on the PR tree and once
-# on the base-branch tree. Building from the current tree each time means the
-# diff reflects changes to the emulator / cost model *and* to the guest sources.
+# on the base-branch tree (selected via BENCH_REPO_DIR). Building from the
+# selected tree each time means the diff reflects changes to the emulator / cost
+# model *and* to the guest sources.
 #
 # Usage: zisk_bench.sh <OUTDIR>
 #
-# Requirement (installed by the workflow before calling this):
+# Requirements (provided by the workflow before calling this):
 #   - system deps (tools/test-env/install_deps.sh)
+#   - BENCH_REPO_DIR (optional): repo tree to build + benchmark; defaults to
+#     GITHUB_WORKSPACE. The PR run uses the default; the base run points it at the
+#     base-branch checkout, so this (PR) copy of the script drives both runs and
+#     the methodology stays fixed while only the code under test varies.
 #
 set -euo pipefail
 
 OUTDIR="${1:?usage: zisk_bench.sh <OUTDIR>}"
 mkdir -p "$OUTDIR"
 
-REPO="${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}"
+REPO="${BENCH_REPO_DIR:-${GITHUB_WORKSPACE:-$(git rev-parse --show-toplevel)}}"
 cd "$REPO"
+
+# If the expected guest ELF directory doesn't exist, skip the benchmarks.
+if [[ ! -d "$REPO/test-artifacts/programs" ]]; then
+  echo "WARNING: '$REPO/test-artifacts/programs' not found; skipping benchmarks (no reports produced)." >&2
+  exit 0
+fi
 
 # The set of guest programs to benchmark. Each name must match both the crate
 # `package.name` under test-artifacts/programs/<name> and the emitted ELF name.

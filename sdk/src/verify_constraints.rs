@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
+use crate::hints::HintsSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId, SubscriberList};
 use crate::ZiskStdin;
 
@@ -40,6 +41,7 @@ pub(crate) trait RunVerifyConstraints {
         &self,
         program: &GuestProgram,
         stdin: ZiskStdin,
+        hints: Option<HintsSource>,
         debug_info: Option<Option<String>>,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -54,6 +56,7 @@ pub struct VerifyConstraintsRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
     stdin: ZiskStdin,
+    hints: Option<HintsSource>,
     /// `None` = no debug info; `Some(None)` = enable with default path;
     /// `Some(Some(path))` = enable with explicit output path.
     debug_info: Option<Option<String>>,
@@ -62,7 +65,13 @@ pub struct VerifyConstraintsRequest<'a, C> {
 
 impl<'a, C> VerifyConstraintsRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
-        Self { client, program, stdin, debug_info: None, timeout: None }
+        Self { client, program, stdin, hints: None, debug_info: None, timeout: None }
+    }
+
+    #[must_use]
+    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
+        self.hints = Some(hints.into());
+        self
     }
 
     /// Enable debug info output.
@@ -90,6 +99,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
         self.client.run_verify_constraints(
             self.program,
             self.stdin,
+            self.hints,
             self.debug_info,
             self.timeout,
             subs,

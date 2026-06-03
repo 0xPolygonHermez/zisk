@@ -12,9 +12,9 @@
 //! ## Two macros: façade + explicit
 //!
 //! [`zisk_precompile!`] is the **façade**: 4 declarative parameters
-//! (`name`, `op_type`, `trace`, `num_available_field`) plus the `ops`
-//! list. It derives every shell name from `$name` and every trace-related
-//! type from `$trace`, then forwards to the explicit form.
+//! (`name`, `op_type`, `trace`, `num_available`) plus the `ops` list. It
+//! derives every shell name from `$name` and every trace-related type
+//! from `$trace`, then forwards to the explicit form.
 //!
 //! [`zisk_precompile_explicit!`] is the **explicit form**: takes every
 //! name spelled out (SM type, input type, trace row + packed, AIR id
@@ -56,15 +56,17 @@ pub use paste::paste as __zisk_paste;
 ///
 /// Generated symbols (with `name = Foo`):
 ///
-/// * `FooManager<F>` — wraps `Arc<$sm<F>>`; impls `ComponentBuilder<F>`
+/// * `FooManager<F>` — wraps `Arc<$sm<F>>`; impls `ComponentPlanBuilder<F>` + `ComponentBuilder<F>`
 /// * `FooPlanner<F>` — single-instance planner; impls `Planner`
 /// * `FooInstance<F>` — wraps `Arc<$sm<F>>` + `InstanceCtx`; impls `Instance<F>`
 /// * `FooCollector` — input collector during witness gen; impls `BusDevice<PayloadType>`
 /// * `FooCounterInputGen<F>` — bus device for Counter / CounterAsm / InputGenerator
 ///   modes; impls `BusDevice<u64>`, `Metrics`, `Add`
 ///
-/// The associated method names (e.g. `build_foo_counter`, `foo_sm` field)
-/// are derived from `$name` via `paste`'s `:snake` case conversion.
+/// `$num_available` is a *compile-time expression* evaluating to the
+/// number of ops a single instance can hold. It is consumed by the
+/// static `ComponentPlanBuilder::planner()` impl, so no constructed SM
+/// is required for the planning phase.
 ///
 /// The SM (`$sm<F>`) must:
 ///
@@ -72,8 +74,6 @@ pub use paste::paste as __zisk_paste;
 ///   per-op generation through this trait).
 /// * expose `compute_witness::<R>(&self, _sctx: &SetupCtx<F>,
 ///   inputs: &[Vec<$input>], buf: Vec<F>) -> ProofmanResult<AirInstance<F>>`.
-/// * expose a `pub $num_available_field: usize` field giving the number of
-///   ops a single instance can hold.
 #[macro_export]
 macro_rules! zisk_precompile_explicit {
     (
@@ -85,7 +85,7 @@ macro_rules! zisk_precompile_explicit {
         trace_row_packed = $trace_row_packed:path,
         air_id_path = $air_id_path:path,
         air_group_id_path = $air_group_id_path:path,
-        num_available_field = $num_available_field:ident,
+        num_available = $num_available:expr,
         ops = [
             $(
                 (
@@ -110,35 +110,26 @@ macro_rules! zisk_precompile_explicit {
                     let [<$name:snake _sm>] = <$sm<F>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
-
-                pub fn [<build_ $name:snake _counter>](
-                    &self,
-                    asm_execution: bool,
-                ) -> [<$name CounterInputGen>]<F> {
-                    match asm_execution {
-                        true => [<$name CounterInputGen>]::<F>::new(
-                            $crate::BusDeviceMode::CounterAsm,
-                        ),
-                        false => [<$name CounterInputGen>]::<F>::new(
-                            $crate::BusDeviceMode::Counter,
-                        ),
-                    }
-                }
-
-                pub fn [<build_ $name:snake _input_generator>](
-                    &self,
-                ) -> [<$name CounterInputGen>]<F> {
-                    [<$name CounterInputGen>]::<F>::new(
-                        $crate::BusDeviceMode::InputGenerator,
-                    )
-                }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::ComponentBuilder<F>
+            impl<F: ::fields::PrimeField64> $crate::ComponentPlanBuilder<F>
                 for [<$name Manager>]<F>
             {
-                fn build_planner(&self) -> ::std::boxed::Box<dyn $crate::Planner> {
-                    let num_available = self.[<$name:snake _sm>].$num_available_field;
+                type Counter = [<$name CounterInputGen>]<F>;
+
+                fn counter(is_asm_emulator: ::std::primitive::bool) -> Self::Counter {
+                    let mode = if is_asm_emulator {
+                        $crate::BusDeviceMode::CounterAsm
+                    } else {
+                        $crate::BusDeviceMode::Counter
+                    };
+                    [<$name CounterInputGen>]::<F>::new(mode)
+                }
+
+                fn planner(
+                    _is_asm_emulator: ::std::primitive::bool,
+                ) -> ::std::boxed::Box<dyn $crate::Planner> {
+                    let num_available: ::std::primitive::usize = $num_available;
                     ::std::boxed::Box::new(
                         [<$name Planner>]::<F>::new().add_instance(
                             $crate::InstanceInfo::new(
@@ -150,7 +141,11 @@ macro_rules! zisk_precompile_explicit {
                         ),
                     )
                 }
+            }
 
+            impl<F: ::fields::PrimeField64> $crate::ComponentBuilder<F>
+                for [<$name Manager>]<F>
+            {
                 fn build_instance(
                     &self,
                     ictx: $crate::InstanceCtx,
@@ -579,7 +574,7 @@ macro_rules! zisk_precompile {
         name = $name:ident,
         op_type = $op_type:ident,
         trace = $trace:ident,
-        num_available_field = $num_available_field:ident,
+        num_available = $num_available:expr,
         ops = [
             $(
                 (
@@ -600,7 +595,7 @@ macro_rules! zisk_precompile {
                 trace_row_packed = ::zisk_pil::[<$trace RowPacked>],
                 air_id_path = ::zisk_pil::$trace::<()>::AIR_ID,
                 air_group_id_path = ::zisk_pil::$trace::<()>::AIRGROUP_ID,
-                num_available_field = $num_available_field,
+                num_available = $num_available,
                 ops = [
                     $(
                         ( $ext_variant $( => $enum_variant )? , $sub_input )

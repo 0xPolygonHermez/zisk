@@ -9,7 +9,10 @@ zisk_common::zisk_precompile! {
     name = Blake2,
     op_type = Blake2,
     trace = Blake2brTrace,
-    num_available_field = num_available_blake2s,
+    num_available = {
+        let n = ::zisk_pil::Blake2brTrace::<::zisk_pil::Blake2brTraceRow<F>>::NUM_ROWS;
+        n / CLOCKS - (n % CLOCKS != 0) as usize
+    },
     ops = [
         (OperationBlake2Data, Blake2Input),
     ],

@@ -9,7 +9,7 @@ zisk_common::zisk_precompile! {
     name = Add256,
     op_type = BigInt,
     trace = Add256Trace,
-    num_available_field = num_availables,
+    num_available = ::zisk_pil::Add256Trace::<()>::NUM_ROWS,
     ops = [
         (OperationAdd256Data, Add256Input),
     ],

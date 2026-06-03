@@ -9,7 +9,7 @@ use fields::PrimeField64;
 use mem_common::MemCounters;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
     MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
@@ -34,22 +34,27 @@ impl<F: PrimeField64> Mem<F> {
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }
+}
 
-    pub fn build_mem_counter(&self) -> MemCounters {
+impl<F: PrimeField64> ComponentPlanBuilder<F> for Mem<F> {
+    type Counter = MemCounters;
+
+    fn counter(_is_asm_emulator: bool) -> Self::Counter {
         MemCounters::new()
     }
 
-    // This method is used to create a dummy planner when using count-and-plan in C++
-    pub fn build_dummy_planner(&self) -> Box<dyn Planner> {
-        Box::new(DummyMemPlanner::new())
+    /// `is_asm_emulator = true` returns the dummy planner used when
+    /// count-and-plan runs in C++.
+    fn planner(is_asm_emulator: bool) -> Box<dyn Planner> {
+        if is_asm_emulator {
+            Box::new(DummyMemPlanner::new())
+        } else {
+            Box::new(MemPlanner::new())
+        }
     }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
-    fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(MemPlanner::new())
-    }
-
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
         let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<()>::AIR_ID);
         let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<()>::AIR_ID);

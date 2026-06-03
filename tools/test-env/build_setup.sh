@@ -145,7 +145,9 @@ main() {
     step "Generate constant tree files..."
     local gpu_flag=""
     [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-    ensure cargo-zisk check-setup ${gpu_flag} || return 1
+    local no_agg_flag=""
+    [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && no_agg_flag="--no-aggregation"
+    ensure cargo-zisk check-setup ${gpu_flag} ${no_agg_flag} || return 1
 
     success "ZisK setup completed successfully!"
 }
