@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     client.setup(&ELF_AGG_VERIFY).run()?.await?;
 
     println!("Executing first program...");
-    let result = client.execute(&ELF_FIB_MOD, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",
