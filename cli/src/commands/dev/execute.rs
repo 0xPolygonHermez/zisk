@@ -23,7 +23,8 @@ pub(crate) struct ExecuteCmd {
     #[arg(short = 'l', long, conflicts_with = "asm")]
     emulator: bool,
 
-    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    /// Input for the guest. Accepts a file path, `file://path`, or inline data
+    /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     inputs: Option<String>,
 

@@ -20,7 +20,8 @@ pub(crate) struct ZiskRemoteProve {
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
-    /// Input for the guest. Accepts a string literal or a path to a binary file
+    /// Input for the guest. Accepts a file path, `file://path`, or inline data
+    /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
     #[arg(short = 'i', long)]
     inputs: Option<String>,
 

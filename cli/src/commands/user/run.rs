@@ -31,7 +31,8 @@ pub(crate) struct RunCmd {
     #[arg(short = 'e', long)]
     elf: Option<String>,
 
-    /// Input file path for the guest. Accepts a string literal or a path to a binary file
+    /// Input for the guest. Accepts a file path, `file://path`, or inline data
+    /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
     #[arg(short = 'i', long)]
     inputs: Option<String>,
 
@@ -79,10 +80,7 @@ impl RunCmd {
         };
 
         let program = GuestProgram::from_uri(&elf_path)?;
-        let stdin = match &self.inputs {
-            Some(path) => ZiskStdin::from_file(path)?,
-            None => ZiskStdin::new(),
-        };
+        let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         program.run_emulation(stdin, self.profiling)
     }
 }

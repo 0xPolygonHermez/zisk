@@ -31,6 +31,7 @@ impl ZiskStdin {
     ///
     /// - `None` → empty stdin
     /// - `file://path` → read from file
+    /// - `inline://[[1,2],[3]]` → inline input, a JSON array of u64 arrays
     /// - No scheme → treated as a file path
     pub fn from_uri<S: Into<String>>(uri: Option<S>) -> anyhow::Result<Self> {
         Ok(Self(ZiskStdinInner::from_uri(uri)?))
