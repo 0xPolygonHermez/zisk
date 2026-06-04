@@ -111,32 +111,40 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
         output.get_execution_cost().map(|c| format!("{} cells", c)).unwrap_or("N/A".to_string());
     info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
 
+            let sep2 = " [ ".dimmed();
+        let sep3 = " ] ".dimmed();
+
     // Time breakdown.
     let et = output.get_executor_time();
     info!(
-        "Execution time breakdown: {}ms ({} {}ms + {} {}ms + {} {}ms)",
+        "Execution time breakdown: {}ms{}{} {}ms + {} {}ms + {} {}ms{}",
         et.total_duration,
+        sep2,
         "Execution".dimmed(),
         et.execution_duration,
         "Count&Plan".dimmed(),
         et.count_and_plan_duration,
         "Count&Plan MO".dimmed(),
         et.count_and_plan_mo_duration,
+        sep3
     );
     if let Some(aei) = &et.asm_execution_duration {
         info!("Assembly execution speed: {:.3}ms ({:.0} MHz)", aei.time * 1000f32, aei.mhz);
     }
 
-    // Plan, when present: one line, machines sorted by name, names dimmed.
+    // Plan, when present: one line, machines sorted by name, separators dimmed.
     if let Some(plan) = output.get_plan() {
         let mut entries: Vec<_> = plan.iter().collect();
         entries.sort_by_key(|e| e.name);
         let total: usize = entries.iter().map(|e| e.count).sum();
+        let sep = " | ".dimmed();
+        let sep2 = " [ ".dimmed();
+        let sep3 = " ] ".dimmed();
         let body = entries
             .iter()
             .map(|e| format!("{}: {}", e.name.dimmed(), e.count))
             .collect::<Vec<_>>()
-            .join(" | ");
-        info!("Plan {} | Total instances: {}", body, total);
+            .join(&sep.to_string());
+        info!("Plan{}{}{}Total instances: {}", sep2, body, sep3, total);
     }
 }
