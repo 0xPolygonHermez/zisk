@@ -41,11 +41,15 @@ fn main() {
 
     // The asm binaries additionally link two libs; hashing their *source* (not
     // the compiled archives) keeps the key a pure build-time constant, so the
-    // path a consumer computes always matches what the producer generates.
+    // path a consumer computes always matches what the producer generates. The
+    // libs' build *config* (ziskclib's manifest, lib-c's Makefile) is folded in
+    // too, since it changes the produced libs without touching their src/.
     let mut asm_files = collect_files(&emu_src, &[]);
     asm_files.push(ws.join("emulator-asm/Makefile"));
     asm_files.extend(collect_files(&ws.join("ziskclib/src"), &[])); // -> libziskclib.a
+    asm_files.push(ws.join("ziskclib/Cargo.toml"));
     asm_files.extend(collect_files(&ws.join("lib-c/c/src"), &[])); // -> libziskc.a
+    asm_files.push(ws.join("lib-c/c/Makefile"));
     let mut seeded = blake3::Hasher::new();
     seeded.update(rom_hash.as_bytes());
     seeded.update(&[0xffu8]);
@@ -64,10 +68,10 @@ fn hash_files(mut hasher: blake3::Hasher, ws: &Path, mut files: Vec<PathBuf>) ->
         let rel = f.strip_prefix(ws).unwrap_or(f);
         hasher.update(rel.to_string_lossy().as_bytes());
         hasher.update(&[0u8]);
-        if let Ok(bytes) = std::fs::read(f) {
-            hasher.update(&(bytes.len() as u64).to_le_bytes());
-            hasher.update(&bytes);
-        }
+        let bytes = std::fs::read(f)
+            .unwrap_or_else(|e| panic!("rom-setup build.rs: cannot read {}: {e}", f.display()));
+        hasher.update(&(bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
         hasher.update(&[0xffu8]);
     }
     hasher.finalize().to_hex().as_str()[..12].to_string()

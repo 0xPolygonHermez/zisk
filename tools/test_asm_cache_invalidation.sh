@@ -44,7 +44,9 @@ run_probe() {
 
 pass=0; fail=0
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+CUR_FILE=""; CUR_SNAP=""
+cleanup() { [ -n "$CUR_FILE" ] && cp "$CUR_SNAP" "$CUR_FILE"; rm -rf "$tmp"; }
+trap cleanup EXIT INT TERM
 
 base=$(run_probe)
 echo "baseline name: $base"
@@ -62,9 +64,11 @@ for entry in "${INPUTS[@]}"; do
   # (the transpiler .rs is compiled during the probe build, so it must stay
   # valid) and harmless trailing bytes for the ELF (never parsed by the probe).
   cp "$file" "$tmp/snap.$i"
+  CUR_FILE="$file"; CUR_SNAP="$tmp/snap.$i"   # arm restore-on-exit
   printf '\n// cache-probe %s\n' "$RANDOM" >> "$file"
   after=$(run_probe)
   cp "$tmp/snap.$i" "$file"
+  CUR_FILE=""; CUR_SNAP=""                    # disarm: file restored
   if [ "$base" != "$after" ]; then echo "CHANGED ✅"; pass=$((pass+1)); else echo "UNCHANGED ❌"; fail=$((fail+1)); fi
   i=$((i+1))
 done
