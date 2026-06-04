@@ -10,9 +10,9 @@
 //!
 //! `test_diagnostic_embedded` — in-process: execute, verify_constraints,
 //! prove. On Linux the Assembly executor is built and the body additionally
-//! exercises the ASM execute + ASM prove paths; on macOS (no asm/jit support)
-//! the test runs the Emulator path end-to-end (EMU execute + verify_constraints
-//! + EMU prove). Topology (GPU / CPU+MPI / mac) is selected by how the test is
+//! exercises the ASM execute and ASM prove paths; on macOS (no asm/jit support)
+//! the test runs the Emulator path end-to-end (EMU execute, verify_constraints,
+//! EMU prove). Topology (GPU / CPU+MPI / mac) is selected by how the test is
 //! launched, not by the test body.
 //!
 //! The remote variant lives in its own file (`diagnostic_smoke_remote.rs`)
