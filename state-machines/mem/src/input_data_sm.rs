@@ -78,7 +78,6 @@ impl<F: PrimeField64> InputDataSM<F> {
         let num_rows = InputDataTrace::<R>::NUM_ROWS;
 
         let mut last_addr = u32::MAX;
-        let mut first = true;
         for i in 0..num_rows {
             let addr = trace[i].get_addr();
             if addr != last_addr {

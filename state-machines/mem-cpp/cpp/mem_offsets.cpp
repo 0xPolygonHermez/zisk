@@ -1,6 +1,7 @@
 #include "mem_offsets.hpp"
 #include <assert.h>
 #include <ostream>
+#include <algorithm>
 
 MemOffsets::MemOffsets(uint32_t id, uint32_t mb_size)
     : id(id), first_offset_addr(0), last_offset_addr(0), is_preallocated(true),
@@ -47,7 +48,7 @@ void MemOffsets::realloc_pages(uint32_t page) {
     #ifdef MEM_WARNINGS
     uint32_t _num_offset_pages = num_offset_pages;
     #endif
-    num_offset_pages = std::max(num_offset_pages, page) + std::min(num_offset_pages, (uint32_t) MAX_OFFSET_PAGES_INCREMENT);
+    num_offset_pages = std::max(1, std::max(num_offset_pages, page) + std::min(num_offset_pages, (uint32_t) MAX_OFFSET_PAGES_INCREMENT));
     #ifdef MEM_WARNINGS
     printf("MemOffsets::realloc_pages: reallocating from %u to %u pages (requested page %u)\n", _num_offset_pages, num_offset_pages, page);
     #endif
@@ -267,7 +268,7 @@ void MemOffsets::save_offsets_to_file(const std::string &filename, bool compact)
             // This is a compressed page - all entries have the same value
             uint32_t value = page_values[page];
             if (compact) {
-                uint32_t next_value = (page < last_page) ? (page_offsets[page + 1] == MEM_OFFSETS_PAGE_ABSENT ? page_values[page + 1] : offsets[page_offsets[page + 1]]) : 0;
+                uint32_t next_value = (page < last_page) ? (page_offsets[page + 1] == MEM_OFFSETS_PAGE_ABSENT ? page_values[page + 1] : offsets[page_offsets[page + 1] * OFFSET_PAGE_SIZE]) : 0;
                 if (value != next_value) {
                     uint32_t addr = (first_offset_addr >> 3) + (page + 1) * OFFSET_PAGE_SIZE - 1;
                     fprintf(file, "0x%X %d\n", addr * 8, value - 1);
@@ -286,7 +287,7 @@ void MemOffsets::save_offsets_to_file(const std::string &filename, bool compact)
             }
         } else {
             // Regular page with individual offset values
-            uint32_t base = page_offsets[page];
+            uint32_t base = page_offsets[page] * OFFSET_PAGE_SIZE;
             uint32_t entries_in_page = (page == last_page) ? ((last_index % OFFSET_PAGE_SIZE) + 1) : OFFSET_PAGE_SIZE;
             
             for (uint32_t i = 0; i < entries_in_page; ++i) {

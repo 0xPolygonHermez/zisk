@@ -695,7 +695,7 @@ impl<F: PrimeField64> MemSM<F> {
                 debug_assert!(previous_addr < mem_op.addr as u64, "MemSM: Warning: address goes back \
                               or no change (on addr_changes path) from 0x{:X} to 0x{previous_addr:X} \
                               at irow {irow} (offset_base_addr_w: 0x{offset_base_addr_w:X})",
-                    mem_op.addr);
+                    mem_op.addr * 8, previous_addr * 8, offset_base_addr_w * 8);
                 mem_op.addr as u64 - previous_addr - 1
             } else if dual_available {
                 // It's dual read, not addr_changes.
