@@ -6,7 +6,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ProofKind, ZiskHints, ZiskStdin};
 
-use super::{run_embedded_setup, validate_asm_hints};
+use super::validate_asm_hints;
 use crate::common::{default_proof_filename, resolve_elf};
 use crate::ux::print_job_banner;
 
@@ -96,7 +96,13 @@ impl ZiskEmbeddedProve {
         }
         let client = builder.build()?;
 
-        run_embedded_setup(&client, &program, self.asm, hints.is_some())?;
+        let mut setup = client.setup(&program);
+        if !self.asm {
+            setup = setup.emulator_only();
+        } else if hints.is_some() {
+            setup = setup.with_hints();
+        }
+        setup.run_sync()?;
 
         let mut request = client.prove(&program, stdin);
         if let Some(hints) = hints {

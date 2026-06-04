@@ -4,9 +4,9 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
+use zisk_sdk::{EmbeddedClientBuilder, ExecuteOutput, GuestProgram, ZiskHints, ZiskStdin};
 
-use super::{run_embedded_setup, validate_asm_hints};
+use super::validate_asm_hints;
 use crate::common::resolve_elf;
 use crate::ux::print_job_banner;
 
@@ -66,19 +66,53 @@ impl ZiskEmbeddedExecute {
         if self.asm {
             builder = builder.assembly();
         }
-        let client = builder.build()?;
+        let client = builder.execute_only().build()?;
 
-        run_embedded_setup(&client, &program, self.asm, hints.is_some())?;
+        client.setup(&program, hints.is_some())?;
 
-        let mut request = client.execute(&program, stdin);
-        if let Some(hints) = hints {
-            request = request.hints(hints);
-        }
-        let result = request.run_sync()?;
+        let request = client.execute(&program, stdin, hints)?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
-        info!("{}", result.output());
+        print_executeoutput(&request);
 
         Ok(())
+    }
+}
+
+fn print_executeoutput(output: &ExecuteOutput) {
+    print_execution_summary(output);
+    print_execution_breakdown(output);
+    print_plan_summary(output);
+}
+
+fn print_execution_summary(output: &ExecuteOutput) {
+    let steps = output.get_execution_steps();
+    let time = output.get_execution_time();
+    let cost =
+        output.get_execution_cost().map(|c| format!("{} cells", c)).unwrap_or("N/A".to_string());
+    info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
+}
+
+fn print_execution_breakdown(output: &ExecuteOutput) {
+    let et = output.get_executor_time();
+    info!(
+        "Execution time breakdown: {}ms (execution: {}ms + plan: {}ms + plan mem: {}ms)",
+        et.total_duration,
+        et.execution_duration,
+        et.count_and_plan_duration,
+        et.count_and_plan_mo_duration,
+    );
+
+    if let Some(aei) = &et.asm_execution_duration {
+        info!("Assembly execution speed: {:.3}ms ({:.0} MHz)", aei.time * 1000f32, aei.mhz);
+    }
+}
+
+fn print_plan_summary(output: &ExecuteOutput) {
+    if let Some(plan) = output.get_plan() {
+        info!("Plan:");
+        for entry in plan {
+            info!("  {}: {}", entry.name, entry.count);
+        }
     }
 }

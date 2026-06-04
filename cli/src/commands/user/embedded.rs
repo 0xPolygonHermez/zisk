@@ -1,6 +1,5 @@
 use anyhow::Result;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{EmbeddedClient, GuestProgram};
 
 use crate::common::reject_quic_hints;
 
@@ -23,26 +22,6 @@ fn validate_asm_hints(asm: bool, hints: Option<&str>) -> Result<()> {
         anyhow::bail!("--hints requires the ASM backend; re-run with --asm.");
     }
     reject_quic_hints(hints)
-}
-
-/// Run ROM setup before execution/proving, selecting hints or emulator-only mode.
-///
-/// The embedded SDK exposes a synchronous path (`run_sync`), so no async runtime
-/// is needed here.
-fn run_embedded_setup(
-    client: &EmbeddedClient,
-    program: &GuestProgram,
-    asm: bool,
-    has_hints: bool,
-) -> Result<()> {
-    let mut setup = client.setup(program);
-    if !asm {
-        setup = setup.emulator_only();
-    } else if has_hints {
-        setup = setup.with_hints();
-    }
-    setup.run_sync()?;
-    Ok(())
 }
 
 #[derive(clap::Subcommand)]
