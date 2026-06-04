@@ -515,10 +515,18 @@ impl Riscv2ZiskContext<'_> {
             "c.halt" => self.halt_with_error(riscv_instruction, 2),
             "reserved" => self.halt_with_error(riscv_instruction, 4),
 
-            _ => panic!(
-                "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
-                riscv_instruction.inst
-            ),
+            _ => {
+                #[cfg(feature = "float")]
+                if riscv_instruction.inst.starts_with("f")
+                    || riscv_instruction.inst.starts_with("c.f")
+                {
+                    panic!("Riscv2ZiskContext::convert() found unsupported floating-point instruction riscv_instruction.inst={}.  Enable feature \"float\" to support it.", riscv_instruction.inst);
+                }
+                panic!(
+                    "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
+                    riscv_instruction.inst
+                )
+            }
         }
     }
 
