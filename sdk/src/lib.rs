@@ -28,6 +28,7 @@ pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
 pub use prove::{JobEvent, ProveRequest, ProveResult};
+pub use remote::setup::SetupByIdRequest;
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;

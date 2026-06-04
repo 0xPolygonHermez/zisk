@@ -33,7 +33,7 @@ impl ZiskRemoteUpload {
         let result = client.upload(&program).run()?;
 
         info!("{}", "--- UPLOAD SUMMARY ------------".bright_green().bold());
-        info!("Program registered. hash_id: {}", result.hash_id());
+        info!("Program registered. Hash ID: {}", result.hash_id());
 
         Ok(())
     }

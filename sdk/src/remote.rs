@@ -20,6 +20,7 @@ use crate::{
     input_source::InputSource,
     job_handle::{JobHandle, SubscriberList},
     prove::ProveRequest,
+    remote::setup::SetupByIdRequest,
     setup::{SetupRequest, SetupResult},
     upload::{UploadRequest, UploadResult},
     wrap::WrapRequest,
@@ -146,10 +147,20 @@ impl RemoteClient {
         ExecuteRequest::new(self, program, stdin, ExecutorKind::default())
     }
 
-    /// Submit a ROM setup request.
+    /// Submit a ROM setup request
     #[must_use]
     pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
         SetupRequest::new(self, program)
+    }
+
+    /// Submit a ROM setup request for an already-uploaded program by `hash_id`.
+    ///
+    /// Skips upload — the coordinator must already hold the program's ELF (e.g. from
+    /// a prior [`upload`](Self::upload)). Returns `ProgramNotFound` from the coordinator
+    /// otherwise.
+    #[must_use]
+    pub fn setup_by_id(&self, hash_id: impl Into<String>) -> SetupByIdRequest<'_> {
+        SetupByIdRequest::new(self, hash_id.into())
     }
 
     /// Upload/register the program ELF with the coordinator.

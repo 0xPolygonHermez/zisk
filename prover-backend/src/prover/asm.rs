@@ -347,7 +347,6 @@ impl ProverEngine for AsmProver {
                 let output_path = get_output_path(&None)?;
                 generate_assembly(
                     elf.elf(),
-                    elf.name(),
                     &output_path,
                     with_hints,
                     self.core_prover.asm_info.verbose != VerboseMode::Info,
