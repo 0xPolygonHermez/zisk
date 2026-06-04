@@ -45,7 +45,6 @@ ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint
     // Initialize offset tracking with id=0 for immutable planner
     this->mb_size = mb_size;
     mem_offsets = new MemOffsets(from_page);
-    mem_offsets->enable_debug(); // Enable debug for mem_offsets to track intermediate addresses    
 }
 
 ImmutableMemPlanner::~ImmutableMemPlanner() {
