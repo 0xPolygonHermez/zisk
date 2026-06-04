@@ -3,6 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
+    // Skip entire build process if float feature is not enabled
+    if std::env::var("CARGO_FEATURE_FLOAT").is_err() {
+        return;
+    }
+
+    // Skip if not targeting Linux, since the C library is only compatible with Linux (e.g. MacOS)
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
         return;
     }
