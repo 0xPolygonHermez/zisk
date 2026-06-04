@@ -2,7 +2,7 @@ use std::sync::Arc;
 use zisk_common::SegmentId;
 use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
-#[cfg(any(feature = "debug_mem"))]
+#[cfg(feature = "debug_mem")]
 use std::{
     env,
     fs::File,
@@ -118,7 +118,6 @@ impl<F: PrimeField64> MemSM<F> {
         let num_rows = MemTrace::<R>::NUM_ROWS;
 
         let mut last_addr = u32::MAX;
-        let mut first = true;
         for i in 0..num_rows {
             let addr = trace[i].get_addr();
             if addr != last_addr {

@@ -90,7 +90,6 @@ impl MemPlanner {
                 (*chunk_id, Metrics::as_any(&**metric).downcast_ref::<MemCounters>().unwrap())
             })
             .collect();
-        println!("Collected memory counters for {} chunks", counters.len());
         counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
         let counters = Arc::new(counters);
         #[cfg(feature = "save_mem_counters")]
