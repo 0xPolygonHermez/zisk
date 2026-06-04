@@ -158,30 +158,10 @@ impl MemModulePlanner {
 
         self.add_chunk_to_segment(chunk_id, addr, rows, skip);
 
-        if addr > 0x145835d0 && addr < 0x145835df {
-            println!(
-                "ADD_ADDR_OFFSET  addr:{:#010X} offset:{} rows:{} skip:{} ra:{} sid:{}",
-                addr * 8,
-                self.config.rows - self.rows_available,
-                rows,
-                skip,
-                self.rows_available,
-                self.segments.len()
-            );
-        }
         let mut offset = self.config.rows - self.rows_available;
         if self.segments.is_empty() || offset > 0 {
             offset += 1;
         } else if !self.segments.is_empty() && offset == 0 && skip == 0 {
-            println!(
-                "ADD_ADDR_OFFSET HALO addr:{:#010X} last_addr:{:#010X} rows:{} skip:{} ra:{} sid:{}",
-                addr * 8,
-                self.previous_segment_addr * 8,
-                rows,
-                skip,
-                self.rows_available,
-                self.segments.len()
-            );
             self.current_segment.add_addr_offset(self.previous_segment_addr, 0);
             offset += 1;
         }
