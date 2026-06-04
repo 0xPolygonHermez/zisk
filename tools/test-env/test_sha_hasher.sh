@@ -57,7 +57,12 @@ main() {
     else
         step "Generating program setup..."
         local gpu_flag=""
-        [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
+        # Only enable GPU when not forced to CPU, not on macOS, and the installed
+        # cargo-zisk is actually a GPU build (its `--version` description contains
+        # "[gpu]", e.g. "cargo-zisk 0.18.0 [gpu] (790f9e2 ...)").
+        if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
+            gpu_flag="--gpu"
+        fi
         ensure cargo-zisk program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
            err "program setup failed"
