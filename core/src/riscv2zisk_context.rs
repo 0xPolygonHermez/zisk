@@ -2527,14 +2527,15 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // We read the input data boundaries of 128MB chunks to make sure we can proof large input data
+    // We read the input data boundaries of 128MB chunks to make sure we can prove large input data
     // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
-    // than 128MB, we can still proof the program by reading the input data in 128MB steps
+    // than 128MB, we can still prove the program by reading the input data in 128MB steps
 
     // :0034 -> read input[128M]
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 1 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[128M]"));
@@ -2545,6 +2546,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 2 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[256M]"));
@@ -2555,6 +2557,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 3 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[384M]"));
@@ -2565,6 +2568,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 4 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[512M]"));
@@ -2575,6 +2579,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 5 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[640M]"));
@@ -2585,6 +2590,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 6 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[768M]"));
@@ -2595,6 +2601,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", INPUT_ADDR + 7 * 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
+    zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
     zib.verbose(&format!("Read input[896M]"));
