@@ -82,6 +82,89 @@ impl MemPlanner {
         Self {}
     }
 
+    pub fn generate_plans(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
+        // convert generic information to specific information
+        let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
+            .iter()
+            .map(|(chunk_id, metric)| {
+                (*chunk_id, Metrics::as_any(&**metric).downcast_ref::<MemCounters>().unwrap())
+            })
+            .collect();
+        println!("Collected memory counters for {} chunks", counters.len());
+        counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
+        let counters = Arc::new(counters);
+        #[cfg(feature = "save_mem_counters")]
+        let _ = self.save_counters_to_file(counters.clone(), "mem_counters.bin");
+        self.generate_plans_from_counters(counters)
+    }
+
+    pub fn generate_plans_from_counters(
+        &self,
+        counters: Arc<Vec<(ChunkId, &MemCounters)>>,
+    ) -> Vec<Plan> {
+        let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: MEM_AIR_IDS[0],
+                addr_index: 2,
+                from_addr: RAM_W_ADDR_INIT,
+                last_addr: RAM_W_ADDR_INIT,
+                rows: MemTrace::<Goldilocks>::NUM_ROWS as u32,
+                max_addr_distance: 0xFFFF_FFFF,
+            },
+            counters.clone(),
+        )));
+
+        let rom_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: ROM_DATA_AIR_IDS[0],
+                addr_index: 0,
+                from_addr: ROM_DATA_W_ADDR_INIT,
+                last_addr: ROM_DATA_W_ADDR_INIT - 1,
+                rows: RomDataTrace::<Goldilocks>::NUM_ROWS as u32,
+                max_addr_distance: 1 << 24,
+            },
+            counters.clone(),
+        )));
+
+        let input_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
+            MemModulePlannerConfig {
+                airgroup_id: ZISK_AIRGROUP_ID,
+                air_id: INPUT_DATA_AIR_IDS[0],
+                addr_index: 1,
+                from_addr: INPUT_DATA_W_ADDR_INIT,
+                last_addr: INPUT_DATA_W_ADDR_INIT,
+                rows: InputDataTrace::<Goldilocks>::NUM_ROWS as u32,
+                max_addr_distance: 1 << 24,
+            },
+            counters.clone(),
+        )));
+        let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
+
+        let planners = vec![
+            Arc::clone(&mem_planner),
+            Arc::clone(&rom_data_planner),
+            Arc::clone(&input_data_planner),
+        ];
+
+        planners.par_iter().for_each(|plan| {
+            let mut locked_plan = plan.lock().unwrap();
+            locked_plan.plan();
+        });
+        mem_align_planner.plan();
+
+        let mut plans: Vec<Plan> = Vec::new();
+        plans.append(&mut mem_planner.lock().unwrap().collect_plans());
+        plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
+        plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
+        plans.append(&mut mem_align_planner.collect_plans());
+
+        #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
+        save_plans(&plans, "plans.txt");
+        plans
+    }
+
     #[cfg(feature = "save_mem_counters")]
     pub fn save_counters_to_file(
         &self,
@@ -285,88 +368,6 @@ impl MemPlanner {
 
         let counters = Arc::new(counters_refs);
         Ok(self.generate_plans_from_counters(counters))
-    }
-
-    pub fn generate_plans(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
-        // convert generic information to specific information
-        let mut counters: Vec<(ChunkId, &MemCounters)> = metrics
-            .iter()
-            .map(|(chunk_id, metric)| {
-                (*chunk_id, Metrics::as_any(&**metric).downcast_ref::<MemCounters>().unwrap())
-            })
-            .collect();
-        counters.par_sort_by_key(|(chunk_id, _)| *chunk_id);
-        let counters = Arc::new(counters);
-        #[cfg(feature = "save_mem_counters")]
-        let _ = self.save_counters_to_file(counters.clone(), "mem_counters.bin");
-        self.generate_plans_from_counters(counters)
-    }
-
-    pub fn generate_plans_from_counters(
-        &self,
-        counters: Arc<Vec<(ChunkId, &MemCounters)>>,
-    ) -> Vec<Plan> {
-        let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
-            MemModulePlannerConfig {
-                airgroup_id: ZISK_AIRGROUP_ID,
-                air_id: MEM_AIR_IDS[0],
-                addr_index: 2,
-                from_addr: RAM_W_ADDR_INIT,
-                last_addr: RAM_W_ADDR_INIT,
-                rows: MemTrace::<Goldilocks>::NUM_ROWS as u32,
-                max_addr_distance: 0xFFFF_FFFF,
-            },
-            counters.clone(),
-        )));
-
-        let rom_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
-            MemModulePlannerConfig {
-                airgroup_id: ZISK_AIRGROUP_ID,
-                air_id: ROM_DATA_AIR_IDS[0],
-                addr_index: 0,
-                from_addr: ROM_DATA_W_ADDR_INIT,
-                last_addr: ROM_DATA_W_ADDR_INIT - 1,
-                rows: RomDataTrace::<Goldilocks>::NUM_ROWS as u32,
-                max_addr_distance: 1 << 24,
-            },
-            counters.clone(),
-        )));
-
-        let input_data_planner = Arc::new(Mutex::new(MemModulePlanner::new(
-            MemModulePlannerConfig {
-                airgroup_id: ZISK_AIRGROUP_ID,
-                air_id: INPUT_DATA_AIR_IDS[0],
-                addr_index: 1,
-                from_addr: INPUT_DATA_W_ADDR_INIT,
-                last_addr: INPUT_DATA_W_ADDR_INIT,
-                rows: InputDataTrace::<Goldilocks>::NUM_ROWS as u32,
-                max_addr_distance: 1 << 24,
-            },
-            counters.clone(),
-        )));
-        let mut mem_align_planner = MemAlignPlanner::new(counters.clone());
-
-        let planners = vec![
-            Arc::clone(&mem_planner),
-            Arc::clone(&rom_data_planner),
-            Arc::clone(&input_data_planner),
-        ];
-
-        planners.par_iter().for_each(|plan| {
-            let mut locked_plan = plan.lock().unwrap();
-            locked_plan.plan();
-        });
-        mem_align_planner.plan();
-
-        let mut plans: Vec<Plan> = Vec::new();
-        plans.append(&mut mem_planner.lock().unwrap().collect_plans());
-        plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
-        plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
-        plans.append(&mut mem_align_planner.collect_plans());
-
-        #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
-        save_plans(&plans, "plans.txt");
-        plans
     }
 }
 

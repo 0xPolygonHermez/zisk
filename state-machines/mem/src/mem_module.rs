@@ -1,7 +1,7 @@
 use crate::{MemInput, MemPreviousSegment};
 use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofmanResult};
-#[cfg(feature = "debug_mem")]
+#[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -34,7 +34,7 @@ pub trait MemModule<F: Clone>: Send + Sync {
     fn get_mem_name(&self) -> &str;
 }
 
-#[cfg(feature = "debug_mem")]
+#[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 pub fn save_offsets_to_file(seg: &MemModuleSegmentCheckPoint, file_name: &str) {
     println!("[MemDebug] saving offsets to {} .....", file_name);
     let file = File::create(file_name).unwrap();

@@ -2,14 +2,14 @@ use std::sync::Arc;
 use zisk_common::SegmentId;
 use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
-#[cfg(feature = "debug_mem")]
+#[cfg(any(feature = "debug_mem"))]
 use std::{
     env,
     fs::File,
     io::{BufWriter, Write},
 };
 
-#[cfg(feature = "debug_mem")]
+#[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 use crate::mem_module::save_offsets_to_file;
 
 use crate::{MemInput, MemModule};
@@ -108,8 +108,10 @@ impl<F: PrimeField64> MemSM<F> {
         println!("[MemDebug] done");
     }
 
-    #[cfg(feature = "debug_mem")]
+    #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
     pub fn save_addr_offsets_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+        use std::io::Write;
+
         println!("[MemDebug] saving address offsets to {} .....", file_name);
         let file = std::fs::File::create(file_name).unwrap();
         let mut writer = std::io::BufWriter::new(file);
@@ -120,7 +122,7 @@ impl<F: PrimeField64> MemSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].get_addr();
             if addr != last_addr {
-                writeln!(writer, "0x{addr:X} {i}").unwrap();
+                writeln!(writer, "0x{:08X} {i}", addr * 8).unwrap();
                 last_addr = addr;
             }
         }
@@ -178,7 +180,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///
     /// from_addr: first qword address in the trace for segment 0; previous_segment.addr for later
     ///            segments so the halo slot (index 0) is always present.
-    #[cfg(feature = "debug_mem")]
+    #[cfg(feature = "debug_mem_bin_offsets")]
     pub fn save_bin_offsets_to_file<R: MemTraceRowOps<F>>(
         trace: &MemTrace<R>,
         segment_id: SegmentId,
@@ -186,6 +188,8 @@ impl<F: PrimeField64> MemSM<F> {
         count: usize,
         file_name: &str,
     ) {
+        use std::io::Write;
+
         if count == 0 {
             println!("[MemDebug] save_bin_offsets_to_file: count is 0, skipping {}", file_name);
             return;
@@ -481,7 +485,7 @@ impl<F: PrimeField64> MemSM<F> {
             println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
         }
 
-        #[cfg(feature = "debug_mem")]
+        #[cfg(feature = "debug_mem_bin_offsets")]
         Self::save_bin_offsets_to_file(
             &trace,
             segment_id,
@@ -489,7 +493,7 @@ impl<F: PrimeField64> MemSM<F> {
             count,
             &format!("tmp/mem_trace_{segment_id:04}_bin_offsets.bin"),
         );
-        #[cfg(feature = "debug_mem")]
+        #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
         Self::save_addr_offsets_to_file(
             &trace,
             &format!("tmp/mem_trace_{segment_id:04}_offsets.txt"),
@@ -566,10 +570,9 @@ impl<F: PrimeField64> MemSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = MemTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         #[cfg(feature = "debug_mem")]
-        {
-            Self::save_mem_inputs_to_file(mem_ops, segment_id);
-            save_offsets_to_file(seg, &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"));
-        }
+        Self::save_mem_inputs_to_file(mem_ops, segment_id);
+        #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
+        save_offsets_to_file(seg, &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"));
 
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
@@ -633,11 +636,10 @@ impl<F: PrimeField64> MemSM<F> {
                     // distinct address comes from the sparse change-point
                     // table (was a backward linear scan on the dense
                     // offsets array before the SoA refactor).
-                    mem_op.addr as u64
-                        - seg
-                            .previous_change_addr_w(addr_index as u32)
-                            .unwrap_or(previous_segment.addr as u64)
-                        - 1
+                    let previous_addr_w = seg
+                        .previous_change_addr_w(addr_index as u32)
+                        .unwrap_or(previous_segment.addr as u64);
+                    mem_op.addr as u64 - previous_addr_w - 1
                 } else {
                     // How addr_changes is false, means that the previous row belongs to same address,
                     // in this case, how the inputs are in natural time order, we could read from
@@ -658,8 +660,8 @@ impl<F: PrimeField64> MemSM<F> {
                         );
                         panic!("MemSM: Warning: step {step} is not greater than previous_step {previous_step} \
                                 for write operation at index {index} and irow {irow} with addr 0x{:X} \
-                                (addr_index: {addr_index})",
-                            mem_op.addr * 8);
+                                (addr_index: {addr_index} previous_segment.addr: 0x{:X} offset_base_addr_w: 0x{:X})",
+                            mem_op.addr * 8, previous_segment.addr * 8, offset_base_addr_w * 8);
                     }
                     step - previous_step - 1
                 };
