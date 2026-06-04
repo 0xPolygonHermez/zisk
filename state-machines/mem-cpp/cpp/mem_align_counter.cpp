@@ -6,7 +6,7 @@
 #include <vector>
 #include <assert.h>
 
-MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context) {
+MemAlignCounter::MemAlignCounter(std::shared_ptr<MemContext> context) :context(context), elapsed_ms(0), total_usleep(0) {
     total_counters.chunk_id = 0xFFFFFFFF;
     total_counters.full_5 = 0;
     total_counters.full_3 = 0;

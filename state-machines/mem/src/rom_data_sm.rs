@@ -238,6 +238,12 @@ impl<F: PrimeField64> RomDataSM<F> {
             Self::save_to_file(&trace, &filename);
         }
 
+        #[cfg(feature = "debug_mem")]
+        Self::save_addr_offsets_to_file(
+            &trace,
+            &format!("tmp/rom_data_trace_{segment_id:04}_offsets.txt"),
+        );
+
         Self::dump_trace_to_file(
             &trace,
             &format!("tmp/rom_data_trace_legacy_{segment_id:04}_dump.txt"),
@@ -341,7 +347,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             // first address == halo
         }
 
-        for (index, mem_op) in mem_ops.iter().enumerate() {
+        for mem_op in mem_ops.iter() {
             let addr_index = (mem_op.addr - offset_base_addr_w) as usize;
             let addr_changes = current_offsets[addr_index] == 0;
 
@@ -356,7 +362,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             };
             #[cfg(debug_assertions)]
             {
-                assert!(!filled_rows[irow],"RomDataSM: overriting non empty row {irow} for mem_op at index {index} with addr 0x{:X} => 0x{:X} step:{} => {}",
+                assert!(!filled_rows[irow],"RomDataSM: overriting non empty row {irow} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
                     trace[irow].get_addr() * 8, mem_op.addr * 8, trace[irow].get_step(), mem_op.step);
                 filled_rows[irow] = true;
             }
@@ -499,6 +505,29 @@ impl<F: PrimeField64> RomDataSM<F> {
             )
             .unwrap();
         }
+    }
+
+    #[cfg(feature = "debug_mem")]
+    pub fn save_addr_offsets_to_file<R: RomDataTraceRowOps<F>>(
+        trace: &RomDataTrace<R>,
+        file_name: &str,
+    ) {
+        println!("[RomDataDebug] saving address offsets to {} .....", file_name);
+        let file = std::fs::File::create(file_name).unwrap();
+        let mut writer = std::io::BufWriter::new(file);
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
+
+        let mut last_addr = u32::MAX;
+        let mut first = true;
+        for i in 0..num_rows {
+            let addr = trace[i].get_addr();
+            if addr != last_addr {
+                writeln!(writer, "0x{:08X} {i}", addr * 8).unwrap();
+                last_addr = addr;
+            }
+        }
+        writeln!(writer).unwrap();
+        println!("[RomDataDebug] done");
     }
 }
 

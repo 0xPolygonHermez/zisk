@@ -16,6 +16,7 @@
 #define USE_ADDR_COUNT_TABLE
 #define MAX_SEGMENTS 512
 // #define MEM_PLANNER_STATS
+// #define MEM_SAVE_CPP_OFFSETS
 
 #define MEM_CHECK_POINT_MAP
 // #define SEGMENT_STATS
@@ -32,6 +33,8 @@
 #define ROM_ROWS (1 << 21)
 #define INPUT_ROWS (1 << 21)
 #define MEM_ROWS (1 << 22)
+
+
 #define MAX_CHUNKS (1 << 18)     // 2^36 / 2^18 = 2^18
 
 // THREAD_BITS >= 1
@@ -62,6 +65,15 @@
 #define NO_CHUNK_ID 0xFFFFFFFF
 #define EMPTY_PAGE 0xFFFFFFFF
 
+#define OFFSET_PAGE_SIZE 1024
+#define MAX_OFFSETS (1 << 22)
+
+#define MAX_OFFSET_PAGES_INCREMENT 8192
+#define MAX_OFFSET_INCREMENT (1024 * OFFSET_PAGE_SIZE)
+#define MEM_OFFSETS_PAGES 4096
+#define MEM_OFFSETS MAX_OFFSET_INCREMENT
+
+#define MAX_IMMUTABLE_ADDR_DISTANCE (1 << 24)
 
 // SINGLE WRITE FLAGS
 //                bits

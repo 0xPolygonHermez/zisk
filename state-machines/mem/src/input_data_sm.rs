@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(feature = "debug_mem")]
+use std::io::Write;
+
 use crate::{MemInput, MemModule, MemPreviousSegment};
 use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
@@ -62,6 +65,29 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
     pub fn get_to_addr() -> u32 {
         (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
+    }
+
+    #[cfg(feature = "debug_mem")]
+    pub fn save_addr_offsets_to_file<R: InputDataTraceRowOps<F>>(
+        trace: &InputDataTrace<R>,
+        file_name: &str,
+    ) {
+        println!("[InputDataDebug] saving address offsets to {} .....", file_name);
+        let file = std::fs::File::create(file_name).unwrap();
+        let mut writer = std::io::BufWriter::new(file);
+        let num_rows = InputDataTrace::<R>::NUM_ROWS;
+
+        let mut last_addr = u32::MAX;
+        let mut first = true;
+        for i in 0..num_rows {
+            let addr = trace[i].get_addr();
+            if addr != last_addr {
+                writeln!(writer, "0x{:08X} {i}", addr * 8).unwrap();
+                last_addr = addr;
+            }
+        }
+        writeln!(writer).unwrap();
+        println!("[InputDataDebug] done");
     }
     /// Fills the witness trace from a **sorted** input slice (legacy path).
     ///
@@ -264,6 +290,12 @@ impl<F: PrimeField64> InputDataSM<F> {
         range_16bits[distance_end[1] as usize] += 1;
 
         self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
+
+        #[cfg(feature = "debug_mem")]
+        Self::save_addr_offsets_to_file(
+            &trace,
+            &format!("tmp/input_data_trace_{segment_id:04}_offsets.txt"),
+        );
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
