@@ -25,9 +25,9 @@ pub(crate) struct ExecuteCmd {
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
-    /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[arg(short = 'l', long, conflicts_with = "asm")]
-    emulator: bool,
+    /// Use the ASM emulator instead of the default Rust emulator
+    #[arg(short = 'a', long)]
+    asm: bool,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -43,8 +43,8 @@ pub(crate) struct ExecuteCmd {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
-    #[arg(short = 'u', long, conflicts_with = "emulator")]
+    /// Unlock the memory map for the ROM file. Only applies with `--asm`.
+    #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
     /// Verbosity (-v, -vv)
@@ -57,12 +57,12 @@ pub(crate) struct ExecuteCmd {
     pub standalone: bool,
 
     // Hidden flags
-    /// ASM file path
-    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    asm: Option<PathBuf>,
+    /// ASM file path (implies `--asm`)
+    #[arg(short = 's', long, hide = true, requires = "asm")]
+    asm_path: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, conflicts_with = "emulator", hide = true)]
+    #[arg(long, hide = true, requires = "asm")]
     pub asm_out_file: bool,
 }
 
@@ -112,12 +112,12 @@ impl ExecuteCmd {
         };
 
         let emulator = if cfg!(target_os = "macos") {
-            if !self.emulator && rank_zero {
-                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            if self.asm && rank_zero {
+                warn!("Assembly is not supported on macOS; using the Rust emulator.");
             }
             true
         } else {
-            self.emulator
+            !self.asm
         };
 
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
@@ -200,7 +200,7 @@ impl ExecuteCmd {
 
     fn make_asm_options(&self) -> AsmOptions {
         let mut a = AsmOptions::default();
-        if let Some(ref path) = self.asm {
+        if let Some(ref path) = self.asm_path {
             a = a.asm_path(path.clone());
         }
         if self.unlock_mapped_memory {

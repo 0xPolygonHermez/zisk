@@ -20,9 +20,9 @@ pub(crate) struct VerifyConstraintsCmd {
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
 
-    /// Use prebuilt emulator (mutually exclusive with `--asm`)
-    #[arg(short = 'l', long, conflicts_with = "asm")]
-    emulator: bool,
+    /// Use the ASM emulator instead of the default Rust emulator
+    #[arg(short = 'a', long)]
+    asm: bool,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -37,8 +37,8 @@ pub(crate) struct VerifyConstraintsCmd {
     #[arg(short = 'k', long)]
     proving_key: Option<PathBuf>,
 
-    /// This is used to unlock the memory map for the ROM file. Mutually exclusive with --emulator
-    #[arg(short = 'u', long, conflicts_with = "emulator")]
+    /// Unlock the memory map for the ROM file. Only applies with `--asm`.
+    #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
     /// Use GPU acceleration
@@ -52,11 +52,11 @@ pub(crate) struct VerifyConstraintsCmd {
 
     // Hidden flags
     /// ASM file path
-    #[arg(short = 's', long, hide = true, conflicts_with = "emulator")]
-    asm: Option<PathBuf>,
+    #[arg(short = 's', long, hide = true, requires = "asm")]
+    asm_path: Option<PathBuf>,
 
     /// Redirect ASM emulator output to file
-    #[arg(long, hide = true, conflicts_with = "emulator")]
+    #[arg(long, hide = true, requires = "asm")]
     asm_out_file: bool,
 
     /// Disable automatic ROM setup
@@ -124,12 +124,12 @@ impl VerifyConstraintsCmd {
         };
 
         let emulator = if cfg!(target_os = "macos") {
-            if !self.emulator {
-                warn!("Emulator mode is forced on macOS due to lack of ASM support.");
+            if self.asm {
+                warn!("Assembly is not supported on macOS; using the Rust emulator.");
             }
             true
         } else {
-            self.emulator
+            !self.asm
         };
 
         let result =
@@ -189,7 +189,7 @@ impl VerifyConstraintsCmd {
 
         // ASM-specific options (only used if not emulator)
         let mut asm_options = AsmOptions::default();
-        if let Some(ref path) = self.asm {
+        if let Some(ref path) = self.asm_path {
             asm_options = asm_options.asm_path(path.clone());
         }
         if self.no_auto_setup {
