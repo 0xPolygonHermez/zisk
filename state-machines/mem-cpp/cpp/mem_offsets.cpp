@@ -48,7 +48,7 @@ void MemOffsets::realloc_pages(uint32_t page) {
     #ifdef MEM_WARNINGS
     uint32_t _num_offset_pages = num_offset_pages;
     #endif
-    num_offset_pages = std::max(1, std::max(num_offset_pages, page) + std::min(num_offset_pages, (uint32_t) MAX_OFFSET_PAGES_INCREMENT));
+    num_offset_pages = std::max(num_offset_pages, page) + std::min(num_offset_pages, (uint32_t) MAX_OFFSET_PAGES_INCREMENT);
     #ifdef MEM_WARNINGS
     printf("MemOffsets::realloc_pages: reallocating from %u to %u pages (requested page %u)\n", _num_offset_pages, num_offset_pages, page);
     #endif
