@@ -10,6 +10,7 @@ build = "build.rs"
 
 [build-dependencies]
 blake3 = { workspace = true }
+lib-float = { workspace = true }
 
 [dependencies]
 sm-rom = { workspace = true }
