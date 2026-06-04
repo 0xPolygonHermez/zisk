@@ -60,7 +60,7 @@ use zisk_cluster_common::{
     LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, StatsCostPerType, WorkerId,
     WorkerState,
 };
-use zisk_common::{SetupKey, ZiskPaths};
+use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
@@ -183,7 +183,38 @@ fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
         precompile_cost: cost.precompile_cost,
         tables_cost: cost.tables_cost,
         other_cost: cost.other_cost,
+        executor_time: executor_time_from_job(job),
+        plan: plan_from_job(job),
     }
+}
+
+/// Extracts the per-AIR instance plan from a job's stored execution result.
+/// Only execute jobs carry a plan (the `Execution` result); prove jobs return empty.
+fn plan_from_job(job: &Job) -> Vec<AirInstanceCount> {
+    job.results
+        .get(&JobPhase::Execution)
+        .and_then(|m| m.values().next())
+        .and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.plan.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Extracts the per-phase executor timing from a job's stored worker results.
+/// Mirrors [`cost_per_type_from_job`]: Execute-only jobs carry it on the
+/// `Execution` result, prove jobs on the `Challenges` (contributions) result.
+fn executor_time_from_job(job: &Job) -> ZiskExecutorTime {
+    let from_phase = |phase: &JobPhase| {
+        job.results.get(phase).and_then(|m| m.values().next()).and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.zisk_executor_time.clone()),
+            JobResultData::Challenges(c) => Some(c.zisk_executor_time.clone()),
+            _ => None,
+        })
+    };
+    from_phase(&JobPhase::Execution)
+        .or_else(|| from_phase(&JobPhase::Contributions))
+        .unwrap_or_default()
 }
 
 /// Extracts the per-type execution cost from a job's stored worker results.
@@ -1675,6 +1706,7 @@ mod tests {
                     },
                     publics: vec![],
                     cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,
@@ -2242,6 +2274,7 @@ mod tests {
                     },
                     publics: vec![],
                     cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,
@@ -2871,6 +2904,7 @@ mod tests {
                     },
                     publics: vec![],
                     cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,

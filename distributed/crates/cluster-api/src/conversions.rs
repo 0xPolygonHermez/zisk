@@ -375,6 +375,15 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                         ),
                     },
                     cost_per_type: exec_data.cost_per_type.map(Into::into).unwrap_or_default(),
+                    plan: exec_data
+                        .plan
+                        .into_iter()
+                        .map(|p| AirInstanceCount {
+                            airgroup_id: p.airgroup_id as usize,
+                            air_id: p.air_id as usize,
+                            count: p.count,
+                        })
+                        .collect(),
                 }))
             }
             Some(execute_task_response::ResultData::Proofs(proof_list)) => {

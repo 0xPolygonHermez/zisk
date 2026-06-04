@@ -832,6 +832,7 @@ impl Coordinator {
                     task_received_time,
                     public_outputs: Self::publics_u64_to_bytes(&exec_data.publics),
                     cost_per_type: exec_data.cost_per_type,
+                    plan: exec_data.plan,
                 }))
             }
             _ => {

@@ -20,8 +20,8 @@ use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, StatsCostPerType,
-    ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
+    StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -147,6 +147,14 @@ impl ProverEngine for EmuProver {
             .backend
             .execution_result()
             .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
+    }
+
+    fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.plan)
             .unwrap_or_default()
     }
 

@@ -8,7 +8,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
 use crate::common::{reject_quic_hints, resolve_elf};
-use crate::ux::print_job_banner;
+use crate::ux::{print_execute_output, print_job_banner};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
@@ -66,7 +66,7 @@ impl ZiskRemoteExecute {
         let result = request.run()?.await?;
 
         info!("{}", "--- EXECUTE SUMMARY -----------".bright_green().bold());
-        info!("{}", result.output());
+        print_execute_output(result.output());
 
         Ok(())
     }

@@ -12,7 +12,8 @@ use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_common::{
-    ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime,
+    ZiskPaths,
 };
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
@@ -85,7 +86,15 @@ pub enum ComputationResult {
     Execution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64, StatsCostPerType)>, // (witness_info, exec_time, instances, executed_steps, cost_per_type)
+        #[allow(clippy::type_complexity)]
+        result: Result<(
+            WitnessInfo,
+            ZiskExecutorTime,
+            u64,
+            u64,
+            StatsCostPerType,
+            Vec<AirInstanceCount>,
+        )>, // (witness_info, exec_time, instances, executed_steps, cost_per_type, plan)
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Partial contribution with challenges
@@ -851,6 +860,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             let instances = num_instances as u64;
                             let executed_steps = prover.executed_steps();
                             let cost_per_type = prover.execution_cost_per_type();
+                            let plan = prover.execution_plan();
                             job.blocking_lock().instances = instances;
 
                             // witness_info.publics is empty in execution-only mode (no witness
@@ -867,6 +877,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                                     instances,
                                     executed_steps,
                                     cost_per_type,
+                                    plan,
                                 )),
                                 task_received_time,
                             }

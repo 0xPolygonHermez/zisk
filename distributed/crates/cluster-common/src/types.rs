@@ -481,6 +481,7 @@ pub struct ExecutionResult {
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub public_outputs: Vec<u8>,
     pub cost_per_type: StatsCostPerType,
+    pub plan: Vec<zisk_common::AirInstanceCount>,
 }
 
 #[derive(Debug, Clone)]

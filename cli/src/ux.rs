@@ -2,6 +2,7 @@ use colored::Colorize;
 use sysinfo::System;
 use tracing::info;
 use zisk_common::ZiskExecutorTime;
+use zisk_sdk::ExecuteOutput;
 
 pub(crate) fn print_banner() {
     println!();
@@ -98,4 +99,44 @@ pub(crate) fn print_execution_summary(
     );
 
     /*●⎿✔◼✽*/
+}
+
+/// Render an [`ExecuteOutput`] to the log — shared by the embedded and remote
+/// `execute` commands so both report identically.
+pub(crate) fn print_execute_output(output: &ExecuteOutput) {
+    // Summary line.
+    let steps = output.get_execution_steps();
+    let time = output.get_execution_time();
+    let cost =
+        output.get_execution_cost().map(|c| format!("{} cells", c)).unwrap_or("N/A".to_string());
+    info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
+
+    // Time breakdown.
+    let et = output.get_executor_time();
+    info!(
+        "Execution time breakdown: {}ms ({} {}ms + {} {}ms + {} {}ms)",
+        et.total_duration,
+        "Execution".dimmed(),
+        et.execution_duration,
+        "Count&Plan".dimmed(),
+        et.count_and_plan_duration,
+        "Count&Plan MO".dimmed(),
+        et.count_and_plan_mo_duration,
+    );
+    if let Some(aei) = &et.asm_execution_duration {
+        info!("Assembly execution speed: {:.3}ms ({:.0} MHz)", aei.time * 1000f32, aei.mhz);
+    }
+
+    // Plan, when present: one line, machines sorted by name, names dimmed.
+    if let Some(plan) = output.get_plan() {
+        let mut entries: Vec<_> = plan.iter().collect();
+        entries.sort_by_key(|e| e.name);
+        let total: usize = entries.iter().map(|e| e.count).sum();
+        let body = entries
+            .iter()
+            .map(|e| format!("{}: {}", e.name.dimmed(), e.count))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        info!("Plan {} | Total instances: {}", body, total);
+    }
 }

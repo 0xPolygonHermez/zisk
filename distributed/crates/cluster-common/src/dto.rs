@@ -22,6 +22,7 @@ pub enum InputsModeDto {
     InputsStream(String),
 }
 
+pub use zisk_common::AirInstanceCount;
 pub use zisk_common::ProofKind;
 pub use zisk_common::StatsCostPerType;
 
@@ -244,6 +245,7 @@ pub struct ExecutionResultDataDto {
     pub zisk_executor_time: ZiskExecutorTimeDto,
     pub publics: Vec<u64>,
     pub cost_per_type: StatsCostPerType,
+    pub plan: Vec<AirInstanceCount>,
 }
 
 pub struct AggParamsDto {

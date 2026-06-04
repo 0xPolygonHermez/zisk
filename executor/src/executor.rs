@@ -29,8 +29,8 @@ use std::{
 };
 use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, BusDeviceMetrics, ChunkId, ExecutorStatsHandle, Plan,
-    ZiskExecutorSummary, ZiskExecutorTime,
+    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
+    ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 
@@ -346,7 +346,22 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             total_duration: start_total.elapsed().as_millis() as u64,
             asm_execution_duration: self.execution.get_asm_execution_info()?,
         };
-        let execution_result = ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+        let mut execution_result =
+            ZiskExecutorSummary::new(steps, zisk_execution_time, cost_per_type);
+        // Per-AIR instance plan, captured from the registry's planning counts. Only the
+        // full (proofman) path exposes this via the summary; the standalone path returns
+        // its own (named) plan directly, so skip the work when there's no `SetupCtx`.
+        if proofman_extras.is_some() {
+            execution_result.plan = registry
+                .instance_counts()
+                .into_iter()
+                .map(|((airgroup_id, air_id), count)| AirInstanceCount {
+                    airgroup_id,
+                    air_id,
+                    count: count as u64,
+                })
+                .collect();
+        }
 
         // Store the execution result
         self.state.set_execution_result(execution_result);

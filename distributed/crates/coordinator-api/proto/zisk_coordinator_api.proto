@@ -65,9 +65,32 @@ message CostPerType {
 }
 
 message ExecutionStats {
-  uint64      steps          = 1;
-  uint64      duration_nanos = 2;
-  CostPerType cost_per_type  = 3;
+  uint64       steps          = 1;
+  uint64       duration_nanos = 2;
+  CostPerType  cost_per_type  = 3;
+  ExecutorTime executor_time  = 4;
+  repeated AirInstanceCount plan = 5;
+}
+
+// Per-AIR planned instance count (the AIR name is derived from the ids by the consumer).
+message AirInstanceCount {
+  uint32 airgroup_id = 1;
+  uint32 air_id      = 2;
+  uint64 count       = 3;
+}
+
+// Per-phase executor timing breakdown (milliseconds).
+message ExecutorTime {
+  uint64       total_duration             = 1;
+  uint64       execution_duration         = 2;
+  uint64       count_and_plan_duration    = 3;
+  uint64       count_and_plan_mo_duration = 4;
+  AsmExecution asm                        = 5; // present only for the ASM executor
+}
+
+message AsmExecution {
+  float time = 1; // seconds
+  float mhz  = 2;
 }
 
 enum ProofKind {

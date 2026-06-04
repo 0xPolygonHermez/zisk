@@ -26,8 +26,8 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, StatsCostPerType,
-    ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
+    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -439,6 +439,14 @@ impl ProverEngine for AsmProver {
             .backend
             .execution_result()
             .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
+    }
+
+    fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.plan)
             .unwrap_or_default()
     }
 

@@ -18,6 +18,7 @@ mod witness;
 // External API
 pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
+pub use witness::AirClassifier; // AIR id → display name (used to label remote execution plans)
 
 pub(crate) use adapters::*;
 pub(crate) use bus::*;

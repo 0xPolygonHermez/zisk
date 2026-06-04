@@ -52,6 +52,10 @@ pub fn rom_merkle_setup<F: PrimeField64>(
         return Ok(ProgramVK { vk });
     }
 
+    println!("Generating ROM Merkle tree for ELF hash {}...", elf_hash);
+    println!("Elf file path: {:?}", elf_bin_path);
+    println!("Verkey file path: {:?}", elf_verkey_bin_path);
+
     let root = gen_elf_hash::<F>(
         pctx,
         elf,
