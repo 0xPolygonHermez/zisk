@@ -4,12 +4,14 @@
 //!
 //! `ZISK_ROM_INPUTS_HASH` covers the transpiler (`zisk-core`) plus the float ELF
 //! `elf2rom` embeds, and keys the ROM/verkey cache (`utils.rs`).
-//! `ZISK_ASM_INPUTS_HASH` covers the ROM inputs plus `emulator-asm/src`, and
-//! keys the asm-binary cache (`asm_setup.rs`) alongside the linked libs hashed
-//! at runtime.
+//! `ZISK_ASM_INPUTS_HASH` covers the ROM inputs plus the asm build:
+//! `emulator-asm/src` and the *source* of the linked libs (`ziskclib/src`,
+//! `lib-c/c/src`). It keys the asm-binary cache (`asm_setup.rs`). Hashing lib
+//! source rather than the compiled archives keeps the key a build-time constant,
+//! so the path a consumer computes always matches what the producer generates.
 //!
 //! The ROM inputs are a subset of the asm inputs; keeping them separate avoids
-//! regenerating the expensive ROM/verkey on an `emulator-asm`-only change.
+//! regenerating the expensive ROM/verkey on an asm-only change.
 
 use std::path::{Path, PathBuf};
 
@@ -37,8 +39,13 @@ fn main() {
     rom_files.push(ws.join("lib-float/c/lib/ziskfloat.elf")); // embedded into the ROM
     let rom_hash = hash_files(blake3::Hasher::new(), ws, rom_files);
 
+    // The asm binaries additionally link two libs; hashing their *source* (not
+    // the compiled archives) keeps the key a pure build-time constant, so the
+    // path a consumer computes always matches what the producer generates.
     let mut asm_files = collect_files(&emu_src, &[]);
     asm_files.push(ws.join("emulator-asm/Makefile"));
+    asm_files.extend(collect_files(&ws.join("ziskclib/src"), &[])); // -> libziskclib.a
+    asm_files.extend(collect_files(&ws.join("lib-c/c/src"), &[])); // -> libziskc.a
     let mut seeded = blake3::Hasher::new();
     seeded.update(rom_hash.as_bytes());
     seeded.update(&[0xffu8]);
