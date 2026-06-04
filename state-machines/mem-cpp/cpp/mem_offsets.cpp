@@ -145,7 +145,7 @@ void MemOffsets::add_addr_offset(uint32_t addr, uint32_t offset_value) {
         uint32_t page = index / OFFSET_PAGE_SIZE;
         if (is_preallocated && page >= num_offset_pages) {
             // only one page of increment
-            realloc_pages();
+            realloc_pages(page);
         }
         if ((index % OFFSET_PAGE_SIZE) == 0) {  
             uint32_t page_index = page == 0 ? 0 : page_offsets[page - 1] + 1;

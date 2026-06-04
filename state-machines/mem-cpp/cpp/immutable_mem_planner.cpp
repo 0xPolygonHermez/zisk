@@ -305,8 +305,6 @@ void ImmutableMemPlanner::consume_intermediate_rows(uint32_t row_count) {
     #endif
     if (rows_available == 0) {
         open_segment();
-        mem_offsets->reset();
-
     }
     // add_chunk_to_segment(current_chunk, addr, rows, skip);
     rows_available -= row_count;

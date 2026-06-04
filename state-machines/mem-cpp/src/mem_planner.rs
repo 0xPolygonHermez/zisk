@@ -210,8 +210,8 @@ impl MemPlanner {
                         &mut pages_dense_ptr as *mut *const u32,
                     )
                 };
-                assert!(offsets_base_addr > 0);
                 if !page_starts_ptr.is_null() && num_pages > 0 {
+                    assert!(offsets_base_addr > 0);
                     segment.offsets_base_addr = offsets_base_addr;
                     segment.addr_range_slots = addr_range_slots;
                     segment.num_pages = num_pages;

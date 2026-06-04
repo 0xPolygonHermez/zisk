@@ -362,7 +362,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             };
             #[cfg(debug_assertions)]
             {
-                assert!(!filled_rows[irow],"RomDataSM: overriting non empty row {irow} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
+                assert!(!filled_rows[irow],"RomDataSM: overwriting non empty row {irow} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
                     trace[irow].get_addr() * 8, mem_op.addr * 8, trace[irow].get_step(), mem_op.step);
                 filled_rows[irow] = true;
             }
