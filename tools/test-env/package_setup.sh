@@ -14,8 +14,13 @@ export -f ensure
 # <VER> = PACKAGE_SETUP_VERSION.
 #
 # Env vars:
-#   SETUP_ADD_DYLIBS=1     merge macOS *.dylib from ${OUTPUT_DIR}/macos/provingKey
-#                          into build/provingKey before packing.
+#   SETUP_ADD_DYLIBS=1     merge macOS *.dylib into build/provingKey before
+#                          packing. Source of the dylibs:
+#                            - SETUP_DYLIB_DIR set  -> copy *.dylib straight from
+#                              that directory (already extracted; used by CI).
+#                            - SETUP_DYLIB_DIR unset -> extract the macOS tarball
+#                              ${OUTPUT_DIR}/macos/${PROVINGKEY_FILE} first, then
+#                              copy from ${OUTPUT_DIR}/macos/provingKey.
 #   PACKAGE_SETUP_UPLOAD=1 after writing the tarballs to ${OUTPUT_DIR}, also
 #                          upload them to gs://zisk-setup via `gcloud storage`
 #                          (requires gcloud auth). Off by default — packaging is
@@ -73,11 +78,13 @@ write_md5() {
 
 pack_dir() {
     local src="$1" tarball="$2"
+    shift 2
+    # Remaining args are extra tar options (e.g. --exclude globs).
     if [[ ! -d "${src}" ]]; then
         warn "skipping ${tarball} — ${src}/ not found in $(pwd)"
         return 0
     fi
-    ensure tar -czvf "${tarball}" "${src}/" || return 1
+    ensure tar -czvf "${tarball}" "$@" "${src}/" || return 1
     write_md5 "${tarball}" > "${tarball}.md5" || { err "md5 failed for ${tarball}"; return 1; }
     ARTIFACTS+=("${tarball}" "${tarball}.md5")
 }
@@ -99,7 +106,9 @@ main() {
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1
 
-    [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]] && total_steps=$((total_steps + 2))
+    if [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]]; then
+      if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then total_steps=$((total_steps + 1)); else total_steps=$((total_steps + 2)); fi
+    fi
     [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
     [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
     [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]] && total_steps=$((total_steps + 1))
@@ -110,15 +119,30 @@ main() {
     SNARK_FILE="zisk-provingkey-plonk-${PACKAGE_SETUP_VERSION}.tar.gz"
 
     if [[ "$SETUP_ADD_DYLIBS" == "1" ]]; then
-      step "Extracting macos proving key to ${OUTPUT_DIR}/macos/provingKey..."
-      rm -rf "${OUTPUT_DIR}/macos/provingKey"
-      ensure tar --warning=no-unknown-keyword --no-xattrs --no-acls --no-selinux --no-overwrite-dir \
-        --exclude '._*' \
-        -xf "${OUTPUT_DIR}/macos/${PROVINGKEY_FILE}" \
-        -C "${OUTPUT_DIR}/macos" || return 1
+      if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then
+        [[ -d "${SETUP_DYLIB_DIR}" ]] || { err "SETUP_DYLIB_DIR=${SETUP_DYLIB_DIR} not found"; return 1; }
+        if [[ -d "${SETUP_DYLIB_DIR}/provingKey" ]]; then
+          step "Adding macos libraries from ${SETUP_DYLIB_DIR}/provingKey to build/provingKey..."
+          copy_dylibs "${SETUP_DYLIB_DIR}/provingKey" build/provingKey
+          if [[ -d "${SETUP_DYLIB_DIR}/provingKeySnark" ]]; then
+            step "Adding macos snark libraries from ${SETUP_DYLIB_DIR}/provingKeySnark to build/provingKeySnark..."
+            copy_dylibs "${SETUP_DYLIB_DIR}/provingKeySnark" build/provingKeySnark
+          fi
+        else
+          step "Adding macos libraries from ${SETUP_DYLIB_DIR} to build/provingKey..."
+          copy_dylibs "${SETUP_DYLIB_DIR}" build/provingKey
+        fi
+      else
+        step "Extracting macos proving key to ${OUTPUT_DIR}/macos/provingKey..."
+        rm -rf "${OUTPUT_DIR}/macos/provingKey"
+        ensure tar --warning=no-unknown-keyword --no-xattrs --no-acls --no-selinux --no-overwrite-dir \
+          --exclude '._*' \
+          -xf "${OUTPUT_DIR}/macos/${PROVINGKEY_FILE}" \
+          -C "${OUTPUT_DIR}/macos" || return 1
 
-      step "Adding macos libraries to build/provingKey..."
-      copy_dylibs ${OUTPUT_DIR}/macos/provingKey build/provingKey
+        step "Adding macos libraries to build/provingKey..."
+        copy_dylibs ${OUTPUT_DIR}/macos/provingKey build/provingKey
+      fi
     fi
 
     ensure cd build || return 1
@@ -127,7 +151,10 @@ main() {
 
     step "Compress proving key..."
     [[ -d provingKey ]] || { err "build/provingKey not found — run the setup first"; return 1; }
-    pack_dir provingKey "${PROVINGKEY_FILE}" || return 1
+    pack_dir provingKey "${PROVINGKEY_FILE}" \
+      --exclude='*.consttree' \
+      --exclude='*.consttree_gpu' \
+      --exclude='*.const_gpu' || return 1
 
     step "Compress verify key..."
     ensure tar -czvf "${VERIFYKEY_FILE}" \

@@ -47,7 +47,7 @@ usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
          [--skip-compile-pil] [-v|-vv|--verbose]
-         [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats]
+         [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats | --print-hash]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
                          output and by --snark / --compressed-final as input.
@@ -81,6 +81,8 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
   --compressed-final     Re-run only vadcop_final_compressed on top of an
                          existing <build-dir>/provingKey/<name>/vadcop_final/.
   --stats                Run proofman-setup stats.
+  --print-hash           Print the build-input sha256 (the cache key) and exit.
+                         Runs frops generation but no compile-pil / setup.
 
 To package the result (provingKey + circom + snark tarballs), run:
   (cd tools/test-env && ./package_setup.sh)
@@ -88,7 +90,7 @@ EOF
   exit 1
 }
 
-MODE="build"   # build | no_aggregation | snark | compressed_final | stats | compile_pil
+MODE="build"   # build | no_aggregation | snark | compressed_final | stats | compile_pil | print_hash
 BUILD_DIR="build"
 CACHE_DIR=""
 CACHE_HIT=0
@@ -101,7 +103,7 @@ VERBOSE_COUNT=0
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
-    echo "error: only one of --compile-pil, --no-aggregation, --snark, --compressed-final, --stats may be passed" >&2
+    echo "error: only one of --compile-pil, --no-aggregation, --snark, --compressed-final, --stats, --print-hash may be passed" >&2
     exit 1
   fi
   MODE="$1"
@@ -121,6 +123,7 @@ while [ $# -gt 0 ]; do
     --snark)             set_mode snark;             shift ;;
     --compressed-final)  set_mode compressed_final;  shift ;;
     --stats)             set_mode stats;             shift ;;
+    --print-hash)        set_mode print_hash;        shift ;;
     -h|--help)         usage ;;
     *) echo "unknown arg: $1" >&2; usage ;;
   esac
@@ -173,7 +176,7 @@ ensure_node_deps() {
   NODE_DEPS_READY=1
 }
 
-echo "version: $VERSION  mode: $MODE"
+echo "version: $VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
   if [ $SKIP_COMPILE_PIL -eq 1 ]; then
@@ -267,6 +270,15 @@ case "$MODE" in
     cargo run --release -p cargo-zisk -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
     echo "done. vadcop_final_compressed/ regenerated under $BUILD_DIR/provingKey/"
     echo "to repackage the updated provingKey/: (cd tools/test-env && ./package_setup.sh)"
+    exit 0
+    ;;
+
+  print_hash)
+    # Keep stdout clean: only compute_input_hash's 64-hex line goes to stdout
+    # (its own progress already goes to stderr). frops generation is noisy, so
+    # send its output to stderr too — consumers capture stdout as the hash.
+    generate_frops 1>&2
+    compute_input_hash
     exit 0
     ;;
 

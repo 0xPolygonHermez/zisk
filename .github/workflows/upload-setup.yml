@@ -1,0 +1,474 @@
+name: Upload Setup to Cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version/name (blank => Cargo.toml gha_package_setup_version)"
+        required: false
+        type: string
+        default: ""
+      include_snark:
+        description: "Build + publish SNARK artifacts (only honored on main)"
+        required: false
+        type: boolean
+        default: true
+      skip_macos:
+        description: "Skip the macOS dylib job and publish a Linux-only setup"
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: "Bypass the input-hash newness gate"
+        required: false
+        type: boolean
+        default: false
+      ptau_url:
+        description: "Powers-of-tau URL for the SNARK setup (downloaded once, cached on the runner)"
+        required: false
+        type: string
+        default: "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau"
+
+concurrency:
+  group: upload-setup-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation
+
+env:
+  BUCKET: gs://zisk-setup
+
+jobs:
+  build-and-stage:
+    name: Build + stage setup (Linux)
+    runs-on: gpu-hosted
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_CONTAINER: zisk-gha-upload-build
+    outputs:
+      is_new: ${{ steps.gate.outputs.is_new }}
+      local_hash: ${{ steps.gate.outputs.local_hash }}
+      version: ${{ steps.resolve.outputs.version }}
+      stage: ${{ steps.stage.outputs.stage }}
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Workload Identity Federation (keyless). Or swap to:
+          #   credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            cd "$GITHUB_WORKSPACE/tools/test-env"
+            # shellcheck disable=SC1091
+            source ./utils.sh
+            VERSION="$(get_var_from_cargo_toml PACKAGE_SETUP_VERSION)"
+          fi
+          [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved setup version: $VERSION"
+
+      - name: Prepare persistent stage dir
+        id: stage
+        run: |
+          STAGE="/home/gha/upload-setup/${{ github.run_id }}"
+          sudo mkdir -p "${STAGE}/build"
+          sudo chown -R 1000:1000 "${STAGE}"
+          sudo chmod -R u+rwX "${STAGE}"
+          echo "stage=${STAGE}" >> "$GITHUB_OUTPUT"
+          echo "Staging provingKey under ${STAGE}/build"
+          # Persistent artifact cache shared across runs (same pattern as pr.yml).
+          # build-setup.sh --cache-dir keys by <platform>/<input-hash>: a hit
+          # skips compile-pil + setup and copies the cached provingKey (with its
+          # persisted .cpp). The macOS job's CPP>0 check still guards a stale hit.
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+          # Persistent ptau cache: the powers-of-tau file is downloaded once and
+          # reused across runs (see the SNARK step).
+          sudo mkdir -p /home/gha/ptau
+          sudo chown -R 1000:1000 /home/gha/ptau
+          sudo chmod -R u+rwX /home/gha/ptau
+
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+      - name: Start build container
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          docker run -d \
+            --name "${TEST_CONTAINER}" \
+            --privileged \
+            --gpus all \
+            --shm-size=48g \
+            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
+            -v "${{ steps.stage.outputs.stage }}":/stage:rw \
+            -v /home/gha/cache-setup:/cache:rw \
+            -v /home/gha/ptau:/ptau:rw \
+            -e ZISK_GHA=1 \
+            -e ZISK_REPO_DIR=/workspace/zisk \
+            -e TERM=xterm \
+            ziskvm/zisk-runner-gpu:latest \
+            sleep infinity
+          sleep 3
+          docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$" || { docker logs "${TEST_CONTAINER}" || true; exit 1; }
+
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk/tools/test-env && ./build_zisk.sh
+          '
+
+      - name: Build setup into the stage (persists .cpp for macOS rebuild)
+        run: |
+          # --build-dir /stage/build writes the provingKey to the persistent host
+          # path. --cache-dir /cache reuses a prior build keyed by the input hash
+          # (cache hit copies the cached provingKey, incl. its persisted .cpp; the
+          # macOS job's CPP>0 check guards a stale pre-.cpp hit). A miss builds
+          # fresh and populates the cache.
+          .github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk && DISABLE_ENV_CONFIRM=1 ./tools/setup/build-setup.sh --build-dir /stage/build --cache-dir /cache
+          '
+      - name: Build SNARK setup (main only)
+        if: github.ref_name == 'main' && inputs.include_snark
+        env:
+          PTAU_URL: ${{ inputs.ptau_url }}
+        run: |
+          # Download the powers-of-tau once into the persistent /ptau cache, then
+          # reuse it on later runs. PTAU_PATH points build-setup.sh --snark at it.
+          PTAU_FILE="$(basename "$PTAU_URL")"
+          .github/scripts/docker_exec.sh -u ziskuser \
+            -e PTAU_URL="$PTAU_URL" \
+            -e PTAU_FILE="$PTAU_FILE" \
+            -- bash -lc '
+              if [ -s "/ptau/$PTAU_FILE" ]; then
+                echo "ptau already cached: /ptau/$PTAU_FILE ($(du -h "/ptau/$PTAU_FILE" | cut -f1))"
+              else
+                echo "Downloading ptau: $PTAU_URL"
+                curl -L -f --retry 3 -o "/ptau/$PTAU_FILE.tmp" "$PTAU_URL"
+                mv "/ptau/$PTAU_FILE.tmp" "/ptau/$PTAU_FILE"
+              fi
+              cd /workspace/zisk && DISABLE_ENV_CONFIRM=1 \
+                PTAU_PATH="/ptau/$PTAU_FILE" ./tools/setup/build-setup.sh --snark --build-dir /stage/build
+            '
+
+      - name: Newness gate (input-hash comparison)
+        id: gate
+        run: |
+          # Compute the hash in-container (needs PROOFMAN_DIR + frops), then run
+          # the gate on the host where gcloud is authenticated.
+          # --print-hash emits ONLY the 64-hex hash on stdout (preamble + frops
+          # go to stderr). tail -n1 is a belt-and-suspenders guard.
+          LOCAL_HASH="$(.github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk && ./tools/setup/build-setup.sh --print-hash 2>/dev/null
+          ' | tail -n 1 | tr -d '[:space:]')"
+          [ -n "$LOCAL_HASH" ] || { echo "failed to compute local hash"; exit 1; }
+          echo "local_hash=$LOCAL_HASH" >> "$GITHUB_OUTPUT"
+
+          FORCE_FLAG=""
+          [ "${{ inputs.force }}" = "true" ] && FORCE_FLAG="--force"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          RESULT="$(LOCAL_HASH="$LOCAL_HASH" ./fetch_setup.sh --check input \
+            --version "${{ steps.resolve.outputs.version }}" $FORCE_FLAG)"
+          cd "$GITHUB_WORKSPACE"
+          echo "Gate: $RESULT (hash $LOCAL_HASH)"
+          if [ "$RESULT" = "new" ]; then
+            echo "is_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_new=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to publish."
+          fi
+
+      - name: Build dylib-input slice (~125 MB)
+        if: steps.gate.outputs.is_new == 'true'
+        run: |
+          # Only the files rebuild-witness-libs reads: *.cpp (recompiled),
+          # *.so markers, *.globalInfo.json (drives the walk), and *.dat (circom
+          # data the witness build needs). Paths preserved under slice/.
+          # We slice BOTH provingKey/ and, when present (main runs with snark),
+          # provingKeySnark/ — the latter carries the recursivef + final snark
+          # witness libs, rebuilt on macOS via --proving-key-snark.
+          STAGE="${{ steps.stage.outputs.stage }}"
+          rm -rf slice && mkdir -p slice
+          cd "$STAGE/build"
+          for tree in provingKey provingKeySnark; do
+            [ -d "$tree" ] || continue
+            find "$tree" \( -name '*.cpp' -o -name '*.so' -o -name '*.globalInfo.json' -o -name '*.dat' \) -print0 \
+              | while IFS= read -r -d '' f; do
+                  mkdir -p "$GITHUB_WORKSPACE/slice/$(dirname "$f")"
+                  cp "$f" "$GITHUB_WORKSPACE/slice/$f"
+                done
+          done
+          cd "$GITHUB_WORKSPACE"
+          echo "slice: $(find slice -type f | wc -l) files, $(du -sh slice | cut -f1)"
+          [ -d slice/provingKeySnark ] && echo "slice includes provingKeySnark (snark dylibs will be rebuilt)" || true
+
+      - name: Upload dylib-input slice artifact
+        if: steps.gate.outputs.is_new == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          # Upload the whole slice/ (provingKey + optional provingKeySnark).
+          name: slice-${{ steps.resolve.outputs.version }}
+          path: slice/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Restore workspace ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+
+      - name: Stop build container
+        if: always()
+        run: docker rm -f "${TEST_CONTAINER}" || true
+  macos-dylibs:
+    name: Rebuild macOS dylibs
+    needs: build-and-stage
+    if: needs.build-and-stage.outputs.is_new == 'true' && !inputs.skip_macos
+    runs-on: macos-14
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+
+      - name: Build ZisK (for cargo-zisk)
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh
+
+      - name: Add ZisK bin to PATH
+        run: |
+          # build_zisk.sh installs cargo-zisk into ~/.zisk/bin and only exports
+          # PATH into the shell profile (not sourced by GHA's fresh per-step
+          # shells). Bridge it via GITHUB_PATH so later steps find cargo-zisk
+          # (same pattern as test_install_bin.yml).
+          echo "$HOME/.zisk/bin" >> "$GITHUB_PATH"
+
+      - name: Download dylib-input slice
+        uses: actions/download-artifact@v4
+        with:
+          # Artifact root holds provingKey/ (+ optional provingKeySnark/).
+          name: slice-${{ needs.build-and-stage.outputs.version }}
+          path: build
+
+      - name: Sanity-check the slice
+        run: |
+          GI="$(find build/provingKey -maxdepth 2 -name '*.globalInfo.json' | wc -l | tr -d ' ')"
+          CPP="$(find build/provingKey -name '*.cpp' | wc -l | tr -d ' ')"
+          SO="$(find build/provingKey -name '*.so' | wc -l | tr -d ' ')"
+          echo "slice has $CPP .cpp, $SO .so, $GI globalInfo.json files (provingKey)"
+          [ "$GI" -gt 0 ] || { echo "no *.globalInfo.json in slice — rebuild discovery walk needs it"; ls -R build/provingKey | head -50; exit 1; }
+          [ "$CPP" -gt 0 ] || { echo "no .cpp in slice — proving key predates .cpp persistence"; exit 1; }
+          if [ -d build/provingKeySnark ]; then
+            SNARK_CPP="$(find build/provingKeySnark -name '*.cpp' | wc -l | tr -d ' ')"
+            echo "slice includes provingKeySnark with $SNARK_CPP .cpp (snark dylibs will be rebuilt)"
+            [ "$SNARK_CPP" -gt 0 ] || { echo "provingKeySnark present but has no .cpp"; exit 1; }
+          fi
+
+      - name: Rebuild witness libs (.dylib)
+        run: |
+          # Rebuild the regular provingKey libs, and — when the snark slice is
+          # present (main runs) — the snark libs (recursivef + final) too. The
+          # `final` lib is BN128 and uses the final_snark_circom helpers + nasm;
+          # proofman's --proving-key-snark handles the per-lib helpers dirs.
+          SNARK_ARG=()
+          if [ -d build/provingKeySnark ]; then
+            SNARK_ARG=(--proving-key-snark build/provingKeySnark)
+          fi
+          cargo-zisk proofman-setup rebuild-witness-libs \
+            --proving-key build/provingKey "${SNARK_ARG[@]}" -j 1
+
+      - name: Collect dylibs (preserve tree-relative paths)
+        run: |
+          mkdir -p dylibs
+          cd build
+          # Collect from both provingKey/ and (if present) provingKeySnark/.
+          # Build the operand list dynamically: passing a missing dir to find
+          # makes it exit non-zero, which under `set -eo pipefail` would abort
+          # the step (provingKeySnark is absent on non-snark runs).
+          TREES=(provingKey)
+          [ -d provingKeySnark ] && TREES+=(provingKeySnark)
+          find "${TREES[@]}" -type f -name '*.dylib' -print0 \
+            | while IFS= read -r -d '' f; do
+                mkdir -p "../dylibs/$(dirname "$f")"
+                cp "$f" "../dylibs/$f"
+              done
+          cd ..
+          COUNT="$(find dylibs -name '*.dylib' | wc -l | tr -d ' ')"
+          echo "Collected $COUNT dylib(s)"
+          find dylibs -name '*.dylib' | sed 's#^dylibs/##' | sort | head -60
+          [ "$COUNT" -gt 0 ] || { echo "rebuild produced no .dylib"; exit 1; }
+
+      - name: Upload dylib artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # dylibs/ holds provingKey/ (+ optional provingKeySnark/) dylib trees.
+          name: dylibs-${{ needs.build-and-stage.outputs.version }}
+          path: dylibs/
+          if-no-files-found: error
+          retention-days: 1
+  merge-and-upload:
+    name: Merge dylibs, pack, upload
+    needs: [build-and-stage, macos-dylibs]
+    # Run when the setup is new even if macos-dylibs was skipped. always() lets
+    # us proceed for skip_macos while still failing if macos-dylibs FAILED.
+    if: |
+      always() &&
+      needs.build-and-stage.result == 'success' &&
+      needs.build-and-stage.outputs.is_new == 'true' &&
+      (needs.macos-dylibs.result == 'success' || needs.macos-dylibs.result == 'skipped')
+    runs-on: gpu-hosted
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_CONTAINER: zisk-gha-upload-merge
+      STAGE: ${{ needs.build-and-stage.outputs.stage }}
+      VER: ${{ needs.build-and-stage.outputs.version }}
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Verify staged provingKey survived
+        run: |
+          test -d "$STAGE/build/provingKey" || {
+            echo "staged provingKey missing at $STAGE/build/provingKey — the persistent host path was reaped between jobs. Re-run the workflow.";
+            exit 1;
+          }
+          echo "Staged provingKey present: $(du -sh "$STAGE/build/provingKey" | cut -f1)"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download dylib artifact
+        if: needs.macos-dylibs.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: dylibs-${{ needs.build-and-stage.outputs.version }}
+          path: macos-dylibs
+
+      - name: Give workspace + stage ownership to container user
+        run: |
+          # package_setup.sh writes tarballs to OUTPUT_DIR=$HOME/output inside the
+          # container (/home/ziskuser/output). Mount a host dir there so the host
+          # upload step can read them (mirrors pr.yml's /home/gha/cache-setup mount).
+          sudo mkdir -p "$STAGE/output"
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE" "$STAGE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" "$STAGE"
+
+      - name: Start merge container
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          docker run -d \
+            --name "${TEST_CONTAINER}" \
+            --privileged \
+            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
+            -v "$STAGE":/stage:rw \
+            -v "$STAGE/output":/home/ziskuser/output:rw \
+            -e ZISK_GHA=1 \
+            -e ZISK_REPO_DIR=/workspace/zisk \
+            -e TERM=xterm \
+            ziskvm/zisk-runner-gpu:latest \
+            sleep infinity
+          sleep 3
+          docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$" || { docker logs "${TEST_CONTAINER}" || true; exit 1; }
+
+      - name: Package setup (merge dylibs, pack — no upload)
+        run: |
+          DYLIB_ENVS=()
+          if [ -d macos-dylibs ]; then
+            DYLIB_ENVS+=(-e SETUP_ADD_DYLIBS=1 -e SETUP_DYLIB_DIR=/workspace/zisk/macos-dylibs)
+          fi
+          # package_setup.sh packs from <repo>/build by default; point it at the
+          # staged tree by symlinking build -> /stage/build inside the repo.
+          .github/scripts/docker_exec.sh -u ziskuser \
+            -e DISABLE_ENV_CONFIRM=1 \
+            -e PACKAGE_SETUP_VERSION="$VER" \
+            "${DYLIB_ENVS[@]}" \
+            -- bash -lc '
+              cd /workspace/zisk
+              rm -rf build && ln -s /stage/build build
+              cd tools/test-env && ./package_setup.sh
+            '
+
+      - name: Upload tarballs to bucket and write hash sidecar
+        run: |
+          # Host side of the container's /home/ziskuser/output mount (see merge container).
+          OUT="$STAGE/output"
+          shopt -s nullglob
+          FILES=( "$OUT"/zisk-*-"$VER".tar.gz "$OUT"/zisk-*-"$VER".tar.gz.md5 )
+          [ ${#FILES[@]} -gt 0 ] || { echo "no tarballs in $OUT for $VER"; ls -la "$OUT" || true; exit 1; }
+          echo "Uploading ${#FILES[@]} file(s) to $BUCKET/"
+          gcloud storage cp "${FILES[@]}" "$BUCKET/"
+          # Write the hash sidecar ONLY after a successful tarball upload. Write
+          # it under the runner-owned workspace ($OUT is owned by the container's
+          # uid 1000, which the host runner user may not be able to write to).
+          HASH_FILE="$GITHUB_WORKSPACE/zisk-provingkey-${VER}.hash"
+          printf '%s' "${{ needs.build-and-stage.outputs.local_hash }}" > "$HASH_FILE"
+          gcloud storage cp "$HASH_FILE" "$BUCKET/"
+          echo "Published setup $VER (hash ${{ needs.build-and-stage.outputs.local_hash }})"
+
+      - name: Stop merge container
+        if: always()
+        run: docker rm -f "${TEST_CONTAINER}" || true
+
+      - name: Restore workspace ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+  cleanup-stage:
+    name: Clean up staged provingKey
+    needs: [build-and-stage, macos-dylibs, merge-and-upload]
+    if: always() && needs.build-and-stage.outputs.stage != ''
+    runs-on: gpu-hosted
+    steps:
+      - name: Remove stage dir
+        run: |
+          STAGE="${{ needs.build-and-stage.outputs.stage }}"
+          echo "Removing ${STAGE}"
+          sudo rm -rf "${STAGE}" || true
