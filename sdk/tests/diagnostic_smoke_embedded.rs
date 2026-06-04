@@ -6,23 +6,27 @@
 //! Ignored by default because `verify_constraints` requires a generated
 //! proving key on disk and the run is heavy. Execute explicitly with:
 //!
-//!     cargo test -p zisk-sdk --test diagnostic_smoke -- --ignored --nocapture
+//!     cargo test -p zisk-sdk --test diagnostic_smoke_embedded -- --ignored --nocapture
 //!
+//! `test_diagnostic_embedded` — in-process: execute (ASM + EMU),
+//! verify_constraints, prove (ASM). Topology (GPU / CPU+MPI / mac) is
+//! selected by how the test is launched, not by the test body.
+//!
+//! The remote variant lives in its own file (`diagnostic_smoke_remote.rs`)
+//! because the SDK enforces a per-process `ProverClient` singleton
+//! (`sdk/src/client.rs`); each integration test file is its own process, so
+//! splitting the two variants lets both build a client.
 
 use std::path::PathBuf;
 
 use test_artifacts::ELF_DIAGNOSTIC;
-use zisk_sdk::{EmbeddedClientBuilder, VerifyConstraintsExtension, ZiskStdin};
+use zisk_sdk::{EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, ZiskStdin};
 
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]
-async fn verify_constraints_diagnostic() {
-    let mut builder = EmbeddedClientBuilder::default();
+async fn test_diagnostic_embedded() {
+    let mut builder = EmbeddedClientBuilder::default().assembly();
 
-    if std::env::var_os("ZISK_TEST_ASM").is_some() {
-        eprintln!("[diagnostic_smoke] ZISK_TEST_ASM set — using Assembly executor");
-        builder = builder.assembly();
-    }
     if std::env::var_os("ZISK_TEST_GPU").is_some() {
         eprintln!("[diagnostic_smoke] ZISK_TEST_GPU set — enabling GPU");
         builder = builder.gpu();
@@ -46,11 +50,35 @@ async fn verify_constraints_diagnostic() {
         .await
         .expect("ROM setup failed");
 
+    client
+        .execute(&ELF_DIAGNOSTIC, ZiskStdin::new())
+        .executor(ExecutorKind::Emulator)
+        .run()
+        .expect("failed to submit emulator execute")
+        .await
+        .expect("emulator execute failed");
+
+    client
+        .execute(&ELF_DIAGNOSTIC, ZiskStdin::new())
+        .run()
+        .expect("failed to submit execute")
+        .await
+        .expect("execute failed");
+
     // Run verify_constraints
     client
         .verify_constraints(&ELF_DIAGNOSTIC, ZiskStdin::new())
+        .executor(ExecutorKind::Emulator)
         .run()
         .expect("failed to submit verify_constraints")
         .await
         .expect("verify_constraints failed");
+
+    client
+        .prove(&ELF_DIAGNOSTIC, ZiskStdin::new())
+        .executor(ExecutorKind::Assembly)
+        .run()
+        .expect("failed to submit prove")
+        .await
+        .expect("prove failed");
 }

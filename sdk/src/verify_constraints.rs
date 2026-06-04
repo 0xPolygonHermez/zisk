@@ -6,7 +6,7 @@ use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId, SubscriberList};
-use crate::ZiskStdin;
+use crate::{ExecutorKind, ZiskStdin};
 
 pub struct VerifyConstraintsResult {
     job_id: Option<JobId>,
@@ -43,6 +43,7 @@ pub(crate) trait RunVerifyConstraints {
         stdin: ZiskStdin,
         hints: Option<HintsSource>,
         debug_info: Option<Option<String>>,
+        executor: Option<ExecutorKind>,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<VerifyConstraintsResult>>;
@@ -60,12 +61,35 @@ pub struct VerifyConstraintsRequest<'a, C> {
     /// `None` = no debug info; `Some(None)` = enable with default path;
     /// `Some(Some(path))` = enable with explicit output path.
     debug_info: Option<Option<String>>,
+    /// Override the executor used for verification. `None` uses the executor
+    /// the client was built with.
+    executor: Option<ExecutorKind>,
     timeout: Option<Duration>,
 }
 
 impl<'a, C> VerifyConstraintsRequest<'a, C> {
     pub(crate) fn new(client: &'a C, program: &'a GuestProgram, stdin: ZiskStdin) -> Self {
-        Self { client, program, stdin, hints: None, debug_info: None, timeout: None }
+        Self {
+            client,
+            program,
+            stdin,
+            hints: None,
+            debug_info: None,
+            executor: None,
+            timeout: None,
+        }
+    }
+
+    /// Override the executor for this verification.
+    ///
+    /// [`ExecutorKind::Emulator`] runs verification via the Rust emulator;
+    /// [`ExecutorKind::Assembly`] via the assembly backend. The Assembly path
+    /// requires a client built with `.assembly()`. Defaults to the client's
+    /// built executor when unset.
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = Some(executor);
+        self
     }
 
     #[must_use]
@@ -101,6 +125,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
             self.stdin,
             self.hints,
             self.debug_info,
+            self.executor,
             self.timeout,
             subs,
         )
