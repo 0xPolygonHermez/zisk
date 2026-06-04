@@ -144,6 +144,9 @@ $(LIB_DIR):
 #
 # Elsewhere (macOS, where build.rs skips the C build entirely) just archive the
 # objects directly, avoiding the GNU-binutils-specific `ld -r`/`objcopy` step.
+#
+# `ar D` = deterministic archive (zeroed mtimes): unchanged source -> identical
+# bytes, so the rom-setup asm cache key (which hashes libziskc.a) is stable.
 ifeq ($(UNAME_S),Linux)
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 	ld -r -z noexecstack -o $(COMBINED_OBJ) $(ALL_OBJS)
@@ -151,10 +154,10 @@ $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
 		| sort -u > $(LOCALIZE_LIST)
 	objcopy --localize-symbols=$(LOCALIZE_LIST) $(COMBINED_OBJ)
 	rm -f $@
-	ar rcs $@ $(COMBINED_OBJ)
+	ar Drcs $@ $(COMBINED_OBJ)
 else
 $(LIB_FILE): $(ALL_OBJS) | $(LIB_DIR)
-	ar rcs $@ $(ALL_OBJS)
+	ar Drcs $@ $(ALL_OBJS)
 endif
 
 # Test binary: link the raw objects (not the symbol-trimmed archive) so the

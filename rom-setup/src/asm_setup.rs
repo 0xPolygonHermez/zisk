@@ -143,13 +143,75 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
     Ok(())
 }
 
-fn asm_file_base(name: &str, hash: &str, hints: bool) -> String {
+fn asm_file_base(name: &str, hash: &str, hints: bool, deps_hash: &str) -> String {
     let prefix = if name != hash { format!("{name}-{hash}") } else { hash.to_string() };
+    let prefix = if deps_hash.is_empty() { prefix } else { format!("{prefix}-d{deps_hash}") };
     if hints {
         format!("{prefix}-hints")
     } else {
         prefix
     }
+}
+
+/// The C libs the asm emulator links (`-lziskc`, `-lziskclib`), at the paths
+/// `emulator-asm/Makefile` finds them. Empty in installed mode (no `target/`).
+fn resolve_link_inputs(emulator_asm_path: &Path) -> Vec<PathBuf> {
+    let Some(parent) = emulator_asm_path.parent() else { return Vec::new() };
+    let target_dir = parent.join("target");
+    if !target_dir.exists() {
+        return Vec::new();
+    }
+    vec![
+        parent.join("lib-c").join("c").join("lib").join("libziskc.a"),
+        target_dir.join("release").join("libziskclib.a"),
+    ]
+}
+
+/// Hash of the asm build inputs (transpiler + float ELF + `emulator-asm/src`),
+/// baked by `build.rs`. See [`compute_asm_basename`].
+const ASM_INPUTS_HASH: &str = env!("ZISK_ASM_INPUTS_HASH");
+
+fn compute_deps_hash(emulator_asm_path: &Path) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(ASM_INPUTS_HASH.as_bytes());
+    hasher.update(&[0xffu8]);
+    for path in resolve_link_inputs(emulator_asm_path) {
+        // basename || 0x00 || len || bytes || 0xff — so identical bytes in
+        // different roles can't collide and a missing lib hashes distinctly.
+        let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+        hasher.update(name.as_bytes());
+        hasher.update(&[0u8]);
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                hasher.update(&(bytes.len() as u64).to_le_bytes());
+                hasher.update(&bytes);
+            }
+            Err(_) => {
+                hasher.update(b"<missing>");
+            }
+        }
+        hasher.update(&[0xffu8]);
+    }
+    hasher.finalize().to_hex().as_str()[..12].to_string()
+}
+
+/// Canonical cache base name for the asm binaries (`<base>-{mt,rh,mo}.bin`).
+///
+/// The cache is keyed by filename alone, so the name must change whenever the
+/// binaries would. Besides the guest ELF (`elf_hash`) that means: the linked C
+/// libs (hashed at runtime), and the transpiler + embedded float ELF +
+/// `emulator-asm` sources (hashed at build time via [`ASM_INPUTS_HASH`]).
+/// Without this, rebuilding a lib or the transpiler left the old name in place
+/// and stale binaries were reused. Relies on `lib-c`'s `ar D` so an unchanged
+/// lib doesn't flip the hash.
+///
+/// Every producer and consumer MUST go through here so they agree on the key.
+pub fn compute_asm_basename(elf_name: &str, elf_hash: &str, hints: bool) -> String {
+    let deps_hash = match resolve_emulator_asm() {
+        Ok((p, _)) => compute_deps_hash(&p),
+        Err(_) => String::new(),
+    };
+    asm_file_base(elf_name, elf_hash, hints, &deps_hash)
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path
@@ -175,7 +237,7 @@ pub fn get_assembly_file_paths_from_id(
     output_path: &Path,
     hints: bool,
 ) -> [PathBuf; 3] {
-    let base = asm_file_base(elf_name, elf_hash, hints);
+    let base = compute_asm_basename(elf_name, elf_hash, hints);
     [
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
@@ -226,14 +288,16 @@ pub fn generate_assembly(
         anyhow::bail!("ROM file is not a valid ELF file");
     }
 
-    let base = asm_file_base(elf_name, &elf_hash, hints);
+    let (emulator_asm_path, asm_source) = resolve_emulator_asm()?;
+    ensure_ziskclib(&emulator_asm_path, asm_source)?;
 
+    // Compute the cache base *after* `ensure_ziskclib` so the libs exist and the
+    // deps_hash reflects their freshly-built contents.
+    let deps_hash = compute_deps_hash(&emulator_asm_path);
+    let base = asm_file_base(elf_name, &elf_hash, hints, &deps_hash);
     let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
     let bin_rh_file = output_path.join(format!("{base}-rh.bin"));
     let bin_mo_file = output_path.join(format!("{base}-mo.bin"));
-
-    let (emulator_asm_path, asm_source) = resolve_emulator_asm()?;
-    ensure_ziskclib(&emulator_asm_path, asm_source)?;
 
     let emulator_asm_path =
         emulator_asm_path.to_str().context("Failed to convert emulator-asm path to string")?;
@@ -283,4 +347,36 @@ pub fn generate_assembly(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::asm_file_base;
+
+    // The core invariant of the cache-invalidation fix: the base name embeds
+    // `deps_hash`, so a change in the linked libs / transpiler / float (which
+    // all flow into `deps_hash`) yields a *different* filename and forces
+    // regeneration — while identical inputs reproduce the identical name.
+    #[test]
+    fn deps_hash_changes_the_name() {
+        let a = asm_file_base("prog", "elfhash", false, "aaaaaaaaaaaa");
+        let b = asm_file_base("prog", "elfhash", false, "bbbbbbbbbbbb");
+        assert_ne!(a, b, "different deps_hash must produce different cache names");
+        assert!(a.contains("-daaaaaaaaaaaa"), "name must carry the -d<deps_hash> segment: {a}");
+    }
+
+    #[test]
+    fn same_inputs_same_name() {
+        let a = asm_file_base("prog", "elfhash", true, "aaaaaaaaaaaa");
+        let b = asm_file_base("prog", "elfhash", true, "aaaaaaaaaaaa");
+        assert_eq!(a, b, "identical inputs must be cache-stable");
+    }
+
+    // Empty deps_hash (toolchain unresolved) reproduces the legacy elf-only name
+    // exactly, so pre-existing caches in that mode stay valid.
+    #[test]
+    fn empty_deps_hash_is_legacy_name() {
+        assert_eq!(asm_file_base("prog", "elfhash", false, ""), "prog-elfhash");
+        assert_eq!(asm_file_base("prog", "elfhash", true, ""), "prog-elfhash-hints");
+    }
 }

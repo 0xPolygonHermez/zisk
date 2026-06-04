@@ -6,6 +6,10 @@ license = { workspace = true }
 keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
+build = "build.rs"
+
+[build-dependencies]
+blake3 = { workspace = true }
 
 [dependencies]
 sm-rom = { workspace = true }

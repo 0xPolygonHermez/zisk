@@ -1,0 +1,59 @@
+name: asm cache invalidation
+
+# Guards that the rom-setup asm/ROM cache key tracks every input that determines
+# the generated binaries (the linked C libs, the embedded float ELF, and the
+# transpiler / emulator-asm sources). Mutating any of them must change the cache
+# filename; otherwise stale binaries get silently reused. See
+# tools/test_asm_cache_invalidation.sh and rom-setup/build.rs.
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths:
+      - "rom-setup/**"
+      - "core/src/**"
+      - "emulator-asm/**"
+      - "lib-c/**"
+      - "lib-float/c/lib/ziskfloat.elf"
+      - "tools/test_asm_cache_invalidation.sh"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cache-invalidation:
+    name: asm cache key tracks its inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: Run cache-invalidation test
+        run: ./tools/test_asm_cache_invalidation.sh --ci
