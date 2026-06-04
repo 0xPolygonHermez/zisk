@@ -235,11 +235,8 @@ impl AsmResources {
     pub fn set_active_services(&self, is_first_process: bool) -> ExecutorResult<()> {
         let Some(hints_stream) = &self.shared.hints_stream else { return Ok(()) };
         let processor = hints_stream.lock_or_poison("hints_stream")?.get_processor();
-        let services = if is_first_process {
-            &AsmServices::SERVICES[..]
-        } else {
-            &AsmServices::SERVICES[..2]
-        };
+        let services =
+            if is_first_process { &AsmServices::SERVICES[..] } else { &AsmServices::SERVICES[..2] };
         processor.hints_sink().set_active_services(services).map_err(ExecutorError::asm_backend)
     }
 
