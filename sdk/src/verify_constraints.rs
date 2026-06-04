@@ -37,6 +37,7 @@ impl From<VerifyConstraintsOutput> for VerifyConstraintsResult {
 }
 
 pub(crate) trait RunVerifyConstraints {
+    #[allow(clippy::too_many_arguments)]
     fn run_verify_constraints(
         &self,
         program: &GuestProgram,
