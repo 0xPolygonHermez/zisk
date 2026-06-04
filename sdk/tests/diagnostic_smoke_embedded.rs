@@ -8,9 +8,12 @@
 //!
 //!     cargo test -p zisk-sdk --test diagnostic_smoke_embedded -- --ignored --nocapture
 //!
-//! `test_diagnostic_embedded` — in-process: execute (ASM + EMU),
-//! verify_constraints, prove (ASM). Topology (GPU / CPU+MPI / mac) is
-//! selected by how the test is launched, not by the test body.
+//! `test_diagnostic_embedded` — in-process: execute, verify_constraints,
+//! prove. On Linux the Assembly executor is built and the body additionally
+//! exercises the ASM execute + ASM prove paths; on macOS (no asm/jit support)
+//! the test runs the Emulator path end-to-end (EMU execute + verify_constraints
+//! + EMU prove). Topology (GPU / CPU+MPI / mac) is selected by how the test is
+//! launched, not by the test body.
 //!
 //! The remote variant lives in its own file (`diagnostic_smoke_remote.rs`)
 //! because the SDK enforces a per-process `ProverClient` singleton
@@ -25,7 +28,15 @@ use zisk_sdk::{EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, 
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]
 async fn test_diagnostic_embedded() {
-    let mut builder = EmbeddedClientBuilder::default().assembly();
+    // On Linux build the Assembly executor: an Asm-built prover serves both the
+    // ASM and EMU paths, so the body can exercise both per-operation. macOS has
+    // no asm/jit support, so it builds the Emulator prover and runs the EMU path
+    // end-to-end instead.
+    let mut builder = EmbeddedClientBuilder::default();
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.assembly();
+    }
 
     if std::env::var_os("ZISK_TEST_GPU").is_some() {
         eprintln!("[diagnostic_smoke] ZISK_TEST_GPU set — enabling GPU");
@@ -58,12 +69,15 @@ async fn test_diagnostic_embedded() {
         .await
         .expect("emulator execute failed");
 
+    // ASM execute — Linux only (no asm/jit support on macOS).
+    #[cfg(target_os = "linux")]
     client
         .execute(&ELF_DIAGNOSTIC, ZiskStdin::new())
+        .executor(ExecutorKind::Assembly)
         .run()
-        .expect("failed to submit execute")
+        .expect("failed to submit asm execute")
         .await
-        .expect("execute failed");
+        .expect("asm execute failed");
 
     // Run verify_constraints
     client
@@ -74,9 +88,16 @@ async fn test_diagnostic_embedded() {
         .await
         .expect("verify_constraints failed");
 
+    // Prove via Assembly on Linux; macOS falls back to the Emulator executor,
+    // which an Emu-built prover serves end-to-end.
+    #[cfg(target_os = "linux")]
+    let prove_executor = ExecutorKind::Assembly;
+    #[cfg(not(target_os = "linux"))]
+    let prove_executor = ExecutorKind::Emulator;
+
     client
         .prove(&ELF_DIAGNOSTIC, ZiskStdin::new())
-        .executor(ExecutorKind::Assembly)
+        .executor(prove_executor)
         .run()
         .expect("failed to submit prove")
         .await
