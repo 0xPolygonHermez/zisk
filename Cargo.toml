@@ -23,6 +23,7 @@ members = [
   "executor",
   "pil",
   "prover-backend",
+  "prover-backend/macros",
   "riscv",
   "rom-setup",
   "state-machines/arith",
