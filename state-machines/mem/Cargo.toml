@@ -27,7 +27,7 @@ rayon = { workspace = true }
 
 [features]
 default = []
-debug_mem = []
+debug_mem = ["mem-common/debug_mem"]
 debug_mem_align = []
 debug_mem_offsets = []
 debug_mem_bin_offsets = []

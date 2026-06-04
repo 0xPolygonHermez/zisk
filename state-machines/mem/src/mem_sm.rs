@@ -638,6 +638,17 @@ impl<F: PrimeField64> MemSM<F> {
                     let previous_addr_w = seg
                         .previous_change_addr_w(addr_index as u32)
                         .unwrap_or(previous_segment.addr as u64);
+
+                    debug_assert!(
+                        previous_addr_w < mem_op.addr as u64,
+                        "MemSM: Warning: address goes back \
+                              or no change (on addr_changes path) from 0x{:X} to 0x{:X} \
+                              at irow {irow} (offset_base_addr_w: 0x{:X})",
+                        mem_op.addr * 8,
+                        previous_addr_w * 8,
+                        offset_base_addr_w * 8
+                    );
+
                     mem_op.addr as u64 - previous_addr_w - 1
                 } else {
                     // How addr_changes is false, means that the previous row belongs to same address,
@@ -678,13 +689,18 @@ impl<F: PrimeField64> MemSM<F> {
                 // dual available
                 init_row = true;
 
-                let previous_addr = seg
+                let previous_addr: u64 = seg
                     .previous_change_addr_w(addr_index as u32)
                     .unwrap_or(previous_segment.addr as u64);
-                debug_assert!(previous_addr <= mem_op.addr as u64, "MemSM: Warning: address goes back \
-                              from 0x{:X} to 0x{previous_addr:X} at irow {irow} (offset_base_addr_w: \
-                              0x{offset_base_addr_w:X})",
-                    mem_op.addr);
+                debug_assert!(
+                    previous_addr < mem_op.addr as u64,
+                    "MemSM: Warning: address goes back \
+                              or no change (on addr_changes path) from 0x{:X} to 0x{:X} \
+                              at irow {irow} (offset_base_addr_w: 0x{:X})",
+                    mem_op.addr * 8,
+                    previous_addr * 8,
+                    offset_base_addr_w * 8
+                );
                 mem_op.addr as u64 - previous_addr - 1
             } else if dual_available {
                 // It's dual read, not addr_changes.
@@ -707,13 +723,6 @@ impl<F: PrimeField64> MemSM<F> {
                 // dual available
                 init_row = true;
                 if irow >= trace.num_rows() {
-                    println!(
-                        "MemSM: Warning: irow {irow} goes beyond trace num_rows {} for mem_op at \
-                        index {index} with addr 0x{:X} step {} {index}/{mem_op_count}",
-                        trace.num_rows(),
-                        mem_op.addr,
-                        mem_op.step
-                    );
                     break;
                 }
                 // set specific values of trace for regular memory operation
@@ -727,8 +736,6 @@ impl<F: PrimeField64> MemSM<F> {
             };
             if init_row {
                 if irow >= trace.num_rows() {
-                    println!("MemSM: Warning: irow {irow} goes beyond trace num_rows {} for mem_op at index {index} with addr 0x{:X} step {} {index}/{mem_op_count}",
-                        trace.num_rows(),mem_op.addr, mem_op.step);
                     break;
                 }
                 #[cfg(feature = "debug_mem")]
@@ -738,8 +745,6 @@ impl<F: PrimeField64> MemSM<F> {
                             &trace,
                             &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
                         );
-                        println!("MemSM: overriting non empty row {irow} for mem_op at index {index} with addr 0x{:X} => 0x{:X} step ({},{}) => {} {index}/{mem_op_count}",
-                    trace[irow].get_addr() * 8, mem_op.addr * 8, trace[irow].get_step(),trace[irow].get_step_dual(), mem_op.step);
                         break;
                     }
                     filled_rows[irow] = true;

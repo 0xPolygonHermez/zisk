@@ -1,4 +1,9 @@
 use std::collections::HashMap;
+#[cfg(feature = "debug_mem")]
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 use crate::MemModuleCheckPoint;
 use zisk_common::ChunkId;
@@ -242,6 +247,28 @@ impl MemModuleSegmentCheckPoint {
             page -= 1;
             upper = MEM_OFFSETS_PAGE_SIZE as usize;
         }
+    }
+
+    #[cfg(feature = "debug_mem")]
+    pub fn save_offsets_to_file(&self, file_name: &str) {
+        println!("[MemDebug] saving offsets to {} .....", file_name);
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let base = self.offsets_base_addr as u64;
+        let mut prev_value = u32::MAX;
+        for index in 0..self.addr_range_slots {
+            let value = self.offset_at(index);
+            if value != prev_value {
+                let addr = index as u64 * 8 + base;
+                if value == 0 {
+                    writeln!(writer, "{:#010X} PREV_SEGMENT", addr).unwrap();
+                } else {
+                    writeln!(writer, "{:#010X} {}", addr, value - 1).unwrap();
+                }
+                prev_value = value;
+            }
+        }
+        println!("[MemDebug] done");
     }
 
     pub fn to_string(&self, segment_id: usize) -> String {

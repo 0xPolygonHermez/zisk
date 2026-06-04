@@ -10,7 +10,7 @@ TARGET := libmemcpp.a
 
 SRCS := tools.cpp api.cpp mem_count_and_plan.cpp immutable_mem_planner.cpp \
 		mem_align_counter.cpp mem_check_point.cpp mem_context.cpp mem_counter.cpp \
-		mem_locators.cpp mem_segment_hash_table.cpp mem_planner.cpp
+		mem_locators.cpp mem_segment_hash_table.cpp mem_planner.cpp mem_offsets.cpp
 
 OBJS := $(addprefix $(OUT_DIR)/, $(SRCS:.cpp=.o))
 
