@@ -352,6 +352,10 @@ impl Mem {
             }
         }) {
             &self.read_sections[section]
+        } else if addr >= INPUT_ADDR && addr < (INPUT_ADDR + MAX_INPUT_SIZE) {
+            // We allow to read from the input address range, even if it has not been set as a read
+            // section, since its default value is 0 for the whole range
+            return 0;
         } else {
             panic!("Mem::read() section not found for addr: {addr}={addr:x} with width: {width}");
         };
