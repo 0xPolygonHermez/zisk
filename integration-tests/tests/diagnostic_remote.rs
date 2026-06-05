@@ -5,7 +5,7 @@
 //! `ZISK_TEST_COORDINATOR_URL` (default below).
 //!
 //! Lives in its own integration test file — separate from the embedded
-//! variant in `diagnostic_smoke.rs` — because the SDK enforces a per-process
+//! variant in `diagnostic_embedded.rs` — because the SDK enforces a per-process
 //! `ProverClient` singleton (`sdk/src/client.rs`). Each integration test file
 //! is its own test binary/process, so keeping the embedded and remote
 //! variants apart lets both build a client without tripping the singleton.
@@ -13,7 +13,7 @@
 //! Ignored by default because it requires a running coordinator + workers.
 //! Run with:
 //!
-//!     cargo test -p zisk-sdk --test diagnostic_smoke_remote -- --ignored --nocapture
+//!     cargo test -p integration-tests --test diagnostic_remote -- --ignored --nocapture
 
 use test_artifacts::ELF_DIAGNOSTIC;
 use zisk_sdk::{ExecutorKind, ProverClient, ZiskStdin};

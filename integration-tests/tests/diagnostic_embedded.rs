@@ -6,7 +6,7 @@
 //! Ignored by default because `verify_constraints` requires a generated
 //! proving key on disk and the run is heavy. Execute explicitly with:
 //!
-//!     cargo test -p zisk-sdk --test diagnostic_smoke_embedded -- --ignored --nocapture
+//!     cargo test -p integration-tests --test diagnostic_embedded -- --ignored --nocapture
 //!
 //! `test_diagnostic_embedded` — in-process: execute, verify_constraints,
 //! prove. On Linux the Assembly executor is built and the body additionally
@@ -15,8 +15,8 @@
 //! EMU prove). Topology (GPU / CPU+MPI / mac) is selected by how the test is
 //! launched, not by the test body.
 //!
-//! The remote variant lives in its own file (`diagnostic_smoke_remote.rs`)
-//! because the SDK enforces a per-process `ProverClient` singleton
+//! The remote variant lives in its own file (`diagnostic_remote.rs`) because
+//! the SDK enforces a per-process `ProverClient` singleton
 //! (`sdk/src/client.rs`); each integration test file is its own process, so
 //! splitting the two variants lets both build a client.
 
