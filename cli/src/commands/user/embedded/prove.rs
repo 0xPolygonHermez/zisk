@@ -57,6 +57,11 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'y', long)]
     verify_proof: bool,
 
+    /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    gpu: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -88,6 +93,10 @@ impl ZiskEmbeddedProve {
         }
         if self.plonk {
             builder = builder.plonk();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            builder = builder.gpu();
         }
         let client = builder.build()?;
 

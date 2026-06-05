@@ -30,6 +30,11 @@ pub(crate) struct ZiskEmbeddedWrap {
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
+    /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    gpu: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -52,6 +57,10 @@ impl ZiskEmbeddedWrap {
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.plonk {
             builder = builder.plonk();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            builder = builder.gpu();
         }
         let client = builder.build()?;
 
