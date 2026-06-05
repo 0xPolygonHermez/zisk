@@ -438,7 +438,8 @@ main() {
           rm -f "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu"
           rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
           mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
-          mv "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
+          # cargo-zisk-dev only ships in bundles built after the CLI split; tolerate older releases.
+          [ -f "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu" ] && mv "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
           mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
         else
           step "Configuring CPU binaries..."
@@ -446,7 +447,8 @@ main() {
           rm -f "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu"
           rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
           mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
-          mv "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
+          # cargo-zisk-dev only ships in bundles built after the CLI split; tolerate older releases.
+          [ -f "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu" ] && mv "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
           mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
         fi
       fi
@@ -898,7 +900,11 @@ install_setup() {
       step "Generating constant tree files. This may take a while..."
       local check_args=(--proving-key "${ZISK_DIR}/provingKey" -a)
       [[ "${USE_GPU}" == "true" ]] && check_args+=(--gpu)
-      ensure_silent "${CARGO_ZISK_DEV}" check-setup "${check_args[@]}"
+      # check-setup moved to cargo-zisk-dev after the CLI split; fall back to
+      # cargo-zisk for older bundles where it still lives on the main binary.
+      local check_bin="${CARGO_ZISK_DEV}"
+      [ -x "${check_bin}" ] || check_bin="${CARGO_ZISK}"
+      ensure_silent "${check_bin}" check-setup "${check_args[@]}"
       say "Constant tree files generated successfully."
     fi
 }
