@@ -2042,7 +2042,7 @@ impl Riscv2ZiskContext<'_> {
     // }
 
     /// Implements a float or double function, for both 16-bit and 32-bit instruction sizes.
-    /// Implemented via integger operations
+    /// Implemented via integer operations
     #[cfg(feature = "float")]
     pub fn float(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
