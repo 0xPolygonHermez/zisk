@@ -76,6 +76,15 @@ pub(crate) const TRACE_MAX_SIZE: usize = 0x1000000000; // 64GB
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn drain_chunk_done(sem: &mut named_sem::NamedSemaphore) -> u64 {
+    let mut swept = 0;
+    while sem.try_wait().is_ok() {
+        swept += 1;
+    }
+    swept
+}
+
 fn build_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
     format!("{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
