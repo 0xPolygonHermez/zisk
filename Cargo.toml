@@ -8,7 +8,7 @@ categories = ["cryptography"]
 
 [workspace.metadata]
 gha_zisk_testvectors_branch = "develop-0.3.0"
-gha_zisk_ethproofs_branch = "develop-0.11.0"
+gha_zisk_ethproofs_branch = "fix/zisk-eth-client"
 gha_zisk_eth_client_branch = "develop-0.11.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
 gha_pil2_proofman_js_branch = "tags/v0.17.0"
