@@ -176,8 +176,10 @@ pub fn close_hints() -> Result<()> {
         *MAIN_TID.lock().unwrap() = None;
     }
 
-    // Write HINT_END
-    HINT_BUFFER.write_hint_end();
+    // Defer CTRL_END to the writer: it drains both buffers and then emits
+    // CTRL_END as the final hint, so CTRL_END is always the last hint even when
+    // input data is still pending (the host consumer requires this).
+    HINT_BUFFER.mark_end();
 
     // Close the hint buffer to signal the writer thread to finish
     HINT_BUFFER.close();
@@ -308,6 +310,95 @@ pub(crate) fn check_main_thread() -> bool {
             println!("Warning: trying to write hint from thread {:?} before MAIN_TID is initialized. Ignoring...", tid);
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use zisk_common::{CTRL_END, CTRL_START};
+
+    fn header_code(bytes: &[u8]) -> u32 {
+        let header = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+        (header >> 32) as u32 & 0x7FFF_FFFF
+    }
+
+    fn header_len(bytes: &[u8]) -> usize {
+        let header = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+        (header & 0xFFFF_FFFF) as usize
+    }
+
+    fn assert_well_framed(bytes: &[u8]) {
+        assert!(bytes.len() >= 8, "file too short to contain a header: {} bytes", bytes.len());
+        assert_eq!(header_code(&bytes[..8]), CTRL_START, "file does not start with CTRL_START");
+
+        let mut pos = 0usize;
+        let mut last_code = None;
+        while pos + 8 <= bytes.len() {
+            let code = header_code(&bytes[pos..]);
+            let data_len = header_len(&bytes[pos..]);
+            let pad = (8 - (data_len & 7)) & 7;
+            last_code = Some(code);
+            pos += 8 + data_len + pad;
+        }
+        assert_eq!(pos, bytes.len(), "trailing bytes after final framed hint (corruption)");
+        assert_eq!(last_code, Some(CTRL_END), "file does not end with CTRL_END");
+    }
+
+    /// Soak test: repeatedly write input data and immediately close, hammering
+    /// the window where input data is still pending when CTRL_END is requested.
+    /// Every file must remain a valid, self-contained frame. This guards the
+    /// drain-ordering fix (CTRL_END emitted strictly last) against regressions.
+    #[test]
+    #[serial]
+    fn soak_input_then_close_never_corrupts() {
+        let dir = std::env::temp_dir().join(format!("zisk_hints_soak_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("soak.bin");
+
+        for i in 0..200 {
+            init_hints_file(path.clone(), None).unwrap();
+
+            // Vary payload size to shift the timing of the input-vs-end race.
+            let n = (i * 37) % 8192;
+            let payload: Vec<u8> = (0..n).map(|k| (k & 0xFF) as u8).collect();
+            unsafe { input_data::hint_input_data(payload.as_ptr(), payload.len()) };
+
+            close_hints().unwrap();
+
+            let bytes = std::fs::read(&path).unwrap();
+            assert_well_framed(&bytes);
+
+            // The input payload must survive intact: locate the HINT_INPUT hint
+            // and confirm its length-prefixed body matches what we wrote.
+            if n > 0 {
+                let found = find_input_payload(&bytes);
+                assert_eq!(found.as_deref(), Some(payload.as_slice()), "iteration {i}");
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Walk the frame and return the body of the first HINT_INPUT hint, with the
+    /// 8-byte inner length prefix and any padding stripped.
+    fn find_input_payload(bytes: &[u8]) -> Option<Vec<u8>> {
+        use zisk_common::HINT_INPUT;
+        let mut pos = 0usize;
+        while pos + 8 <= bytes.len() {
+            let code = header_code(&bytes[pos..]);
+            let data_len = header_len(&bytes[pos..]);
+            let pad = (8 - (data_len & 7)) & 7;
+            if code == HINT_INPUT {
+                let body = &bytes[pos + 8..pos + 8 + data_len];
+                // body = 8-byte inner length prefix + payload
+                let inner_len = u64::from_le_bytes(body[..8].try_into().unwrap()) as usize;
+                return Some(body[8..8 + inner_len].to_vec());
+            }
+            pos += 8 + data_len + pad;
+        }
+        None
     }
 }
 
