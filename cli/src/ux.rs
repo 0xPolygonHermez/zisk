@@ -111,8 +111,8 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
         output.get_execution_cost().map(|c| format!("{} cells", c)).unwrap_or("N/A".to_string());
     info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
 
-            let sep2 = " [ ".dimmed();
-        let sep3 = " ] ".dimmed();
+    let sep2 = " [ ".dimmed();
+    let sep3 = " ] ".dimmed();
 
     // Time breakdown.
     let et = output.get_executor_time();
