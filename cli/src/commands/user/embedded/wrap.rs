@@ -37,7 +37,7 @@ pub(crate) struct ZiskEmbeddedWrap {
 impl ZiskEmbeddedWrap {
     pub(crate) fn run(&mut self) -> Result<()> {
         print_banner();
-        print_banner_command(&format!("{} Wrap", "EMBEDDED".bold()));
+        print_banner_command(format!("{} Wrap", "EMBEDDED".bold()));
         print_banner_field("Proof", self.proof.display());
         println!();
 

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::io::{StreamSource, ZiskStdin};
@@ -407,78 +406,5 @@ impl StatsCmd {
             // val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
             _ => format!("Unknown air_id: {air_id}"),
         }
-    }
-
-    /// Stores stats in JSON file format
-    ///
-    /// # Arguments
-    /// * `stats` - A reference to the stats vector.
-    pub(crate) fn store_stats(start_time: Instant, stats: &[(usize, usize, Stats)]) {
-        #[derive(Serialize, Deserialize, Debug)]
-        struct Task {
-            name: String,
-            start: u64,
-            duration: u64,
-        }
-        let mut tasks: Vec<Task> = Vec::new();
-
-        println!("stats.len={}", stats.len());
-        for stat in stats.iter() {
-            let airgroup_id = stat.0;
-            let air_id = stat.1;
-            let stat = &stat.2;
-            let collect_start_time: u64 =
-                stat.collect_start_time.duration_since(start_time).as_micros() as u64;
-            let witness_start_time: u64 =
-                stat.witness_start_time.duration_since(start_time).as_micros() as u64;
-            let name = StatsCmd::air_name(airgroup_id, air_id);
-            if stat.collect_duration > 0 {
-                let name = name.clone() + "_collect";
-                // println!(
-                //     "{} num_chunks={} start_time={}, duration={}",
-                //     name, stat.num_chunks, collect_start_time, stat.collect_duration
-                // );
-                let task =
-                    Task { name, start: collect_start_time, duration: stat.collect_duration };
-                tasks.push(task);
-            }
-            if stat.witness_duration > 0 {
-                let name = name.clone() + "_witness";
-                // println!(
-                //     "{} num_chunks={}, start_time={}, duration={}",
-                //     name, stat.num_chunks, witness_start_time, stat.witness_duration
-                // );
-                let task = Task {
-                    name,
-                    start: witness_start_time,
-                    duration: stat.witness_duration as u64,
-                };
-                tasks.push(task);
-            }
-        }
-
-        // Save to stats.json
-
-        // Convert to pretty-printed JSON
-        let Ok(json) = serde_json::to_string_pretty(&tasks) else {
-            tracing::warn!("Failed to serialize stats to JSON");
-            return;
-        };
-
-        // Write to file
-        let _ = fs::write("stats.json", json);
-
-        // Save to stats.csv
-
-        // Create a CSV-formatted string with the tasks data
-        let mut csv = String::new();
-        for task in tasks {
-            csv += &format!("{},{},{},\n", task.name, task.start, task.duration);
-        }
-
-        // Write to file
-        let _ = fs::write("stats.csv", csv);
-
-        tracing::info!("Statistics have been saved to stats.json and stats.csv");
     }
 }

@@ -15,6 +15,7 @@ mod upload;
 mod verify;
 mod verify_constraints;
 mod wrap;
+mod zisk_client;
 
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
@@ -22,6 +23,8 @@ pub use embedded::{
     EmbeddedClient, EmbeddedClientBuilder, EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient,
     WitnessBuilderExt,
 };
+pub use zisk_client::ZiskClient;
+
 pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;

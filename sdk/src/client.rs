@@ -13,11 +13,17 @@ pub(crate) fn ensure_single_instance() {
     }
 }
 
-/// Entry-point namespace for building prover clients.
+/// Entry-point namespace for building **concrete, fully-typed** prover clients.
 ///
 /// Obtain a client via:
 /// - `ProverClient::embedded().build()` → [`EmbeddedClient`](crate::EmbeddedClient)
 /// - `ProverClient::remote(url).build()` → [`RemoteClient`](crate::RemoteClient)
+///
+/// The returned clients carry their full backend-specific surface (the embedded client's
+/// synchronous `.run_sync()` and `verify_constraints`; the remote client's `setup_by_id`).
+///
+/// When the backend is chosen at runtime, use [`ZiskClient`](crate::ZiskClient) instead — its
+/// `embedded()`/`remote()` builders `build()` into a single runtime-dispatch type.
 pub struct ProverClient;
 
 impl ProverClient {

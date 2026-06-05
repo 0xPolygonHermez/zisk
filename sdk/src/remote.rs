@@ -30,18 +30,30 @@ use crate::{
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
-pub struct RemoteClientBuilder {
+/// Builder for a remote client.
+///
+/// The `Out` type parameter selects what [`build`](Self::build) returns, and is fixed by the
+/// constructor used:
+/// - [`ProverClient::remote`](crate::ProverClient::remote) → `Out = RemoteClient` (the concrete,
+///   fully-typed client).
+/// - [`ZiskClient::remote`](crate::ZiskClient::remote) → `Out = ZiskClient` (the runtime-dispatch
+///   façade).
+///
+/// The parameter is inferred at call sites and never needs to be named.
+pub struct RemoteClientBuilder<Out = RemoteClient> {
     url: String,
     connect_timeout: Duration,
     request_timeout: Duration,
+    _out: std::marker::PhantomData<fn() -> Out>,
 }
 
-impl RemoteClientBuilder {
+impl<Out> RemoteClientBuilder<Out> {
     pub(crate) fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             request_timeout: DEFAULT_REQUEST_TIMEOUT,
+            _out: std::marker::PhantomData,
         }
     }
 
@@ -58,12 +70,18 @@ impl RemoteClientBuilder {
         self.request_timeout = d;
         self
     }
+}
 
-    /// Build the [`RemoteClient`].
-    pub fn build(self) -> Result<RemoteClient> {
+impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
+    /// Build the client.
+    ///
+    /// Returns the type fixed by the constructor: a [`RemoteClient`] via
+    /// [`ProverClient::remote`](crate::ProverClient::remote), or an
+    /// [`ZiskClient`](crate::ZiskClient) via [`ZiskClient::remote`](crate::ZiskClient::remote).
+    pub fn build(self) -> Result<Out> {
         crate::client::ensure_single_instance();
         let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)?;
-        Ok(RemoteClient { gw })
+        Ok(RemoteClient { gw }.into())
     }
 }
 
