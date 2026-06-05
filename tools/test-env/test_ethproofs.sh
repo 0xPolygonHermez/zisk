@@ -54,11 +54,6 @@ main() {
     deploy_distributed
 
     step "Executing ethproofs-client tests..."
-    BLOCK_MODULUS=1
-    COORDINATOR_URL=http://localhost:7010
-    INPUTS_FOLDER="${WORKSPACE_DIR}/zisk-ethproofs/inputs"
-    COMPUTE_CAPACITY=10
-    export BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
 
     ensure cd zisk-ethproofs
     local input_files_arg=""
@@ -68,6 +63,7 @@ main() {
         [[ -n "${BLOCK_INPUTS_ETHPROOFS:-}" ]] && input_files_arg="--folder.input-files ${BLOCK_INPUTS_ETHPROOFS}"
     fi
     ensure ./target/release/ethproofs-client \
+        -c http://localhost:7010 \
         -n folder \
         -g ../zisk-eth-client/bin/guests/stateless-validator-reth/elf/zec-reth.elf \
         --folder.path ../zisk-eth-client/bin/guests/stateless-validator-reth/inputs \
