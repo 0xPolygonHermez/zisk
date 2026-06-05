@@ -1,7 +1,7 @@
 use anyhow::Result;
 use executor::{AirClassifier, PlanSummaryEntry};
+use std::path::Path;
 use std::time::Duration;
-use std::{fmt::Display, path::Path};
 use zisk_common::{
     ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
     ZiskVerifyBuilder, ZISK_PUBLICS,
@@ -174,23 +174,6 @@ impl ExecuteOutput {
 }
 
 impl_public_outputs!(ExecuteOutput, publics);
-
-impl Display for ExecuteOutput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "Execution completed in {}ms , steps: {}{}",
-            self.get_execution_time(),
-            self.get_execution_steps(),
-            if let Some(cost) = self.get_execution_cost() {
-                format!(", cost: {}", cost)
-            } else {
-                String::new()
-            }
-        )?;
-        Ok(())
-    }
-}
 
 pub struct ProveOutput {
     summary: ExecutionSummary,
