@@ -136,8 +136,13 @@ test_elf() {
     cd "${WORKSPACE_DIR}" || return 1
 
     local gpu_flag=""
-    [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-
+    # Only enable GPU when not forced to CPU, not on macOS, and the installed
+    # cargo-zisk is actually a GPU build (its `--version` description contains
+    # "[gpu]", e.g. "cargo-zisk 0.18.0 [gpu] (790f9e2 ...)").
+    if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
+        gpu_flag="--gpu"
+    fi
+    
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $MPI_PROCESSES -x OMP_NUM_THREADS=$MPI_THREADS -x RAYON_NUM_THREADS=$MPI_THREADS"
 
