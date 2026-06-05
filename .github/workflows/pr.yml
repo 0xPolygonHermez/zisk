@@ -91,12 +91,12 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Build cargo-zisk
-        run: cargo build --release -p cargo-zisk --bin cargo-zisk
+      - name: Build cargo-zisk-dev
+        run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
 
       - name: Generate Solidity calldata fixture
         working-directory: zisk-contracts
-        run: ../target/release/cargo-zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+        run: ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 
       - name: Install JS dependencies
         working-directory: zisk-contracts

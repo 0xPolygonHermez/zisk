@@ -6,7 +6,7 @@ set -eo pipefail
 
 BASE_DIR=${XDG_CONFIG_HOME:-${HOME}}
 DEFAULT_USER_ZISK_DIR=${ZISK_DIR:-"${BASE_DIR}/.zisk"}
-BINS=(cargo-zisk ziskemu)
+BINS=(cargo-zisk cargo-zisk-dev ziskemu)
 BUCKET_URL="https://storage.googleapis.com/zisk-setup"
 NVIDIA_MIN_VERSION="525.60.13"
 
@@ -433,14 +433,18 @@ main() {
         if [ "${USE_GPU}" = "true" ]; then
           step "Configuring GPU binaries..."
           rm -f "${ZISK_BIN_DIR}/cargo-zisk-cpu"
+          rm -f "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu"
           rm -f "${ZISK_BIN_DIR}/zisk-worker-cpu"
           mv "${ZISK_BIN_DIR}/cargo-zisk-gpu" "${ZISK_BIN_DIR}/cargo-zisk"
+          mv "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
           mv "${ZISK_BIN_DIR}/zisk-worker-gpu" "${ZISK_BIN_DIR}/zisk-worker"
         else
           step "Configuring CPU binaries..."
           rm -f "${ZISK_BIN_DIR}/cargo-zisk-gpu"
+          rm -f "${ZISK_BIN_DIR}/cargo-zisk-dev-gpu"
           rm -f "${ZISK_BIN_DIR}/zisk-worker-gpu"
           mv "${ZISK_BIN_DIR}/cargo-zisk-cpu" "${ZISK_BIN_DIR}/cargo-zisk"
+          mv "${ZISK_BIN_DIR}/cargo-zisk-dev-cpu" "${ZISK_BIN_DIR}/cargo-zisk-dev"
           mv "${ZISK_BIN_DIR}/zisk-worker-cpu" "${ZISK_BIN_DIR}/zisk-worker"
         fi
       fi
