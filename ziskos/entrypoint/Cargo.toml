@@ -96,6 +96,9 @@ zisk-embedded-talc-alloc = [
 ]
 zisk-embedded-tlfs-alloc = ["dep:embedded-alloc", "dep:critical-section"]
 
+[dev-dependencies]
+serial_test = { workspace = true }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(zisk_hints)',
