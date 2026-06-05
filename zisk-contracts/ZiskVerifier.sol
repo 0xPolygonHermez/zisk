@@ -11,7 +11,7 @@ contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
         error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v0.18.0";
+        return "v0.19.0";
     }
 
     /// @notice Root constant as bytes32 (pre-packed to match the original uint64[4] layout)
