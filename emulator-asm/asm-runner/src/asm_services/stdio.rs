@@ -141,6 +141,11 @@ impl StdioService {
         let _ = guard.child.wait();
     }
 
+    /// Number of `StdioService`/`AsmServices` clones sharing these child handles.
+    pub(super) fn owner_count(&self) -> usize {
+        Arc::strong_count(&self.state)
+    }
+
     pub(super) fn running_services(&self) -> Vec<AsmService> {
         AsmServices::SERVICES
             .iter()

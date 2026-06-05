@@ -355,19 +355,5 @@ impl Drop for AsmResources {
             }
         }
 
-        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.local_rank);
-        if let Err(e) = self.asm_services.stop_asm_services() {
-            tracing::error!(
-                ">>> [{}] Failed to stop ASM microservices: {}",
-                self.shared.config.local_rank,
-                e
-            );
-        }
-        // The ASM service children don't unlink shmem on exit (the
-        // `delete_*_shm` flags aren't set for them), so the parent must
-        // unlink the `/dev/shm/{shm_prefix}*` and `sem.{sem_prefix}*`
-        // entries here. Otherwise GBs of `_input`, `_ram`, `_rom` files
-        // leak until the next worker startup runs `cleanup_stale_shmem`.
-        self.asm_services.cleanup_my_shmem();
     }
 }

@@ -206,13 +206,16 @@ impl AsmServices {
             &sem_prefix,
         )?;
 
+        let services = AsmServices { service: stdio_service, shm_prefix, sem_prefix };
+
         for service in &Self::SERVICES {
-            stdio_service
+            services
+                .service
                 .send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
-        Ok(AsmServices { service: stdio_service, shm_prefix, sem_prefix })
+        Ok(services)
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -451,6 +454,22 @@ impl AsmServices {
             response[i] = u64::from_le_bytes(chunk.try_into()?);
         }
         Ok(response)
+    }
+}
+
+impl Drop for AsmServices {
+    /// RAII teardown for the ASM microservices and their `/dev/shm` segments.
+    fn drop(&mut self) {
+        if self.service.owner_count() != 1 {
+            return;
+        }
+
+        tracing::info!(">>> [{}] Stopping ASM microservices.", self.local_rank());
+        if let Err(e) = self.stop_asm_services() {
+            tracing::error!(">>> [{}] Failed to stop ASM microservices: {}", self.local_rank(), e);
+        }
+
+        self.cleanup_my_shmem();
     }
 }
 
