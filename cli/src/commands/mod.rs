@@ -1,3 +1,5 @@
+//! Command-line surface for the two ZisK binaries: `cargo-zisk` and `cargo-zisk-dev`.
+
 mod dev;
 mod shared;
 mod user;

@@ -1,3 +1,5 @@
+//! `cargo-zisk-dev` CLI commands for developing, debugging, and benchmarking ZisK itself.
+
 use anyhow::Result;
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;

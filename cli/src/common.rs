@@ -1,3 +1,5 @@
+//! Shared helpers used across CLI commands.
+
 use anyhow::Result;
 use std::env;
 use std::fs;

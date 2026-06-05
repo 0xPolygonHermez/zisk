@@ -1,3 +1,5 @@
+//! `cargo-zisk` CLI commands for building and proving guest programs.
+
 use anyhow::Result;
 use clap::Parser;
 use zisk_build::ZISK_VERSION_MESSAGE;
