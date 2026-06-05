@@ -321,14 +321,7 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn float(&self) -> bool {
-        #[cfg(feature = "float")]
-        {
-            true
-        }
-        #[cfg(not(feature = "float"))]
-        {
-            false
-        }
+        cfg!(feature = "float")
     }
 }
 

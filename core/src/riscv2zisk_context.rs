@@ -516,7 +516,7 @@ impl Riscv2ZiskContext<'_> {
             "reserved" => self.halt_with_error(riscv_instruction, 4),
 
             _ => {
-                #[cfg(feature = "float")]
+                #[cfg(not(feature = "float"))]
                 if riscv_instruction.inst.starts_with("f")
                     || riscv_instruction.inst.starts_with("c.f")
                 {

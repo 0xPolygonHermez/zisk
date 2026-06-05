@@ -74,7 +74,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             add_zisk_init_data(&mut rom, section.addr, &section.data, true);
         }
 
-        // Add entry and exit jump instructions, only for the main payload, i.e. for the first payload
+        // Add entry and exit jump instructions, only for the guest ELF payload
+        // (i.e. `payloads[elf_index]`)
         if i == elf_index {
             add_entry_exit_jmp(&mut rom, payload.entry_point);
         }
