@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use quinn::{Connection, Endpoint, ServerConfig};
 use tokio::runtime::{Handle, Runtime};
 
-use super::{StreamRead, StreamWrite};
+use crate::{StreamRead, StreamWrite};
 
 /// Ensure crypto provider is initialized (idempotent)
 fn ensure_crypto_provider() {
@@ -315,10 +315,10 @@ impl QuicStreamWriter {
 
         let rx =
             self.connection_rx.take().ok_or_else(|| anyhow::anyhow!("QUIC accept task missing"))?;
-        let result = rx.recv_timeout(crate::io::CONNECT_DEADLINE).map_err(|_| {
+        let result = rx.recv_timeout(crate::CONNECT_DEADLINE).map_err(|_| {
             anyhow::anyhow!(
                 "Timed out waiting for QUIC client connection ({}s)",
-                crate::io::CONNECT_DEADLINE.as_secs()
+                crate::CONNECT_DEADLINE.as_secs()
             )
         })?;
         let connection = result?;
