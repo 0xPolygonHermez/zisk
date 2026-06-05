@@ -4,9 +4,10 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{EmbeddedClientBuilder, Proof, ProofKind};
+use zisk_sdk::{EmbeddedClientBuilder, Proof};
 
-use crate::common::default_proof_filename;
+use crate::common::resolve_output_path;
+use crate::proof::{select_wrap_kind, wrap_kind_label};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -41,17 +42,8 @@ impl ZiskEmbeddedWrap {
         print_banner_field("Proof", self.proof.display());
         println!();
 
-        let proof_kind = if self.plonk {
-            ProofKind::Plonk
-        } else if self.minimal {
-            ProofKind::VadcopFinalMinimal
-        } else {
-            anyhow::bail!("Either --plonk or --minimal must be specified.");
-        };
-        let kind_label = match proof_kind {
-            ProofKind::Plonk => "PLONK",
-            _ => "minimal",
-        };
+        let proof_kind = select_wrap_kind(self.plonk, self.minimal)?;
+        let kind_label = wrap_kind_label(proof_kind);
 
         let zisk_proof = Proof::load(&self.proof).map_err(|e| {
             anyhow::anyhow!("Failed to load proof from {}: {}", self.proof.display(), e)
@@ -67,7 +59,7 @@ impl ZiskEmbeddedWrap {
         // runtime is needed here.
         let result = client.wrap_proof(&zisk_proof, proof_kind).run_sync()?;
 
-        let output_file = self.output.clone().unwrap_or(default_proof_filename(result.job_id()));
+        let output_file = resolve_output_path(self.output.clone(), result.job_id());
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

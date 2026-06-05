@@ -14,7 +14,19 @@ use zisk_common::io::{StreamSource, ZiskStdin};
 /// Rank-0 check for output gating under `mpirun`. Defaults to true when the env
 /// var is absent so non-MPI runs print normally.
 fn is_rank_zero() -> bool {
-    std::env::var("OMPI_COMM_WORLD_RANK").map(|s| s == "0").unwrap_or(true)
+    rank_zero_from_env(std::env::var("OMPI_COMM_WORLD_RANK").ok().as_deref())
+}
+
+/// Pure core of [`is_rank_zero`]: a run is rank zero when the MPI rank var is
+/// absent (non-MPI run) or exactly `"0"`.
+fn rank_zero_from_env(rank: Option<&str>) -> bool {
+    rank.map(|s| s == "0").unwrap_or(true)
+}
+
+/// Whether to use the Rust emulator rather than the ASM backend: macOS has no
+/// ASM backend so always emulates there; elsewhere it honours `--asm`.
+fn should_use_emulator(asm: bool, is_macos: bool) -> bool {
+    is_macos || !asm
 }
 
 #[derive(clap::Args)]
@@ -111,14 +123,10 @@ impl ExecuteCmd {
             None => None,
         };
 
-        let emulator = if cfg!(target_os = "macos") {
-            if self.asm && rank_zero {
-                warn!("Assembly is not supported on macOS; using the Rust emulator.");
-            }
-            true
-        } else {
-            !self.asm
-        };
+        if cfg!(target_os = "macos") && self.asm && rank_zero {
+            warn!("Assembly is not supported on macOS; using the Rust emulator.");
+        }
+        let emulator = should_use_emulator(self.asm, cfg!(target_os = "macos"));
 
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         let prover_options = self.make_prover_options();
@@ -210,5 +218,34 @@ impl ExecuteCmd {
             a = a.asm_out_file();
         }
         a
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{rank_zero_from_env, should_use_emulator};
+
+    #[test]
+    fn rank_zero_defaults_true_without_env() {
+        assert!(rank_zero_from_env(None));
+    }
+
+    #[test]
+    fn rank_zero_only_for_rank_0() {
+        assert!(rank_zero_from_env(Some("0")));
+        assert!(!rank_zero_from_env(Some("1")));
+        assert!(!rank_zero_from_env(Some("7")));
+    }
+
+    #[test]
+    fn emulator_selected_unless_asm_on_non_macos() {
+        assert!(should_use_emulator(false, false)); // no --asm → emulator
+        assert!(!should_use_emulator(true, false)); // --asm on linux → asm
+    }
+
+    #[test]
+    fn emulator_always_on_macos() {
+        assert!(should_use_emulator(false, true));
+        assert!(should_use_emulator(true, true)); // --asm ignored on macOS
     }
 }

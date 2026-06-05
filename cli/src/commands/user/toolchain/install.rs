@@ -45,14 +45,7 @@ impl ZiskInstallToolchain {
                     if let Ok(entry) = entry {
                         let entry_path = entry.path();
                         let entry_name = entry_path.file_name().unwrap();
-                        if entry_path.is_dir()
-                            && entry_name != BIN_DIR
-                            && entry_name != TOOLCHAINS_DIR
-                            && entry_name != PROVING_KEY_DIR
-                            && entry_name != VERIFY_KEY_DIR
-                            && entry_name != CACHE_DIR
-                            && entry_name != ZISK_DIR
-                        {
+                        if entry_path.is_dir() && !is_protected_root_entry(entry_name) {
                             if let Err(err) = fs::remove_dir_all(&entry_path) {
                                 println!("Failed to remove directory {entry_path:?}: {err}");
                             }
@@ -167,5 +160,39 @@ impl ZiskInstallToolchain {
         fs::remove_file(&toolchain_archive_path)?;
 
         Ok(())
+    }
+}
+
+/// Whether a top-level entry in the Zisk home directory must be **preserved**
+/// during a toolchain (re)install cleanup. These hold user state (keys, caches,
+/// installed toolchains) that an install must never wipe, so the predicate is
+/// unit-tested directly — a regression here would delete user data.
+fn is_protected_root_entry(name: &std::ffi::OsStr) -> bool {
+    name == BIN_DIR
+        || name == TOOLCHAINS_DIR
+        || name == PROVING_KEY_DIR
+        || name == VERIFY_KEY_DIR
+        || name == CACHE_DIR
+        || name == ZISK_DIR
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn protected_entries_are_recognised() {
+        for name in [BIN_DIR, TOOLCHAINS_DIR, PROVING_KEY_DIR, VERIFY_KEY_DIR, CACHE_DIR, ZISK_DIR]
+        {
+            assert!(is_protected_root_entry(OsStr::new(name)), "{name} should be protected");
+        }
+    }
+
+    #[test]
+    fn unrelated_entries_are_not_protected() {
+        assert!(!is_protected_root_entry(OsStr::new("rust-toolchain-x86_64.tar.gz")));
+        assert!(!is_protected_root_entry(OsStr::new("some_stale_dir")));
+        assert!(!is_protected_root_entry(OsStr::new("x86_64-unknown-linux-gnu")));
     }
 }

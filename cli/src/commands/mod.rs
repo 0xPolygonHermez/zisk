@@ -20,3 +20,67 @@ pub fn run_cli_dev() -> Result<()> {
 pub fn run_cli() -> Result<()> {
     ZiskCliCmd::parse().run()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ZiskCliCmd, ZiskCliDevCmd};
+    use clap::{CommandFactory, Parser};
+
+    /// `debug_assert` walks the whole clap model and panics on a malformed
+    /// configuration (duplicate args, bad defaults, conflicting IDs). This is a
+    /// cheap guard that catches command-definition regressions for both binaries.
+    #[test]
+    fn user_cli_model_is_valid() {
+        ZiskCliCmd::command().debug_assert();
+    }
+
+    #[test]
+    fn dev_cli_model_is_valid() {
+        ZiskCliDevCmd::command().debug_assert();
+    }
+
+    #[test]
+    fn user_cli_parses_shared_and_embedded_commands() {
+        // `build` comes from the flattened SharedCmd.
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "build", "--release"]).is_ok());
+        // `prove` comes from the flattened embedded-default command.
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "prove", "--elf", "g.elf"]).is_ok());
+        // `embedded prove` is the explicit form of the same.
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "embedded", "prove"]).is_ok());
+    }
+
+    #[test]
+    fn user_cli_rejects_conflicting_proof_flags() {
+        // --minimal and --plonk are mutually exclusive.
+        assert!(
+            ZiskCliCmd::try_parse_from(["cargo-zisk", "prove", "--minimal", "--plonk"]).is_err()
+        );
+    }
+
+    #[test]
+    fn user_cli_rejects_unknown_command() {
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "not-a-command"]).is_err());
+    }
+
+    #[test]
+    fn remote_coordinator_has_default_and_env() {
+        // Parses without --coordinator (relies on the default value).
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "remote", "upload", "--elf", "g.elf"])
+            .is_ok());
+    }
+
+    #[test]
+    fn dev_cli_standalone_conflicts_with_proving_key() {
+        assert!(
+            ZiskCliDevCmd::try_parse_from(["cargo-zisk-dev", "execute", "--standalone"]).is_ok()
+        );
+        assert!(ZiskCliDevCmd::try_parse_from([
+            "cargo-zisk-dev",
+            "execute",
+            "--standalone",
+            "--proving-key",
+            "k",
+        ])
+        .is_err());
+    }
+}

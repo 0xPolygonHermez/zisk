@@ -42,12 +42,7 @@ impl ZiskBuildToolchain {
                 let repo_url = "https://github.com/0xPolygonHermez/rust";
 
                 // Determine the ref to checkout: tag takes precedence over branch
-                let git_ref = self
-                    .tag
-                    .as_ref()
-                    .or(self.branch.as_ref())
-                    .map(|s| s.as_str())
-                    .unwrap_or("zisk");
+                let git_ref = Self::resolve_git_ref(self.tag.as_deref(), self.branch.as_deref());
 
                 Command::new("git")
                     .args([
@@ -197,5 +192,32 @@ impl ZiskBuildToolchain {
         println!("Successfully compressed the toolchain to {tar_gz_path}.");
 
         Ok(())
+    }
+
+    /// Git ref to check out when cloning rust: an explicit `--tag` takes
+    /// precedence over `--branch`, falling back to the `zisk` branch. Pure, so
+    /// the precedence is unit-tested without invoking git.
+    fn resolve_git_ref<'a>(tag: Option<&'a str>, branch: Option<&'a str>) -> &'a str {
+        tag.or(branch).unwrap_or("zisk")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZiskBuildToolchain;
+
+    #[test]
+    fn git_ref_defaults_to_zisk() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(None, None), "zisk");
+    }
+
+    #[test]
+    fn git_ref_uses_branch_when_no_tag() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(None, Some("dev")), "dev");
+    }
+
+    #[test]
+    fn git_ref_tag_takes_precedence_over_branch() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(Some("v1.0"), Some("dev")), "v1.0");
     }
 }

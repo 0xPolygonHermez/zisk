@@ -75,7 +75,7 @@ pub(crate) struct StatsCmd {
     mpi_node: Option<usize>,
 
     /// Disable packed format for trace generation
-    #[arg(short = 'a', long, hide = true)]
+    #[arg(long, hide = true)]
     no_packed: bool,
 
     /// Path to a debug configuration file

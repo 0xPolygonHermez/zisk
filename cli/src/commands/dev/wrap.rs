@@ -6,7 +6,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::{Proof, ProofKind};
 use zisk_prover_backend::{BackendProverOpts, ProverClientBuilder};
 
-use crate::common::default_proof_filename;
+use crate::common::resolve_output_path;
 use crate::ux::{print_banner, print_banner_command};
 
 #[derive(clap::Args)]
@@ -85,7 +85,7 @@ impl WrapCmd {
 
         let result = prover.wrap_proof(&zisk_proof, proof_kind).run()?;
 
-        let output_file = self.output.clone().unwrap_or(default_proof_filename(None::<&str>));
+        let output_file = resolve_output_path(self.output.clone(), None::<&str>);
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

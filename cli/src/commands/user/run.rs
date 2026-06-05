@@ -49,21 +49,7 @@ impl RunCmd {
             None => {
                 // Build first, then detect the resulting ELF
                 let mut command = Command::new("cargo");
-                command.args(["+zisk", "build"]);
-                command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
-                if let Some(features) = &self.features {
-                    command.arg("--features").arg(features);
-                }
-                if self.all_features {
-                    command.arg("--all-features");
-                }
-                if self.no_default_features {
-                    command.arg("--no-default-features");
-                }
-                if self.release {
-                    command.arg("--release");
-                }
-                command.args(["--target", ZISK_TARGET]);
+                command.args(self.cargo_build_args());
                 command.stdout(Stdio::inherit());
                 command.stderr(Stdio::inherit());
 
@@ -82,5 +68,65 @@ impl RunCmd {
         let program = GuestProgram::from_uri(&elf_path)?;
         let stdin = ZiskStdin::from_uri(self.inputs.as_ref())?;
         program.run_emulation(stdin, self.profiling)
+    }
+
+    /// Assemble the `cargo` argument vector used to build the guest before
+    /// running it. Pure: depends only on the parsed flags.
+    fn cargo_build_args(&self) -> Vec<String> {
+        let mut args = vec!["+zisk".to_string(), "build".to_string()];
+        args.push("--target-dir".to_string());
+        args.push(format!("target/{HELPER_TARGET_SUBDIR}"));
+        if let Some(features) = &self.features {
+            args.push("--features".to_string());
+            args.push(features.clone());
+        }
+        if self.all_features {
+            args.push("--all-features".to_string());
+        }
+        if self.no_default_features {
+            args.push("--no-default-features".to_string());
+        }
+        if self.release {
+            args.push("--release".to_string());
+        }
+        args.push("--target".to_string());
+        args.push(ZISK_TARGET.to_string());
+        args
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        run: RunCmd,
+    }
+
+    fn parse(args: &[&str]) -> RunCmd {
+        let mut full = vec!["run"];
+        full.extend_from_slice(args);
+        Wrapper::parse_from(full).run
+    }
+
+    #[test]
+    fn build_args_defaults() {
+        let args = parse(&[]).cargo_build_args();
+        assert_eq!(&args[0..2], &["+zisk", "build"]);
+        assert!(args.windows(2).any(|w| w == ["--target", ZISK_TARGET]));
+        assert!(args.windows(2).any(|w| w[0] == "--target-dir"));
+        assert!(!args.iter().any(|a| a == "--release"));
+    }
+
+    #[test]
+    fn build_args_with_flags() {
+        let args =
+            parse(&["--release", "--features", "x", "--no-default-features"]).cargo_build_args();
+        assert!(args.iter().any(|a| a == "--release"));
+        assert!(args.windows(2).any(|w| w == ["--features", "x"]));
+        assert!(args.iter().any(|a| a == "--no-default-features"));
     }
 }

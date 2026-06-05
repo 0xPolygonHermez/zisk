@@ -7,7 +7,8 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
-use crate::common::{default_proof_filename, reject_quic_hints, resolve_elf};
+use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path};
+use crate::proof::select_prove_kind;
 use crate::ux::print_job_banner;
 
 #[derive(clap::Args, Debug)]
@@ -70,13 +71,7 @@ impl ZiskRemoteProve {
         let hints = self.hints.as_ref().map(ZiskHints::from_uri).transpose()?;
 
         // VadcopFinal by default; --minimal / --plonk select a wrapped proof.
-        let proof_kind = if self.plonk {
-            ProofKind::Plonk
-        } else if self.minimal {
-            ProofKind::VadcopFinalMinimal
-        } else {
-            ProofKind::VadcopFinal
-        };
+        let proof_kind = select_prove_kind(self.plonk, self.minimal);
 
         let mut request = client.prove(&program, stdin);
         if let Some(hints) = hints {
@@ -90,7 +85,7 @@ impl ZiskRemoteProve {
         }
         let result = request.run()?.await?;
 
-        let output_file = self.output.clone().unwrap_or(default_proof_filename(result.job_id()));
+        let output_file = resolve_output_path(self.output.clone(), result.job_id());
         result.save_proof(&output_file).map_err(|e| {
             anyhow::anyhow!("Failed to save proof to {}: {}", output_file.display(), e)
         })?;

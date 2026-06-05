@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::{Proof, ProofKind};
+use zisk_common::Proof;
 use zisk_prover_backend::setup_logger;
 
 #[derive(clap::Args)]
@@ -32,10 +32,7 @@ impl VerifyCmd {
         let proof = Proof::load(&self.proof)
             .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", &self.proof, e))?;
 
-        let proof_type = match proof.kind() {
-            ProofKind::VadcopFinal | ProofKind::VadcopFinalMinimal => "STARK",
-            ProofKind::Plonk => "PLONK",
-        };
+        let proof_type = crate::proof::verify_kind_label(proof.kind());
 
         let result = proof.verify();
 

@@ -1,4 +1,4 @@
-use crate::common::{default_proof_filename, detect_current_project_elf};
+use crate::common::{detect_current_project_elf, resolve_output_path};
 use crate::ux::{print_banner, print_banner_command, print_banner_field, print_execution_summary};
 use anyhow::Result;
 
@@ -50,7 +50,7 @@ pub(crate) struct ProveCmd {
     output: Option<PathBuf>,
 
     /// Disable proofs aggregation
-    #[arg(short = 'a', long, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     no_aggregation: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with plonk
@@ -226,8 +226,7 @@ impl ProveCmd {
         if !result.get_proof().is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
-            let output_file: PathBuf =
-                self.output.clone().unwrap_or(default_proof_filename(None::<&str>));
+            let output_file: PathBuf = resolve_output_path(self.output.clone(), None::<&str>);
             result.save_proof(&output_file)?;
             info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
 

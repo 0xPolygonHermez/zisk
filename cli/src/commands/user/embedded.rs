@@ -57,3 +57,39 @@ impl EmbeddedCmd {
         self.command.run()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::validate_asm_hints;
+
+    #[test]
+    fn hints_without_asm_is_rejected() {
+        assert!(validate_asm_hints(false, Some("file:///tmp/h.bin")).is_err());
+    }
+
+    #[test]
+    fn no_hints_no_asm_is_ok() {
+        assert!(validate_asm_hints(false, None).is_ok());
+    }
+
+    // The macOS guard makes `--asm` itself fail there, so the asm-enabled
+    // assertions only hold off macOS.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn asm_without_hints_is_ok() {
+        assert!(validate_asm_hints(true, None).is_ok());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn asm_with_file_hints_is_ok_but_quic_is_rejected() {
+        assert!(validate_asm_hints(true, Some("file:///tmp/h.bin")).is_ok());
+        assert!(validate_asm_hints(true, Some("quic://host:1234")).is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn asm_is_rejected_on_macos() {
+        assert!(validate_asm_hints(true, None).is_err());
+    }
+}

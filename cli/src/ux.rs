@@ -89,7 +89,7 @@ pub(crate) fn print_execution_summary(
     info!(
         "Execution summary: {} {}ms + {} {}ms + {} {}ms + {} {}ms",
         overhead_label.dimmed(),
-        total_duration - executor_time.total_duration,
+        execution_overhead_ms(total_duration, executor_time.total_duration),
         "Execution".dimmed(),
         executor_time.execution_duration,
         "Count&Plan".dimmed(),
@@ -107,8 +107,7 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
     // Summary line.
     let steps = output.get_execution_steps();
     let time = output.get_execution_time();
-    let cost =
-        output.get_execution_cost().map(|c| format!("{} cells", c)).unwrap_or("N/A".to_string());
+    let cost = format_cost(output.get_execution_cost());
     info!("Execution completed in {}ms, steps: {}, cost: {}", time, steps, cost);
 
     let sep2 = " [ ".dimmed();
@@ -146,5 +145,39 @@ pub(crate) fn print_execute_output(output: &ExecuteOutput) {
             .collect::<Vec<_>>()
             .join(&sep.to_string());
         info!("Plan{}{}{}Total instances: {}", sep2, body, sep3, total);
+    }
+}
+
+/// Non-executor overhead (e.g. proof generation) in ms: wall-clock total minus
+/// the executor's own time. Saturating so a (spurious) executor time larger than
+/// the measured total reports `0` rather than panicking on unsigned underflow.
+fn execution_overhead_ms(total_duration: u64, executor_total: u64) -> u64 {
+    total_duration.saturating_sub(executor_total)
+}
+
+/// Render an optional execution cost as a display string: `"<n> cells"`, or
+/// `"N/A"` when the backend reported no cost.
+fn format_cost<T: std::fmt::Display>(cost: Option<T>) -> String {
+    cost.map(|c| format!("{c} cells")).unwrap_or_else(|| "N/A".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overhead_is_total_minus_executor() {
+        assert_eq!(execution_overhead_ms(12_468, 728), 11_740);
+    }
+
+    #[test]
+    fn overhead_saturates_instead_of_underflowing() {
+        assert_eq!(execution_overhead_ms(100, 250), 0);
+    }
+
+    #[test]
+    fn format_cost_some_and_none() {
+        assert_eq!(format_cost(Some(1234u64)), "1234 cells");
+        assert_eq!(format_cost(None::<u64>), "N/A");
     }
 }

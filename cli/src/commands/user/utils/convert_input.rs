@@ -187,3 +187,75 @@ impl ZiskConvertInput {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use tempfile::tempdir;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        cmd: ZiskConvertInput,
+    }
+
+    fn parse(args: &[&str]) -> ZiskConvertInput {
+        let mut full = vec!["convert"];
+        full.extend_from_slice(args);
+        Wrapper::parse_from(full).cmd
+    }
+
+    #[test]
+    fn convert_file_writes_output() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("in.bin");
+        let output = dir.path().join("out.bin");
+        std::fs::write(&input, b"hello").unwrap();
+
+        parse(&[]).convert_file(&input, &output).unwrap();
+        assert!(output.exists());
+    }
+
+    #[test]
+    fn flat_mode_does_not_recurse_into_subdirs() {
+        let dir = tempdir().unwrap();
+        let indir = dir.path().join("in");
+        let outdir = dir.path().join("out");
+        std::fs::create_dir_all(indir.join("sub")).unwrap();
+        std::fs::write(indir.join("a.bin"), b"a").unwrap();
+        std::fs::write(indir.join("b.bin"), b"b").unwrap();
+        std::fs::write(indir.join("sub").join("c.bin"), b"c").unwrap();
+
+        parse(&[]).convert_directory(&indir, &outdir).unwrap();
+
+        assert!(outdir.join("a.bin").exists());
+        assert!(outdir.join("b.bin").exists());
+        assert!(!outdir.join("sub").exists(), "flat mode must not recurse");
+    }
+
+    #[test]
+    fn recursive_mode_mirrors_the_tree() {
+        let dir = tempdir().unwrap();
+        let indir = dir.path().join("in");
+        let outdir = dir.path().join("out");
+        std::fs::create_dir_all(indir.join("sub").join("deep")).unwrap();
+        std::fs::write(indir.join("a.bin"), b"a").unwrap();
+        std::fs::write(indir.join("sub").join("b.bin"), b"b").unwrap();
+        std::fs::write(indir.join("sub").join("deep").join("c.bin"), b"c").unwrap();
+
+        parse(&["-r"]).convert_directory(&indir, &outdir).unwrap();
+
+        assert!(outdir.join("a.bin").exists());
+        assert!(outdir.join("sub").join("b.bin").exists());
+        assert!(outdir.join("sub").join("deep").join("c.bin").exists());
+    }
+
+    #[test]
+    fn directory_mode_errors_on_missing_input() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        let out = dir.path().join("out");
+        assert!(parse(&[]).convert_directory(&missing, &out).is_err());
+    }
+}

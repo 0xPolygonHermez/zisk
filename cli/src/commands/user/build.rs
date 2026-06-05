@@ -50,7 +50,7 @@ impl BuildCmd {
             "zisk"
         };
         let mut command = Command::new("cargo");
-        command.args([&format!("+{toolchain_name}"), "build"]);
+        command.args(self.cargo_args(toolchain_name));
 
         // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
         if let Ok(flags) = std::env::var("RUSTFLAGS") {
@@ -59,33 +59,6 @@ impl BuildCmd {
                 command.env("RUSTFLAGS", trimmed);
             }
         }
-
-        command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
-
-        // Add the feature selection flags
-        if let Some(features) = &self.features {
-            command.arg("--features").arg(features);
-        }
-        if self.all_features {
-            command.arg("--all-features");
-        }
-        if self.no_default_features {
-            command.arg("--no-default-features");
-        }
-        if self.release {
-            command.arg("--release");
-        }
-        if let Some(artifact_dir) = &self.artifact_dir {
-            command.arg("--artifact-dir").arg(artifact_dir);
-        }
-        for package in &self.packages {
-            command.args(["--package", package]);
-        }
-        for bin in &self.binaries {
-            command.args(["--bin", bin]);
-        }
-
-        command.args(["--target", ZISK_TARGET]);
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());
@@ -98,5 +71,100 @@ impl BuildCmd {
         }
 
         Ok(())
+    }
+
+    /// Assemble the full `cargo` argument vector for the build, including the
+    /// `+<toolchain>` selector. Pure: depends only on the parsed flags, so the
+    /// flag→argument wiring can be asserted without spawning a process.
+    fn cargo_args(&self, toolchain_name: &str) -> Vec<String> {
+        let mut args = vec![format!("+{toolchain_name}"), "build".to_string()];
+
+        args.push("--target-dir".to_string());
+        args.push(format!("target/{HELPER_TARGET_SUBDIR}"));
+
+        if let Some(features) = &self.features {
+            args.push("--features".to_string());
+            args.push(features.clone());
+        }
+        if self.all_features {
+            args.push("--all-features".to_string());
+        }
+        if self.no_default_features {
+            args.push("--no-default-features".to_string());
+        }
+        if self.release {
+            args.push("--release".to_string());
+        }
+        if let Some(artifact_dir) = &self.artifact_dir {
+            args.push("--artifact-dir".to_string());
+            args.push(artifact_dir.clone());
+        }
+        for package in &self.packages {
+            args.push("--package".to_string());
+            args.push(package.clone());
+        }
+        for bin in &self.binaries {
+            args.push("--bin".to_string());
+            args.push(bin.clone());
+        }
+
+        args.push("--target".to_string());
+        args.push(ZISK_TARGET.to_string());
+
+        args
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// Parse a `BuildCmd` from a bare argv (no binary name) for testing.
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        build: BuildCmd,
+    }
+
+    fn parse(args: &[&str]) -> BuildCmd {
+        let mut full = vec!["build"];
+        full.extend_from_slice(args);
+        Wrapper::parse_from(full).build
+    }
+
+    #[test]
+    fn defaults_target_and_toolchain() {
+        let args = parse(&[]).cargo_args("zisk");
+        assert_eq!(args[0], "+zisk");
+        assert_eq!(args[1], "build");
+        assert!(args.windows(2).any(|w| w == ["--target", ZISK_TARGET]));
+        assert!(args.windows(2).any(|w| w[0] == "--target-dir"));
+        // No optional flags present by default.
+        assert!(!args.iter().any(|a| a == "--release"));
+        assert!(!args.iter().any(|a| a == "--features"));
+    }
+
+    #[test]
+    fn release_and_feature_flags_wired() {
+        let args =
+            parse(&["--release", "--features", "a,b", "--all-features", "--no-default-features"])
+                .cargo_args("custom");
+        assert_eq!(args[0], "+custom");
+        assert!(args.iter().any(|a| a == "--release"));
+        assert!(args.windows(2).any(|w| w == ["--features", "a,b"]));
+        assert!(args.iter().any(|a| a == "--all-features"));
+        assert!(args.iter().any(|a| a == "--no-default-features"));
+    }
+
+    #[test]
+    fn repeated_bin_and_package_flags() {
+        let args = parse(&["--bin", "x", "--bin", "y", "-p", "pkg", "--artifact-dir", "out"])
+            .cargo_args("zisk");
+        assert_eq!(args.iter().filter(|a| *a == "--bin").count(), 2);
+        assert!(args.windows(2).any(|w| w == ["--bin", "x"]));
+        assert!(args.windows(2).any(|w| w == ["--bin", "y"]));
+        assert!(args.windows(2).any(|w| w == ["--package", "pkg"]));
+        assert!(args.windows(2).any(|w| w == ["--artifact-dir", "out"]));
     }
 }

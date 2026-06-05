@@ -103,3 +103,46 @@ pub(crate) async fn download_file(
     pb.finish_with_message(msg);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_target_is_a_triple() {
+        let t = get_target();
+        assert!(!t.is_empty());
+        assert!(t.contains('-'), "expected a target triple, got {t}");
+    }
+
+    #[test]
+    fn is_supported_target_matches_host_cfg() {
+        let expected = cfg!(any(
+            all(target_arch = "x86_64", target_os = "linux"),
+            all(target_arch = "aarch64", target_os = "macos")
+        ));
+        assert_eq!(is_supported_target(), expected);
+    }
+
+    #[tokio::test]
+    async fn download_url_pinned_version() {
+        let url = get_toolchain_download_url(
+            &"x86_64-unknown-linux-gnu".to_string(),
+            &Some("v1.2.3".to_string()),
+        )
+        .await;
+        assert_eq!(
+            url,
+            "https://github.com/0xPolygonHermez/rust/releases/download/v1.2.3/rust-toolchain-x86_64-unknown-linux-gnu.tar.gz"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_url_latest_when_no_version() {
+        let url = get_toolchain_download_url(&"aarch64-apple-darwin".to_string(), &None).await;
+        assert_eq!(
+            url,
+            "https://github.com/0xPolygonHermez/rust/releases/latest/download/rust-toolchain-aarch64-apple-darwin.tar.gz"
+        );
+    }
+}
