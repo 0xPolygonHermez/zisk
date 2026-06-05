@@ -17,11 +17,12 @@ pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 pub struct SetupKey {
     pub hash_id: String,
     pub with_hints: bool,
+    pub emulator_only: bool,
 }
 
 impl SetupKey {
-    pub fn new(hash_id: impl Into<String>, with_hints: bool) -> Self {
-        Self { hash_id: hash_id.into(), with_hints }
+    pub fn new(hash_id: impl Into<String>, with_hints: bool, emulator_only: bool) -> Self {
+        Self { hash_id: hash_id.into(), with_hints, emulator_only }
     }
 }
 
@@ -122,7 +123,9 @@ impl PlonkVkey {
         let path = path.as_ref();
 
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create parent directory {}", parent.display())
+            })?;
         }
 
         let file = File::create(path).with_context(|| {
@@ -497,8 +500,16 @@ impl Proof {
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
-        let mut file = File::create(path.as_ref()).with_context(|| {
-            format!("failed to create file for saving proof: {}", path.as_ref().display())
+        let path = path.as_ref();
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create parent directory {}", parent.display())
+            })?;
+        }
+
+        let mut file = File::create(path).with_context(|| {
+            format!("failed to create file for saving proof: {}", path.display())
         })?;
         bincode::serde::encode_into_std_write(self, &mut file, bincode::config::standard())
             .map(|_| ())

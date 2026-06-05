@@ -12,6 +12,9 @@ on:
       - "book/**"
   merge_group:
 
+permissions:
+  contents: read
+
 jobs:
   # test:
   #   runs-on: ubuntu-latest

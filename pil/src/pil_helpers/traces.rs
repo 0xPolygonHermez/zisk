@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "f2a79122e29607505a7de5b1acb295d2798312d67b20645651c4c426423dc573";
+pub const PILOUT_HASH: &str = "98453fa9f1a3d4283c60a23c833edc2cd2d85942d3f9df3d6f380d9009541e57";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -90,11 +90,9 @@ pub const POSEIDON_2_AIR_IDS: &[usize] = &[30];
 
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[31];
 
-pub const SPECIFIED_RANGES_AIR_IDS: &[usize] = &[32];
+pub const VIRTUAL_TABLE_ZISK_0_AIR_IDS: &[usize] = &[32];
 
-pub const VIRTUAL_TABLE_0_AIR_IDS: &[usize] = &[33];
-
-pub const VIRTUAL_TABLE_1_AIR_IDS: &[usize] = &[34];
+pub const VIRTUAL_TABLE_ZISK_1_AIR_IDS: &[usize] = &[33];
 
 
 //PUBLICS
@@ -118,14 +116,14 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
+
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
+        Self {
+            rom_root: [0; 4],
+            inputs: [0; 64],
         }
     }
 }
@@ -133,11 +131,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F,
 });
- 
+
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
@@ -463,7 +461,7 @@ trace_row!(Sha256fFixedRow<F> {
 pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 29>;
 
 trace_row!(Sha256fTraceRow<F> {
- a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use_clk_0:bit, in_use:bit,
+ a:[bit; 32], e:[bit; 32], w:[bit; 32], new_a_carry_bits:u8, new_e_carry_bits:u8, new_w_carry_bits:ubit(4), step_addr:ubit(40), in_use:bit, in_use_clk_0:bit,
 });
 
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 29>;
@@ -474,7 +472,7 @@ trace_row!(Poseidon2FixedRow<F> {
 pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 30>;
 
 trace_row!(Poseidon2TraceRow<F> {
- in_use_clk_0:bit, in_use:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+ in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
 });
 
 pub type Poseidon2Trace<R> = GenericTrace<R, 131072, 0, 30>;
@@ -490,38 +488,27 @@ trace_row!(Blake2brTraceRow<F> {
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 31>;
 
-trace_row!(SpecifiedRangesFixedRow<F> {
- OPID: [F; 29], VALS: [F; 29], __L1__: F,
+trace_row!(VirtualTableZisk0FixedRow<F> {
+ UID: [F; 23], column: [F; 64], __L1__: F,
 });
-pub type SpecifiedRangesFixed<F> = GenericTrace<SpecifiedRangesFixedRow<F>, 1048576, 0, 32>;
+pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
-trace_row!(SpecifiedRangesTraceRow<F> {
- mul:[F; 29],
-});
-
-pub type SpecifiedRangesTrace<F> = GenericTrace<SpecifiedRangesTraceRow<F>, 1048576, 0, 32>;
-
-trace_row!(VirtualTable0FixedRow<F> {
- UID: [F; 9], column: [F; 50], __L1__: F,
-});
-pub type VirtualTable0Fixed<F> = GenericTrace<VirtualTable0FixedRow<F>, 2097152, 0, 33>;
-
-trace_row!(VirtualTable0TraceRow<F> {
- multiplicity:[F; 9],
+trace_row!(VirtualTableZisk0TraceRow<F> {
+ multiplicity:[F; 23],
 });
 
-pub type VirtualTable0Trace<F> = GenericTrace<VirtualTable0TraceRow<F>, 2097152, 0, 33>;
+pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
-trace_row!(VirtualTable1FixedRow<F> {
+trace_row!(VirtualTableZisk1FixedRow<F> {
  UID: [F; 8], column: [F; 64], __L1__: F,
 });
-pub type VirtualTable1Fixed<F> = GenericTrace<VirtualTable1FixedRow<F>, 2097152, 0, 34>;
+pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 
-trace_row!(VirtualTable1TraceRow<F> {
+trace_row!(VirtualTableZisk1TraceRow<F> {
  multiplicity:[F; 8],
 });
 
-pub type VirtualTable1Trace<F> = GenericTrace<VirtualTable1TraceRow<F>, 2097152, 0, 34>;
+pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 33>;
 
 trace_row!(RomRomTraceRow<F> {
  line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
@@ -721,15 +708,11 @@ values!(Blake2brAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(SpecifiedRangesAirGroupValues<F> {
+values!(VirtualTableZisk0AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(VirtualTable0AirGroupValues<F> {
- gsum_result: FieldExtension<F>,
-});
-
-values!(VirtualTable1AirGroupValues<F> {
+values!(VirtualTableZisk1AirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 

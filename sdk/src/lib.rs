@@ -18,7 +18,10 @@ mod wrap;
 
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
-pub use embedded::{EmbeddedClient, EmbeddedClientBuilder};
+pub use embedded::{
+    EmbeddedClient, EmbeddedClientBuilder, EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient,
+    WitnessBuilderExt,
+};
 pub use execute::{ExecuteRequest, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
@@ -92,6 +95,7 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<SetupResult>>;

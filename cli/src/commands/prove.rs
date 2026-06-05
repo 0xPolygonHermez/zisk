@@ -240,6 +240,7 @@ impl ZiskProve {
                 &executor_time,
                 result.get_proving_time(),
                 result.get_execution_steps(),
+                "Proofman",
             );
         }
 

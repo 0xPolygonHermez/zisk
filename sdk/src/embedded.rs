@@ -1,11 +1,14 @@
 //! Embedded backend client
 
 pub(crate) mod execute;
+pub(crate) mod execute_only;
 pub(crate) mod prove;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod verify_constraints;
 pub(crate) mod wrap;
+
+pub use execute_only::{EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,6 +45,8 @@ pub struct EmbeddedClientBuilder {
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
+    no_aggregation: bool,
+    verify_constraints: bool,
 }
 
 impl Default for EmbeddedClientBuilder {
@@ -54,7 +59,43 @@ impl Default for EmbeddedClientBuilder {
             asm_options: None,
             proving_key: None,
             proving_key_snark: None,
+            no_aggregation: false,
+            verify_constraints: false,
         }
+    }
+}
+
+/// Build-time extension that unlocks witness-only (no-aggregation) configuration on
+/// [`EmbeddedClientBuilder`].
+///
+/// This is an import-gated extension trait: [`no_aggregation`](Self::no_aggregation) is only in
+/// scope when this trait is imported, so a client can be built without the (expensive) aggregation
+/// setup only when the caller has explicitly opted into a witness-generation workload — e.g.
+/// [`verify_constraints`](crate::VerifyConstraintsExtension::verify_constraints) or `execute`.
+pub trait WitnessBuilderExt: Sized {
+    /// Skip aggregation setup when building the client.
+    ///
+    /// Witness-only workloads (`verify_constraints`, `execute`) never aggregate, so the aggregation
+    /// circuits/keys that [`EmbeddedClientBuilder::build`] would otherwise set up in `ProofMan::new`
+    /// are pure overhead for them. The resulting client is intended for those operations only —
+    /// proof generation requires the aggregation setup this skips.
+    #[must_use]
+    fn no_aggregation(self) -> Self;
+
+    /// Configure the client for constraint verification, a witness-only workload.
+    #[must_use]
+    fn verify_constraints(self) -> Self;
+}
+
+impl WitnessBuilderExt for EmbeddedClientBuilder {
+    fn no_aggregation(mut self) -> Self {
+        self.no_aggregation = true;
+        self
+    }
+
+    fn verify_constraints(mut self) -> Self {
+        self.verify_constraints = true;
+        self
     }
 }
 
@@ -122,6 +163,11 @@ impl EmbeddedClientBuilder {
         self
     }
 
+    #[must_use]
+    pub fn execute_only(self) -> EmbeddedExecuteOnlyBuilder {
+        EmbeddedExecuteOnlyBuilder::from_parts(self.executor, self.asm_options)
+    }
+
     /// Build the [`EmbeddedClient`].
     pub fn build(self) -> Result<EmbeddedClient> {
         crate::client::ensure_single_instance();
@@ -139,6 +185,12 @@ impl EmbeddedClientBuilder {
             embedded_opts.proving_key_snark = Some(pk);
         }
         let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
+        if self.no_aggregation {
+            backend_opts = backend_opts.no_aggregation();
+        }
+        if self.verify_constraints {
+            backend_opts = backend_opts.verify_constraints();
+        }
         if let Some(asm_opts) = self.asm_options {
             *backend_opts.asm_options_mut() = asm_opts;
         }
@@ -222,10 +274,11 @@ impl Client for EmbeddedClient {
         &self,
         program: &GuestProgram,
         with_hints: bool,
+        emulator_only: bool,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup(program, with_hints, timeout, subs)
+        self.do_setup(program, with_hints, emulator_only, timeout, subs)
     }
 
     fn run_prove(

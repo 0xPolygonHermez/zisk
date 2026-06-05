@@ -242,16 +242,19 @@ impl<F: PrimeField64> DmaMemCpySM<F> {
         //         println!("DUAL_7_BITS[{index}]={value}")
         //     }
         // }
-        self.std
-            .inc_virtual_rows_ranged(self.dual_range_7_bits_id, &global_dual_7_bits_multiplicities);
-        self.std.range_checks(self.range_24_bits_id, global_24_bits_low_values);
-        self.std.inc_virtual_rows_ranged(self.rom_table_id, &global_rom_multiplicities);
+        self.std.inc_virtual_rows_ranged(
+            self.dual_range_7_bits_id,
+            None,
+            &global_dual_7_bits_multiplicities,
+        );
+        self.std.range_check_ranged(self.range_24_bits_id, None, &global_24_bits_low_values);
+        self.std.inc_virtual_rows_ranged(self.rom_table_id, None, &global_rom_multiplicities);
 
         for value in global_22_bits_values {
-            self.std.range_check(self.range_22_bits_id, value as i64, 1);
+            self.std.range_check_one(self.range_22_bits_id, value);
         }
         for value in global_24_bits_values {
-            self.std.range_check(self.range_24_bits_id, value as i64, 1);
+            self.std.range_check_one(self.range_24_bits_id, value);
         }
 
         if total_inputs < num_rows {

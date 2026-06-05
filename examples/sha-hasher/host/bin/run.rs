@@ -1,7 +1,6 @@
 use anyhow::Result;
-use zisk_sdk::{load_program, GuestProgram, ProfilingMode, ZiskStdin};
-
-static PROGRAM: GuestProgram = load_program!("sha-hasher-guest");
+use sha_hasher_host::ELF_SHA_HASHER;
+use zisk_sdk::{ProfilingMode, ZiskStdin};
 
 fn main() -> Result<()> {
     let n = 1000u32;
@@ -12,7 +11,7 @@ fn main() -> Result<()> {
     println!("Input prepared: {} iterations", n);
 
     println!("Running ZisK Emulator...");
-    zisk_sdk::run(&PROGRAM, stdin, Some(ProfilingMode::Complete))?;
+    zisk_sdk::run(&ELF_SHA_HASHER, stdin, Some(ProfilingMode::Complete))?;
     println!("ZisK Emulator completed successfully!");
 
     Ok(())

@@ -1,5 +1,5 @@
 mod constants;
-mod ecdsa;
+mod fn_inv;
 
 use constants::*;
-pub use ecdsa::*;
+pub use fn_inv::*;

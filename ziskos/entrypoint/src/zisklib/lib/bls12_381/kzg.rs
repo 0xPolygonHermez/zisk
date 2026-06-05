@@ -5,12 +5,9 @@ use crate::zisklib::{
 
 use super::{
     constants::{G1_GENERATOR, G1_IDENTITY, G2_GENERATOR, G2_IDENTITY, R, TRUSTED_SETUP_TAU_G2},
-    curve::{decompress_bls12_381, scalar_mul_bls12_381, sub_bls12_381, sub_complete_bls12_381},
+    curve::{decompress_bls12_381, scalar_mul_bls12_381, sub_complete_bls12_381},
     pairing::pairing_batch_bls12_381,
-    twist::{
-        decompress_twist_bls12_381, neg_twist_bls12_381, scalar_mul_twist_bls12_381,
-        sub_complete_twist_bls12_381, sub_twist_bls12_381,
-    },
+    twist::{neg_twist_bls12_381, scalar_mul_twist_bls12_381, sub_complete_twist_bls12_381},
 };
 
 /// Verify KZG proof using BLS12-381 implementation.
@@ -22,15 +19,15 @@ pub fn verify_kzg_proof(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     // Parse the commitment
-    let commitment = match decompress_bls12_381(
+    let (commitment, commitment_is_inf) = match decompress_bls12_381(
         commitment_bytes,
         #[cfg(feature = "hints")]
         hints,
     ) {
-        Ok(result) => result,
+        Ok((result, is_infinity)) => (result, is_infinity),
         Err(_) => return false,
     };
-    if !eq(&commitment, &G1_IDENTITY)
+    if !commitment_is_inf
         && !is_on_subgroup_bls12_381(
             &commitment,
             #[cfg(feature = "hints")]
@@ -41,15 +38,15 @@ pub fn verify_kzg_proof(
     }
 
     // Parse the proof
-    let proof = match decompress_bls12_381(
+    let (proof, proof_is_inf) = match decompress_bls12_381(
         proof_bytes,
         #[cfg(feature = "hints")]
         hints,
     ) {
-        Ok(result) => result,
+        Ok((result, is_infinity)) => (result, is_infinity),
         Err(_) => return false,
     };
-    if !eq(&proof, &G1_IDENTITY)
+    if !proof_is_inf
         && !is_on_subgroup_bls12_381(
             &proof,
             #[cfg(feature = "hints")]

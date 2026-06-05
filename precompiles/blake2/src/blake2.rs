@@ -5,14 +5,38 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::OperationBlake2Data;
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
 
-use super::{
-    blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA},
-    Blake2Input,
-};
+use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
+
+/// Per-operation input record assembled from the bus payload.
+#[derive(Debug)]
+pub struct Blake2Input {
+    pub addr_main: u32,
+    pub step_main: u64,
+    pub index: u64,
+    pub state_addr: u32,
+    pub input_addr: u32,
+    pub state: [u64; 16],
+    pub input: [u64; 16],
+}
+
+impl Blake2Input {
+    pub fn from(values: &OperationBlake2Data<u64>) -> Self {
+        Self {
+            addr_main: values[3] as u32,
+            step_main: values[4],
+            index: values[5],
+            state_addr: values[6] as u32,
+            input_addr: values[7] as u32,
+            state: values[8..24].try_into().unwrap(),
+            input: values[24..40].try_into().unwrap(),
+        }
+    }
+}
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
 pub struct Blake2SM<F: PrimeField64> {
@@ -80,9 +104,6 @@ impl<F: PrimeField64> Blake2SM<F> {
             // Activate the in_use selector
             row.set_in_use(true);
 
-            // Set idx
-            row.set_round_idx(index);
-
             // Set idx_sel
             row.set_round_idx_sel(idx_usize, true);
         }
@@ -92,10 +113,7 @@ impl<F: PrimeField64> Blake2SM<F> {
         for (i, &inp) in input.iter().enumerate() {
             let low_inp = [inp as u16, (inp >> 16) as u16];
             let high_inp = [(inp >> 32) as u16, (inp >> 48) as u16];
-            for j in 0..2 {
-                trace[m_idx].set_m_limbs(0, j, low_inp[j]);
-                trace[m_idx].set_m_limbs(1, j, high_inp[j]);
-            }
+            trace[m_idx].set_all_m_limbs(&[low_inp, high_inp]);
             range_checks[low_inp[0] as usize] += 1;
             range_checks[low_inp[1] as usize] += 1;
             range_checks[high_inp[0] as usize] += 1;
@@ -115,8 +133,7 @@ impl<F: PrimeField64> Blake2SM<F> {
             let inp = input[s[i]];
             ms[i] = inp;
 
-            trace[m_idx].set_ms(0, inp as u32);
-            trace[m_idx].set_ms(1, (inp >> 32) as u32);
+            trace[m_idx].set_all_ms(&[inp as u32, (inp >> 32) as u32]);
             m_idx += 1;
             if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
                 m_idx += 1;
@@ -231,43 +248,27 @@ impl<F: PrimeField64> Blake2SM<F> {
         ) {
             let low_va = [va as u16, (va >> 16) as u16];
             let high_va = [(va >> 32) as u16, (va >> 48) as u16];
-            for j in 0..2 {
-                row.set_va_limbs(0, j, low_va[j]);
-                row.set_va_limbs(1, j, high_va[j]);
-            }
+            row.set_all_va_limbs(&[low_va, high_va]);
             range_checks[low_va[0] as usize] += 1;
             range_checks[low_va[1] as usize] += 1;
             range_checks[high_va[0] as usize] += 1;
             range_checks[high_va[1] as usize] += 1;
 
-            let low_vb = vb as u32;
-            let low_vb = u32_to_le_bits(low_vb);
-            let high_vb = (vb >> 32) as u32;
-            let high_vb = u32_to_le_bits(high_vb);
-            for j in 0..32 {
-                row.set_vb(0, j, low_vb[j]);
-                row.set_vb(1, j, high_vb[j]);
-            }
+            let low_vb = u32_to_le_bits(vb as u32);
+            let high_vb = u32_to_le_bits((vb >> 32) as u32);
+            row.set_all_vb(&[low_vb, high_vb]);
 
             let low_vc = [vc as u16, (vc >> 16) as u16];
             let high_vc = [(vc >> 32) as u16, (vc >> 48) as u16];
-            for j in 0..2 {
-                row.set_vc_limbs(0, j, low_vc[j]);
-                row.set_vc_limbs(1, j, high_vc[j]);
-            }
+            row.set_all_vc_limbs(&[low_vc, high_vc]);
             range_checks[low_vc[0] as usize] += 1;
             range_checks[low_vc[1] as usize] += 1;
             range_checks[high_vc[0] as usize] += 1;
             range_checks[high_vc[1] as usize] += 1;
 
-            let low_vd = vd as u32;
-            let low_vd = u32_to_le_bits(low_vd);
-            let high_vd = (vd >> 32) as u32;
-            let high_vd = u32_to_le_bits(high_vd);
-            for j in 0..32 {
-                row.set_vd(0, j, low_vd[j]);
-                row.set_vd(1, j, high_vd[j]);
-            }
+            let low_vd = u32_to_le_bits(vd as u32);
+            let high_vd = u32_to_le_bits((vd >> 32) as u32);
+            row.set_all_vd(&[low_vd, high_vd]);
         }
 
         fn u32_to_le_bits(x: u32) -> [bool; 32] {
@@ -291,6 +292,7 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
         &self,
+        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Blake2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
@@ -362,7 +364,6 @@ impl<F: PrimeField64> Blake2SM<F> {
         // As a consequence, one should also set idx_sel
         if all_ops_used {
             let prev_idx = trace.buffer[num_rows_filled - 1].get_round_idx();
-            padding_row.set_round_idx(prev_idx);
             padding_row.set_round_idx_sel(prev_idx as usize, true);
         }
 
@@ -378,7 +379,7 @@ impl<F: PrimeField64> Blake2SM<F> {
                                            // and there are 8 g functions per blake2
         range_checks[0] += count_zeros as u32;
 
-        self.std.range_checks(self.range_id, range_checks);
+        self.std.range_check_ranged(self.range_id, None, &range_checks);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

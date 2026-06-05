@@ -55,7 +55,7 @@ uint64_t trace_get_chunk_size (uint64_t chunk_id)
 {
     if (gen_method == RomHistogram) {
         assert(chunk_id == 0);
-        return trace_size;
+        return TRACE_INITIAL_SIZE_RH;
     }
 
     if (chunk_id == 0)
@@ -83,26 +83,30 @@ void trace_cleanup (void)
     // Unmap all mapped chunks
     for (uint64_t chunk_id = 0; chunk_id < next_chunk_id; chunk_id++)
     {
-        uint64_t chunk_size = trace_get_chunk_size(chunk_id);
-        void * chunk_address = trace_get_chunk_address(chunk_id);
-        int result = munmap(chunk_address, chunk_size);
-        if (result != 0)
+        if (open_output_shm)
         {
-            asm_printf("ERROR: trace_cleanup() failed calling munmap() chunk id=%lu size=%lu B address=0x%lx errno=%d=%s\n", chunk_id, chunk_size, (uint64_t)chunk_address, errno, strerror(errno));
-            exit(-1);
+            uint64_t chunk_size = trace_get_chunk_size(chunk_id);
+            void * chunk_address = trace_get_chunk_address(chunk_id);
+
+            int result = munmap(chunk_address, chunk_size);
+            if (result != 0)
+            {
+                asm_printf("ERROR: trace_cleanup() failed calling munmap() chunk id=%lu size=%lu B address=0x%lx errno=%d=%s\n", chunk_id, chunk_size, (uint64_t)chunk_address, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Close the chunk shared memory file descriptor
+            close(trace_chunk_fd[chunk_id]);
+            trace_chunk_fd[chunk_id] = -1;
         }
-
-        // Close the chunk shared memory file descriptor
-        close(trace_chunk_fd[chunk_id]);
-        trace_chunk_fd[chunk_id] = -1;
-
-        // Build the chunk shared memory name
-        char shmem_chunk_name[128];
-        trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
 
         // Make sure the chunk shared memory is deleted
         if (delete_output_shm)
         {
+            // Build the chunk shared memory name
+            char shmem_chunk_name[128];
+            trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
+
             shm_unlink(shmem_chunk_name);
         }
     }
@@ -209,7 +213,7 @@ void trace_map_next_chunk (void)
     char shmem_chunk_name[128];
     trace_generate_shmem_chunk_name(shmem_chunk_name, sizeof(shmem_chunk_name), chunk_id);
 
-    if (!create_output_shm)
+    if (!create_output_shm && open_output_shm)
     {
         // Open the chunk shared memory as read-write
         trace_chunk_fd[chunk_id] = shm_open(shmem_chunk_name, O_RDWR, 0666);
@@ -241,48 +245,52 @@ void trace_map_next_chunk (void)
         fsync(trace_chunk_fd[chunk_id]);
     }
 
-    // Map it to the trace address
-    if (verbose) gettimeofday(&start_time, NULL);
-    void * requested_address;
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
+    if (open_output_shm)
     {
-        requested_address = 0;
-    }
-    else
-    {
-        requested_address = (void *)chunk_address;
-    }
-    int flags = MAP_SHARED | map_locked_flag;
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-    {
-        flags |= MAP_FIXED;
-    }
-    void * pTrace = mmap(requested_address, chunk_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
-    if (verbose)
-    {
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-    }
-    if (pTrace == MAP_FAILED)
-    {
-        asm_printf("ERROR: trace_map_next_chunk() failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
-        exit(-1);
-    }
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != (uint64_t)requested_address))
-    {
-        asm_printf("ERROR: trace_map_next_chunk() called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, (uint64_t)requested_address);
-        exit(-1);
-    }
-    if (verbose) asm_printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", chunk_size, shmem_chunk_name, pTrace, duration);
+        // Map it to the trace address
+        if (verbose) gettimeofday(&start_time, NULL);
+        
+        void * requested_address;
+        if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
+        {
+            requested_address = 0;
+        }
+        else
+        {
+            requested_address = (void *)chunk_address;
+        }
+        int flags = MAP_SHARED | map_locked_flag;
+        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+        {
+            flags |= MAP_FIXED;
+        }
+        void * pTrace = mmap(requested_address, chunk_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+        }
+        if (pTrace == MAP_FAILED)
+        {
+            asm_printf("ERROR: trace_map_next_chunk() failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
+            exit(-1);
+        }
+        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != (uint64_t)requested_address))
+        {
+            asm_printf("ERROR: trace_map_next_chunk() called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, (uint64_t)requested_address);
+            exit(-1);
+        }
+        if (verbose) asm_printf("trace_map_next_chunk() mapped %lu B to %s and returned address %p in %lu us\n", chunk_size, shmem_chunk_name, pTrace, duration);
 
-    // Update total mapped size
-    trace_total_mapped_size += chunk_size;
+        // Update total mapped size
+        trace_total_mapped_size += chunk_size;
 
-    // Update trace global variables
-    set_trace_size(trace_total_mapped_size);
+        // Update trace global variables
+        set_trace_size(trace_total_mapped_size);
 
-    // Increment next chunk id
-    next_chunk_id++;
+        // Increment next chunk id
+        next_chunk_id++;
+    }
 }
 
 void trace_map_initialize (void)
@@ -295,7 +303,7 @@ void trace_map_initialize (void)
         // Map the first chunk, i.e. chunk 0
         trace_map_next_chunk();
     }
-    else
+    else if (open_output_shm)
     {
         // Map all existing chunks
         trace_map_all_existing_chunks();

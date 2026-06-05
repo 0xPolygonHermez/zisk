@@ -2631,12 +2631,9 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        trace.set_a(0, a[0]);
-        trace.set_a(1, a[1]);
-        trace.set_b(0, b[0]);
-        trace.set_b(1, b[1]);
-        trace.set_c(0, c[0]);
-        trace.set_c(1, c[1]);
+        trace.set_all_a(&a);
+        trace.set_all_b(&b);
+        trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
         trace.set_pc(inst.paddr as u32);
         trace.set_a_src_imm(inst.a_src == SRC_IMM);
@@ -2694,8 +2691,7 @@ impl<'a> Emu<'a> {
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
-        trace.set_store_reg_prev_value(0, store_prev_value[0]);
-        trace.set_store_reg_prev_value(1, store_prev_value[1]);
+        trace.set_all_store_reg_prev_value(&store_prev_value);
     }
 
     /// Returns if the emulation ended

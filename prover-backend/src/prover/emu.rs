@@ -1,13 +1,14 @@
+use crate::execute_client::ExecuteClient;
 use crate::guest::ProgramId;
 use crate::GuestProgram;
 use crate::{
     check_paths_exist,
-    prover::{ProverBackend, ProverEngine, ZiskBackend},
+    prover::{ProverBackend, ProverEngine, ZiskBackend, ZiskProver},
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
 use asm_runner::HintsShmem;
-use executor::initialize_executor;
+use executor::ZiskExecutor;
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -17,6 +18,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
+use zisk_common::io::StreamSource;
 use zisk_common::{
     io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime,
 };
@@ -43,7 +45,7 @@ impl<'a> EmuSetupBuilder<'a> {
 
     /// Execute the setup and return the program proving and verification keys.
     pub fn run(self) -> Result<ProgramVK> {
-        self.prover.setup_internal(self.elf, false)
+        self.prover.setup_internal(self.elf, false, false)
     }
 }
 
@@ -86,7 +88,12 @@ impl ProverEngine for EmuProver {
         EmuSetupBuilder::new(self, elf)
     }
 
-    fn setup_internal(&self, elf: &GuestProgram, _with_hints: bool) -> Result<ProgramVK> {
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        _with_hints: bool,
+        _emulator_only: bool,
+    ) -> Result<ProgramVK> {
         let pctx = self.core_prover.backend.get_pctx()?;
 
         let program_vk = ensure_program_vk(&pctx, elf)?;
@@ -322,10 +329,13 @@ impl EmuCoreProver {
             )?);
         }
 
-        let executor =
-            initialize_executor(options.verbose_mode, shared_tables, false, &proofman.get_wcm())?;
-
-        executor.set_packed(options.packed);
+        let executor = ZiskExecutor::new(
+            &proofman.get_wcm(),
+            options.verbose_mode,
+            shared_tables,
+            false,
+            options.packed,
+        )?;
 
         let core = ProverBackend::new(
             proofman,
@@ -336,5 +346,20 @@ impl EmuCoreProver {
         );
 
         Ok(Self { backend: core, rank_info })
+    }
+}
+
+impl ExecuteClient for ZiskProver<Emu> {
+    fn setup(&self, program: &GuestProgram, _with_hints: bool) -> Result<()> {
+        ZiskProver::<Emu>::setup(self, program).run().map(|_| ())
+    }
+
+    fn execute(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        _hints: Option<StreamSource>,
+    ) -> Result<ExecuteOutput> {
+        ZiskProver::<Emu>::execute(self, program, stdin)
     }
 }

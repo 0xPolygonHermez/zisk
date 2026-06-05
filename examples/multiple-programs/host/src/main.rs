@@ -1,21 +1,16 @@
 use anyhow::Result;
-
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
-
-static PROGRAM1: GuestProgram = load_program!("multiple-program-guest");
-static PROGRAM2: GuestProgram = load_program!("multiple-program-guest-2");
+use test_artifacts::ELF_FIB_MOD;
+use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Starting ZisK Prover Client...\n");
 
-    // Create an input stream and write '1000' to it.
-    let n = 1000u32;
+    // Prove the same parameterized fib_mod ELF twice, with different (n, module) inputs.
+    // Demonstrates a host orchestrating multiple proofs in one run.
     let stdin = ZiskStdin::new();
-    stdin.write(&n);
-
-    // Create a `ProverClient` method.
-    // let client = ProverClient::embedded().build()?;
+    stdin.write(&1000u32);
+    stdin.write(&233u32);
 
     let embedded_opts = EmbeddedOpts::default().minimal_memory();
     let builder = ProverClient::embedded().with_embedded_opts(embedded_opts);
@@ -23,53 +18,44 @@ async fn main() -> Result<()> {
     let builder = builder.gpu();
     let client = builder.build()?;
 
-    println!("Setting up first program...");
-    client.upload(&PROGRAM1).run()?;
-    client.setup(&PROGRAM1).run()?.await?;
+    println!("Setting up program (single ELF, two invocations)...");
+    client.upload(&ELF_FIB_MOD).run()?;
+    client.setup(&ELF_FIB_MOD).run()?.await?;
 
-    println!("Setting up second program...");
-    client.upload(&PROGRAM2).run()?;
-    client.setup(&PROGRAM2).run()?.await?;
-
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    println!("Executing first program...");
-    let result = client.execute(&PROGRAM1, stdin.clone()).run()?.await?;
-
+    println!("Executing first invocation (n=1000, module=233)...");
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
         result.get_execution_time()
     );
 
-    println!("Generating proof for first program...");
-    let vadcop_result = client.prove(&PROGRAM1, stdin).run()?.await?;
+    println!("Generating proof for first invocation...");
+    let vadcop_result = client.prove(&ELF_FIB_MOD, &stdin).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey = PROGRAM1.vk()?;
+    let vkey = ELF_FIB_MOD.vk()?;
     vadcop_result.with_program_vk(&vkey).verify()?;
-    println!("Successfully generated and verified proof for first program!\n");
+    println!("Successfully generated and verified first proof!\n");
 
-    let n = 2000u32;
     let stdin2 = ZiskStdin::new();
-    stdin2.write(&n);
+    stdin2.write(&2000u32);
+    stdin2.write(&253u32);
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    println!("Executing second program...");
-    let result2 = client.execute(&PROGRAM2, stdin2.clone()).run()?.await?;
-
+    println!("Executing second invocation (n=2000, module=253)...");
+    let result2 = client.execute(&ELF_FIB_MOD, &stdin2).run()?.await?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result2.get_execution_steps(),
         result2.get_execution_time()
     );
 
-    println!("Generating proof for second program...");
-    let vadcop_result2 = client.prove(&PROGRAM2, stdin2).run()?.await?;
+    println!("Generating proof for second invocation...");
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, &stdin2).run()?.await?;
 
     println!("Verifying proof...");
-    let vkey2 = PROGRAM2.vk()?;
-    vadcop_result2.with_program_vk(&vkey2).verify()?;
-    println!("Successfully generated and verified proof for second program!\n");
+    vadcop_result2.with_program_vk(&vkey).verify()?;
+    println!("Successfully generated and verified second proof!\n");
 
     println!("All proofs generated and verified successfully!");
 
