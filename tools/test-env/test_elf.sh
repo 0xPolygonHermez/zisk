@@ -77,8 +77,8 @@ resolve_verify_proof_file() {
 #   $4 (desc)          – Descriptive label for logging
 #
 # Each proving mode is enabled by populating the corresponding input variable:
-#   <PREFIX>_SINGLE      — non-empty → runs "cargo-zisk prove" (no mpirun)
-#   <PREFIX>_MPI         — non-empty → runs "cargo-zisk prove" via mpirun
+#   <PREFIX>_SINGLE      — non-empty → runs "cargo-zisk-dev prove" (no mpirun)
+#   <PREFIX>_MPI         — non-empty → runs "cargo-zisk-dev prove" via mpirun
 # Leave any variable empty to skip that mode.
 #
 # Example:
@@ -146,7 +146,7 @@ test_elf() {
     verify_files_exist "$INPUTS_PATH" "${mpi_inputs[@]}" || return 1
 
     # -------------------------------------------------------------------------
-    # single: cargo-zisk prove (no mpirun)
+    # single: cargo-zisk-dev prove (no mpirun)
     # -------------------------------------------------------------------------
     if [ ${num_inputs} -gt 0 ]; then
         for input_file in "${inputs[@]}"; do
@@ -157,7 +157,7 @@ test_elf() {
             fi
 
             step "Verifying constraints for ${input_file}..."
-            ensure cargo-zisk verify-constraints \
+            ensure cargo-zisk-dev verify-constraints \
                 -e "${ELF_FILE}" \
                 ${input_flag} \
                 ${gpu_flag} \
@@ -172,7 +172,7 @@ test_elf() {
                 step "Proving (single) for ${input_file}..."
                 rm -rf ${PROOF_DIR}
 
-                ensure cargo-zisk prove \
+                ensure cargo-zisk-dev prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
@@ -207,7 +207,7 @@ test_elf() {
     fi
 
     # -------------------------------------------------------------------------
-    # mpi: cargo-zisk prove via mpirun
+    # mpi: cargo-zisk-dev prove via mpirun
     # -------------------------------------------------------------------------
     if [ ${num_mpi_inputs} -gt 0 ]; then
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
@@ -222,10 +222,9 @@ test_elf() {
                 rm -rf ${PROOF_DIR}
 
                 export RAYON_NUM_THREADS=$MPI_THREADS
-                ensure $MPI_CMD cargo-zisk prove \
+                ensure $MPI_CMD cargo-zisk-dev prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -p 6100 \
                     -o ${PROOF_DIR} $PROVE_FLAGS \
                     ${gpu_flag} \
                     2>&1 | tee "${LOGS_DIR}/mpi/prove_mpi_${input_file}.log" || return 1

@@ -14,6 +14,7 @@ NVIDIA_MIN_VERSION="525.60.13"
 ZISK_DIR=""
 ZISK_BIN_DIR=""
 CARGO_ZISK=""
+CARGO_ZISK_DEV=""
 SYSTEM_MODE=false
 PREFIX=""
 OWNER=""
@@ -171,6 +172,7 @@ main() {
   fi
   ZISK_BIN_DIR="${ZISK_DIR}/bin"
   CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+  CARGO_ZISK_DEV="${ZISK_BIN_DIR}/cargo-zisk-dev"
 
   # Pin path resolution for any cargo-zisk subprocess we spawn. Without this,
   # cargo-zisk's ZiskPaths::global() falls back to $HOME/.zisk — which is
@@ -896,7 +898,7 @@ install_setup() {
       step "Generating constant tree files. This may take a while..."
       local check_args=(--proving-key "${ZISK_DIR}/provingKey" -a)
       [[ "${USE_GPU}" == "true" ]] && check_args+=(--gpu)
-      ensure_silent "${CARGO_ZISK}" check-setup "${check_args[@]}"
+      ensure_silent "${CARGO_ZISK_DEV}" check-setup "${check_args[@]}"
       say "Constant tree files generated successfully."
     fi
 }
@@ -1070,6 +1072,7 @@ setup_snark_command() {
   ZISK_DIR="$DEFAULT_USER_ZISK_DIR"
   ZISK_BIN_DIR="${ZISK_DIR}/bin"
   CARGO_ZISK="${ZISK_BIN_DIR}/cargo-zisk"
+  CARGO_ZISK_DEV="${ZISK_BIN_DIR}/cargo-zisk-dev"
 
   # Detect platform
   uname_s=$(uname -s)

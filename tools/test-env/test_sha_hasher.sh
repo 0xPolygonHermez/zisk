@@ -58,14 +58,14 @@ main() {
         step "Generating program setup..."
         local gpu_flag=""
         [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-        ensure cargo-zisk program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
+        ensure cargo-zisk-dev program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
            err "program setup failed"
            return 1
         fi
 
         step "Verifying constraints..."
-        ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
+        ensure cargo-zisk-dev verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
         if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
             err "verify constraints failed"
             return 1
@@ -73,7 +73,7 @@ main() {
 
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
             step "Generating proof..."
-            ensure cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS ${gpu_flag} 2>&1 | tee prove_output.log || return 1
+            ensure cargo-zisk-dev prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS ${gpu_flag} 2>&1 | tee prove_output.log || return 1
             if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
                 err "prove program failed"
                 return 1
