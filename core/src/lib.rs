@@ -58,7 +58,7 @@ pub mod helpers;
 pub mod inst_context;
 pub mod mem;
 mod operations;
-mod ops_core;
+pub mod ops_core;
 mod ops_core_context;
 pub mod riscv2zisk;
 pub mod riscv2zisk_context;

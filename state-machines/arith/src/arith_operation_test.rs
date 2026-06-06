@@ -1,6 +1,7 @@
 //! The `ArithOperationTest` module implements a comprehensive testing framework for validating
 //! the correctness of arithmetic operations executed by the `ArithOperation` module.
 
+use zisk_core::ops_core::*;
 use zisk_core::zisk_ops::*;
 
 use crate::{arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers};
