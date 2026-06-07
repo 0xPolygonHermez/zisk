@@ -1,6 +1,7 @@
 mod memory_ops;
 mod minimal_traces;
 mod rom_histogram;
+mod codec;
 mod services;
 mod shutdown;
 mod status;

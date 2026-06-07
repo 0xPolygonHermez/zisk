@@ -1,5 +1,4 @@
 use super::stdio::StdioService;
-use super::{RequestData, ResponseData};
 use crate::{
     is_zisk_sem_file, is_zisk_shmem_file, sem_file_to_posix_name, AsmRunnerOptions,
     MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse, NAMESPACE,
@@ -437,21 +436,6 @@ impl AsmServices {
         }
     }
 
-    pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
-        let mut buf = [0u8; 40];
-        for (i, word) in request.iter().enumerate() {
-            buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
-        }
-        buf
-    }
-
-    pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
-        let mut response = ResponseData::default();
-        for (i, chunk) in buf.chunks_exact(8).enumerate() {
-            response[i] = u64::from_le_bytes(chunk.try_into()?);
-        }
-        Ok(response)
-    }
 }
 
 fn shm_unlink_by_name(name: &str) -> Result<()> {

@@ -38,7 +38,7 @@ impl StdioHandle {
         Res: FromResponsePayload,
     {
         debug!("Sending request to stdio service {}", service);
-        let out_buffer = AsmServices::encode_request(req.to_request_payload());
+        let out_buffer = super::codec::encode_request(req.to_request_payload());
         debug!("Encoded request for service {}: {} bytes", service, out_buffer.len());
         self.stdin
             .write_all(&out_buffer)
@@ -72,7 +72,7 @@ impl StdioHandle {
 
         debug!("Received response from stdio service {}: {} bytes", service, in_buffer.len());
         debug!("Raw response bytes from service {}: {:?}", service, &in_buffer);
-        Ok(Res::from_response_payload(AsmServices::decode_response(&in_buffer)?))
+        Ok(Res::from_response_payload(super::codec::decode_response(&in_buffer)?))
     }
 }
 
