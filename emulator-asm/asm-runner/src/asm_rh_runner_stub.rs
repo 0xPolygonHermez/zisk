@@ -2,7 +2,7 @@ use crate::AsmRHData;
 use anyhow::Result;
 use zisk_common::ExecutorStatsHandle;
 
-pub struct PreloadedRH {}
+pub struct RHShmemReader {}
 
 // This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
@@ -19,7 +19,7 @@ impl AsmRunnerRH {
     }
 
     pub fn run(
-        _: &mut Option<PreloadedRH>,
+        _: &mut Option<RHShmemReader>,
         _: u64,
         _: i32,
         _: i32,

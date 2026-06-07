@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 use anyhow::Result;
 
-pub struct PreloadedMO {}
+pub struct MOShmemReader {}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl AsmRunnerMO {
     }
 
     pub fn run(
-        _: &mut PreloadedMO,
+        _: &mut MOShmemReader,
         _: u64,
         _: u64,
         _: i32,

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-pub struct PreloadedMT {}
+pub struct MTShmemReader {}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
@@ -23,7 +23,7 @@ impl AsmRunnerMT {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
-        _: &mut PreloadedMT,
+        _: &mut MTShmemReader,
         _: u64,
         _: u64,
         _: F,

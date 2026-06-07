@@ -56,7 +56,7 @@ impl Drop for MOShmemReader {
                     drop(mem_planner);
                 }
                 Err(e) => {
-                    eprintln!("Warning: background thread panicked in PreloadedMO: {e:?}");
+                    eprintln!("Warning: background thread panicked in MOShmemReader: {e:?}");
                 }
             }
         }
