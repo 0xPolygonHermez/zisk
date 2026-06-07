@@ -87,4 +87,3 @@ pub(crate) fn drain_chunk_done(sem: &mut named_sem::NamedSemaphore) -> u64 {
     }
     swept
 }
-

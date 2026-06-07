@@ -104,7 +104,6 @@ impl AsmService {
 
         command
     }
-
 }
 
 impl fmt::Display for AsmService {
@@ -357,4 +356,3 @@ impl AsmServices {
         super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
     }
 }
-
