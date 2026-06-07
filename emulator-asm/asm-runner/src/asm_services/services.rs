@@ -1,7 +1,7 @@
 use super::stdio::StdioService;
 use crate::{
-    is_zisk_sem_file, is_zisk_shmem_file, sem_file_to_posix_name, AsmRunnerOptions,
-    MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse, NAMESPACE,
+    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
+    NAMESPACE,
 };
 use anyhow::{Context, Result};
 
@@ -105,22 +105,6 @@ impl AsmService {
         command
     }
 
-    /// Clean up a specific service's shared memory entries for a given prefix.
-    fn cleanup_shmem_for_prefix(&self, shm_prefix: &str) -> Result<()> {
-        let pattern = format!("{}_{}_", shm_prefix, self);
-        let exact = format!("{}_{}", shm_prefix, self);
-        let dev_shm = std::path::Path::new("/dev/shm");
-        if let Ok(entries) = std::fs::read_dir(dev_shm) {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with(&pattern) || name == exact {
-                        shm_unlink_by_name(name)?;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 impl fmt::Display for AsmService {
@@ -219,52 +203,7 @@ impl AsmServices {
     /// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
     /// left by dead processes and unlink them.
     pub fn cleanup_stale_shmem() {
-        tracing::info!("Cleaning up stale shared memory and semaphores");
-        let dev_shm = std::path::Path::new("/dev/shm");
-        let entries = match std::fs::read_dir(dev_shm) {
-            Ok(entries) => entries,
-            Err(_) => return,
-        };
-
-        for entry in entries.flatten() {
-            let name = match entry.file_name().into_string() {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-
-            // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
-            // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
-            let is_sem = is_zisk_sem_file(&name);
-            let is_shm = is_zisk_shmem_file(&name);
-            if !is_shm && !is_sem {
-                continue;
-            }
-
-            let parts: Vec<&str> = name.splitn(3, '_').collect();
-            if parts.len() < 3 {
-                continue;
-            }
-            let Ok(pid) = parts[1].parse::<u32>() else { continue };
-
-            // Check if the process is still alive.
-            let alive = unsafe { libc::kill(pid as i32, 0) };
-            if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
-                continue; // process alive or owned by another user
-            }
-
-            // Process is dead (ESRCH) — unlink the stale entry.
-            if is_sem {
-                // sem file "sem.FOO" → POSIX name "/FOO"
-                let Some(sem_name) = sem_file_to_posix_name(&name) else { continue };
-                tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
-                if let Ok(cstr) = std::ffi::CString::new(sem_name) {
-                    unsafe { libc::sem_unlink(cstr.as_ptr()) };
-                }
-            } else {
-                tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
-                let _ = shm_unlink_by_name(&name);
-            }
-        }
+        super::janitor::cleanup_stale();
     }
 
     /// Create segments via `--just_create_all_shm`. Call once at worker startup.
@@ -312,9 +251,11 @@ impl AsmServices {
         }
 
         if any_failed {
-            for service in &Self::SERVICES {
-                let _ = service.cleanup_shmem_for_prefix(shm_prefix);
-            }
+            // Roll back any segments the partial creation left behind. Unlinks
+            // all `{shm_prefix}*` entries (per-service *and* the untagged
+            // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
+            // no-op here since no semaphores exist yet at creation time.
+            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
             return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
 
@@ -413,33 +354,7 @@ impl AsmServices {
     /// the parent has to do it. Call after `stop_asm_services` so the
     /// children are already detached from the segments.
     pub fn cleanup_my_shmem(&self) {
-        let dev_shm = std::path::Path::new("/dev/shm");
-        let entries = match std::fs::read_dir(dev_shm) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
-                return;
-            }
-        };
-        let sem_marker = format!("sem.{}", self.sem_prefix);
-        for entry in entries.flatten() {
-            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-            if name.starts_with(&self.shm_prefix) {
-                let _ = shm_unlink_by_name(&name);
-            } else if name.starts_with(&sem_marker) {
-                if let Some(sem_name) = sem_file_to_posix_name(&name) {
-                    if let Ok(cstr) = std::ffi::CString::new(sem_name) {
-                        unsafe { libc::sem_unlink(cstr.as_ptr()) };
-                    }
-                }
-            }
-        }
+        super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
     }
-
 }
 
-fn shm_unlink_by_name(name: &str) -> Result<()> {
-    let cstr = std::ffi::CString::new(name)?;
-    unsafe { libc::shm_unlink(cstr.as_ptr()) };
-    Ok(())
-}

@@ -184,9 +184,11 @@ impl AsmProver {
             return Ok(());
         }
 
-        // Each program has its own shm_prefix (includes program hash), so each needs
-        // its own shmem creation + AsmSharedResources. Previous programs' resources
-        // stay alive in the pool via Arc.
+        // The program hash is carried in the sem_prefix (so the semaphores are
+        // per-program), while the shmem segments are keyed by pid+local_rank only
+        // and are shared/reused across program hashes. Each program still gets its
+        // own AsmSharedResources; previous programs' resources stay alive in the
+        // pool via Arc.
         let asm_services = AsmServices::new(
             world_rank,
             local_rank,
