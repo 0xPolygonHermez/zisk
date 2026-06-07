@@ -4,7 +4,7 @@
 //! using ShmemWriter instances.
 
 use crate::{
-    sem_available_name, sem_read_name, shmem_control_reader_name, shmem_precompile_name,
+    sem_prec_available_name, sem_prec_read_name, shmem_control_output_name, shmem_precompile_name,
     AsmService, AsmServices, ControlShmem, ShmemReader, ShmemWriter,
 };
 use anyhow::Result;
@@ -26,7 +26,7 @@ struct SeparateShm {
 
 impl SeparateShm {
     pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
-        let name = shmem_control_reader_name(shm_prefix, service);
+        let name = shmem_control_output_name(shm_prefix, service);
         Ok(Self {
             control_reader: ShmemReader::new(&name, HintsShmem::CONTROL_PRECOMPILE_SIZE as usize)?,
         })
@@ -102,8 +102,8 @@ impl HintsShmem {
         let sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
-                let avail_name = sem_available_name(sem_prefix, *service);
-                let read_name = sem_read_name(sem_prefix, *service);
+                let avail_name = sem_prec_available_name(sem_prefix, *service);
+                let read_name = sem_prec_read_name(sem_prefix, *service);
                 Ok(SeparateSem {
                     sem_available: NamedSemaphore::create(&avail_name, 0).map_err(|e| {
                         anyhow::anyhow!("Failed to create semaphore '{}': {}", avail_name, e)

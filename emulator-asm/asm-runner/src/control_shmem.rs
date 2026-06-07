@@ -1,4 +1,4 @@
-use crate::{shmem_control_writer_name, ShmemWriter};
+use crate::{shmem_control_input_name, ShmemWriter};
 
 use anyhow::Result;
 
@@ -20,7 +20,7 @@ impl ControlShmem {
     pub const CONTROL_WRITER_SIZE: u64 = 0x1000; // 4KB
 
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
-        let name = shmem_control_writer_name(shm_prefix);
+        let name = shmem_control_input_name(shm_prefix);
         let writer =
             ShmemWriter::new(&name, Self::CONTROL_WRITER_SIZE as usize, unlock_mapped_memory)
                 .map_err(anyhow::Error::from)?;

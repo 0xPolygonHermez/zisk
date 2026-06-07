@@ -17,11 +17,11 @@ use crate::AsmService;
 /// `AsmServices::new`); the `/dev/shm` cleanup scanners match on it.
 pub const NAMESPACE: &str = "ZISK";
 
-fn build_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
+fn build_service_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
     format!("{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
-fn build_shmem_name2(prefix: &str, suffix: &str) -> String {
+fn build_shmem_name(prefix: &str, suffix: &str) -> String {
     format!("{}_{}", prefix, suffix)
 }
 
@@ -30,7 +30,7 @@ fn build_sem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String
 }
 
 pub fn shmem_input_name(shm_prefix: &str) -> String {
-    build_shmem_name2(shm_prefix, "input")
+    build_shmem_name(shm_prefix, "input")
 }
 
 /// Semaphore name for input availability (per service)
@@ -41,33 +41,33 @@ pub fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> String {
 /// Per-service shared memory name for precompile hints data.
 /// Each ASM service has its own precompile shmem; Rust writes the same data to all of them.
 pub fn shmem_precompile_name(prefix: &str) -> String {
-    build_shmem_name2(prefix, "precompile")
+    build_shmem_name(prefix, "precompile")
 }
 
-/// Shared memory name for precompile hints data
-pub fn sem_available_name(prefix: &str, asm_service: AsmService) -> String {
+/// Semaphore name for precompile hints data availability (per service)
+pub fn sem_prec_available_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_avail")
 }
 
-/// Shared memory name for precompile hints data
-pub fn sem_read_name(prefix: &str, asm_service: AsmService) -> String {
+/// Semaphore name for precompile hints data read (per service)
+pub fn sem_prec_read_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_read")
 }
 
 /// Shared memory name for precompile hints data control
-pub fn shmem_control_writer_name(shm_prefix: &str) -> String {
-    build_shmem_name2(shm_prefix, "control_input")
+pub fn shmem_control_input_name(prefix: &str) -> String {
+    build_shmem_name(prefix, "control_input")
 }
 
-pub fn shmem_control_reader_name(prefix: &str, asm_service: AsmService) -> String {
-    build_shmem_name(prefix, asm_service, "control_output")
+pub fn shmem_control_output_name(prefix: &str, asm_service: AsmService) -> String {
+    build_service_shmem_name(prefix, asm_service, "control_output")
 }
 
 pub fn shmem_output_name(prefix: &str, asm_service: AsmService, suffix: Option<isize>) -> String {
     if let Some(n) = suffix {
-        build_shmem_name(prefix, asm_service, &format!("output_{n}"))
+        build_service_shmem_name(prefix, asm_service, &format!("output_{n}"))
     } else {
-        build_shmem_name(prefix, asm_service, "output")
+        build_service_shmem_name(prefix, asm_service, "output")
     }
 }
 
