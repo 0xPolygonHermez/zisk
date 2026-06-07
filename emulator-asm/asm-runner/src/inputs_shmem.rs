@@ -19,6 +19,10 @@ pub struct InputsShmemWriter {
     sem_avails: Mutex<Option<Vec<NamedSemaphore>>>,
 }
 
+// SAFETY: needed because `sem_avails` holds `NamedSemaphore`s, which are !Send +
+// !Sync (they wrap a raw `*mut sem_t`). POSIX named semaphores are themselves
+// thread- and process-safe by spec, and all access here goes through the inner
+// `Mutex`es, so sharing the writer across threads is sound.
 unsafe impl Send for InputsShmemWriter {}
 unsafe impl Sync for InputsShmemWriter {}
 

@@ -13,9 +13,6 @@ pub struct HintsFile {
     file: Mutex<File>,
 }
 
-unsafe impl Send for HintsFile {}
-unsafe impl Sync for HintsFile {}
-
 impl HintsFile {
     /// Create a new HintsFile with the given filename.
     ///

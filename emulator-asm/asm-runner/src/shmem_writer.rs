@@ -15,6 +15,11 @@ pub struct SharedMemoryWriter {
     name: String,
 }
 
+// SAFETY: the only non-auto fields are `ptr`/`current_ptr`, raw pointers into an
+// mmap'd shared-memory region whose address is fixed for the handle's lifetime.
+// Moving or sharing the handle across threads is sound; data-race freedom on the
+// mapped bytes is the caller's responsibility (as for any shared memory) — the
+// higher-level wrappers serialize writes where needed.
 unsafe impl Send for SharedMemoryWriter {}
 unsafe impl Sync for SharedMemoryWriter {}
 

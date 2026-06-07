@@ -30,6 +30,10 @@ pub struct AsmSharedMemory<H: AsmShmemHeader> {
     _phantom: std::marker::PhantomData<H>,
 }
 
+// SAFETY: the only non-auto field is `mapped_ptr`, a raw pointer into an mmap'd
+// shared-memory region. The mapping is stable for the handle's lifetime (`remap`
+// updates the pointer under `&mut self`), so sending/sharing the handle across
+// threads is sound.
 unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmSharedMemory<H> {}
 

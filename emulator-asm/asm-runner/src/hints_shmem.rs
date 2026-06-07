@@ -24,10 +24,6 @@ struct SeparateShm {
     control_reader: SharedMemoryReader,
 }
 
-// SAFETY: serialised by the enclosing `Mutex<Vec<SeparateShm>>`.
-unsafe impl Send for SeparateShm {}
-unsafe impl Sync for SeparateShm {}
-
 impl SeparateShm {
     pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
         let name = shmem_control_reader_name(shm_prefix, service);
@@ -60,10 +56,6 @@ struct UnifiedResources {
     /// so Rust writes the same hint data to all of them to keep them in sync.
     data_writer: SharedMemoryWriter,
 }
-
-// SAFETY: writes are serialized by the enclosing `Mutex<UnifiedResources>`.
-unsafe impl Send for UnifiedResources {}
-unsafe impl Sync for UnifiedResources {}
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {

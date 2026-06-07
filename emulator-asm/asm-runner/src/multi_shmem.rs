@@ -37,6 +37,10 @@ pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
     _phantom: std::marker::PhantomData<H>,
 }
 
+// SAFETY: the non-auto fields are `reserved_ptr` (a raw pointer into a reserved
+// mmap region) and the mapped-file descriptors. The reserved address range is
+// fixed for the handle's lifetime and growth only maps into it without moving
+// existing mappings, so sending/sharing the handle across threads is sound.
 unsafe impl<H: AsmShmemHeader> Send for AsmMultiSharedMemory<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmMultiSharedMemory<H> {}
 

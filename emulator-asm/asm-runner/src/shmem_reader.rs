@@ -13,6 +13,9 @@ pub struct SharedMemoryReader {
     name: String,
 }
 
+// SAFETY: the only non-auto field is `ptr`, a raw pointer into a read-only
+// mmap'd shared-memory region whose address is fixed for the handle's lifetime.
+// Sharing the read-only handle across threads is sound.
 unsafe impl Send for SharedMemoryReader {}
 unsafe impl Sync for SharedMemoryReader {}
 
