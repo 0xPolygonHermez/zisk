@@ -66,14 +66,14 @@ impl InputsShmemWriter {
         }
 
         self.writer.lock().unwrap().write_at(8, inputs)?;
-        self.control_writer.inc_inputs_size(inputs.len());
+        self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
     }
 
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
         self.writer.lock().unwrap().append_input(inputs)?;
-        self.control_writer.inc_inputs_size(inputs.len());
+        self.control_writer.inc_inputs_size(inputs.len())?;
         self.notify_all_services()?;
         Ok(())
     }
@@ -93,7 +93,7 @@ impl InputsShmemWriter {
     /// `set_reset_flag()`, so the two steps must always run together.
     /// Cleared by the next job's `reset()`.
     pub fn signal_reset(&self) -> Result<()> {
-        self.control_writer.set_reset_flag();
+        self.control_writer.set_reset_flag()?;
         self.notify_all_services()
     }
 
@@ -104,7 +104,9 @@ impl InputsShmemWriter {
             .append_input(&0u64.to_le_bytes())
             .expect("Failed to write initial header after reset");
 
-        self.control_writer.reset();
+        if let Err(e) = self.control_writer.reset() {
+            tracing::error!("InputsShmemWriter::reset: control flush failed: {e}");
+        }
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {
             for sem in sems.iter_mut() {
                 while sem.try_wait().is_ok() {}

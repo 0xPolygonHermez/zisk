@@ -198,8 +198,12 @@ impl SharedMemoryWriter {
     /// This method assumes that:
     /// - The shared memory contains at least `offset + 8` bytes of valid data
     /// - The offset is 8-byte aligned for optimal performance
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the value was written and flushed
+    /// * `Err` - If the `msync` flushing the write fails (Linux only)
     #[inline]
-    pub fn write_u64_at(&self, offset: usize, value: u64) {
+    pub fn write_u64_at(&self, offset: usize, value: u64) -> Result<()> {
         debug_assert_eq!(offset % 8, 0, "Offset must be 8-byte aligned");
 
         unsafe {
@@ -208,9 +212,11 @@ impl SharedMemoryWriter {
             // Force changes to be flushed to the shared memory
             #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
             if msync(self.ptr as *mut _, self.size, MS_SYNC) != 0 {
-                panic!("msync failed in write_u64_at: {:?}", io::Error::last_os_error());
+                return Err(io::Error::last_os_error());
             }
         }
+
+        Ok(())
     }
 
     pub fn reset(&mut self) {

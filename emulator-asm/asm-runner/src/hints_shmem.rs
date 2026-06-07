@@ -91,7 +91,7 @@ impl HintsShmem {
     ) -> Result<Self> {
         // Create unified resources (single data buffer and control writer)
         let unified = Self::create_unified(shm_prefix, unlock_mapped_memory, control_writer)?;
-        unified.control_writer.reset();
+        unified.control_writer.reset()?;
 
         // Create separate resources
         let separate_shm = AsmServices::SERVICES
@@ -256,7 +256,7 @@ impl StreamSink for HintsShmem {
         fence(Ordering::Release);
 
         // Update write position ONCE in control memory
-        unified.control_writer.set_prec_hints_size(write_pos + data_size);
+        unified.control_writer.set_prec_hints_size(write_pos + data_size)?;
 
         fence(Ordering::Release);
 
@@ -270,7 +270,9 @@ impl StreamSink for HintsShmem {
 
     fn reset(&self) {
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
-        unified.control_writer.reset();
+        if let Err(e) = unified.control_writer.reset() {
+            tracing::error!("HintsShmem::reset: control flush failed: {e}");
+        }
         unified.data_writer.reset();
 
         // Drain any leftover semaphore counts from the previous run.

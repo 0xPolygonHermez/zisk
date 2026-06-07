@@ -30,28 +30,32 @@ impl ControlShmem {
         Ok(Self { writer })
     }
 
-    pub fn reset(&self) {
-        self.writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, 0);
-        self.writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0);
-        self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, 0);
-        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0);
+    pub fn reset(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, 0)?;
+        self.writer.write_u64_at(ControlShmemOffsets::ShutdownFlag as usize, 0)?;
+        self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, 0)?;
+        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 0)?;
+        Ok(())
     }
 
-    pub fn set_prec_hints_size(&self, size: u64) {
-        self.writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, size);
+    pub fn set_prec_hints_size(&self, size: u64) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::PrecompilesSize as usize, size)?;
+        Ok(())
     }
 
     pub fn prec_hints_size(&self) -> u64 {
         self.writer.read_u64_at(ControlShmemOffsets::PrecompilesSize as usize)
     }
 
-    pub fn set_reset_flag(&self) {
-        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 1);
+    pub fn set_reset_flag(&self) -> Result<()> {
+        self.writer.write_u64_at(ControlShmemOffsets::ResetFlag as usize, 1)?;
+        Ok(())
     }
 
-    pub fn inc_inputs_size(&self, size: usize) {
+    pub fn inc_inputs_size(&self, size: usize) -> Result<()> {
         let current_size = self.writer.read_u64_at(ControlShmemOffsets::InputsSize as usize);
         let new_size = current_size + size as u64;
-        self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, new_size);
+        self.writer.write_u64_at(ControlShmemOffsets::InputsSize as usize, new_size)?;
+        Ok(())
     }
 }
