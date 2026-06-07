@@ -38,19 +38,3 @@ const CMD_MO_REQUEST_ID: u64 = 7;
 const CMD_MO_RESPONSE_ID: u64 = 8;
 const CMD_SHUTDOWN_REQUEST_ID: u64 = 1000000;
 const CMD_SHUTDOWN_RESPONSE_ID: u64 = 1000001;
-
-pub(crate) enum AsmCmdRequest {
-    Ping(PingRequest),
-    MinimalTrace(MinimalTraceRequest),
-    RomHistogram(RomHistogramRequest),
-    MemoryOperations(MemoryOperationsRequest),
-    Shutdown(ShutdownRequest),
-}
-
-pub(crate) enum AsmCmdResponse {
-    Ping(PingResponse),
-    MinimalTrace(MinimalTraceResponse),
-    RomHistogram(RomHistogramResponse),
-    MemoryOperations(MemoryOperationsResponse),
-    Shutdown(ShutdownResponse),
-}

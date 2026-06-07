@@ -56,8 +56,8 @@ pub use asm_rh_runner_stub::*;
 pub use asm_runner::*;
 pub use asm_services::*;
 pub use control_shmem::*;
-// `HintsFile` is an internal alternative sink — not part of the public API.
-pub(crate) use hints_file::*;
+// `HintsFile` is a public file-based StreamSink alternative to HintsShmem.
+pub use hints_file::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use hints_shmem::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]

@@ -17,11 +17,6 @@ use anyhow::Result;
 
 use crate::shmem_sys;
 
-pub enum AsmSharedMemoryMode {
-    ReadOnly,
-    ReadWrite,
-}
-
 pub struct AsmSharedMemory<H: AsmShmemHeader> {
     _fd: i32,
     mapped_ptr: *mut c_void,
@@ -265,15 +260,3 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     }
 }
 
-/// Unmaps memory at the given raw pointer.
-///
-/// # Safety
-/// The caller must ensure that:
-/// - `ptr` was returned by a successful call to `mmap`,
-/// - `size` matches the original mapped size,
-/// - the region pointed to by `ptr` is not already unmapped.
-pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
-    if munmap(ptr, size) != 0 {
-        tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
-    }
-}

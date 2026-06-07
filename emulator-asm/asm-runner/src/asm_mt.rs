@@ -77,18 +77,3 @@ impl AsmMTChunk {
     }
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub struct AsmInputHeader {
-    pub zero: u64, // Not used
-    pub input_data_size: u64,
-}
-
-impl AsmInputHeader {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(32);
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
-        bytes
-    }
-}

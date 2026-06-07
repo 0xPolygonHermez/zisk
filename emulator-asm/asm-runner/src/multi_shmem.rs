@@ -289,34 +289,4 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     pub fn total_mapped_size(&self) -> usize {
         self.total_mapped_size
     }
-
-    /// Returns the number of currently mapped files.
-    pub fn num_mapped_files(&self) -> usize {
-        self.mapped_files.len()
-    }
-
-    /// Releases incremental shared memory files for a new execution.
-    ///
-    /// This closes file descriptors for incremental files (`_1`, `_2`, ...) while
-    /// keeping `_0` mapped. The reserved address space is preserved.
-    ///
-    /// Call this before starting a new execution when reusing the same instance
-    /// in a distributed context where `_0` remains valid across executions.
-    pub fn release_incremental(&mut self) {
-        let files_to_close = self.mapped_files.len().saturating_sub(1);
-
-        // Close file descriptors for incremental files (_1, _2, ...), keep _0
-        while self.mapped_files.len() > 1 {
-            let mapped_file = self.mapped_files.pop().unwrap();
-            unsafe { close(mapped_file.fd) };
-        }
-
-        // Reset state to initial
-        self.total_mapped_size = self.initial_size;
-
-        debug!(
-            "Reset multi-shmem '{}': kept _0, closed {} incremental files, total_mapped_size={}",
-            self.base_name, files_to_close, self.total_mapped_size
-        );
-    }
 }

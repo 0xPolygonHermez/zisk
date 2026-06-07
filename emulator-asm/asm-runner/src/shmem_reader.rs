@@ -1,6 +1,5 @@
 use std::io::{self, Result};
 use std::ptr;
-use std::sync::atomic::{compiler_fence, Ordering};
 
 use libc::{close, munmap, PROT_READ};
 
@@ -60,51 +59,6 @@ impl SharedMemoryReader {
         unsafe { (self.ptr.add(offset) as *const u64).read() }
     }
 
-    /// Reads a slice of data from shared memory at a specific offset
-    ///
-    /// # Type Parameters
-    /// * `T` - The element type to read
-    ///
-    /// # Arguments
-    /// * `offset` - Byte offset from the start of shared memory
-    /// * `len` - Number of elements of type T to read
-    ///
-    /// # Returns
-    /// * `Ok(Vec<T>)` - A vector containing the read data
-    /// * `Err` - If the read would exceed shared memory bounds
-    pub fn read_slice<T: Copy>(&self, offset: usize, len: usize) -> Result<Vec<T>> {
-        let byte_size = len * std::mem::size_of::<T>();
-
-        if offset + byte_size > self.size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Read of {} bytes at offset {} exceeds shared memory capacity ({}) for '{}'",
-                    byte_size, offset, self.size, self.name
-                ),
-            ));
-        }
-
-        compiler_fence(Ordering::Acquire);
-
-        let mut result = Vec::with_capacity(len);
-        unsafe {
-            ptr::copy_nonoverlapping(self.ptr.add(offset) as *const T, result.as_mut_ptr(), len);
-            result.set_len(len);
-        }
-
-        Ok(result)
-    }
-
-    /// Returns the size of the shared memory region in bytes
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    /// Returns the name of the shared memory region
-    pub fn name(&self) -> &str {
-        &self.name
-    }
 }
 
 impl Drop for SharedMemoryReader {

@@ -10,6 +10,9 @@ impl ToRequestPayload for PingRequest {
         [CMD_PING_REQUEST_ID, 0, 0, 0, 0]
     }
 }
+
+// Fields mirror the on-wire ping response; these document the protocol layout.
+#[allow(dead_code)]
 pub struct PingResponse {
     pub generation_method: u64,
     pub allocated_size: u64,

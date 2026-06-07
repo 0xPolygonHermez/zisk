@@ -12,6 +12,8 @@ impl ToRequestPayload for RomHistogramRequest {
     }
 }
 
+// Fields mirror the on-wire ROM histogram response; these document the protocol layout.
+#[allow(dead_code)]
 pub struct RomHistogramResponse {
     pub result: u8,
     pub allocated_len: u64,
