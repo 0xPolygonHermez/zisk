@@ -22,7 +22,7 @@ use anyhow::{Context, Result};
 use mem_common::save_plans;
 
 pub struct MOShMemReader {
-    pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
+    pub(crate) output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }

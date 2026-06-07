@@ -35,17 +35,20 @@ mod shmem_sys;
 mod shmem_utils;
 mod shmem_writer;
 
-pub use asm_mo::*;
+// Internal layout/header structs — not part of the public API.
+pub(crate) use asm_mo::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_mo_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use asm_mo_runner_stub::*;
-pub use asm_mt::*;
+pub(crate) use asm_mt::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_mt_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use asm_mt_runner_stub::*;
-pub use asm_rh::*;
+// `AsmRHData` is public API (read by sm-rom); `AsmRHHeader` is an internal layout struct.
+pub use asm_rh::AsmRHData;
+pub(crate) use asm_rh::AsmRHHeader;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_rh_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
@@ -53,7 +56,8 @@ pub use asm_rh_runner_stub::*;
 pub use asm_runner::*;
 pub use asm_services::*;
 pub use control_shmem::*;
-pub use hints_file::*;
+// `HintsFile` is an internal alternative sink — not part of the public API.
+pub(crate) use hints_file::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use hints_shmem::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
@@ -62,12 +66,13 @@ pub use hints_shmem_stub::*;
 pub use inputs_shmem::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use inputs_shmem_stub::*;
+// Low-level shmem primitives + naming — crate-internal, not part of the public API.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub use multi_shmem::*;
-pub use naming::*;
-pub use shmem_reader::*;
-pub use shmem_utils::*;
-pub use shmem_writer::*;
+pub(crate) use multi_shmem::*;
+pub(crate) use naming::*;
+pub(crate) use shmem_reader::*;
+pub(crate) use shmem_utils::*;
+pub(crate) use shmem_writer::*;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) const TRACE_INITIAL_SIZE: usize = 0x180000000; // 6GB

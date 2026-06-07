@@ -8,21 +8,23 @@ mod shutdown;
 mod status;
 mod stdio;
 
-pub use memory_ops::*;
-pub use minimal_traces::*;
-pub use rom_histogram::*;
+// Only `services` (AsmService / AsmServices) is public API; the per-command
+// request/response payload types and the wire traits are crate-internal.
+pub(crate) use memory_ops::*;
+pub(crate) use minimal_traces::*;
+pub(crate) use rom_histogram::*;
 pub use services::*;
-pub use shutdown::*;
-pub use status::*;
+pub(crate) use shutdown::*;
+pub(crate) use status::*;
 
-pub type RequestData = [u64; 5];
-pub type ResponseData = [u64; 5];
+pub(crate) type RequestData = [u64; 5];
+pub(crate) type ResponseData = [u64; 5];
 
-pub trait ToRequestPayload {
+pub(crate) trait ToRequestPayload {
     fn to_request_payload(&self) -> RequestData;
 }
 
-pub trait FromResponsePayload {
+pub(crate) trait FromResponsePayload {
     fn from_response_payload(payload: ResponseData) -> Self;
 }
 
@@ -37,7 +39,7 @@ const CMD_MO_RESPONSE_ID: u64 = 8;
 const CMD_SHUTDOWN_REQUEST_ID: u64 = 1000000;
 const CMD_SHUTDOWN_RESPONSE_ID: u64 = 1000001;
 
-pub enum AsmCmdRequest {
+pub(crate) enum AsmCmdRequest {
     Ping(PingRequest),
     MinimalTrace(MinimalTraceRequest),
     RomHistogram(RomHistogramRequest),
@@ -45,7 +47,7 @@ pub enum AsmCmdRequest {
     Shutdown(ShutdownRequest),
 }
 
-pub enum AsmCmdResponse {
+pub(crate) enum AsmCmdResponse {
     Ping(PingResponse),
     MinimalTrace(MinimalTraceResponse),
     RomHistogram(RomHistogramResponse),

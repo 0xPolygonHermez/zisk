@@ -19,7 +19,7 @@ use crate::{
 use anyhow::{Context, Result};
 
 pub struct MTShMemReader {
-    pub output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
+    pub(crate) output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
 }
 
 impl MTShMemReader {

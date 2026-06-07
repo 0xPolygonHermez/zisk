@@ -10,7 +10,7 @@ use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 use anyhow::{Context, Result};
 
 pub struct RHShMemReader {
-    pub output_shmem: AsmSharedMemory<AsmRHHeader>,
+    pub(crate) output_shmem: AsmSharedMemory<AsmRHHeader>,
 }
 
 impl RHShMemReader {

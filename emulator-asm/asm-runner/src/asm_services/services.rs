@@ -272,7 +272,7 @@ impl AsmServices {
         Ok(())
     }
 
-    pub fn send_minimal_trace_request(
+    pub(crate) fn send_minimal_trace_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
@@ -280,11 +280,11 @@ impl AsmServices {
         self.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
-    pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
+    pub(crate) fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
         self.service.send_rom_histogram_request(max_steps)
     }
 
-    pub fn send_memory_ops_request(
+    pub(crate) fn send_memory_ops_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
