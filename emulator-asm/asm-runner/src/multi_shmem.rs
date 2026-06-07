@@ -1,8 +1,6 @@
+use crate::shmem_sys;
 use crate::AsmShmemHeader;
-use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR,
-    S_IWUSR,
-};
+use libc::{close, mmap, munmap, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ};
 use std::{
     ffi::CString,
     io,
@@ -196,17 +194,9 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     fn map_file(&mut self, file_idx: usize) -> Result<()> {
         let file_name = format!("{}_{}", self.base_name, file_idx);
 
+        let fd = shmem_sys::open(&file_name, libc::O_RDONLY)?;
+
         unsafe {
-            let c_name = CString::new(file_name.clone())
-                .map_err(|_| anyhow!("Shared memory name contains null byte"))?;
-
-            let fd =
-                shm_open(c_name.as_ptr(), libc::O_RDONLY, S_IRUSR as c_uint | S_IWUSR as c_uint);
-            if fd == -1 {
-                let err = io::Error::last_os_error();
-                return Err(anyhow!("shm_open('{}') failed: {}", file_name, err));
-            }
-
             // For _0, validate that the header has a non-zero allocated size
             if file_idx == 0 {
                 let temp_map = mmap(ptr::null_mut(), size_of::<H>(), PROT_READ, MAP_SHARED, fd, 0);

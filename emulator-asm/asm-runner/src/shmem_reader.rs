@@ -1,10 +1,10 @@
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use libc::{mmap, shm_open, MAP_FAILED, MAP_SHARED};
 use std::io::{self, Result};
 use std::ptr;
 use std::sync::atomic::{compiler_fence, Ordering};
 
-use libc::{c_void, close, munmap, PROT_READ, S_IRUSR};
+use libc::{close, munmap, PROT_READ};
+
+use crate::shmem_sys;
 
 pub struct SharedMemoryReader {
     ptr: *const u8,
@@ -19,54 +19,13 @@ unsafe impl Sync for SharedMemoryReader {}
 impl SharedMemoryReader {
     pub fn new(name: &str, size: usize) -> Result<Self> {
         // Open existing shared memory (read-only)
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let fd = Self::open_shmem(name, libc::O_RDONLY, S_IRUSR);
+        let fd = shmem_sys::open(name, libc::O_RDONLY)?;
 
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        let fd = Self::open_shmem(name, libc::O_RDONLY, S_IRUSR as u32);
-
-        // Map the memory region for read-only
-        let ptr = Self::map(fd, size, PROT_READ, false, name);
+        // Map the memory region for read-only (always locked)
+        let ptr = shmem_sys::map(fd, size, PROT_READ, true, name)?;
         let ptr_u8 = ptr as *const u8;
 
         Ok(Self { ptr: ptr_u8, size, fd, name: name.to_string() })
-    }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn open_shmem(name: &str, flags: i32, mode: u32) -> i32 {
-        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
-        let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
-        if fd == -1 {
-            let errno_value = unsafe { *libc::__errno_location() };
-            let err = io::Error::from_raw_os_error(errno_value);
-            let err2 = io::Error::last_os_error();
-            panic!("shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}");
-        }
-        fd
-    }
-
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    fn open_shmem(_name: &str, _flags: i32, _mode: u32) -> i32 {
-        0
-    }
-
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
-        let mut flags = MAP_SHARED;
-        if !unlock_mapped_memory {
-            flags |= libc::MAP_LOCKED;
-        }
-        let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, fd, 0) };
-        if mapped == MAP_FAILED {
-            let err = io::Error::last_os_error();
-            panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
-        }
-        mapped
-    }
-
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
-        ptr::null_mut()
     }
 
     unsafe fn unmap(&mut self) {

@@ -30,6 +30,7 @@ mod inputs_shmem_stub;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod multi_shmem;
 mod shmem_reader;
+mod shmem_sys;
 mod shmem_utils;
 mod shmem_writer;
 
