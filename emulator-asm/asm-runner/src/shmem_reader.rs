@@ -5,7 +5,7 @@ use libc::{close, munmap, PROT_READ};
 
 use crate::shmem_sys;
 
-pub struct ShmemReader {
+pub(crate) struct ShmemReader {
     ptr: *const u8,
     size: usize,
     fd: i32,

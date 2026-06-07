@@ -15,7 +15,7 @@ use crate::AsmService;
 ///
 /// `shm_prefix`/`sem_prefix` are built as `{NAMESPACE}_{pid}_...` (see
 /// `AsmServices::new`); the `/dev/shm` cleanup scanners match on it.
-pub const NAMESPACE: &str = "ZISK";
+pub(crate) const NAMESPACE: &str = "ZISK";
 
 fn build_service_shmem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String {
     format!("{}_{}_{}", prefix, asm_service.as_str(), suffix)
@@ -29,41 +29,45 @@ fn build_sem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String
     format!("/{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
-pub fn shmem_input_name(shm_prefix: &str) -> String {
+pub(crate) fn shmem_input_name(shm_prefix: &str) -> String {
     build_shmem_name(shm_prefix, "input")
 }
 
 /// Semaphore name for input availability (per service)
-pub fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> String {
+pub(crate) fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "input_avail")
 }
 
 /// Per-service shared memory name for precompile hints data.
 /// Each ASM service has its own precompile shmem; Rust writes the same data to all of them.
-pub fn shmem_precompile_name(prefix: &str) -> String {
+pub(crate) fn shmem_precompile_name(prefix: &str) -> String {
     build_shmem_name(prefix, "precompile")
 }
 
 /// Semaphore name for precompile hints data availability (per service)
-pub fn sem_prec_available_name(prefix: &str, asm_service: AsmService) -> String {
+pub(crate) fn sem_prec_available_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_avail")
 }
 
 /// Semaphore name for precompile hints data read (per service)
-pub fn sem_prec_read_name(prefix: &str, asm_service: AsmService) -> String {
+pub(crate) fn sem_prec_read_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_read")
 }
 
 /// Shared memory name for precompile hints data control
-pub fn shmem_control_input_name(prefix: &str) -> String {
+pub(crate) fn shmem_control_input_name(prefix: &str) -> String {
     build_shmem_name(prefix, "control_input")
 }
 
-pub fn shmem_control_output_name(prefix: &str, asm_service: AsmService) -> String {
+pub(crate) fn shmem_control_output_name(prefix: &str, asm_service: AsmService) -> String {
     build_service_shmem_name(prefix, asm_service, "control_output")
 }
 
-pub fn shmem_output_name(prefix: &str, asm_service: AsmService, suffix: Option<isize>) -> String {
+pub(crate) fn shmem_output_name(
+    prefix: &str,
+    asm_service: AsmService,
+    suffix: Option<isize>,
+) -> String {
     if let Some(n) = suffix {
         build_service_shmem_name(prefix, asm_service, &format!("output_{n}"))
     } else {
@@ -71,25 +75,25 @@ pub fn shmem_output_name(prefix: &str, asm_service: AsmService, suffix: Option<i
     }
 }
 
-pub fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
+pub(crate) fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "chunk_done")
 }
 
 /// True if `file_name` (a `/dev/shm` entry) is a ZisK shmem segment, i.e. it
 /// starts with `{NAMESPACE}_`. Matches the prefix built in `AsmServices::new`.
-pub fn is_zisk_shmem_file(file_name: &str) -> bool {
+pub(crate) fn is_zisk_shmem_file(file_name: &str) -> bool {
     file_name.strip_prefix(NAMESPACE).is_some_and(|rest| rest.starts_with('_'))
 }
 
 /// True if `file_name` is the `/dev/shm` backing file of a ZisK named
 /// semaphore, i.e. `sem.{NAMESPACE}_...`.
-pub fn is_zisk_sem_file(file_name: &str) -> bool {
+pub(crate) fn is_zisk_sem_file(file_name: &str) -> bool {
     file_name.strip_prefix("sem.").is_some_and(is_zisk_shmem_file)
 }
 
 /// Convert a `/dev/shm` semaphore backing-file name (`sem.FOO`) to the POSIX
 /// semaphore name (`/FOO`) accepted by `sem_unlink`. Returns `None` if the
 /// name is not a `sem.` entry.
-pub fn sem_file_to_posix_name(file_name: &str) -> Option<String> {
+pub(crate) fn sem_file_to_posix_name(file_name: &str) -> Option<String> {
     file_name.strip_prefix("sem.").map(|rest| format!("/{rest}"))
 }

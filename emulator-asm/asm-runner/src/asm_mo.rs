@@ -4,7 +4,7 @@ use crate::AsmShmemHeader;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMOHeader {
+pub(crate) struct AsmMOHeader {
     pub version: u64,
     pub exit_code: u64,
     pub shmem_allocated_size: u64,
@@ -20,7 +20,7 @@ impl AsmShmemHeader for AsmMOHeader {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMOChunk {
+pub(crate) struct AsmMOChunk {
     pub end: u64,
     pub mem_ops_size: u64,
 }

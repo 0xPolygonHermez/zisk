@@ -25,7 +25,7 @@ struct MappedFile {
 /// File layout:
 /// - `{base_name}_0`: Initial file with size `initial_size`, contains the header
 /// - `{base_name}_1`, `_2`, ...: Incremental files with size `incremental_size`
-pub struct AsmMultiShmem<H: AsmShmemHeader> {
+pub(crate) struct AsmMultiShmem<H: AsmShmemHeader> {
     base_name: String,
     reserved_ptr: *mut c_void,
     reserved_size: usize,

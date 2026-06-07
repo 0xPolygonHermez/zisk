@@ -7,7 +7,7 @@ use libc::{close, munmap, PROT_READ, PROT_WRITE};
 
 use crate::shmem_sys;
 
-pub struct ShmemWriter {
+pub(crate) struct ShmemWriter {
     ptr: *mut u8,
     current_ptr: *mut u8,
     size: usize,

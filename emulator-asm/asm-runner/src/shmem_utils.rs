@@ -1,23 +1,13 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use libc::shm_unlink;
-use libc::{close, munmap, MAP_FAILED, PROT_READ};
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-use libc::{mmap, MAP_SHARED};
-use proofman_common::format_bytes;
-use std::{
-    fmt::Debug,
-    io,
-    os::raw::c_void,
-    ptr,
-    sync::atomic::{fence, Ordering},
-};
-use tracing::info;
+use libc::{close, munmap, PROT_READ};
+use std::{fmt::Debug, io, os::raw::c_void, ptr};
 
 use anyhow::Result;
 
 use crate::shmem_sys;
 
-pub struct AsmShmem<H: AsmShmemHeader> {
+pub(crate) struct AsmShmem<H: AsmShmemHeader> {
     _fd: i32,
     mapped_ptr: *mut c_void,
     mapped_size: usize,
@@ -32,7 +22,7 @@ pub struct AsmShmem<H: AsmShmemHeader> {
 unsafe impl<H: AsmShmemHeader> Send for AsmShmem<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmShmem<H> {}
 
-pub trait AsmShmemHeader: Debug {
+pub(crate) trait AsmShmemHeader: Debug {
     fn allocated_size(&self) -> u64;
 }
 
@@ -107,103 +97,6 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
         })
     }
 
-    pub fn remap(&mut self, new_size: usize) -> Result<()> {
-        if !self.is_mapped() {
-            return Err(anyhow::anyhow!(
-                "Shared memory '{}' is not currently mapped, cannot remap",
-                self.shmem_name
-            ));
-        }
-
-        if new_size == 0 {
-            return Err(anyhow::anyhow!("New size must be greater than zero"));
-        }
-
-        // Use mremap to extend the existing mapping at the same address
-        let new_ptr = self.remap_region(new_size)?;
-
-        // Update the struct with new mapping info
-        self.mapped_ptr = new_ptr;
-        self.mapped_size = new_size;
-
-        Ok(())
-    }
-
-    /// Remaps the shared memory region to a new size.
-    /// # Safety
-    /// The caller must ensure that:
-    /// - `new_size` is the desired new size for the mapping.
-    pub fn remap_region(&self, new_size: usize) -> Result<*mut c_void> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let flags = libc::MREMAP_MAYMOVE;
-            let new_ptr =
-                unsafe { libc::mremap(self.mapped_ptr, self.mapped_size, new_size, flags) };
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "Failed to remap shared memory '{}' from size {} to {}: {}",
-                    self.shmem_name,
-                    self.mapped_size,
-                    new_size,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
-        }
-
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            // On macOS / other systems without mremap:
-            // just unmap and remap a fresh region — no data copy.
-            if unsafe { munmap(self.mapped_ptr, self.mapped_size) } != 0 {
-                return Err(anyhow::anyhow!(
-                    "munmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ));
-            }
-
-            let new_ptr =
-                unsafe { mmap(ptr::null_mut(), new_size, PROT_READ, MAP_SHARED, self._fd, 0) };
-
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "mmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
-        }
-    }
-
-    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<bool> {
-        let read_mapped_size = self.map_header().allocated_size();
-
-        if read_mapped_size == self.mapped_size as u64 {
-            return Ok(false);
-        }
-
-        info!(
-            "Remapping shared memory {}: {} => {}",
-            self.shmem_name,
-            format_bytes(self.mapped_size as f64),
-            format_bytes(read_mapped_size as f64)
-        );
-
-        let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
-
-        self.remap(read_mapped_size as usize)?;
-
-        *current_read_ptr = unsafe { self.mapped_ptr.add(offset) as *const T };
-
-        fence(Ordering::Acquire);
-
-        Ok(true)
-    }
-
     pub fn unmap(&mut self) -> Result<()> {
         unsafe {
             if munmap(self.mapped_ptr, self.mapped_size) != 0 {
@@ -240,14 +133,6 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
 
     pub fn is_mapped(&self) -> bool {
         !self.mapped_ptr.is_null()
-    }
-
-    pub fn header_ptr(&self) -> *mut c_void {
-        self.mapped_ptr
-    }
-
-    pub fn mapped_ptr(&self) -> *mut c_void {
-        self.mapped_ptr
     }
 
     pub fn data_ptr(&self) -> *mut c_void {

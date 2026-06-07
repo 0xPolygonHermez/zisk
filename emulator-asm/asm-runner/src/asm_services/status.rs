@@ -3,7 +3,7 @@ use super::{
     CMD_PING_RESPONSE_ID,
 };
 
-pub struct PingRequest;
+pub(crate) struct PingRequest;
 
 impl ToRequestPayload for PingRequest {
     fn to_request_payload(&self) -> RequestData {
@@ -13,7 +13,7 @@ impl ToRequestPayload for PingRequest {
 
 // Fields mirror the on-wire ping response; these document the protocol layout.
 #[allow(dead_code)]
-pub struct PingResponse {
+pub(crate) struct PingResponse {
     pub generation_method: u64,
     pub allocated_size: u64,
 }

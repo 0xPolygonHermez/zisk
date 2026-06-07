@@ -8,7 +8,7 @@ use crate::AsmShmemHeader;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMTHeader {
+pub(crate) struct AsmMTHeader {
     pub version: u64,
     pub exit_code: u64,
     pub shmem_allocated_size: u64,
@@ -24,7 +24,7 @@ impl AsmShmemHeader for AsmMTHeader {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMTChunk {
+pub(crate) struct AsmMTChunk {
     pub pc: u64,
     pub sp: u64,
     pub c: u64,
