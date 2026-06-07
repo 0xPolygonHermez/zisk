@@ -1,7 +1,8 @@
 use super::stdio::StdioService;
 use super::{RequestData, ResponseData};
 use crate::{
-    AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
+    is_zisk_sem_file, is_zisk_shmem_file, sem_file_to_posix_name, AsmRunnerOptions,
+    MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse, NAMESPACE,
 };
 use anyhow::{Context, Result};
 
@@ -174,9 +175,9 @@ impl AsmServices {
         let pid = std::process::id();
         let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}");
         let sem_prefix = format!(
-            "ZISK_{pid}_{hash8}_{local_rank}{hints}",
+            "{NAMESPACE}_{pid}_{hash8}_{local_rank}{hints}",
             hints = if with_hints { "_h" } else { "" }
         );
 
@@ -234,8 +235,8 @@ impl AsmServices {
 
             // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
             // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
-            let is_sem = name.starts_with("sem.ZISK_");
-            let is_shm = name.starts_with("ZISK_");
+            let is_sem = is_zisk_sem_file(&name);
+            let is_shm = is_zisk_shmem_file(&name);
             if !is_shm && !is_sem {
                 continue;
             }
@@ -255,7 +256,7 @@ impl AsmServices {
             // Process is dead (ESRCH) — unlink the stale entry.
             if is_sem {
                 // sem file "sem.FOO" → POSIX name "/FOO"
-                let sem_name = format!("/{}", &name["sem.".len()..]);
+                let Some(sem_name) = sem_file_to_posix_name(&name) else { continue };
                 tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
                 if let Ok(cstr) = std::ffi::CString::new(sem_name) {
                     unsafe { libc::sem_unlink(cstr.as_ptr()) };
@@ -426,9 +427,8 @@ impl AsmServices {
             let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
             if name.starts_with(&self.shm_prefix) {
                 let _ = shm_unlink_by_name(&name);
-            } else if let Some(rest) = name.strip_prefix("sem.") {
-                if name.starts_with(&sem_marker) {
-                    let sem_name = format!("/{rest}");
+            } else if name.starts_with(&sem_marker) {
+                if let Some(sem_name) = sem_file_to_posix_name(&name) {
                     if let Ok(cstr) = std::ffi::CString::new(sem_name) {
                         unsafe { libc::sem_unlink(cstr.as_ptr()) };
                     }
