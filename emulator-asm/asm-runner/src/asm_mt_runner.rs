@@ -11,22 +11,22 @@ use std::time::Instant;
 use tracing::{error, info, warn};
 
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
-    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
+    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
+    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
+    TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
 
-pub struct MTShMemReader {
-    pub(crate) output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
+pub struct MTShmemReader {
+    pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
 }
 
-impl MTShMemReader {
+impl MTShmemReader {
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
-        let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
+        let output_shmem = AsmMultiShmem::<AsmMTHeader>::open_and_map(
             &output_name,
             TRACE_INITIAL_SIZE,
             TRACE_DELTA_SIZE,
@@ -50,7 +50,7 @@ impl AsmRunnerMT {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
-        preloaded: &mut MTShMemReader,
+        preloaded: &mut MTShmemReader,
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,

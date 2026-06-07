@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{AsmSharedMemory, AsmShmemHeader};
+use crate::{AsmShmem, AsmShmemHeader};
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -44,7 +44,7 @@ impl AsmRHData {
     /// mapping is torn down. These two sites are a matched pair — do not change
     /// the `from_raw_parts` construction here without updating that `Drop`, and
     /// vice versa.
-    pub fn from_shared_memory(asm_shared_memory: &AsmSharedMemory<AsmRHHeader>) -> AsmRHData {
+    pub fn from_shared_memory(asm_shared_memory: &AsmShmem<AsmRHHeader>) -> AsmRHData {
         // SAFETY: `data_ptr` points into the live, read-only shared mapping owned by
         // `asm_shared_memory`, which the caller keeps alive across this read. The
         // header read and `Vec::from_raw_parts` stay in bounds — the `assert!` below

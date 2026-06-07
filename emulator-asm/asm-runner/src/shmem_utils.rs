@@ -17,7 +17,7 @@ use anyhow::Result;
 
 use crate::shmem_sys;
 
-pub struct AsmSharedMemory<H: AsmShmemHeader> {
+pub struct AsmShmem<H: AsmShmemHeader> {
     _fd: i32,
     mapped_ptr: *mut c_void,
     mapped_size: usize,
@@ -29,15 +29,15 @@ pub struct AsmSharedMemory<H: AsmShmemHeader> {
 // shared-memory region. The mapping is stable for the handle's lifetime (`remap`
 // updates the pointer under `&mut self`), so sending/sharing the handle across
 // threads is sound.
-unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
-unsafe impl<H: AsmShmemHeader> Sync for AsmSharedMemory<H> {}
+unsafe impl<H: AsmShmemHeader> Send for AsmShmem<H> {}
+unsafe impl<H: AsmShmemHeader> Sync for AsmShmem<H> {}
 
 pub trait AsmShmemHeader: Debug {
     fn allocated_size(&self) -> u64;
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
+impl<H: AsmShmemHeader> Drop for AsmShmem<H> {
     fn drop(&mut self) {
         if let Ok(c_name) = std::ffi::CString::new(self.shmem_name.clone()) {
             unsafe { shm_unlink(c_name.as_ptr()) };
@@ -49,7 +49,7 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     }
 }
 
-impl<H: AsmShmemHeader> AsmSharedMemory<H> {
+impl<H: AsmShmemHeader> AsmShmem<H> {
     pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
         if name.is_empty() {
             return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
@@ -259,4 +259,3 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         self.mapped_size
     }
 }
-

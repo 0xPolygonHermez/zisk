@@ -7,7 +7,7 @@ use libc::{close, munmap, PROT_READ, PROT_WRITE};
 
 use crate::shmem_sys;
 
-pub struct SharedMemoryWriter {
+pub struct ShmemWriter {
     ptr: *mut u8,
     current_ptr: *mut u8,
     size: usize,
@@ -20,10 +20,10 @@ pub struct SharedMemoryWriter {
 // Moving or sharing the handle across threads is sound; data-race freedom on the
 // mapped bytes is the caller's responsibility (as for any shared memory) — the
 // higher-level wrappers serialize writes where needed.
-unsafe impl Send for SharedMemoryWriter {}
-unsafe impl Sync for SharedMemoryWriter {}
+unsafe impl Send for ShmemWriter {}
+unsafe impl Sync for ShmemWriter {}
 
-impl SharedMemoryWriter {
+impl ShmemWriter {
     pub fn new(name: &str, size: usize, unlock_mapped_memory: bool) -> Result<Self> {
         // Open existing shared memory (read/write)
         let fd = shmem_sys::open(name, libc::O_RDWR)?;
@@ -229,7 +229,7 @@ impl SharedMemoryWriter {
     }
 }
 
-impl Drop for SharedMemoryWriter {
+impl Drop for ShmemWriter {
     fn drop(&mut self) {
         unsafe {
             self.unmap();

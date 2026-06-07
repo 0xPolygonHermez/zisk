@@ -5,7 +5,7 @@ use libc::{close, munmap, PROT_READ};
 
 use crate::shmem_sys;
 
-pub struct SharedMemoryReader {
+pub struct ShmemReader {
     ptr: *const u8,
     size: usize,
     fd: i32,
@@ -15,10 +15,10 @@ pub struct SharedMemoryReader {
 // SAFETY: the only non-auto field is `ptr`, a raw pointer into a read-only
 // mmap'd shared-memory region whose address is fixed for the handle's lifetime.
 // Sharing the read-only handle across threads is sound.
-unsafe impl Send for SharedMemoryReader {}
-unsafe impl Sync for SharedMemoryReader {}
+unsafe impl Send for ShmemReader {}
+unsafe impl Sync for ShmemReader {}
 
-impl SharedMemoryReader {
+impl ShmemReader {
     pub fn new(name: &str, size: usize) -> Result<Self> {
         // Open existing shared memory (read-only)
         let fd = shmem_sys::open(name, libc::O_RDONLY)?;
@@ -58,10 +58,9 @@ impl SharedMemoryReader {
 
         unsafe { (self.ptr.add(offset) as *const u64).read() }
     }
-
 }
 
-impl Drop for SharedMemoryReader {
+impl Drop for ShmemReader {
     fn drop(&mut self) {
         unsafe {
             self.unmap();

@@ -25,7 +25,7 @@ struct MappedFile {
 /// File layout:
 /// - `{base_name}_0`: Initial file with size `initial_size`, contains the header
 /// - `{base_name}_1`, `_2`, ...: Incremental files with size `incremental_size`
-pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
+pub struct AsmMultiShmem<H: AsmShmemHeader> {
     base_name: String,
     reserved_ptr: *mut c_void,
     reserved_size: usize,
@@ -41,10 +41,10 @@ pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
 // mmap region) and the mapped-file descriptors. The reserved address range is
 // fixed for the handle's lifetime and growth only maps into it without moving
 // existing mappings, so sending/sharing the handle across threads is sound.
-unsafe impl<H: AsmShmemHeader> Send for AsmMultiSharedMemory<H> {}
-unsafe impl<H: AsmShmemHeader> Sync for AsmMultiSharedMemory<H> {}
+unsafe impl<H: AsmShmemHeader> Send for AsmMultiShmem<H> {}
+unsafe impl<H: AsmShmemHeader> Sync for AsmMultiShmem<H> {}
 
-impl<H: AsmShmemHeader> Drop for AsmMultiSharedMemory<H> {
+impl<H: AsmShmemHeader> Drop for AsmMultiShmem<H> {
     fn drop(&mut self) {
         for i in 0..self.mapped_files.len() {
             let file_name = format!("{}_{}", self.base_name, i);
@@ -69,7 +69,7 @@ impl<H: AsmShmemHeader> Drop for AsmMultiSharedMemory<H> {
     }
 }
 
-impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
+impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     /// Opens and maps the initial shared memory file, reserving address space for growth.
     ///
     /// # Arguments

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use asm_runner::{AsmRunnerOptions, AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
+use asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 
@@ -31,11 +31,11 @@ impl std::fmt::Debug for AsmResourcesConfig {
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
     /// Reader for the minimal trace shmem segment (MT).
-    pub mt: Arc<Mutex<MTShMemReader>>,
+    pub mt: Arc<Mutex<MTShmemReader>>,
     /// Reader for the memory-ops shmem segment (MO).
-    pub mo: Arc<Mutex<MOShMemReader>>,
+    pub mo: Arc<Mutex<MOShmemReader>>,
     /// Reader for the ROM histogram shmem segment (RH).
-    pub rh: Arc<Mutex<Option<RHShMemReader>>>,
+    pub rh: Arc<Mutex<Option<RHShmemReader>>>,
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -43,11 +43,11 @@ impl AsmShmemReaders {
     fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> ExecutorResult<Self> {
         Ok(Self {
             mt: Arc::new(Mutex::new(
-                MTShMemReader::new(shm_prefix, unlock_mapped_memory)
+                MTShmemReader::new(shm_prefix, unlock_mapped_memory)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             mo: Arc::new(Mutex::new(
-                MOShMemReader::new(shm_prefix, unlock_mapped_memory)
+                MOShmemReader::new(shm_prefix, unlock_mapped_memory)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             rh: Arc::new(Mutex::new(None)),
@@ -92,7 +92,7 @@ impl AsmSharedResources {
     ///
     /// `with_hints` must match the value used during setup: the C binary only creates the
     /// per-service precompile shmem segments when hints are enabled, so passing `true` here
-    /// without the C binary having created them will panic in `SharedMemoryWriter::new`.
+    /// without the C binary having created them will panic in `ShmemWriter::new`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         local_rank: i32,

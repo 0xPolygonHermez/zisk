@@ -280,7 +280,10 @@ impl AsmServices {
         self.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
-    pub(crate) fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
+    pub(crate) fn send_rom_histogram_request(
+        &self,
+        max_steps: u64,
+    ) -> Result<RomHistogramResponse> {
         self.service.send_rom_histogram_request(max_steps)
     }
 

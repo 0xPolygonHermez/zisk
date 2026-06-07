@@ -11,8 +11,8 @@ use crate::TRACE_DELTA_SIZE;
 use crate::TRACE_INITIAL_SIZE;
 use crate::TRACE_MAX_SIZE;
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices,
+    sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiShmem, AsmRunError,
+    AsmService, AsmServices,
 };
 use mem_planner_cpp::MemPlanner;
 
@@ -21,17 +21,17 @@ use anyhow::{Context, Result};
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
-pub struct MOShMemReader {
-    pub(crate) output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
+pub struct MOShmemReader {
+    pub(crate) output_shmem: AsmMultiShmem<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
 }
 
-impl MOShMemReader {
+impl MOShmemReader {
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
-        let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
+        let output_shared_memory = AsmMultiShmem::<AsmMOHeader>::open_and_map(
             &output_name,
             TRACE_INITIAL_SIZE,
             TRACE_DELTA_SIZE,
@@ -47,7 +47,7 @@ impl MOShMemReader {
     }
 }
 
-impl Drop for MOShMemReader {
+impl Drop for MOShmemReader {
     fn drop(&mut self) {
         if let Some(handle_mo) = self.handle_mo.take() {
             match handle_mo.join() {
@@ -75,7 +75,7 @@ impl AsmRunnerMO {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run<R>(
-        preloaded: &mut MOShMemReader,
+        preloaded: &mut MOShmemReader,
         max_steps: u64,
         chunk_size: u64,
         on_runner_failure: R,
@@ -120,7 +120,7 @@ impl AsmRunnerMO {
                 .handle_mo
                 .take()
                 .ok_or_else(|| {
-                    anyhow::anyhow!("MOShMemReader: both mem_planner and handle_mo are None")
+                    anyhow::anyhow!("MOShmemReader: both mem_planner and handle_mo are None")
                 })?
                 .join()
                 .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
@@ -226,7 +226,7 @@ impl AsmRunnerMO {
 
         // Wind the C++ planner down before any further work. Without this,
         // its background threads stay parked waiting for more chunks, and
-        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
+        // the C++ destructor blocks on `Drop`, holding the `MOShmemReader`
         // Mutex and hanging the next job's MO thread on lock acquisition.
         mem_planner.set_completed();
         mem_planner.wait();

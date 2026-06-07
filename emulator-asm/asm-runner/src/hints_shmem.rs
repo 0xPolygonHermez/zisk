@@ -1,11 +1,11 @@
 //! HintsShmem is responsible for writing precompile processed hints to shared memory.
 //!
 //! It implements the HintsSink trait to receive processed hints and write them to shared memory
-//! using SharedMemoryWriter instances.
+//! using ShmemWriter instances.
 
 use crate::{
     sem_available_name, sem_read_name, shmem_control_reader_name, shmem_precompile_name,
-    AsmService, AsmServices, ControlShmem, SharedMemoryReader, SharedMemoryWriter,
+    AsmService, AsmServices, ControlShmem, ShmemReader, ShmemWriter,
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
@@ -21,17 +21,14 @@ use zisk_common::io::StreamSink;
 /// `submit` (slowest-consumer wait); the C side resets it to 0 itself
 /// in `server_reset_fast()` after every emulation.
 struct SeparateShm {
-    control_reader: SharedMemoryReader,
+    control_reader: ShmemReader,
 }
 
 impl SeparateShm {
     pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
         let name = shmem_control_reader_name(shm_prefix, service);
         Ok(Self {
-            control_reader: SharedMemoryReader::new(
-                &name,
-                HintsShmem::CONTROL_PRECOMPILE_SIZE as usize,
-            )?,
+            control_reader: ShmemReader::new(&name, HintsShmem::CONTROL_PRECOMPILE_SIZE as usize)?,
         })
     }
 }
@@ -54,7 +51,7 @@ struct UnifiedResources {
     control_writer: Arc<ControlShmem>,
     /// One data writer per service — each C service has its own precompile shmem segment,
     /// so Rust writes the same hint data to all of them to keep them in sync.
-    data_writer: SharedMemoryWriter,
+    data_writer: ShmemWriter,
 }
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
@@ -147,11 +144,8 @@ impl HintsShmem {
         debug!("Initializing unified resources for precompile hints");
 
         let name = shmem_precompile_name(shm_prefix);
-        let data_writer = SharedMemoryWriter::new(
-            &name,
-            Self::MAX_PRECOMPILE_SIZE as usize,
-            unlock_mapped_memory,
-        )?;
+        let data_writer =
+            ShmemWriter::new(&name, Self::MAX_PRECOMPILE_SIZE as usize, unlock_mapped_memory)?;
 
         Ok(UnifiedResources { control_writer, data_writer })
     }

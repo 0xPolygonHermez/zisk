@@ -1,9 +1,9 @@
-use crate::{shmem_control_writer_name, SharedMemoryWriter};
+use crate::{shmem_control_writer_name, ShmemWriter};
 
 use anyhow::Result;
 
 pub struct ControlShmem {
-    writer: SharedMemoryWriter,
+    writer: ShmemWriter,
 }
 
 /// Byte offsets into the C-side `shmem_control_input_address` array.
@@ -21,12 +21,9 @@ impl ControlShmem {
 
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let name = shmem_control_writer_name(shm_prefix);
-        let writer = SharedMemoryWriter::new(
-            &name,
-            Self::CONTROL_WRITER_SIZE as usize,
-            unlock_mapped_memory,
-        )
-        .map_err(anyhow::Error::from)?;
+        let writer =
+            ShmemWriter::new(&name, Self::CONTROL_WRITER_SIZE as usize, unlock_mapped_memory)
+                .map_err(anyhow::Error::from)?;
         Ok(Self { writer })
     }
 
