@@ -31,7 +31,12 @@ pub struct AsmRunnerRH {
 
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
-        // Forget all mem_reads Vec<u64> before unmapping
+        // Load-bearing invariant — pairs with `AsmRHData::from_shared_memory`
+        // (asm_rh.rs): `asm_rowh_output.inst_count` is a `Vec` built via
+        // `Vec::from_raw_parts` over the shared-memory mapping, NOT allocated by
+        // Rust's allocator. Letting it drop normally would free foreign pages
+        // (UB), so `forget` it here before the mapping is torn down. Do not
+        // remove this without also changing the `from_raw_parts` construction.
         std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
     }
 }

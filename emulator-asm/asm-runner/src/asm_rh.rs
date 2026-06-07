@@ -31,11 +31,26 @@ impl AsmRHData {
 }
 
 impl AsmRHData {
-    /// Create an `OutputChunk` from a pointer.
+    /// Build an [`AsmRHData`] by reading the ROM histogram out of shared memory.
     ///
-    /// # Safety
-    /// This function is unsafe because it reads from a raw pointer in shared memory.
+    /// # Invariant (load-bearing)
+    /// `inst_count` is constructed with [`Vec::from_raw_parts`] pointing DIRECTLY
+    /// into the shared-memory mapping — it is NOT allocated by Rust's global
+    /// allocator. Dropping that `Vec` the normal way would make the allocator
+    /// free pages it never owned (undefined behavior / heap corruption).
+    ///
+    /// The returned `AsmRHData` must therefore never be dropped normally:
+    /// `AsmRunnerRH::drop` (in `asm_rh_runner.rs`) `mem::forget`s it before the
+    /// mapping is torn down. These two sites are a matched pair — do not change
+    /// the `from_raw_parts` construction here without updating that `Drop`, and
+    /// vice versa.
     pub fn from_shared_memory(asm_shared_memory: &AsmSharedMemory<AsmRHHeader>) -> AsmRHData {
+        // SAFETY: `data_ptr` points into the live, read-only shared mapping owned by
+        // `asm_shared_memory`, which the caller keeps alive across this read. The
+        // header read and `Vec::from_raw_parts` stay in bounds — the `assert!` below
+        // rejects any `len` that would run past the mapped region. The returned `Vec`
+        // aliases the mapping and must never be freed by Rust's allocator; see the
+        // `# Invariant` above and `AsmRunnerRH::drop`.
         unsafe {
             let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
             // chunk data
