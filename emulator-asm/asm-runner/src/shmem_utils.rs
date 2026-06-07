@@ -227,6 +227,14 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         Ok(())
     }
 
+    /// Read and return a copy of the header from the start of the mapping.
+    ///
+    /// # Panics
+    /// Panics if the region is not currently mapped. This is an invariant guard,
+    /// not an I/O path: an unmapped handle has a null `mapped_ptr`, so reading the
+    /// header would dereference null (UB). On a live handle the mapping is set up
+    /// in the constructor and only torn down by `unmap`/`Drop`, so this never
+    /// fires in correct use.
     pub fn map_header(&self) -> H {
         if !self.is_mapped() {
             panic!("Shared memory '{}' is not mapped, cannot read header", self.shmem_name);

@@ -14,9 +14,6 @@ pub struct AsmRunnerMT {
     pub vec_chunks: Vec<EmuTrace>,
 }
 
-unsafe impl Send for AsmRunnerMT {}
-unsafe impl Sync for AsmRunnerMT {}
-
 impl AsmRunnerMT {
     pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
         panic!(

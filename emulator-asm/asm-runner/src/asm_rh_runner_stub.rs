@@ -9,9 +9,6 @@ pub struct AsmRunnerRH {
     pub asm_rowh_output: AsmRHData,
 }
 
-unsafe impl Send for AsmRunnerRH {}
-unsafe impl Sync for AsmRunnerRH {}
-
 impl AsmRunnerRH {
     /// Constructs an `AsmRunnerRH` from a histogram payload. Platform-agnostic — the
     /// Linux-only part is `run`, which spawns a child process and reads shared memory.

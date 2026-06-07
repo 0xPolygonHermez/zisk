@@ -261,6 +261,12 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     }
 
     /// Reads the header from the shared memory (always from file `_0`).
+    ///
+    /// # Panics
+    /// Panics if no files are mapped yet. This is an invariant guard, not an I/O
+    /// path: with no mapped files there is no readable header and the read would
+    /// be UB. `open_and_map` always maps `_0` and `release_incremental` keeps it,
+    /// so on a live handle this never fires.
     pub fn map_header(&self) -> H {
         if self.mapped_files.is_empty() {
             panic!("Multi-shmem '{}' has no mapped files, cannot read header", self.base_name);
