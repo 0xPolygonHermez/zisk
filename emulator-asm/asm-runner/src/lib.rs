@@ -1,3 +1,12 @@
+// On non-Linux-x86_64 the ASM runner is a stub shell: the real runners and the
+// shared-memory machinery they drive are `cfg`-gated out, so most of the crate's
+// types/fns have no caller there. Silence the resulting dead-code/unused-import
+// noise off the supported platform; Linux-x86_64 keeps full lint enforcement.
+#![cfg_attr(
+    not(all(target_os = "linux", target_arch = "x86_64")),
+    allow(dead_code, unused_imports)
+)]
+
 extern crate libc;
 
 mod asm_mo;
