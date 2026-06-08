@@ -1,9 +1,14 @@
 use crate::{
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
+    job_history::{
+        worker_error_reason, EVENT_TYPE_WORKER_DISCONNECTED, EVENT_TYPE_WORKER_RECONNECTED,
+        EVENT_TYPE_WORKER_REGISTERED, EVENT_TYPE_WORKER_UNREGISTERED,
+    },
     Coordinator,
 };
 use chrono::Utc;
+use serde_json::json;
 use std::sync::atomic::Ordering;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
@@ -262,6 +267,8 @@ impl Coordinator {
             if first_setup.is_some() { WorkerState::SettingUp } else { WorkerState::Idle };
 
         let worker_id = req.worker_id.clone();
+        let compute_units = req.compute_capacity.compute_units;
+        let initial_state_label = initial_state.to_string();
 
         // A fresh `Register` (as opposed to `Reconnect`) means the worker
         // process has lost its in-flight state. Any leftover
@@ -284,6 +291,14 @@ impl Coordinator {
             .await
         {
             Ok(()) => {
+                self.record_worker_lifecycle_event(
+                    &worker_id,
+                    EVENT_TYPE_WORKER_REGISTERED,
+                    json!({
+                        "compute_units": compute_units,
+                        "initial_state": initial_state_label,
+                    }),
+                );
                 // Send any additional known setups (beyond the first) as messages.
                 for setup in setups {
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
@@ -332,6 +347,7 @@ impl Coordinator {
 
         let worker_id = req.worker_id.clone();
         let last_known_job_id = req.last_known_job_id.clone();
+        let compute_units = req.compute_capacity.compute_units;
 
         // Compute the directive first so we know whether to preserve the worker's
         // Computing state. Doing this before register_worker avoids a window where
@@ -358,6 +374,7 @@ impl Coordinator {
         } else {
             default_state
         };
+        let initial_state_label = initial_state.to_string();
 
         if let Err(e) = self
             .workers_pool
@@ -366,6 +383,16 @@ impl Coordinator {
         {
             return (false, format!("Reconnection failed: {e}"), None, None);
         }
+        self.record_worker_lifecycle_event(
+            &worker_id,
+            EVENT_TYPE_WORKER_RECONNECTED,
+            json!({
+                "compute_units": compute_units,
+                "initial_state": initial_state_label,
+                "last_known_job_id": last_known_job_id.as_ref().map(|job_id| job_id.as_string()),
+                "directive": directive.as_ref().map(|directive| format!("{directive:?}")),
+            }),
+        );
 
         if let Some(ref d) = directive {
             match d {
@@ -477,7 +504,15 @@ impl Coordinator {
         // will never ACK this job_id (a re-registered process gets a
         // fresh setup id from active_setups).
         self.prune_setup_pending_for_lost_worker(worker_id).await;
-        self.workers_pool.unregister_worker(worker_id).await
+        let result = self.workers_pool.unregister_worker(worker_id).await;
+        if result.is_ok() {
+            self.record_worker_lifecycle_event(
+                worker_id,
+                EVENT_TYPE_WORKER_UNREGISTERED,
+                json!({ "reason": "unregistered" }),
+            );
+        }
+        result
     }
 
     /// Transient disconnect — preserves `pending_recovery` so a reconnect
@@ -493,6 +528,11 @@ impl Coordinator {
             // active_setups). Without this prune the in-flight setup
             // hangs forever — there is no setup-phase monitor timeout.
             self.prune_setup_pending_for_lost_worker(worker_id).await;
+            self.record_worker_lifecycle_event(
+                worker_id,
+                EVENT_TYPE_WORKER_DISCONNECTED,
+                json!({ "reason": "disconnected" }),
+            );
         }
         Ok(())
     }
@@ -537,6 +577,14 @@ impl Coordinator {
             .await?;
         if disconnected {
             self.prune_setup_pending_for_lost_worker(worker_id).await;
+            self.record_worker_lifecycle_event(
+                worker_id,
+                EVENT_TYPE_WORKER_DISCONNECTED,
+                json!({
+                    "reason": "connection dropped",
+                    "expected_generation": expected_generation,
+                }),
+            );
         }
         Ok(())
     }
@@ -583,6 +631,15 @@ impl Coordinator {
                 message.worker_id, message.job_id
             )));
         }
+
+        let bounded_reason = crate::metrics::classify_worker_error(&message.error_message);
+        self.record_worker_error_event(
+            &message.job_id,
+            &message.worker_id,
+            bounded_reason,
+            Some(message.error_message.clone()),
+        )
+        .await;
 
         self.fail_job(&message.job_id, message.error_message).await.map_err(|e| {
             error!("Failed to mark job {} as failed after worker error: {}", message.job_id, e);
@@ -753,6 +810,18 @@ impl Coordinator {
             }
             None => format!("Task execution failed on worker {} (no detail)", message.worker_id),
         };
+
+        let bounded_reason = match self.current_job_phase(&message.job_id).await {
+            Some(zisk_cluster_common::JobPhase::Aggregate) => worker_error_reason::AGG_FAIL,
+            _ => worker_error_reason::PROVE_FAIL,
+        };
+        self.record_worker_error_event(
+            &message.job_id,
+            &message.worker_id,
+            bounded_reason,
+            worker_err.map(str::to_owned),
+        )
+        .await;
 
         self.fail_job(&message.job_id, &reason).await?;
 

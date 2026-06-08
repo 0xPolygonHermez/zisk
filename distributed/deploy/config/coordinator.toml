@@ -4,12 +4,13 @@
 # Override individual values via environment variables (see env column in README)
 
 [service]
+coordinator_id = "default"
 name = "ZisK Coordinator"
 environment = "production"
 
 [server]
 host = "0.0.0.0"
-port = 7001
+port = 15100
 shutdown_timeout_seconds = 30
 
 [metrics]
@@ -29,3 +30,12 @@ mode = "coordinator"
 # Workers must connect to this port on the coordinator host/container.
 port = 50052
 # config_file = "/etc/zisk/coordinator.toml"  # optional: tune coordinator core internals
+
+[job_history]
+# Persist terminal job summaries and phase timing events to Postgres. The
+# database URL is env-only by design; do not put credentials in this file.
+enabled = true
+auto_migrate = true
+channel_capacity = 10000
+batch_size = 100
+flush_interval_ms = 250

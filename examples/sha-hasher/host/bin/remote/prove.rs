@@ -16,7 +16,9 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let coordinator_url =
+        std::env::var("ZISK_COORDINATOR_URL").unwrap_or_else(|_| "http://127.0.0.1:15100".into());
+    let client = ProverClient::remote(coordinator_url).build()?;
 
     println!("Setting up program...");
     client.upload(&ELF_SHA_HASHER).run()?;
@@ -34,7 +36,11 @@ async fn main() -> Result<()> {
     println!("Proof verification successful!");
 
     println!("Saving proof to disk...");
-    result.save_proof("tmp/sha_hasher_proof.bin")?;
+    let proof_path = std::path::Path::new("tmp/sha_hasher_proof.bin");
+    if let Some(parent) = proof_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    result.save_proof(proof_path)?;
     println!("Proofs saved to tmp/ directory");
 
     let mut hash = [0u8; 32];
@@ -53,7 +59,7 @@ async fn main() -> Result<()> {
     let vk = ELF_SHA_HASHER.vk()?;
 
     println!("Loading proof with publics from disk...");
-    let proof = Proof::load("tmp/sha_hasher_proof.bin")?;
+    let proof = Proof::load(proof_path)?;
 
     println!("Verifying proof with embedded publics...");
     // Verify the proof with its embedded publics (from guest's commit)

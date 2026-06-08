@@ -85,7 +85,7 @@ provingKey,provingKeySnark?}` — same as a host install via ziskup.
 helm install zisk-worker distributed/deploy/k8s/charts/zisk-worker \
     --namespace zisk \
     --create-namespace \
-    --set coordinator.url=coordinator.zisk.svc.cluster.local:7000 \
+    --set coordinator.url=coordinator.zisk.svc.cluster.local:15100 \
     --set image.tag=0.17.0 \
     --set replicaCount=4 \
     --set provingKey.pvc.claimName=zisk-bundle
@@ -96,7 +96,7 @@ Or from a values file:
 ```yaml
 # values.prod.yaml
 coordinator:
-  url: coordinator.zisk.svc.cluster.local:7000
+  url: coordinator.zisk.svc.cluster.local:15100
 image:
   repository: registry.example/zisk-worker
   tag: 0.17.0

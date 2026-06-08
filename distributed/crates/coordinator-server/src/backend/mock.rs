@@ -7,11 +7,11 @@
 //! ## Job lifecycle (mock timing)
 //!
 //! ```text
-//! t=0ms   Queued          → JobEvent::Queued
-//! t=20ms  Running         → JobEvent::Started
-//! t=40ms  (Prove only)    → JobEvent::Progress(Contributions)
-//! t=80ms  (Prove only)    → JobEvent::Progress(Prove)
-//! t=2s    Completed       → JobEvent::Completed
+//! t=0ms   Queued          -> JobEvent::Queued
+//! t=20ms  Running         -> JobEvent::Started
+//! t=40ms  (Prove only)    -> JobEvent::Progress(Contributions)
+//! t=80ms  (Prove only)    -> JobEvent::Progress(Prove)
+//! t=2s    Completed       -> JobEvent::Completed
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -30,24 +30,25 @@ use super::{
     BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
-    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, LiveStateProvider,
+    SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
 use zisk_common::SetupKey;
 
-// ── Internal state ────────────────────────────────────────────────────────────
+// Internal state.
 
 struct JobRecord {
     status: DomainJobStatus,
     result: Option<DomainJobKindResponse>,
     /// The input kind this job was submitted with (if applicable).
     input_kind: Option<DomainInputKind>,
-    /// Notified whenever `status` changes — used by `wait_job_result`.
+    /// Notified whenever `status` changes; used by `wait_job_result`.
     notify: Arc<Notify>,
 }
 
 struct MockState {
-    /// Content-addressed program registry (hash_id). Idempotent — same ELF = same hash.
+    /// Content-addressed program registry. Same ELF produces the same hash.
     programs: HashSet<String>,
     setups: HashMap<SetupKey, String>,
     jobs: HashMap<Uuid, JobRecord>,
@@ -75,7 +76,7 @@ impl MockState {
 /// How long a terminal job's record is retained before being evicted.
 const JOB_TTL: Duration = Duration::from_secs(5 * 60);
 
-// ── MockBackend ───────────────────────────────────────────────────────────────
+// MockBackend.
 
 #[derive(Clone)]
 pub struct MockBackend {
@@ -93,7 +94,7 @@ impl MockBackend {
         self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
     }
 
-    // ── internal helpers ─────────────────────────────────────────────────────
+    // Internal helpers.
 
     /// Transition a job's status, persist the result if provided, and
     /// broadcast the event. Also fires `notify` so `wait_job_result` unblocks.
@@ -118,7 +119,7 @@ impl MockBackend {
                     let _ = tx.send(event);
                 }
                 if is_terminal {
-                    // Drop channels — job is done, no more events.
+                    // Drop channels after the terminal event.
                     s.event_txs.remove(&job_id);
                     Self::schedule_ttl_eviction(Arc::clone(state), cancel, job_id);
                 }
@@ -131,9 +132,9 @@ impl MockBackend {
     }
 
     /// Cancel a job. Returns:
-    /// - `None`        — job not found
-    /// - `Some(false)` — already terminal (idempotent cancel)
-    /// - `Some(true)`  — successfully cancelled
+    /// - `None`: job not found
+    /// - `Some(false)`: already terminal
+    /// - `Some(true)`: successfully cancelled
     async fn do_cancel(
         state: &Arc<Mutex<MockState>>,
         cancel: &CancellationToken,
@@ -191,7 +192,7 @@ impl MockBackend {
         kind: DomainJobKind,
     ) {
         tokio::spawn(async move {
-            // ── Queued ────────────────────────────────────────────────────
+            // Queued.
             Self::transition(
                 &state,
                 &cancel,
@@ -214,7 +215,7 @@ impl MockBackend {
                 }
             }
 
-            // ── Running ───────────────────────────────────────────────────
+            // Running.
             let phase = match &kind {
                 DomainJobKind::Prove(_) => Some(DomainJobPhase::Contributions),
                 _ => None,
@@ -229,7 +230,7 @@ impl MockBackend {
             )
             .await;
 
-            // ── Phase progress (Prove jobs only) ──────────────────────────
+            // Phase progress for Prove jobs.
             if let DomainJobKind::Prove(_) = &kind {
                 sleep(Duration::from_millis(40)).await;
 
@@ -285,7 +286,7 @@ impl MockBackend {
             // Long wait to give tests time to push input
             sleep(Duration::from_secs(2)).await;
 
-            // ── Check not cancelled ───────────────────────────────────────
+            // Check not cancelled.
             {
                 let s = state.lock().await;
                 if let Some(r) = s.jobs.get(&job_id) {
@@ -295,7 +296,7 @@ impl MockBackend {
                 }
             }
 
-            // ── Completed ─────────────────────────────────────────────────
+            // Completed.
             let result = synthesize_result(&kind);
             let event_result = result.clone();
 
@@ -319,6 +320,21 @@ impl MockBackend {
 impl Default for MockBackend {
     fn default() -> Self {
         Self::new(CancellationToken::new())
+    }
+}
+
+#[async_trait]
+impl LiveStateProvider for MockBackend {
+    async fn current_live_job(
+        &self,
+        _job_id: Option<Uuid>,
+        _program: Option<&str>,
+    ) -> ApiResult<Option<super::LiveJobSnapshot>> {
+        Ok(None)
+    }
+
+    async fn live_workers(&self) -> ApiResult<Vec<zisk_coordinator::WorkerSnapshot>> {
+        Ok(Vec::new())
     }
 }
 
@@ -358,7 +374,7 @@ impl BackendService for MockBackend {
         let input_kind = kind.input_kind().cloned();
         let job_id = Uuid::new_v4();
 
-        // Create broadcast channel (capacity 64 — enough for all lifecycle events)
+        // Capacity 64 covers the full mock lifecycle.
         let (event_tx, _) = broadcast::channel::<DomainJobEvent>(64);
         let notify = Arc::new(Notify::new());
 
@@ -463,7 +479,7 @@ impl BackendService for MockBackend {
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!(%job_id, skipped = n, "watch_job: subscriber lagged, events skipped");
-                        // continue — we'll get subsequent events
+                        // Continue; later events will carry terminal state.
                     }
                 }
             }
@@ -474,7 +490,7 @@ impl BackendService for MockBackend {
 
     async fn push_job_input(&self, job_id: Uuid, mut chunks: InputChunkStream) -> ApiResult<()> {
         // Verify the job exists and is not terminal.
-        // Reject StreamUri jobs — they cannot receive pushed input.
+        // Reject StreamUri jobs; they cannot receive pushed input.
         {
             let s = self.state.lock().await;
             let rec = s.jobs.get(&job_id).ok_or(ApiError::JobNotFound(job_id))?;
@@ -489,7 +505,7 @@ impl BackendService for MockBackend {
             if matches!(rec.input_kind, Some(DomainInputKind::StreamUri(_))) {
                 return Err(ApiError::InvalidJobState {
                     reason: format!(
-                        "job {} uses StreamUri input — cannot push input via gRPC",
+                        "job {} uses StreamUri input; cannot push input via gRPC",
                         job_id,
                     ),
                 });
@@ -552,7 +568,7 @@ impl BackendService for MockBackend {
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers.
 
 fn blake3_hex(data: &[u8]) -> String {
     blake3::hash(data).to_hex().to_string()
@@ -646,7 +662,7 @@ fn synthesize_past_events(
     }
 }
 
-// ── Extension helpers on DomainJobKind ───────────────────────────────────────
+// Extension helpers on DomainJobKind.
 
 trait JobKindExt {
     fn hash_id(&self) -> Option<&str>;

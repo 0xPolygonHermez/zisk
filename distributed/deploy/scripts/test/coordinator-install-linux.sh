@@ -14,8 +14,8 @@
 #     at runtime).
 #   - WORK_DIR/cache/ is pre-created; inputs/ is not (no rom-setup).
 #   - --api-port flag is NOT injected into ExecStart by install.sh; the
-#     /etc/zisk/coordinator.toml value (port = 7000 by default) governs.
-#     Override order: built-in default (7000) < TOML < env < CLI flag.
+#     /etc/zisk/coordinator.toml value (port = 15100 by default) governs.
+#     Override order: built-in default (15100) < TOML < env < CLI flag.
 
 set -euo pipefail
 
@@ -126,11 +126,11 @@ grep -qE '^WorkingDirectory=/var/lib/zisk-coordinator$' "$UNIT" \
 grep -E '^ExecStart=' "$UNIT" | grep -q -- '--api-port' \
     && fail "ExecStart should not carry --api-port (TOML governs)" \
     || ok "ExecStart has no --api-port flag (TOML governs)"
-# Verify the shipped TOML carries the default port = 7000 under [server].
+# Verify the shipped TOML carries the default port = 15100 under [server].
 awk '/^\[server\]/{f=1;next} /^\[/{f=0} f' "$CONFIG" \
-    | grep -qE '^port[[:space:]]*=[[:space:]]*7000([[:space:]]|#|$)' \
-    && ok "$CONFIG [server] port = 7000 (default)" \
-    || fail "$CONFIG [server] port != 7000"
+    | grep -qE '^port[[:space:]]*=[[:space:]]*15100([[:space:]]|#|$)' \
+    && ok "$CONFIG [server] port = 15100 (default)" \
+    || fail "$CONFIG [server] port != 15100"
 grep -q '^# zisk-coordinator:CONFIG_FILE=/etc/zisk/coordinator.toml$' "$UNIT" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"

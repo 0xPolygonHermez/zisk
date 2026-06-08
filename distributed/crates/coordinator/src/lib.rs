@@ -5,7 +5,9 @@ mod coordinator_grpc;
 mod hints_relay;
 mod hooks;
 pub mod job_events;
+mod job_history;
 mod metrics;
+mod program_registry;
 mod shutdown;
 mod workers_pool;
 
@@ -17,5 +19,6 @@ pub use coordinator::*;
 pub use coordinator_errors::*;
 pub use coordinator_grpc::*;
 pub use hints_relay::*;
+pub use job_history::*;
 pub use shutdown::*;
 pub use workers_pool::*;

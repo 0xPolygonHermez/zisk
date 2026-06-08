@@ -1,0 +1,19 @@
+apiVersion: 1
+
+# Infinity datasource for live coordinator JSON endpoints. Current job and
+# worker roster panels use relative paths such as `/api/v1/jobs/current` and
+# `/api/v1/workers`; history panels use the provisioned Postgres datasource.
+datasources:
+  - name: ZisK JSON
+    type: yesoreyeram-infinity-datasource
+    uid: zisk-json
+    access: proxy
+    url: ${ZISK_COORDINATOR_API_URL}
+    editable: false
+    jsonData:
+      allowedHosts:
+        - ${ZISK_COORDINATOR_API_URL}
+      auth_method: bearerToken
+    secureJsonData:
+      # Read the shared scrape token from the mounted secret file.
+      bearerToken: $__file{/etc/grafana/secrets/zisk-scrape-token}

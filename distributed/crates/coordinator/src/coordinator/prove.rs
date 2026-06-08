@@ -122,6 +122,7 @@ impl Coordinator {
         } else {
             // Task in-flight — queue this one; it will be sent after the ack.
             job.agg_task_queue.push_back(task);
+            drop(job);
         }
 
         Ok(())

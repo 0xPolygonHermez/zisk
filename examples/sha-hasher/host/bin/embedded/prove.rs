@@ -35,7 +35,11 @@ async fn main() -> Result<()> {
     println!("Proof verification successful!");
 
     println!("Saving proof to disk...");
-    result.save_proof("tmp/sha_hasher_proof.bin")?;
+    let proof_path = std::path::Path::new("tmp/sha_hasher_proof.bin");
+    if let Some(parent) = proof_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    result.save_proof(proof_path)?;
     println!("Proofs saved to tmp/ directory");
 
     let mut hash = [0u8; 32];
@@ -54,7 +58,7 @@ async fn main() -> Result<()> {
     let vk = ELF_SHA_HASHER.vk()?;
 
     println!("Loading proof with publics from disk...");
-    let proof = Proof::load("tmp/sha_hasher_proof.bin")?;
+    let proof = Proof::load(proof_path)?;
 
     println!("Verifying proof with embedded publics...");
     // Verify the proof with its embedded publics (from guest's commit)

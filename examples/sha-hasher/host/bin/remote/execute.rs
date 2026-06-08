@@ -15,7 +15,9 @@ async fn main() -> Result<()> {
 
     // Create a `ProverClient` method.
     println!("Building prover client...");
-    let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
+    let coordinator_url =
+        std::env::var("ZISK_COORDINATOR_URL").unwrap_or_else(|_| "http://127.0.0.1:15100".into());
+    let client = ProverClient::remote(coordinator_url).build()?;
 
     println!("Setting up program...");
     client.upload(&ELF_SHA_HASHER).run()?;

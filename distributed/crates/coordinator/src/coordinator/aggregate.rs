@@ -2,6 +2,7 @@ use crate::{
     coordinator::exec_stats_from_job,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
+    job_history::worker_error_reason,
 };
 use chrono::Utc;
 use colored::Colorize;
@@ -46,6 +47,15 @@ impl Coordinator {
         if !execute_task_response.success {
             drop(job);
             let reason = format!("Aggregation failed in job {}", job_id);
+            // Attribute the failure to the aggregator worker that delivered
+            // the failing response, before `fail_job` evicts state.
+            self.record_worker_error_event(
+                job_id,
+                &execute_task_response.worker_id,
+                worker_error_reason::AGG_FAIL,
+                execute_task_response.error_message.clone(),
+            )
+            .await;
             self.fail_job(job_id, &reason).await?;
 
             return Err(CoordinatorError::Internal(reason));
@@ -86,10 +96,15 @@ impl Coordinator {
 
         job.change_state(JobState::Completed);
 
+        let program = self.program_alias_for_hash(&job.hash_id);
+        crate::metrics::record_phase_durations(&program, &job.phase_timings);
         crate::metrics::record_job_terminal(
+            crate::metrics::job_kind(job.execution_only),
             crate::metrics::OUTCOME_SUCCESS,
+            &program,
             &job.workers,
             job.phase_start_time(&JobPhase::Contributions),
+            job.executed_steps,
         );
 
         let end_time = Utc::now();

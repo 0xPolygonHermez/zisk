@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: ZisK JSON
+    type: yesoreyeram-infinity-datasource
+    uid: zisk-json
+    access: proxy
+    url: ${ZISK_COORDINATOR_API_URL}
+    editable: false
+    jsonData:
+      allowedHosts:
+        - ${ZISK_COORDINATOR_API_URL}
+      auth_method: bearerToken
+    secureJsonData:
+      # Read the shared scrape token from the mounted secret file.
+      bearerToken: $__file{/etc/grafana/secrets/zisk-scrape-token}

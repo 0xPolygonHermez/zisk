@@ -10,7 +10,7 @@ image:
 imagePullSecrets: []
 
 # Coordinator gRPC endpoint. Cluster-internal DNS recommended:
-#   coordinator.<namespace>.svc.cluster.local:7000
+#   coordinator.<namespace>.svc.cluster.local:15100
 # REQUIRED — no sensible default.
 coordinator:
   url: ""

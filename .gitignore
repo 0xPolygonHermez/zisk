@@ -11,6 +11,8 @@
 /tmp
 **/tmp
 *.log
+__pycache__/
+*.pyc
 /emulator-asm/build*
 /emulator-asm/src/dma/*.o
 /emulator-asm/src/dma/test/*.o
@@ -30,3 +32,11 @@ reth-inputs/
 /hints
 /benchmark
 dist/
+
+# Local deployment secrets / operator overrides
+distributed/deploy/config/zisk-scrape-token
+distributed/deploy/config/postgres.env
+distributed/deploy/config/*.local.toml
+distributed/deploy/docker/.env
+distributed/deploy/docker/.zisk-scrape-token
+distributed/deploy/grafana/grafonnet/local/provisioning/dashboards/*.json

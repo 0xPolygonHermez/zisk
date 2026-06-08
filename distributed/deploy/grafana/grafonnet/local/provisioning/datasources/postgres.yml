@@ -1,0 +1,18 @@
+apiVersion: 1
+
+datasources:
+  - name: ZisK Postgres
+    type: postgres
+    uid: zisk-postgres
+    access: proxy
+    url: ${ZISK_POSTGRES_DATASOURCE_HOST}:${ZISK_POSTGRES_DATASOURCE_PORT}
+    user: ${ZISK_POSTGRES_DATASOURCE_USER}
+    editable: false
+    jsonData:
+      database: ${ZISK_POSTGRES_DATASOURCE_DB}
+      sslmode: ${ZISK_POSTGRES_DATASOURCE_SSLMODE}
+      maxOpenConns: 10
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: ${ZISK_POSTGRES_PASSWORD}

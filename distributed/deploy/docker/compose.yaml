@@ -1,4 +1,4 @@
-# compose.yaml — ZisK distributed proving stack
+# compose.yaml - ZisK distributed proving stack
 #
 # Usage (from the workspace root):
 #
@@ -13,7 +13,7 @@
 
 services:
 
-  # ── Coordinator ──────────────────────────────────────────────────────────────
+  # Coordinator
   # Public gRPC API + embedded coordination engine.
   # Workers connect to the coordinator on port 50052 (internal to this container).
   coordinator:
@@ -24,22 +24,31 @@ services:
     container_name: zisk-coordinator
     restart: on-failure
     ports:
-      - "7001:7001" # public gRPC API
+      - "15100:15100" # public gRPC API
       - "9091:9091" # Prometheus metrics
-    volumes:
-      - ../config/coordinator.toml:/etc/zisk/coordinator.toml:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info}
+      - ZISK_COORDINATOR_ID=${ZISK_COORDINATOR_ID:-default}
+      - ZISK_SCRAPE_TOKEN=${ZISK_SCRAPE_TOKEN:-}
+      - ZISK_SCRAPE_TOKEN_FILE=/etc/zisk/secrets/zisk-scrape-token
+      - ZISK_COORDINATOR_DATABASE_URL=${ZISK_COORDINATOR_DATABASE_URL:-postgres://zisk:zisk@postgres:5432/zisk_history}
+    # Coordinator reads the same mounted scrape token file as Prometheus and Grafana.
+    volumes:
+      - ../config/coordinator.toml:/etc/zisk/coordinator.toml:ro
+      - ${ZISK_SCRAPE_TOKEN_FILE:-../config/zisk-scrape-token.example}:/etc/zisk/secrets/zisk-scrape-token:ro
     networks:
       - zisk
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: [ "CMD", "grpc_health_probe", "-addr=:7001" ]
+      test: [ "CMD", "grpc_health_probe", "-addr=:15100" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
 
-  # ── Worker ───────────────────────────────────────────────────────────────────
+  # Worker
   # Scale with: docker compose up --scale worker=N
   # Each instance gets a unique auto-generated worker_id (no worker_id in config).
   worker:
@@ -66,17 +75,16 @@ services:
     networks:
       - zisk
 
-  # ── Prometheus ───────────────────────────────────────────────────────────────
+  # Prometheus
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: zisk-prometheus
     restart: on-failure
     ports:
       - "9090:9090"
-    extra_hosts:
-      - "coordinator:host-gateway"
     volumes:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${ZISK_SCRAPE_TOKEN_FILE:-../config/zisk-scrape-token.example}:/etc/prometheus/zisk-scrape-token:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -88,8 +96,8 @@ services:
       coordinator:
         condition: service_healthy # wait for coordinator to pass health check before scraping
 
-  # ── Grafana ──────────────────────────────────────────────────────────────────
-  # Anonymous Admin auth on port 3000 — dev-only; restrict in any non-local deploy.
+  # Grafana
+  # Anonymous Admin auth on port 3000; restrict in any non-local deploy.
   # Datasource + dashboards auto-provisioned from ../grafana on first start.
   # Edits made via the UI persist (allowUiUpdates=true); export and commit JSON
   # back to ../grafana/dashboards/ to share.
@@ -103,18 +111,58 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
       - GF_USERS_DEFAULT_THEME=dark
+      - GF_DASHBOARDS_MIN_REFRESH_INTERVAL=1s
+      - ZISK_PROMETHEUS_URL=${ZISK_PROMETHEUS_URL:-http://prometheus:9090}
+      - ZISK_COORDINATOR_API_URL=${ZISK_COORDINATOR_API_URL:-http://coordinator:9091}
+      - ZISK_POSTGRES_DATASOURCE_HOST=${ZISK_POSTGRES_DATASOURCE_HOST:-postgres}
+      - ZISK_POSTGRES_DATASOURCE_PORT=${ZISK_POSTGRES_DATASOURCE_PORT:-5432}
+      - ZISK_POSTGRES_DATASOURCE_DB=${ZISK_POSTGRES_DATASOURCE_DB:-zisk_history}
+      - ZISK_POSTGRES_DATASOURCE_USER=${ZISK_POSTGRES_DATASOURCE_USER:-zisk}
+      - ZISK_POSTGRES_DATASOURCE_SSLMODE=${ZISK_POSTGRES_DATASOURCE_SSLMODE:-disable}
+    env_file:
+      # Shared credentials file. Holds ZISK_POSTGRES_PASSWORD so the Grafana
+      # provisioning datasource can interpolate it without the value living
+      # in this compose file.
+      - ${ZISK_POSTGRES_ENV_FILE:-../config/postgres.env.example}
     volumes:
       - ../grafana/provisioning:/etc/grafana/provisioning:ro
       - ../grafana/dashboards:/etc/grafana/dashboards:ro
+      # Grafana reads the shared scrape token via $__file{} provisioning.
+      - ${ZISK_SCRAPE_TOKEN_FILE:-../config/zisk-scrape-token.example}:/etc/grafana/secrets/zisk-scrape-token:ro
       - grafana-data:/var/lib/grafana
     networks:
       - zisk
     depends_on:
       - prometheus
 
+  # Postgres Job History
+  postgres:
+    image: postgres:16-alpine
+    container_name: zisk-postgres
+    restart: on-failure
+    environment:
+      - POSTGRES_USER=zisk
+      - POSTGRES_DB=zisk_history
+    env_file:
+      # Operator-managed credentials file holding POSTGRES_PASSWORD (and any
+      # other secrets). Path defaults to the example template so docker
+      # compose can boot for a dry config check; override for real deploys.
+      - ${ZISK_POSTGRES_ENV_FILE:-../config/postgres.env.example}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - zisk
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zisk -d zisk_history" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   grafana-data:
+  postgres-data:
 
 networks:
   zisk:

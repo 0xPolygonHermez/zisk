@@ -44,6 +44,7 @@ impl Coordinator {
             ProofKind::VadcopFinal,
         );
         job.change_state(JobState::Running(JobPhase::Aggregate)); // reuse Aggregate phase as wrap phase
+        let program = self.program_alias_for_hash(&job.hash_id);
 
         let job_arc = Arc::new(RwLock::new(job));
         self.jobs.write().await.insert(job_id.clone(), job_arc);
@@ -51,7 +52,7 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
-        crate::metrics::record_job_started();
+        crate::metrics::record_job_started(crate::metrics::KIND_PROVE, &program);
 
         let req = ExecuteTaskRequestDto {
             worker_id: worker_id.clone(),
@@ -123,10 +124,14 @@ impl Coordinator {
         job.change_state(JobState::Completed);
 
         // Pairs with launch_wrap's record_job_started.
+        let program = self.program_alias_for_hash(&job.hash_id);
         crate::metrics::record_job_terminal(
+            crate::metrics::KIND_PROVE,
             crate::metrics::OUTCOME_SUCCESS,
+            &program,
             &job.workers,
             job.phase_start_time(&JobPhase::Aggregate),
+            job.executed_steps,
         );
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);

@@ -31,6 +31,7 @@ async-stream = "0.3"
 
 # Types / serialization
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 blake3 = { workspace = true }

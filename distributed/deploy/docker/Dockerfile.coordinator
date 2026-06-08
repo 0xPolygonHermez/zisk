@@ -73,7 +73,7 @@ COPY --from=builder /workspace/target/release/zisk-coordinator /usr/local/bin/zi
 COPY --from=probe   /grpc_health_probe                      /usr/local/bin/grpc_health_probe
 
 # Public gRPC API | Prometheus metrics | Worker-facing coordinator (internal)
-EXPOSE 7001 9091 50052
+EXPOSE 15100 9091 50052
 
 LABEL org.opencontainers.image.title="zisk-coordinator" \
       org.opencontainers.image.description="Coordinator server for the ZisK distributed proving system" \

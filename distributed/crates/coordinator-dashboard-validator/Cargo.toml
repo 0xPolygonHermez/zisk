@@ -1,0 +1,17 @@
+[package]
+name = "zisk-coordinator-dashboard-validator"
+description = "Validates the ZisK operator Grafana dashboard against the coordinator contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "validate-dashboard"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+regex = "1"

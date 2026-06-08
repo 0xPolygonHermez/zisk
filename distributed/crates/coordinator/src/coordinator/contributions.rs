@@ -2,6 +2,7 @@ use crate::{
     coordinator::exec_stats_from_job,
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
+    job_history::worker_error_reason,
     Coordinator, PrecompileHintsRelay, WorkersPool,
 };
 use chrono::Utc;
@@ -499,7 +500,8 @@ impl Coordinator {
 
         // Calculate total execution time
         let end_time = Utc::now();
-        let start_time = job.phase_start_time(&JobPhase::Execution).unwrap_or(end_time);
+        let execution_started = job.phase_start_time(&JobPhase::Execution);
+        let start_time = execution_started.unwrap_or(end_time);
         let total_duration = end_time.signed_duration_since(start_time);
         let duration = Duration::from_millis(total_duration.num_milliseconds() as u64);
 
@@ -529,8 +531,19 @@ impl Coordinator {
             header, duration_str, steps_str, instances_str, job.compute_capacity, metadata_str
         );
 
-        // Print ASM execution statistics if multiple workers
         let workers = job.workers.clone();
+        let program = self.program_alias_for_hash(&job.hash_id);
+        crate::metrics::record_phase_durations(&program, &job.phase_timings);
+        crate::metrics::record_job_terminal(
+            crate::metrics::KIND_EXECUTE,
+            crate::metrics::OUTCOME_SUCCESS,
+            &program,
+            &workers,
+            execution_started,
+            job.executed_steps,
+        );
+
+        // Print ASM execution statistics if multiple workers
         if workers.len() > 1 {
             if let Some(results) = job.results.get(&JobPhase::Execution) {
                 // Extract overall execution times (phase duration from task received to completion)
@@ -640,13 +653,6 @@ impl Coordinator {
                 }
             })
             .unwrap_or_default();
-
-        // Pairs with launch_proof's record_job_started (execution-only path).
-        crate::metrics::record_job_terminal(
-            crate::metrics::OUTCOME_SUCCESS,
-            &job.workers,
-            job.phase_start_time(&JobPhase::Execution),
-        );
 
         // Release job lock before cleanup
         drop(job);
@@ -1076,6 +1082,21 @@ impl Coordinator {
                     },
                 )
                 .collect();
+
+            // Emit one history row per failed worker BEFORE fail_job runs.
+            // Contributions sits in the Prove pipeline conceptually but is
+            // its own phase; we bucket as `prove_fail` so the dashboard's
+            // prove-phase-failure panel surfaces these errors alongside
+            // proper Phase2 failures.
+            for failed_worker in &failed_workers {
+                self.record_worker_error_event(
+                    &job.job_id,
+                    failed_worker,
+                    worker_error_reason::PROVE_FAIL,
+                    Some(format!("Phase1 worker {} reported failure", failed_worker)),
+                )
+                .await;
+            }
 
             let reason =
                 format!("Phase1 failed for workers: {failed_workers:?} in job {}", job.job_id);

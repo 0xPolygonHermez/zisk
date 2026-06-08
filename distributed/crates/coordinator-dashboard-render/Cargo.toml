@@ -1,0 +1,20 @@
+[package]
+name = "zisk-coordinator-dashboard-render"
+description = "Per-panel render check for the ZisK operator Grafana dashboard: queries each panel's data through the Grafana datasource proxy and asserts populated/empty state per operator expectation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "render-dashboard"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+clap = { workspace = true }
+base64 = "0.22"
+urlencoding = "2"
