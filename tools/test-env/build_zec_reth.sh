@@ -27,21 +27,13 @@ patch_cargo_dep() {
 
     local new_line="${crate} = { path = \"${dep_path}\" }"
 
-    # Comment line:   <crate> = { git = "https://github.com/0xPolygonHermez/zisk.git", branch = "..." }
+    # Comment out the git dependency line and add a local path entry right below it, in a
+    # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
+    # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
+    # Idempotent: on reruns the git line is already commented, so it no longer matches.
     ensure sed "${SED_PARAMS[@]}" \
-        "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git~# &~" \
-        "${cargo_toml}" || return 1
-
-    # Remove any previously-added uncommented path entry (idempotent reruns).
-    ensure sed "${SED_PARAMS[@]}" \
-        "/^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*path/d" \
-        "${cargo_toml}" || return 1
-
-    # Insert a new uncommented path entry right after the (now) commented git dependency,
-    # pointing to the resolved absolute path so it works regardless of where the ZisK repo lives.
-    ensure sed "${SED_PARAMS[@]}" \
-        "/^#[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git/a\\
-${new_line}" \
+        "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git.*~# &\\
+${new_line}~" \
         "${cargo_toml}" || return 1
 
     # Verify the patch was applied correctly.
