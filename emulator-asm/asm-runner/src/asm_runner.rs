@@ -3,41 +3,76 @@ use thiserror::Error;
 
 use crate::AsmService;
 
+/// Enum representing various errors that can occur during the execution of the assembly runner, including semaphore errors, thread pool errors, child process errors, and unexpected conditions.
 #[derive(Debug, Error)]
 pub enum AsmRunError {
+    /// Errors related to semaphore creation and synchronization.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[error("Failed to create semaphore '{0}': {1}")]
     SemaphoreError(String, #[source] named_sem::Error),
+
+    /// Errors related to thread pool creation for parallel execution.
     #[error("Thread pool creation failed")]
     ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
+
+    /// Errors related to waiting on a semaphore.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     #[error("Semaphore wait failed: {0}")]
     SemaphoreWaitError(#[from] std::io::Error),
+
+    /// Errors related to child process execution, including non-zero exit codes.
     #[error("Child process exited with code: {0}")]
     ExitCode(u32),
+
+    /// Errors related to joining the thread that runs the child process.
     #[error("Thread join failed")]
     JoinPanic,
+
+    /// Errors returned by the child service process, encapsulated as `anyhow::Error` for context.
     #[error("Child service returned error: {0}")]
     ServiceError(#[source] anyhow::Error),
+
+    /// Errors related to unexpected conditions, such as unwrapping an `Arc` that has been dropped.
     #[error("Arc unwrap failed")]
     ArcUnwrap,
 }
 
+/// Enum representing the level of tracing to be performed during assembly execution, with options for no tracing, basic tracing, and extended tracing.
 #[derive(Debug, Clone)]
 pub enum AsmRunnerTraceLevel {
+    /// No tracing will be performed.
     None,
+    /// Basic tracing will be performed, capturing essential execution information.
     Trace,
+    /// Extended tracing will be performed, capturing detailed execution information for in-depth analysis.
     ExtendedTrace,
 }
 
+/// This struct represents the assembly runner options, allowing configuration of logging, metrics, verbosity, trace level, and other execution parameters. It provides a builder pattern for easy configuration and a method to apply these options to a command-line `Command` that will execute the assembly code.
 #[derive(Debug, Clone)]
 pub struct AsmRunnerOptions {
+    /// Enables or disables logging output from the assembly runner.
     pub log_output: bool,
+
+    /// Enables or disables metrics collection during assembly execution.
     pub metrics: bool,
+
+    /// Enables or disables verbose output for debugging purposes.
     pub verbose: bool,
+
+    /// Specifies the level of tracing to be performed during assembly execution.
     pub trace_level: AsmRunnerTraceLevel,
+
+    /// Enables or disables Keccak-specific tracing, which may provide additional insights for certain workloads.
     pub keccak_trace: bool,
+
+    /// The local rank of the process, used for distinguishing between multiple instances in a distributed setup.
     pub local_rank: i32,
+
+    /// Enables or disables unlocking of mapped memory after use, which can be important for certain performance optimizations or resource management strategies.
     pub unlock_mapped_memory: bool,
+
+    /// Enables or disables redirecting assembly output to a file, which can be useful for debugging or record-keeping.
     pub asm_out_file: bool,
 }
 
@@ -92,16 +127,19 @@ impl AsmRunnerOptions {
         self
     }
 
+    /// Sets the local rank of the process.
     pub fn with_local_rank(mut self, rank: i32) -> Self {
         self.local_rank = rank;
         self
     }
 
+    /// Enables or disables unlocking of mapped memory after use.
     pub fn with_unlock_mapped_memory(mut self, value: bool) -> Self {
         self.unlock_mapped_memory = value;
         self
     }
 
+    /// Enables or disables redirecting assembly output to a file.
     pub fn with_asm_out_file(mut self, value: bool) -> Self {
         self.asm_out_file = value;
         self

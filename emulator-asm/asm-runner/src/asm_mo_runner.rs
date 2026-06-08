@@ -21,6 +21,7 @@ use anyhow::{Context, Result};
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
+/// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MOShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
@@ -28,6 +29,7 @@ pub struct MOShmemReader {
 }
 
 impl MOShmemReader {
+    /// Creates a new `MOShmemReader` by opening and mapping the shared memory for the MO trace output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
@@ -63,16 +65,19 @@ impl Drop for MOShmemReader {
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate minimal traces.
+/// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
+    /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
 }
 
 impl AsmRunnerMO {
+    /// Creates a new `AsmRunnerMO` with the given plans.
     pub fn new(plans: Vec<Plan>) -> Self {
         Self { plans }
     }
 
+    /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
     #[allow(clippy::too_many_arguments)]
     pub fn run<R>(
         preloaded: &mut MOShmemReader,

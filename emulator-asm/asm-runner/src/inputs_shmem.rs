@@ -11,6 +11,7 @@ use crate::{sem_input_avail_name, shmem_input_name, AsmServices, ControlShmem, S
 
 use anyhow::Result;
 
+/// This struct manages the shared memory for writing inputs to the C++ side.
 pub struct InputsShmemWriter {
     writer: Mutex<ShmemWriter>,
     control_writer: Arc<ControlShmem>,
@@ -61,6 +62,7 @@ impl InputsShmemWriter {
         *self.sem_avails.lock().unwrap() = None;
     }
 
+    /// Writes inputs to the shared memory and updates the control shared memory.
     pub fn write_input(&self, inputs: &[u8]) -> Result<()> {
         if inputs.is_empty() {
             return Ok(());
@@ -72,6 +74,7 @@ impl InputsShmemWriter {
         Ok(())
     }
 
+    /// Appends inputs to the shared memory and updates the control shared memory.
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
         self.writer.lock().unwrap().append_input(inputs)?;
         self.control_writer.inc_inputs_size(inputs.len())?;
@@ -98,6 +101,7 @@ impl InputsShmemWriter {
         self.notify_all_services()
     }
 
+    /// Resets the shared memory and control flags, and drains any stale semaphore posts.
     pub fn reset(&self) {
         let mut writer = self.writer.lock().unwrap();
         writer.reset();

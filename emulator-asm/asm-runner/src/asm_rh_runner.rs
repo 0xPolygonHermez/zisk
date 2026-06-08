@@ -9,11 +9,13 @@ use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 
 use anyhow::{Context, Result};
 
+/// This struct manages the shared memory for reading ROM histogram results from the C++ side.
 pub struct RHShmemReader {
     pub(crate) output_shmem: AsmShmem<AsmRHHeader>,
 }
 
 impl RHShmemReader {
+    /// Creates a new `RHShmemReader` by opening and mapping the shared memory for the ROM histogram output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::RH, Some(0));
 
@@ -24,8 +26,9 @@ impl RHShmemReader {
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate the ROM histogram.
+/// This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
+    /// The generated ROM histogram data from the RH trace.
     pub asm_rowh_output: AsmRHData,
 }
 
@@ -42,10 +45,12 @@ impl Drop for AsmRunnerRH {
 }
 
 impl AsmRunnerRH {
+    /// Creates a new `AsmRunnerRH` with the given ROM histogram output data.
     pub fn new(asm_rowh_output: AsmRHData) -> Self {
         AsmRunnerRH { asm_rowh_output }
     }
 
+    /// Runs the assembly code in a separate process, collects the ROM histogram results, and generates execution info.
     pub fn run(
         asm_shared_memory: &mut Option<RHShmemReader>,
         max_steps: u64,

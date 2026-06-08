@@ -18,11 +18,13 @@ use crate::{
 
 use anyhow::{Context, Result};
 
+/// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MTShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
 }
 
 impl MTShmemReader {
+    /// Creates a new `MTShmemReader` by opening and mapping the shared memory for the MT trace output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
@@ -38,16 +40,19 @@ impl MTShmemReader {
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate minimal traces.
+/// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMT {
+    /// The generated trace chunks from the MT trace.
     pub vec_chunks: Vec<EmuTrace>,
 }
 
 impl AsmRunnerMT {
+    /// Creates a new `AsmRunnerMT` with the given trace chunks.
     pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
         Self { vec_chunks }
     }
 
+    /// Runs the assembly code in a separate process, collects the MT trace chunks, and generates execution info.
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
         preloaded: &mut MTShmemReader,

@@ -10,14 +10,19 @@ use std::process::Stdio;
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
 
+/// This enum represents the different assembly services (MO, MT, RH) that can be run as separate processes. It provides methods to get the command path for each service, build the command to run the service with the appropriate options and shared memory/semaphore prefixes, and handle shutdown and cleanup of resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
+    /// Memory Operations service, responsible for collecting memory operation traces.
     MO,
+    /// Minimal Trace service, responsible for collecting minimal execution traces.
     MT,
+    /// ROM Histogram service, responsible for collecting ROM histogram data.
     RH,
 }
 
 impl AsmService {
+    /// Returns a string representation of the service, used for command paths and logging.
     pub fn as_str(&self) -> &'static str {
         match self {
             AsmService::MO => "MO",
@@ -117,6 +122,7 @@ impl fmt::Display for AsmService {
     }
 }
 
+/// This struct represents the ASM services
 #[derive(Clone)]
 pub struct AsmServices {
     service: StdioService,
@@ -125,6 +131,7 @@ pub struct AsmServices {
 }
 
 impl AsmServices {
+    /// Array of all services, used for iteration in setup and cleanup.
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
     /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
@@ -137,10 +144,12 @@ impl AsmServices {
         &self.sem_prefix
     }
 
+    /// Returns the local rank of the process.
     pub fn local_rank(&self) -> i32 {
         self.service.local_rank
     }
 
+    /// Returns the world rank of the process.
     pub fn world_rank(&self) -> i32 {
         self.service.world_rank
     }
@@ -261,6 +270,7 @@ impl AsmServices {
         Ok(())
     }
 
+    /// Stop all services by sending shutdown requests and waiting for their completion.
     pub fn stop_asm_services(&self) -> Result<()> {
         let running = self.service.running_services();
 
@@ -295,6 +305,7 @@ impl AsmServices {
         self.service.send_memory_ops_request(max_steps, chunk_len)
     }
 
+    /// Sends a shutdown request to the specified service and waits for its completion.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
         let sem_name = format!("/{}_{}_shutdown_done", self.sem_prefix, service.as_str());

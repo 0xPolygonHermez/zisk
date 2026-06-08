@@ -17,14 +17,18 @@ impl AsmShmemHeader for AsmRHHeader {
     }
 }
 
+/// This struct represents the ROM histogram data collected from the assembly code execution.
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct AsmRHData {
+    /// The number of steps executed.
     pub steps: u64,
+    /// A vector containing the instruction count for each ROM.
     pub inst_count: Vec<u64>,
 }
 
 impl AsmRHData {
+    /// Creates a new `AsmRHData` with the given number of steps and instruction count vector.  
     pub fn new(steps: u64, inst_count: Vec<u64>) -> Self {
         AsmRHData { steps, inst_count }
     }

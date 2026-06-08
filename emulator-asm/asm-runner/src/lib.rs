@@ -1,3 +1,12 @@
+//! The `asm-runner` crate provides the core logic for managing the assembly runner process,
+//! including shared memory management, synchronization primitives,
+//! and communication with the C++ side of the emulator.
+//! It defines the main types and functions used by the assembly runner to execute assembly code 
+//! and interact with the rest of the emulator.
+
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
 // On non-Linux-x86_64 the ASM runner is a stub shell: the real runners and the
 // shared-memory machinery they drive are `cfg`-gated out, so most of the crate's
 // types/fns have no caller there. Silence the resulting dead-code/unused-import
