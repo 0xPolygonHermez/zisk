@@ -14,7 +14,7 @@ use crate::{
 use anyhow::Result;
 
 pub struct InputsShmemWriter {
-    writers: Vec<Mutex<SharedMemoryWriter>>,
+    writer: Mutex<SharedMemoryWriter>,
     control_writer: Arc<ControlShmem>,
     sem_avails: Mutex<Option<Vec<NamedSemaphore>>>,
 }
@@ -30,20 +30,14 @@ impl InputsShmemWriter {
         unlock_mapped_memory: bool,
         control_writer: Arc<ControlShmem>,
     ) -> Result<Self> {
-        let writers = AsmServices::SERVICES
-            .iter()
-            .map(|service| {
-                let name = shmem_input_name(shm_prefix, *service);
-                let mut writer =
-                    SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)
-                        .map_err(anyhow::Error::from)?;
-                writer.reset();
-                writer.append_input(&0u64.to_le_bytes())?;
-                Ok(Mutex::new(writer))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let name = shmem_input_name(shm_prefix);
+        let mut writer =
+            SharedMemoryWriter::new(&name, MAX_INPUT_SIZE as usize, unlock_mapped_memory)
+                .map_err(anyhow::Error::from)?;
+        writer.reset();
+        writer.append_input(&0u64.to_le_bytes())?;
 
-        Ok(Self { writers, control_writer, sem_avails: Mutex::new(None) })
+        Ok(Self { writer: Mutex::new(writer), control_writer, sem_avails: Mutex::new(None) })
     }
 
     /// Open the per-service input-availability semaphores for a given program.
@@ -71,18 +65,14 @@ impl InputsShmemWriter {
             return Ok(());
         }
 
-        for writer in &self.writers {
-            writer.lock().unwrap().write_at(8, inputs)?;
-        }
+        self.writer.lock().unwrap().write_at(8, inputs)?;
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
         Ok(())
     }
 
     pub fn append_input(&self, inputs: &[u8]) -> Result<()> {
-        for writer in &self.writers {
-            writer.lock().unwrap().append_input(inputs)?;
-        }
+        self.writer.lock().unwrap().append_input(inputs)?;
         self.control_writer.inc_inputs_size(inputs.len());
         self.notify_all_services()?;
         Ok(())
@@ -108,12 +98,11 @@ impl InputsShmemWriter {
     }
 
     pub fn reset(&self) {
-        for writer in &self.writers {
-            let mut w = writer.lock().unwrap();
-            w.reset();
-            w.append_input(&0u64.to_le_bytes())
-                .expect("Failed to write initial header after reset");
-        }
+        let mut writer = self.writer.lock().unwrap();
+        writer.reset();
+        writer
+            .append_input(&0u64.to_le_bytes())
+            .expect("Failed to write initial header after reset");
 
         self.control_writer.reset();
         if let Some(sems) = self.sem_avails.lock().unwrap().as_mut() {

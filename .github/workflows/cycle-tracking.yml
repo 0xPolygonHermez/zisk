@@ -1,0 +1,81 @@
+name: "Cycle Tracking"
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths-ignore:
+      - 'book/**'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch to compare against (manual runs only)"
+        required: false
+        default: "develop"
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cycle-tracking:
+    name: "Compare emulator cost vs base branch"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: "Free disk space"
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: "Checkout sources"
+        uses: "actions/checkout@v4"
+        with:
+          fetch-depth: 0
+
+      - name: "Install dependencies"
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: "Benchmark PR branch"
+        run: bash .github/scripts/zisk_bench.sh "$RUNNER_TEMP/pr"
+
+      - name: "Checkout base branch"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+          path: base-tree
+
+      - name: "Benchmark base branch"
+        env:
+          BENCH_REPO_DIR: ${{ github.workspace }}/base-tree
+        run: bash .github/scripts/zisk_bench.sh "$RUNNER_TEMP/base"
+
+      - name: "Build execution report"
+        run: |
+          python3 .github/scripts/zisk_cycle_diff.py "$RUNNER_TEMP/base" "$RUNNER_TEMP/pr" > "$RUNNER_TEMP/report.md"
+          # Always show the report in this run's summary.
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "Upload report artifact"
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-tracking-report
+          path: ${{ runner.temp }}/report.md
+          if-no-files-found: error
+          retention-days: 7

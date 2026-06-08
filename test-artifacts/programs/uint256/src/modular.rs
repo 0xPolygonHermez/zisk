@@ -154,9 +154,13 @@ pub fn modular_tests() {
     assert_eq!(reduce_mod(&ONE, &ZERO), ZERO);
     // a < modulus → unchanged
     assert_eq!(reduce_mod(&[5, 0, 0, 0], &m7), [5, 0, 0, 0]);
+    // a == modulus → 0 (boundary: must not short-circuit to `a`)
+    assert_eq!(reduce_mod(&m7, &m7), ZERO);
     // a > modulus → reduced
     assert_eq!(reduce_mod(&[8, 0, 0, 0], &m7), [1, 0, 0, 0]);
     assert_eq!(reduce_mod(&[100, 0, 0, 0], &m7), [2, 0, 0, 0]);
+    // modulus == 1 → always 0
+    assert_eq!(reduce_mod(&[42, 0, 0, 0], &ONE), ZERO);
 
     // ── add_mod ────────────────────────────────────────────────────────────
     // modulus == 0 → always ZERO
@@ -191,6 +195,12 @@ pub fn modular_tests() {
     assert_eq!(pow_mod(&[42, 0, 0, 0], &ZERO, &m7), ONE);
     // base^1 = base (mod modulus)
     assert_eq!(pow_mod(&[3, 0, 0, 0], &ONE, &m7), [3, 0, 0, 0]);
+    // base^1 with base >= modulus must still reduce: 9^1 mod 7 = 2, 7^1 mod 7 = 0
+    assert_eq!(pow_mod(&[9, 0, 0, 0], &ONE, &m7), [2, 0, 0, 0]);
+    assert_eq!(pow_mod(&m7, &ONE, &m7), ZERO);
+    // modulus == 1 → always 0, including the base^0 / 1^exp fast paths
+    assert_eq!(pow_mod(&[42, 0, 0, 0], &ZERO, &ONE), ZERO);
+    assert_eq!(pow_mod(&ONE, &[3, 0, 0, 0], &ONE), ZERO);
     // 0^exp = 0
     assert_eq!(pow_mod(&ZERO, &[5, 0, 0, 0], &m7), ZERO);
     // 1^exp = 1

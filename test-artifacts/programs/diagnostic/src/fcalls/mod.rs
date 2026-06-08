@@ -1,6 +1,7 @@
 mod bigint;
 mod bls12_381;
 mod bn254;
+mod fcall_limits;
 mod msb;
 mod secp256k1;
 mod secp256r1;

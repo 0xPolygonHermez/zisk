@@ -1,6 +1,6 @@
 use serial_test::serial;
 use test_artifacts::{
-    ELF_BLS12_381, ELF_BN254, ELF_MODEXP, ELF_SECP256K1, ELF_SECP256R1, ELF_UINT256,
+    ELF_BIGINT, ELF_BLS12_381, ELF_BN254, ELF_SECP256K1, ELF_SECP256R1, ELF_UINT256,
 };
 use zisk_common::io::ZiskStdin;
 
@@ -23,10 +23,10 @@ fn execute_bn254() {
 
 #[test]
 #[serial]
-fn execute_modexp() {
-    ELF_MODEXP
+fn execute_bigint() {
+    ELF_BIGINT
         .run_emulation(ZiskStdin::new(), None)
-        .expect("modexp zisklib guest emulation failed");
+        .expect("bigint zisklib guest emulation failed");
 }
 
 #[test]

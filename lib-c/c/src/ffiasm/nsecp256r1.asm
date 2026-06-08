@@ -37,11 +37,14 @@
         global nSecp256r1_rawSub
         global nSecp256r1_rawNeg
         global nSecp256r1_rawMMul
+        global nSecp256r1_rawMMul1
         global nSecp256r1_rawMSquare
         global nSecp256r1_rawToMontgomery
         global nSecp256r1_rawFromMontgomery
         global nSecp256r1_rawIsEq
         global nSecp256r1_rawIsZero
+        global nSecp256r1_rawShr
+        global nSecp256r1_rawShl
         global nSecp256r1_rawq
         global nSecp256r1_rawR3
 
@@ -6625,6 +6628,7 @@ tmp_107:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+nSecp256r1_rawShr:
 rawShr:
         cmp rdx, 0
         je nSecp256r1_rawCopy
@@ -6825,6 +6829,7 @@ rawShr_endif3_3:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+nSecp256r1_rawShl:
 rawShl:
         cmp rdx, 0
         je nSecp256r1_rawCopy
@@ -8875,6 +8880,3 @@ R3      dq      0xac8ebec90b65a624,0x111f28ae0c0555c9,0x2543b9246ba5e93f,0x503a5
 lboMask dq      0xffffffffffffffff
 np      dq      0xccd1c8aaee00bc4f
 
-
-; Mark stack as non-executable
-section .note.GNU-stack noalloc noexec nowrite progbits

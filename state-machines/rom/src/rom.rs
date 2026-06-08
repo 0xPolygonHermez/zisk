@@ -4,10 +4,10 @@
 
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
-use crate::{RomError, RomInstance, RomPlanner, RomResult};
+use crate::{RomError, RomInstance, RomResult};
 use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
-use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx, Planner};
+use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
@@ -59,14 +59,6 @@ impl RomSM {
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
-    /// Builds a planner for ROM-related instances.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RomPlanner`.
-    fn build_planner(&self) -> Box<dyn Planner> {
-        Box::new(RomPlanner)
-    }
-
     /// Builds an instance of the ROM state machine.
     ///
     /// # Arguments

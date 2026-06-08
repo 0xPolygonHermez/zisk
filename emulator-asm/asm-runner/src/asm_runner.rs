@@ -39,8 +39,6 @@ pub struct AsmRunnerOptions {
     pub local_rank: i32,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
-    pub share_input_shmem: bool,
-    pub open_input_shmem: bool,
 }
 
 impl Default for AsmRunnerOptions {
@@ -61,8 +59,6 @@ impl AsmRunnerOptions {
             local_rank: 0,
             unlock_mapped_memory: false,
             asm_out_file: false,
-            share_input_shmem: false,
-            open_input_shmem: false,
         }
     }
 
@@ -111,16 +107,6 @@ impl AsmRunnerOptions {
         self
     }
 
-    pub fn with_share_input_shmem(mut self, value: bool) -> Self {
-        self.share_input_shmem = value;
-        self
-    }
-
-    pub fn with_open_input_shmem(mut self, value: bool) -> Self {
-        self.open_input_shmem = value;
-        self
-    }
-
     /// Applies the configuration flags to a command-line `Command`.
     ///
     /// # Arguments
@@ -138,7 +124,9 @@ impl AsmRunnerOptions {
         command.arg(format!("--gen={}", asm_service.gen_index()));
 
         command.arg("--stdio");
+
         command.arg("--open_all_shm");
+        command.arg("--share_input_shm");
 
         if self.unlock_mapped_memory {
             command.arg("-u");
@@ -151,7 +139,7 @@ impl AsmRunnerOptions {
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
 
-        if !self.log_output {
+        if self.log_output {
             command.arg("-o");
         }
 

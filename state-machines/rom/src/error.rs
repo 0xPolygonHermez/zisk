@@ -36,6 +36,10 @@ pub enum RomError {
     /// a framework-side invariant violation.
     #[error("collector dispatched to ROM AIR is not a RomCollector")]
     BadCollectorType,
+
+    /// A generic error variant to wrap any other error types that may arise.
+    #[error("ROM error: {0}")]
+    Custom(String),
 }
 
 /// Convenience [`Result`] alias for fallible operations in this crate.
