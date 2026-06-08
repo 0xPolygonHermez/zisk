@@ -2,7 +2,7 @@ use core::panic;
 use std::sync::Arc;
 
 use fields::{
-    add, matmul_external, pow7, pow7add, prodadd, Poseidon16, Poseidon2Constants, PrimeField64,
+    add, matmul_external, pow7, pow7add, prodadd, Poseidon2Constants, Poseidon2_16, PrimeField64,
 };
 use rayon::prelude::*;
 
@@ -76,10 +76,10 @@ impl<F: PrimeField64> Poseidon2SM<F> {
         matmul_external::<F, 16>(&mut state);
         round_states[1] = state.map(|x| x.as_canonical_u64());
 
-        for r in 0..Poseidon16::HALF_ROUNDS {
+        for r in 0..Poseidon2_16::HALF_ROUNDS {
             let mut c_slice = [F::ZERO; 16];
             for (i, c) in c_slice.iter_mut().enumerate() {
-                *c = F::from_u64(Poseidon16::RC[r * 16 + i]);
+                *c = F::from_u64(Poseidon2_16::RC[r * 16 + i]);
             }
             pow7add::<F, 16>(&mut state, &c_slice);
             matmul_external::<F, 16>(&mut state);
@@ -88,14 +88,14 @@ impl<F: PrimeField64> Poseidon2SM<F> {
 
         let mut row = 6;
         let mut index = 0;
-        for r in 0..Poseidon16::N_PARTIAL_ROUNDS {
+        for r in 0..Poseidon2_16::N_PARTIAL_ROUNDS {
             round_states[row][index] = state[0].as_canonical_u64();
             index += 1;
 
-            state[0] += F::from_u64(Poseidon16::RC[Poseidon16::HALF_ROUNDS * 16 + r]);
+            state[0] += F::from_u64(Poseidon2_16::RC[Poseidon2_16::HALF_ROUNDS * 16 + r]);
             state[0] = pow7(state[0]);
             let sum = add::<F, 16>(&state);
-            prodadd::<F, 16>(&mut state, Poseidon16::DIAG, sum);
+            prodadd::<F, 16>(&mut state, Poseidon2_16::DIAG, sum);
             if r == 10 {
                 round_states[7] = state.map(|x| x.as_canonical_u64());
                 row = 8;
@@ -105,16 +105,23 @@ impl<F: PrimeField64> Poseidon2SM<F> {
 
         round_states[9] = state.map(|x| x.as_canonical_u64());
 
-        for r in 0..Poseidon16::HALF_ROUNDS {
+        for r in 0..Poseidon2_16::HALF_ROUNDS {
             let mut c_slice = [F::ZERO; 16];
             for (i, c) in c_slice.iter_mut().enumerate() {
                 *c = F::from_u64(
-                    Poseidon16::RC
-                        [Poseidon16::HALF_ROUNDS * 16 + Poseidon16::N_PARTIAL_ROUNDS + r * 16 + i],
+                    Poseidon2_16::RC[Poseidon2_16::HALF_ROUNDS * 16
+                        + Poseidon2_16::N_PARTIAL_ROUNDS
+                        + r * 16
+                        + i],
                 );
             }
             pow7add::<F, 16>(&mut state, &c_slice);
             matmul_external::<F, 16>(&mut state);
+            if r == Poseidon2_16::HALF_ROUNDS - 1 {
+                for i in 0..16 {
+                    state[i] += F::from_u64(input.state[i]);
+                }
+            }
             round_states[10 + r] = state.map(|x| x.as_canonical_u64());
         }
 

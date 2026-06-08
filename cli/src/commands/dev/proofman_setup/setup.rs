@@ -3,6 +3,9 @@ use pil2_stark_setup::commands::setup::{run_setup, SetupOptions};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
+const DEFAULT_HASH: &str =
+    if cfg!(feature = "stark-poseidon1") { "Poseidon1" } else { "Poseidon2" };
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run non-recursive (and optionally recursive) setup for all AIRs.
@@ -43,6 +46,10 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(short = 'o', long)]
     output: Option<String>,
 
+    /// Hash function to use: Poseidon1 or Poseidon2
+    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
+    pub hash: String,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -53,6 +60,7 @@ impl ZiskProofmanSetupSetup {
         setup_logger(self.verbose.into());
 
         let opts = SetupOptions {
+            hash: self.hash.clone(),
             airout_path: self.airout.clone(),
             build_dir: self.build_dir.clone(),
             fixed_dir: self.fixed_dir.clone(),

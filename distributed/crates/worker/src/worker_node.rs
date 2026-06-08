@@ -794,7 +794,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             error!("Failed to get vadcop verification key: {}", e);
                             vec![]
                         });
-                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey) {
+                        let hash = self.worker.hash().unwrap_or_else(|e| {
+                            error!("Failed to get proving-key hash family: {}", e);
+                            String::new()
+                        });
+                        match Proof::new_from_vadcop_proof(&flat_proof, minimal, verkey, hash) {
                             Ok(zisk_proof) => {
                                 let final_proof: Proof = if is_plonk {
                                     match self
