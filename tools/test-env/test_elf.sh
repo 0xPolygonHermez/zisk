@@ -142,7 +142,14 @@ test_elf() {
     if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
         gpu_flag="--gpu"
     fi
-    
+
+    # The Rust emulator is the default backend; force the ASM backend (the
+    # production path) everywhere except macOS, which has no ASM support.
+    local asm_flag=""
+    if [[ "${PLATFORM}" != "darwin" ]]; then
+        asm_flag="--asm"
+    fi
+
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $MPI_PROCESSES -x OMP_NUM_THREADS=$MPI_THREADS -x RAYON_NUM_THREADS=$MPI_THREADS"
 
@@ -165,6 +172,7 @@ test_elf() {
             ensure cargo-zisk-dev verify-constraints \
                 -e "${ELF_FILE}" \
                 ${input_flag} \
+                ${asm_flag} \
                 ${gpu_flag} \
                 2>&1 | tee "${LOGS_DIR}/single/constraints_${input_file}.log" || return 1
             if ! grep -F "All global constraints were successfully verified" \
@@ -181,6 +189,7 @@ test_elf() {
                     -e "${ELF_FILE}" \
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
+                    ${asm_flag} \
                     ${gpu_flag} \
                     2>&1 | tee "${LOGS_DIR}/single/prove_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" "${LOGS_DIR}/single/prove_${input_file}.log"; then
@@ -231,6 +240,7 @@ test_elf() {
                     -e "${ELF_FILE}" \
                     ${input_flag} \
                     -o ${PROOF_DIR} $PROVE_FLAGS \
+                    ${asm_flag} \
                     ${gpu_flag} \
                     2>&1 | tee "${LOGS_DIR}/mpi/prove_mpi_${input_file}.log" || return 1
                 if ! grep -qF "Vadcop Final proof was verified" \
