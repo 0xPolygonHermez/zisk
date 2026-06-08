@@ -20,7 +20,7 @@ use crate::{
     DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
     INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_COST, REG_A0, SHA256_COST, SYS_ADDR,
 };
-use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+use fields::{poseidon2_hash, Goldilocks, Poseidon2_16, PrimeField64};
 use paste::paste;
 use std::{
     collections::HashMap,
@@ -1387,7 +1387,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }
@@ -1411,7 +1411,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }

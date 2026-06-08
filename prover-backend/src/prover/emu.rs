@@ -269,6 +269,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
+    fn hash(&self) -> Result<String> {
+        self.core_prover.backend.hash()
+    }
+
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         Err(anyhow::anyhow!("EmuProver does not support hints"))
     }

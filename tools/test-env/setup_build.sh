@@ -98,6 +98,7 @@ CACHE_ENTRY=""
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
+HASH="Poseidon2"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 
@@ -115,6 +116,7 @@ while [ $# -gt 0 ]; do
     --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
+    --hash)              HASH="$2";               shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
@@ -348,6 +350,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
     --stark-structs state-machines/starkstructs.json \
+    --hash "$HASH" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 

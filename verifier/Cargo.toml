@@ -8,7 +8,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta", default-features = false, features = [
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/add_poseidon1", default-features = false, features = [
   "verify",
 ] }
 

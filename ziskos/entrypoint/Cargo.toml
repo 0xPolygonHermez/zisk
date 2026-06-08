@@ -52,7 +52,7 @@ ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
 sha2 = { workspace = true }
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta", features = [
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/add_poseidon1", features = [
   "verify",
 ] }
 blst = "0.3.16"
@@ -72,6 +72,7 @@ ctor = { version = "0.2", optional = true }
 
 [features]
 default = ["user-hints", "inputcpy"]
+stark-poseidon1 = []
 user-hints = [
   "dep:zisk-stream",
   "dep:bytes",

@@ -1,4 +1,4 @@
-use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+use fields::{poseidon2_hash, Goldilocks, Poseidon2_16, PrimeField64};
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
@@ -19,7 +19,7 @@ impl<F: PrimeField64> PrecompileMemInputs for Poseidon2SM<F> {
 
         // Apply the poseidon2 hash function
         let state_gl = state.map(Goldilocks::new);
-        let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&state_gl);
+        let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&state_gl);
         for (i, d) in state.iter_mut().enumerate() {
             *d = res_gl[i].as_canonical_u64();
         }

@@ -478,6 +478,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.get_vadcop_vk(minimal)
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        self.prover.hash()
+    }
+
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
     }

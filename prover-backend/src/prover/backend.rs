@@ -157,6 +157,11 @@ impl ProverBackend {
         Ok(self.proofman.get_wcm().get_pctx())
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        Ok(self.get_pctx()?.global_info.hash.clone())
+    }
+
     pub fn register_program(
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
@@ -403,7 +408,12 @@ impl ProverBackend {
                 execution_result,
                 start.elapsed(),
                 Proof {
-                    body: ProofBody::Vadcop { proof: p.proof, zisk_vk: vadcop_vk_u64, minimal },
+                    body: ProofBody::Vadcop {
+                        proof: p.proof,
+                        zisk_vk: vadcop_vk_u64,
+                        minimal,
+                        hash: self.hash()?,
+                    },
                     publics: PublicValues::new_from_u64(&p.public_values),
                     program_vk: ProgramVK::new_from_publics(&p.public_values),
                 },
@@ -420,9 +430,11 @@ impl ProverBackend {
     ) -> Result<ProveOutput> {
         let start = std::time::Instant::now();
 
+        let hash = self.hash()?;
         let mut pubs_u64 = program_vk.vk.clone();
         pubs_u64.extend(publics.public_u64());
-        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
+        let vadcop_final_proof =
+            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, hash.clone());
 
         let minimal_proof = self
             .proofman
@@ -436,6 +448,7 @@ impl ProverBackend {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 minimal: true,
+                hash,
             },
             publics: PublicValues::new_from_u64(&minimal_proof.public_values),
             program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
@@ -460,7 +473,8 @@ impl ProverBackend {
 
         let mut pubs_u64 = program_vk.vk.clone();
         pubs_u64.extend(publics.public_u64());
-        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
+        let vadcop_final_proof =
+            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, self.hash()?);
 
         let snark_proof =
             self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;

@@ -584,6 +584,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
+    fn hash(&self) -> Result<String> {
+        self.core_prover.backend.hash()
+    }
+
     fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
         self.core_prover.backend.submit_hint(bytes)
     }
