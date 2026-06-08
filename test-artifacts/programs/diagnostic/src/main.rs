@@ -8,7 +8,6 @@ mod riscv_fd;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod riscv_ima;
 
-mod accelerators;
 mod fcalls;
 mod syscalls;
 
@@ -27,9 +26,6 @@ fn main() {
 
     // Free-input calls (hinting)
     fcalls::diagnostic_fcalls();
-
-    // Accelerators
-    accelerators::diagnostic_accelerators();
 
     println!("Successfully completed all diagnostics!");
 }

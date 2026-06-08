@@ -26,6 +26,7 @@ pub const ELF_BN254_COMPLEX_MUL: GuestProgram = load_program!("bn254_complex_mul
 pub const ELF_BN254_COMPLEX_SUB: GuestProgram = load_program!("bn254_complex_sub");
 pub const ELF_BN254_DBL: GuestProgram = load_program!("bn254_dbl");
 pub const ELF_DIAGNOSTIC: GuestProgram = load_program!("diagnostic");
+pub const ELF_DIAGNOSTIC_HINTS: GuestProgram = load_program!("diagnostic-hints");
 pub const ELF_FIB_MOD: GuestProgram = load_program!("fib_mod");
 pub const ELF_HASHES: GuestProgram = load_program!("hashes");
 pub const ELF_KECCAK: GuestProgram = load_program!("keccak");
