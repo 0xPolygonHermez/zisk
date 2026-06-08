@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "instance_meta.hpp"
 
 // To regenerate the bindings, run the following command on state-machines/mem-cpp:
 // bindgen cpp/api.hpp -o src/bindings.rs
@@ -28,13 +29,8 @@ extern "C"
     void wait_mem_align_counters(MemCountAndPlan *mcp);
 
     uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id);
-    const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
-                                                 uint32_t &offsets_base_addr_out,
-                                                 uint32_t &addr_range_slots_out,
-                                                 uint32_t &num_pages_out,
-                                                 uint32_t &present_count_out,
-                                                 const uint32_t *&page_single_value_out,
-                                                 const uint32_t *&pages_dense_out);
+    PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
+                                              uint32_t &offsets_base_addr_out);
     const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count);
     const MemAlignChunkCounters *get_mem_align_total_counters(MemCountAndPlan *mcp);

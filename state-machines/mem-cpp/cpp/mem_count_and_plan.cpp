@@ -405,32 +405,16 @@ const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t
     return segment->get_chunks();
 }
 
-const uint32_t *get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
-                                             uint32_t &offsets_base_addr_out,
-                                             uint32_t &addr_range_slots_out,
-                                             uint32_t &num_pages_out,
-                                             uint32_t &present_count_out,
-                                             const uint32_t *&page_single_value_out,
-                                             const uint32_t *&pages_dense_out)
+PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
+                                          uint32_t &offsets_base_addr_out)
 {
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
         offsets_base_addr_out = segment->offsets_base_addr;
-        addr_range_slots_out  = segment->offsets.addr_range_slots;
-        num_pages_out         = segment->offsets.num_pages;
-        present_count_out     = segment->offsets.present_count;
-        page_single_value_out = segment->offsets.page_single_value;
-        pages_dense_out       = segment->offsets.pages_dense;
-        return segment->offsets.page_starts;
-    } else {
-        offsets_base_addr_out = 0;
-        addr_range_slots_out  = 0;
-        num_pages_out         = 0;
-        present_count_out     = 0;
-        page_single_value_out = nullptr;
-        pages_dense_out       = nullptr;
-        return nullptr;
+        return segment->offsets;
     }
+    offsets_base_addr_out = 0;
+    return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0};
 }
 
 const MemAlignChunkCounters *get_mem_align_counters(MemCountAndPlan *mcp, uint32_t &count)

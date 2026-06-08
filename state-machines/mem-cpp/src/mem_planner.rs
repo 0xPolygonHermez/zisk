@@ -140,12 +140,6 @@ impl MemPlanner {
     /// The GPU planner that produced these metas must remain alive across
     /// this call, since the per-meta `count_per_chunk` and `addr_offsets`
     /// pointers reference its pinned host memory.
-    ///
-    /// # Safety
-    ///
-    /// `gpu_metas` must point to a valid array of at least `n` meta entries,
-    /// and the GPU planner that produced them must remain alive for the
-    /// duration of this call (its pinned host memory is referenced directly).
     pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }
@@ -190,43 +184,35 @@ impl MemPlanner {
                     );
                 }
 
-                // Collect paged-dense offsets for this segment.
+                // Collect paged-dense offsets for this segment
                 let mut offsets_base_addr: u32 = 0;
-                let mut addr_range_slots: u32 = 0;
-                let mut num_pages: u32 = 0;
-                let mut present_count: u32 = 0;
-                let mut page_single_ptr: *const u32 = std::ptr::null();
-                let mut pages_dense_ptr: *const u32 = std::ptr::null();
-                let page_starts_ptr = unsafe {
+                let off = unsafe {
                     bindings::get_mem_segment_offset_pages(
                         self.inner,
                         mem_id as u32,
                         segment_id,
                         &mut offsets_base_addr as *mut u32,
-                        &mut addr_range_slots as *mut u32,
-                        &mut num_pages as *mut u32,
-                        &mut present_count as *mut u32,
-                        &mut page_single_ptr as *mut *const u32,
-                        &mut pages_dense_ptr as *mut *const u32,
                     )
                 };
-                if !page_starts_ptr.is_null() && num_pages > 0 {
+                if !off.page_starts.is_null() && off.num_pages > 0 {
                     assert!(offsets_base_addr > 0);
                     segment.offsets_base_addr = offsets_base_addr;
-                    segment.addr_range_slots = addr_range_slots;
-                    segment.num_pages = num_pages;
-                    segment.present_count = present_count;
-                    segment.page_starts =
-                        unsafe { std::slice::from_raw_parts(page_starts_ptr, num_pages as usize) }
-                            .to_vec();
-                    segment.page_single_value =
-                        unsafe { std::slice::from_raw_parts(page_single_ptr, num_pages as usize) }
-                            .to_vec();
-                    let dense_len = present_count as usize * MEM_OFFSETS_PAGE_SIZE as usize;
+                    segment.addr_range_slots = off.addr_range_slots;
+                    segment.num_pages = off.num_pages;
+                    segment.present_count = off.present_count;
+                    segment.page_starts = unsafe {
+                        std::slice::from_raw_parts(off.page_starts, off.num_pages as usize)
+                    }
+                    .to_vec();
+                    segment.page_single_value = unsafe {
+                        std::slice::from_raw_parts(off.page_single_value, off.num_pages as usize)
+                    }
+                    .to_vec();
+                    let dense_len = off.present_count as usize * MEM_OFFSETS_PAGE_SIZE as usize;
                     segment.pages_dense = if dense_len == 0 {
                         Vec::new()
                     } else {
-                        unsafe { std::slice::from_raw_parts(pages_dense_ptr, dense_len) }.to_vec()
+                        unsafe { std::slice::from_raw_parts(off.pages_dense, dense_len) }.to_vec()
                     };
                 }
                 plans.push(Plan::new(
