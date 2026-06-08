@@ -30,7 +30,13 @@ fn user_help_lists_command_groups() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("remote").and(predicate::str::contains("embedded")));
+        .stdout(
+            predicate::str::contains("remote")
+                .and(predicate::str::contains("setup"))
+                .and(predicate::str::contains("prove"))
+                .and(predicate::str::contains("execute"))
+                .and(predicate::str::contains("wrap")),
+        );
 }
 
 #[test]
@@ -59,7 +65,7 @@ fn conflicting_proof_flags_fail_with_message() {
 
 #[test]
 fn embedded_prove_help_succeeds() {
-    cargo_zisk().args(["embedded", "prove", "--help"]).assert().success();
+    cargo_zisk().args(["prove", "--help"]).assert().success();
 }
 
 #[test]

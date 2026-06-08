@@ -1,5 +1,4 @@
 use anyhow::Result;
-use zisk_build::ZISK_VERSION_MESSAGE;
 
 use crate::common::reject_quic_hints;
 
@@ -53,20 +52,6 @@ impl ZiskEmbeddedCmd {
             ZiskEmbeddedCmd::Execute(cmd) => cmd.run(),
             ZiskEmbeddedCmd::Wrap(cmd) => cmd.run(),
         }
-    }
-}
-
-#[derive(clap::Args)]
-#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Run ZisK operations locally using the embedded prover
-pub(crate) struct EmbeddedCmd {
-    #[command(subcommand)]
-    command: ZiskEmbeddedCmd,
-}
-
-impl EmbeddedCmd {
-    pub(crate) fn run(&mut self) -> Result<()> {
-        self.command.run()
     }
 }
 

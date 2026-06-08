@@ -43,10 +43,9 @@ mod tests {
     fn user_cli_parses_shared_and_embedded_commands() {
         // `build` comes from the flattened SharedCmd.
         assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "build", "--release"]).is_ok());
-        // `prove` comes from the flattened embedded-default command.
+        // The embedded prover commands are exposed directly at the top level.
         assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "prove", "--elf", "g.elf"]).is_ok());
-        // `embedded prove` is the explicit form of the same.
-        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "embedded", "prove"]).is_ok());
+        assert!(ZiskCliCmd::try_parse_from(["cargo-zisk", "setup", "--elf", "g.elf"]).is_ok());
     }
 
     #[test]
