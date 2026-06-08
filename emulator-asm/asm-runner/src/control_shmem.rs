@@ -18,7 +18,7 @@ enum ControlShmemOffsets {
 }
 
 impl ControlShmem {
-        /// The total size of the control shared memory region, in bytes.
+    /// The total size of the control shared memory region, in bytes.
     pub const CONTROL_WRITER_SIZE: u64 = 0x1000; // 4KB
 
     /// Creates a new `ControlShmem` by opening and mapping the shared memory for control inputs.

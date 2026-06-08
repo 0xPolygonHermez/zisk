@@ -1,7 +1,7 @@
 //! The `asm-runner` crate provides the core logic for managing the assembly runner process,
 //! including shared memory management, synchronization primitives,
 //! and communication with the C++ side of the emulator.
-//! It defines the main types and functions used by the assembly runner to execute assembly code 
+//! It defines the main types and functions used by the assembly runner to execute assembly code
 //! and interact with the rest of the emulator.
 
 #![warn(missing_docs)]

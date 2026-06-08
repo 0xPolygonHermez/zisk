@@ -264,14 +264,23 @@ mod tests {
         let j = args.iter().position(|a| a == "--sem_prefix").expect("--sem_prefix");
         assert_eq!(args[j + 1], "ZISK_1_h_0");
         // gen index is per-service
-        assert!(applied_args(&AsmRunnerOptions::new(), AsmService::MT).contains(&"--gen=1".to_string()));
-        assert!(applied_args(&AsmRunnerOptions::new(), AsmService::RH).contains(&"--gen=2".to_string()));
+        assert!(
+            applied_args(&AsmRunnerOptions::new(), AsmService::MT).contains(&"--gen=1".to_string())
+        );
+        assert!(
+            applied_args(&AsmRunnerOptions::new(), AsmService::RH).contains(&"--gen=2".to_string())
+        );
     }
 
     #[test]
     fn apply_to_command_reflects_optional_flags() {
         let off = applied_args(&AsmRunnerOptions::new(), AsmService::MO);
-        assert!(!off.iter().any(|a| a == "-v" || a == "-m" || a == "-o" || a == "-t" || a == "-tt" || a == "-k"));
+        assert!(!off.iter().any(|a| a == "-v"
+            || a == "-m"
+            || a == "-o"
+            || a == "-t"
+            || a == "-tt"
+            || a == "-k"));
 
         let on = applied_args(
             &AsmRunnerOptions::new()

@@ -70,8 +70,8 @@ mod tests {
 
     #[test]
     fn submit_writes_u64s_little_endian_then_flushes_on_drop() {
-        let path = std::env::temp_dir()
-            .join(format!("zisk_hintsfile_test_{}.bin", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("zisk_hintsfile_test_{}.bin", std::process::id()));
         let path_str = path.to_str().unwrap().to_string();
         let values = [1u64, 0x0203, u64::MAX];
 
@@ -91,8 +91,8 @@ mod tests {
 
     #[test]
     fn submit_appends_across_calls() {
-        let path = std::env::temp_dir()
-            .join(format!("zisk_hintsfile_append_{}.bin", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("zisk_hintsfile_append_{}.bin", std::process::id()));
         let path_str = path.to_str().unwrap().to_string();
         {
             let hf = HintsFile::new(path_str).unwrap();

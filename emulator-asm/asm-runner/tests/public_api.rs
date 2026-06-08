@@ -27,7 +27,9 @@ fn options_builder_and_command_flags_are_consistent() {
     let args = applied_args(&opts, AsmService::MO);
 
     // Mandatory flags + per-service gen index.
-    for expected in ["-s", "--gen=7", "--stdio", "--open_all_shm", "--share_input_shm", "-v", "-m", "-tt"] {
+    for expected in
+        ["-s", "--gen=7", "--stdio", "--open_all_shm", "--share_input_shm", "-v", "-m", "-tt"]
+    {
         assert!(args.iter().any(|a| a == expected), "missing {expected} in {args:?}");
     }
     // Prefixes are passed as flag/value pairs.
@@ -42,7 +44,10 @@ fn service_identity_is_the_documented_wire_contract() {
     assert_eq!(AsmService::MT.gen_index(), 1);
     assert_eq!(AsmService::RH.gen_index(), 2);
     assert_eq!(AsmService::RH.as_str(), "RH");
-    assert_eq!(AsmService::RH.command_path_for("/opt/zisk/ziskemuasm"), "/opt/zisk/ziskemuasm-rh.bin");
+    assert_eq!(
+        AsmService::RH.command_path_for("/opt/zisk/ziskemuasm"),
+        "/opt/zisk/ziskemuasm-rh.bin"
+    );
 }
 
 #[test]
@@ -56,12 +61,19 @@ fn rom_histogram_payload_round_trips_through_public_api() {
 fn asm_services_new_rejects_paths_without_the_bin_suffix() {
     let opts = AsmRunnerOptions::new();
     // Too short to carry a "-??.bin" suffix → rejected before any process spawn.
-    assert!(AsmServices::new(0, 0, "deadbeef".into(), Path::new("foo"), false, opts.clone()).is_err());
-    // Long enough and ends in ".bin", but missing the "-" before the service id.
     assert!(
-        AsmServices::new(0, 0, "deadbeef".into(), Path::new("abcdefg.bin"), false, opts.clone())
-            .is_err()
+        AsmServices::new(0, 0, "deadbeef".into(), Path::new("foo"), false, opts.clone()).is_err()
     );
+    // Long enough and ends in ".bin", but missing the "-" before the service id.
+    assert!(AsmServices::new(
+        0,
+        0,
+        "deadbeef".into(),
+        Path::new("abcdefg.bin"),
+        false,
+        opts.clone()
+    )
+    .is_err());
     // Right length but wrong extension.
     assert!(
         AsmServices::new(0, 0, "deadbeef".into(), Path::new("/x/binary.txt"), false, opts).is_err()
