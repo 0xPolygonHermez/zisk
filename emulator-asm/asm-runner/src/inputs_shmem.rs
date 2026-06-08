@@ -140,3 +140,59 @@ impl StreamProcessor for InputsShmemWriter {
         InputsShmemWriter::reset(self);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{shmem_control_input_name, shmem_input_name, ControlShmem, ShmemReader};
+    use std::ffi::CString;
+    use zisk_core::MAX_INPUT_SIZE;
+
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0); // sparse — no real allocation
+            libc::close(fd);
+        }
+    }
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    #[test]
+    fn write_input_places_bytes_after_header_and_tracks_size() {
+        let prefix = format!("ZISK_unittest_inputs_{}", std::process::id());
+        let input_seg = shmem_input_name(&prefix);
+        let control_seg = shmem_control_input_name(&prefix);
+        create_segment(&input_seg, MAX_INPUT_SIZE as usize);
+        create_segment(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize);
+
+        let control = std::sync::Arc::new(ControlShmem::new(&prefix, true).unwrap());
+        let writer = InputsShmemWriter::new(&prefix, true, control).unwrap();
+
+        // No semaphores bound → notify is a no-op; we only exercise the write path.
+        writer.write_input(&[1u8, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+
+        // Input bytes land at offset 8 (after the 0u64 length header).
+        let r = ShmemReader::new(&input_seg, MAX_INPUT_SIZE as usize).unwrap();
+        assert_eq!(r.read_u64_at(8), u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8]));
+
+        // The control plane's InputsSize slot (offset 16) tracks bytes written.
+        let cr =
+            ShmemReader::new(&control_seg, ControlShmem::CONTROL_WRITER_SIZE as usize).unwrap();
+        assert_eq!(cr.read_u64_at(16), 8);
+
+        // reset() clears the control plane.
+        writer.reset();
+        assert_eq!(cr.read_u64_at(16), 0);
+
+        drop(r);
+        drop(cr);
+        unlink_segment(&input_seg);
+        unlink_segment(&control_seg);
+    }
+}

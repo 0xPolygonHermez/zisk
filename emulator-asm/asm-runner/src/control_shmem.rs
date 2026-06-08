@@ -64,3 +64,60 @@ impl ControlShmem {
         Ok(())
     }
 }
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{shmem_control_input_name, ShmemReader};
+    use std::ffi::CString;
+
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+    }
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    #[test]
+    fn control_fields_round_trip_at_their_offsets() {
+        let prefix = format!("ZISK_unittest_ctrl_{}", std::process::id());
+        let seg = shmem_control_input_name(&prefix);
+        let size = ControlShmem::CONTROL_WRITER_SIZE as usize;
+        create_segment(&seg, size);
+
+        let c = ControlShmem::new(&prefix, true).unwrap();
+        let r = ShmemReader::new(&seg, size).unwrap();
+
+        // PrecompilesSize @ offset 0
+        c.set_prec_hints_size(99).unwrap();
+        assert_eq!(c.prec_hints_size(), 99);
+        assert_eq!(r.read_u64_at(0), 99);
+
+        // InputsSize @ offset 16 accumulates
+        c.inc_inputs_size(10).unwrap();
+        c.inc_inputs_size(5).unwrap();
+        assert_eq!(r.read_u64_at(16), 15);
+
+        // ResetFlag @ offset 24
+        c.set_reset_flag().unwrap();
+        assert_eq!(r.read_u64_at(24), 1);
+
+        // reset() clears every slot
+        c.reset().unwrap();
+        assert_eq!(c.prec_hints_size(), 0);
+        assert_eq!(r.read_u64_at(16), 0);
+        assert_eq!(r.read_u64_at(24), 0);
+
+        drop(r);
+        unlink_segment(&seg);
+    }
+}

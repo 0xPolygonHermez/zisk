@@ -99,3 +99,55 @@ pub(super) fn cleanup_prefix(shm_prefix: &str, sem_prefix: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    fn shm_create(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0, "shm_open create failed for {name}");
+            libc::ftruncate(fd, 64);
+            libc::close(fd);
+        }
+    }
+    fn shm_exists(name: &str) -> bool {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            let fd = libc::shm_open(c.as_ptr(), libc::O_RDONLY, 0);
+            if fd >= 0 {
+                libc::close(fd);
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    #[test]
+    fn cleanup_prefix_unlinks_matching_shmem_and_semaphores() {
+        // Unique prefixes so the scan can never touch a real ZISK segment.
+        let shm_prefix = format!("ZISK_unittest_jan_{}", std::process::id());
+        let sem_prefix = format!("ZISK_unittest_jansem_{}", std::process::id());
+
+        let seg_a = format!("{shm_prefix}_input");
+        let seg_b = format!("{shm_prefix}_MT_output");
+        shm_create(&seg_a);
+        shm_create(&seg_b);
+        assert!(shm_exists(&seg_a) && shm_exists(&seg_b));
+
+        let sem_name = format!("/{sem_prefix}_chunk_done");
+        let _sem = named_sem::NamedSemaphore::create(&sem_name, 0).unwrap();
+        let sem_backing = format!("/dev/shm/sem.{sem_prefix}_chunk_done");
+        assert!(std::path::Path::new(&sem_backing).exists());
+
+        cleanup_prefix(&shm_prefix, &sem_prefix);
+
+        assert!(!shm_exists(&seg_a), "shmem segment should be unlinked");
+        assert!(!shm_exists(&seg_b), "shmem segment should be unlinked");
+        assert!(!std::path::Path::new(&sem_backing).exists(), "semaphore should be unlinked");
+    }
+}

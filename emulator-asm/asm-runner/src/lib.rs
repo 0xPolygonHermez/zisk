@@ -110,3 +110,24 @@ pub(crate) fn drain_chunk_done(sem: &mut named_sem::NamedSemaphore) -> u64 {
     }
     swept
 }
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use named_sem::NamedSemaphore;
+
+    #[test]
+    fn drain_chunk_done_sweeps_all_pending_posts() {
+        let name = format!("/ZISK_unittest_drain_{}", std::process::id());
+        let mut sem = NamedSemaphore::create(&name, 0).unwrap();
+        for _ in 0..3 {
+            sem.post().unwrap();
+        }
+        assert_eq!(drain_chunk_done(&mut sem), 3, "should sweep the 3 pending posts");
+        assert_eq!(drain_chunk_done(&mut sem), 0, "nothing left to sweep");
+
+        let c = std::ffi::CString::new(name).unwrap();
+        unsafe { libc::sem_unlink(c.as_ptr()) };
+    }
+}

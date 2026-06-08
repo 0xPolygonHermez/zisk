@@ -290,3 +290,66 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
         self.total_mapped_size
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ShmemWriter;
+    use std::ffi::CString;
+
+    #[repr(C)]
+    #[derive(Debug)]
+    struct TestHeader {
+        allocated_size: u64,
+        _pad: u64,
+    }
+    impl AsmShmemHeader for TestHeader {
+        fn allocated_size(&self) -> u64 {
+            self.allocated_size
+        }
+    }
+
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+    }
+
+    #[test]
+    fn open_and_map_maps_file_zero_and_reads_header() {
+        let base = format!("ZISK_unittest_multi_{}", std::process::id());
+        let initial = 4096usize;
+        let file0 = format!("{base}_0");
+        create_segment(&file0, initial);
+        // Header's allocated_size at offset 0 must be non-zero.
+        {
+            let w = ShmemWriter::new(&file0, initial, true).unwrap();
+            w.write_u64_at(0, initial as u64).unwrap();
+        }
+
+        let m =
+            AsmMultiShmem::<TestHeader>::open_and_map(&base, initial, initial, initial * 4, true)
+                .unwrap();
+        assert_eq!(m.map_header().allocated_size(), initial as u64);
+        assert_eq!(m.total_mapped_size(), initial);
+        assert!(!m.mapped_ptr().is_null());
+        assert!(!m.data_ptr().is_null());
+        // Drop unlinks `{base}_0` and frees the reserved range.
+    }
+
+    #[test]
+    fn open_and_map_rejects_empty_base_name() {
+        assert!(AsmMultiShmem::<TestHeader>::open_and_map("", 4096, 4096, 8192, true).is_err());
+    }
+
+    #[test]
+    fn open_and_map_rejects_max_smaller_than_initial() {
+        let base = format!("ZISK_unittest_multibad_{}", std::process::id());
+        assert!(AsmMultiShmem::<TestHeader>::open_and_map(&base, 8192, 4096, 4096, true).is_err());
+    }
+}
