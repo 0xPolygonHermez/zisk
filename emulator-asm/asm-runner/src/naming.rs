@@ -97,3 +97,64 @@ pub(crate) fn is_zisk_sem_file(file_name: &str) -> bool {
 pub(crate) fn sem_file_to_posix_name(file_name: &str) -> Option<String> {
     file_name.strip_prefix("sem.").map(|rest| format!("/{rest}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AsmService;
+
+    #[test]
+    fn shmem_names_match_dev_shm_suffixes() {
+        let p = "ZISK_42_0";
+        assert_eq!(shmem_input_name(p), "ZISK_42_0_input");
+        assert_eq!(shmem_precompile_name(p), "ZISK_42_0_precompile");
+        assert_eq!(shmem_control_input_name(p), "ZISK_42_0_control_input");
+        assert_eq!(shmem_control_output_name(p, AsmService::MO), "ZISK_42_0_MO_control_output");
+        assert_eq!(shmem_output_name(p, AsmService::MT, None), "ZISK_42_0_MT_output");
+        assert_eq!(shmem_output_name(p, AsmService::MT, Some(3)), "ZISK_42_0_MT_output_3");
+    }
+
+    #[test]
+    fn sem_names_are_posix_absolute_and_per_service() {
+        let p = "ZISK_42_h_0";
+        assert_eq!(sem_input_avail_name(p, AsmService::MO), "/ZISK_42_h_0_MO_input_avail");
+        assert_eq!(sem_prec_available_name(p, AsmService::RH), "/ZISK_42_h_0_RH_prec_avail");
+        assert_eq!(sem_prec_read_name(p, AsmService::RH), "/ZISK_42_h_0_RH_prec_read");
+        assert_eq!(sem_chunk_done_name(p, AsmService::MT), "/ZISK_42_h_0_MT_chunk_done");
+    }
+
+    #[test]
+    fn shmem_predicate_requires_namespace_and_underscore_boundary() {
+        assert!(is_zisk_shmem_file("ZISK_42_0_input"));
+        assert!(is_zisk_shmem_file(&format!("{NAMESPACE}_x")));
+        // No underscore right after the namespace → not ours (guards against `ZISKFOO`).
+        assert!(!is_zisk_shmem_file("ZISKX"));
+        assert!(!is_zisk_shmem_file("OTHER_42_0"));
+        // A semaphore backing file is not a shmem segment.
+        assert!(!is_zisk_shmem_file("sem.ZISK_42_0"));
+    }
+
+    #[test]
+    fn sem_file_predicate_and_posix_conversion() {
+        assert!(is_zisk_sem_file("sem.ZISK_42_0_MO_chunk_done"));
+        assert!(!is_zisk_sem_file("ZISK_42_0_input")); // shmem, not a sem backing file
+        assert_eq!(sem_file_to_posix_name("sem.ZISK_42_0_x").as_deref(), Some("/ZISK_42_0_x"));
+        assert_eq!(sem_file_to_posix_name("ZISK_42_0_x"), None);
+    }
+
+    #[test]
+    fn builder_output_is_recognized_by_the_cleanup_scanner() {
+        // The /dev/shm janitor must recognize every name the builders produce,
+        // otherwise leaked segments would never be reaped.
+        let p = format!("{NAMESPACE}_99_0");
+        assert!(is_zisk_shmem_file(&shmem_input_name(&p)));
+        assert!(is_zisk_shmem_file(&shmem_output_name(&p, AsmService::RH, Some(0))));
+
+        // A POSIX sem name "/X" has the /dev/shm backing file "sem.X"; the scanner
+        // must round-trip it back to the POSIX name for sem_unlink.
+        let posix = sem_chunk_done_name(&p, AsmService::MO); // "/ZISK_99_0_MO_chunk_done"
+        let backing = format!("sem.{}", &posix[1..]);
+        assert!(is_zisk_sem_file(&backing));
+        assert_eq!(sem_file_to_posix_name(&backing).as_deref(), Some(posix.as_str()));
+    }
+}

@@ -370,3 +370,41 @@ impl AsmServices {
         super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gen_index_matches_c_binary_contract() {
+        // These are the `--gen=N` values the ziskemuasm C binary expects.
+        assert_eq!(AsmService::MT.gen_index(), 1);
+        assert_eq!(AsmService::RH.gen_index(), 2);
+        assert_eq!(AsmService::MO.gen_index(), 7);
+    }
+
+    #[test]
+    fn as_str_is_uppercase_used_for_segment_names() {
+        assert_eq!(AsmService::MO.as_str(), "MO");
+        assert_eq!(AsmService::MT.as_str(), "MT");
+        assert_eq!(AsmService::RH.as_str(), "RH");
+    }
+
+    #[test]
+    fn display_is_lowercase_and_drives_binary_path() {
+        // Display (lowercase) names the per-service binary; as_str (uppercase)
+        // names the shmem segments. Keeping them distinct is deliberate.
+        assert_eq!(AsmService::MO.to_string(), "mo");
+        assert_eq!(AsmService::RH.to_string(), "rh");
+        assert_eq!(AsmService::MO.command_path_for("/x/ziskemuasm"), "/x/ziskemuasm-mo.bin");
+        assert_eq!(AsmService::RH.command_path_for("base"), "base-rh.bin");
+    }
+
+    #[test]
+    fn services_array_is_indexed_consistently() {
+        assert_eq!(AsmServices::SERVICES, [AsmService::MO, AsmService::MT, AsmService::RH]);
+        for (i, s) in AsmServices::SERVICES.iter().enumerate() {
+            assert_eq!(s.as_index(), i, "as_index must match position in SERVICES");
+        }
+    }
+}

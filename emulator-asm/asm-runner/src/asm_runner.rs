@@ -206,3 +206,90 @@ impl AsmRunnerOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AsmService;
+
+    #[test]
+    fn options_default_to_all_off() {
+        let o = AsmRunnerOptions::new();
+        assert!(!o.log_output);
+        assert!(!o.metrics);
+        assert!(!o.verbose);
+        assert!(!o.keccak_trace);
+        assert!(!o.unlock_mapped_memory);
+        assert!(!o.asm_out_file);
+        assert_eq!(o.local_rank, 0);
+        assert!(matches!(o.trace_level, AsmRunnerTraceLevel::None));
+        // Default must equal `new()`.
+        let d = AsmRunnerOptions::default();
+        assert_eq!(d.verbose, o.verbose);
+        assert_eq!(d.local_rank, o.local_rank);
+    }
+
+    #[test]
+    fn builder_sets_each_field() {
+        let o = AsmRunnerOptions::new()
+            .with_verbose(true)
+            .with_metrics(true)
+            .with_log_output(true)
+            .with_local_rank(3)
+            .with_unlock_mapped_memory(true)
+            .with_asm_out_file(true)
+            .keccak_trace(true)
+            .with_trace_level(AsmRunnerTraceLevel::ExtendedTrace);
+        assert!(o.verbose && o.metrics && o.log_output);
+        assert!(o.unlock_mapped_memory && o.asm_out_file && o.keccak_trace);
+        assert_eq!(o.local_rank, 3);
+        assert!(matches!(o.trace_level, AsmRunnerTraceLevel::ExtendedTrace));
+    }
+
+    fn applied_args(o: &AsmRunnerOptions, svc: AsmService) -> Vec<String> {
+        let mut cmd = Command::new("ziskemuasm");
+        o.apply_to_command(&mut cmd, &svc, "ZISK_1_0", "ZISK_1_h_0");
+        cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect()
+    }
+
+    #[test]
+    fn apply_to_command_emits_the_mandatory_flags() {
+        let args = applied_args(&AsmRunnerOptions::new(), AsmService::MO);
+        for expected in ["-s", "--gen=7", "--stdio", "--open_all_shm", "--share_input_shm"] {
+            assert!(args.iter().any(|a| a == expected), "missing {expected} in {args:?}");
+        }
+        // prefixes are passed as flag + value pairs
+        let i = args.iter().position(|a| a == "--shm_prefix").expect("--shm_prefix");
+        assert_eq!(args[i + 1], "ZISK_1_0");
+        let j = args.iter().position(|a| a == "--sem_prefix").expect("--sem_prefix");
+        assert_eq!(args[j + 1], "ZISK_1_h_0");
+        // gen index is per-service
+        assert!(applied_args(&AsmRunnerOptions::new(), AsmService::MT).contains(&"--gen=1".to_string()));
+        assert!(applied_args(&AsmRunnerOptions::new(), AsmService::RH).contains(&"--gen=2".to_string()));
+    }
+
+    #[test]
+    fn apply_to_command_reflects_optional_flags() {
+        let off = applied_args(&AsmRunnerOptions::new(), AsmService::MO);
+        assert!(!off.iter().any(|a| a == "-v" || a == "-m" || a == "-o" || a == "-t" || a == "-tt" || a == "-k"));
+
+        let on = applied_args(
+            &AsmRunnerOptions::new()
+                .with_verbose(true)
+                .with_metrics(true)
+                .with_log_output(true)
+                .keccak_trace(true)
+                .with_trace_level(AsmRunnerTraceLevel::ExtendedTrace),
+            AsmService::MO,
+        );
+        for expected in ["-v", "-m", "-o", "-tt", "-k"] {
+            assert!(on.iter().any(|a| a == expected), "missing {expected} in {on:?}");
+        }
+        // Trace (not ExtendedTrace) emits "-t", not "-tt".
+        let t = applied_args(
+            &AsmRunnerOptions::new().with_trace_level(AsmRunnerTraceLevel::Trace),
+            AsmService::MO,
+        );
+        assert!(t.contains(&"-t".to_string()) && !t.contains(&"-tt".to_string()));
+    }
+}

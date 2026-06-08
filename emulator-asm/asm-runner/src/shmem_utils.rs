@@ -144,3 +144,78 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
         self.mapped_size
     }
 }
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ShmemWriter;
+    use std::ffi::CString;
+
+    /// A minimal header for exercising `AsmShmem`: `allocated_size` lives at offset 0.
+    #[repr(C)]
+    #[derive(Debug)]
+    struct TestHeader {
+        allocated_size: u64,
+        _other: u64,
+    }
+    impl AsmShmemHeader for TestHeader {
+        fn allocated_size(&self) -> u64 {
+            self.allocated_size
+        }
+    }
+
+    fn seg_name(tag: &str) -> String {
+        format!("ZISK_unittest_shmem_{}_{tag}", std::process::id())
+    }
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+    }
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    #[test]
+    fn open_and_map_reads_header_and_maps_allocated_size() {
+        let name = seg_name("hdr");
+        create_segment(&name, 4096);
+        // Populate the header's allocated_size field (offset 0).
+        {
+            let w = ShmemWriter::new(&name, 4096, true).unwrap();
+            w.write_u64_at(0, 4096).unwrap();
+        }
+        let shm = AsmShmem::<TestHeader>::open_and_map(&name, true).unwrap();
+        assert_eq!(shm.map_header().allocated_size(), 4096);
+        assert_eq!(shm.mapped_size(), 4096);
+        assert!(shm.is_mapped());
+        // `AsmShmem`'s Drop shm_unlinks the segment, so no manual cleanup here.
+    }
+
+    #[test]
+    fn open_and_map_rejects_zero_allocated_size() {
+        let name = seg_name("zero");
+        create_segment(&name, 4096); // ftruncate zero-fills → allocated_size == 0
+        assert!(AsmShmem::<TestHeader>::open_and_map(&name, true).is_err());
+        unlink_segment(&name); // open failed → AsmShmem didn't take ownership
+    }
+
+    #[test]
+    fn open_and_map_rejects_empty_name() {
+        assert!(AsmShmem::<TestHeader>::open_and_map("", true).is_err());
+    }
+
+    #[test]
+    fn open_and_map_rejects_missing_segment() {
+        let name = seg_name("absent");
+        unlink_segment(&name);
+        assert!(AsmShmem::<TestHeader>::open_and_map(&name, true).is_err());
+    }
+}

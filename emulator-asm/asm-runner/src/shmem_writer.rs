@@ -237,3 +237,89 @@ impl Drop for ShmemWriter {
         }
     }
 }
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ShmemReader;
+    use std::ffi::CString;
+
+    /// Unique per-test segment name (cargo runs tests as threads in one process).
+    fn seg_name(tag: &str) -> String {
+        format!("ZISK_unittest_{}_{tag}", std::process::id())
+    }
+
+    /// Create a fresh, zero-filled `/dev/shm` segment of `size` bytes.
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr()); // drop any stale leftover
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0, "shm_open(create) failed for {name}");
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0, "ftruncate failed");
+            libc::close(fd);
+        }
+    }
+
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    #[test]
+    fn writer_reader_u64_round_trip() {
+        let name = seg_name("u64rt");
+        create_segment(&name, 4096);
+        {
+            let w = ShmemWriter::new(&name, 4096, true).unwrap();
+            w.write_u64_at(0, 0xDEAD_BEEF).unwrap();
+            w.write_u64_at(8, 42).unwrap();
+        }
+        let r = ShmemReader::new(&name, 4096).unwrap();
+        assert_eq!(r.read_u64_at(0), 0xDEAD_BEEF);
+        assert_eq!(r.read_u64_at(8), 42);
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn write_at_offset_is_visible_to_reader() {
+        let name = seg_name("writeat");
+        create_segment(&name, 4096);
+        let w = ShmemWriter::new(&name, 4096, true).unwrap();
+        w.write_at(16, &[1u64, 2, 3]).unwrap();
+        let r = ShmemReader::new(&name, 4096).unwrap();
+        assert_eq!([r.read_u64_at(16), r.read_u64_at(24), r.read_u64_at(32)], [1, 2, 3]);
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn write_at_rejects_payload_larger_than_segment() {
+        let name = seg_name("cap");
+        create_segment(&name, 64);
+        let w = ShmemWriter::new(&name, 64, true).unwrap();
+        assert!(w.write_at(0, &[0u8; 128]).is_err());
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn ring_buffer_wraps_around_the_end() {
+        let name = seg_name("ring");
+        create_segment(&name, 32); // 4 u64 slots
+        let mut w = ShmemWriter::new(&name, 32, true).unwrap();
+        w.write_ring_buffer(&[1u64, 2, 3]).unwrap(); // slots 0,8,16; cursor at 24
+        w.write_ring_buffer(&[4u64, 5]).unwrap(); // 4 at 24, wraps, 5 at 0
+        let r = ShmemReader::new(&name, 32).unwrap();
+        assert_eq!(r.read_u64_at(24), 4, "last slot before wrap");
+        assert_eq!(r.read_u64_at(0), 5, "wrapped to start");
+        assert_eq!(r.read_u64_at(8), 2, "untouched from first write");
+        unlink_segment(&name);
+    }
+
+    #[test]
+    fn new_fails_for_missing_segment() {
+        let name = seg_name("missing");
+        unlink_segment(&name); // ensure it does not exist
+        assert!(ShmemWriter::new(&name, 4096, true).is_err());
+    }
+}
