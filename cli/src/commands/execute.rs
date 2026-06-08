@@ -59,6 +59,11 @@ pub struct ZiskExecute {
     #[arg(long)]
     pub gpu: bool,
 
+    /// Force the mops planner onto CPU even when --gpu is set
+    /// (fallback for GPU-planner issues).
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     /// Path to the proving key. Defaults to the standard install location.
     /// Ignored under `--standalone`.
     #[arg(short = 'k', long)]
@@ -205,6 +210,9 @@ impl ZiskExecute {
         }
         if self.gpu {
             opts = opts.gpu();
+        }
+        if self.cpu_mops {
+            opts = opts.cpu_mops();
         }
         opts
     }

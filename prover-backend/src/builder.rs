@@ -263,6 +263,7 @@ impl ProverClientBuilder<AsmB> {
             options,
             self.prover_options.asm_options.is_distributed,
             self.logging_config,
+            self.prover_options.cpu_mops,
         )?;
 
         Ok(ZiskProver::<Asm>::new(asm, self.prover_options))
