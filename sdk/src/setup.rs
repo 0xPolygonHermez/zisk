@@ -109,7 +109,6 @@ impl<'a, C: ClientSync> SetupRequest<'a, C> {
     /// requires no async runtime — use it when embedding the SDK in a
     /// synchronous program. Available only for clients that implement
     /// [`ClientSync`] (the embedded client).
-    #[must_use]
     pub fn run_sync(self) -> Result<SetupResult> {
         let subs = new_subscriber_list();
         self.client.run_setup_sync(self.program, self.with_hints, self.emulator_only, subs)
