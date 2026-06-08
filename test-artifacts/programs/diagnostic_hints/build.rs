@@ -38,8 +38,10 @@ fn main() {
 
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let hints_out = manifest_dir.join("tmp/hints.bin");
-    let gen_target = manifest_dir.join("tmp/native-gen-target");
+    std::fs::create_dir_all(manifest_dir.join("tmp"))
+        .expect("failed to create diagnostic_hints/tmp");
 
+    let gen_target = manifest_dir.join("tmp/native-gen-target");
     let status = Command::new(&cargo)
         .current_dir(&manifest_dir)
         .args(["run", "--release"])
