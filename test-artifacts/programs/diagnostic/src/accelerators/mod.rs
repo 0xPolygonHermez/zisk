@@ -19,25 +19,25 @@ mod secp256r1_verify;
 mod sha256;
 
 pub fn diagnostic_accelerators() {
-    keccak256::diagnostic_zkvm_keccak256();
-    sha256::diagnostic_zkvm_sha256();
-    ripemd160::diagnostic_zkvm_ripemd160();
-    modexp::diagnostic_zkvm_modexp();
-    bn254_g1_add::diagnostic_zkvm_bn254_g1_add();
-    bn254_g1_mul::diagnostic_zkvm_bn254_g1_mul();
-    bn254_pairing::diagnostic_zkvm_bn254_pairing();
     blake2f::diagnostic_zkvm_blake2f();
-    kzg_point_eval::diagnostic_zkvm_kzg_point_eval();
     bls12_g1_add::diagnostic_zkvm_bls12_g1_add();
     bls12_g1_msm::diagnostic_zkvm_bls12_g1_msm();
     bls12_g2_add::diagnostic_zkvm_bls12_g2_add();
     bls12_g2_msm::diagnostic_zkvm_bls12_g2_msm();
-    bls12_pairing::diagnostic_zkvm_bls12_pairing();
-    bls12_map_fp_to_g1::diagnostic_zkvm_bls12_map_fp_to_g1();
     bls12_map_fp2_to_g2::diagnostic_zkvm_bls12_map_fp2_to_g2();
-    secp256k1_verify::diagnostic_zkvm_secp256k1_verify();
+    bls12_map_fp_to_g1::diagnostic_zkvm_bls12_map_fp_to_g1();
+    bls12_pairing::diagnostic_zkvm_bls12_pairing();
+    bn254_g1_add::diagnostic_zkvm_bn254_g1_add();
+    bn254_g1_mul::diagnostic_zkvm_bn254_g1_mul();
+    bn254_pairing::diagnostic_zkvm_bn254_pairing();
+    keccak256::diagnostic_zkvm_keccak256();
+    kzg_point_eval::diagnostic_zkvm_kzg_point_eval();
+    modexp::diagnostic_zkvm_modexp();
+    ripemd160::diagnostic_zkvm_ripemd160();
     secp256k1_ecrecover::diagnostic_zkvm_secp256k1_ecrecover();
+    secp256k1_verify::diagnostic_zkvm_secp256k1_verify();
     secp256r1_verify::diagnostic_zkvm_secp256r1_verify();
+    sha256::diagnostic_zkvm_sha256();
 
     println!("All accelerator diagnostics passed!");
 }

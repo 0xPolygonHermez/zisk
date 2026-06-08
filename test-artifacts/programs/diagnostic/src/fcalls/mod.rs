@@ -11,6 +11,7 @@ pub fn diagnostic_fcalls() {
     bigint::diagnostic_bigint();
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();
+    fcall_limits::diagnostic_fcall_limits();
     msb::diagnostic_msb();
     secp256k1::diagnostic_secp256k1();
     secp256r1::diagnostic_secp256r1();

@@ -13,7 +13,7 @@ mod fcalls;
 mod syscalls;
 
 fn main() {
-    // Basic instructions
+    // Base RISC-V extensions
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
         riscv_c::diagnostic_riscv_c();
@@ -22,11 +22,11 @@ fn main() {
         //riscv_ima::diagnostic_riscv_ima_combinations(); // TODO
     }
 
-    // Free-input calls (hinting)
-    fcalls::diagnostic_fcalls();
-
     // System calls
     syscalls::diagnostic_syscalls();
+
+    // Free-input calls (hinting)
+    fcalls::diagnostic_fcalls();
 
     // Accelerators
     accelerators::diagnostic_accelerators();
