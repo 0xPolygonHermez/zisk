@@ -12,11 +12,6 @@ pub struct ZiskProofmanRebuildWitnessLibs {
     #[arg(short = 'p', long = "proving-key")]
     pub proving_key: String,
 
-    /// Optional build directory for intermediate `.circom`/`.cpp` files.
-    /// Defaults to a tempdir that is removed when the command finishes.
-    #[arg(short = 'b', long = "build-dir")]
-    pub build_dir: Option<String>,
-
     /// Number of circom compiles to run in parallel (default 1 = serial).
     /// Each circom invocation is single-threaded but RAM-hungry; size by
     /// available memory rather than CPU count.
@@ -34,7 +29,7 @@ impl ZiskProofmanRebuildWitnessLibs {
 
         let opts = RebuildWitnessOptions {
             proving_key: self.proving_key.clone(),
-            build_dir: self.build_dir.clone(),
+            build_dir: None,
             jobs: self.jobs,
         };
         run_rebuild_witness(&opts)

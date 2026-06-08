@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
 
     client.setup(&ELF_BIG_INPUT).run()?.await?;
 
-    let result = client.execute(&ELF_BIG_INPUT, stdin.clone()).run()?.await?;
+    let result = client.execute(&ELF_BIG_INPUT, &stdin).run()?.await?;
 
     println!(
         "ZisK has executed program with {} cycles in {} ms",
@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Generating proof...");
-    client.prove(&ELF_BIG_INPUT, stdin.clone()).run()?.await?;
+    client.prove(&ELF_BIG_INPUT, &stdin).run()?.await?;
 
     println!("\u{2713} Prove completed successfully!");
 

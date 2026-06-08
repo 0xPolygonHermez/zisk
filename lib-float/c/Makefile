@@ -16,6 +16,25 @@ REPRO_FLAGS = -ffile-prefix-map=$(CURDIR)=. -fdebug-prefix-map=$(CURDIR)=.
 ZISK_CFLAGS = -march=rv64ima -mabi=lp64 -ffreestanding -nostdlib -nostartfiles -mcmodel=medany $(REPRO_FLAGS)
 ZISK_ASM_CFLAGS = -march=rv64ima -mabi=lp64 --debug-prefix-map=$(CURDIR)=.
 
+# Reproducibility build: the RISC-V toolchain version determines the ziskfloat.elf bytes,
+# so the canonical build runs the `all` target inside a docker image with Ubuntu and the
+# toolchain pinned to fixed versions. This is what build.rs invokes;
+# run `make docker` manually to regenerate the artifacts the same way.
+DOCKER_IMAGE = zisk-lib-float-builder:jammy
+DOCKER_DIR   = docker
+
+docker-image:
+	docker build -t $(DOCKER_IMAGE) -f $(DOCKER_DIR)/Dockerfile $(DOCKER_DIR)
+
+docker: docker-image
+	docker run --rm \
+		-u $$(id -u):$$(id -g) \
+		-e SOURCE_DATE_EPOCH=0 \
+		-v "$(CURDIR)":/work \
+		-w /work \
+		$(DOCKER_IMAGE) \
+		make all
+
 all:
 	mkdir -p build
 
@@ -393,5 +412,5 @@ zisk_gcc:
 
 	mkdir -p lib
 	cp build/libziskfloat.a lib/
-	
+
 	gcc $(CFLAGS) src/main.cpp -lc build/libziskfloat.a -o build/ziskfloat -lgmp -lstdc++ -lgmpxx
