@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "98453fa9f1a3d4283c60a23c833edc2cd2d85942d3f9df3d6f380d9009541e57";
+pub const PILOUT_HASH: &str = "d8f05a235f46ac09274ed4a96f6ecb8019b44a11f94a972eac5247bf43dddc92";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -86,7 +86,7 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[28];
 
 pub const SHA_256_F_AIR_IDS: &[usize] = &[29];
 
-pub const POSEIDON_2_AIR_IDS: &[usize] = &[30];
+pub const POSEIDON_AIR_IDS: &[usize] = &[30];
 
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[31];
 
@@ -466,16 +466,16 @@ trace_row!(Sha256fTraceRow<F> {
 
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 29>;
 
-trace_row!(Poseidon2FixedRow<F> {
+trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 30>;
+pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 30>;
 
-trace_row!(Poseidon2TraceRow<F> {
- in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+trace_row!(PoseidonTraceRow<F> {
+ in_use:bit, in_use_clk_0:bit, sel_poseidon1:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
 });
 
-pub type Poseidon2Trace<R> = GenericTrace<R, 131072, 0, 30>;
+pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 30>;
 
 trace_row!(Blake2brFixedRow<F> {
  CLK_0: F, MSG_IDX: F, __L1__: F,
@@ -700,7 +700,7 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Poseidon2AirGroupValues<F> {
+values!(PoseidonAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -865,7 +865,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 30, PackedInfoConst {
         is_packed: true,
         num_packed_words: 17,
-        unpack_info: &[1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
+        unpack_info: &[1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
     }),
     (0, 31, PackedInfoConst {
         is_packed: true,

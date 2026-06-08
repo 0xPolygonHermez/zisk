@@ -223,6 +223,7 @@ impl ZiskAsmContext {
             ZiskOp::Keccak
                 | ZiskOp::Sha256
                 | ZiskOp::Poseidon2
+                | ZiskOp::Poseidon1
                 | ZiskOp::Arith256
                 | ZiskOp::Arith256Mod
                 | ZiskOp::Secp256k1Add
@@ -628,6 +629,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_keccak\n";
         *code += ".extern opcode_sha256\n";
         *code += ".extern opcode_poseidon2\n";
+        *code += ".extern opcode_poseidon1\n";
         *code += ".extern opcode_arith256\n";
         *code += ".extern opcode_arith256_mod\n";
         *code += ".extern opcode_secp256k1_add\n";
@@ -5457,9 +5459,10 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
-            ZiskOp::Poseidon2 => {
-                // Use the memory address as the first and unique parameter
-                *code += &ctx.full_line_comment("Poseidon2: rdi = A0".to_string());
+            ZiskOp::Poseidon2 | ZiskOp::Poseidon1 => {
+                let pname =
+                    if matches!(zisk_op, ZiskOp::Poseidon1) { "poseidon1" } else { "poseidon2" };
+                *code += &ctx.full_line_comment(format!("{pname}: rdi = A0"));
 
                 // Generate mem reads
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
@@ -5480,10 +5483,9 @@ impl ZiskRom2Asm {
                                 REG_ACTIVE_CHUNK,
                                 ctx.comment_str("active_chunk == 1 ?")
                             );
-                            *code += &format!("\tjnz pc_{:x}_poseidon2_active_chunk\n", ctx.pc);
-                            *code +=
-                                &format!("\tjmp pc_{:x}_poseidon2_active_chunk_done\n", ctx.pc);
-                            *code += &format!("pc_{:x}_poseidon2_active_chunk:\n", ctx.pc);
+                            *code += &format!("\tjnz pc_{:x}_{pname}_active_chunk\n", ctx.pc);
+                            *code += &format!("\tjmp pc_{:x}_{pname}_active_chunk_done\n", ctx.pc);
+                            *code += &format!("pc_{:x}_{pname}_active_chunk:\n", ctx.pc);
                         }
                         *code += &format!("\tmov {REG_ADDRESS}, rdi\n");
                         for k in 0..16 {
@@ -5492,7 +5494,7 @@ impl ZiskRom2Asm {
                                 REG_VALUE,
                                 REG_ADDRESS,
                                 k * 8,
-                                ctx.comment(format!("value = mem[poseidon2_address[{k}]]"))
+                                ctx.comment(format!("value = mem[{pname}_address[{k}]]"))
                             );
                             *code += &format!(
                                 "\tmov [{} + {}*8 + {}], {} {}\n",
@@ -5512,7 +5514,7 @@ impl ZiskRom2Asm {
                         );
 
                         if ctx.zip() {
-                            *code += &format!("pc_{:x}_poseidon2_active_chunk_done:\n", ctx.pc);
+                            *code += &format!("pc_{:x}_{pname}_active_chunk_done:\n", ctx.pc);
                         }
                     }
 
@@ -5523,10 +5525,10 @@ impl ZiskRom2Asm {
                         Self::mem_op_array(ctx, code, REG_ADDRESS, true, 16);
                     }
 
-                    // Call the poseidon2 function
+                    // Call the poseidon function for the selected family
                     Self::push_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
-                    *code += "\tcall _opcode_poseidon2\n";
+                    *code += &format!("\tcall _opcode_{pname}\n");
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
                 }
@@ -5559,7 +5561,7 @@ impl ZiskRom2Asm {
                     "\txor {}, {} {}\n",
                     REG_C,
                     REG_C,
-                    ctx.comment_str("Poseidon2: c = 0")
+                    ctx.comment(format!("{pname}: c = 0"))
                 );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;

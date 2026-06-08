@@ -4,6 +4,7 @@ mod blake2;
 mod bls12_381;
 mod bn254;
 mod keccakf;
+mod poseidon1;
 mod poseidon2;
 mod secp256k1;
 mod secp256r1;

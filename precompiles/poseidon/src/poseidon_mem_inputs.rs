@@ -1,11 +1,14 @@
-use fields::{poseidon2_hash, Goldilocks, Poseidon2_16, PrimeField64};
+use fields::{
+    poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
+};
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_core::zisk_ops::ZiskOp;
 
-use crate::Poseidon2SM;
+use crate::PoseidonSM;
 
-impl<F: PrimeField64> PrecompileMemInputs for Poseidon2SM<F> {
+impl<F: PrimeField64> PrecompileMemInputs for PoseidonSM<F> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,
@@ -17,9 +20,13 @@ impl<F: PrimeField64> PrecompileMemInputs for Poseidon2SM<F> {
         // op,op_type,a,b,...
         let state: &mut [u64; 16] = &mut data[5..21].try_into().unwrap();
 
-        // Apply the poseidon2 hash function
+        // Apply the poseidon hash function for the family selected by the op field
         let state_gl = state.map(Goldilocks::new);
-        let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&state_gl);
+        let res_gl = if data[OP] == ZiskOp::Poseidon1 as u64 {
+            poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&state_gl)
+        } else {
+            poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&state_gl)
+        };
         for (i, d) in state.iter_mut().enumerate() {
             *d = res_gl[i].as_canonical_u64();
         }

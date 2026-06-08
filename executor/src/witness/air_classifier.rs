@@ -8,7 +8,7 @@ use zisk_pil::{
     DMA_PRE_POST_AIR_IDS, DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS,
     DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, KECCAKF_AIR_IDS, MAIN_AIR_IDS, MEM_AIR_IDS,
     MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
-    MEM_ALIGN_WRITE_BYTE_AIR_IDS, POSEIDON_2_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, POSEIDON_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
     SHA_256_F_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
     ZISK_AIRGROUP_ID,
 };
@@ -90,8 +90,8 @@ impl AirClassifier {
             "Keccakf"
         } else if SHA_256_F_AIR_IDS.contains(&air_id) {
             "Sha256f"
-        } else if POSEIDON_2_AIR_IDS.contains(&air_id) {
-            "Poseidon2"
+        } else if POSEIDON_AIR_IDS.contains(&air_id) {
+            "Poseidon"
         } else if BLAKE_2_BR_AIR_IDS.contains(&air_id) {
             "Blake2"
         } else if VIRTUAL_TABLE_ZISK_0_AIR_IDS.contains(&air_id) {
