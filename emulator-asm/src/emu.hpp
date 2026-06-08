@@ -36,6 +36,9 @@ typedef struct {
     uint64_t poseidon2_counter;
     uint64_t poseidon2_duration;
 
+    uint64_t poseidon1_counter;
+    uint64_t poseidon1_duration;
+
     uint64_t arith256_counter;
     uint64_t arith256_duration;
 

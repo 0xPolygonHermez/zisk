@@ -47,7 +47,7 @@ members = [
   "precompiles/blake2",
   "precompiles/big_int",
   "precompiles/dma",
-  "precompiles/poseidon2",
+  "precompiles/poseidon",
   "lib-c",
   "lib-float",
   "emulator-asm/asm-runner",
@@ -97,7 +97,7 @@ precompiles-helpers = { path = "precompiles/helpers" }
 precomp-keccakf = { path = "precompiles/keccakf" }
 precomp-sha256f = { path = "precompiles/sha256f" }
 precomp-blake2 = { path = "precompiles/blake2" }
-precomp-poseidon2 = { path = "precompiles/poseidon2" }
+precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
 riscv = { path = "riscv" }

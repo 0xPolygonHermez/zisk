@@ -334,13 +334,13 @@ trace_row!(Sha256fTraceRow<F> {
 
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 17>;
 
-trace_row!(Poseidon2FixedRow<F> {
+trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
 pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 18>;
 
-trace_row!(Poseidon2TraceRow<F> {
- in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+trace_row!(PoseidonTraceRow<F> {
+ in_use:bit, in_use_clk_0:bit, sel_poseidon1:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
 });
 
 pub type Poseidon2Trace<R> = GenericTrace<R, 131072, 0, 18>;
@@ -652,7 +652,7 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Poseidon2AirGroupValues<F> {
+values!(PoseidonAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -805,7 +805,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 18, PackedInfoConst {
         is_packed: true,
         num_packed_words: 17,
-        unpack_info: &[1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
+        unpack_info: &[1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,

@@ -19,18 +19,18 @@ use precomp_arith_eq_384::{
 use precomp_big_int::{Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager};
 use precomp_blake2::{Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager};
 use precomp_keccakf::{KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager};
-use precomp_poseidon2::{
-    Poseidon2Collector, Poseidon2CounterInputGen, Poseidon2Instance, Poseidon2Manager,
+use precomp_poseidon::{
+    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager,
 };
 use precomp_sha256f::{Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager};
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2_OP_TYPE_ID,
-    KECCAK_OP_TYPE_ID, POSEIDON2_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS,
-    POSEIDON_2_AIR_IDS, SHA_256_F_AIR_IDS,
+    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
 };
 
 crate::register_precompiles! {
@@ -44,11 +44,11 @@ crate::register_precompiles! {
         air: SHA_256_F_AIR_IDS,
         rank_assign: false,
     ] => Sha256fManager<F>,
-    Poseidon2 [
-        op: POSEIDON2_OP_TYPE_ID,
-        air: POSEIDON_2_AIR_IDS,
+    Poseidon [
+        op: POSEIDON_OP_TYPE_ID,
+        air: POSEIDON_AIR_IDS,
         rank_assign: false,
-    ] => Poseidon2Manager<F>,
+    ] => PoseidonManager<F>,
     Blake2 [
         op: BLAKE2_OP_TYPE_ID,
         air: BLAKE_2_BR_AIR_IDS,
