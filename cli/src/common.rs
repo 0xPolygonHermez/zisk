@@ -57,7 +57,10 @@ fn project_elf_path(
 /// name from `Cargo.toml`. Returns `Ok(None)` when there is no `Cargo.toml`, no
 /// resolvable binary name, or no built ELF for that profile/binary. Looks in
 /// exactly one profile directory (no fallback).
-fn detect_project_elf_for_profile(profile: Profile, bin: Option<&str>) -> Result<Option<PathBuf>> {
+pub(crate) fn detect_project_elf_for_profile(
+    profile: Profile,
+    bin: Option<&str>,
+) -> Result<Option<PathBuf>> {
     let current_dir = env::current_dir()?;
     let cargo_toml = current_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
@@ -97,16 +100,16 @@ pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
 /// binary to run when the crate defines more than one.
 #[derive(clap::Args, Debug, Default)]
 pub(crate) struct ElfSelectorArgs {
-    /// Use the release-profile guest ELF (auto-detection only; not valid with --elf)
+    /// Use the release profile (not valid with --elf)
     #[arg(long, conflicts_with_all = ["debug", "elf"])]
     release: bool,
 
-    /// Use the debug-profile guest ELF (default; auto-detection only; not valid with --elf)
+    /// Use the debug profile [default] (not valid with --elf)
     #[arg(long, conflicts_with = "elf")]
     debug: bool,
 
-    /// Name of the binary to run when the crate defines more than one
-    /// (auto-detection only; not valid with --elf)
+    /// Select the binary to use when the crate defines more than one
+    /// (not valid with --elf)
     #[arg(long, value_name = "BIN", conflicts_with = "elf")]
     bin: Option<String>,
 }

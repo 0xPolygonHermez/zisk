@@ -4,7 +4,7 @@ use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::{GuestProgram, ProfilingMode};
 
-use crate::common::detect_current_project_elf;
+use crate::common::{detect_project_elf_for_profile, ElfSelectorArgs, Profile};
 
 // Structure representing the 'run' subcommand of cargo-zisk
 #[derive(clap::Args)]
@@ -19,10 +19,6 @@ pub(crate) struct RunCmd {
     #[arg(long)]
     all_features: bool,
 
-    /// Build artifacts in release mode, with optimizations
-    #[arg(long)]
-    release: bool,
-
     /// Do not activate the `default` feature
     #[arg(long)]
     no_default_features: bool,
@@ -30,6 +26,9 @@ pub(crate) struct RunCmd {
     /// Path to the guest ELF
     #[arg(short = 'e', long)]
     elf: Option<String>,
+
+    #[command(flatten)]
+    selector: ElfSelectorArgs,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -58,7 +57,9 @@ impl RunCmd {
                     return Err(anyhow!("cargo build command failed with status {}", status));
                 }
 
-                detect_current_project_elf()?
+                // Detect the ELF for the profile we just built (and the selected
+                // binary, if any) rather than guessing release-then-debug.
+                detect_project_elf_for_profile(self.selector.profile(), self.selector.bin())?
                     .ok_or_else(|| anyhow!("Could not find built ELF. Make sure you are in a Cargo project directory."))?
                     .to_string_lossy()
                     .into_owned()
@@ -86,8 +87,12 @@ impl RunCmd {
         if self.no_default_features {
             args.push("--no-default-features".to_string());
         }
-        if self.release {
+        if self.selector.profile() == Profile::Release {
             args.push("--release".to_string());
+        }
+        if let Some(bin) = self.selector.bin() {
+            args.push("--bin".to_string());
+            args.push(bin.to_string());
         }
         args.push("--target".to_string());
         args.push(ZISK_TARGET.to_string());
@@ -128,5 +133,13 @@ mod tests {
         assert!(args.iter().any(|a| a == "--release"));
         assert!(args.windows(2).any(|w| w == ["--features", "x"]));
         assert!(args.iter().any(|a| a == "--no-default-features"));
+    }
+
+    #[test]
+    fn build_args_with_bin() {
+        let args = parse(&["--bin", "execute"]).cargo_build_args();
+        assert!(args.windows(2).any(|w| w == ["--bin", "execute"]));
+        // Absent by default.
+        assert!(!parse(&[]).cargo_build_args().iter().any(|a| a == "--bin"));
     }
 }
