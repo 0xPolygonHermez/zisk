@@ -27,7 +27,7 @@ pub(crate) struct ZiskEmbeddedSetup {
 
     /// Enable precompiles hints support for this program. Requires the ASM backend (`--asm`).
     #[arg(long, requires = "asm")]
-    with_hints: bool,
+    hints: bool,
 
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -55,7 +55,7 @@ impl ZiskEmbeddedSetup {
         let client = builder.build()?;
 
         let mut setup = client.setup(&program);
-        if self.with_hints {
+        if self.hints {
             setup = setup.with_hints();
         }
 

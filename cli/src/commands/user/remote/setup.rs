@@ -27,7 +27,7 @@ pub(crate) struct ZiskRemoteSetup {
 
     /// Enable precompiles hints support for this program
     #[arg(long)]
-    with_hints: bool,
+    hints: bool,
 
     /// Generate setup for emulator only (supports `execute`, not `prove`)
     #[arg(long)]
@@ -47,7 +47,7 @@ impl ZiskRemoteSetup {
             println!();
 
             let mut setup = client.setup_by_id(&hash_id);
-            if self.with_hints {
+            if self.hints {
                 setup = setup.with_hints();
             }
             if self.emulator_only {
@@ -64,7 +64,7 @@ impl ZiskRemoteSetup {
             info!("Program registered. Hash ID: {}", upload.hash_id());
 
             let mut setup = client.setup(&program);
-            if self.with_hints {
+            if self.hints {
                 setup = setup.with_hints();
             }
             if self.emulator_only {
