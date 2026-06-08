@@ -154,21 +154,23 @@ cd "$ROOT_DIR"
 NODE_DEPS_READY=0
 ensure_node_deps() {
   [ "$NODE_DEPS_READY" -eq 1 ] && return 0
-  # The cargo-managed checkout starts empty; install on demand so the user doesn't have to.
-  if [ ! -d "$PROOFMAN_DIR/node_modules" ]; then
-    command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
-    echo "==> npm install in $PROOFMAN_DIR (one-time)"
-    (cd "$PROOFMAN_DIR" && npm install)
-  fi
   # compile-pil resolves pil2com via PIL2C_EXEC, then ./node_modules/.bin (cwd), then
   # walks up from the binary, then PATH. None of those reach the cargo git checkout,
   # so point it at the binary explicitly.
   local pil2c="$PROOFMAN_DIR/node_modules/.bin/pil2com"
+  local snarkjs="$PROOFMAN_DIR/node_modules/snarkjs"
+
+  # Reinstall from a clean tree so a partial or stale node_modules can't yield a
+  # missing pil2com/snarkjs. The NODE_DEPS_READY guard caps this at one run per invocation.
+  command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
+  rm -rf "$PROOFMAN_DIR/node_modules"
+  echo "==> npm install in $PROOFMAN_DIR"
+  (cd "$PROOFMAN_DIR" && npm install)
+
   [ -x "$pil2c" ] || [ -L "$pil2c" ] \
     || { echo "pil2com missing at $pil2c after npm install" >&2; exit 1; }
   export PIL2C_EXEC="$pil2c"
 
-  local snarkjs="$PROOFMAN_DIR/node_modules/snarkjs"
   [ -d "$snarkjs" ] \
     || { echo "snarkjs missing at $snarkjs after npm install" >&2; exit 1; }
   export SNARKJS_PATH="$snarkjs"
