@@ -4,7 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{setup_logger, EmbeddedClientBuilder, GuestProgram, VerboseMode};
+use zisk_sdk::{setup_logger, AsmOptions, EmbeddedClientBuilder, GuestProgram, VerboseMode};
 
 use super::validate_setup_asm;
 use crate::common::{resolve_elf, ElfSelectorArgs};
@@ -29,6 +29,18 @@ pub(crate) struct ZiskEmbeddedSetup {
     #[arg(long, requires = "asm")]
     hints: bool,
 
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
+    proving_key: Option<PathBuf>,
+
+    /// Path to a precomputed PLONK proving key
+    #[arg(short = 'w', long)]
+    proving_key_plonk: Option<PathBuf>,
+
+    /// Unlock the memory map for the ROM file. Only applies with `--asm`.
+    #[arg(short = 'u', long, requires = "asm")]
+    unlock_mapped_memory: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -51,6 +63,17 @@ impl ZiskEmbeddedSetup {
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.asm {
             builder = builder.assembly();
+        }
+        if let Some(pk) = &self.proving_key {
+            builder = builder.proving_key(pk.clone());
+        }
+        if let Some(pk) = &self.proving_key_plonk {
+            builder = builder.proving_key_plonk(pk.clone());
+        }
+        // `--unlock-mapped-memory` requires `--asm` (clap-enforced), so the
+        // Assembly executor is set above and `asm_options` won't panic at build.
+        if self.unlock_mapped_memory {
+            builder = builder.asm_options(AsmOptions::default().unlock_mapped_memory());
         }
         let client = builder.build()?;
 

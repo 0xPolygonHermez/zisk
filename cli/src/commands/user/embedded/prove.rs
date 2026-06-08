@@ -4,7 +4,9 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ProofKind, ZiskHints, ZiskStdin};
+use zisk_sdk::{
+    AsmOptions, EmbeddedClientBuilder, EmbeddedOpts, GuestProgram, ProofKind, ZiskHints, ZiskStdin,
+};
 
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
@@ -47,6 +49,26 @@ pub(crate) struct ZiskEmbeddedProve {
     /// Save the generated proof to the specified file path
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
+
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
+    proving_key: Option<PathBuf>,
+
+    /// Path to a precomputed PLONK proving key
+    #[arg(short = 'w', long)]
+    proving_key_plonk: Option<PathBuf>,
+
+    /// Reduce memory footprint during proving at the cost of speed
+    #[arg(short = 'm', long)]
+    minimal_memory: bool,
+
+    /// Maximum memory (bytes) for witness storage during proving
+    #[arg(short = 'x', long)]
+    max_witness_stored: Option<usize>,
+
+    /// Unlock the memory map for the ROM file. Only applies with `--asm`.
+    #[arg(short = 'u', long, requires = "asm")]
+    unlock_mapped_memory: bool,
 
     /// Smaller STARK proof with reduced size at the cost of longer proving time. Mutually exclusive with --plonk
     #[arg(short = 'c', long, conflicts_with = "plonk")]
@@ -100,6 +122,27 @@ impl ZiskEmbeddedProve {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             builder = builder.gpu();
+        }
+        if let Some(pk) = &self.proving_key {
+            builder = builder.proving_key(pk.clone());
+        }
+        if let Some(pk) = &self.proving_key_plonk {
+            builder = builder.proving_key_plonk(pk.clone());
+        }
+
+        let mut opts = EmbeddedOpts::default();
+        if self.minimal_memory {
+            opts = opts.minimal_memory();
+        }
+        if let Some(max) = self.max_witness_stored {
+            opts = opts.max_witness_stored(max);
+        }
+        builder = builder.with_embedded_opts(opts);
+
+        // `--unlock-mapped-memory` requires `--asm` (clap-enforced); the Assembly
+        // executor is set above, so `asm_options` won't panic at build.
+        if self.unlock_mapped_memory {
+            builder = builder.asm_options(AsmOptions::default().unlock_mapped_memory());
         }
         let client = builder.build()?;
 

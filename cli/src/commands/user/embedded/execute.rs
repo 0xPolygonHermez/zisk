@@ -4,7 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
+use zisk_sdk::{AsmOptions, EmbeddedClientBuilder, GuestProgram, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
 use crate::common::{resolve_elf, ElfSelectorArgs};
@@ -43,6 +43,10 @@ pub(crate) struct ZiskEmbeddedExecute {
     #[arg(short = 'a', long)]
     asm: bool,
 
+    /// Unlock the memory map for the ROM file. Only applies with `--asm`.
+    #[arg(short = 'u', long, requires = "asm")]
+    unlock_mapped_memory: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -68,6 +72,11 @@ impl ZiskEmbeddedExecute {
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.asm {
             builder = builder.assembly();
+        }
+        // `--unlock-mapped-memory` requires `--asm` (clap-enforced); the ASM
+        // options carry into the execute-only client built below.
+        if self.unlock_mapped_memory {
+            builder = builder.asm_options(AsmOptions::default().unlock_mapped_memory());
         }
         let client = builder.execute_only().build()?;
 

@@ -22,6 +22,14 @@ pub(crate) struct ZiskEmbeddedWrap {
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
+    /// Path to a precomputed proving key
+    #[arg(short = 'k', long)]
+    proving_key: Option<PathBuf>,
+
+    /// Path to a precomputed PLONK proving key
+    #[arg(short = 'w', long)]
+    proving_key_plonk: Option<PathBuf>,
+
     /// Smaller STARK proof with reduced size. Mutually exclusive with --plonk
     #[arg(short = 'c', long, conflicts_with = "plonk")]
     minimal: bool,
@@ -61,6 +69,12 @@ impl ZiskEmbeddedWrap {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             builder = builder.gpu();
+        }
+        if let Some(pk) = &self.proving_key {
+            builder = builder.proving_key(pk.clone());
+        }
+        if let Some(pk) = &self.proving_key_plonk {
+            builder = builder.proving_key_plonk(pk.clone());
         }
         let client = builder.build()?;
 

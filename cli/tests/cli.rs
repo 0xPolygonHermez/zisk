@@ -26,17 +26,13 @@ fn user_version_succeeds() {
 
 #[test]
 fn user_help_lists_command_groups() {
-    cargo_zisk()
-        .arg("--help")
-        .assert()
-        .success()
-        .stdout(
-            predicate::str::contains("remote")
-                .and(predicate::str::contains("setup"))
-                .and(predicate::str::contains("prove"))
-                .and(predicate::str::contains("execute"))
-                .and(predicate::str::contains("wrap")),
-        );
+    cargo_zisk().arg("--help").assert().success().stdout(
+        predicate::str::contains("remote")
+            .and(predicate::str::contains("setup"))
+            .and(predicate::str::contains("prove"))
+            .and(predicate::str::contains("execute"))
+            .and(predicate::str::contains("wrap")),
+    );
 }
 
 #[test]
