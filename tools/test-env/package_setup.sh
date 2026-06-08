@@ -99,19 +99,18 @@ main() {
     # the repo (and the build-dir probes) must be resolved AFTER load_env.
     current_step=1
     total_steps=4
-
-    step "Loading environment variables..."
-    load_env || return 1
-
-    ZISK_REPO="$(get_zisk_repo_dir)"
-    ensure cd "${ZISK_REPO}" || return 1
-
     if [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]]; then
       if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then total_steps=$((total_steps + 1)); else total_steps=$((total_steps + 2)); fi
     fi
     [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
     [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
     [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]] && total_steps=$((total_steps + 1))
+
+    step "Loading environment variables..."
+    load_env || return 1
+
+    ZISK_REPO="$(get_zisk_repo_dir)"
+    ensure cd "${ZISK_REPO}" || return 1
 
     PROVINGKEY_FILE="zisk-provingkey-${PACKAGE_SETUP_VERSION}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${PACKAGE_SETUP_VERSION}.tar.gz"
@@ -141,7 +140,7 @@ main() {
           -C "${OUTPUT_DIR}/macos" || return 1
 
         step "Adding macos libraries to build/provingKey..."
-        copy_dylibs ${OUTPUT_DIR}/macos/provingKey build/provingKey
+        copy_dylibs "${OUTPUT_DIR}/macos/provingKey" build/provingKey
       fi
     fi
 
