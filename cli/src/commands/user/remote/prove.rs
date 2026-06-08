@@ -7,7 +7,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, ProofKind, RemoteClient, ZiskHints, ZiskStdin};
 
-use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ProfileArgs};
+use crate::common::{reject_quic_hints, resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
 use crate::ux::print_job_banner;
 
@@ -22,7 +22,7 @@ pub(crate) struct ZiskRemoteProve {
     elf: Option<PathBuf>,
 
     #[command(flatten)]
-    profile: ProfileArgs,
+    selector: ElfSelectorArgs,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -55,7 +55,7 @@ pub(crate) struct ZiskRemoteProve {
 
 impl ZiskRemoteProve {
     pub(crate) async fn run(&mut self, client: &RemoteClient) -> Result<()> {
-        let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
+        let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         reject_quic_hints(self.hints.as_deref())?;
 
         print_job_banner(

@@ -53,18 +53,26 @@ fn project_elf_path(
 
 /// Auto-detect the current project's guest ELF for a specific [`Profile`].
 ///
-/// Returns `Ok(None)` when there is no `Cargo.toml`, no package name, or no built
-/// ELF for that profile. Looks in exactly one profile directory (no fallback).
-fn detect_project_elf_for_profile(profile: Profile) -> Result<Option<PathBuf>> {
+/// The binary name is `bin` when given (e.g. `--bin`), otherwise the package
+/// name from `Cargo.toml`. Returns `Ok(None)` when there is no `Cargo.toml`, no
+/// resolvable binary name, or no built ELF for that profile/binary. Looks in
+/// exactly one profile directory (no fallback).
+fn detect_project_elf_for_profile(profile: Profile, bin: Option<&str>) -> Result<Option<PathBuf>> {
     let current_dir = env::current_dir()?;
     let cargo_toml = current_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
         return Ok(None);
     }
 
-    let content = fs::read_to_string(&cargo_toml)?;
-    let Some(binary_name) = parse_package_name_from_cargo_toml(&content) else {
-        return Ok(None);
+    let binary_name = match bin {
+        Some(bin) => bin.to_string(),
+        None => {
+            let content = fs::read_to_string(&cargo_toml)?;
+            match parse_package_name_from_cargo_toml(&content) {
+                Some(name) => name,
+                None => return Ok(None),
+            }
+        }
     };
 
     let candidate = project_elf_path(&current_dir, profile, &binary_name);
@@ -75,19 +83,20 @@ fn detect_project_elf_for_profile(profile: Profile) -> Result<Option<PathBuf>> {
 ///
 /// Used by the dev commands and `run`/`clean_cache`, which have no profile flag.
 pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
-    if let Some(release) = detect_project_elf_for_profile(Profile::Release)? {
+    if let Some(release) = detect_project_elf_for_profile(Profile::Release, None)? {
         return Ok(Some(release));
     }
-    detect_project_elf_for_profile(Profile::Debug)
+    detect_project_elf_for_profile(Profile::Debug, None)
 }
 
-/// Profile-selection flags shared by the user-facing `cargo-zisk` commands.
+/// Guest-ELF selection flags shared by the user-facing `cargo-zisk` commands.
 ///
 /// These only affect guest-ELF auto-detection; they are rejected by clap when an
 /// explicit `--elf` is given. The default profile is [`Profile::Debug`]; pass
-/// `--release` to pick up the release-profile ELF instead.
+/// `--release` to pick up the release-profile ELF instead. `--bin` selects which
+/// binary to run when the crate defines more than one.
 #[derive(clap::Args, Debug, Default)]
-pub(crate) struct ProfileArgs {
+pub(crate) struct ElfSelectorArgs {
     /// Use the release-profile guest ELF (auto-detection only; not valid with --elf)
     #[arg(long, conflicts_with_all = ["debug", "elf"])]
     release: bool,
@@ -95,15 +104,24 @@ pub(crate) struct ProfileArgs {
     /// Use the debug-profile guest ELF (default; auto-detection only; not valid with --elf)
     #[arg(long, conflicts_with = "elf")]
     debug: bool,
+
+    /// Name of the binary to run when the crate defines more than one
+    /// (auto-detection only; not valid with --elf)
+    #[arg(long, value_name = "BIN", conflicts_with = "elf")]
+    bin: Option<String>,
 }
 
-impl ProfileArgs {
+impl ElfSelectorArgs {
     pub(crate) fn profile(&self) -> Profile {
         if self.release {
             Profile::Release
         } else {
             Profile::Debug
         }
+    }
+
+    pub(crate) fn bin(&self) -> Option<&str> {
+        self.bin.as_deref()
     }
 }
 
@@ -127,16 +145,26 @@ pub(crate) fn resolve_output_path(
 }
 
 /// Resolve the guest ELF: explicit path, otherwise auto-detect the given
-/// [`Profile`]'s ELF in the current project. An explicit `--elf` always wins and
-/// makes `profile` irrelevant (clap rejects the flag combination anyway).
-pub(crate) fn resolve_elf(elf: Option<PathBuf>, profile: Profile) -> Result<PathBuf> {
+/// [`Profile`]'s ELF (binary `bin`, or the package name) in the current project.
+/// An explicit `--elf` always wins and makes `profile`/`bin` irrelevant (clap
+/// rejects the flag combination anyway).
+pub(crate) fn resolve_elf(
+    elf: Option<PathBuf>,
+    profile: Profile,
+    bin: Option<&str>,
+) -> Result<PathBuf> {
     match elf {
         Some(elf) => Ok(elf),
-        None => detect_project_elf_for_profile(profile)?.ok_or_else(|| {
+        None => detect_project_elf_for_profile(profile, bin)?.ok_or_else(|| {
+            let target = match bin {
+                Some(bin) => format!("binary '{bin}'"),
+                None => "project".to_string(),
+            };
             anyhow::anyhow!(
-                "No ELF file provided, and could not detect a {} project ELF in the current directory. \
-                 Build the guest{} or pass an ELF file with --elf.",
+                "No ELF file provided, and could not detect a {} {} ELF in the current directory. \
+                 Build the guest{}, select a binary with --bin <BIN>, or pass an ELF file with --elf.",
                 profile.dir(),
+                target,
                 match profile {
                     Profile::Release => " with --release",
                     Profile::Debug => "",
@@ -218,10 +246,10 @@ mod tests {
 
     #[test]
     fn resolve_elf_returns_explicit_path_verbatim() {
-        // An explicit ELF wins regardless of the selected profile.
+        // An explicit ELF wins regardless of the selected profile or binary.
         let explicit = PathBuf::from("/some/where/guest.elf");
         for profile in [Profile::Debug, Profile::Release] {
-            let resolved = resolve_elf(Some(explicit.clone()), profile).unwrap();
+            let resolved = resolve_elf(Some(explicit.clone()), profile, Some("ignored")).unwrap();
             assert_eq!(resolved, explicit);
         }
     }
@@ -238,12 +266,20 @@ mod tests {
     }
 
     #[test]
-    fn profile_args_defaults_to_debug_and_release_opts_in() {
-        assert_eq!(ProfileArgs::default().profile(), Profile::Debug);
-        let explicit_debug = ProfileArgs { release: false, debug: true };
+    fn elf_selector_defaults_to_debug_and_release_opts_in() {
+        assert_eq!(ElfSelectorArgs::default().profile(), Profile::Debug);
+        let explicit_debug = ElfSelectorArgs { release: false, debug: true, bin: None };
         assert_eq!(explicit_debug.profile(), Profile::Debug);
-        let release = ProfileArgs { release: true, debug: false };
+        let release = ElfSelectorArgs { release: true, debug: false, bin: None };
         assert_eq!(release.profile(), Profile::Release);
+    }
+
+    #[test]
+    fn elf_selector_bin_override() {
+        assert_eq!(ElfSelectorArgs::default().bin(), None);
+        let with_bin =
+            ElfSelectorArgs { release: false, debug: false, bin: Some("execute".to_string()) };
+        assert_eq!(with_bin.bin(), Some("execute"));
     }
 
     #[test]

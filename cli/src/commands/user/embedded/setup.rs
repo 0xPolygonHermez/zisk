@@ -7,7 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, EmbeddedClientBuilder, GuestProgram, VerboseMode};
 
 use super::validate_setup_asm;
-use crate::common::{resolve_elf, ProfileArgs};
+use crate::common::{resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -19,7 +19,7 @@ pub(crate) struct ZiskEmbeddedSetup {
     elf: Option<PathBuf>,
 
     #[command(flatten)]
-    profile: ProfileArgs,
+    selector: ElfSelectorArgs,
 
     /// Use the ASM emulator instead of the default Rust emulator
     #[arg(short = 'a', long)]
@@ -36,7 +36,7 @@ pub(crate) struct ZiskEmbeddedSetup {
 
 impl ZiskEmbeddedSetup {
     pub(crate) fn run(&mut self) -> Result<()> {
-        let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
+        let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         validate_setup_asm(self.asm)?;
 
         print_banner();

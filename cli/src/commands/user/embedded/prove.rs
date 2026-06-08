@@ -7,7 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{EmbeddedClientBuilder, GuestProgram, ProofKind, ZiskHints, ZiskStdin};
 
 use super::validate_asm_hints;
-use crate::common::{resolve_elf, resolve_output_path, ProfileArgs};
+use crate::common::{resolve_elf, resolve_output_path, ElfSelectorArgs};
 use crate::proof::select_prove_kind;
 use crate::ux::print_job_banner;
 
@@ -20,7 +20,7 @@ pub(crate) struct ZiskEmbeddedProve {
     elf: Option<PathBuf>,
 
     #[command(flatten)]
-    profile: ProfileArgs,
+    selector: ElfSelectorArgs,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -72,7 +72,7 @@ pub(crate) struct ZiskEmbeddedProve {
 
 impl ZiskEmbeddedProve {
     pub(crate) fn run(&mut self) -> Result<()> {
-        let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
+        let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         validate_asm_hints(self.asm, self.hints.as_deref())?;
 
         print_job_banner(

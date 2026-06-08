@@ -6,7 +6,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient};
 
-use crate::common::{resolve_elf, ProfileArgs};
+use crate::common::{resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -19,7 +19,7 @@ pub(crate) struct ZiskRemoteSetup {
     elf: Option<PathBuf>,
 
     #[command(flatten)]
-    profile: ProfileArgs,
+    selector: ElfSelectorArgs,
 
     /// hash_id of an already-uploaded program. Runs setup only, skipping the upload.
     #[arg(long, conflicts_with = "elf")]
@@ -55,7 +55,7 @@ impl ZiskRemoteSetup {
             }
             (hash_id, setup.run()?)
         } else {
-            let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
+            let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
             print_banner_field("Elf", elf.display());
             println!();
 
