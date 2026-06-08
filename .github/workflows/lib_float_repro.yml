@@ -1,0 +1,53 @@
+name: lib-float reproducibility
+
+# Guards the reproducibility of lib-float's committed artifacts. ziskfloat.elf is
+# compiled inside a pinned Docker image (lib-float/c/docker/Dockerfile) and feeds
+# the program vk via include_bytes! in core/src/elf2rom.rs. This job rebuilds the
+# artifacts from source in that image and fails if the result differs from the
+# committed lib-float/c/lib/ziskfloat.elf and libziskfloat.a — i.e. the committed
+# binaries must be byte-identical to a fresh reproducible build.
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    paths:
+      - "lib-float/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  reproducible-ziskfloat:
+    name: ziskfloat reproducible build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: lib-float/c
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Rebuild artifacts in the pinned Docker image
+        run: |
+          set -euxo pipefail
+          make clean
+          make docker
+
+      - name: Verify committed artifacts match built artifacts
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- lib/ziskfloat.elf lib/libziskfloat.a; then
+            echo "::error::Committed lib-float/c/lib artifacts differ from built artifacts in the pinned Docker image -> If this is intended, run 'make -C lib-float/c docker' and commit the updated lib-float/c/lib/ziskfloat.elf and libziskfloat.a in this PR."
+            exit 1
+          fi
+          echo "OK: committed ziskfloat.elf / libziskfloat.a match built artifacts."

@@ -18,6 +18,7 @@ pub struct HintBuffer {
     not_empty: Condvar,
     closed: Mutex<bool>,
     paused: Mutex<bool>,
+    ending: Mutex<bool>,
 }
 
 struct HintBufferInner {
@@ -43,6 +44,7 @@ pub fn build_hint_buffer() -> Arc<HintBuffer> {
         not_empty: Condvar::new(),
         closed: Mutex::new(true),
         paused: Mutex::new(false),
+        ending: Mutex::new(false),
     })
 }
 
@@ -74,6 +76,12 @@ impl HintBuffer {
 
         *self.closed.lock().unwrap() = false;
         *self.paused.lock().unwrap() = false;
+        *self.ending.lock().unwrap() = false;
+        self.not_empty.notify_all();
+    }
+
+    pub fn mark_end(&self) {
+        *self.ending.lock().unwrap() = true;
         self.not_empty.notify_all();
     }
 
@@ -114,12 +122,6 @@ impl HintBuffer {
     #[inline(always)]
     pub fn write_hint_start(&self) {
         let w = self.begin_hint(CTRL_START, 0, false);
-        w.commit();
-    }
-
-    #[inline(always)]
-    pub fn write_hint_end(&self) {
-        let w = self.begin_hint(CTRL_END, 0, false);
         w.commit();
     }
 
@@ -277,6 +279,16 @@ impl HintBuffer {
                 let mut g = self.precompiles.lock().unwrap();
                 let mut i = self.input_data.lock().unwrap();
                 let closed = *self.closed.lock().unwrap();
+
+                {
+                    let mut ending = self.ending.lock().unwrap();
+                    if g.commit_pos == 0 && i.commit_pos == 0 && *ending {
+                        *ending = false;
+                        *self.closed.lock().unwrap() = true;
+                        let header = ((CTRL_END as u64) << 32).to_le_bytes();
+                        break Bytes::copy_from_slice(&header);
+                    }
+                }
 
                 if g.commit_pos == 0 && i.commit_pos == 0 && !closed {
                     drop(i); // Release input_data lock before waiting

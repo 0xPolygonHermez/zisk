@@ -226,10 +226,6 @@ impl<'a> MemAlignPlanner<'a> {
         write_byte: u32,
         counters: &[MemAlignCounters],
     ) {
-        if counters.is_empty() {
-            panic!("MemPlanner::plan() No metrics found");
-        }
-
         let count = counters.len();
         self.calculate_strategy_from_totals(full_rows, read_byte, write_byte);
 

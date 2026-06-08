@@ -17,7 +17,9 @@ zisk_precompile! {
     name = ArithEq384,
     op_type = ArithEq384,
     trace = ArithEq384Trace,
-    num_available_field = num_available_ops,
+    num_available = {
+        ::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1
+    },
     ops = [
         (OperationArith384ModData         => Arith384Mod,         Arith384ModInput),
         (OperationBls12_381CurveAddData   => Bls12_381CurveAdd,   Bls12_381CurveAddInput),

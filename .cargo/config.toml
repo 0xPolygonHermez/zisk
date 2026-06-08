@@ -1,0 +1,14 @@
+# Export the host binary's symbols to dlopen'd plugins.
+#
+# Proving-key `.so` files (e.g. `recursive1.so`) reference GMP symbols but
+# do not list libgmp in their `DT_NEEDED` — they expect the loading process
+# to already provide GMP. Without `--export-dynamic`, Rust binaries do not
+# expose their statically-linked symbols to libraries opened via `dlopen`,
+# causing runtime errors like:
+#
+#   symbol lookup error: .../recursive1.so: undefined symbol: __gmpz_init_set_ui
+#
+# Linux-only: macOS uses a different export model and the affected `.so`
+# files are Linux-targeted anyway.
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-Wl,--export-dynamic"]

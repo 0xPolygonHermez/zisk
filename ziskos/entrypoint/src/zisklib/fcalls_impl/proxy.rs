@@ -8,8 +8,8 @@ use crate::zisklib::{
     FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS_ID, FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS_ID,
     FCALL_BN254_FP2_INV_ID, FCALL_BN254_FP_INV_ID, FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID,
     FCALL_BN254_TWIST_DBL_LINE_COEFFS_ID, FCALL_MSB_POS_256_ID, FCALL_MSB_POS_384_ID,
-    FCALL_SECP256K1_ECDSA_VERIFY_ID, FCALL_SECP256K1_FN_INV_ID, FCALL_SECP256K1_FP_INV_ID,
-    FCALL_SECP256K1_FP_SQRT_ID, FCALL_SECP256R1_ECDSA_VERIFY_ID, FCALL_UINT256_DIV_ID,
+    FCALL_SECP256K1_FN_INV_ID, FCALL_SECP256K1_FP_INV_ID, FCALL_SECP256K1_FP_SQRT_ID,
+    FCALL_SECP256K1_GLV_DECOMPOSE_ID, FCALL_SECP256R1_FN_INV_ID, FCALL_UINT256_DIV_ID,
     FCALL_UINT256_INV_ID, FCALL_UINT256_INV_MOD_ID,
 };
 
@@ -26,8 +26,8 @@ pub fn fcall_proxy(id: u64, params: &[u64], results: &mut [u64]) -> i64 {
         FCALL_SECP256K1_FP_INV_ID => fcall_secp256k1_fp_inv(params, results),
         FCALL_SECP256K1_FN_INV_ID => fcall_secp256k1_fn_inv(params, results),
         FCALL_SECP256K1_FP_SQRT_ID => fcall_secp256k1_fp_sqrt(params, results),
-        FCALL_SECP256K1_ECDSA_VERIFY_ID => fcall_secp256k1_ecdsa_verify(params, results),
-        FCALL_SECP256R1_ECDSA_VERIFY_ID => fcall_secp256r1_ecdsa_verify(params, results),
+        FCALL_SECP256K1_GLV_DECOMPOSE_ID => fcall_secp256k1_glv_decompose(params, results),
+        FCALL_SECP256R1_FN_INV_ID => fcall_secp256r1_fn_inv(params, results),
         FCALL_BN254_FP_INV_ID => fcall_bn254_fp_inv(params, results),
         FCALL_BN254_FP2_INV_ID => fcall_bn254_fp2_inv(params, results),
         FCALL_BN254_TWIST_ADD_LINE_COEFFS_ID => fcall_bn254_twist_add_line_coeffs(params, results),

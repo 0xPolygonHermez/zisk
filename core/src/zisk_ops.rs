@@ -31,12 +31,7 @@ use std::{
 use tiny_keccak::keccakf;
 use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
 
-use lib_c::{inverse_fn_ec_c, inverse_fp_ec_c, sqrt_fp_ec_parity_c, Fcall, FcallContext};
-
-use crate::{
-    FCALL_ID_INVERSE_FN_EC, FCALL_ID_INVERSE_FP_EC, FCALL_ID_SQRT_FP_EC_PARITY,
-    FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE,
-};
+use crate::{FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE};
 
 /// Determines the type of a [`ZiskOp`].
 ///
@@ -2574,7 +2569,10 @@ pub fn opc_fcall_get(ctx: &mut InstContext) {
         panic!("opc_fcall_get() called with ctx.fcall.result_size==0");
     }
     if ctx.fcall.result_size as usize > FCALL_RESULT_MAX_SIZE {
-        panic!("opc_fcall_get() called with ctx.fcall.result_size=={}>32", ctx.fcall.result_size);
+        panic!(
+            "opc_fcall_get() called with ctx.fcall.result_size=={}>{}",
+            ctx.fcall.result_size, FCALL_RESULT_MAX_SIZE
+        );
     }
     if ctx.fcall.result_got > ctx.fcall.result_size {
         panic!(

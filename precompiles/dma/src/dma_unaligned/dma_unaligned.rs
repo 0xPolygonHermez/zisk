@@ -236,11 +236,11 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
         } else {
             0
         };
-        self.std.range_check(self.range_16_bits_id, (last_count & 0xFFFF) as i64, 1);
-        self.std.range_check(self.range_16_bits_id, ((last_count >> 16) & 0xFFFF) as i64, 1);
+        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
+        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
 
         local_dual_byte_table[0] += (padding_size * 4) as u64;
-        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, &local_dual_byte_table);
+        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &local_dual_byte_table);
 
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_last_segment = F::from_bool(is_last_segment);

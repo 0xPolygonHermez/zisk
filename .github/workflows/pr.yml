@@ -157,6 +157,12 @@ jobs:
           sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
 
+      - name: Prepare cache-setup directory
+        run: |
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+
       - name: Start test container with systemd
         run: |
           docker rm -f "${TEST_CONTAINER}" || true
@@ -193,6 +199,24 @@ jobs:
             ps -p 1 -o pid,comm,args
             systemctl is-system-running || true
           '
+
+          # Wait for the in-container Docker daemon (started by systemd) to be
+          # ready. lib-float/build.rs invokes `docker` early in the build, so it
+          # must be up before the "Build ZisK" step runs.
+          echo "Waiting for in-container Docker daemon..."
+          for i in $(seq 1 30); do
+            if docker exec -u ziskuser "${TEST_CONTAINER}" docker info >/dev/null 2>&1; then
+              echo "Docker daemon is ready."
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Docker daemon did not become ready in time"
+              docker exec "${TEST_CONTAINER}" systemctl status docker.service --no-pager || true
+              docker exec "${TEST_CONTAINER}" journalctl -u docker.service --no-pager -n 50 || true
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Build ZisK
         run: |

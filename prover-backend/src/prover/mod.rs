@@ -1,10 +1,14 @@
 mod asm;
+mod asm_exec;
 mod backend;
 mod emu;
+mod emu_exec;
 use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
+pub use asm_exec::*;
 use backend::*;
 pub use emu::*;
+pub use emu_exec::*;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
@@ -69,6 +73,7 @@ impl AsmOptions {
 pub struct BackendProverOpts {
     // Proof settings
     pub(crate) aggregation: bool,
+    pub(crate) verify_constraints: bool,
     pub(crate) verify_proofs: bool,
     pub(crate) minimal_memory: bool,
     pub(crate) verbose: u8,
@@ -95,6 +100,7 @@ impl Default for BackendProverOpts {
     fn default() -> Self {
         Self {
             aggregation: true,
+            verify_constraints: false,
             verify_proofs: false,
 
             minimal_memory: false,
@@ -143,8 +149,12 @@ impl BackendProverOpts {
 
         options.verbose_mode(self.verbose.into());
 
-        if !self.aggregation {
+        if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
+        }
+
+        if self.verify_constraints {
+            options.verify_constraints();
         }
 
         options
@@ -177,6 +187,12 @@ impl BackendProverOpts {
     }
 
     pub fn no_aggregation(mut self) -> Self {
+        self.aggregation = false;
+        self
+    }
+
+    pub fn verify_constraints(mut self) -> Self {
+        self.verify_constraints = true;
         self.aggregation = false;
         self
     }

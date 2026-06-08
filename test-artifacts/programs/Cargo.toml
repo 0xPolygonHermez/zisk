@@ -4,11 +4,12 @@ edition = "2021"
 
 [workspace]
 members = [
+  "bigint",
   "bls12_381",
   "bn254",
   "examples/*",
   "diagnostic",
-  "modexp",
+  "hashes",
   "secp256k1",
   "secp256r1",
   "syscalls/*",
@@ -30,5 +31,7 @@ precompiles-helpers = { path = "../../precompiles/helpers" }
 rand = "0.8.1"
 ruint = { version = "1", default-features = false }
 
-# [workspace.lints.rust]
-# unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_vendor, values("zisk"))', 'cfg(zisk_hints)'] }
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(target_vendor, values("zisk"))',
+] }
