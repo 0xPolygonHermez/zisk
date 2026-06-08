@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read};
 
-use crate::io::stream::StreamRead;
+use crate::StreamRead;
 
 /// A memory-based implementation of StreamSource that reads from in-memory data.
 pub struct MemoryStreamReader {

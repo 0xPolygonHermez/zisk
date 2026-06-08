@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use crate::io::stream::StreamRead;
+use crate::StreamRead;
 
 /// A stream reader that reads byte chunks from an [`mpsc`] channel.
 ///

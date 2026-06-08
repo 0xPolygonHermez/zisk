@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 /// Upper bound on how long any peer-connect poll loop waits before giving up.
-/// Shared between [`ZiskStreamWriter`](crate::io::ZiskStreamWriter)'s background
+/// Shared between [`ZiskStreamWriter`](crate::ZiskStreamWriter)'s background
 /// connect thread and transports that drive accept inside their own `write()`
 /// (currently only QUIC).
 pub const CONNECT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
