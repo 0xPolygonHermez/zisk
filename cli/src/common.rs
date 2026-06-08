@@ -20,7 +20,42 @@ pub(crate) fn default_proof_filename(job_id: Option<impl std::fmt::Display>) -> 
     PathBuf::from(format!("{timestamp}-{job_segment}proof.bin"))
 }
 
-pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
+/// Cargo build profile used to locate the auto-detected guest ELF.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Profile {
+    /// `target/elf/<target>/debug/<bin>` — the default.
+    #[default]
+    Debug,
+    /// `target/elf/<target>/release/<bin>`.
+    Release,
+}
+
+impl Profile {
+    /// The Cargo profile sub-directory name under the ELF target dir.
+    fn dir(self) -> &'static str {
+        match self {
+            Profile::Debug => "debug",
+            Profile::Release => "release",
+        }
+    }
+}
+
+/// Build the guest ELF path for a given project root, profile, and binary name.
+///
+/// Pure (no filesystem access) so the layout is testable in isolation.
+fn project_elf_path(
+    project_root: &std::path::Path,
+    profile: Profile,
+    binary_name: &str,
+) -> PathBuf {
+    project_root.join("target").join("elf").join(ZISK_TARGET).join(profile.dir()).join(binary_name)
+}
+
+/// Auto-detect the current project's guest ELF for a specific [`Profile`].
+///
+/// Returns `Ok(None)` when there is no `Cargo.toml`, no package name, or no built
+/// ELF for that profile. Looks in exactly one profile directory (no fallback).
+fn detect_project_elf_for_profile(profile: Profile) -> Result<Option<PathBuf>> {
     let current_dir = env::current_dir()?;
     let cargo_toml = current_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
@@ -28,24 +63,47 @@ pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
     }
 
     let content = fs::read_to_string(&cargo_toml)?;
-    let binary_name = parse_package_name_from_cargo_toml(&content);
-
-    let Some(binary_name) = binary_name else {
+    let Some(binary_name) = parse_package_name_from_cargo_toml(&content) else {
         return Ok(None);
     };
 
-    let candidate = current_dir.join("target").join("elf").join(ZISK_TARGET);
+    let candidate = project_elf_path(&current_dir, profile, &binary_name);
+    Ok(candidate.exists().then_some(candidate))
+}
 
-    let release_candidate = candidate.join("release").join(&binary_name);
-    if release_candidate.exists() {
-        return Ok(Some(release_candidate));
+/// Auto-detect the current project's guest ELF, preferring `release` then `debug`.
+///
+/// Used by the dev commands and `run`/`clean_cache`, which have no profile flag.
+pub(crate) fn detect_current_project_elf() -> Result<Option<PathBuf>> {
+    if let Some(release) = detect_project_elf_for_profile(Profile::Release)? {
+        return Ok(Some(release));
     }
+    detect_project_elf_for_profile(Profile::Debug)
+}
 
-    let debug_candidate = candidate.join("debug").join(&binary_name);
-    if debug_candidate.exists() {
-        Ok(Some(debug_candidate))
-    } else {
-        Ok(None)
+/// Profile-selection flags shared by the user-facing `cargo-zisk` commands.
+///
+/// These only affect guest-ELF auto-detection; they are rejected by clap when an
+/// explicit `--elf` is given. The default profile is [`Profile::Debug`]; pass
+/// `--release` to pick up the release-profile ELF instead.
+#[derive(clap::Args, Debug, Default)]
+pub(crate) struct ProfileArgs {
+    /// Use the release-profile guest ELF (auto-detection only; not valid with --elf)
+    #[arg(long, conflicts_with_all = ["debug", "elf"])]
+    release: bool,
+
+    /// Use the debug-profile guest ELF (default; auto-detection only; not valid with --elf)
+    #[arg(long, conflicts_with = "elf")]
+    debug: bool,
+}
+
+impl ProfileArgs {
+    pub(crate) fn profile(&self) -> Profile {
+        if self.release {
+            Profile::Release
+        } else {
+            Profile::Debug
+        }
     }
 }
 
@@ -68,13 +126,21 @@ pub(crate) fn resolve_output_path(
     explicit.unwrap_or_else(|| default_proof_filename(job_id))
 }
 
-/// Resolve the guest ELF: explicit path, otherwise auto-detect from the current project.
-pub(crate) fn resolve_elf(elf: Option<PathBuf>) -> Result<PathBuf> {
+/// Resolve the guest ELF: explicit path, otherwise auto-detect the given
+/// [`Profile`]'s ELF in the current project. An explicit `--elf` always wins and
+/// makes `profile` irrelevant (clap rejects the flag combination anyway).
+pub(crate) fn resolve_elf(elf: Option<PathBuf>, profile: Profile) -> Result<PathBuf> {
     match elf {
         Some(elf) => Ok(elf),
-        None => detect_current_project_elf()?.ok_or_else(|| {
+        None => detect_project_elf_for_profile(profile)?.ok_or_else(|| {
             anyhow::anyhow!(
-                "No ELF file provided, and could not detect a project ELF in the current directory. Please provide an ELF file with --elf."
+                "No ELF file provided, and could not detect a {} project ELF in the current directory. \
+                 Build the guest{} or pass an ELF file with --elf.",
+                profile.dir(),
+                match profile {
+                    Profile::Release => " with --release",
+                    Profile::Debug => "",
+                },
             )
         }),
     }
@@ -152,9 +218,32 @@ mod tests {
 
     #[test]
     fn resolve_elf_returns_explicit_path_verbatim() {
+        // An explicit ELF wins regardless of the selected profile.
         let explicit = PathBuf::from("/some/where/guest.elf");
-        let resolved = resolve_elf(Some(explicit.clone())).unwrap();
-        assert_eq!(resolved, explicit);
+        for profile in [Profile::Debug, Profile::Release] {
+            let resolved = resolve_elf(Some(explicit.clone()), profile).unwrap();
+            assert_eq!(resolved, explicit);
+        }
+    }
+
+    #[test]
+    fn project_elf_path_uses_profile_subdir() {
+        let root = PathBuf::from("/proj");
+        let debug = project_elf_path(&root, Profile::Debug, "guest");
+        let release = project_elf_path(&root, Profile::Release, "guest");
+
+        let suffix = PathBuf::from("target").join("elf").join(ZISK_TARGET);
+        assert_eq!(debug, root.join(&suffix).join("debug").join("guest"));
+        assert_eq!(release, root.join(&suffix).join("release").join("guest"));
+    }
+
+    #[test]
+    fn profile_args_defaults_to_debug_and_release_opts_in() {
+        assert_eq!(ProfileArgs::default().profile(), Profile::Debug);
+        let explicit_debug = ProfileArgs { release: false, debug: true };
+        assert_eq!(explicit_debug.profile(), Profile::Debug);
+        let release = ProfileArgs { release: true, debug: false };
+        assert_eq!(release.profile(), Profile::Release);
     }
 
     #[test]

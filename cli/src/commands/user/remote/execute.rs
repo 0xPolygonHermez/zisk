@@ -7,7 +7,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient, ZiskHints, ZiskStdin};
 
-use crate::common::{reject_quic_hints, resolve_elf};
+use crate::common::{reject_quic_hints, resolve_elf, ProfileArgs};
 use crate::ux::{print_execute_output, print_job_banner};
 
 #[derive(clap::Args, Debug)]
@@ -19,6 +19,9 @@ pub(crate) struct ZiskRemoteExecute {
     /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
+
+    #[command(flatten)]
+    profile: ProfileArgs,
 
     /// Input for the guest. Accepts a file path, `file://path`, or inline data
     /// `inline://[[1,2],[3]]` (a JSON array of u64 arrays, one frame per inner array)
@@ -39,7 +42,7 @@ pub(crate) struct ZiskRemoteExecute {
 
 impl ZiskRemoteExecute {
     pub(crate) async fn run(&mut self, client: &RemoteClient) -> Result<()> {
-        let elf = resolve_elf(self.elf.take())?;
+        let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
         reject_quic_hints(self.hints.as_deref())?;
 
         print_job_banner(

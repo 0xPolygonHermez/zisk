@@ -6,7 +6,7 @@ use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient};
 
-use crate::common::resolve_elf;
+use crate::common::{resolve_elf, ProfileArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -16,11 +16,14 @@ pub(crate) struct ZiskRemoteUpload {
     /// Path to the guest ELF file to upload. If omitted, the ELF is auto-detected from the current project
     #[arg(short = 'e', long)]
     elf: Option<PathBuf>,
+
+    #[command(flatten)]
+    profile: ProfileArgs,
 }
 
 impl ZiskRemoteUpload {
     pub(crate) async fn run(&mut self, client: &RemoteClient) -> Result<()> {
-        let elf = resolve_elf(self.elf.take())?;
+        let elf = resolve_elf(self.elf.take(), self.profile.profile())?;
 
         print_banner();
         print_banner_command(format!("{} Upload", "REMOTE".bold()));
