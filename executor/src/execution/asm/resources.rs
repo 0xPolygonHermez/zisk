@@ -354,6 +354,5 @@ impl Drop for AsmResources {
                 g.get_processor().hints_sink().unbind_semaphores();
             }
         }
-
     }
 }
