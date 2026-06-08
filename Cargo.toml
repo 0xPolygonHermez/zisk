@@ -18,6 +18,7 @@ gha_pil2_compiler_branch = "tags/v0.10.0"
 members = [
   "cli",
   "core",
+  "integration-tests",
   "data-bus",
   "emulator",
   "executor",
@@ -52,6 +53,7 @@ members = [
   "emulator-asm/asm-runner",
   "ziskclib",
   "common",
+  "stream",
   "tools/circuit",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
@@ -79,6 +81,7 @@ opt-level = 3
 [workspace.dependencies]
 # Internal crates
 zisk-common = { path = "common" }
+zisk-stream = { path = "stream" }
 zisk-core = { path = "core" }
 data-bus = { path = "data-bus" }
 ziskemu = { path = "emulator" }

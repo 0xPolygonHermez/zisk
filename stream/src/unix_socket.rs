@@ -11,7 +11,7 @@ use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result};
 
-use super::{StreamRead, StreamWrite};
+use crate::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
 const MAX_MESSAGE_SIZE: usize = 128 * 1024;

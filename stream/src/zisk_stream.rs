@@ -6,7 +6,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
-use crate::io::{StreamRead, StreamSource};
+use crate::{StreamRead, StreamSource};
 
 pub trait StreamProcessor: Send + Sync + 'static {
     /// Process a batch of hint data.
@@ -143,7 +143,7 @@ impl<P: StreamProcessor> ZiskStream<P> {
         let mut first_batch = true;
 
         while let Some(hints) = stream.next()? {
-            let hints = crate::reinterpret_vec(hints)?;
+            let hints = reinterpret_vec(hints)?;
             let has_ctrl_end = hints_processor.process_hints(&hints, first_batch)?;
 
             first_batch = false;
@@ -206,4 +206,38 @@ impl<P: StreamProcessor> Drop for ZiskStream<P> {
         self.tx.take();
         self.thread_handle.take(); // detach
     }
+}
+
+/// Reinterpret a `Vec<T>` as a `Vec<U>` in place, zero-padding to a whole
+/// number of `U` elements when needed.
+///
+/// Returns an error if the backing allocation is not aligned for `U`.
+fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
+    let size_t = std::mem::size_of::<T>();
+    let size_u = std::mem::size_of::<U>();
+
+    let total_bytes = v.len() * size_t;
+    let rem = total_bytes % size_u;
+
+    if rem != 0 {
+        let pad_bytes = size_u - rem;
+        let pad_t = pad_bytes.div_ceil(size_t);
+        v.extend(std::iter::repeat(T::default()).take(pad_t));
+    }
+
+    if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
+        return Err(anyhow::anyhow!(
+            "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
+            std::any::type_name::<T>(),
+            std::any::type_name::<U>(),
+            std::mem::align_of::<U>()
+        ));
+    }
+
+    let len = (v.len() * size_t) / size_u;
+    let cap = (v.capacity() * size_t) / size_u;
+    let ptr = v.as_ptr() as *mut U;
+
+    std::mem::forget(v);
+    Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
 }

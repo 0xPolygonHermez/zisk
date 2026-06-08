@@ -28,11 +28,12 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use anyhow::Result;
 
-use crate::io::{StreamWrite, CONNECT_DEADLINE};
+use crate::{StreamWrite, CONNECT_DEADLINE};
 
-use crate::io::QuicStreamWriter;
+#[cfg(feature = "quic")]
+use crate::QuicStreamWriter;
 #[cfg(unix)]
-use crate::io::UnixSocketStreamWriter;
+use crate::UnixSocketStreamWriter;
 
 /// Default per-call chunk size for the [`TransportKind::Push`] arm.
 ///
@@ -205,6 +206,7 @@ impl ZiskStreamWriter {
     /// QUIC transport bound at the given socket address. The resolved local
     /// address (after `:0` is replaced with an OS-assigned port) becomes the
     /// URI.
+    #[cfg(feature = "quic")]
     pub fn quic(addr: std::net::SocketAddr) -> Result<Self> {
         let writer = QuicStreamWriter::new(addr)?;
         let uri = format!("quic://{}", writer.local_addr()?);
@@ -672,7 +674,7 @@ mod tests {
     #[cfg(unix)]
     mod unix_tests {
         use super::*;
-        use crate::io::{StreamRead, UnixSocketStreamReader};
+        use crate::{StreamRead, UnixSocketStreamReader};
 
         fn temp_path() -> String {
             // Lightweight unique path generator (no uuid dep in common).
