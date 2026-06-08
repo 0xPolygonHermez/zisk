@@ -25,6 +25,7 @@ const DEFAULT_HINTS: &str = concat!(
 );
 
 #[test]
+#[ignore = "smoke test for diagnostic-hints; run with `cargo test -p zisk-sdk --test diagnostic_hints_smoke -- --nocapture`"]
 fn execute_diagnostic_hints() {
     // Resolve the hints binary (env override, else the native-run default).
     let hints_path = std::env::var_os("ZISK_TEST_HINTS")
