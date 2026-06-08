@@ -2,7 +2,7 @@
 //!
 //! This state machine is responsible for calculating basic binary table rows.
 
-use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_8};
+use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_20, P2_8};
 
 use crate::binary_constants::*;
 
@@ -60,7 +60,7 @@ impl BinaryBasicTableSM {
     ) -> u64 {
         debug_assert!(a <= 0xFF);
         debug_assert!(b <= 0xFF);
-        debug_assert!(cin <= 0x01);
+        debug_assert!(cin <= 0x03);
         debug_assert!(pos_ind <= 0x02);
         debug_assert!(flags <= 0b1111);
 
@@ -86,20 +86,20 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Maxu => 2 * P2_18 + 2 * P2_17,
             BinaryBasicTableOp::Max => 3 * P2_18 + 3 * P2_17,
             BinaryBasicTableOp::LtAbsNP => 4 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::LtAbsPN => P2_19 + 4 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Ltu => 2 * P2_19 + 4 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Lt => 2 * P2_19 + 5 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Gt => 2 * P2_19 + 6 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Eq => 2 * P2_19 + 7 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Add => 2 * P2_19 + 8 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Sub => 2 * P2_19 + 9 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Leu => 2 * P2_19 + 10 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Le => 2 * P2_19 + 11 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::And => 2 * P2_19 + 12 * P2_18 + 4 * P2_17,
-            BinaryBasicTableOp::Or => 2 * P2_19 + 12 * P2_18 + 5 * P2_17,
-            BinaryBasicTableOp::Xor => 2 * P2_19 + 12 * P2_18 + 6 * P2_17,
-            BinaryBasicTableOp::Sext00 => 2 * P2_19 + 12 * P2_18 + 7 * P2_17,
-            BinaryBasicTableOp::SextFF => 2 * P2_19 + 12 * P2_18 + 8 * P2_17 + P2_16,
+            BinaryBasicTableOp::LtAbsPN => P2_20 + 4 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Ltu => P2_20 + P2_19 + 4 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Lt => P2_20 + P2_19 + 5 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Gt => P2_20 + P2_19 + 6 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Eq => P2_20 + P2_19 + 7 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Add => P2_20 + P2_19 + 8 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Sub => P2_20 + P2_19 + 9 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Leu => P2_20 + P2_19 + 10 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Le => P2_20 + P2_19 + 11 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::And => P2_20 + P2_19 + 12 * P2_18 + 4 * P2_17,
+            BinaryBasicTableOp::Or => P2_20 + P2_19 + 12 * P2_18 + 5 * P2_17,
+            BinaryBasicTableOp::Xor => P2_20 + P2_19 + 12 * P2_18 + 6 * P2_17,
+            BinaryBasicTableOp::Sext00 => P2_20 + P2_19 + 12 * P2_18 + 7 * P2_17,
+            BinaryBasicTableOp::SextFF => P2_20 + P2_19 + 12 * P2_18 + 8 * P2_17 + P2_16,
         }
     }
 
