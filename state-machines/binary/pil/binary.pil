@@ -67,7 +67,9 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     col witness bits(8) free_in_a[BYTES];   // input A per byte
     col witness bits(8) free_in_b[BYTES];   // input B per byte
     col witness bits(8) free_in_c[BYTES];   // output C per byte
-    col witness bits(2) carry[BYTES];       // carry distribution per byte [0,cout:0],[cin:0,cout:1],...,[cin:BYTES-2,cout:BYTES-1]
+    col witness bits(2) carry[BYTES];       // per-byte carry chain:
+                                            //      (cin[i]=carry[i-1], cout[i]=carry[i])
+                                            // 2 bits to hold LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
 
     // Flags and helpers
     col witness bits(1) mode32;             // 1 if operation is in 32-bit mode; 0 if in 64-bit mode

@@ -60,7 +60,7 @@ impl BinaryBasicTableSM {
     ) -> u64 {
         debug_assert!(a <= 0xFF);
         debug_assert!(b <= 0xFF);
-        debug_assert!(cin <= 0x03);
+        debug_assert!(cin <= if opcode == BinaryBasicTableOp::LtAbsNP { 0x03 } else { 0x01 });
         debug_assert!(pos_ind <= 0x02);
         debug_assert!(flags <= 0b1111);
 
