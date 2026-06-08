@@ -1,10 +1,20 @@
-# Makefile to build static library for Rust FFI
+# Makefile to build the static C++ library for Rust FFI.
 
-CXX := g++
-CXXFLAGS := -O3 -std=c++20 -mavx2 -march=native -Wall -Wextra -pthread -fopenmp -Iinclude -no-pie -fPIC $(EXTRA_CXXFLAGS)
-# CXXFLAGS := -O3 -g -std=c++20 -mavx2 -march=native -Wall -Wextra -pthread
-# valgrind flags
-# CXXFLAGS := -O1 -g -std=c++20 -Wall -Wextra -pthread
+
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+    HOMEBREW_PREFIX := $(shell brew --prefix 2>/dev/null || echo /opt/homebrew)
+    CXX      := clang++
+    CXXFLAGS := -O3 -std=c++20 -Wall -Wextra -pthread -fPIC \
+                -Xpreprocessor -fopenmp \
+                -I$(HOMEBREW_PREFIX)/opt/libomp/include \
+                -D__DARWIN_ARCH__ -Iinclude $(EXTRA_CXXFLAGS)
+else
+    CXX      := g++
+    CXXFLAGS := -O3 -std=c++20 -Wall -Wextra -pthread -fopenmp \
+                -no-pie -fPIC -Iinclude $(EXTRA_CXXFLAGS)
+endif
 
 TARGET := libmemcpp.a
 
