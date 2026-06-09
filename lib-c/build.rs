@@ -76,17 +76,15 @@ fn main() {
 /// Resolve `<workspace>/target` from `OUT_DIR` (`.../target/[<triple>/]<profile>/build/<crate>-<hash>/out`).
 ///
 /// Consumers hardcode `<workspace>/target/zisk-libs` (emulator-asm `-L`, build_zisk.sh, rom-setup),
-/// so a custom-named `CARGO_TARGET_DIR` is unsupported — panic instead of publishing where nobody reads.
+/// so any `CARGO_TARGET_DIR` is unsupported — reject it up front rather than publishing where nobody reads.
 fn workspace_target_dir(out_dir: &Path) -> PathBuf {
+    if std::env::var_os("CARGO_TARGET_DIR").is_some() {
+        panic!("CARGO_TARGET_DIR is unsupported for the ZisK assembly build; consumers expect <workspace>/target/zisk-libs");
+    }
     out_dir
         .ancestors()
         .find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
-        .unwrap_or_else(|| {
-            panic!(
-                "no `target` ancestor in OUT_DIR ({}); a custom CARGO_TARGET_DIR is unsupported",
-                out_dir.display()
-            )
-        })
+        .unwrap_or_else(|| panic!("no `target` ancestor in OUT_DIR ({})", out_dir.display()))
         .to_path_buf()
 }
 
