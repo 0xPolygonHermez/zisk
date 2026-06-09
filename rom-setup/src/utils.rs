@@ -75,6 +75,12 @@ pub fn get_elf_data_hash(elf: &[u8]) -> String {
     blake3::hash(elf).to_hex().to_string()
 }
 
+/// Hash of the ROM inputs (transpiler + embedded float ELF), baked by
+/// `build.rs`. Folded into the ROM/verkey filenames so a transpiler or float
+/// change invalidates them — otherwise a warm cache returns a verkey stale
+/// w.r.t. the current `zisk-core`, i.e. the wrong program vk.
+const ROM_INPUTS_HASH: &str = env!("ZISK_ROM_INPUTS_HASH");
+
 pub fn get_elf_bin_file_path_with_hash(
     hash: &str,
     default_cache_path: &Path,
@@ -86,8 +92,9 @@ pub fn get_elf_bin_file_path_with_hash(
 
     let gpu_suffix = if gpu { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}{}.bin",
+        "{}-d{}_{}_{}_{}_{}{}.bin",
         hash,
+        ROM_INPUTS_HASH,
         pilout_hash,
         &n.to_string(),
         &ROM_BLOWUP_FACTOR.to_string(),
@@ -107,8 +114,9 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}.verkey.bin",
+        "{}-d{}_{}_{}_{}_{}.verkey.bin",
         hash,
+        ROM_INPUTS_HASH,
         pilout_hash,
         &n.to_string(),
         &ROM_BLOWUP_FACTOR.to_string(),

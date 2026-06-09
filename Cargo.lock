@@ -5022,6 +5022,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "fields 1.0.0-beta",
+ "lib-float",
  "proofman-common",
  "sm-rom",
  "tracing",

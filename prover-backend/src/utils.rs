@@ -29,9 +29,8 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
     let name = elf.name();
     let hash = get_elf_data_hash(elf.elf());
-    let prefix = if name != hash { format!("{name}-{hash}") } else { hash };
-    let base = if with_hints { format!("{prefix}-hints") } else { prefix };
 
+    let base = rom_setup::compute_asm_basename(name, &hash, with_hints);
     Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
 }
 
