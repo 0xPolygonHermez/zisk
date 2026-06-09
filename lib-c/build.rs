@@ -59,6 +59,11 @@ fn main() {
         panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
     });
 
+    // The published location (workspace_target_dir) is derived from OUT_DIR, which
+    // already moves with CARGO_TARGET_DIR; track the env var too so a change forces
+    // a rerun rather than leaving the archive in a stale location.
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+
     // Track C source files for recompilation
     track_sources(&c_path);
 
@@ -68,17 +73,20 @@ fn main() {
     }
 }
 
+/// Resolve `<workspace>/target` from `OUT_DIR` (`.../target/[<triple>/]<profile>/build/<crate>-<hash>/out`).
+///
+/// Consumers hardcode `<workspace>/target/zisk-libs` (emulator-asm `-L`, build_zisk.sh, rom-setup),
+/// so a custom-named `CARGO_TARGET_DIR` is unsupported — panic instead of publishing where nobody reads.
 fn workspace_target_dir(out_dir: &Path) -> PathBuf {
-    if let Ok(env_target) = std::env::var("CARGO_TARGET_DIR") {
-        let p = PathBuf::from(env_target);
-        if p.is_absolute() {
-            return p;
-        }
-    }
     out_dir
         .ancestors()
         .find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
-        .unwrap_or_else(|| panic!("No 'target' ancestor of {}", out_dir.display()))
+        .unwrap_or_else(|| {
+            panic!(
+                "no `target` ancestor in OUT_DIR ({}); a custom CARGO_TARGET_DIR is unsupported",
+                out_dir.display()
+            )
+        })
         .to_path_buf()
 }
 
