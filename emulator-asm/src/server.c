@@ -129,6 +129,7 @@ void server_setup (void)
 
     int result;
 
+    asm_printf("\x1B[34mSTART server_setup() gen_method=%d create_input_shm=%d\x1B[0m\n", gen_method, create_input_shm);
     /*******/
     /* ROM */
     /*******/
@@ -327,9 +328,12 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
                 exit(-1);
             }
+            asm_printf("\x1B[34mSHM shmem_input_name created. gen_method=%d create_input_shm=%d\x1B[0m\n", gen_method, create_input_shm);
+            usleep(10000);
         }
 
         // Open the input shared memory as read-only
+        asm_printf("\x1B[34mSHM shmem_input_name before use. gen_method=%d create_input_shm=%d\x1B[0m\n", gen_method, create_input_shm);
         shmem_input_fd = shm_open(shmem_input_name, O_RDONLY, 0666);
         if (shmem_input_fd < 0)
         {
@@ -561,13 +565,17 @@ void server_setup (void)
             asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
             exit(-1);
         }
+
+        asm_printf("\x1B[34mSHM shmem_control_input_fd created. gen_method=%d create_input_shm=%d\x1B[0m\n", gen_method, create_input_shm);
+        usleep(10000);
     }
 
     // Open the control input shared memory as read-only
+    asm_printf("\x1B[34mSHM shmem_control_input_fd before use. gen_method=%d create_input_shm=%d\x1B[0m\n", gen_method, create_input_shm);
     shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
     if (shmem_control_input_fd < 0)
     {
-        asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+        asm_printf("ERROR: Failed calling shmem_control_input_fd RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
         exit(-1);
     }
 
@@ -743,6 +751,7 @@ void server_setup (void)
         }
     }
 
+
     /****************/
     /* OUTPUT TRACE */
     /****************/
@@ -901,6 +910,7 @@ void server_setup (void)
         duration = TimeDiff(start_time, stop_time);
         asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
     }
+    
 }
 
 void server_reset_fast (void)

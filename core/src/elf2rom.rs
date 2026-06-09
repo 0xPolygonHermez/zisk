@@ -86,6 +86,18 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     ro_data = merge_adjacent_data_sections(&ro_data);
     rw_data = merge_adjacent_data_sections(&rw_data);
 
+    // Add trailing zeros in every data section of the ROM to make their size a multiple of 32 bytes
+    ro_data = ro_data
+        .into_iter()
+        .map(|section| {
+            let mut data = section.data;
+            while data.len() % 32 != 0 {
+                data.push(0);
+            }
+            DataSection { addr: section.addr, data }
+        })
+        .collect();
+
     // Delete trailing zeros in every data section of the RAM, and delete the section if needed
     rw_data = rw_data
         .into_iter()
@@ -102,12 +114,12 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         })
         .collect();
 
-    // Add trailing zeros in every data section of the RAM to make their size a multiple of 8 bytes
+    // Add trailing zeros in every data section of the RAM to make their size a multiple of 32 bytes
     rw_data = rw_data
         .into_iter()
         .map(|section| {
             let mut data = section.data;
-            while data.len() % 8 != 0 {
+            while data.len() % 32 != 0 {
                 data.push(0);
             }
             DataSection { addr: section.addr, data }

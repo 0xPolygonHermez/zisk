@@ -52,11 +52,7 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
         Self { dma_unaligned_sm, ictx, is_last_segment }
     }
 
-    pub fn build_dma_collector(
-        &self,
-        chunk_id: ChunkId,
-        mem_sections: &dyn zisk_core::MemDataSection,
-    ) -> DmaUnalignedCollector {
+    pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaUnalignedCollector {
         assert_eq!(
             self.ictx.plan.air_id,
             DmaUnalignedTrace::<()>::AIR_ID,

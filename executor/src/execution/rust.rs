@@ -9,7 +9,7 @@ use fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace};
-use zisk_core::ZiskRom;
+use zisk_core::{MemDataSection, ZiskRom};
 use ziskemu::{EmuOptions, ZiskEmulator};
 
 use crate::error::ExecutorResult;
@@ -99,7 +99,13 @@ impl EmulatorRust {
         let metrics_slices: Vec<_> = min_traces
             .par_iter()
             .map(|minimal_trace| {
-                let mut data_bus = StaticDataBus::<_, F>::build(false);
+                let mut data_bus = if minimal_trace.is_first() {
+                    let mem_sections: &dyn MemDataSection =
+                        zisk_rom as &dyn zisk_core::MemDataSection;
+                    StaticDataBus::<_, F>::build(false, Some(mem_sections))
+                } else {
+                    StaticDataBus::<_, F>::build(false, None)
+                };
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(
                     zisk_rom,

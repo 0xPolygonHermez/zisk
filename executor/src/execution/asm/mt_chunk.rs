@@ -78,7 +78,7 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     ) {
         stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-        let mut data_bus = StaticDataBus::<_, F>::build(true);
+        let mut data_bus = StaticDataBus::<_, F>::build(true, None);
 
         ZiskEmulator::process_emu_trace::<F, _, _>(zisk_rom, emu_trace, &mut data_bus, false);
         data_bus.on_close();

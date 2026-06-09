@@ -109,7 +109,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         if self.try_push_arith(air_id, secn_instance, chunk_id, global_idx)? {
             return Ok(true);
         }
-        if self.try_push_dma(air_id, secn_instance, chunk_id, global_idx, mem_sections)? {
+        if self.try_push_dma(air_id, secn_instance, chunk_id, global_idx)? {
             return Ok(true);
         }
         Ok(false)
@@ -155,7 +155,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             id if id == MEM_ALIGN_AIR_IDS[0] => {
                 let inst =
                     downcast::<F, MemAlignInstance<F>>(secn, air_id, gid, "MemAlignInstance")?;
-                self.mem_align.push((gid, inst.build_mem_align_collector(chunk, mem_sections)));
+                self.mem_align.push((gid, inst.build_mem_align_collector(chunk)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_BYTE_AIR_IDS[0] => {
@@ -165,7 +165,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     gid,
                     "MemAlignByteInstance",
                 )?;
-                self.mem_align.push((gid, inst.build_mem_align_byte_collector(chunk, mem_sections)));
+                self.mem_align.push((gid, inst.build_mem_align_byte_collector(chunk)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => {
@@ -175,8 +175,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     gid,
                     "MemAlignReadByteInstance",
                 )?;
-                self.mem_align
-                    .push((gid, inst.build_mem_align_read_byte_collector(chunk, mem_sections)));
+                self.mem_align.push((gid, inst.build_mem_align_read_byte_collector(chunk)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => {
@@ -186,8 +185,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     gid,
                     "MemAlignWriteByteInstance",
                 )?;
-                self.mem_align
-                    .push((gid, inst.build_mem_align_write_byte_collector(chunk, mem_sections)));
+                self.mem_align.push((gid, inst.build_mem_align_write_byte_collector(chunk)));
                 Ok(true)
             }
             _ => Ok(false),
@@ -256,7 +254,6 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         secn: &dyn Instance<F>,
         chunk: ChunkId,
         gid: usize,
-        mem_sections: &dyn zisk_core::MemDataSection,
     ) -> ExecutorResult<bool> {
         match air_id {
             id if id == DMA_AIR_IDS[0]
@@ -264,7 +261,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 || id == DMA_INPUT_CPY_AIR_IDS[0] =>
             {
                 let inst = downcast::<F, DmaInstance<F>>(secn, air_id, gid, "DmaInstance")?;
-                self.dma.push((gid, inst.build_dma_collector(chunk, mem_sections)));
+                self.dma.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_PRE_POST_AIR_IDS[0]
@@ -273,7 +270,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             {
                 let inst =
                     downcast::<F, DmaPrePostInstance<F>>(secn, air_id, gid, "DmaPrePostInstance")?;
-                self.dma_pre_post.push((gid, inst.build_dma_collector(chunk, mem_sections)));
+                self.dma_pre_post.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_64_ALIGNED_AIR_IDS[0]
@@ -288,7 +285,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     gid,
                     "Dma64AlignedInstance",
                 )?;
-                self.dma_64_aligned.push((gid, inst.build_dma_collector(chunk, mem_sections)));
+                self.dma_64_aligned.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_UNALIGNED_AIR_IDS[0] => {
@@ -298,7 +295,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                     gid,
                     "DmaUnalignedInstance",
                 )?;
-                self.dma_unaligned.push((gid, inst.build_dma_collector(chunk, mem_sections)));
+                self.dma_unaligned.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             _ => Ok(false),

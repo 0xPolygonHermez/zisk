@@ -64,11 +64,7 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
         Self { module, ictx, is_last_segment }
     }
 
-    pub fn build_dma_collector(
-        &self,
-        chunk_id: ChunkId,
-        mem_sections: &dyn zisk_core::MemDataSection,
-    ) -> Dma64AlignedCollector {
+    pub fn build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
         self._build_dma_collector(chunk_id)
     }
 

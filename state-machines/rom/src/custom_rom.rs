@@ -4,7 +4,8 @@
 //! elements. Pure transformation: ELF bytes → `ZiskRom` → trace rows.
 
 use fields::PrimeField64;
-use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, SRC_IMM};
+use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
+use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 
 use crate::error::{RomError, RomResult};
@@ -89,10 +90,55 @@ impl CustomRom {
             trace[index].jmp_offset1 = Self::signed_to_field(inst.jmp_offset1);
             trace[index].jmp_offset2 = Self::signed_to_field(inst.jmp_offset2);
             trace[index].flags = F::from_u64(inst.get_flags());
+            trace[index].is_data = F::ZERO; // all rows in the ROM trace are code, never data
         }
 
-        // Pad with zeroes
-        trace.buffer[rom.insts.len()..].fill(RomRomTraceRow::default());
+        // Fill data rows from ro_data_64, starting after all code instruction rows.
+        // Each ROM data row packs 4 consecutive u64 values as per rom.pil:
+        //   line          = base address of the group
+        //   a_offset_imm0 = value[0] low  32 bits    a_imm1        = value[0] high 32 bits
+        //   b_offset_imm0 = value[1] low  32 bits    b_imm1        = value[1] high 32 bits
+        //   ind_width     = value[2] low  32 bits    op            = value[2] high 32 bits
+        //   jmp_offset1   = value[3] low  32 bits    store_offset  = value[3] high 32 bits
+        //   flags         = MEMORY_ROM_INIT_OP (4)        is_data       = 1
+        let mut data_row_index = rom.insts.len();
+        let sections = rom.ro_data_64.iter().chain(rom.rw_data_64.iter());
+        for section in sections {
+            assert!(
+                section.data.len() % 4 == 0,
+                "ro_data_64 and rw_data_64 sections must have length multiple of 4 u64 values",
+            );
+            let is_rom = section.addr >= ROM_ADDR && section.addr <= ROM_ADDR_MAX;
+            let operation = if is_rom { MEMORY_ROM_INIT_OP } else { MEMORY_STORE_OP };
+            for (chunk_idx, chunk) in section.data.chunks(4).enumerate() {
+                let addr = section.addr + (chunk_idx as u64) * 32; // 4 × 8 bytes per chunk
+                if data_row_index >= RomRomTrace::<F>::NUM_ROWS {
+                    return Err(RomError::RomTooLarge {
+                        len: data_row_index + 1,
+                        max_len: RomRomTrace::<F>::NUM_ROWS,
+                    });
+                }
+                let get = |i: usize| chunk.get(i).copied().unwrap_or(0u64);
+                // Skip all-zero chunks in non-ROM sections (no meaningful data to store)
+                // if !is_rom && get(0) == 0 && get(1) == 0 && get(2) == 0 && get(3) == 0 {
+                //     continue;
+                // }
+                trace[data_row_index].line = F::from_u64(addr);
+                trace[data_row_index].a_offset_imm0 = F::from_u32(get(0) as u32);
+                trace[data_row_index].a_imm1 = F::from_u32((get(0) >> 32) as u32);
+                trace[data_row_index].b_offset_imm0 = F::from_u32(get(1) as u32);
+                trace[data_row_index].b_imm1 = F::from_u32((get(1) >> 32) as u32);
+                trace[data_row_index].ind_width = F::from_u32(get(2) as u32);
+                trace[data_row_index].op = F::from_u32((get(2) >> 32) as u32);
+                trace[data_row_index].store_offset = F::from_u32(get(3) as u32);
+                trace[data_row_index].jmp_offset1 = F::from_u32((get(3) >> 32) as u32);
+                trace[data_row_index].flags = F::from_u8(operation);
+                trace[data_row_index].is_data = F::ONE; // mark as data row
+                data_row_index += 1;
+            }
+        }
+        // Pad remaining rows with zeroes
+        trace.buffer[data_row_index..].fill(RomRomTraceRow::default());
 
         Ok(trace)
     }

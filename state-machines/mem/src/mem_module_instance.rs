@@ -21,6 +21,7 @@ pub struct MemModuleInstance<F: PrimeField64> {
     min_addr: u32,
     #[allow(dead_code)]
     max_addr: u32,
+    init: bool,
 }
 
 impl<F: PrimeField64> MemModuleInstance<F> {
@@ -29,7 +30,16 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
         let (min_addr, max_addr) = module.get_addr_range();
-        Self { ictx, module: module.clone(), check_point: mem_check_point, min_addr, max_addr }
+        let init = module.is_initizalizable();
+
+        Self {
+            ictx,
+            module: module.clone(),
+            check_point: mem_check_point,
+            min_addr,
+            max_addr,
+            init,
+        }
     }
 
     fn prepare_inputs(&self, inputs: &mut [MemInput], parallelize: bool) {
@@ -49,13 +59,18 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         mem_sections: &dyn zisk_core::MemDataSection,
     ) -> MemModuleCollector {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
-        MemModuleCollector::new(
+        let mut collector = MemModuleCollector::new(
             chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
-        )
+        );
+
+        if self.init && chunk_id == ChunkId(0) {
+            collector.init_with_mem_sections(mem_sections);
+        }
+        collector
     }
 }
 
@@ -126,13 +141,18 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
-        Some(Box::new(MemModuleCollector::new(
+        let collector = MemModuleCollector::new(
             chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
-        )))
+        );
+        if self.init {
+            //     collector.init_with_mem_sections(mem_sections);
+            assert!(false, "mem module instance should not build collector with init");
+        }
+        Some(Box::new(collector))
     }
 
     fn check_point(&self) -> &CheckPoint {

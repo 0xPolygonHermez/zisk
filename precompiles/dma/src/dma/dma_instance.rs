@@ -45,11 +45,7 @@ impl<F: PrimeField64> DmaInstance<F> {
         Self { module, ictx }
     }
 
-    pub fn build_dma_collector(
-        &self,
-        chunk_id: ChunkId,
-        mem_sections: &dyn zisk_core::MemDataSection,
-    ) -> DmaCollector {
+    pub fn build_dma_collector(&self, chunk_id: ChunkId) -> DmaCollector {
         debug_assert!(
             [DmaTrace::<()>::AIR_ID, DmaMemCpyTrace::<()>::AIR_ID, DmaInputCpyTrace::<()>::AIR_ID,]
                 .contains(&self.ictx.plan.air_id),
