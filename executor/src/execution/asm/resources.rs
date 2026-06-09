@@ -91,8 +91,8 @@ impl AsmSharedResources {
     /// Semaphores are NOT opened here — call `bind_semaphores` on `AsmResources` before use.
     ///
     /// `with_hints` must match the value used during setup: the C binary only creates the
-    /// per-service precompile shmem segments when hints are enabled, so passing `true` here
-    /// without the C binary having created them will panic in `ShmemWriter::new`.
+    /// per-service precompile shmem segments when hints are enabled, so passing `true` here without
+    /// the C binary having created them makes the underlying `shm_open` fail and returns an `Err`
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         local_rank: i32,
