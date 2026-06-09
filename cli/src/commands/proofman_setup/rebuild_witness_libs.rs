@@ -12,6 +12,11 @@ pub struct ZiskProofmanRebuildWitnessLibs {
     #[arg(short = 'p', long = "proving-key")]
     pub proving_key: String,
 
+    /// Optional path to the `provingKeySnark/` directory. When set, the snark
+    /// witness libraries (`recursivef`, `final`) are rebuilt too.
+    #[arg(short = 's', long = "proving-key-snark")]
+    pub proving_key_snark: Option<String>,
+
     /// Number of circom compiles to run in parallel (default 1 = serial).
     /// Each circom invocation is single-threaded but RAM-hungry; size by
     /// available memory rather than CPU count.
@@ -29,6 +34,7 @@ impl ZiskProofmanRebuildWitnessLibs {
 
         let opts = RebuildWitnessOptions {
             proving_key: self.proving_key.clone(),
+            proving_key_snark: self.proving_key_snark.clone(),
             jobs: self.jobs,
         };
         run_rebuild_witness(&opts)
