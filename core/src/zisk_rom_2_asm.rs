@@ -4668,7 +4668,7 @@ impl ZiskRom2Asm {
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
-                    ctx.comment_str("Div: set result to f's")
+                    ctx.comment_str("Div: c=f's")
                 );
                 *unusual_code +=
                     &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
@@ -4714,7 +4714,7 @@ impl ZiskRom2Asm {
                     REG_A,
                     ctx.comment_str("Div: set result to a")
                 );
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Divide
@@ -4766,7 +4766,7 @@ impl ZiskRom2Asm {
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b==0 return a
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
@@ -4788,7 +4788,7 @@ impl ZiskRom2Asm {
 
                 // Check underflow:
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
-                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=0
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4821,13 +4821,8 @@ impl ZiskRom2Asm {
                     ctx.pc,
                     ctx.comment_str("Rem: if b is not 0xffffffffffffffff, divide")
                 );
-                *code += &format!(
-                    "\txor {}, {} {}\n",
-                    REG_C,
-                    REG_C,
-                    ctx.comment_str("Rem: set result to 0")
-                );
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Rem: c=0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
                 // Divide
@@ -4922,6 +4917,7 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_b_in_b);
 
                 // Check divide by zero
+                // If b=0 (divide by zero) it sets c to a, and sets flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
@@ -5019,7 +5015,7 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivW: result=MIN_I32 (sign-extended)")
                 );
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
@@ -5108,7 +5104,7 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("RemW: set result to 0")
                 );
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
