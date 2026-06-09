@@ -1,5 +1,5 @@
 use crate::hints::macros::define_hint;
-use zisk_common::{
+use zisk_definitions::{
     HINT_ADD_MOD256, HINT_INV_MOD256, HINT_MULMOD256, HINT_POW_MOD256, HINT_REDUCE_MOD256,
     HINT_SQUARE_MOD256,
 };

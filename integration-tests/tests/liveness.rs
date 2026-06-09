@@ -18,7 +18,7 @@
 //! `127.0.0.1:7000` (override with `ZISK_TEST_COORDINATOR_URL`) and configured
 //! to use the assembly executor.
 //!
-//! Run: cargo test -p zisk-sdk --test liveness_smoke -- --ignored --nocapture
+//! Run: cargo test -p integration-tests --test liveness -- --ignored --nocapture
 //!
 //! **Remote-only by design.** Unlike `panic_smoke` (which uses the embedded
 //! client because it only checks error propagation), this test's purpose is

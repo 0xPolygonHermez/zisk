@@ -1,30 +1,15 @@
-use crate::io::{
-    ChannelStreamReader, MemoryStreamReader, QuicStreamReader, UnixSocketStreamReader,
+#[cfg(feature = "quic")]
+use crate::QuicStreamReader;
+use crate::{
+    ChannelStreamReader, FileStreamReader, MemoryStreamReader, StreamRead, UnixSocketStreamReader,
 };
 
-use super::FileStreamReader;
-
 use anyhow::Result;
-
-/// Core trait for stream reading operations
-pub trait StreamRead: Send + 'static {
-    /// Open/initialize the stream for reading
-    fn open(&mut self) -> Result<()>;
-
-    /// Read the next item from the stream
-    /// Returns None when the stream is finished
-    fn next(&mut self) -> Result<Option<Vec<u8>>>;
-
-    /// Close the stream
-    fn close(&mut self) -> Result<()>;
-
-    /// Check if the stream is currently active
-    fn is_active(&self) -> bool;
-}
 
 pub enum StreamSource {
     File(FileStreamReader),
     UnixSocket(UnixSocketStreamReader),
+    #[cfg(feature = "quic")]
     Quic(QuicStreamReader),
     Memory(MemoryStreamReader),
     Channel(ChannelStreamReader),
@@ -52,6 +37,7 @@ impl StreamSource {
     }
 
     /// Create a QUIC-based stdin
+    #[cfg(feature = "quic")]
     pub fn from_quic(addr: std::net::SocketAddr) -> Result<Self> {
         Ok(StreamSource::Quic(QuicStreamReader::new(addr)?))
     }
@@ -86,6 +72,7 @@ impl StreamSource {
             match scheme {
                 "file" => Self::from_file(path),
                 "unix" => Self::from_unix_socket(path),
+                #[cfg(feature = "quic")]
                 "quic" => Self::from_quic(path.parse()?),
                 // Unknown scheme - could error or fallback
                 _ => Err(anyhow::anyhow!("Unknown stream source scheme: {}", scheme)),
@@ -102,6 +89,7 @@ impl StreamRead for StreamSource {
         match self {
             StreamSource::File(s) => s.open(),
             StreamSource::UnixSocket(s) => s.open(),
+            #[cfg(feature = "quic")]
             StreamSource::Quic(s) => s.open(),
             StreamSource::Memory(s) => s.open(),
             StreamSource::Channel(s) => s.open(),
@@ -112,6 +100,7 @@ impl StreamRead for StreamSource {
         match self {
             StreamSource::File(s) => s.next(),
             StreamSource::UnixSocket(s) => s.next(),
+            #[cfg(feature = "quic")]
             StreamSource::Quic(s) => s.next(),
             StreamSource::Memory(s) => s.next(),
             StreamSource::Channel(s) => s.next(),
@@ -122,6 +111,7 @@ impl StreamRead for StreamSource {
         match self {
             StreamSource::File(s) => s.close(),
             StreamSource::UnixSocket(s) => s.close(),
+            #[cfg(feature = "quic")]
             StreamSource::Quic(s) => s.close(),
             StreamSource::Memory(s) => s.close(),
             StreamSource::Channel(s) => s.close(),
@@ -132,6 +122,7 @@ impl StreamRead for StreamSource {
         match self {
             StreamSource::File(s) => s.is_active(),
             StreamSource::UnixSocket(s) => s.is_active(),
+            #[cfg(feature = "quic")]
             StreamSource::Quic(s) => s.is_active(),
             StreamSource::Memory(s) => s.is_active(),
             StreamSource::Channel(s) => s.is_active(),
