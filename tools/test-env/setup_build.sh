@@ -140,8 +140,18 @@ for ((i = 0; i < VERBOSE_COUNT; i++)); do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# This script lives at tools/setup/, so the repo root is two levels up.
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Repo root. This script no longer lives inside the repo tree (it ships
+# standalone in the test-env image at /home/ziskuser/scripts), so it cannot be
+# derived from SCRIPT_DIR. Prefer ZISK_REPO_DIR (exported by build_setup.sh and
+# set in GHA), then the current directory (callers cd into the repo root before
+# invoking us), and only then fall back to two levels up for legacy in-tree use.
+if [[ -n "${ZISK_REPO_DIR:-}" ]]; then
+  ROOT_DIR="$ZISK_REPO_DIR"
+elif [[ -f "$PWD/Cargo.toml" ]]; then
+  ROOT_DIR="$PWD"
+else
+  ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 cd "$ROOT_DIR"
 
 # Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets

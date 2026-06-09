@@ -35,6 +35,9 @@ main() {
     load_env || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
+    # Export so setup_build.sh (which ships standalone, outside the repo tree)
+    # resolves the repo root from this rather than from its own location.
+    export ZISK_REPO_DIR="${ZISK_REPO}"
     ensure cd "${ZISK_REPO}" || return 1
 
     step "Building setup (delegating to tools/test-env/setup_build.sh)..."
