@@ -195,24 +195,34 @@ impl ZiskEmulator {
         options: &EmuOptions,
         num_threads: usize,
     ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
-        let mut minimal_traces = vec![Vec::new(); num_threads];
+        let results: Vec<Result<Vec<EmuTrace>, ZiskEmulatorErr>> = (0..num_threads)
+            .into_par_iter()
+            .map(|thread_id| {
+                let par_emu_options = ParEmuOptions::new(
+                    num_threads,
+                    thread_id,
+                    options.chunk_size.unwrap() as usize,
+                );
 
-        minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
-            let par_emu_options =
-                ParEmuOptions::new(num_threads, thread_id, options.chunk_size.unwrap() as usize);
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut emu = Emu::new(rom);
+                    let trace = emu.par_run(inputs.to_owned(), options, &par_emu_options);
+                    if !emu.terminated() {
+                        return Err(ZiskEmulatorErr::EmulationNoCompleted);
+                    }
+                    Ok(trace)
+                }))
+                .unwrap_or_else(|payload| {
+                    let msg = panic_payload_message(&payload);
+                    Err(ZiskEmulatorErr::Unknown(format!("emulation panicked: {msg}")))
+                })
+            })
+            .collect();
 
-            // Run the emulation
-            let mut emu = Emu::new(rom);
-            let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
-
-            if !emu.terminated() {
-                panic!("Emulation did not complete");
-                // TODO!
-                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
-            }
-
-            *emu_trace = result;
-        });
+        let mut minimal_traces = Vec::with_capacity(num_threads);
+        for result in results {
+            minimal_traces.push(result?);
+        }
 
         let capacity = minimal_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
@@ -237,7 +247,7 @@ impl ZiskEmulator {
         with_mem_ops: bool,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, with_mem_ops);
 
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus, with_mem_ops);
@@ -253,7 +263,7 @@ impl ZiskEmulator {
         data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
 
         // Run the emulation
         emu.process_emu_traces(min_traces, chunk_id, data_bus);
@@ -395,5 +405,15 @@ impl Emulator for ZiskEmulator {
                 Self::process_elf_file(elf_filename, &inputs, options, callback)
             }
         }
+    }
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic payload".to_string()
     }
 }

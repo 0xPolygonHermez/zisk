@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
-use zisk_common::{CTRL_END, CTRL_START, HINT_INPUT};
+use zisk_definitions::{CTRL_END, CTRL_START, HINT_INPUT};
 
 pub const DEFAULT_BUFFER_LEN: usize = 1 << 20; // 1 MiB
                                                // TODO: Set MAX_WRITE_LEN based on writer type (file or socket)

@@ -537,7 +537,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         hash_id: &str,
         with_hints: bool,
-        is_first_partition: bool,
+        is_first_process: bool,
     ) -> Result<()> {
         let program_id = self
             .guest_programs
@@ -548,7 +548,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         self.prover.register_program(&program_id, with_hints)?;
         self.prover.reset()?;
-        self.prover.set_active_services(is_first_partition)?;
+        self.prover.set_active_services(is_first_process)?;
         Ok(())
     }
 
@@ -1383,8 +1383,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     })?;
 
                 let with_hints = !matches!(message.hints_source, HintsSourceDto::HintsNull);
-                let is_first_partition = message.partition_info.allocation.contains(&0);
-                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_partition)?;
+                let is_first_process =
+                    message.partition_info.allocation.contains(&0) && self.world_rank() == 0;
+                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_process)?;
 
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);

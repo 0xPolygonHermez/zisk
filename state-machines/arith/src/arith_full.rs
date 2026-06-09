@@ -277,7 +277,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
         row.set_range_ab(aop.range_ab);
         row.set_range_cd(aop.range_cd);
         row.set_div_by_zero(aop.div_by_zero);
-        row.set_div_overflow(aop.div_overflow);
+        row.set_div_overflow_mul_rz(aop.div_overflow_mul_rz);
 
         let inv_sum_all_bs = if aop.div && !aop.div_by_zero {
             F::from_u64(aop.b[0] as u64 + aop.b[1] as u64 + aop.b[2] as u64 + aop.b[3] as u64)
@@ -296,7 +296,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow,
+            aop.div_overflow_mul_rz,
         );
 
         row

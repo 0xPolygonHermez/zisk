@@ -1,5 +1,5 @@
 use crate::hints::macros::define_hint_ptr;
-use zisk_common::HINT_INPUT;
+use zisk_definitions::HINT_INPUT;
 
 #[no_mangle]
 pub unsafe extern "C" fn hint_input_data(input_data_ptr: *const u8, input_data_len: usize) {
