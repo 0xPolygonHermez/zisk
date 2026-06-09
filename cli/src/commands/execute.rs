@@ -56,11 +56,13 @@ pub struct ZiskExecute {
     /// executor self-allocates its own device arena; on the proofman path it
     /// borrows proofman's unified buffer. Requires a CUDA build and a usable
     /// GPU; falls back to the CPU planner otherwise. Defaults to CPU.
-    #[arg(long)]
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
     pub gpu: bool,
 
     /// Force the mops planner onto CPU even when --gpu is set
     /// (fallback for GPU-planner issues).
+    #[cfg(not(feature = "cpu-only"))]
     #[arg(long)]
     pub cpu_mops: bool,
 
@@ -208,9 +210,11 @@ impl ZiskExecute {
         if let Some(ref path) = self.proving_key {
             opts = opts.proving_key(path.clone());
         }
+        #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             opts = opts.gpu();
         }
+        #[cfg(not(feature = "cpu-only"))]
         if self.cpu_mops {
             opts = opts.cpu_mops();
         }

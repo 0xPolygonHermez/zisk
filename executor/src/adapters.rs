@@ -41,35 +41,19 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
         self.pctx
     }
 
-    /// Reserve proofman's borrowed unified GPU buffer for the ASM
-    /// memory-ops count-and-plan window. Called before the MO runner
-    /// thread is spawned. No-op unless proofman is running on GPU
-    /// (`pctx.gpu`); the underlying FFI is itself a no-op without CUDA.
+    /// Reserve proofman's unified GPU buffer for the MO count-and-plan window.
     #[inline]
     pub fn acquire_gpu_buffer(&self) {
         if self.pctx.gpu {
-            // SAFETY: `pctx.gpu == true` implies proofman initialized its CUDA
-            // subsystem and `get_device_buffers_ptr()` returns the pointer it
-            // owns for the lifetime of `pctx`. The FFI just records a busy bit
-            // on that opaque handle — no memory deref on our side.
-            unsafe {
-                acquire_first_gpu_buffer(self.pctx.get_device_buffers_ptr());
-            }
+            unsafe { acquire_first_gpu_buffer(self.pctx.get_device_buffers_ptr()) };
         }
     }
 
-    /// Release proofman's borrowed unified GPU buffer once the MO runner
-    /// has been joined, handing the buffer back for proving. No-op unless
-    /// proofman is running on GPU (`pctx.gpu`).
+    /// Release the buffer back to proofman once the MO runner has joined.
     #[inline]
     pub fn release_gpu_buffer(&self) {
         if self.pctx.gpu {
-            // SAFETY: same handle obtained from `pctx.get_device_buffers_ptr()`;
-            // paired with the prior `acquire_first_gpu_buffer` on the same
-            // `pctx`. FFI clears the busy bit only.
-            unsafe {
-                release_first_gpu_buffer(self.pctx.get_device_buffers_ptr());
-            }
+            unsafe { release_first_gpu_buffer(self.pctx.get_device_buffers_ptr()) };
         }
     }
 

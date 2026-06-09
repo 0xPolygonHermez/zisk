@@ -240,10 +240,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         let is_asm_emulator = self.execution.is_asm_execution();
 
-        // On the proofman path, reserve proofman's borrowed unified GPU
-        // buffer for the ASM memory-ops count-and-plan window (no-op unless
-        // running on GPU). The standalone path owns its own device buffer,
-        // so there is no shared-window guard to take here.
+        // Reserve proofman's unified GPU buffer for MO count-and-plan
+        // (no-op on CPU / standalone).
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
                 extras.acquire_gpu_buffer();
@@ -301,8 +299,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &_exec_scope,
         )?;
 
-        // The MO runner was joined inside `run_secondary`; release the
-        // borrowed unified GPU buffer back to proofman (no-op unless GPU).
+        // MO runner joined in `run_secondary`; release the buffer back to proofman.
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
                 extras.release_gpu_buffer();

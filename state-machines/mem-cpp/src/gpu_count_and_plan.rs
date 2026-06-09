@@ -70,9 +70,9 @@ impl GpuCountAndPlan {
         }
     }
 
-    pub fn add_chunk(&self, memops: &[GpuMemOp]) -> bool {
+    pub fn add_chunk(&self, len: u64, data: *const c_void) -> bool {
         unsafe {
-            gpu_bindings::count_and_plan_add_chunk(self.inner, memops.as_ptr(), memops.len() as u32)
+            gpu_bindings::count_and_plan_add_chunk(self.inner, data as *const GpuMemOp, len as u32)
         }
     }
 
