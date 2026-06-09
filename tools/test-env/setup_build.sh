@@ -208,7 +208,7 @@ run_compile_pil() {
     --fixed-dir tmp/fixed \
     --fixed-to-file \
     --no-proto-fixed-data \
-    "${VERBOSE_FLAGS[@]}"
+    ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
 
   run_pil_helpers
 }
@@ -245,7 +245,7 @@ case "$MODE" in
       --airout pil/zisk.pilout \
       --starkstructs state-machines/starkstructs.json \
       -o tmp/stats.txt \
-      "${VERBOSE_FLAGS[@]}"
+      ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
     exit 0
     ;;
@@ -348,8 +348,8 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
     --stark-structs state-machines/starkstructs.json \
-    "${setup_recursive_flag[@]}" \
-    "${setup_jobs_flags[@]}"
+    ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
+    ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 
   # Populate the local cache with the freshly built provingKey, keyed by the
   # input hash. --skip-compile-pil reuses a prior pilout that may not match the
