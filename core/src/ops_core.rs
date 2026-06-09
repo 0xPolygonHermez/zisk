@@ -311,7 +311,7 @@ pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
     }
 
     // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return a.
-    if a as u64 == 0x8000_0000_0000_0000 && b as i64 == -1 {
+    if (a == 0x8000_0000_0000_0000) && (b as i64 == -1) {
         return (0x8000_0000_0000_0000, false);
     }
 
@@ -373,7 +373,7 @@ pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
     }
 
     // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return 0.
-    if a as u64 == 0x8000_0000_0000_0000 && b as i64 == -1 {
+    if (a == 0x8000_0000_0000_0000) && (b as i64 == -1) {
         return (0, false);
     }
 
