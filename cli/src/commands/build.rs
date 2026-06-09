@@ -53,8 +53,12 @@ impl ZiskBuild {
         command.args([&format!("+{toolchain_name}"), "build"]);
 
         // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
-        let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
-        command.env("RUSTFLAGS", flags.trim());
+        if let Ok(flags) = std::env::var("RUSTFLAGS") {
+            let trimmed = flags.trim();
+            if !trimmed.is_empty() {
+                command.env("RUSTFLAGS", trimmed);
+            }
+        }
 
         command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
 

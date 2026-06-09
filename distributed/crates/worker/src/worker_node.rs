@@ -257,11 +257,18 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             // clears `current_computation` first, so the handle
                             // is None here and `current_job`/`state` were
                             // already cleaned up. Just forward the message.
+                            let rc_for_requeue = rc.clone();
                             let msg = WorkerMessage {
                                 payload: Some(worker_message::Payload::RecoveryComplete(rc)),
                             };
                             if let Err(e) = message_sender.send(msg) {
-                                warn!("Failed to forward WorkerRecoveryComplete: {e}");
+                                warn!("Failed to forward WorkerRecoveryComplete: {e}; re-enqueueing");
+                                // Put it back on the process-long channel so the
+                                // next stream re-delivers; otherwise the coordinator
+                                // stays parked in pending_recovery.
+                                if let Err(re) = loop_tx.send_recovery_complete(rc_for_requeue) {
+                                    error!("Failed to re-enqueue WorkerRecoveryComplete: {re}");
+                                }
                                 break;
                             }
                         }
@@ -320,11 +327,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                     }
                                 }
                                 Ok(LoopEvent::RecoveryComplete(rc)) => {
+                                    let rc_for_requeue = rc.clone();
                                     let msg = WorkerMessage {
                                         payload: Some(worker_message::Payload::RecoveryComplete(rc)),
                                     };
                                     if let Err(e) = message_sender.send(msg) {
-                                        warn!("Failed to forward WorkerRecoveryComplete: {e}");
+                                        warn!("Failed to forward WorkerRecoveryComplete: {e}; re-enqueueing");
+                                        if let Err(re) = loop_tx.send_recovery_complete(rc_for_requeue) {
+                                            error!("Failed to re-enqueue WorkerRecoveryComplete: {re}");
+                                        }
                                         break;
                                     }
                                     self.worker.set_current_job(None);
@@ -1215,8 +1226,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-        let is_first_partition = params.worker_allocation.contains(&0);
-        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+        let is_first_process =
+            params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
@@ -1282,8 +1294,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-        let is_first_partition = params.worker_allocation.contains(&0);
-        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+        let is_first_process =
+            params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };

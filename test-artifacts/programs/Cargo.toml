@@ -4,11 +4,13 @@ edition = "2021"
 
 [workspace]
 members = [
+  "bigint",
   "bls12_381",
   "bn254",
   "examples/*",
   "diagnostic",
-  "modexp",
+  "diagnostic_hints",
+  "hashes",
   "secp256k1",
   "secp256r1",
   "syscalls/*",
@@ -25,6 +27,7 @@ panic = "abort"
 [workspace.dependencies]
 ziskos = { path = "../../ziskos/entrypoint" }
 zisk-sdk = { path = "../../sdk" }
+zkvm-interface = { path = "../../zkvm-interface" }
 precompiles-helpers = { path = "../../precompiles/helpers" }
 
 rand = "0.8.1"

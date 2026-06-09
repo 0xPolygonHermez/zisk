@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 
+use std::process::Stdio;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -79,25 +80,27 @@ impl AsmService {
         trimmed_path: &str,
         options: &AsmRunnerOptions,
         shm_prefix: &str,
+        sem_prefix: &str,
+        create_input: bool,
     ) -> Command {
         let mut command = Command::new(self.command_path_for(trimmed_path));
 
-        command
-            .arg("-s")
-            .arg(format!("--gen={}", self.gen_index()))
-            .arg("--just_create_all_shm")
-            .arg("--shm_prefix")
-            .arg(shm_prefix);
+        command.arg("-s").arg(format!("--gen={}", self.gen_index())).arg("--share_input_shm");
+
+        if create_input {
+            command.arg("--just_create_all_shm");
+        } else {
+            command.arg("--just_create_non_input_shm");
+        }
+
+        command.arg("--shm_prefix").arg(shm_prefix);
+        command.arg("--sem_prefix").arg(sem_prefix);
 
         if options.verbose {
             command.arg("-v");
         }
 
-        command.stderr(if options.verbose {
-            std::process::Stdio::inherit()
-        } else {
-            std::process::Stdio::null()
-        });
+        command.stderr(if options.verbose { Stdio::inherit() } else { Stdio::null() });
 
         command
     }
@@ -191,7 +194,7 @@ impl AsmServices {
                 return Err(anyhow::anyhow!("invalid path format: expected '-??.bin' suffix"));
             };
         // Phase 1: create shmem segments for this process.
-        Self::create_shmem(world_rank, &shm_prefix, stripped_path, &options)?;
+        Self::create_shmem(world_rank, &shm_prefix, &sem_prefix, stripped_path, &options)?;
 
         // Phase 2: start services and wait for them to be ready.
         let stdio_service = StdioService::start_services(
@@ -268,19 +271,27 @@ impl AsmServices {
     fn create_shmem(
         world_rank: i32,
         shm_prefix: &str,
+        sem_prefix: &str,
         trimmed_path: &str,
         options: &AsmRunnerOptions,
     ) -> Result<()> {
         let children: Vec<(AsmService, std::process::Child)> = Self::SERVICES
             .iter()
-            .map(|service| {
+            .enumerate()
+            .map(|(index, service)| {
                 tracing::debug!(
                     ">>> [{}] Creating shmem for service (stdio): {}",
                     world_rank,
                     service
                 );
                 let child = service
-                    .build_create_shmem_command(trimmed_path, options, shm_prefix)
+                    .build_create_shmem_command(
+                        trimmed_path,
+                        options,
+                        shm_prefix,
+                        sem_prefix,
+                        index == 0,
+                    )
                     .spawn()
                     .with_context(|| {
                         format!("Failed to spawn shmem creation for service {service}")

@@ -292,7 +292,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 *a_byte as u64,
                 in2_low,
             );
-            self.std.inc_virtual_row(self.table_id, row, 1);
+            self.std.inc_virtual_row_one(self.table_id, row);
         }
 
         row
@@ -349,7 +349,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 let op_is_shift = Self::opcode_is_shift(opcode);
                 if op_is_shift {
                     let row = (input.b >> 8) & 0xFFFFFF;
-                    self.std.range_check(self.range_id, row as i64, 1);
+                    self.std.range_check_one(self.range_id, row);
                 }
             }
         }

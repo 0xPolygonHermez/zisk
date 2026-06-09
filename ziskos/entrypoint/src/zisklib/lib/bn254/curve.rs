@@ -412,6 +412,8 @@ pub fn mul_complete_bn254(
     ))
 }
 
+// ==================== C FFI Functions ====================
+
 /// BN254 G1 point addition with big-endian byte format
 ///
 /// # Safety
@@ -451,10 +453,10 @@ pub(crate) unsafe fn bn254_g1_add_c(
     };
 
     // Encode result
+    g1_u64_le_to_bytes_be_bn254(&result, ret_bytes);
     if result == G1_IDENTITY {
         G1_ADD_SUCCESS_INFINITY
     } else {
-        g1_u64_le_to_bytes_be_bn254(&result, ret_bytes);
         G1_ADD_SUCCESS
     }
 }
@@ -497,10 +499,10 @@ pub(crate) unsafe fn bn254_g1_mul_c(
     };
 
     // Encode result
+    g1_u64_le_to_bytes_be_bn254(&product, ret_bytes);
     if product == G1_IDENTITY {
         G1_MUL_SUCCESS_INFINITY
     } else {
-        g1_u64_le_to_bytes_be_bn254(&product, ret_bytes);
         G1_MUL_SUCCESS
     }
 }
@@ -558,8 +560,6 @@ pub fn scalar_bytes_be_to_u64_le_bn254(bytes: &[u8; 32]) -> [u64; 4] {
 
     result
 }
-
-// ==================== C FFI Functions ====================
 
 /// Jacobian to affine conversion for a BN254 G1 point.
 ///

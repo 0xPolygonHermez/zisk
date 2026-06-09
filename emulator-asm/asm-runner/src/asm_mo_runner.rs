@@ -4,7 +4,7 @@ use zisk_common::{stats_begin, stats_end, stats_mark, ExecutorStatsHandle, Plan}
 
 use std::ffi::c_void;
 use std::sync::atomic::{fence, Ordering};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::SEM_CHUNK_DONE_WAIT_DURATION;
 use crate::TRACE_DELTA_SIZE;
@@ -74,19 +74,30 @@ impl AsmRunnerMO {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run(
+    pub fn run<R>(
         preloaded: &mut MOShMemReader,
         max_steps: u64,
         chunk_size: u64,
+        on_runner_failure: R,
         asm_services: AsmServices,
         _stats: ExecutorStatsHandle,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        R: FnOnce() -> Result<()>,
+    {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MO_RUNNER", 0);
 
         let sem_chunk_done_name = sem_chunk_done_name(asm_services.sem_prefix(), AsmService::MO);
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
+
+        let stale = crate::drain_chunk_done(&mut sem_chunk_done);
+        if stale > 0 {
+            warn!(
+                "MO semaphore '{sem_chunk_done_name}' had {stale} stale chunk_done post(s) at run start; a prior run skipped its end-side cleanup"
+            );
+        }
 
         // Capture parent id for thread
         let _parent_id = _runner_scope.id();
@@ -145,25 +156,41 @@ impl AsmRunnerMO {
                 as *const AsmMOChunk
         };
 
-        let exit_code = loop {
+        let mut on_runner_failure = Some(on_runner_failure);
+        let mut signal_runner_failure = || {
+            if let Some(on_failure) = on_runner_failure.take() {
+                if let Err(reset_err) = on_failure() {
+                    error!("MO on_runner_failure failed: {reset_err:#}");
+                }
+            }
+        };
+
+        let loop_result: Result<u64> = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
                     // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold
-                        && preloaded.output_shmem.check_size_changed().context(
-                            "Failed to check and map new shared memory files for MO trace",
-                        )?
-                    {
-                        // Update threshold based on new total mapped size
-                        threshold =
-                            unsafe {
-                                preloaded.output_shmem.mapped_ptr().add(
-                                    preloaded.output_shmem.total_mapped_size() - threshold_bytes,
-                                ) as *const AsmMOChunk
-                            };
+                    if data_ptr >= threshold {
+                        match preloaded.output_shmem.check_size_changed() {
+                            Ok(true) => {
+                                // Update threshold based on new total mapped size
+                                threshold = unsafe {
+                                    preloaded.output_shmem.mapped_ptr().add(
+                                        preloaded.output_shmem.total_mapped_size()
+                                            - threshold_bytes,
+                                    ) as *const AsmMOChunk
+                                };
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                signal_runner_failure();
+                                break Err(e).context(
+                                    "Failed to check and map new shared memory files for MO trace",
+                                );
+                            }
+                        }
                     }
 
                     let chunk = unsafe { std::ptr::read(data_ptr) };
@@ -175,7 +202,7 @@ impl AsmRunnerMO {
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
-                        break 0;
+                        break Ok(0);
                     }
 
                     data_ptr = unsafe {
@@ -190,7 +217,9 @@ impl AsmRunnerMO {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    signal_runner_failure();
+
+                    break Ok(preloaded.output_shmem.map_header().exit_code);
                 }
             }
         };
@@ -202,18 +231,21 @@ impl AsmRunnerMO {
         mem_planner.set_completed();
         mem_planner.wait();
 
+        let joined = handle.join();
+
+        crate::drain_chunk_done(&mut sem_chunk_done);
+
         // Compute the result; on any error we still fall through to the
         // single re-stash point below so the next job has a planner ready.
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
+            let exit_code = loop_result?;
             if exit_code != 0 {
                 return Err(AsmRunError::ExitCode(exit_code as u32))
                     .context("Child process returned error");
             }
 
-            let response = handle
-                .join()
-                .map_err(|_| AsmRunError::JoinPanic)?
-                .map_err(AsmRunError::ServiceError)?;
+            let response =
+                joined.map_err(|_| AsmRunError::JoinPanic)?.map_err(AsmRunError::ServiceError)?;
 
             if response.result != 0 {
                 return Err(anyhow::anyhow!(

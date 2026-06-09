@@ -699,6 +699,8 @@ pub fn sigma_endomorphism_bls12_381(
     result
 }
 
+// ==================== C FFI Functions ====================
+
 /// G1 point addition for uncompressed 96-byte points
 ///
 /// Input format: 96 bytes per point = 48 bytes x-coordinate + 48 bytes y-coordinate (big-endian)
@@ -742,10 +744,10 @@ pub(crate) unsafe fn bls12_381_g1_add_c(
     };
 
     // Encode result
+    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
     if result == G1_IDENTITY {
         G1_ADD_SUCCESS_INFINITY
     } else {
-        g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
         G1_ADD_SUCCESS
     }
 }
@@ -803,10 +805,10 @@ pub(crate) unsafe fn bls12_381_g1_msm_c(
     };
 
     // Encode result
+    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
     if result == G1_IDENTITY {
         G1_MSM_SUCCESS_INFINITY
     } else {
-        g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
         G1_MSM_SUCCESS
     }
 }
@@ -831,8 +833,6 @@ pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
 
     result
 }
-
-// ==================== C FFI Functions ====================
 
 /// Decompresses a compressed BLS12-381 G1 point (48 bytes) to affine coordinates.
 /// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.

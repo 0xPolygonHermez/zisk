@@ -202,7 +202,7 @@ impl<F: PrimeField64> Add256SM<F> {
         }
 
         // Send final result to std
-        self.std.range_checks(self.range_id, global_multiplicities);
+        self.std.range_check_ranged(self.range_id, None, &global_multiplicities);
 
         timer_stop_and_log_trace!(ADD256_TRACE);
 

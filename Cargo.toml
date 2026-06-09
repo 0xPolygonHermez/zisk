@@ -8,16 +8,17 @@ categories = ["cryptography"]
 
 [workspace.metadata]
 gha_zisk_testvectors_branch = "develop-0.3.0"
-gha_zisk_ethproofs_branch = "pre-develop-0.18.0"
-gha_zisk_eth_client_branch = "develop-0.9.0"
+gha_zisk_ethproofs_branch = "develop-0.11.0"
+gha_zisk_eth_client_branch = "develop-0.11.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
 gha_pil2_proofman_js_branch = "tags/v0.17.0"
-gha_pil2_compiler_branch = "tags/v0.9.0"
+gha_pil2_compiler_branch = "tags/v0.10.0"
 
 [workspace]
 members = [
   "cli",
   "core",
+  "integration-tests",
   "data-bus",
   "emulator",
   "executor",
@@ -52,6 +53,7 @@ members = [
   "emulator-asm/asm-runner",
   "ziskclib",
   "common",
+  "stream",
   "tools/circuit",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
@@ -79,6 +81,7 @@ opt-level = 3
 [workspace.dependencies]
 # Internal crates
 zisk-common = { path = "common" }
+zisk-stream = { path = "stream" }
 zisk-core = { path = "core" }
 data-bus = { path = "data-bus" }
 ziskemu = { path = "emulator" }

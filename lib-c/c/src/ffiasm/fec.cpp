@@ -67,7 +67,7 @@ char *Fec_element2str(PFecElement pE) {
     if (!(pE->type & Fec_LONG)) {
         if (pE->shortVal>=0) {
             char *r = new char[32];
-            snprintf(r, 32, "%d", pE->shortVal);
+            sprintf(r, "%d", pE->shortVal);
             return r;
         } else {
             mpz_init_set_si(r, pE->shortVal);
@@ -166,6 +166,9 @@ void Fec_fail() {
     assert(false);
 }
 
+void Fec_longErr() {
+    Fec_fail();
+}
 
 RawFec::RawFec() {
     Fec_init();
@@ -212,7 +215,7 @@ void RawFec::set(Element &r, int value) {
   }
 
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-      
+
   for (int i=0; i<Fec_N64; i++) r.v[i] = 0;
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
   Fec_rawToMontgomery(r.v,r.v);
@@ -242,7 +245,7 @@ void RawFec::inv(Element &r, const Element &a) {
     for (int i=0; i<Fec_N64; i++) r.v[i] = 0;
     mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
 
-    Fec_rawMMul(r.v, r.v,Fec_rawR3);
+    Fec_rawMMul(r.v, r.v,Fec_R3.longVal);
     mpz_clear(mr);
 }
 
@@ -294,12 +297,11 @@ int RawFec::toRprBE(const Element &element, uint8_t *data, int bytes)
 
     mpz_t r;
     mpz_init(r);
-  
+
     toMpz(r, element);
-    
-    mpz_export(data, NULL, 1, 8, 1, 0, r);
-  
-    mpz_clear(r);
+   
+    mpz_export(data, NULL, 1, bytes, 1, 0, r);
+
     return Fec_N64 * 8;
 }
 
@@ -313,8 +315,6 @@ int RawFec::fromRprBE(Element &element, const uint8_t *data, int bytes)
 
     mpz_import(r, Fec_N64 * 8, 0, 1, 0, 0, data);
     fromMpz(element, r);
-
-    mpz_clear(r);
     return Fec_N64 * 8;
 }
 

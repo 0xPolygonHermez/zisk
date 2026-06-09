@@ -1,0 +1,86 @@
+name: "Cycle Tracking Comment"
+
+on:
+  workflow_run:
+    workflows: ["Cycle Tracking"]
+    types: [completed]
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.workflow_run.id }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  comment:
+    name: "Post / update PR comment"
+    runs-on: ubuntu-latest
+    # Only for benchmark runs that were triggered by a PR and produced a report.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: "Download report artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: cycle-tracking-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: report
+
+      - name: "Post / update PR comment"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const run = context.payload.workflow_run;
+
+            // Derive the target PR from the trusted workflow_run payload.
+            let prNumber = run.pull_requests?.[0]?.number;
+            if (!prNumber) {
+              const headOwner = run.head_repository?.owner?.login ?? context.repo.owner;
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'all',
+                head: `${headOwner}:${run.head_branch}`,
+              });
+              prNumber = (prs.find((p) => p.head?.sha === run.head_sha) ?? prs[0])?.number;
+            }
+            if (!Number.isInteger(prNumber)) {
+              core.setFailed(`Could not resolve a PR for workflow_run ${run.id} (head_sha ${run.head_sha})`);
+              return;
+            }
+
+            const report = fs.readFileSync('report/report.md', 'utf8');
+            const marker = '<!-- zisk-cycle-tracking -->';
+            const body = `${marker}\n${report}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
