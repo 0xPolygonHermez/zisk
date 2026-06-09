@@ -340,7 +340,7 @@ pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
         return (M64, true);
     }
 
-    // Handle overflow case: -MIN_I32 cannot be represented in 32 bits, so return a.
+    // Handle overflow case: DIVW semantics require MIN_I32 / -1 to return MIN_I32 (sign-extended)
     if a as u32 == 0x8000_0000 && b as i32 == -1 {
         return (0xFFFFFFFF80000000, true);
     }
