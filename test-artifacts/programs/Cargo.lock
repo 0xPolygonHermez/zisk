@@ -1656,6 +1656,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagnostic-hints"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+ "zkvm-interface",
+]
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6607,9 +6615,10 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
- "tokio",
  "tracing",
  "zisk-core",
+ "zisk-definitions",
+ "zisk-stream",
  "zisk-verifier",
 ]
 
@@ -6658,7 +6667,7 @@ dependencies = [
  "sha2",
  "tiny-keccak",
  "zisk-definitions",
- "ziskos-hints",
+ "ziskos",
 ]
 
 [[package]]
@@ -6720,6 +6729,20 @@ dependencies = [
  "zisk-coordinator-api",
  "zisk-coordinator-client",
  "zisk-prover-backend",
+]
+
+[[package]]
+name = "zisk-stream"
+version = "1.0.0-beta"
+dependencies = [
+ "anyhow",
+ "libc",
+ "quinn",
+ "rcgen",
+ "rustls",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -6789,8 +6812,8 @@ dependencies = [
  "sha2",
  "tiny-keccak",
  "tokio",
- "zisk-common",
  "zisk-definitions",
+ "zisk-stream",
  "zisk-verifier",
  "zkvm-interface",
 ]

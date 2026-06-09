@@ -419,7 +419,7 @@ pub trait ProverEngine {
 
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>>;
 
-    fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
+    fn set_active_services(&self, _is_first_process: bool) -> Result<()> {
         Ok(())
     }
 
@@ -666,8 +666,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_hints_processor()
     }
 
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        self.prover.set_active_services(is_first_partition)
+    pub fn set_active_services(&self, is_first_process: bool) -> Result<()> {
+        self.prover.set_active_services(is_first_process)
     }
 
     pub fn reset(&self) -> Result<()> {
