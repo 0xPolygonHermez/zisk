@@ -1637,7 +1637,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "fields",
  "num-bigint",
@@ -2146,7 +2146,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3917,7 +3917,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "colored",
  "fields",
@@ -3937,7 +3937,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3963,7 +3963,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4344,7 +4344,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "bincode",
  "blake3",
@@ -4378,7 +4378,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "bincode",
  "borsh",
@@ -4409,7 +4409,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "fields",
  "itoa",
@@ -4422,7 +4422,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4432,7 +4432,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4441,7 +4441,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "bincode",
  "colored",
@@ -4452,7 +4452,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "bincode",
  "fields",
@@ -4864,9 +4864,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.3"
+version = "1.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -4887,9 +4887,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reqwest"
@@ -5800,7 +5800,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "anyhow",
  "fields",
@@ -7510,7 +7510,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#b30df1f1e0c1344b9d8b6bf0f6815dd138a74906"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#830e72b0aaa71d1a2e7cd32fc1611b0f300026b1"
 dependencies = [
  "colored",
  "fields",
