@@ -302,7 +302,7 @@ pub const fn op_divu(a: u64, b: u64) -> (u64, bool) {
 ///
 /// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
 /// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-/// which cannot be represented with 64 bits (overflow) and it returns c=a.
+/// which cannot be represented with 64 bits (overflow); it returns c=a and sets flag to true.
 #[inline(always)]
 pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
     // Handle divide by zero case
@@ -332,6 +332,7 @@ pub const fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
 
 /// Sets c to a / b, as 32-bits signed values, and flag to false.
 /// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+/// If a=0x80000000 (MIN_I32) and b=0xFFFFFFFF (-1) it returns 0xffffffff80000000 and sets flag to true.
 #[inline(always)]
 pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
     // Handle divide by zero case
@@ -368,7 +369,7 @@ pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
         return (a, true);
     }
 
-    // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return a.
+    // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return 0.
     if a as u64 == 0x8000_0000_0000_0000 && b as i64 == -1 {
         return (0, true);
     }
@@ -397,7 +398,7 @@ pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
         return ((a as i32) as u64, true);
     }
 
-    // Handle overflow case: -MIN_I32 cannot be represented in 32 bits, so return a.
+    // Handle overflow case: -MIN_I32 cannot be represented in 32 bits, so return 0.
     if a as u32 == 0x8000_0000 && b as i32 == -1 {
         return (0, true);
     }

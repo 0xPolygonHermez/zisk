@@ -2973,7 +2973,7 @@ impl ZiskRom2Asm {
                             ctx.comment_str("address &= 7")
                         );
                         *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                        *unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                         Self::c_store_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                     }
@@ -2998,7 +2998,7 @@ impl ZiskRom2Asm {
                             ctx.comment_str("address &= 7")
                         );
                         *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                        *unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                         // Increment chunk player address
                         *unusual_code += &format!(
                             "\tadd {}, 16 {}\n",
@@ -3114,7 +3114,7 @@ impl ZiskRom2Asm {
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                 *unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                                 Self::c_store_ind_8_not_aligned(ctx, unusual_code);
                                 *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                 *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
@@ -3191,7 +3191,8 @@ impl ZiskRom2Asm {
 
                             // Different address
 
-                            *unusual_code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                             // FIX: REG_VALUE holds next_aligned address — read mem at it
                             *unusual_code += &format!(
@@ -3317,7 +3318,7 @@ impl ZiskRom2Asm {
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                 *unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                                 Self::chunk_player_mem_write(ctx, unusual_code, 8, REG_C, 2);
                                 *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                 Self::chunk_player_mem_write(ctx, code, 8, REG_C, 0);
@@ -3382,7 +3383,8 @@ impl ZiskRom2Asm {
                             // Different address
                             ////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                             Self::chunk_player_mem_write(
                                 ctx,
@@ -4650,13 +4652,14 @@ impl ZiskRom2Asm {
                     ctx.pc,
                     ctx.comment_str("Div: if b is zero, jump")
                 );
-                *unusual_code += &format!("pc_{:x}_div_by_zero:\n", ctx.pc);
+                *unusual_code += &format!("\npc_{:x}_div_by_zero:\n", ctx.pc);
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
                     ctx.comment_str("Div: set result to f's")
                 );
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *unusual_code +=
+                    &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *unusual_code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Check underflow:
@@ -4967,14 +4970,14 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
-                    ctx.comment_str("DivW: set result to f's")
+                    ctx.comment_str("DivW: result=f's")
                 );
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
                 // Check overflow:
                 // If a=0x80000000 (MIN_I32) and b=0xffffffff (-1) the result should be -MIN_I32,
-                // which cannot be represented with 32 bits, so return 0xffffffffffffffff
+                // which cannot be represented with 32 bits, so return 0xffffffff80000000
                 *code += &format!("pc_{:x}_divw_check_overflow:\n", ctx.pc);
                 *code += &format!(
                     "\tcmp {}, 0x80000000 {}\n",
@@ -4999,7 +5002,7 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\tmov {}, 0xffffffff80000000 {}\n",
                     REG_C,
-                    ctx.comment_str("DivW: set result to f's")
+                    ctx.comment_str("DivW: result=MIN_I32 (sign-extended)")
                 );
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
@@ -5039,7 +5042,8 @@ impl ZiskRom2Asm {
                 // Remainder.
 
                 // Check divide by zero:
-                // If b=0 (divide by zero) it sets c to 0, and sets flag to true.
+                // If b=0 (divide by zero) it sets c to a (sign-extended to 64 bits), and sets flag
+                // to true.
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
@@ -8915,7 +8919,7 @@ impl ZiskRom2Asm {
 
         // Call wait_for_prec_avail()
         *unusual_code +=
-            &format!("pc_{:x}_{}_wait_for_prec_avail:\n", ctx.pc, ctx.wait_for_prec_counter);
+            &format!("\npc_{:x}_{}_wait_for_prec_avail:\n", ctx.pc, ctx.wait_for_prec_counter);
         Self::push_internal_registers(ctx, unusual_code, false);
         *unusual_code += "\tcall _wait_for_prec_avail\n";
         *unusual_code += "\tcmp rax, 0\n";
@@ -8984,7 +8988,7 @@ impl ZiskRom2Asm {
         *code += &format!("pc_{:x}_wait_for_input_avail_done:\n", ctx.pc);
 
         // Call wait_for_input_avail()
-        *unusual_code += &format!("pc_{:x}_wait_for_input_avail:\n", ctx.pc);
+        *unusual_code += &format!("\npc_{:x}_wait_for_input_avail:\n", ctx.pc);
         Self::push_internal_registers(ctx, unusual_code, false);
         *unusual_code += "\tcall _wait_for_input_avail\n";
         *unusual_code += "\tcmp rax, 0\n";
