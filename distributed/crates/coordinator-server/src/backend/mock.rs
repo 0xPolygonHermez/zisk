@@ -560,7 +560,9 @@ fn blake3_hex(data: &[u8]) -> String {
 
 fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
     match kind {
-        DomainJobKind::Setup(_) => DomainJobKindResponse::Setup { vk: vec![] },
+        DomainJobKind::Setup(_) => {
+            DomainJobKindResponse::Setup { vk: vec![], hash_mode: String::new() }
+        }
         DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {
             stats: DomainExecutionStats::default(),
             public_outputs: vec![],

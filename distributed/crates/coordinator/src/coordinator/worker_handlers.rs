@@ -75,7 +75,7 @@ impl Coordinator {
             if let Some(state) = pending.get_mut(&job_id) {
                 let was_pending = state.pending.remove(&ack.worker_id);
                 if was_pending && ack.success {
-                    state.vks.push((ack.worker_id.clone(), ack.vk));
+                    state.vks.push((ack.worker_id.clone(), ack.vk, ack.hash_mode));
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
@@ -111,19 +111,25 @@ impl Coordinator {
     async fn finalize_setup(
         &self,
         job_id: &JobId,
-        vks: Vec<(WorkerId, Vec<u8>)>,
+        vks: Vec<(WorkerId, Vec<u8>, String)>,
         hash_id: String,
         program_name: String,
         with_hints: bool,
         emulator_only: bool,
     ) {
+        // All workers report the same authoritative hash mode; take the first.
+        let hash_mode = vks.first().map(|(_, _, m)| m.clone()).unwrap_or_default();
         let event = match validate_setup_vks(job_id.as_str(), vks) {
             Ok(vk) => {
                 self.active_setups.write().await.insert(
                     SetupKey::new(hash_id, with_hints, emulator_only),
-                    crate::coordinator::ActiveSetup { program_name, vk: vk.clone() },
+                    crate::coordinator::ActiveSetup {
+                        program_name,
+                        vk: vk.clone(),
+                        hash_mode: hash_mode.clone(),
+                    },
                 );
-                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk })
+                CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk, hash_mode })
             }
             Err(e) => {
                 error!("[Setup] VK mismatch for job_id {}: {}", job_id, e);
@@ -767,12 +773,15 @@ impl Coordinator {
 
 /// Validates that all workers produced the same VK and returns it.
 /// Returns an error string if there are no VKs (all workers failed) or if VKs disagree.
-fn validate_setup_vks(job_id: &str, vks: Vec<(WorkerId, Vec<u8>)>) -> Result<Vec<u8>, String> {
+fn validate_setup_vks(
+    job_id: &str,
+    vks: Vec<(WorkerId, Vec<u8>, String)>,
+) -> Result<Vec<u8>, String> {
     let mut iter = vks.into_iter();
-    let (_, first_vk) = iter
+    let (_, first_vk, _) = iter
         .next()
         .ok_or_else(|| format!("job {job_id}: all workers failed setup, no VK received"))?;
-    for (worker_id, vk) in iter {
+    for (worker_id, vk, _) in iter {
         if vk != first_vk {
             return Err(format!(
                 "job {job_id}: worker {worker_id} returned a different VK than the first worker"

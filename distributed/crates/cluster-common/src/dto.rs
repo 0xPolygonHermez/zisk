@@ -303,6 +303,7 @@ pub struct SetupProgramAckDto {
     pub success: bool,
     pub error_message: Option<String>,
     pub vk: Vec<u8>,
+    pub hash_mode: String,
 }
 
 pub struct WorkerErrorDto {

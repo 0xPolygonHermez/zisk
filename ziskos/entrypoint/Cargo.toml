@@ -72,7 +72,6 @@ ctor = { version = "0.2", optional = true }
 
 [features]
 default = ["user-hints", "inputcpy"]
-stark-poseidon1 = []
 user-hints = [
   "dep:zisk-stream",
   "dep:bytes",

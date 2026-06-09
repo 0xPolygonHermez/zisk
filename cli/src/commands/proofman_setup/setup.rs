@@ -3,8 +3,7 @@ use pil2_stark_setup::commands::setup::{run_setup, SetupOptions};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
-const DEFAULT_HASH: &str =
-    if cfg!(feature = "stark-poseidon1") { "Poseidon1" } else { "Poseidon2" };
+const DEFAULT_HASH: &str = "Poseidon1";
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

@@ -40,6 +40,5 @@ alloy-sol-types = { version = "1.5.7" }
 [features]
 default = []
 cpu-only = ["proofman-common/cpu-only"]
-stark-poseidon1 = ["proofman/stark-poseidon1", "proofman-common/stark-poseidon1"]
 stats = []
 diagnostic = ["proofman-common/diagnostic"]

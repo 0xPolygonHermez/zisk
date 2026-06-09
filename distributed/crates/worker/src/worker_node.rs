@@ -969,18 +969,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();
 
-                        let (success, error_message, vk) = match self.handle_setup_program(setup) {
-                            Ok(vk) => (
+                        let (success, error_message, vk, hash_mode) = match self
+                            .handle_setup_program(setup)
+                        {
+                            Ok(program_vk) => (
                                 true,
                                 String::new(),
-                                vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                                program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                                program_vk.hash_mode.as_str().to_string(),
                             ),
                             Err(e) => {
                                 error!(
-                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
-                                    job_id, hash_id, e
-                                );
-                                (false, e.to_string(), Vec::new())
+                                        "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                        job_id, hash_id, e
+                                    );
+                                (false, e.to_string(), Vec::new(), String::new())
                             }
                         };
 
@@ -993,6 +996,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                     hash_id,
                                     success,
                                     error_message,
+                                    hash_mode,
                                 },
                             )),
                         };
@@ -1112,16 +1116,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 let job_id = setup.job_id.clone();
                 let hash_id = setup.hash_id.clone();
 
-                let (success, error_message, vk) = match self.handle_setup_program(setup) {
-                    Ok(vk) => {
-                        (true, String::new(), vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect())
-                    }
+                let (success, error_message, vk, hash_mode) = match self.handle_setup_program(setup)
+                {
+                    Ok(program_vk) => (
+                        true,
+                        String::new(),
+                        program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                        program_vk.hash_mode.as_str().to_string(),
+                    ),
                     Err(e) => {
                         error!(
                             "[Setup] job_id {} Failed setup for hash_id {}: {}",
                             job_id, hash_id, e
                         );
-                        (false, e.to_string(), Vec::new())
+                        (false, e.to_string(), Vec::new(), String::new())
                     }
                 };
 
@@ -1133,6 +1141,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         success,
                         error_message,
                         vk,
+                        hash_mode,
                     })),
                 };
                 if let Err(e) = message_sender.send(ack) {

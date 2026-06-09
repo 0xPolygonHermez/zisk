@@ -1,6 +1,5 @@
-/// Hash family the recursion was proven with, fixed at guest build time by the
-/// `stark-poseidon1` feature of this crate.
-const HASH: &str = if cfg!(feature = "stark-poseidon1") { "Poseidon1" } else { "Poseidon2" };
+/// Hash family the recursion was proven with.
+const HASH: &str = "Poseidon1";
 
 pub fn verify_zisk_proof(zisk_proof: &[u64]) -> bool {
     if zisk_proof.len() < zisk_verifier::VADCOP_VK_LEN_WORDS {

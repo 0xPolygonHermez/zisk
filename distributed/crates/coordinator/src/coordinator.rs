@@ -63,7 +63,7 @@ use zisk_common::{SetupKey, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
-    vks: Vec<(WorkerId, Vec<u8>)>,
+    vks: Vec<(WorkerId, Vec<u8>, String)>,
     hash_id: String,
     program_name: String,
     with_hints: bool,
@@ -75,6 +75,7 @@ struct SetupPendingState {
 pub(crate) struct ActiveSetup {
     pub program_name: String,
     pub vk: Vec<u8>,
+    pub hash_mode: String,
 }
 
 /// Per-job event channel: live broadcast sender plus a one-slot stash for the
@@ -394,12 +395,14 @@ impl Coordinator {
             emulator_only,
         )) {
             let vk = setup.vk.clone();
+            let hash_mode = setup.hash_mode.clone();
             self.alloc_job_events(&job_id).await;
             self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
             self.fire_job_event(
                 &job_id,
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk,
+                    hash_mode,
                 }),
             )
             .await;
@@ -1971,7 +1974,11 @@ mod tests {
         let cached_vk = vec![0xA, 0xB, 0xC];
         coordinator.active_setups.write().await.insert(
             SetupKey::new(hash_id.to_string(), false, false),
-            ActiveSetup { program_name: "p".into(), vk: cached_vk.clone() },
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: cached_vk.clone(),
+                hash_mode: "Poseidon1".into(),
+            },
         );
 
         // setup_program for the SAME (hash_id, with_hints) must succeed
@@ -1993,6 +2000,7 @@ mod tests {
         match terminal {
             CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                 vk,
+                ..
             }) => {
                 assert_eq!(vk, cached_vk);
             }
@@ -2688,6 +2696,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2946,6 +2955,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![0xFF, 0xFF],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2959,6 +2969,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2971,6 +2982,7 @@ mod tests {
         match terminal {
             CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                 vk,
+                ..
             }) => {
                 assert_eq!(vk, vec![1, 2, 3]);
             }
@@ -3045,6 +3057,7 @@ mod tests {
                 &setup_job,
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk: vec![0xAB],
+                    hash_mode: "Poseidon1".into(),
                 }),
             )
             .await;
@@ -3122,6 +3135,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -3233,6 +3247,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
