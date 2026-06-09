@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -11,8 +11,12 @@ fn main() {
     if !c_path.exists() {
         panic!("Missing c_path = {}", c_path.display());
     }
-    let library_folder = c_path.join("lib");
-    let build_folder = c_path.join("build");
+
+    // Build artifacts go under Cargo's OUT_DIR so `cargo clean` removes them
+    // (previously they lived in c/build and c/lib, in-source, and survived clean).
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set by Cargo"));
+    let build_folder = out_dir.join("build");
+    let library_folder = out_dir.join("lib");
     let library_name = "ziskc";
     let lib_file = library_folder.join(format!("lib{library_name}.a"));
 
@@ -22,8 +26,11 @@ fn main() {
     std::fs::create_dir_all(&library_folder)
         .unwrap_or_else(|e| panic!("Failed to create lib directory: {e}"));
 
-    // Run make (incremental build - only recompiles changed files)
+    // Run make (incremental build - only recompiles changed files), pointing its
+    // BUILD_DIR / LIB_DIR at OUT_DIR so nothing is written into the source tree.
     let status = Command::new("make")
+        .arg(format!("BUILD_DIR={}", build_folder.display()))
+        .arg(format!("LIB_DIR={}", library_folder.display()))
         .current_dir(&c_path)
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute `make`: {e}"));
@@ -44,6 +51,14 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
     println!("cargo:rustc-link-lib=static={library_name}");
 
+    let runtime_dir = workspace_target_dir(&out_dir).join("zisk-libs");
+    std::fs::create_dir_all(&runtime_dir)
+        .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
+    let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
+    std::fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
+        panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
+    });
+
     // Track C source files for recompilation
     track_sources(&c_path);
 
@@ -51,6 +66,20 @@ fn main() {
     for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
         println!("cargo:rustc-link-lib={lib}");
     }
+}
+
+fn workspace_target_dir(out_dir: &Path) -> PathBuf {
+    if let Ok(env_target) = std::env::var("CARGO_TARGET_DIR") {
+        let p = PathBuf::from(env_target);
+        if p.is_absolute() {
+            return p;
+        }
+    }
+    out_dir
+        .ancestors()
+        .find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
+        .unwrap_or_else(|| panic!("No 'target' ancestor of {}", out_dir.display()))
+        .to_path_buf()
 }
 
 /// Tell Cargo to track C source files for changes

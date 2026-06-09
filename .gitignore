@@ -18,8 +18,6 @@
 /emulator-asm/src/dma/test/build
 /emulator-asm/src/emu.asm
 /cache
-/lib-c/c/build
-/lib-c/c/lib
 /lib-float/c/build
 /logs
 state-machines/frequent-ops/src/frequent_ops_fixed.bin

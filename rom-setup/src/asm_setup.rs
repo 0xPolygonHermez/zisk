@@ -109,10 +109,10 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
             tracing::debug!("Building ziskclib...");
 
             let output = Command::new("cargo")
-                .args(["build", "--release", "-p", "ziskclib"])
+                .args(["build", "--release", "-p", "ziskclib", "-p", "lib-c"])
                 .current_dir(emulator_parent)
                 .output()
-                .context("Failed to execute cargo build for ziskclib")?;
+                .context("Failed to execute cargo build for ziskclib and lib-c")?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -124,6 +124,14 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
                 anyhow::bail!(
                     "ziskclib build succeeded but library not found at: {}",
                     target_lib_path.display()
+                );
+            }
+
+            let ziskc_lib_path = emulator_parent.join("target/zisk-libs/libziskc.a");
+            if !ziskc_lib_path.exists() {
+                anyhow::bail!(
+                    "lib-c build succeeded but libziskc.a not found at: {}",
+                    ziskc_lib_path.display()
                 );
             }
 
