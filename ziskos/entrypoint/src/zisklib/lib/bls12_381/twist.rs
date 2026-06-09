@@ -1016,6 +1016,8 @@ pub fn utf_endomorphism_twist_bls12_381(
     result
 }
 
+// ==================== C FFI Functions ====================
+
 /// G2 point addition for uncompressed 192-byte points (big-endian format)
 ///
 /// Input format: 192 bytes per point = 96 bytes x-coordinate (Fp2) + 96 bytes y-coordinate (Fp2)
@@ -1060,10 +1062,10 @@ pub(crate) unsafe fn bls12_381_g2_add_c(
     };
 
     // Encode result
+    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
     if result == G2_IDENTITY {
         G2_ADD_SUCCESS_INFINITY
     } else {
-        g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
         G2_ADD_SUCCESS
     }
 }
@@ -1121,15 +1123,13 @@ pub(crate) unsafe fn bls12_381_g2_msm_c(
     };
 
     // Encode result
+    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
     if result == G2_IDENTITY {
         G2_MSM_SUCCESS_INFINITY
     } else {
-        g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
         G2_MSM_SUCCESS
     }
 }
-
-// ==================== C FFI Functions ====================
 
 /// Decompresses a compressed BLS12-381 G2 point (96 bytes) to affine coordinates.
 /// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
