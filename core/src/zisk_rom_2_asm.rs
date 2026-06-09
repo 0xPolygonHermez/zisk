@@ -3,7 +3,7 @@
 //! Generates i86_64 assembly code that implements the Zisk ROM program
 use std::path::Path;
 
-use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR,

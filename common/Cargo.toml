@@ -10,6 +10,8 @@ categories = { workspace = true }
 [dependencies]
 zisk-core = { workspace = true }
 zisk-verifier = { workspace = true }
+zisk-definitions = { workspace = true }
+zisk-stream = { workspace = true, features = ["quic"] }
 
 proofman-common = { workspace = true }
 proofman-verifier = { workspace = true, features = ["parallel"] }
@@ -25,12 +27,6 @@ sha2 = { workspace = true }
 libc = "0.2"
 dirs = "6"
 alloy-sol-types = { version = "1.5.7" }
-
-# QUIC networking
-tokio = { workspace = true }
-quinn = "0.11"
-rustls = { version = "0.23", features = ["ring"] }
-rcgen = "0.14"
 
 bincode = { workspace = true }
 paste = { workspace = true }

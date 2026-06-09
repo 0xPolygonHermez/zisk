@@ -1,5 +1,5 @@
 use crate::hints::macros::define_hint;
-use zisk_common::HINT_SECP256R1_ECDSA_VERIFY;
+use zisk_definitions::HINT_SECP256R1_ECDSA_VERIFY;
 
 define_hint! {
     secp256r1_ecdsa_verify => {

@@ -5,7 +5,7 @@ on:
     branches:
       - develop
       - main
-      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
     paths:
       - "emulator/**"
       - "emulator-asm/**"

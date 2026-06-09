@@ -5,7 +5,7 @@
 ziskos::entrypoint!(main);
 
 fn main() {
-    let data_bytes = ziskos::io::read_input_slice();
+    let data_bytes = ziskos::io::read_slice();
 
     let data: &[u64] = unsafe {
         core::slice::from_raw_parts(data_bytes.as_ptr() as *const u64, data_bytes.len() / 8)

@@ -257,29 +257,6 @@ get_var_from_cargo_toml() {
     local var_lc
     var_lc="$(printf '%s' "$var_name" | tr '[:upper:]' '[:lower:]')"
 
-    # Special case: pil2_proofman_branch
-    # Assumption: the "proofman = { ... }" entry is a single line and contains "pil2-proofman" in the URL
-    if [[ "$var_lc" == "pil2_proofman_branch" ]]; then
-        # Find the single line starting with "proofman =" that references pil2-proofman
-        local proof_line
-        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file")"
-
-        if [[ -n "$proof_line" ]]; then
-            local branch
-            # Try to extract branch in three formats: "value", 'value', or unquoted value
-            branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p')
-            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE "s/.*branch[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p")
-            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*([^,}[:space:]]+).*/\1/p')
-
-            if [[ -n "$branch" ]]; then
-                echo "$branch"
-                return
-            fi
-            # If no branch found, fall back to the standard variable lookup below
-        fi
-        # If no proofman line found, fall back to the standard variable lookup below
-    fi
-
     # Always add prefix "gha_"
     local prefixed_var="gha_${var_lc}"
 

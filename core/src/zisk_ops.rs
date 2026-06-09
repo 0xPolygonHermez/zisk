@@ -10,7 +10,7 @@
 #![allow(unused)]
 
 use precompiles_helpers::DmaInfo;
-use ziskos_hints::zisklib::fcall_proxy;
+use ziskos::zisklib::fcall_proxy;
 
 use crate::{
     blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
@@ -29,7 +29,7 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE};
 

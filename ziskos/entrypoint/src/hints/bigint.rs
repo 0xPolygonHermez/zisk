@@ -1,5 +1,5 @@
 use crate::hints::macros::define_hint_ptr;
-use zisk_common::HINT_MODEXP;
+use zisk_definitions::HINT_MODEXP;
 
 define_hint_ptr! {
     modexp_bytes => {

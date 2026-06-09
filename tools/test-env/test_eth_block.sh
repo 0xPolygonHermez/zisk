@@ -11,20 +11,15 @@ main() {
 
     cd "${WORKSPACE_DIR}" || return 1
 
-    info "Cloning zisk-eth-client repository..."
-    if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
-        warn "Skipping cloning zisk-eth-client repository as DISABLE_CLONE_REPO is set to 1"
-    else
-        rm -rf zisk-eth-client
-        if [[ -n "$ZISK_ETH_CLIENT_BRANCH" ]]; then
-            ensure git clone --branch "$ZISK_ETH_CLIENT_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-        else
-            ensure git clone --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-        fi
+    ELF_FILE="zisk-eth-client/bin/guests/stateless-validator-reth/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
+    INPUTS_PATH="zisk-eth-client/bin/guests/stateless-validator-reth/inputs"
+
+    info "Verifying zec-reth ELF exists..."
+    if [[ ! -f "${ELF_FILE}" ]]; then
+        err "zec-reth ELF not found: ${ELF_FILE}. Please run build_zec_reth.sh first."
+        return 1
     fi
 
-    ELF_FILE="zisk-eth-client/bin/guests/stateless-validator-reth/elf/zec-reth.elf"
-    INPUTS_PATH="zisk-eth-client/bin/guests/stateless-validator-reth/inputs"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "BLOCK_INPUTS" "Ethereum blocks" || return 1
 }
 

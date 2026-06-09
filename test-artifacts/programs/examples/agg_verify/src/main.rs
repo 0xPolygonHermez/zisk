@@ -6,8 +6,8 @@
 ziskos::entrypoint!(main);
 
 fn main() {
-    let proof1 = ziskos::io::read_input_slice();
-    let proof2 = ziskos::io::read_input_slice();
+    let proof1 = ziskos::io::read_slice();
+    let proof2 = ziskos::io::read_slice();
 
     let valid_proof1 =
         unsafe { ziskos::zisklib::verify_zisk_proof_c(proof1.as_ptr(), proof1.len()) };
