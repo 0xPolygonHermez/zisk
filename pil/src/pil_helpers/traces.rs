@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "d8f05a235f46ac09274ed4a96f6ecb8019b44a11f94a972eac5247bf43dddc92";
+pub const PILOUT_HASH: &str = "eee9d6ec490861c06cc2a2f22d420af4fcff28d0b146a01258f8e0c4b5028227";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -116,14 +116,14 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {
-            rom_root: [0; 4],
-            inputs: [0; 64],
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
         }
     }
 }
@@ -131,11 +131,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F,
 });
-
+ 
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
