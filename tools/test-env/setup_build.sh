@@ -145,8 +145,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT_DIR"
 
 # Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets
-# VERSION / INCLUDE_PATHS. See lib/setup-common.sh for the contract.
-. "$SCRIPT_DIR/lib/setup-common.sh"
+# VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
+. "$SCRIPT_DIR/setup_common.sh"
 
 # node/npm are only needed to run compile-pil (pil2com) and setup-snark (snarkjs),
 # both from $PROOFMAN_DIR/node_modules. Set them up lazily — a --cache-dir hit or
