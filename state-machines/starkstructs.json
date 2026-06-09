@@ -19,7 +19,7 @@
   },
   "VirtualTableZisk1": {
     "lastLevelVerification": 1,
-     "powBits": 20
+    "powBits": 20
   },
   "Poseidon2": {
     "blowupFactor": 2
@@ -31,6 +31,9 @@
     "hasCompressor": true
   },
   "Blake2br": {
+    "hasCompressor": true
+  },
+  "Poseidon": {
     "hasCompressor": true
   }
 }
