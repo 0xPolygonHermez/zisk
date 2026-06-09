@@ -100,7 +100,8 @@ impl CustomRom {
         //   b_offset_imm0 = value[1] low  32 bits    b_imm1        = value[1] high 32 bits
         //   ind_width     = value[2] low  32 bits    op            = value[2] high 32 bits
         //   jmp_offset1   = value[3] low  32 bits    store_offset  = value[3] high 32 bits
-        //   flags         = MEMORY_ROM_INIT_OP (4)        is_data       = 1
+        //   flags         = MEMORY_STORE_OP (1) for RAM or MEMORY_ROM_INIT_OP (4) for ROM
+        //   is_data       = 1
         let mut data_row_index = rom.insts.len();
         let sections = rom.ro_data_64.iter().chain(rom.rw_data_64.iter());
         for section in sections {

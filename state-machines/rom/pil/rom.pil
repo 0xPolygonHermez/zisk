@@ -13,18 +13,18 @@ airtemplate Rom(const int N = 2**21, const int rom_bus_id = ROM_BUS_ID) {
     col rom b_offset_imm0;   // b_offset_imm0   value[1][0]
     col rom b_imm1;          // b_imm1          value[1][1]
     col rom ind_width;       // ind_width       value[2][0]
-    col rom op;              // op              value[2][0]
-    col rom store_offset;    // store_offset    value[3][1]
-    col rom jmp_offset1;     // jmp_offset1     value[3][0]
+    col rom op;              // op              value[2][1]
+    col rom store_offset;    // store_offset    value[3][0]
+    col rom jmp_offset1;     // jmp_offset1     value[3][1]
     col rom jmp_offset2;     
-    col rom flags;           // flags           mem_op, MEMORY_ROM_INIT_OP o MEMORY_STORE _OP
+    col rom flags;           // flags           mem_op = MEMORY_ROM_INIT_OP|MEMORY_STORE _OP 
 
     col witness multiplicity;
 
     lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
                                 op, store_offset, jmp_offset1, jmp_offset2, flags], mul: multiplicity);
     
-    is_data * multiplicity === 0; // code rows have multiplicity 0                              
+    is_data * multiplicity === 0; // data rows don't use rom program lines multiplicity.
 
     mem_op(op: flags, mem_step: MEMORY_INIT_STEP, addr: line, value: [a_offset_imm0, a_imm1], sel: is_data);
     mem_op(op: flags, mem_step: MEMORY_INIT_STEP, addr: line + 8, value: [b_offset_imm0, b_imm1], sel: is_data);

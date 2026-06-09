@@ -30,7 +30,7 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
         let (min_addr, max_addr) = module.get_addr_range();
-        let init = module.is_initizalizable();
+        let init = module.is_initializable();
 
         Self {
             ictx,
@@ -148,10 +148,11 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
         );
-        if self.init {
-            //     collector.init_with_mem_sections(mem_sections);
-            assert!(false, "mem module instance should not build collector with init");
-        }
+
+        assert!(self.init, "mem module instance should not build collector with init because method don't has mem_sections as argument");
+        // if self.init && chunk_id == ChunkId(0) {
+        //     collector.init_with_mem_sections(mem_sections);
+        // }
         Some(Box::new(collector))
     }
 

@@ -87,7 +87,7 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn is_dual(&self) -> bool {
         true
     }
-    fn is_initizalizable(&self) -> bool {
+    fn is_initializable(&self) -> bool {
         true
     }
     /// Finalizes the witness accumulation process and triggers the proof generation.
@@ -251,12 +251,14 @@ impl<F: PrimeField64> MemSM<F> {
                 panic!("MemSM: increment's out of range: {} i:{} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
+
+            #[cfg(feature = "debug_mem")]
             if h_increment >= 0x1_0000 {
                 if i > 0 {
-                    println!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?} {:?}",
+                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?} {:?}",
                          mem_op.addr, last_addr, mem_op.step, last_step, trace[i-1], trace[i]);
                 } else {
-                    println!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?}",
+                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?}",
                          mem_op.addr, last_addr, mem_op.step, last_step, trace[i]);
                 }
             }

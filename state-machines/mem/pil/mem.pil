@@ -462,7 +462,7 @@ function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8,
 // Function to send to bus a memory init operation (only for rom)
 function mem_init(int id = MEMORY_ID, expr addr, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     // adding 1 at step for first continuation
-    mem_assumes(id, MEMORY_ROM_INIT_OP, addr, INIT_MEM_STEP, bytes, value, sel, name);
+    mem_assumes(id, MEMORY_ROM_INIT_OP, addr, MEMORY_INIT_STEP, bytes, value, sel, name);
 }
 
 // Function to send to bus a memory operation (only for main)

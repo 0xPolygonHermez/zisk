@@ -68,7 +68,7 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     fn is_dual(&self) -> bool {
         false
     }
-    fn is_initizalizable(&self) -> bool {
+    fn is_initializable(&self) -> bool {
         false
     }
 
