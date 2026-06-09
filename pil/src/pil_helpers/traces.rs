@@ -116,14 +116,14 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-    
+
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {  
-            rom_root: [0; 4],  
-            inputs: [0; 64], 
+        Self {
+            rom_root: [0; 4],
+            inputs: [0; 64],
         }
     }
 }
@@ -131,11 +131,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
- 
+
 values!(ZiskProofValues<F> {
  enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F,
 });
- 
+
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
@@ -373,7 +373,7 @@ trace_row!(ArithFixedRow<F> {
 pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 21>;
 
 trace_row!(ArithTraceRow<F> {
- carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
+ carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow_mul_rz:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
 });
 
 pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 21>;
