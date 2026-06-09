@@ -41,7 +41,10 @@ pub(crate) fn open(name: &str, flags: i32) -> io::Result<i32> {
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) fn open(_name: &str, _flags: i32) -> io::Result<i32> {
-    Ok(0)
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "POSIX shared memory is only supported on linux-x86_64",
+    ))
 }
 
 /// `mmap` `size` bytes of `fd` with protection `prot`.
@@ -83,5 +86,8 @@ pub(crate) fn map(
     _lock: bool,
     _name: &str,
 ) -> io::Result<*mut c_void> {
-    Ok(std::ptr::null_mut())
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "POSIX shared memory is only supported on linux-x86_64",
+    ))
 }

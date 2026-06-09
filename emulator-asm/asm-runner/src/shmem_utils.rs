@@ -54,7 +54,7 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
         let lock = false;
 
         // First map only the header to learn the producer's allocated size.
-        let size_header = size_of::<H>();
+        let size_header = std::mem::size_of::<H>();
         let header_ptr = match shmem_sys::map(fd, size_header, PROT_READ, lock, name) {
             Ok(ptr) => ptr,
             Err(e) => {
@@ -137,7 +137,7 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
 
     pub fn data_ptr(&self) -> *mut c_void {
         // Skip the header size to get the data pointer
-        unsafe { self.mapped_ptr.add(size_of::<H>()) }
+        unsafe { self.mapped_ptr.add(std::mem::size_of::<H>()) }
     }
 
     pub fn mapped_size(&self) -> usize {

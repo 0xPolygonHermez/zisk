@@ -38,31 +38,32 @@ pub(crate) fn sem_input_avail_name(prefix: &str, asm_service: AsmService) -> Str
     build_sem_name(prefix, asm_service, "input_avail")
 }
 
-/// Per-service shared memory name for precompile hints data.
-/// Each ASM service has its own precompile shmem; Rust writes the same data to all of them.
+/// Shared memory name for precompile hints data.
 pub(crate) fn shmem_precompile_name(prefix: &str) -> String {
     build_shmem_name(prefix, "precompile")
 }
 
-/// Semaphore name for precompile hints data availability (per service)
+/// Semaphore name for precompile hints data availability (per service).
 pub(crate) fn sem_prec_available_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_avail")
 }
 
-/// Semaphore name for precompile hints data read (per service)
+/// Semaphore name for precompile hints data read (per service).
 pub(crate) fn sem_prec_read_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "prec_read")
 }
 
-/// Shared memory name for precompile hints data control
+/// Shared memory name for precompile hints data control.
 pub(crate) fn shmem_control_input_name(prefix: &str) -> String {
     build_shmem_name(prefix, "control_input")
 }
 
+/// Semaphore name for control output availability (per service).
 pub(crate) fn shmem_control_output_name(prefix: &str, asm_service: AsmService) -> String {
     build_service_shmem_name(prefix, asm_service, "control_output")
 }
 
+/// Shared memory name for the main output (per service, optional numeric suffix for multiple outputs).
 pub(crate) fn shmem_output_name(
     prefix: &str,
     asm_service: AsmService,
@@ -75,6 +76,7 @@ pub(crate) fn shmem_output_name(
     }
 }
 
+/// Semaphore name for chunk completion (per service).
 pub(crate) fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "chunk_done")
 }

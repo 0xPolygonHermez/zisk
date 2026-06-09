@@ -60,7 +60,8 @@ impl AsmRHData {
             // chunk data
             let len = std::ptr::read(data_ptr) as usize;
             assert!(
-                (len + 1) * 8 <= (asm_shared_memory.mapped_size() - size_of::<AsmRHHeader>()),
+                (len + 1) * 8
+                    <= (asm_shared_memory.mapped_size() - std::mem::size_of::<AsmRHHeader>()),
                 "Data length {} exceeds allocated shared memory size",
                 len
             );
