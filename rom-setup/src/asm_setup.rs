@@ -108,11 +108,18 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
         EmulatorAsmSource::Workspace => {
             tracing::debug!("Building ziskclib...");
 
+            // ziskclib is cross-platform; lib-c's C build only runs on Linux
+            // (its build.rs early-returns elsewhere), so only build it — and only
+            // require its libziskc.a artifact — when targeting Linux.
+            let mut args = vec!["build", "--release", "-p", "ziskclib"];
+            if cfg!(target_os = "linux") {
+                args.extend(["-p", "lib-c"]);
+            }
             let output = Command::new("cargo")
-                .args(["build", "--release", "-p", "ziskclib", "-p", "lib-c"])
+                .args(&args)
                 .current_dir(emulator_parent)
                 .output()
-                .context("Failed to execute cargo build for ziskclib and lib-c")?;
+                .context("Failed to execute cargo build for ziskclib")?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -127,12 +134,19 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
                 );
             }
 
-            let ziskc_lib_path = emulator_parent.join("target/zisk-libs/libziskc.a");
-            if !ziskc_lib_path.exists() {
-                anyhow::bail!(
-                    "lib-c build succeeded but libziskc.a not found at: {}",
-                    ziskc_lib_path.display()
-                );
+            // lib-c's build.rs publishes libziskc.a to target/zisk-libs/ (Linux only;
+            // the emulator-asm Makefile links it via -L../target/zisk-libs). The
+            // `-p lib-c` build above re-runs that script after a `cargo clean`, so
+            // verify the artifact is present.
+            #[cfg(target_os = "linux")]
+            {
+                let ziskc_lib_path = emulator_parent.join("target/zisk-libs/libziskc.a");
+                if !ziskc_lib_path.exists() {
+                    anyhow::bail!(
+                        "lib-c build succeeded but libziskc.a not found at: {}",
+                        ziskc_lib_path.display()
+                    );
+                }
             }
 
             tracing::debug!("ziskclib built successfully at: {}", target_lib_path.display());
