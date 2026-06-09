@@ -70,22 +70,7 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
-        warn "Build failed. Trying to fix missing stddef.h..."
-
-        stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
-        if [ -z "$stddef_path" ]; then
-            err "stddef.h not found. You may need to install gcc headers."
-            return 1
-        fi
-
-        include_dir=$(dirname "$stddef_path")
-        export C_INCLUDE_PATH=$include_dir
-        export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
-
-        info  "Retrying build..."
-        ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES} || return 1
-    fi
+    ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES}
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
     mkdir -p "${ZISK_BIN_DIR}"
