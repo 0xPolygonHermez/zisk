@@ -55,7 +55,7 @@ impl MemAlignRomSM {
 
         // Get the rows for the given program counter and operation size
         for i in 0..op_size {
-            std.inc_virtual_row(table_id, pc + i, 1);
+            std.inc_virtual_row_one(table_id, pc + i);
         }
     }
 

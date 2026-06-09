@@ -7,7 +7,9 @@ zisk_common::zisk_precompile! {
     name = Poseidon2,
     op_type = Poseidon2,
     trace = Poseidon2Trace,
-    num_available_field = num_available_poseidon2s,
+    num_available = {
+        ::zisk_pil::Poseidon2Trace::<::zisk_pil::Poseidon2TraceRow<F>>::NUM_ROWS / CLOCKS - 1
+    },
     ops = [
         (OperationPoseidon2Data, Poseidon2Input),
     ],

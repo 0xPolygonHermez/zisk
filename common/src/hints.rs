@@ -90,6 +90,18 @@ pub const HINT_BLS12_381_FP2_TO_G2: u32 = 0x0411;
 
 // Modular exponentiation hint codes
 pub const HINT_MODEXP: u32 = 0x0500;
+/// 256-bit modular multiplication (EVM MULMOD opcode).
+pub const HINT_MULMOD256: u32 = 0x0501;
+/// 256-bit modular reduction (`a mod m`).
+pub const HINT_REDUCE_MOD256: u32 = 0x0502;
+/// 256-bit modular addition (`(a + b) mod m`).
+pub const HINT_ADD_MOD256: u32 = 0x0503;
+/// 256-bit modular squaring (`a² mod m`).
+pub const HINT_SQUARE_MOD256: u32 = 0x0504;
+/// 256-bit modular exponentiation (`base^exp mod m`).
+pub const HINT_POW_MOD256: u32 = 0x0505;
+/// 256-bit modular inverse (`a⁻¹ mod m`).
+pub const HINT_INV_MOD256: u32 = 0x0506;
 
 // KZG hint codes
 pub const HINT_VERIFY_KZG_PROOF: u32 = 0x0600;
@@ -192,6 +204,18 @@ pub enum BuiltInHint {
     // Modular exponentiation hint types.
     /// Modular exponentiation.
     ModExp = HINT_MODEXP,
+    /// 256-bit modular multiplication (EVM MULMOD opcode).
+    MulMod256 = HINT_MULMOD256,
+    /// 256-bit modular reduction.
+    ReduceMod256 = HINT_REDUCE_MOD256,
+    /// 256-bit modular addition.
+    AddMod256 = HINT_ADD_MOD256,
+    /// 256-bit modular squaring.
+    SquareMod256 = HINT_SQUARE_MOD256,
+    /// 256-bit modular exponentiation.
+    PowMod256 = HINT_POW_MOD256,
+    /// 256-bit modular inverse.
+    InvMod256 = HINT_INV_MOD256,
 
     // KZG hint types.
     /// Verify KZG proof.
@@ -236,6 +260,12 @@ impl Display for BuiltInHint {
             BuiltInHint::Bls12_381Fp2ToG2 => "BLS12_381_FP2_TO_G2",
             // Modular Exponentiation Hint
             BuiltInHint::ModExp => "MODEXP",
+            BuiltInHint::MulMod256 => "MULMOD256",
+            BuiltInHint::ReduceMod256 => "REDUCE_MOD256",
+            BuiltInHint::AddMod256 => "ADD_MOD256",
+            BuiltInHint::SquareMod256 => "SQUARE_MOD256",
+            BuiltInHint::PowMod256 => "POW_MOD256",
+            BuiltInHint::InvMod256 => "INV_MOD256",
             // KZG Hint
             BuiltInHint::VerifyKzgProof => "VERIFY_KZG_PROOF",
             // Keccak256 Hint
@@ -278,6 +308,12 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_BLS12_381_FP2_TO_G2 => Ok(Self::Bls12_381Fp2ToG2),
             // Modular Exponentiation Hint
             HINT_MODEXP => Ok(Self::ModExp),
+            HINT_MULMOD256 => Ok(Self::MulMod256),
+            HINT_REDUCE_MOD256 => Ok(Self::ReduceMod256),
+            HINT_ADD_MOD256 => Ok(Self::AddMod256),
+            HINT_SQUARE_MOD256 => Ok(Self::SquareMod256),
+            HINT_POW_MOD256 => Ok(Self::PowMod256),
+            HINT_INV_MOD256 => Ok(Self::InvMod256),
             // KZG Hint
             HINT_VERIFY_KZG_PROOF => Ok(Self::VerifyKzgProof),
             // Keccak256 Hint
@@ -365,6 +401,12 @@ impl HintCode {
             HintCode::BuiltIn(BuiltInHint::Bls12_381Fp2ToG2) => HINT_BLS12_381_FP2_TO_G2,
             // Modular Exponentiation Hint
             HintCode::BuiltIn(BuiltInHint::ModExp) => HINT_MODEXP,
+            HintCode::BuiltIn(BuiltInHint::MulMod256) => HINT_MULMOD256,
+            HintCode::BuiltIn(BuiltInHint::ReduceMod256) => HINT_REDUCE_MOD256,
+            HintCode::BuiltIn(BuiltInHint::AddMod256) => HINT_ADD_MOD256,
+            HintCode::BuiltIn(BuiltInHint::SquareMod256) => HINT_SQUARE_MOD256,
+            HintCode::BuiltIn(BuiltInHint::PowMod256) => HINT_POW_MOD256,
+            HintCode::BuiltIn(BuiltInHint::InvMod256) => HINT_INV_MOD256,
             // KZG Hint
             HintCode::BuiltIn(BuiltInHint::VerifyKzgProof) => HINT_VERIFY_KZG_PROOF,
             // Keccak256 Hint

@@ -1,86 +1,61 @@
-//! The `RomPlanner` module defines a planner for organizing execution plans for ROM-related
-//! operations. It aggregates ROM metrics and generates a plan for the execution flow.
+//! The `RomPlanner` module defines a planner for organizing execution
+//! plans for ROM-related operations.
+//!
+//! Unlike other state machines, ROM has no bus-side counter — every
+//! executed instruction comes from ROM, so its chunk set is just
+//! `ChunkId(0..num_chunks)`. The executor calls
+//! [`RomPlanner::plan_for_chunks`] directly with the chunk count;
+//! ROM does not participate in the [`zisk_common::Planner`] trait
+//! dispatch used by other SMs.
 
-use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Plan, Planner};
+use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan};
 use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
 
-/// The `RomPlanner` struct creates an execution plan from aggregated ROM metrics.
-///
-/// It processes metrics collected by `RomCounter` instances, combines them,
-/// and generates a single `Plan` for execution.
-pub(crate) struct RomPlanner;
+use crate::{RomError, RomResult};
 
-impl Planner for RomPlanner {
-    /// Creates an execution plan based on ROM metrics.
+/// Planner for the ROM state machine. See module docs.
+pub struct RomPlanner;
+
+impl RomPlanner {
+    /// Builds the ROM plan from the chunk count.
     ///
-    /// This method collects metrics from `RomCounter` instances, aggregates them,
-    /// and constructs a single plan that includes the combined metrics.
-    ///
-    /// # Arguments
-    /// * `metrics` - A vector of tuples where:
-    ///   - The first element is a `ChunkId` that identifies the source of the metric.
-    ///   - The second element is a boxed implementation of `BusDeviceMetrics`, which must be a
-    ///     `RomCounter`.
-    ///
-    /// # Returns
-    /// A vector containing one `Plan` instance that defines the execution flow for ROM operations.
-    ///
-    /// # Panics
-    /// This method panics if the `metrics` vector is empty.
-    fn plan(&self, metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)>) -> Vec<Plan> {
-        if metrics.is_empty() {
-            panic!("RomPlanner::plan() No metrics found");
+    /// Returns one `Plan` covering `ChunkId(0..num_chunks)`. Errors if
+    /// `num_chunks` is zero — the executor never plans ROM for an empty
+    /// run.
+    pub fn plan_for_chunks(num_chunks: usize) -> RomResult<Vec<Plan>> {
+        if num_chunks == 0 {
+            return Err(RomError::Custom(
+                "RomPlanner::plan_for_chunks: num_chunks must be > 0".to_string(),
+            ));
         }
 
-        let vec_chunk_ids = metrics.iter().map(|(chunk_id, _)| *chunk_id).collect::<Vec<_>>();
+        let vec_chunk_ids = (0..num_chunks).map(ChunkId).collect::<Vec<_>>();
 
-        vec![Plan::new(
+        Ok(vec![Plan::new(
             ZISK_AIRGROUP_ID,
             ROM_AIR_IDS[0],
             None,
             InstanceType::Instance,
             CheckPoint::Multiple(vec_chunk_ids),
             None,
-        )]
+        )])
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::any::Any;
-    use zisk_common::{BusDevice, Metrics};
 
-    /// Minimal `BusDeviceMetrics` impl — `RomPlanner::plan` only reads the `ChunkId`s,
-    /// so the payload type can be a zero-sized stand-in.
-    struct DummyMetrics;
-    impl Metrics for DummyMetrics {
-        fn measure(&mut self, _: &[u64]) {}
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-    }
-    impl BusDevice<u64> for DummyMetrics {
-        fn as_any(self: Box<Self>) -> Box<dyn Any> {
-            self
-        }
+    #[test]
+    fn plan_for_chunks_errors_on_zero() {
+        let result = RomPlanner::plan_for_chunks(0);
+        assert!(result.is_err());
     }
 
     #[test]
-    #[should_panic(expected = "No metrics found")]
-    fn plan_panics_on_empty_metrics() {
-        let _ = RomPlanner.plan(Vec::new());
-    }
-
-    #[test]
-    fn plan_aggregates_chunk_ids_into_single_multiple_checkpoint() {
-        let metrics: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = vec![
-            (ChunkId(0), Box::new(DummyMetrics)),
-            (ChunkId(2), Box::new(DummyMetrics)),
-            (ChunkId(7), Box::new(DummyMetrics)),
-        ];
-
-        let plans = RomPlanner.plan(metrics);
+    fn plan_for_chunks_builds_contiguous_checkpoint() {
+        let plans = RomPlanner::plan_for_chunks(3)
+            .expect("plan_for_chunks should succeed for num_chunks > 0");
 
         assert_eq!(plans.len(), 1, "always exactly one Plan");
         let p = &plans[0];
@@ -89,7 +64,7 @@ mod tests {
         assert_eq!(p.instance_type, InstanceType::Instance);
         match &p.check_point {
             CheckPoint::Multiple(ids) => {
-                assert_eq!(ids, &vec![ChunkId(0), ChunkId(2), ChunkId(7)]);
+                assert_eq!(ids, &vec![ChunkId(0), ChunkId(1), ChunkId(2)]);
             }
             other => panic!("expected CheckPoint::Multiple, got {other:?}"),
         }

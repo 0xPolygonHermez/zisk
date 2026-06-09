@@ -1,46 +1,47 @@
 #![no_main]
-
 ziskos::entrypoint!(main);
 
-mod arith256;
-mod arith384;
-mod blake2;
-mod bls12_381;
-mod bn254;
-mod fcall;
-mod keccakf;
-mod poseidon2;
-mod riscv_c;
-mod riscv_fd;
-mod riscv_ima;
-mod secp256k1;
-mod secp256r1;
-mod sha256f;
-
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-fn main() {}
-
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod riscv_c;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod riscv_fd;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod riscv_ima;
+
+mod fcalls;
+mod syscalls;
+
 fn main() {
     // Basic instructions
-    riscv_c::diagnostic_riscv_c();
-    riscv_fd::diagnostic_riscv_fd();
-    riscv_ima::diagnostic_riscv_ima();
-    //riscv_ima::diagnostic_riscv_ima_combinations();
+    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    {
+        riscv_c::diagnostic_riscv_c();
+        riscv_fd::diagnostic_riscv_fd();
+        riscv_ima::diagnostic_riscv_ima();
+        //riscv_ima::diagnostic_riscv_ima_combinations(); // TODO
+    }
 
-    // Free-input calls
-    fcall::diagnostic_fcall();
+    // Free-input calls (hinting)
+    fcalls::diagnostic_bigint();
+    fcalls::diagnostic_bls12_381();
+    fcalls::diagnostic_bn254();
+    fcalls::diagnostic_fcall_limits();
+    fcalls::diagnostic_msb();
+    fcalls::diagnostic_secp256k1();
+    fcalls::diagnostic_secp256r1();
+    fcalls::diagnostic_uint256();
 
-    // Precompiles
-    arith256::test_arith256();
-    arith384::test_arith384();
-    blake2::test_blake2();
-    bls12_381::test_bls12_381();
-    bn254::test_bn254();
-    keccakf::test_keccakf();
-    poseidon2::test_poseidon2();
-    secp256k1::test_secp256k1();
-    secp256r1::test_secp256r1();
-    sha256f::test_sha256f();
-    println!("Success");
+    // System calls
+    syscalls::diagnostic_arith256();
+    syscalls::diagnostic_arith384();
+    syscalls::diagnostic_blake2();
+    syscalls::diagnostic_bls12_381();
+    syscalls::diagnostic_bn254();
+    syscalls::diagnostic_keccakf();
+    syscalls::diagnostic_poseidon2();
+    syscalls::diagnostic_secp256k1();
+    syscalls::diagnostic_secp256r1();
+    syscalls::diagnostic_sha256f();
+
+    println!("Successfully completed all diagnostics!");
 }

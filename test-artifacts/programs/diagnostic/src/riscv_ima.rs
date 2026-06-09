@@ -1,5 +1,3 @@
-#![cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-
 use std::arch::asm;
 use std::num::Wrapping;
 

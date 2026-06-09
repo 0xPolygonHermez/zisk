@@ -140,7 +140,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         }
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
 
-        self.std.range_checks(self.range_id, multiplicities);
+        self.std.range_check_ranged(self.range_id, None, &multiplicities);
 
         // Set 0 + 0 as the padding row
         let padding_size = num_rows - total_inputs;

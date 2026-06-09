@@ -225,11 +225,11 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
         // add range check of count to check that it's a positive 32-bits number
         let last_count = air_values.segment_last_count64.as_canonical_u64();
 
-        self.std.range_check(self.range_16_bits_id, (last_count & 0xFFFF) as i64, 1);
-        self.std.range_check(self.range_16_bits_id, ((last_count >> 16) & 0xFFFF) as i64, 1);
-        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, &local_dual_byte);
+        self.std.range_check_one(self.range_16_bits_id, last_count & 0xFFFF);
+        self.std.range_check_one(self.range_16_bits_id, (last_count >> 16) & 0xFFFF);
+        self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, &local_dual_byte);
         for value in values_24_bits.iter() {
-            self.std.range_check(self.range_24_bits_id, *value as i64, 1);
+            self.std.range_check_one(self.range_24_bits_id, *value);
         }
 
         let segment_id = segment_id.into();

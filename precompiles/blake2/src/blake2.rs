@@ -379,7 +379,7 @@ impl<F: PrimeField64> Blake2SM<F> {
                                            // and there are 8 g functions per blake2
         range_checks[0] += count_zeros as u32;
 
-        self.std.range_checks(self.range_id, range_checks);
+        self.std.range_check_ranged(self.range_id, None, &range_checks);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }
