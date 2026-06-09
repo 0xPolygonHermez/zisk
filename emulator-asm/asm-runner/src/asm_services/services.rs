@@ -267,7 +267,20 @@ impl AsmServices {
         }
     }
 
-    /// Create segments via `--just_create_all_shm`. Call once at worker startup.
+    /// Create all of the shared-memory segments.
+    ///
+    /// # Ordering
+    ///
+    /// The segments split into two groups by ownership:
+    /// - **Shared** (`input`, `control_input`, `precompile`) — one copy per
+    ///   process, created only by the index-0 service and *opened* read-only by the others.
+    /// - **Per-service** (`output`, internal) — each service creates its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any service's binary fails to spawn, can't be waited
+    /// on, or exits unsuccessfully. On any failure, a best-effort cleanup of the
+    /// segments that may have been created is attempted before returning.
     fn create_shmem(
         world_rank: i32,
         shm_prefix: &str,
@@ -275,69 +288,104 @@ impl AsmServices {
         trimmed_path: &str,
         options: &AsmRunnerOptions,
     ) -> Result<()> {
-        let mut any_failed = false;
-
-        // The index-0 service creates the shared input/control/precompile
-        // segments; the others only open them. Wait for the creator to exit.
+        // The index-0 service creates the shared segments; the rest open them.
         let creator = Self::SERVICES[0];
         let openers = &Self::SERVICES[1..];
 
-        tracing::debug!(">>> [{world_rank}] Creating shmem for service (stdio): {creator}");
+        // The shared segments must exist before any opener runs, so create them
+        // first and only then create the per-service ones. Every failure path
+        // funnels here so they all share the best-effort cleanup below.
+        let result = Self::launch_creator(
+            world_rank,
+            creator,
+            trimmed_path,
+            options,
+            shm_prefix,
+            sem_prefix,
+        )
+        .and_then(|()| {
+            Self::launch_openers(world_rank, openers, trimmed_path, options, shm_prefix, sem_prefix)
+        });
 
+        if result.is_err() {
+            // Cleanup any segments that may have been created before returning the error.
+            for service in &Self::SERVICES {
+                if let Err(e) = service.cleanup_shmem_for_prefix(shm_prefix) {
+                    tracing::debug!("Cleanup of shmem for {service} failed: {e}");
+                }
+            }
+        }
+        result
+    }
+
+    /// Run `creator` to completion to create the process-shared `input`,
+    /// `control_input` and `precompile` segments. It is spawned and waited
+    /// synchronously: its clean exit is the signal that those segments durably
+    /// exist, which every opener depends on.
+    fn launch_creator(
+        world_rank: i32,
+        creator: AsmService,
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+        sem_prefix: &str,
+    ) -> Result<()> {
+        tracing::debug!(">>> [{world_rank}] Creating shmem for service (stdio): {creator}");
         let status = creator
             .build_create_shmem_command(trimmed_path, options, shm_prefix, sem_prefix, true)
             .spawn()
             .and_then(|mut child| child.wait())
             .with_context(|| format!("Failed to create shmem for service {creator}"))?;
-
         if !status.success() {
-            tracing::error!("Shmem creation for {creator} failed with {status}");
-            any_failed = true;
-        } else {
-            // Openers (index 1..) run concurrently; the shared segments now exist.
-            let children: Vec<(AsmService, std::process::Child)> = openers
-                .iter()
-                .map(|service| {
-                    tracing::debug!(
-                        ">>> [{}] Creating shmem for service (stdio): {}",
-                        world_rank,
-                        service
-                    );
-                    let child = service
-                        .build_create_shmem_command(
-                            trimmed_path,
-                            options,
-                            shm_prefix,
-                            sem_prefix,
-                            false,
-                        )
-                        .spawn()
-                        .with_context(|| {
-                            format!("Failed to spawn shmem creation for service {service}")
-                        })?;
-                    Ok((*service, child))
-                })
-                .collect::<Result<_>>()?;
+            anyhow::bail!("Shmem creation for {creator} failed with {status}");
+        }
+        Ok(())
+    }
 
-            for (service, mut child) in children {
-                let status = child
-                    .wait()
-                    .with_context(|| format!("Failed to wait on shmem creation for {service}"))?;
-                if !status.success() {
+    /// Create each opener's own `output`/`rom`/`ram`/`control_output` segments.
+    /// The shared segments must already exist (openers only open them
+    /// read-only), so this runs the openers concurrently. Every child that
+    /// starts is reaped — even if a later spawn fails — to avoid orphans, and
+    /// the spawn error is surfaced only afterwards.
+    fn launch_openers(
+        world_rank: i32,
+        openers: &[AsmService],
+        trimmed_path: &str,
+        options: &AsmRunnerOptions,
+        shm_prefix: &str,
+        sem_prefix: &str,
+    ) -> Result<()> {
+        let mut children = Vec::with_capacity(openers.len());
+        let spawn_result: Result<()> = openers.iter().try_for_each(|service| {
+            tracing::debug!(">>> [{world_rank}] Creating shmem for service (stdio): {service}");
+            let child = service
+                .build_create_shmem_command(trimmed_path, options, shm_prefix, sem_prefix, false)
+                .spawn()
+                .with_context(|| format!("Failed to spawn shmem creation for service {service}"))?;
+            children.push((*service, child));
+            Ok(())
+        });
+
+        // Reap everything we started, regardless of the spawn error above.
+        let mut any_failed = false;
+        for (service, mut child) in children {
+            match child.wait() {
+                Ok(status) if status.success() => {}
+                Ok(status) => {
                     tracing::error!("Shmem creation for {service} failed with {status}");
+                    any_failed = true;
+                }
+                Err(e) => {
+                    tracing::error!("Failed to wait on shmem creation for {service}: {e}");
                     any_failed = true;
                 }
             }
         }
 
-        // If any failed, attempt to clean up any segments that may have been created before returning an error.
+        spawn_result?; // surface the spawn error only after reaping live children
         if any_failed {
-            for service in &Self::SERVICES {
-                let _ = service.cleanup_shmem_for_prefix(shm_prefix);
-            }
-            return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
+            anyhow::bail!("One or more shmem creation commands failed");
         }
-
         Ok(())
     }
 
