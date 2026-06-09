@@ -217,12 +217,13 @@ pub fn diagnostic_riscv_m_combinations() {
             muluh(a as u64, b as u64, op_muluh(a, b).0 as u64);
             mulh(a as i64, b as i64, op_mulh(a, b).0 as i64);
             mulsuh(a as i64, b, op_mulsuh(a, b).0 as i64);
-            if b != 0 {
-                div(a as i64, b as i64, op_div(a, b).0 as i64);
-                divu(a, b, op_divu(a, b).0);
-                rem(a as i64, b as i64, op_rem(a, b).0 as i64);
-                remu(a, b, op_remu(a, b).0);
-            }
+
+            // Include divide by zero (b = 0)
+            div(a as i64, b as i64, op_div(a, b).0 as i64);
+            divu(a, b, op_divu(a, b).0);
+            rem(a as i64, b as i64, op_rem(a, b).0 as i64);
+            remu(a, b, op_remu(a, b).0);
+
             or(a, b, op_or(a, b).0);
             and(a, b, op_and(a, b).0);
             xor(a, b, op_xor(a, b).0);
@@ -241,14 +242,12 @@ pub fn diagnostic_riscv_m_combinations() {
 
             mul_w(a as i32, b as i32, (op_mul_w(a, b).0 & 0xFFFF_FFFF) as i32);
 
-            // Avoid divide by zero (b = 0)
-            // Avoid integer overflow (a = MIN_N_32, b = -1)
-            if b != 0 && (a != MIN_N_32 || b != 0xFFFF_FFFF/* -1 */) {
-                div_w(a as i32, b as i32, (op_div_w(a, b).0 & 0xFFFF_FFFF) as i32);
-                divu_w(a as u32, b as u32, (op_divu_w(a, b).0 & 0xFFFF_FFFF) as u32);
-                rem_w(a as i32, b as i32, (op_rem_w(a, b).0 & 0xFFFF_FFFF) as i32);
-                remu_w(a as u32, b as u32, (op_remu_w(a, b).0 & 0xFFFF_FFFF) as u32);
-            }
+            // Include divide by zero (b = 0)
+            // Include integer overflow (a = MIN_N_32, b = -1)
+            div_w(a as i32, b as i32, (op_div_w(a, b).0 & 0xFFFF_FFFF) as i32);
+            divu_w(a as u32, b as u32, (op_divu_w(a, b).0 & 0xFFFF_FFFF) as u32);
+            rem_w(a as i32, b as i32, (op_rem_w(a, b).0 & 0xFFFF_FFFF) as i32);
+            remu_w(a as u32, b as u32, (op_remu_w(a, b).0 & 0xFFFF_FFFF) as u32);
         }
     }
     println!("diagnostic_riscv_m_combinations() success");

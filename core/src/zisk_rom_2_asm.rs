@@ -4020,7 +4020,7 @@ impl ZiskRom2Asm {
                     *code += &format!(
                         "\tsar {}, 0x{:x} {}\n",
                         REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f,
+                        ctx.b.constant_value & 0x1f,
                         ctx.comment_str("SraW: c = a >> b")
                     );
                     *code += &format!(
@@ -4064,7 +4064,7 @@ impl ZiskRom2Asm {
                     *code += &format!(
                         "\tshr {}, 0x{:x} {}\n",
                         REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f,
+                        ctx.b.constant_value & 0x1f,
                         ctx.comment_str("SrlW: c = a >> b")
                     );
                     *code += &format!(
@@ -4656,7 +4656,7 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Div: set result to f's")
                 );
-
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *unusual_code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Check underflow:
@@ -4699,7 +4699,7 @@ impl ZiskRom2Asm {
                     REG_A,
                     ctx.comment_str("Div: set result to a")
                 );
-
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
 
                 // Divide
@@ -4733,9 +4733,10 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Div: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
                 *code += &format!("pc_{:x}_div_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Rem => {
                 assert!(ctx.store_a_in_a);
@@ -4851,13 +4852,16 @@ impl ZiskRom2Asm {
             ZiskOp::DivuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
+
+                // Check divide by zero:
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("DivuW: if b==0 then return all f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divuw_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_divuw_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("DivuW: if b is not zero, divide")
                 );
@@ -4866,9 +4870,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivuW: set result to f's")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
 
+                // Divide
+                *code += &format!("pc_{:x}_divuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4887,28 +4893,34 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivuW: sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
+
+                // Check divide by zero
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
-                *code += &format!("\tjne pc_{:x}_remuw_b_is_not_zero\n", ctx.pc);
+                *code += &format!("\tjne pc_{:x}_remuw_divide\n", ctx.pc);
                 *code += &format!(
                     "\tmovsxd {}, {} {}\n",
                     REG_C,
                     REG_A_W,
                     ctx.comment_str("RemuW: return a, sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
 
+                // Divide
+                *code += &format!("pc_{:x}_remuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4927,36 +4939,70 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("RemuW: sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("DivW: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divw_divide {}\n",
+                    "\tjne pc_{:x}_divw_check_overflow {}\n",
                     ctx.pc,
-                    ctx.comment_str("DivW: if b is not zero, divide")
+                    ctx.comment_str("DivW: if b is not zero, check overflow")
                 );
                 *code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
                     ctx.comment_str("DivW: set result to f's")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
+                // Check overflow:
+                // If a=0x80000000 (MIN_I32) and b=0xffffffff (-1) the result should be -MIN_I32,
+                // which cannot be represented with 32 bits, so return 0xffffffffffffffff
+                *code += &format!("pc_{:x}_divw_check_overflow:\n", ctx.pc);
+                *code += &format!(
+                    "\tcmp {}, 0x80000000 {}\n",
+                    REG_A_W,
+                    ctx.comment_str("DivW: if a == MIN_I32")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_divw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivW: if a is not MIN_I32, divide")
+                );
+                *code += &format!(
+                    "\tcmp {}, 0xffffffff {}\n",
+                    REG_B_W,
+                    ctx.comment_str("DivW: if b == -1")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_divw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivW: if b is not -1, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, 0xffffffff80000000 {}\n",
+                    REG_C,
+                    ctx.comment_str("DivW: set result to f's")
+                );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
@@ -4979,28 +5025,30 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivW: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder.
 
                 // Check divide by zero:
-                // If b==0 return a
+                // If b=0 (divide by zero) it sets c to 0, and sets flag to true.
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemW: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_remw_divide {}\n",
+                    "\tjne pc_{:x}_remw_check_overflow {}\n",
                     ctx.pc,
-                    ctx.comment_str("RemW: if b is not zero, divide")
+                    ctx.comment_str("RemW: if b is not zero, check overflow")
                 );
                 *code += &format!(
                     "\tmovsx {}, {} {}\n",
@@ -5008,8 +5056,41 @@ impl ZiskRom2Asm {
                     REG_A_W,
                     ctx.comment_str("RemW: set result to a")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
+                // Check overflow:
+                // If a==0x80000000 (MIN_I32) and b==0xffffffff (-1) the result should be -MIN_I32,
+                // which cannot be represented with 32 bits, so return 0
+                *code += &format!("pc_{:x}_remw_check_overflow:\n", ctx.pc);
+                *code += &format!(
+                    "\tcmp {}, 0x80000000 {}\n",
+                    REG_A_W,
+                    ctx.comment_str("RemW: if a == MIN_I32")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_remw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("RemW: if a is not MIN_I32, divide")
+                );
+                *code += &format!(
+                    "\tcmp {}, 0xffffffff {}\n",
+                    REG_B_W,
+                    ctx.comment_str("RemW: if b == -1")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_remw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("RemW: if b is not -1, divide")
+                );
+                *code += &format!(
+                    "\txor {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("RemW: set result to 0")
+                );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
@@ -5032,9 +5113,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("RemW: c = remainder(edx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
@@ -7678,7 +7761,7 @@ impl ZiskRom2Asm {
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
                     ctx.next_pc,
-                    ctx.comment_str("flag=0: pc += 4")
+                    ctx.comment_str("flag=0: pc=next_pc")
                 );
             }
         } else if ctx.flag_is_always_one {
@@ -7705,7 +7788,37 @@ impl ZiskRom2Asm {
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
                     ctx.next_pc,
-                    ctx.comment_str("flag=1: pc += 4")
+                    ctx.comment_str("flag=1: pc=next_pc")
+                );
+            }
+        } else if !ctx.flag_is_always_one
+            && !ctx.flag_is_always_zero
+            && (instruction.jmp_offset1 == instruction.jmp_offset2)
+        {
+            let new_pc = (ctx.pc as i64 + instruction.jmp_offset1) as u64;
+            if new_pc != ctx.next_pc {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    new_pc,
+                    ctx.comment_str("pc += offset1 and offset2 are the same")
+                );
+                // Check if target address exists in ROM before generating static jump
+                if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
+                    ctx.jump_to_static_pc = format!(
+                        "\tjmp pc_{:x} {}\n",
+                        new_pc,
+                        ctx.comment_str("jump to pc+offset1 and offset2 are the same")
+                    );
+                } else {
+                    ctx.jump_to_dynamic_pc = true;
+                }
+            } else if id == "z" {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    ctx.next_pc,
+                    ctx.comment_str("pc=next_pc because offset1 and offset2 are the same")
                 );
             }
         } else {
