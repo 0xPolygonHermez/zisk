@@ -4534,6 +4534,8 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
+
+                // Divide by zero:
                 // If b==0 return 0xffffffffffffffff
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
@@ -4541,7 +4543,7 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Divu: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divu_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_divu_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Divu: if b is not zero, divide")
                 );
@@ -4550,9 +4552,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Divu: set result to f's")
                 );
-                *code += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_divu_done\n", ctx.pc);
 
+                // Divide
+                *code += &format!("pc_{:x}_divu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE,
@@ -4575,14 +4579,18 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Divu: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Remu => {
                 assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
+
+                // Divide by zero:
                 // If b==0 return a
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
@@ -4590,7 +4598,7 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Remu: if b == 0 return a")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_remu_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_remu_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Remu: if b is not zero, divide")
                 );
@@ -4598,11 +4606,13 @@ impl ZiskRom2Asm {
                     "\tmov {}, {} {}\n",
                     REG_C,
                     ctx.a.string_value,
-                    ctx.comment_str("Remu: set result to f's")
+                    ctx.comment_str("Remu: set result to a")
                 );
-                *code += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_remu_done\n", ctx.pc);
 
+                // Divide
+                *code += &format!("pc_{:x}_remu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE,
@@ -4625,9 +4635,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Remu: c = remainder(rdx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
                 assert!(ctx.store_a_in_a);
@@ -4703,7 +4715,7 @@ impl ZiskRom2Asm {
                     ctx.comment_str("Div: set result to a")
                 );
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
+                *code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_div_divide:\n", ctx.pc);
@@ -4738,6 +4750,7 @@ impl ZiskRom2Asm {
                 );
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
 
+                // Done
                 *code += &format!("pc_{:x}_div_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
@@ -4770,8 +4783,8 @@ impl ZiskRom2Asm {
                     REG_A,
                     ctx.comment_str("Rem: set result to a")
                 );
-
-                *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
                 // Check underflow:
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
@@ -4814,8 +4827,8 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Rem: set result to 0")
                 );
-
-                *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
                 // Divide
                 *code += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
@@ -4848,9 +4861,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Rem: c = remainder(rdx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_rem_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivuW => {
                 assert!(ctx.store_a_in_a);
