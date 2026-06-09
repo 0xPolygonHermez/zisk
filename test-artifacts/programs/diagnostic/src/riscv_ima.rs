@@ -179,7 +179,7 @@ pub fn diagnostic_riscv_ima() {
 
     diagnostic_riscv_m_combinations();
 
-    println!("diagnostic_riscv_ima() success");
+    println!("All RISC-V IMA diagnostics passed!");
 }
 
 const MIN_N_64: u64 = 0x8000_0000_0000_0000;

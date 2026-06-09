@@ -1,0 +1,11 @@
+[package]
+name = "diagnostic-hints"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+zkvm-interface.workspace = true
+
+[lints]
+workspace = true

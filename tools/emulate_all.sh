@@ -73,7 +73,7 @@ MAX_COUNTER=${COUNTER}
 
 # Build ZisK
 echo "Building ZisK..."
-cargo build
+cargo build --features float
 
 # Create an empty input file
 INPUT_FILE="/tmp/empty_input.bin"
