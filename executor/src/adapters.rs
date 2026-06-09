@@ -7,7 +7,7 @@
 
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, Setup, SetupCtx};
-use proofman_starks_lib_c::{unified_buffer_acquire_c, unified_buffer_release_c};
+use proofman_starks_lib_c::{acquire_first_gpu_buffer, release_first_gpu_buffer};
 use zisk_common::{StatsCostPerType, StatsType};
 use zisk_pil::{
     ZiskPublicValues, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
@@ -48,7 +48,13 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     #[inline]
     pub fn acquire_gpu_buffer(&self) {
         if self.pctx.gpu {
-            unified_buffer_acquire_c(self.pctx.get_device_buffers_ptr());
+            // SAFETY: `pctx.gpu == true` implies proofman initialized its CUDA
+            // subsystem and `get_device_buffers_ptr()` returns the pointer it
+            // owns for the lifetime of `pctx`. The FFI just records a busy bit
+            // on that opaque handle — no memory deref on our side.
+            unsafe {
+                acquire_first_gpu_buffer(self.pctx.get_device_buffers_ptr());
+            }
         }
     }
 
@@ -58,7 +64,12 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     #[inline]
     pub fn release_gpu_buffer(&self) {
         if self.pctx.gpu {
-            unified_buffer_release_c(self.pctx.get_device_buffers_ptr());
+            // SAFETY: same handle obtained from `pctx.get_device_buffers_ptr()`;
+            // paired with the prior `acquire_first_gpu_buffer` on the same
+            // `pctx`. FFI clears the busy bit only.
+            unsafe {
+                release_first_gpu_buffer(self.pctx.get_device_buffers_ptr());
+            }
         }
     }
 

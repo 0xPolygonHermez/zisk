@@ -29,7 +29,6 @@ impl ZiskProofmanRebuildWitnessLibs {
 
         let opts = RebuildWitnessOptions {
             proving_key: self.proving_key.clone(),
-            build_dir: None,
             jobs: self.jobs,
         };
         run_rebuild_witness(&opts)
