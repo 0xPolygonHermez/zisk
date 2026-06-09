@@ -51,18 +51,17 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
     println!("cargo:rustc-link-lib=static={library_name}");
 
-    let runtime_dir = workspace_target_dir(&out_dir).join("zisk-libs");
+    let workspace_root = c_path
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| panic!("could not resolve workspace root from {}", c_path.display()));
+    let runtime_dir = workspace_root.join("target").join("zisk-libs");
     std::fs::create_dir_all(&runtime_dir)
         .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
     let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
     std::fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
         panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
     });
-
-    // The published location (workspace_target_dir) is derived from OUT_DIR, which
-    // already moves with CARGO_TARGET_DIR; track the env var too so a change forces
-    // a rerun rather than leaving the archive in a stale location.
-    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
 
     // Track C source files for recompilation
     track_sources(&c_path);
@@ -71,21 +70,6 @@ fn main() {
     for lib in &["pthread", "gmp", "stdc++", "gmpxx", "c"] {
         println!("cargo:rustc-link-lib={lib}");
     }
-}
-
-/// Resolve `<workspace>/target` from `OUT_DIR` (`.../target/[<triple>/]<profile>/build/<crate>-<hash>/out`).
-///
-/// Consumers hardcode `<workspace>/target/zisk-libs` (emulator-asm `-L`, build_zisk.sh, rom-setup),
-/// so any `CARGO_TARGET_DIR` is unsupported — reject it up front rather than publishing where nobody reads.
-fn workspace_target_dir(out_dir: &Path) -> PathBuf {
-    if std::env::var_os("CARGO_TARGET_DIR").is_some() {
-        panic!("CARGO_TARGET_DIR is unsupported for the ZisK assembly build; consumers expect <workspace>/target/zisk-libs");
-    }
-    out_dir
-        .ancestors()
-        .find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
-        .unwrap_or_else(|| panic!("no `target` ancestor in OUT_DIR ({})", out_dir.display()))
-        .to_path_buf()
 }
 
 /// Tell Cargo to track C source files for changes
