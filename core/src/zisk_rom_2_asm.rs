@@ -5047,7 +5047,7 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
-                    ctx.comment_str("RemW: if b == 0 return f's")
+                    ctx.comment_str("RemW: if b == 0 return a")
                 );
                 *code += &format!(
                     "\tjne pc_{:x}_remw_check_overflow {}\n",
