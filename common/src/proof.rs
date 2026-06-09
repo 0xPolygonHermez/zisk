@@ -10,6 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 
+use crate::HashMode;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetupKey {
     pub hash_id: String,
@@ -26,22 +28,29 @@ impl SetupKey {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramVK {
     pub vk: Vec<u64>,
+    pub hash_mode: HashMode,
 }
 
 impl ProgramVK {
-    /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob.
-    pub fn new_from_publics(publics: &[u64]) -> Self {
+    /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob,
+    /// recording the [`HashMode`] the verkey was produced under.
+    pub fn new_from_publics_with_mode(publics: &[u64], hash_mode: HashMode) -> Self {
         assert!(
             publics.len() >= PROGRAM_VK_LEN,
             "Not enough u64 publics to extract program VK (expected at least {})",
             PROGRAM_VK_LEN
         );
 
-        Self { vk: publics[..PROGRAM_VK_LEN].to_vec() }
+        Self { vk: publics[..PROGRAM_VK_LEN].to_vec(), hash_mode }
+    }
+
+    /// Build from publics using the default [`HashMode`].
+    pub fn new_from_publics(publics: &[u64]) -> Self {
+        Self::new_from_publics_with_mode(publics, HashMode::default())
     }
 
     pub fn new_empty() -> Self {
-        Self { vk: vec![0u64; PROGRAM_VK_LEN] }
+        Self { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode: HashMode::default() }
     }
 }
 
@@ -445,6 +454,14 @@ impl<'a> ZiskVerifyBuilder<'a> {
             }
             ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
                 let minimal = *minimal;
+
+                if program_vk.hash_mode.as_str() != hash {
+                    return Err(anyhow!(
+                        "verkey hash mode {} does not match proof hash family {hash:?}",
+                        program_vk.hash_mode.as_str()
+                    ));
+                }
+
                 let v = verifier(hash);
                 let expected_len = if minimal {
                     v.expected_vadcop_final_compressed_proof_bytes()
@@ -620,10 +637,15 @@ impl Proof {
         let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal, hash.clone())
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
+        let hash_mode = hash.parse::<HashMode>().unwrap_or_default();
+
         Ok(Self {
             body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal, hash },
             publics: PublicValues::new_from_u64(&vadcop_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&vadcop_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &vadcop_proof.public_values,
+                hash_mode,
+            ),
         })
     }
 

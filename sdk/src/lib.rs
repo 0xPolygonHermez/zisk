@@ -44,7 +44,8 @@ pub use wrap::WrapRequest;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{
-    load_program, Asm, AsmOptions, Elf, EmuOptions, GuestProgram, ProfilingMode, ProgramId,
+    load_program, Asm, AsmOptions, Elf, EmuOptions, GuestProgram, HashMode, ProfilingMode,
+    ProgramId,
 };
 
 pub use opts::EmbeddedOpts;

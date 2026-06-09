@@ -24,7 +24,9 @@ use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
-use zisk_common::{PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
+use zisk_common::{
+    HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
@@ -160,6 +162,15 @@ impl ProverBackend {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     pub fn hash(&self) -> Result<String> {
         Ok(self.get_pctx()?.global_info.hash.clone())
+    }
+
+    /// Loaded proving key's hash family as a [`HashMode`]. Errors if the key's
+    /// recorded hash is not a recognized mode.
+    pub fn hash_mode(&self) -> Result<HashMode> {
+        let hash = self.hash()?;
+        hash.parse::<HashMode>().map_err(|e| {
+            anyhow::anyhow!("proving key hash {hash:?} is not a recognized HashMode: {e}")
+        })
     }
 
     pub fn register_program(
@@ -369,7 +380,10 @@ impl ProverBackend {
                     .generate_final_snark_proof(&vadcop_proof)?;
 
                 let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
-                let program_vk = ProgramVK::new_from_publics(&vadcop_proof.public_values);
+                let program_vk = ProgramVK::new_from_publics_with_mode(
+                    &vadcop_proof.public_values,
+                    self.hash_mode()?,
+                );
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     let proving_key_snark =
                         self.proving_key_snark_path.as_ref().ok_or_else(|| {
@@ -415,7 +429,10 @@ impl ProverBackend {
                         hash: self.hash()?,
                     },
                     publics: PublicValues::new_from_u64(&p.public_values),
-                    program_vk: ProgramVK::new_from_publics(&p.public_values),
+                    program_vk: ProgramVK::new_from_publics_with_mode(
+                        &p.public_values,
+                        self.hash_mode()?,
+                    ),
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
@@ -451,7 +468,10 @@ impl ProverBackend {
                 hash,
             },
             publics: PublicValues::new_from_u64(&minimal_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &minimal_proof.public_values,
+                self.hash_mode()?,
+            ),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -501,7 +521,10 @@ impl ProverBackend {
                 }),
             },
             publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&vadcop_final_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &vadcop_final_proof.public_values,
+                self.hash_mode()?,
+            ),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
