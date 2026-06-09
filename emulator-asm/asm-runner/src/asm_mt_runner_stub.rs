@@ -1,3 +1,7 @@
+//! Non-Linux-x86_64 stub: placeholder types whose methods error/panic. Off the
+//! supported platform these are never exercised, so they carry no docs.
+#![allow(missing_docs)]
+
 use zisk_common::{EmuTrace, ExecutorStatsHandle};
 
 use std::ffi::c_void;

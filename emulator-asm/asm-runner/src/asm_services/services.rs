@@ -355,6 +355,8 @@ impl AsmServices {
         Ok(())
     }
 
+    /// Sends a shutdown request to the specified service and waits for its
+    /// completion. No-op off Linux-x86_64, where the ASM services never run.
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
