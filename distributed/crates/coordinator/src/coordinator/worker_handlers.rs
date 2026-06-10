@@ -117,10 +117,8 @@ impl Coordinator {
         with_hints: bool,
         emulator_only: bool,
     ) {
-        // All workers report the same authoritative hash mode; take the first.
-        let hash_mode = vks.first().map(|(_, _, m)| m.clone()).unwrap_or_default();
         let event = match validate_setup_vks(job_id.as_str(), vks) {
-            Ok(vk) => {
+            Ok((vk, hash_mode)) => {
                 self.active_setups.write().await.insert(
                     SetupKey::new(hash_id, with_hints, emulator_only),
                     crate::coordinator::ActiveSetup {
@@ -771,22 +769,29 @@ impl Coordinator {
     }
 }
 
-/// Validates that all workers produced the same VK and returns it.
-/// Returns an error string if there are no VKs (all workers failed) or if VKs disagree.
+/// Validates that all workers produced the same VK and hash mode, and returns them.
+/// Returns an error string if there are no VKs (all workers failed) or if either the
+/// VK bytes or the reported hash mode disagree across workers.
 fn validate_setup_vks(
     job_id: &str,
     vks: Vec<(WorkerId, Vec<u8>, String)>,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, String), String> {
     let mut iter = vks.into_iter();
-    let (_, first_vk, _) = iter
+    let (_, first_vk, first_hash_mode) = iter
         .next()
         .ok_or_else(|| format!("job {job_id}: all workers failed setup, no VK received"))?;
-    for (worker_id, vk, _) in iter {
+    for (worker_id, vk, hash_mode) in iter {
         if vk != first_vk {
             return Err(format!(
                 "job {job_id}: worker {worker_id} returned a different VK than the first worker"
             ));
         }
+        if hash_mode != first_hash_mode {
+            return Err(format!(
+                "job {job_id}: worker {worker_id} reported hash mode {hash_mode:?} \
+                 but the first worker reported {first_hash_mode:?}"
+            ));
+        }
     }
-    Ok(first_vk)
+    Ok((first_vk, first_hash_mode))
 }

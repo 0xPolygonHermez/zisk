@@ -634,10 +634,20 @@ impl Proof {
         zisk_vk: Vec<u64>,
         hash: String,
     ) -> Result<Self> {
+        if zisk_vk.len() != PROGRAM_VK_LEN {
+            return Err(anyhow!(
+                "Invalid zisk_vk length: expected {}, got {}",
+                PROGRAM_VK_LEN,
+                zisk_vk.len()
+            ));
+        }
+
+        let hash_mode = hash
+            .parse::<HashMode>()
+            .with_context(|| format!("unrecognized proof hash family {hash:?}"))?;
+
         let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal, hash.clone())
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
-
-        let hash_mode = hash.parse::<HashMode>().unwrap_or_default();
 
         Ok(Self {
             body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal, hash },
