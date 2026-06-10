@@ -65,7 +65,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     const expr previous_value[RC];
     for (int i = 0; i < RC; i++) {
       previous_value[i] = L1 * (previous_segment_value[i] - 'value[i]) + 'value[i];      
-      (1 - addr_change) * (value[0] - previous_value[0]) === 0; 
+      (1 - addr_change) * (value[i] - previous_value[i]) === 0; 
       // This constraint "proves" that the previous values of the next segment are the current last
       // values of this segment (airvals).
       // These last values must match the last row values of the current segment.
