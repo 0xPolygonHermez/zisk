@@ -12,6 +12,13 @@ pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 
 use crate::HashMode;
 
+/// Cache key for a built setup (per program + build flavor).
+///
+/// `hash_mode` is intentionally NOT part of the key: a worker/prover is started
+/// against a single proving key whose hash family is fixed for the process
+/// lifetime, so a given `hash_id` only ever resolves to one `hash_mode` within
+/// a cache. Adding the mode would be dead discriminator. (If proving keys ever
+/// become hot-swappable per process, revisit this.)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetupKey {
     pub hash_id: String,

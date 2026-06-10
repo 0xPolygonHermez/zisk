@@ -67,8 +67,9 @@ airtemplate Poseidon(const int N = 2**17) {
 
     // Hash-family selector: 1 => Poseidon1, 0 => Poseidon2. A single AIR serves
     // both families; this binary witness selects which one each cycle verifies.
-    // NOTE: the family-specific round constraints for Poseidon1 are not added yet;
-    // for now this only selects the operation proven on the bus (see below).
+    // The family-specific round constraints are gated on this selector below
+    // (Poseidon2 under `sel_p2`, Poseidon1/Hades under `sel_poseidon1`), and it
+    // also selects the operation proven on the bus.
     col witness bits(1) sel_poseidon1;
     sel_poseidon1 * (1 - sel_poseidon1) === 0;            // binary
     in_use_active * (sel_poseidon1 - 'sel_poseidon1) === 0; // latch across the cycle

@@ -1,4 +1,3 @@
-use core::panic;
 use std::sync::Arc;
 
 use fields::{
@@ -18,9 +17,9 @@ use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
 ///
 /// `is_poseidon1` records which hash family this operation belongs to (the two
 /// families share a single bus-data payload shape and op-type, and are
-/// distinguished here by the `OP` field). The trace fill is currently identical
-/// for both families (the untouched Poseidon2 AIR layout); the flag is the hook
-/// for the family-distinguishing constraints to be added later.
+/// distinguished here by the `OP` field). The trace layout is shared, but the
+/// fill differs per family: `process_input` computes Poseidon1 vs Poseidon2
+/// round states and writes the `sel_poseidon1` selector into the trace.
 #[derive(Debug)]
 pub struct PoseidonInput {
     pub step_main: u64,
@@ -313,7 +312,7 @@ impl<F: PrimeField64> PoseidonSM<F> {
         };
 
         tracing::debug!(
-            "··· Creating Poseidon2 instance [{}{{}} / {} rows filled {:.2}%]",
+            "··· Creating Poseidon instance [{}{{}} / {} rows filled {:.2}%]",
             num_rows_needed,
             num_rows,
             (num_rows_needed as f64 / num_rows as f64 * 100.0) as usize

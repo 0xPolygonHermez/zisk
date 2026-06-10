@@ -98,7 +98,7 @@ CACHE_ENTRY=""
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH="Poseidon1"
+HASH="${HASH:-Poseidon1}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 

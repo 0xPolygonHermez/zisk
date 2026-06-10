@@ -33,7 +33,7 @@ use super::{
     DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
-use zisk_common::SetupKey;
+use zisk_common::{HashMode, SetupKey};
 
 // ── Internal state ────────────────────────────────────────────────────────────
 
@@ -561,7 +561,12 @@ fn blake3_hex(data: &[u8]) -> String {
 fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
     match kind {
         DomainJobKind::Setup(_) => {
-            DomainJobKindResponse::Setup { vk: vec![], hash_mode: String::new() }
+            // Clients parse hash_mode into HashMode; an empty string fails
+            // HashMode::from_str, so emit a valid default rather than "".
+            DomainJobKindResponse::Setup {
+                vk: vec![],
+                hash_mode: HashMode::default().as_str().to_string(),
+            }
         }
         DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {
             stats: DomainExecutionStats::default(),
