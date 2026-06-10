@@ -137,8 +137,10 @@ impl MemPlanner {
     }
 
     /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`.
-    /// The GPU planner that produced these metas must remain alive across
-    /// this call
+    ///
+    /// # Safety
+    /// `gpu_metas` must point to a valid array of `n` GPU-produced meta entries,
+    /// and the GPU planner that produced them must remain alive across this call.
     pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
         bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
     }

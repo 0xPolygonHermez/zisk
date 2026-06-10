@@ -400,7 +400,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             };
             #[cfg(feature = "debug_mem")]
             {
-                assert!(!filled_rows[irow],"InputDataSM: overriting non empty row {irow} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
+                assert!(!filled_rows[irow],"InputDataSM: overwiting non empty row {irow} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
                     trace[irow].get_addr() * 8, mem_op.addr * 8, trace[irow].get_step(), mem_op.step);
                 filled_rows[irow] = true;
             }

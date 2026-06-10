@@ -10,10 +10,7 @@ use zisk_common::SegmentId;
 
 impl MemInput {
     pub fn new(addr: u32, is_write: bool, step: u64, value: u64) -> Self {
-        MemInput { addr, is_write, step, value, is_internal: false }
-    }
-    pub fn new_internal(addr: u32, step: u64, value: u64) -> Self {
-        MemInput { addr, is_write: false, step, value, is_internal: true }
+        MemInput { addr, is_write, step, value }
     }
 }
 

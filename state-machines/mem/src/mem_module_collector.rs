@@ -81,6 +81,8 @@ impl MemModuleCollector {
             is_dual,
             #[cfg(feature = "save_addr_action")]
             file: {
+                std::fs::create_dir_all("tmp")
+                    .unwrap_or_else(|e| panic!("Cannot create tmp directory: {}", e));
                 let path =
                     format!("tmp/actions_{}_{}_{}.txt", instance_name, segment_id.0, chunk_id);
                 std::fs::File::create(&path)
