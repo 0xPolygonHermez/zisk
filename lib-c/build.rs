@@ -51,17 +51,23 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
     println!("cargo:rustc-link-lib=static={library_name}");
 
-    let workspace_root = c_path
-        .parent()
-        .and_then(Path::parent)
-        .unwrap_or_else(|| panic!("could not resolve workspace root from {}", c_path.display()));
-    let runtime_dir = workspace_root.join("target").join("zisk-libs");
-    std::fs::create_dir_all(&runtime_dir)
-        .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
-    let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
-    std::fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
-        panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
-    });
+    // Publish a copy under <target>/zisk-libs/ for tools that link libziskc
+    // outside cargo (emulator-asm `-L`, rom-setup, build_zisk.sh). Derive
+    // `target/` from OUT_DIR so it tracks the real build target — including a
+    // custom CARGO_TARGET_DIR or a per-target subdir like `target/elf/`. This is
+    // a best-effort side-channel: if OUT_DIR has no `target` ancestor (unusual
+    // layout), skip the publish rather than fail this crate's own build.
+    if let Some(target_dir) =
+        out_dir.ancestors().find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
+    {
+        let runtime_dir = target_dir.join("zisk-libs");
+        std::fs::create_dir_all(&runtime_dir)
+            .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
+        let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
+        std::fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
+            panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
+        });
+    }
 
     // Track C source files for recompilation
     track_sources(&c_path);
