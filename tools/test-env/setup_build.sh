@@ -158,6 +158,43 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
+# ----- zisk-driven pil2-compiler override ------------------------------------
+PROOFMAN_PKG="$PROOFMAN_DIR/package.json"
+ZISK_PKG="$ROOT_DIR/package.json"
+PROOFMAN_PKG_BAK=""
+
+restore_proofman_pkg() {
+  if [ -n "$PROOFMAN_PKG_BAK" ] && [ -f "$PROOFMAN_PKG_BAK" ]; then
+    mv -f "$PROOFMAN_PKG_BAK" "$PROOFMAN_PKG"
+    PROOFMAN_PKG_BAK=""
+  fi
+}
+
+apply_zisk_compiler_override() {
+  [ -f "$ZISK_PKG" ] || return 0
+  local override
+  override="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$ZISK_PKG" | head -n1)"
+  [ -n "$override" ] || return 0
+
+  local current
+  current="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_PKG" | head -n1)"
+  if [ "$override" = "$current" ]; then
+    echo "==> zisk pins pil2-compiler to $override (matches proofman; no override needed)" >&2
+    return 0
+  fi
+
+  echo "==> overriding pil2-compiler in proofman: $current -> $override (from $ZISK_PKG)" >&2
+  PROOFMAN_PKG_BAK="$(mktemp)"
+  cp "$PROOFMAN_PKG" "$PROOFMAN_PKG_BAK"
+  trap restore_proofman_pkg EXIT
+  local esc
+  esc="$(printf '%s' "$override" | sed -e 's/[&/\]/\\&/g')"
+  sed -i.tmp -E "s|(\"pil2-compiler\"[[:space:]]*:[[:space:]]*\")[^\"]+(\")|\1$esc\2|" "$PROOFMAN_PKG"
+  rm -f "$PROOFMAN_PKG.tmp"
+}
+
+apply_zisk_compiler_override
+
 # node/npm are only needed to run compile-pil (pil2com) and setup-snark (snarkjs),
 # both from $PROOFMAN_DIR/node_modules. Set them up lazily — a --cache-dir hit or
 # --skip-compile-pil never compiles or snarks, so it must not require node at all.
@@ -331,6 +368,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   run_compile_pil
 
   if [ "$MODE" = "build" ]; then
+    ensure_node_deps
     echo "==> proofman-setup setup --recursive"
     setup_recursive_flag=(--recursive)
   else

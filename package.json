@@ -1,0 +1,8 @@
+{
+  "name": "zisk-setup",
+  "private": true,
+  "description": "Node tooling dependencies for zisk proving key generation",
+  "overrides": {
+    "pil2-compiler": "https://github.com/0xPolygonHermez/pil2-compiler.git#v0.11.0"
+  }
+}
