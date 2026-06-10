@@ -167,14 +167,6 @@ void server_setup (void)
             // Sync
             fsync(shmem_rom_fd);
 
-            // Close the descriptor
-            if (close(shmem_rom_fd) != 0)
-            {
-                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
-                exit(-1);
-            }
-            shmem_rom_fd = -1;
-
             // Map as read-write for writing the initialization data
 #ifdef USE_HUGE_PAGES
             void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
@@ -212,7 +204,11 @@ void server_setup (void)
             }
 
             // Close the descriptor since we don't need it anymore after initializing the content
-            close(shmem_rom_fd);
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
             shmem_rom_fd = -1;
 
             // Reopen the rom shared memory as read-only for mapping it
@@ -244,6 +240,14 @@ void server_setup (void)
                 asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
                 exit(-1);
             }
+
+            // Close the descriptor since we don't need it anymore after mapping
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_rom_fd = -1;
         }
         else
         {
@@ -281,7 +285,11 @@ void server_setup (void)
             }
 
             // Close the descriptor since we don't need it anymore after mapping
-            close(shmem_rom_fd);
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
             shmem_rom_fd = -1;
 
             // Initialize data by calling the assembly code
@@ -335,6 +343,7 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
                 exit(-1);
             }
+            shmem_input_fd = -1;
         }
 
         // Open the input shared memory as read-only
@@ -400,6 +409,14 @@ void server_setup (void)
             asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR + LOCKED_INPUT_SIZE);
             exit(-1);
         }
+
+        // Close the descriptor since we don't need it anymore after mapping
+        if (close(shmem_input_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_input_fd = -1;
         
         // Report duration
         if (verbose)
@@ -453,6 +470,7 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
                 exit(-1);
             }
+            shmem_precompile_fd = -1;
         }
 
         // Open the precompile shared memory as read-only
@@ -472,6 +490,15 @@ void server_setup (void)
         }
         shmem_precompile_address = pPrecompile;
         precompile_results_address = (uint64_t *)pPrecompile;
+
+        // Close the descriptor since we don't need it anymore after mapping
+        if (close(shmem_precompile_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_precompile_fd = -1;
+        
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -569,6 +596,7 @@ void server_setup (void)
             asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
             exit(-1);
         }
+        shmem_control_input_fd = -1;
     }
 
     // Open the control input shared memory as read-only
@@ -596,6 +624,14 @@ void server_setup (void)
     precompile_exit_address = &shmem_control_input_address[1];
     input_written_address = &shmem_control_input_address[2];
     precompile_reset_address = &shmem_control_input_address[3];
+
+    // Close the descriptor since we don't need it anymore after mapping
+    if (close(shmem_control_input_fd) != 0)
+    {
+        asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+        exit(-1);
+    }
+    shmem_control_input_fd = -1;
 
     // Report duration
     if (verbose)
@@ -636,14 +672,6 @@ void server_setup (void)
         // Sync
         fsync(shmem_control_output_fd);
 
-        // Close the descriptor
-        if (close(shmem_control_output_fd) != 0)
-        {
-            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
-            exit(-1);
-        }
-        shmem_control_output_fd = -1;
-
         // Log duration
         if (verbose)
         {
@@ -679,6 +707,14 @@ void server_setup (void)
     precompile_read_address = &shmem_control_output_address[0];
     waiting_for_precompile_address = &shmem_control_output_address[1];
     waiting_for_input_address = &shmem_control_output_address[2];
+
+    // Close the descriptor since we don't need it anymore after mapping
+    if (close(shmem_control_output_fd) != 0)
+    {
+        asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
+        exit(-1);
+    }
+    shmem_control_output_fd = -1;
 
     // Report duration
     if (verbose)
@@ -755,7 +791,11 @@ void server_setup (void)
         }
         
         // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_ram_fd);
+        if (close(shmem_ram_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_ram_name, errno, strerror(errno));
+            exit(-1);
+        }
         shmem_ram_fd = -1;
 
         // Report duration
