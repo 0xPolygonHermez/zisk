@@ -71,6 +71,9 @@ require "opids.pil"
 const int MEMORY_LOAD_OP = 1;
 const int MEMORY_STORE_OP = 2;
 const int MEMORY_REG_OP = 3;
+const int MEMORY_ROM_INIT_OP = 4;
+
+const int MEMORY_INIT_STEP = 3;
 
 const int RESERVED_MEM_STEPS = 1;
 const int MAX_MEM_STEP_OFFSET = 2;
@@ -454,6 +457,12 @@ function mem_load(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, 
 // Function to send to bus a memory write operation (only for main)
 function mem_store(int id = MEMORY_ID, expr addr, expr mem_step, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
     mem_assumes(id, MEMORY_STORE_OP, addr, mem_step, bytes, value, sel, name);
+}
+
+// Function to send to bus a memory init operation (only for rom)
+function mem_init(int id = MEMORY_ID, expr addr, expr bytes = 8, expr value[], expr sel = 1, int name = PIOP_NAME_DEFAULT) {
+    // adding 1 at step for first continuation
+    mem_assumes(id, MEMORY_ROM_INIT_OP, addr, MEMORY_INIT_STEP, bytes, value, sel, name);
 }
 
 // Function to send to bus a memory operation (only for main)
