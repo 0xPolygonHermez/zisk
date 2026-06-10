@@ -189,7 +189,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
-1. Clone `pil2-proofman`repository in the parent folder of the `zisk` folder created in the previous section:
+1. Clone the `pil2-proofman` repository in the parent folder of the `zisk` folder created in the previous section:
     ```bash
     git clone https://github.com/0xPolygonHermez/pil2-proofman.git
     ```
@@ -204,7 +204,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     cd zisk
     ```
 
-4. Set PIL2C_EXEC environment variable
+4. Set `PIL2C_EXEC` environment variable:
     ```bash
     export PIL2C_EXEC="../pil2-proofman/node_modules/.bin/pil2com"
     ```
