@@ -24,6 +24,7 @@ unsafe impl Send for ShmemWriter {}
 unsafe impl Sync for ShmemWriter {}
 
 impl ShmemWriter {
+    /// Opens and maps a shared memory region for read/write access.
     pub fn new(name: &str, size: usize, unlock_mapped_memory: bool) -> Result<Self> {
         // Open existing shared memory (read/write)
         let fd = shmem_sys::open(name, libc::O_RDWR)?;
@@ -224,6 +225,7 @@ impl ShmemWriter {
         Ok(())
     }
 
+    /// Resets the internal pointer used for appending to the start of the buffer.
     pub fn reset(&mut self) {
         self.current_ptr = self.ptr;
     }

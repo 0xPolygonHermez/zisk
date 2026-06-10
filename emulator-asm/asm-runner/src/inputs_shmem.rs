@@ -177,8 +177,11 @@ mod tests {
         // No semaphores bound → notify is a no-op; we only exercise the write path.
         writer.write_input(&[1u8, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
-        // Input bytes land at offset 8 (after the 0u64 length header).
-        let r = ShmemReader::new(&input_seg, MAX_INPUT_SIZE as usize).unwrap();
+        // Input bytes land at offset 8 (after the 0u64 length header). Map only a
+        // small window of the (1 GiB) segment: `ShmemReader` always uses
+        // `MAP_LOCKED`, and locking the full size blows past `RLIMIT_MEMLOCK` on
+        // CI runners. The test only ever reads the first 16 bytes.
+        let r = ShmemReader::new(&input_seg, 4096).unwrap();
         assert_eq!(r.read_u64_at(8), u64::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 8]));
 
         // The control plane's InputsSize slot (offset 16) tracks bytes written.

@@ -19,6 +19,7 @@ unsafe impl Send for ShmemReader {}
 unsafe impl Sync for ShmemReader {}
 
 impl ShmemReader {
+    /// Opens and maps a shared memory region for read-only access.
     pub fn new(name: &str, size: usize) -> Result<Self> {
         // Open existing shared memory (read-only)
         let fd = shmem_sys::open(name, libc::O_RDONLY)?;

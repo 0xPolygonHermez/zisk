@@ -25,6 +25,7 @@ struct SeparateShm {
 }
 
 impl SeparateShm {
+    /// Opens and maps the control shared memory for a specific service.
     pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
         let name = shmem_control_output_name(shm_prefix, service);
         Ok(Self {

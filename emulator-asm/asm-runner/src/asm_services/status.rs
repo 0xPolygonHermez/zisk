@@ -14,7 +14,9 @@ impl ToRequestPayload for PingRequest {
 // Fields mirror the on-wire ping response; these document the protocol layout.
 #[allow(dead_code)]
 pub(crate) struct PingResponse {
+    /// The producer's generation method.
     pub generation_method: u64,
+    /// The total allocated size of the shared memory segment.
     pub allocated_size: u64,
 }
 

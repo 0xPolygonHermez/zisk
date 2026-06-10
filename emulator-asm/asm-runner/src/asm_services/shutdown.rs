@@ -11,6 +11,7 @@ impl ToRequestPayload for ShutdownRequest {
         [CMD_SHUTDOWN_REQUEST_ID, 0, 0, 0, 0]
     }
 }
+
 pub(crate) struct ShutdownResponse;
 
 impl FromResponsePayload for ShutdownResponse {

@@ -284,6 +284,7 @@ impl AsmServices {
         Ok(())
     }
 
+    /// Send a minimal trace request to the MT service and return the response.
     pub(crate) fn send_minimal_trace_request(
         &self,
         max_steps: u64,
@@ -292,6 +293,7 @@ impl AsmServices {
         self.inner.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
+    /// Send a ROM histogram request to the RH service and return the response.
     pub(crate) fn send_rom_histogram_request(
         &self,
         max_steps: u64,
@@ -299,6 +301,7 @@ impl AsmServices {
         self.inner.service.send_rom_histogram_request(max_steps)
     }
 
+    /// Send a memory operations request to the MO service and return the response.
     pub(crate) fn send_memory_ops_request(
         &self,
         max_steps: u64,

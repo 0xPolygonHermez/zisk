@@ -8,10 +8,15 @@ use anyhow::Result;
 use crate::shmem_sys;
 
 pub(crate) struct AsmShmem<H: AsmShmemHeader> {
+    /// The file descriptor for the shared memory segment.
     _fd: i32,
+    /// Pointer to the mapped shared memory region.
     mapped_ptr: *mut c_void,
+    /// Size of the mapped shared memory region.
     mapped_size: usize,
+    /// Name of the shared memory segment.
     shmem_name: String,
+    /// PhantomData to associate the header type `H` with this struct.
     _phantom: std::marker::PhantomData<H>,
 }
 
@@ -23,7 +28,10 @@ pub(crate) struct AsmShmem<H: AsmShmemHeader> {
 unsafe impl<H: AsmShmemHeader> Send for AsmShmem<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmShmem<H> {}
 
+/// Trait for the header of an `AsmShmem` region, which must provide the allocated size
+/// of the producer's shared memory segment.
 pub(crate) trait AsmShmemHeader: Debug {
+    /// Total allocated mapping size in bytes.
     fn allocated_size(&self) -> u64;
 }
 
@@ -41,6 +49,7 @@ impl<H: AsmShmemHeader> Drop for AsmShmem<H> {
 }
 
 impl<H: AsmShmemHeader> AsmShmem<H> {
+    /// Opens and maps a shared memory region, returning an `AsmShmem` handle that owns the mapping.
     pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
         if name.is_empty() {
             return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
@@ -98,6 +107,7 @@ impl<H: AsmShmemHeader> AsmShmem<H> {
         })
     }
 
+    /// Unmap the shared-memory region and mark this handle as unmapped.
     pub fn unmap(&mut self) -> Result<()> {
         unsafe {
             if munmap(self.mapped_ptr, self.mapped_size) != 0 {

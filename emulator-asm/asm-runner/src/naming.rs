@@ -29,6 +29,7 @@ fn build_sem_name(prefix: &str, asm_service: AsmService, suffix: &str) -> String
     format!("/{}_{}_{}", prefix, asm_service.as_str(), suffix)
 }
 
+/// Shared memory name for the input data (shared across services).
 pub(crate) fn shmem_input_name(shm_prefix: &str) -> String {
     build_shmem_name(shm_prefix, "input")
 }
@@ -58,7 +59,7 @@ pub(crate) fn shmem_control_input_name(prefix: &str) -> String {
     build_shmem_name(prefix, "control_input")
 }
 
-/// Semaphore name for control output availability (per service).
+/// Shared memory name for control output (per service).
 pub(crate) fn shmem_control_output_name(prefix: &str, asm_service: AsmService) -> String {
     build_service_shmem_name(prefix, asm_service, "control_output")
 }
