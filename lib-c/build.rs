@@ -52,11 +52,14 @@ fn main() {
     println!("cargo:rustc-link-lib=static={library_name}");
 
     // Publish a copy under <target>/zisk-libs/ for tools that link libziskc
-    // outside cargo (emulator-asm `-L`, rom-setup, build_zisk.sh). Derive
-    // `target/` from OUT_DIR so it tracks the real build target — including a
-    // custom CARGO_TARGET_DIR or a per-target subdir like `target/elf/`. This is
-    // a best-effort side-channel: if OUT_DIR has no `target` ancestor (unusual
-    // layout), skip the publish rather than fail this crate's own build.
+    // outside cargo (emulator-asm `-L`, rom-setup, build_zisk.sh). Those tools
+    // all build lib-c natively from the workspace, where OUT_DIR is
+    // <workspace>/target/<profile>/build/lib-c-<hash>/out, so locating the
+    // `target` ancestor lands the copy at <workspace>/target/zisk-libs/ as they
+    // expect. This is a best-effort side-channel: if OUT_DIR has no ancestor
+    // named `target` (e.g. CARGO_TARGET_DIR set to a differently-named dir),
+    // skip rather than fail — every build that lacks one is also one that never
+    // reads zisk-libs (the guest/ELF build links the installed lib instead).
     if let Some(target_dir) =
         out_dir.ancestors().find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
     {
