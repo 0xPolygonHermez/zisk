@@ -1,5 +1,6 @@
 //! Remote backend client — connects to a ZisK Coordinator for distributed proving.
 
+pub(crate) mod aggregator;
 pub(crate) mod execute;
 pub(crate) mod prove;
 pub(crate) mod setup;
@@ -14,6 +15,9 @@ use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
+use crate::aggregate_proof::AggregateProofRequest;
+use crate::aggregator::{RecurserAggregator, RegisterAggregationRequest};
+use crate::lifecycle::{SetupTarget, UploadTarget};
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
@@ -123,6 +127,40 @@ impl Client for RemoteClient {
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, timeout, subs)
     }
+
+    fn run_upload_aggregator(&self, agg: &RecurserAggregator) -> Result<UploadResult> {
+        self.do_upload_aggregator(agg)
+    }
+
+    fn run_setup_aggregator(
+        &self,
+        agg: &RecurserAggregator,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<SetupResult>> {
+        self.do_setup_aggregator(agg, timeout, subs)
+    }
+
+    fn run_aggregate_proof(
+        &self,
+        agg: &RecurserAggregator,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
+        self.do_aggregate_proof(
+            agg,
+            proof_a,
+            proof_b,
+            private_inputs,
+            root_c_recurser_agg,
+            timeout,
+            subs,
+        )
+    }
 }
 
 impl RemoteClient {
@@ -146,16 +184,19 @@ impl RemoteClient {
         ExecuteRequest::new(self, program, stdin)
     }
 
-    /// Submit a ROM setup request.
+    /// Submit a setup request. Accepts either a [`GuestProgram`] or a
+    /// [`RecurserAggregator`]; the latter is not yet supported on remote and
+    /// will error at `run()` time.
     #[must_use]
-    pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
-        SetupRequest::new(self, program)
+    pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
+        SetupRequest::new(self, target.into())
     }
 
-    /// Upload/register the program ELF with the coordinator.
+    /// Upload/register a program or aggregator with the coordinator. Aggregator
+    /// uploads are not yet supported and will error at `run()` time.
     #[must_use]
-    pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
-        UploadRequest::new(self, program)
+    pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
+        UploadRequest::new(self, target.into())
     }
 
     /// Submit a wrap/convert proof request.
@@ -166,6 +207,28 @@ impl RemoteClient {
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof, proof_kind)
+    }
+
+    /// Begin building a recurser-aggregator handle. Not yet supported on
+    /// remote; `run()` returns an error.
+    #[must_use]
+    pub fn register_setup_aggregation<'a>(
+        &'a self,
+        programs: &'a [&'a GuestProgram],
+    ) -> RegisterAggregationRequest<'a, Self> {
+        RegisterAggregationRequest::new(self, programs)
+    }
+
+    /// Submit an aggregation proof request. Not yet supported on remote;
+    /// `run()` returns an error.
+    #[must_use]
+    pub fn aggregate_proof<'a>(
+        &'a self,
+        agg: &'a RecurserAggregator,
+        proof_a: &'a Proof,
+        proof_b: &'a Proof,
+    ) -> AggregateProofRequest<'a, Self> {
+        AggregateProofRequest::new(self, agg, proof_a, proof_b)
     }
 }
 

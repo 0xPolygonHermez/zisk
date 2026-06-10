@@ -1,3 +1,5 @@
+mod aggregate_proof;
+mod aggregator;
 mod cancel;
 mod client;
 mod embedded;
@@ -6,6 +8,7 @@ mod hints;
 mod input_source;
 mod input_stream;
 mod job_handle;
+mod lifecycle;
 mod opts;
 mod prove;
 mod remote;
@@ -16,6 +19,8 @@ mod verify;
 mod verify_constraints;
 mod wrap;
 
+pub use aggregate_proof::AggregateProofRequest;
+pub use aggregator::{RecurserAggregator, RegisterAggregationRequest};
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
 pub use embedded::{
@@ -27,6 +32,7 @@ pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
+pub use lifecycle::{SetupTarget, UploadTarget};
 pub use prove::{JobEvent, ProveRequest, ProveResult};
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
@@ -128,6 +134,29 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         proof_kind: ProofKind,
         override_publics: Option<PublicValues>,
         override_program_vk: Option<ProgramVK>,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
+
+    fn run_upload_aggregator(
+        &self,
+        agg: &crate::aggregator::RecurserAggregator,
+    ) -> Result<UploadResult>;
+
+    fn run_setup_aggregator(
+        &self,
+        agg: &crate::aggregator::RecurserAggregator,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<SetupResult>>;
+
+    fn run_aggregate_proof(
+        &self,
+        agg: &crate::aggregator::RecurserAggregator,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;

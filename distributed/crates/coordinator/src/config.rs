@@ -19,7 +19,7 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub proofs_dir: PathBuf,
-    pub save_proofs: bool,
+    pub no_save_proofs: bool,
     pub shutdown_timeout_seconds: u64,
 }
 
@@ -120,7 +120,7 @@ impl Config {
         config_file: Option<String>,
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
-        save_proofs: Option<bool>,
+        no_save_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -139,7 +139,7 @@ impl Config {
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.proofs_dir", Self::DEFAULT_PROOFS_DIR)?
-            .set_default("server.save_proofs", false)?
+            .set_default("server.no_save_proofs", false)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
@@ -177,10 +177,7 @@ impl Config {
                 .set_override("server.proofs_dir", proofs_dir.to_string_lossy().to_string())?;
         }
 
-        // Only override when set.
-        if let Some(save_proofs) = save_proofs {
-            builder = builder.set_override("server.save_proofs", save_proofs)?;
-        }
+        builder = builder.set_override("server.no_save_proofs", no_save_proofs)?;
 
         // Override webhook_url if provided via function argument
         if let Some(url) = webhook_url {

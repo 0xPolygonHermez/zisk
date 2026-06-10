@@ -36,6 +36,7 @@ pub const ELF_BIGINT: GuestProgram = load_program!("bigint");
 pub const ELF_PANIC_MODES: GuestProgram = load_program!("panic_modes");
 pub const ELF_POSEIDON1: GuestProgram = load_program!("poseidon1");
 pub const ELF_POSEIDON2: GuestProgram = load_program!("poseidon2");
+pub const ELF_RECURSER_CHAIN: GuestProgram = load_program!("recurser_chain");
 pub const ELF_SECP256K1: GuestProgram = load_program!("secp256k1");
 pub const ELF_SECP256K1_ADD: GuestProgram = load_program!("secp256k1_add");
 pub const ELF_SECP256K1_DBL: GuestProgram = load_program!("secp256k1_dbl");

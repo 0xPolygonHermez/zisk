@@ -19,11 +19,11 @@ use zisk_coordinator::{
 };
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    BackendService, DomainAggregatorSpec, DomainExecutionStats, DomainInputKind, DomainJobEvent,
+    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
+    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
+    DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
+    DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -86,6 +86,12 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         }
         CoordinatorJobResult::Wrap { proof_bytes } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
+        }
+        CoordinatorJobResult::SetupAggregator { vk } => {
+            DomainJobKindResponse::SetupAggregator { vk }
+        }
+        CoordinatorJobResult::Aggregate { proof_bytes } => {
+            DomainJobKindResponse::Aggregate(make_proof(hash_id.to_string(), proof_bytes))
         }
     }
 }
@@ -257,6 +263,27 @@ impl BackendService for CoordinatorBackend {
             .map_err(|e| internal(format!("register_guest_program: {e}")))
     }
 
+    async fn register_recurser_aggregator(
+        &self,
+        recurser_id: String,
+        spec: DomainAggregatorSpec,
+    ) -> ApiResult<String> {
+        // Trust the SDK-supplied `recurser_id`; misalignment surfaces at
+        // dispatch time as "recurser_id not found".
+        let cluster_spec = zisk_cluster_common::AggregatorSpecDto {
+            program_vks: spec.program_vks,
+            n_private_inputs: spec.n_private_inputs,
+            prepare_publics_body: spec.prepare_publics_body,
+            check_publics_body: spec.check_publics_body,
+            aggregate_publics_body: spec.aggregate_publics_body,
+        };
+        self.coordinator
+            .register_recurser_aggregator(recurser_id.clone(), cluster_spec)
+            .await
+            .map_err(coord_err_to_api)?;
+        Ok(recurser_id)
+    }
+
     async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {
@@ -331,6 +358,32 @@ impl BackendService for CoordinatorBackend {
                 let response = self
                     .coordinator
                     .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .await
+                    .map_err(coord_err_to_api)?;
+                let job_id = Uuid::parse_str(&response.job_id.as_string())
+                    .map_err(|e| internal(format!("invalid job_id: {e}")))?;
+                Ok(SubmitJobResult { job_id })
+            }
+            DomainJobKind::SetupAggregator(r) => {
+                let job_id_internal = self
+                    .coordinator
+                    .setup_recurser_aggregator(&r.recurser_id)
+                    .await
+                    .map_err(coord_err_to_api)?;
+                let job_id = Uuid::parse_str(&job_id_internal.as_string())
+                    .map_err(|e| internal(format!("invalid job_id: {e}")))?;
+                Ok(SubmitJobResult { job_id })
+            }
+            DomainJobKind::Aggregate(r) => {
+                let response = self
+                    .coordinator
+                    .launch_aggregate_proof(
+                        r.recurser_id,
+                        r.proof_a,
+                        r.proof_b,
+                        r.private_inputs,
+                        r.root_c_recurser_agg,
+                    )
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())

@@ -455,7 +455,7 @@ fn main() {
 | Variable           | Description                                            | Default            |
 |--------------------|--------------------------------------------------------|--------------------|
 | `ZISK_HINTS_OUTPUT`| Path to the hints binary file written by `zkvm_init`.  | `./tmp/hints.bin`  |
-| `ZISK_INPUT_FILE`  | Path to the input file consumed by `read_slice`. | `build/input.bin`  |
+| `ZISK_INPUT_FILE`  | Path to the input file consumed by `read_input_slice`. | `build/input.bin`  |
 
 The `./tmp/` directory is created automatically if it does not exist.
 

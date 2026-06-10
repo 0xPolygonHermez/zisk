@@ -106,6 +106,15 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         instances: u64,
     },
+    /// Recurser-aggregator setup or prove result. The blocking handler builds
+    /// the full ack (`SetupRecurserAggregatorAck` / `RunRecurserAggregatorAck`)
+    /// itself; the event loop just forwards it to the coordinator. Carried this
+    /// way so the heavy work runs off the message loop (heartbeats keep flowing)
+    /// without threading recurser-specific shaping through this shared enum.
+    RecurserAck {
+        job_id: JobId,
+        ack: zisk_cluster_api::WorkerMessage,
+    },
 }
 
 /// Events driving the worker event loop. Compute results and recovery

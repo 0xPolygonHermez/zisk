@@ -89,6 +89,57 @@ pub enum CoordinatorMessageDto {
     StreamData(StreamDataDto),
     SetupProgram(SetupProgramDto),
     InputStreamData(InputStreamDataDto),
+    SetupRecurserAggregator(SetupRecurserAggregatorDto),
+    RunRecurserAggregator(RunRecurserAggregatorDto),
+}
+
+/// 4-limb Goldilocks verification key, decimal-encoded.
+pub type AggregatorProgramVk = [String; 4];
+
+#[derive(Debug, Clone)]
+pub struct AggregatorSpecDto {
+    pub program_vks: Vec<AggregatorProgramVk>,
+    pub n_private_inputs: u64,
+    pub prepare_publics_body: String,
+    pub check_publics_body: String,
+    pub aggregate_publics_body: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupRecurserAggregatorDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    pub spec: AggregatorSpecDto,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunRecurserAggregatorDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    /// bincode-serialized VadcopFinalProof.
+    pub proof_a: Vec<u8>,
+    pub proof_b: Vec<u8>,
+    pub private_inputs: Vec<u64>,
+    pub root_c_recurser_agg: Option<[u64; 4]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupRecurserAggregatorAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub recurser_id: String,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub vk: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunRecurserAggregatorAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub proof: Vec<u8>,
 }
 
 pub struct InputStreamDataDto {

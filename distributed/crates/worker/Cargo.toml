@@ -22,8 +22,16 @@ zisk-common = { workspace = true }
 zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
+proofman-verifier = { workspace = true }
+asm-runner = { workspace = true }
+fields = { workspace = true }
+witness = { workspace = true }
+rom-setup = { workspace = true }
+zisk-pil = { workspace = true }
 bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
+rayon = { workspace = true }
+recurser = { workspace = true, features = ["setup", "prove"] }
 
 tonic = { workspace = true }
 tokio = { workspace = true }

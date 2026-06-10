@@ -13,12 +13,14 @@ pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 
 use crate::dto::{
-    DomainExecuteRequest, DomainExecutionStats, DomainInputChunk, DomainInputKind, DomainJobEvent,
-    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
-    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
-    DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
-    DomainProofKind, DomainProveRequest, DomainSetupRequest, DomainWrapRequest,
+    DomainAggregateRequest, DomainAggregatorSpec, DomainExecuteRequest, DomainExecutionStats,
+    DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
+    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    DomainProveRequest, DomainSetupAggregatorRequest, DomainSetupRequest, DomainWrapRequest,
     RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
+    RegisterRecurserAggregatorRequestDto, RegisterRecurserAggregatorResponseDto,
 };
 use anyhow::Result;
 use prost_types::Timestamp;
@@ -52,6 +54,70 @@ impl From<RegisterGuestProgramResponseDto> for RegisterGuestProgramResponse {
 impl From<RegisterGuestProgramResponse> for RegisterGuestProgramResponseDto {
     fn from(resp: RegisterGuestProgramResponse) -> Self {
         Self { hash_id: resp.hash_id }
+    }
+}
+
+impl From<DomainAggregatorSpec> for AggregatorSpec {
+    fn from(s: DomainAggregatorSpec) -> Self {
+        Self {
+            program_vks: s
+                .program_vks
+                .into_iter()
+                .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
+                .collect(),
+            n_private_inputs: s.n_private_inputs,
+            prepare_publics_body: s.prepare_publics_body,
+            check_publics_body: s.check_publics_body,
+            aggregate_publics_body: s.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<AggregatorSpec> for DomainAggregatorSpec {
+    fn from(s: AggregatorSpec) -> Self {
+        Self {
+            program_vks: s.program_vks.into_iter().map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3]).collect(),
+            n_private_inputs: s.n_private_inputs,
+            prepare_publics_body: s.prepare_publics_body,
+            check_publics_body: s.check_publics_body,
+            aggregate_publics_body: s.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<RegisterRecurserAggregatorRequestDto> for RegisterRecurserAggregatorRequest {
+    fn from(dto: RegisterRecurserAggregatorRequestDto) -> Self {
+        Self { recurser_id: dto.recurser_id, spec: Some(dto.spec.into()) }
+    }
+}
+
+impl tonic::IntoRequest<RegisterRecurserAggregatorRequest>
+    for RegisterRecurserAggregatorRequestDto
+{
+    fn into_request(self) -> tonic::Request<RegisterRecurserAggregatorRequest> {
+        tonic::Request::new(self.into())
+    }
+}
+
+impl TryFrom<RegisterRecurserAggregatorRequest> for RegisterRecurserAggregatorRequestDto {
+    type Error = String;
+
+    fn try_from(req: RegisterRecurserAggregatorRequest) -> std::result::Result<Self, Self::Error> {
+        let spec =
+            req.spec.ok_or_else(|| "register_recurser_aggregator.spec must be set".to_string())?;
+        Ok(Self { recurser_id: req.recurser_id, spec: spec.into() })
+    }
+}
+
+impl From<RegisterRecurserAggregatorResponseDto> for RegisterRecurserAggregatorResponse {
+    fn from(dto: RegisterRecurserAggregatorResponseDto) -> Self {
+        Self { recurser_id: dto.recurser_id }
+    }
+}
+
+impl From<RegisterRecurserAggregatorResponse> for RegisterRecurserAggregatorResponseDto {
+    fn from(resp: RegisterRecurserAggregatorResponse) -> Self {
+        Self { recurser_id: resp.recurser_id }
     }
 }
 
@@ -252,6 +318,35 @@ impl TryFrom<JobKind> for DomainJobKind {
                     execute_timeout,
                 }))
             }
+            job_kind::Kind::SetupAggregator(r) => {
+                Ok(DomainJobKind::SetupAggregator(DomainSetupAggregatorRequest {
+                    recurser_id: r.recurser_id,
+                }))
+            }
+            job_kind::Kind::Aggregate(r) => {
+                let root_c = if r.root_c_recurser_agg.is_empty() {
+                    None
+                } else if r.root_c_recurser_agg.len() == 4 {
+                    Some([
+                        r.root_c_recurser_agg[0],
+                        r.root_c_recurser_agg[1],
+                        r.root_c_recurser_agg[2],
+                        r.root_c_recurser_agg[3],
+                    ])
+                } else {
+                    return Err(format!(
+                        "aggregate.root_c_recurser_agg must be 0 or 4 limbs; got {}",
+                        r.root_c_recurser_agg.len()
+                    ));
+                };
+                Ok(DomainJobKind::Aggregate(DomainAggregateRequest {
+                    recurser_id: r.recurser_id,
+                    proof_a: r.proof_a,
+                    proof_b: r.proof_b,
+                    private_inputs: r.private_inputs,
+                    root_c_recurser_agg: root_c,
+                }))
+            }
         }
     }
 }
@@ -283,6 +378,16 @@ impl From<DomainJobKind> for JobKind {
                 input: Some(InputKind::from(r.input)),
                 execute_timeout: r.execute_timeout.map(datetime_to_ts),
                 hints: r.hints.map(InputKind::from),
+            }),
+            DomainJobKind::SetupAggregator(r) => {
+                Kind::SetupAggregator(SetupAggregatorRequest { recurser_id: r.recurser_id })
+            }
+            DomainJobKind::Aggregate(r) => Kind::Aggregate(AggregateRequest {
+                recurser_id: r.recurser_id,
+                proof_a: r.proof_a,
+                proof_b: r.proof_b,
+                private_inputs: r.private_inputs,
+                root_c_recurser_agg: r.root_c_recurser_agg.map(|l| l.to_vec()).unwrap_or_default(),
             }),
         };
         JobKind { kind: Some(kind) }
@@ -321,6 +426,12 @@ impl From<DomainJobKindResponse> for JobKindResponse {
             }
             DomainJobKindResponse::Execute { stats, public_outputs } => {
                 Kind::Execute(ExecuteResponse { stats: Some(stats.into()), public_outputs })
+            }
+            DomainJobKindResponse::SetupAggregator { vk } => {
+                Kind::SetupAggregator(SetupAggregatorResponse { vk })
+            }
+            DomainJobKindResponse::Aggregate(proof) => {
+                Kind::Aggregate(AggregateResponse { proof: Some(proof.into()) })
             }
         };
         JobKindResponse { kind: Some(kind) }
@@ -541,6 +652,12 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
             Kind::Execute(r) => {
                 let stats = r.stats.map(DomainExecutionStats::from).unwrap_or_default();
                 Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs })
+            }
+            Kind::SetupAggregator(r) => Ok(DomainJobKindResponse::SetupAggregator { vk: r.vk }),
+            Kind::Aggregate(r) => {
+                let proof =
+                    r.proof.ok_or_else(|| "aggregate.proof must be set".to_string())?.try_into()?;
+                Ok(DomainJobKindResponse::Aggregate(proof))
             }
         }
     }
