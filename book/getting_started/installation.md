@@ -251,6 +251,12 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
     Additionally, to generate the snark wrapper:
 
+    First, download the powers-of-tau file into the parent folder of `zisk`:
+    ```bash
+    (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_27.ptau)
+    ```
+
+    Then generate the snark wrapper:
     ```bash
     export SNARKJS_PATH="../pil2-proofman/node_modules/snarkjs"
     cargo-zisk proofman-setup setup-snark \
