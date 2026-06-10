@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 
 use std::process::Stdio;
+use std::sync::Arc;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
@@ -122,9 +123,19 @@ impl fmt::Display for AsmService {
     }
 }
 
-/// This struct represents the ASM services
+/// Handle to the ASM microservices for one `(pid, local_rank)`.
+///
+/// `Clone` shares a single [`AsmServicesInner`] via `Arc`: the runner threads
+/// (MO/MT/RH) each hold a clone for the duration of a run. Teardown lives in
+/// `Drop for AsmServicesInner`, so it fires exactly once when the last clone is
+/// dropped — race-free, because that's driven by `Arc`'s atomic refcount rather
+/// than a `strong_count()` snapshot that concurrent droppers could both misread.
 #[derive(Clone)]
 pub struct AsmServices {
+    inner: Arc<AsmServicesInner>,
+}
+
+struct AsmServicesInner {
     service: StdioService,
     shm_prefix: String,
     sem_prefix: String,
@@ -136,22 +147,22 @@ impl AsmServices {
 
     /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
     pub fn shm_prefix(&self) -> &str {
-        &self.shm_prefix
+        &self.inner.shm_prefix
     }
 
     /// Returns the semaphore prefix `ZISK_{pid}_{hash}_{rank}`.
     pub fn sem_prefix(&self) -> &str {
-        &self.sem_prefix
+        &self.inner.sem_prefix
     }
 
     /// Returns the local rank of the process.
     pub fn local_rank(&self) -> i32 {
-        self.service.local_rank
+        self.inner.service.local_rank
     }
 
     /// Returns the world rank of the process.
     pub fn world_rank(&self) -> i32 {
-        self.service.world_rank
+        self.inner.service.world_rank
     }
 
     /// Wrapper used by the CLI and the first worker setup.
@@ -198,13 +209,16 @@ impl AsmServices {
             &sem_prefix,
         )?;
 
+        let inner = AsmServicesInner { service: stdio_service, shm_prefix, sem_prefix };
+
         for service in &Self::SERVICES {
-            stdio_service
+            inner
+                .service
                 .send_status_request(service)
                 .with_context(|| format!("Service {service} failed to respond to ping"))?;
         }
 
-        Ok(AsmServices { service: stdio_service, shm_prefix, sem_prefix })
+        Ok(AsmServices { inner: Arc::new(inner) })
     }
 
     /// Clean up all shared memory and semaphores for currently running services.
@@ -270,31 +284,19 @@ impl AsmServices {
         Ok(())
     }
 
-    /// Stop all services by sending shutdown requests and waiting for their completion.
-    pub fn stop_asm_services(&self) -> Result<()> {
-        let running = self.service.running_services();
-
-        for service in running {
-            tracing::info!("Shutting down stdio service {}.", service);
-            self.send_shutdown_and_wait(&service)?;
-        }
-
-        Ok(())
-    }
-
     pub(crate) fn send_minimal_trace_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MinimalTraceResponse> {
-        self.service.send_minimal_trace_request(max_steps, chunk_len)
+        self.inner.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
     pub(crate) fn send_rom_histogram_request(
         &self,
         max_steps: u64,
     ) -> Result<RomHistogramResponse> {
-        self.service.send_rom_histogram_request(max_steps)
+        self.inner.service.send_rom_histogram_request(max_steps)
     }
 
     pub(crate) fn send_memory_ops_request(
@@ -302,12 +304,47 @@ impl AsmServices {
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MemoryOperationsResponse> {
-        self.service.send_memory_ops_request(max_steps, chunk_len)
+        self.inner.service.send_memory_ops_request(max_steps, chunk_len)
+    }
+}
+
+impl AsmServicesInner {
+    fn stop_asm_services(&self) -> Result<()> {
+        let running = self.service.running_services();
+
+        let mut errors = Vec::new();
+        for service in running {
+            tracing::info!("Shutting down stdio service {}.", service);
+            if let Err(e) = self.send_shutdown_and_wait(&service) {
+                errors.push(format!("{service}: {e:#}"));
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "failed to shut down {} stdio service(s):\n{}",
+                errors.len(),
+                errors.join("\n")
+            ))
+        }
     }
 
     /// Sends a shutdown request to the specified service and waits for its completion.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    pub fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
+    fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
+        // Graceful shutdown handshake.
+        let handshake = self.graceful_shutdown(service);
+
+        // Close pipes and reap the child process (best-effort, infallible).
+        self.service.close(service);
+
+        handshake
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn graceful_shutdown(&self, service: &AsmService) -> Result<()> {
         let sem_name = format!("/{}_{}_shutdown_done", self.sem_prefix, service.as_str());
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
@@ -330,7 +367,7 @@ impl AsmServices {
                 Err(e) => {
                     tracing::error!(
                         "[{}] Timeout or error waiting on semaphore {}: {}",
-                        self.world_rank(),
+                        self.service.world_rank,
                         sem_name,
                         e
                     );
@@ -349,16 +386,13 @@ impl AsmServices {
             }
         }
 
-        // Close pipes and reap the child process.
-        self.service.close(service);
-
         Ok(())
     }
 
     /// Sends a shutdown request to the specified service and waits for its
     /// completion. No-op off Linux-x86_64, where the ASM services never run.
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-    pub fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
+    fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
     }
 
@@ -368,8 +402,28 @@ impl AsmServices {
     /// set — which the long-running ASM service children don't have — so
     /// the parent has to do it. Call after `stop_asm_services` so the
     /// children are already detached from the segments.
-    pub fn cleanup_my_shmem(&self) {
+    fn cleanup_my_shmem(&self) {
         super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
+    }
+}
+
+impl Drop for AsmServicesInner {
+    /// RAII teardown for the ASM microservices and their `/dev/shm` segments.
+    ///
+    /// Runs exactly once: this is the sole owner behind the `Arc` in
+    /// [`AsmServices`], so `drop` fires only when the last `AsmServices` clone
+    /// is gone. No `strong_count` guard — the `Arc` refcount is the gate.
+    fn drop(&mut self) {
+        tracing::info!(">>> [{}] Stopping ASM microservices.", self.service.local_rank);
+        if let Err(e) = self.stop_asm_services() {
+            tracing::error!(
+                ">>> [{}] Failed to stop ASM microservices: {}",
+                self.service.local_rank,
+                e
+            );
+        }
+
+        self.cleanup_my_shmem();
     }
 }
 
