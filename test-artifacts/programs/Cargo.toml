@@ -9,6 +9,7 @@ members = [
   "bn254",
   "examples/*",
   "diagnostic",
+  "diagnostic_hints",
   "hashes",
   "secp256k1",
   "secp256r1",
@@ -26,6 +27,7 @@ panic = "abort"
 [workspace.dependencies]
 ziskos = { path = "../../ziskos/entrypoint" }
 zisk-sdk = { path = "../../sdk" }
+zkvm-interface = { path = "../../zkvm-interface" }
 precompiles-helpers = { path = "../../precompiles/helpers" }
 
 rand = "0.8.1"

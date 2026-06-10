@@ -1,0 +1,5 @@
+# Generate hints on native platforms
+[target.'cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))']
+# rustflags = ["--cfg", "zisk_hints"]
+rustflags = ["--cfg", "zisk_hints", "--cfg", "zisk_hints_metrics"]
+# rustflags = ["--cfg", "zisk_hints", "--cfg", "zisk_hints_metrics", "--cfg", "zisk_hints_debug"]

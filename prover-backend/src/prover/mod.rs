@@ -73,6 +73,7 @@ impl AsmOptions {
 pub struct BackendProverOpts {
     // Proof settings
     pub(crate) aggregation: bool,
+    pub(crate) verify_constraints: bool,
     pub(crate) verify_proofs: bool,
     pub(crate) minimal_memory: bool,
     pub(crate) verbose: u8,
@@ -99,6 +100,7 @@ impl Default for BackendProverOpts {
     fn default() -> Self {
         Self {
             aggregation: true,
+            verify_constraints: false,
             verify_proofs: false,
 
             minimal_memory: false,
@@ -147,8 +149,12 @@ impl BackendProverOpts {
 
         options.verbose_mode(self.verbose.into());
 
-        if !self.aggregation {
+        if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
+        }
+
+        if self.verify_constraints {
+            options.verify_constraints();
         }
 
         options
@@ -181,6 +187,12 @@ impl BackendProverOpts {
     }
 
     pub fn no_aggregation(mut self) -> Self {
+        self.aggregation = false;
+        self
+    }
+
+    pub fn verify_constraints(mut self) -> Self {
+        self.verify_constraints = true;
         self.aggregation = false;
         self
     }
@@ -396,7 +408,7 @@ pub trait ProverEngine {
 
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>>;
 
-    fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
+    fn set_active_services(&self, _is_first_process: bool) -> Result<()> {
         Ok(())
     }
 
@@ -643,8 +655,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_hints_processor()
     }
 
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        self.prover.set_active_services(is_first_partition)
+    pub fn set_active_services(&self, is_first_process: bool) -> Result<()> {
+        self.prover.set_active_services(is_first_process)
     }
 
     pub fn reset(&self) -> Result<()> {
