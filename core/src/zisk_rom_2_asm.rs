@@ -3085,7 +3085,7 @@ impl ZiskRom2Asm {
                                 "\tmov {}, 0x{:x} {}\n",
                                 reg_address,
                                 ctx.a.constant_value + instruction.store_offset as u64,
-                                ctx.comment_str("a = imm + offset)")
+                                ctx.comment_str("a(address) = imm + offset")
                             );
                         } else if instruction.store_offset != 0 {
                             *code += &format!(
@@ -8282,7 +8282,7 @@ impl ZiskRom2Asm {
             };
             *code += &format!(
                 "\tmov {reg_address}, 0x{mops:x} {}\n",
-                ctx.comment_str("aux = constant mem op")
+                ctx.comment_str("address = constant mem op")
             );
         } else {
             let mops = match width {
