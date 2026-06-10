@@ -107,6 +107,9 @@ compute_input_hash() (
   [ -n "$pil2_compiler_version" ] || \
     { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
 
+  zisk_pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$ROOT_DIR/package.json" 2>/dev/null | head -n1)"
+  [ "$zisk_pil2_compiler_version" = "$pil2_compiler_version" ] && zisk_pil2_compiler_version=""
+
   # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
   # source straight from Cargo.lock: for a git dep that's a stable
   #   source = "git+https://.../pil2-proofman.git?branch=X#<sha>"
@@ -151,6 +154,7 @@ compute_input_hash() (
     cat state-machines/starkstructs.json
     cat "${fixed_bins[@]}"
     printf 'pil2-compiler:%s\n' "$pil2_compiler_version"
+    [ -n "$zisk_pil2_compiler_version" ] && printf 'zisk-pil2-compiler:%s\n' "$zisk_pil2_compiler_version"
     printf 'pil2-stark-setup:%s\n' "$pil2_stark_setup_source"
   } | sha256_hex
 )

@@ -160,6 +160,88 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
+# ----- zisk-driven pil2-compiler split ---------------------------------------
+# zisk's PIL compiles with zisk's pinned pil2-compiler; recursion (setup
+# --recursive: circom + pil2com) stays on proofman's. When the pins match (or
+# zisk pins none), both share proofman's binary as before.
+ZISK_PKG="$ROOT_DIR/package.json"
+ZISK_COMPILER_SPEC=""   # zisk's pin, set only when it differs from proofman's
+ZISK_NODE_DIR=""
+
+# Matches "dependencies" or "overrides" (zisk uses overrides, proofman a plain dep).
+read_compiler_spec() {
+  sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$1" 2>/dev/null | head -n1
+}
+
+resolve_zisk_compiler_spec() {
+  [ -f "$ZISK_PKG" ] || return 0
+  local zisk_spec proofman_spec
+  zisk_spec="$(read_compiler_spec "$ZISK_PKG")"
+  [ -n "$zisk_spec" ] || return 0
+  proofman_spec="$(read_compiler_spec "$PROOFMAN_DIR/package.json")"
+  if [ "$zisk_spec" = "$proofman_spec" ]; then
+    echo "==> zisk pins pil2-compiler to $zisk_spec (matches proofman; single compiler)" >&2
+    return 0
+  fi
+  echo "==> zisk pins a distinct pil2-compiler: $zisk_spec (proofman: $proofman_spec)" >&2
+  echo "    PIL compilation uses zisk's; recursion uses proofman's." >&2
+  ZISK_COMPILER_SPEC="$zisk_spec"
+}
+
+resolve_zisk_compiler_spec
+
+# node/npm are only needed for compile-pil (pil2com) and setup-snark (snarkjs),
+# so install lazily — a --cache-dir hit or --skip-compile-pil must not require
+# node. PIL2C_EXEC is read per invocation, so callers re-point it with
+# use_proofman_compiler / use_zisk_compiler before each compile.
+NODE_DEPS_READY=0
+PROOFMAN_PIL2C=""
+ZISK_PIL2C=""
+ensure_node_deps() {
+  [ "$NODE_DEPS_READY" -eq 1 ] && return 0
+  command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
+
+  # compile-pil resolves pil2com via PIL2C_EXEC, then ./node_modules/.bin (cwd), then
+  # walks up from the binary, then PATH. None of those reach the cargo git checkout,
+  # so point it at the binary explicitly.
+  local pil2c="$PROOFMAN_DIR/node_modules/.bin/pil2com"
+  local snarkjs="$PROOFMAN_DIR/node_modules/snarkjs"
+
+  # Reinstall from a clean tree so a partial or stale node_modules can't yield a
+  # missing pil2com/snarkjs. The NODE_DEPS_READY guard caps this at one run per invocation.
+  rm -rf "$PROOFMAN_DIR/node_modules"
+  echo "==> npm install in $PROOFMAN_DIR"
+  (cd "$PROOFMAN_DIR" && npm install)
+
+  [ -x "$pil2c" ] || [ -L "$pil2c" ] \
+    || { echo "pil2com missing at $pil2c after npm install" >&2; exit 1; }
+  PROOFMAN_PIL2C="$pil2c"
+
+  [ -d "$snarkjs" ] \
+    || { echo "snarkjs missing at $snarkjs after npm install" >&2; exit 1; }
+  export SNARKJS_PATH="$snarkjs"
+
+  ZISK_PIL2C="$PROOFMAN_PIL2C"   # default; overridden below if zisk pins its own
+
+  # Install zisk's compiler by spec (no package.json needed) into a side dir.
+  if [ -n "$ZISK_COMPILER_SPEC" ]; then
+    ZISK_NODE_DIR="$ROOT_DIR/tmp/zisk-pil2c"
+    local zisk_pil2c="$ZISK_NODE_DIR/node_modules/.bin/pil2com"
+    rm -rf "$ZISK_NODE_DIR"
+    mkdir -p "$ZISK_NODE_DIR"
+    echo "==> npm install zisk pil2-compiler ($ZISK_COMPILER_SPEC) in $ZISK_NODE_DIR"
+    (cd "$ZISK_NODE_DIR" && npm install "$ZISK_COMPILER_SPEC")
+    [ -x "$zisk_pil2c" ] || [ -L "$zisk_pil2c" ] \
+      || { echo "zisk pil2com missing at $zisk_pil2c after npm install" >&2; exit 1; }
+    ZISK_PIL2C="$zisk_pil2c"
+  fi
+
+  NODE_DEPS_READY=1
+}
+
+use_proofman_compiler() { export PIL2C_EXEC="$PROOFMAN_PIL2C"; }
+use_zisk_compiler()     { export PIL2C_EXEC="$ZISK_PIL2C"; }
+
 echo "version: $VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
@@ -168,6 +250,8 @@ run_compile_pil() {
     echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
+  ensure_node_deps
+  use_zisk_compiler
   echo "==> compile-pil"
   # --no-proto-fixed-data keeps fixed-column values out of the pilout protobuf
   # (they live on disk under tmp/fixed/ via --fixed-dir + --fixed-to-file). Avoids
@@ -306,6 +390,10 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   run_compile_pil
 
   if [ "$MODE" = "build" ]; then
+    # run_compile_pil left PIL2C_EXEC on zisk's compiler; recursion needs
+    # proofman's. ensure_node_deps re-runs only when compile-pil was skipped.
+    ensure_node_deps
+    use_proofman_compiler
     echo "==> proofman-setup setup --recursive"
     setup_recursive_flag=(--recursive)
   else
