@@ -17,8 +17,7 @@ fn find_nvcc() -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
         return None;
     }
-    if Command::new("nvcc").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
-    {
+    if Command::new("nvcc").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
         return Some(PathBuf::from("nvcc"));
     }
     for candidate in ["/usr/local/cuda/bin/nvcc", "/opt/cuda/bin/nvcc"] {
@@ -50,9 +49,7 @@ fn cuda_lib_dir(nvcc: &Path) -> PathBuf {
 fn parse_cuda_archs() -> Option<Vec<u32>> {
     match env::var("CUDA_ARCHS") {
         Err(_) => None,
-        Ok(val) if val.trim().eq_ignore_ascii_case("major") => {
-            Some(vec![80, 86, 89, 90, 100, 120])
-        }
+        Ok(val) if val.trim().eq_ignore_ascii_case("major") => Some(vec![80, 86, 89, 90, 100, 120]),
         Ok(val) => {
             let mut archs = Vec::new();
             for token in val.split(',') {
@@ -119,7 +116,7 @@ fn main() {
         extra_defines.push_str(" -DSAVE_MEM_BUS_DATA_ASM");
     }
 
-    // Build CPU library 
+    // Build CPU library
     let status = Command::new("make")
         .arg("all")
         .env("OUT_DIR", &build_dir)
@@ -202,9 +199,8 @@ fn main() {
     // string for explicit builds.
     let archs_stamp_path = gpu_build_dir.join(".cuda_archs_stamp");
     let stamp_content = gencode_flags.as_deref().unwrap_or("auto");
-    let archs_changed = fs::read_to_string(&archs_stamp_path)
-        .map(|s| s.trim() != stamp_content)
-        .unwrap_or(true);
+    let archs_changed =
+        fs::read_to_string(&archs_stamp_path).map(|s| s.trim() != stamp_content).unwrap_or(true);
     if archs_changed {
         eprintln!("CUDA_ARCHS changed — running clean rebuild...");
         let _ = Command::new("make")
@@ -218,10 +214,7 @@ fn main() {
     // wins over `nvcc` on PATH that may shadow it. CUDA_GENCODE_FLAGS is
     // only set when CUDA_ARCHS produced an explicit list.
     let mut make = Command::new("make");
-    make.arg("all")
-        .env("OUT_DIR", &gpu_build_dir)
-        .env("NVCC", &nvcc)
-        .current_dir("cu");
+    make.arg("all").env("OUT_DIR", &gpu_build_dir).env("NVCC", &nvcc).current_dir("cu");
     if let Some(flags) = &gencode_flags {
         make.env("CUDA_GENCODE_FLAGS", flags);
     }

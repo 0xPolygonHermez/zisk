@@ -16,7 +16,7 @@ MemCounterSingle::~MemCounterSingle() {
     free(free_read_available);
 }
 void MemCounterSingle::clear(void) {
-    explicit_bzero(free_read_available, TABLE_OFFSET_SIZE * sizeof(bool));
+    memset(free_read_available, 0, TABLE_OFFSET_SIZE * sizeof(bool));
     full_5 = 0;
     full_3 = 0;
     full_2 = 0;

@@ -211,7 +211,8 @@ impl AsmResources {
         let options = AsmRunnerOptions::new().with_local_rank(0);
         let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
-        let gpu_buffer_src = if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
+        let gpu_buffer_src =
+            if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
         let shared = Arc::new(AsmSharedResources::new(
             0,
             false,
