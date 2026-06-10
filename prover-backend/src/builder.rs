@@ -291,7 +291,8 @@ impl ProverClientBuilder<AsmExecOnlyB> {
     pub fn build(self) -> Result<AsmExecClient> {
         let verbose: VerboseMode = self.prover_options.verbose.into();
         let cache = self.prover_options.asm_options.asm_path.clone();
-        AsmExecClient::new(verbose, cache, self.prover_options.gpu)
+        let effective_gpu = self.prover_options.gpu && !self.prover_options.cpu_mops;
+        AsmExecClient::new(verbose, cache, effective_gpu)
     }
 }
 

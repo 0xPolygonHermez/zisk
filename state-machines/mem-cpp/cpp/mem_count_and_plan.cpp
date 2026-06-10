@@ -338,8 +338,6 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
             last_segments[instance.kind] = instance.inst_id;
         }
     }
-    // num_threads(4): wider teams contend with the rayon witness pool and
-    // grew the WAIT_PLAN_MEM_CPP envelope rather than shrinking it.
     const int64_t n_inst = static_cast<int64_t>(instances.size());
     #pragma omp parallel for schedule(dynamic) num_threads(4)
     for (int64_t i = 0; i < n_inst; ++i) {
@@ -381,10 +379,10 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
 }
 
 // Inject GPU-produced metas straight into `mcp->segments[]`. The GPU planner
-// owns the per-meta `count_per_chunk` / `offset_change_*` arrays and must
-// remain alive until this returns. The shallow vector copy here just gives the
-// segment generator the `vector<InstanceMeta>` shape it expects; the pointers
-// inside are untouched.
+// owns the per-meta `count_per_chunk` / `page_starts` / `page_single_value` /
+// `pages_dense` arrays and must remain alive until the segments are consumed.
+// The shallow vector copy here just gives the segment generator the
+// `vector<InstanceMeta>` shape it expects; the pointers inside are untouched.
 bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_ptr, uint32_t n) {
     if (!mcp || (!gpu_metas_ptr && n != 0)) return false;
     const InstanceMeta *gpu_metas = static_cast<const InstanceMeta *>(gpu_metas_ptr);
@@ -486,4 +484,3 @@ uint64_t get_mem_stats_ptr(MemCountAndPlan * mcp)
     return 0; // If MEM_STATS_ACTIVE is not defined, return 0
 #endif // MEM_STATS_ACTIVE
 }
-

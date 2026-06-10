@@ -14,11 +14,6 @@ pub use crate::gpu_bindings::{
 
 /// Serialize GPU-produced metas to `path` in the canonical `metas.bin`
 /// format (the one `load_instance_metas` / the standalone runner use).
-///
-/// `metas` must be a slice returned by [`GpuCountAndPlan::run`] that is
-/// still valid (the owning planner has not been `reset` or dropped). Intended
-/// for capturing a block to share/debug, not for the hot path. Returns
-/// `false` if `path` is not a valid C string or the FFI call fails.
 pub fn save_gpu_metas(metas: &[GpuInstanceMeta], path: &str) -> bool {
     let Ok(c_path) = std::ffi::CString::new(path) else {
         return false;
