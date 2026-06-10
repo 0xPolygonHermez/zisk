@@ -106,9 +106,14 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                 .dctx_get_instance_info(global_id)
                 .map_err(|source| ExecutorError::InstanceInfo { global_id, source })?;
 
-            let pushed =
-                builtins.try_push_collector(air_id, *instance, chunk_id, global_id, mem_sections)?
-                    || precompiles.try_push_collector(air_id, *instance, chunk_id, global_id)?;
+            let pushed = builtins.try_push_collector(
+                air_id,
+                *instance,
+                chunk_id,
+                global_id,
+                mem_sections,
+            )? || precompiles
+                .try_push_collector(air_id, *instance, chunk_id, global_id)?;
 
             if !pushed {
                 return Err(ExecutorError::StateMachineNotFound { airgroup_id, air_id });
