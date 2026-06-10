@@ -8344,18 +8344,15 @@ impl ZiskRom2Asm {
         *code += &ctx
             .full_line_comment("Trace ROM and RAM memory initialization operations".to_string());
 
-        // Merge data sections
-        let mut data_sections = rom.ro_data_64.clone();
-        data_sections.append(&mut rom.rw_data_64.clone());
-
         // Skip if there is no data to load
-        if data_sections.len() == 0 {
+        let sections_count = rom.ro_data_64.len() + rom.rw_data_64.len();
+        if sections_count == 0 {
             return;
         }
 
-        for i in 0..data_sections.len() {
-            let address = data_sections[i].addr;
-            let length = data_sections[i].data.len() as u64;
+        for (i, section) in rom.ro_data_64.iter().chain(rom.rw_data_64.iter()).enumerate() {
+            let address = section.addr;
+            let length = section.data.len() as u64;
             let write = true;
 
             let mops_mask: u64 = if length > 1 {
@@ -8385,8 +8382,8 @@ impl ZiskRom2Asm {
         // Increment mem_reads_size
         *code += &format!(
             "\tadd {REG_MEM_READS_SIZE}, {} {}\n",
-            data_sections.len(),
-            ctx.comment_str(&format!("mem_reads_size += {}", data_sections.len()))
+            sections_count,
+            ctx.comment_str(&format!("mem_reads_size += {}", sections_count))
         );
     }
 
