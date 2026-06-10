@@ -377,16 +377,38 @@ impl AsmServicesInner {
     fn stop_asm_services(&self) -> Result<()> {
         let running = self.service.running_services();
 
+        let mut errors = Vec::new();
         for service in running {
             tracing::info!("Shutting down stdio service {}.", service);
-            self.send_shutdown_and_wait(&service)?;
+            if let Err(e) = self.send_shutdown_and_wait(&service) {
+                errors.push(format!("{service}: {e:#}"));
+            }
         }
 
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "failed to shut down {} stdio service(s):\n{}",
+                errors.len(),
+                errors.join("\n")
+            ))
+        }
     }
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
+        // Graceful shutdown handshake.
+        let handshake = self.graceful_shutdown(service);
+
+        // Close pipes and reap the child process (best-effort, infallible).
+        self.service.close(service);
+
+        handshake
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn graceful_shutdown(&self, service: &AsmService) -> Result<()> {
         let sem_name = format!("/{}_{}_shutdown_done", self.sem_prefix, service.as_str());
 
         let mut sem = named_sem::NamedSemaphore::create(&sem_name, 0)
@@ -427,9 +449,6 @@ impl AsmServicesInner {
                 return Err(anyhow::anyhow!("Failed to unlink semaphore {}: {}", sem_name, errno));
             }
         }
-
-        // Close pipes and reap the child process.
-        self.service.close(service);
 
         Ok(())
     }

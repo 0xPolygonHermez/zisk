@@ -350,7 +350,9 @@ impl AsmResources {
 
 impl Drop for AsmResources {
     fn drop(&mut self) {
-        // Shut down ASM microservices
+        // Unbind this process's semaphores. Shutting down the ASM microservices
+        // and unlinking their /dev/shm segments is handled by the `asm_services`
+        // field's own `Drop` (see `Drop for AsmServicesInner`).
         self.shared.shmem_inputs.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
             if let Ok(g) = hints_stream.lock() {
