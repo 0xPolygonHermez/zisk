@@ -3,7 +3,7 @@
 //! Generates i86_64 assembly code that implements the Zisk ROM program
 use std::path::Path;
 
-use ziskos_hints::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR,
@@ -319,6 +319,9 @@ impl ZiskAsmContext {
     }
     pub fn call_wait_for_prec_avail(&self) -> bool {
         self.precompile_results()
+    }
+    pub fn float(&self) -> bool {
+        cfg!(feature = "float")
     }
 }
 
@@ -1216,7 +1219,9 @@ impl ZiskRom2Asm {
             }
 
             println!(
-                "ZiskRom2Asm::save_to_asm() {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst, precompile_results={:?}",                code.len(),
+                "ZiskRom2Asm::save_to_asm() {:?} {} bytes, {} instructions, {:02} bytes/inst, {} map lines, {} label lines, {} comment lines, {} code lines, {:02} code lines/inst, precompile_results={:?}, float={}",
+                ctx.mode,
+                code.len(),
                 rom.sorted_pc_list.len(),
                 code.len() as f64 / rom.sorted_pc_list.len() as f64,
                 map_label_lines_counter,
@@ -1224,7 +1229,8 @@ impl ZiskRom2Asm {
                 comment_lines_counter,
                 code_lines_counter,
                 code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
-                ctx.precompile_results
+                ctx.precompile_results,
+                ctx.float()
             );
         }
     }

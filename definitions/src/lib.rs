@@ -8,3 +8,6 @@ pub use profile::*;
 
 mod labels;
 pub use labels::*;
+
+pub mod hints;
+pub use hints::*;

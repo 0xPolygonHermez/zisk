@@ -94,9 +94,9 @@ impl AsmTransport {
     }
 
     /// See [`AsmResources::set_active_services`].
-    pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
+    pub fn set_active_services(&self, is_first_process: bool) -> ExecutorResult<()> {
         match self.installed_resources_ref()? {
-            Some(r) => r.set_active_services(is_first_partition),
+            Some(r) => r.set_active_services(is_first_process),
             None => Ok(()),
         }
     }

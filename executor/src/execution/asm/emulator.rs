@@ -76,8 +76,8 @@ impl EmulatorAsm {
     }
 
     /// Toggle which ASM services participate in the next execution.
-    pub fn set_active_services(&self, is_first_partition: bool) -> ExecutorResult<()> {
-        self.transport.set_active_services(is_first_partition)
+    pub fn set_active_services(&self, is_first_process: bool) -> ExecutorResult<()> {
+        self.transport.set_active_services(is_first_process)
     }
 
     /// Replace the hints stream source to swap in a fresh stream.
