@@ -90,7 +90,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     // occurrence would be consumed as an INIT (addr_change = 1). Any subsequent occurrence would
     // be sent as a plain LOAD (addr_change = 0), which cannot satisfy the bus INIT requirement —
     // making it impossible to forge or reuse addresses beyond those legitimately declared.
-    permutation_proves(id, expressions: [addr_change * (MEMORY_ROM_INIT_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * bytes, step, 8, ...value], sel: 1);
+    permutation_proves(id, expressions: [addr_change * (MEMORY_ROM_INIT_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * bytes, step, 8, ...value]);
 
     // In columns sent to the bus, we add base_address to avoid collisions between different memory
     // areas. Also for security send is_last_segment to avoid reuse end of last segment as start of
