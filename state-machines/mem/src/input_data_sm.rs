@@ -532,6 +532,9 @@ impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
     fn get_mem_name(&self) -> &str {
         "input"
     }
+    fn is_initializable(&self) -> bool {
+        false
+    }
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///

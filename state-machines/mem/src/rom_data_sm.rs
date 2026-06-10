@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
 use fields::PrimeField64;
-use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, MEMORY_INIT_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use std::{
@@ -30,7 +30,7 @@ pub struct RomDataSM<F: PrimeField64> {
     /// PIL2 standard library
     std: Arc<Std<F>>,
 
-    range_id: usize,
+    range_24bits_id: usize,
 }
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
@@ -40,11 +40,9 @@ const MAX_RANGE_CHECK_CACHE: usize = 2048;
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let range_id = std
-            .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
-            .expect("Failed to get range ID");
-
-        Arc::new(Self { std: std.clone(), range_id })
+        let range_24bits_id =
+            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
+        Arc::new(Self { range_24bits_id, std: std.clone() })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -55,7 +53,21 @@ impl<F: PrimeField64> RomDataSM<F> {
     pub fn get_to_addr() -> u32 {
         ROM_DATA_W_ADDR_END
     }
-    /// Fills the witness trace from a **sorted** input slice (legacy path).
+    #[cfg(feature = "debug_mem")]
+    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let num_rows = RomDataTrace::<R>::NUM_ROWS;
+
+        for i in 0..num_rows {
+            let addr = trace[i].get_addr() * 8;
+            let step = trace[i].get_step();
+            let values = [trace[i].get_value(0), trace[i].get_value(1)];
+            writeln!(writer, "{:#010X} {} {:?} @{}", addr, step, values, (step - 1) >> 20).unwrap();
+        }
+    }
+
+    /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// `mem_ops` must be sorted by `(addr, step)` before this method is called.
     /// Rows are written sequentially: each operation is assigned the next
@@ -109,127 +121,63 @@ impl<F: PrimeField64> RomDataSM<F> {
             num_rows
         );
 
-        // range of instance
-        self.std.range_check_one(self.range_id, previous_segment.addr - ROM_DATA_W_ADDR_INIT);
-
-        let mut max_range_distance_count = 0;
-
-        // Fill the remaining rows
-        let mut last_addr: u32 = previous_segment.addr;
-        let mut last_step: u64 = previous_segment.step;
-        let mut last_value: u64 = previous_segment.value;
-
-        if segment_id == 0 {
-            // In the pil, in first row of first segment, we use previous_segment less 1, to
-            // allow to use ROM_DATA_W_ADDR_INIT as address, and active address change flag
-            // to free the value, if not
-            last_addr = ROM_DATA_W_ADDR_INIT - 1;
-        }
+        // Force previous_segment_addr = 0 for first instance
+        let previous_segment_addr: u32 = if segment_id == 0 { 0 } else { previous_segment.addr };
+        let mut last_addr: u32 = previous_segment_addr;
         let mut i = 0;
 
         for mem_op in mem_ops.iter() {
-            let distance = mem_op.addr - last_addr;
-            if i >= num_rows {
-                break;
-            }
-            if distance > SEGMENT_ADDR_MAX_RANGE as u32 {
-                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_RANGE as u32;
-
-                #[cfg(feature = "debug_mem")]
-                println!(
-                    "INTERNAL_READS[{},{}] {} 0x{:X},{} LAST:0x{:X}",
-                    segment_id,
-                    i,
-                    internal_reads,
-                    mem_op.addr * 8,
-                    mem_op.step,
-                    last_addr * 8
-                );
-
-                // check if has enough rows to complete the internal reads + regular memory
-                let incomplete = (i + internal_reads as usize) >= num_rows;
-                if incomplete {
-                    internal_reads = (num_rows - i) as u32;
-                }
-
-                trace[i].set_addr_changes(true);
-                last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
-                max_range_distance_count += 1;
-                trace[i].set_addr(last_addr);
-                trace[i].set_all_value(&[0; 2]);
-                trace[i].set_sel(false);
-                // the step, value of internal reads isn't relevant
-                trace[i].set_step(0);
-                i += 1;
-
-                for _j in 1..internal_reads {
-                    trace[i] = trace[i - 1];
-                    last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
-                    max_range_distance_count += 1;
-                    trace[i].set_addr(last_addr);
-                    i += 1;
-                }
-                if incomplete {
-                    break;
-                }
-            }
             trace[i].set_addr(mem_op.addr);
             trace[i].set_step(mem_op.step);
-            trace[i].set_sel(true);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
             trace[i].set_all_value(&[low_val, high_val]);
 
-            let addr_changes = last_addr != mem_op.addr;
-            if addr_changes || (i == 0 && segment_id == 0) {
-                trace[i].set_addr_changes(true);
-                self.std.range_check_one(self.range_id, mem_op.addr - last_addr - 1);
-            } else {
-                trace[i].set_addr_changes(false);
-            }
+            let addr_change = last_addr != mem_op.addr;
+            trace[i].set_addr_change(addr_change || (i == 0 && segment_id == 0));
 
             last_addr = mem_op.addr;
-            last_step = mem_op.step;
-            last_value = mem_op.value;
             i += 1;
+            if i >= num_rows {
+                break;
+            }
         }
         let count = i;
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
-        // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
-        // = 1, wr = 0
+
         let last_row_idx = count - 1;
         if count < num_rows {
             trace[count] = trace[last_row_idx];
-            trace[count].set_addr_changes(false);
-            trace[count].set_sel(false);
+            trace[count].set_addr_change(false);
+            trace[count].set_step(MEMORY_INIT_STEP); // make sure the step is different from the last mem_op row
 
             for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
             }
-            // address doesn't change in padding rows, no range check is required
         }
 
-        self.std.range_check(
-            self.range_id,
-            SEGMENT_ADDR_MAX_RANGE,
-            max_range_distance_count as u32,
+        assert!(
+            is_last_segment || count == num_rows,
+            "All intermediate segments must fill all rows"
         );
-        self.std.range_check_one(self.range_id, ROM_DATA_W_ADDR_END - last_addr);
 
         let mut air_values = RomDataAirValues::<F>::new();
+        let padding_size = num_rows - count;
+        air_values.padding_size = F::from_u32(padding_size as u32);
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
         air_values.segment_last_addr = F::from_u32(last_addr);
-        air_values.segment_last_step = F::from_u64(last_step);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
         air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
-        air_values.segment_last_value[0] = F::from_u32(last_value as u32);
-        air_values.segment_last_value[1] = F::from_u32((last_value >> 32) as u32);
+        air_values.segment_last_value[0] = F::from_u32(trace[last_row_idx].get_value(0));
+        air_values.segment_last_value[1] = F::from_u32(trace[last_row_idx].get_value(1));
+
+        if is_last_segment {
+            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
+        }
 
         #[cfg(feature = "debug_mem")]
         {
@@ -540,6 +488,9 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
     }
     fn get_mem_name(&self) -> &str {
         "rom"
+    }
+    fn is_initializable(&self) -> bool {
+        true
     }
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///

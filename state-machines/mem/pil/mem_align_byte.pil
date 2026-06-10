@@ -87,7 +87,7 @@ airtemplate MemAlignByte(const int N = 2**10, const int read = 1, const int writ
         mem_write_values[0] === sel_high_4b * (direct_value - written_composed_value) + written_composed_value;
         mem_write_values[1] === sel_high_4b * (written_composed_value - direct_value) + direct_value;  
 
-        permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write); 
+        permutation_assumes(MEMORY_ID, [MEMORY_STORE_OP, mem_addr, step + 1, 8, ...mem_write_values ], sel: is_write, sel_is_binary: 1); 
     }
 
     if (read == 1 && write == 1) {

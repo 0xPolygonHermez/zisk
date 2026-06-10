@@ -204,7 +204,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     BinaryBasicTableOp::Min
                 };
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     match a_bytes[i].cmp(&b_bytes[i]) {
@@ -224,7 +224,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = 0;
                     }
 
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
                     let previous_cin = cin;
                     cin = cout;
 
@@ -270,7 +270,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     BinaryBasicTableOp::Max
                 };
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     match a_bytes[i].cmp(&b_bytes[i]) {
@@ -290,7 +290,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = 0;
                     }
 
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -332,25 +332,31 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsNP;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
-                    let _a = (a_bytes[i] ^ 0xFF) as i64;
-                    let _b = (b_bytes[i] as u64) as i64;
-                    let sub = if pfirst[i] == 1 { (_a + 1) - _b } else { _a - _b };
+                    // Decode the two carries packed into cin = 0bYX:
+                    //   clt  (X) = carry of the LT comparison between |a| and b
+                    //   cneg (Y) = carry of the negation (a ^ 0xFF) + cneg
+                    let clt = if pfirst[i] == 1 { 0 } else { cin & 0x01 };
+                    let cneg = if pfirst[i] == 1 { 1 } else { (cin & 0x02) >> 1 };
 
-                    // Calculate the output carry
-                    match sub.cmp(&0) {
-                        CmpOrdering::Less => {
-                            cout = 1;
-                        }
-                        CmpOrdering::Equal => {
-                            cout = cin;
-                        }
-                        CmpOrdering::Greater => {
-                            cout = 0;
-                        }
-                    }
-                    carry[i] = cout != 0;
+                    // |a| byte = (a ^ 0xFF) + cneg. Compare its low byte (abs_a)
+                    // against b, then carry the negation overflow (_a >> 8) in bit 1
+                    let _a = (a_bytes[i] ^ 0xFF) as u64 + cneg;
+                    let abs_a = _a & 0xFF;
+                    let _b = b_bytes[i] as u64;
+
+                    cout = if abs_a < _b {
+                        1
+                    } else if abs_a == _b {
+                        clt
+                    } else {
+                        0
+                    };
+
+                    // Encode the negation carry for the next byte
+                    cout += 2 * (_a >> 8);
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -384,7 +390,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::LtAbsPN;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     let _a = a_bytes[i] as i64;
                     let _b = (b_bytes[i] as u64 ^ 0xFF) as i64;
@@ -402,7 +408,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                             cout = 0;
                         }
                     }
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -440,7 +446,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     BinaryBasicTableOp::Lt
                 };
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     match a_bytes[i].cmp(&b_bytes[i]) {
@@ -462,7 +468,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     {
                         cout = if a_bytes[i] & SIGN_BYTE != 0 { 1 } else { 0 };
                     }
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -500,7 +506,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Gt;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     match a_bytes[i].cmp(&b_bytes[i]) {
@@ -519,7 +525,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     if (plast[i] == 1) && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE) {
                         cout = if b_bytes[i] & SIGN_BYTE != 0 { 1 } else { 0 };
                     }
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -553,7 +559,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Eq;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     if (a_bytes[i] == b_bytes[i]) && (cin == 0) {
@@ -564,7 +570,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     if plast[i] == 1 {
                         cout = 1 - cout;
                     }
-                    carry[i] = cout != 0;
+                    carry[i] = cout as u8;
 
                     let previous_cin = cin;
                     cin = cout;
@@ -602,14 +608,14 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Add;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
                     let result = cin + a_bytes[i] as u64 + b_bytes[i] as u64;
                     cout = result >> 8;
                     cin = if i == carry_byte { 0 } else { cout };
-                    carry[i] = cin != 0;
+                    carry[i] = cin as u8;
 
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
                     let flags = cin + 8 * plast[i] * c_is_signed;
@@ -648,13 +654,13 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 // Set the binary basic table opcode
                 binary_basic_table_op = BinaryBasicTableOp::Sub;
 
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
                     cout = if a_bytes[i] as u64 >= (b_bytes[i] as u64 + cin) { 0 } else { 1 };
                     cin = if i == carry_byte { 0 } else { cout };
-                    carry[i] = cin != 0;
+                    carry[i] = cin as u8;
 
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
                     let flags = cin + 8 * plast[i] * c_is_signed;
@@ -698,7 +704,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 };
 
                 // Compute all carries first
-                let mut carry = [false; 8];
+                let mut carry = [0u8; 8];
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
@@ -713,7 +719,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                         cout = c;
                     }
                     cin = cout;
-                    carry[i] = cin != 0;
+                    carry[i] = cin as u8;
 
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
                     let flags = cin;
@@ -749,7 +755,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 binary_basic_table_op = BinaryBasicTableOp::And;
 
                 // No carry
-                row.set_all_carry(&[false; 8]);
+                row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
@@ -781,7 +787,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 binary_basic_table_op = BinaryBasicTableOp::Or;
 
                 // No carry
-                row.set_all_carry(&[false; 8]);
+                row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
@@ -813,7 +819,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 binary_basic_table_op = BinaryBasicTableOp::Xor;
 
                 // No carry
-                row.set_all_carry(&[false; 8]);
+                row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
                     // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed

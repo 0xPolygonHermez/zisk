@@ -96,7 +96,7 @@
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
 //!   program execution as general purpose memory.
 
-use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
+use crate::{elf_extraction::DataSection, M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
@@ -131,10 +131,12 @@ pub const ROM_EXIT: u64 = 0x1004;
 pub const MAX_ZISK_OS_ROM_ADDR: u64 = 0x10000000 - 1;
 /// First program ROM instruction address, i.e. first RISC-V transpiled instruction
 pub const ROM_ADDR: u64 = 0x80000000;
+/// Size of the program ROM instruction area
+pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
-pub const ROM_ADDR_MAX: u64 = ROM_ADDR + 0x08000000 - 1; // 128M
+pub const ROM_ADDR_MAX: u64 = ROM_ADDR + ROM_SIZE - 1;
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + 0x08000000 - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
 /// First float library RAM address
 pub const FLOAT_LIB_RAM_ADDR: u64 = 0xc0000000 - 0x10000; // 0xbfff0000
 /// Float library stack pointer address
@@ -591,6 +593,33 @@ impl Mem {
         (value, Vec::new())
     }
 
+    /// Initializes the memory write section with the data from the provided data section, which is
+    /// expected to be located in the write section address range
+    pub fn init_write_section_data(&mut self, section: &DataSection) {
+        // Check that the section is not empty
+        if section.data.is_empty() {
+            return;
+        }
+
+        // Check that the section start address and size are valid
+        if (section.addr < self.write_section.start)
+            || ((section.addr + section.data.len() as u64) > self.write_section.end)
+        {
+            panic!(
+                "Mem::init_write_section_data() invalid section start={:x} end={:x} write section start={:x} end={:x}",
+                section.addr,
+                section.addr + section.data.len() as u64,
+                self.write_section.start,
+                self.write_section.end
+            );
+        }
+
+        // Write the data into the write section buffer
+        let write_position: usize = (section.addr - self.write_section.start) as usize;
+        self.write_section.buffer[write_position..write_position + section.data.len()]
+            .copy_from_slice(&section.data);
+    }
+
     /// Write a u64 value to the memory write section, based on the provided address and width
     #[inline(always)]
     pub fn write(&mut self, addr: u64, val: u64, width: u64) {
@@ -614,23 +643,7 @@ impl Mem {
         // val);
 
         // Search for the section that contains the address using binary search (dicothomic search)
-        let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
-            if addr < section.start {
-                std::cmp::Ordering::Greater
-            } else if addr > (section.end - width) {
-                std::cmp::Ordering::Less
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        }) {
-            &mut self.read_sections[section]
-        } else {
-            /*panic!(
-                "Mem::write_silent() section not found for addr={:x}={} with width: {}",
-                addr, addr, width
-            );*/
-            &mut self.write_section
-        };
+        let section = &mut self.write_section;
 
         // Check that the address and width fall into this section address range
         if (addr < section.start) || ((addr + width) > section.end) {
