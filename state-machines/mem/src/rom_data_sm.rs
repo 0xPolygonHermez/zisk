@@ -243,7 +243,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             &trace,
             &format!("tmp/rom_data_trace_{segment_id:04}_offsets.txt"),
         );
-        
+
         #[cfg(feature = "debug_mem")]
         Self::dump_trace_to_file(
             &trace,
