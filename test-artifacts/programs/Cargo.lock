@@ -2742,10 +2742,6 @@ name = "lib-c"
 version = "1.0.0-beta"
 
 [[package]]
-name = "lib-float"
-version = "1.0.0-beta"
-
-[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6632,7 +6628,6 @@ dependencies = [
  "elf",
  "fields",
  "lib-c",
- "lib-float",
  "paste",
  "precompiles-helpers",
  "rayon",

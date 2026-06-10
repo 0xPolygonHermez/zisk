@@ -16,9 +16,10 @@ pub(crate) struct AsmShmem<H: AsmShmemHeader> {
 }
 
 // SAFETY: the only non-auto field is `mapped_ptr`, a raw pointer into an mmap'd
-// shared-memory region. The mapping is stable for the handle's lifetime (`remap`
-// updates the pointer under `&mut self`), so sending/sharing the handle across
-// threads is sound.
+// shared-memory region. The mapping address is stable for the handle's lifetime
+// (set once in `open_and_map`, only torn down by `unmap`/`Drop`), so sending or
+// sharing the handle across threads is sound. This does not by itself provide
+// any data-race guarantees for the mapped bytes.
 unsafe impl<H: AsmShmemHeader> Send for AsmShmem<H> {}
 unsafe impl<H: AsmShmemHeader> Sync for AsmShmem<H> {}
 

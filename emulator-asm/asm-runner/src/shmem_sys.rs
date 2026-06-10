@@ -32,8 +32,7 @@ pub(crate) fn open(name: &str, flags: i32) -> io::Result<i32> {
 
     let fd = unsafe { shm_open(c_name.as_ptr(), flags, S_IRUSR | S_IWUSR) };
     if fd == -1 {
-        let errno = unsafe { *libc::__errno_location() };
-        let err = io::Error::from_raw_os_error(errno);
+        let err = io::Error::last_os_error();
         return Err(io::Error::new(err.kind(), format!("shm_open('{name}') failed: {err}")));
     }
     Ok(fd)
