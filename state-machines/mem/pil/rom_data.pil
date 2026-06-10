@@ -137,5 +137,5 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     (1 - is_last_segment) * padding_size === 0;
 
     assert(N <= 2**24);
-    range_check(expression: N - padding_size, min: 0, max: 2**24, sel: is_last_segment);
+    range_check(expression: padding_size, min: 0, max: 2**24, sel: is_last_segment);
 }

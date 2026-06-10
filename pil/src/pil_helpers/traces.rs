@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "6e0841128d21ff17f2f76c485ca1ef7bfefee8d28a9c1e857762de81f97cc853";
+pub const PILOUT_HASH: &str = "2182877084fb5320cc27c5de027c392f3ff904319bd9de988abab03a3fd9e0bd";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -116,14 +116,14 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {
-            rom_root: [0; 4],
-            inputs: [0; 64],
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
         }
     }
 }
@@ -131,11 +131,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F,
 });
-
+ 
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
@@ -489,12 +489,12 @@ trace_row!(Blake2brTraceRow<F> {
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 23], column: [F; 64], __L1__: F,
+ UID: [F; 31], column: [F; 72], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 23],
+ multiplicity:[F; 31],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
@@ -553,7 +553,7 @@ values!(InputDataAirValues<F> {
 });
 
 values!(RomDataAirValues<F> {
- previous_segment_value: [F; 2], previous_segment_addr: F, segment_last_value: [F; 2], segment_last_addr: F, segment_id: F, is_first_segment: F, is_last_segment: F, padding_size: F, im_direct: [FieldExtension<F>; 3],
+ previous_segment_value: [F; 2], previous_segment_addr: F, segment_last_value: [F; 2], segment_last_addr: F, segment_id: F, is_first_segment: F, is_last_segment: F, padding_size: F, im_direct: [FieldExtension<F>; 4],
 });
 
 values!(MemAlignByteAirValues<F> {

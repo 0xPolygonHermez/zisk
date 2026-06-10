@@ -170,7 +170,8 @@ impl<F: PrimeField64> RomDataSM<F> {
         );
 
         let mut air_values = RomDataAirValues::<F>::new();
-        air_values.padding_size = F::from_u32((num_rows - count) as u32);
+        let padding_size = num_rows - count;
+        air_values.padding_size = F::from_u32(padding_size as u32);
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
@@ -184,7 +185,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         air_values.segment_last_value[1] = F::from_u32(trace[last_row_idx].get_value(1));
 
         if is_last_segment {
-            self.std.range_check_one(self.range_24bits_id, count as u64);
+            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
         }
 
         #[cfg(feature = "debug_mem")]
