@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "80ab0d4c8f85928b1c5ed1c5ebaa379bee296603a6df4bca0641bd61293c75ac";
+pub const PILOUT_HASH: &str = "a8d604785bf11536d695d7a84bd2f1c88957274903fc18e3d40e94471fd815e7";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -384,7 +384,7 @@ trace_row!(BinaryFixedRow<F> {
 pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 22>;
 
 trace_row!(BinaryTraceRow<F> {
- b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[bit; 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
+ b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[ubit(2); 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
 });
 
 pub type BinaryTrace<R> = GenericTrace<R, 4194304, 0, 22>;
@@ -825,7 +825,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 22, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
-        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10, 1],
+        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 10, 1],
     }),
     (0, 23, PackedInfoConst {
         is_packed: true,
