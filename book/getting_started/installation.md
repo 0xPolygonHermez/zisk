@@ -231,8 +231,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 7. Generate pil-helpers:
     ```bash
-    cargo run --release --manifest-path "../pil2-proofman/Cargo.toml" -p proofman-cli -- \
-    pil-helpers \
+    cargo run --release --manifest-path "../pil2-proofman/Cargo.toml" -p proofman-cli -- pil-helpers \
         --pilout pil/zisk.pilout \
         --path pil/src \
         -o
