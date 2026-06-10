@@ -95,11 +95,12 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         secn_instance: &dyn Instance<F>,
         chunk_id: ChunkId,
         global_idx: usize,
+        mem_sections: &dyn zisk_core::MemDataSection,
     ) -> ExecutorResult<bool> {
         if self.try_push_rom(air_id, secn_instance, chunk_id, global_idx)? {
             return Ok(true);
         }
-        if self.try_push_mem(air_id, secn_instance, chunk_id, global_idx)? {
+        if self.try_push_mem(air_id, secn_instance, chunk_id, global_idx, mem_sections)? {
             return Ok(true);
         }
         if self.try_push_binary(air_id, secn_instance, chunk_id, global_idx)? {
@@ -139,6 +140,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         secn: &dyn Instance<F>,
         chunk: ChunkId,
         gid: usize,
+        mem_sections: &dyn zisk_core::MemDataSection,
     ) -> ExecutorResult<bool> {
         match air_id {
             id if id == MEM_AIR_IDS[0]
@@ -147,7 +149,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             {
                 let inst =
                     downcast::<F, MemModuleInstance<F>>(secn, air_id, gid, "MemModuleInstance")?;
-                self.mem.push((gid, inst.build_mem_collector(chunk)));
+                self.mem.push((gid, inst.build_mem_collector(chunk, mem_sections)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_AIR_IDS[0] => {
