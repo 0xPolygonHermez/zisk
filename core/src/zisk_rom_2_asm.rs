@@ -3078,7 +3078,16 @@ impl ZiskRom2Asm {
                             ctx.comment_str("address = constant")
                         );
                     } else {
-                        if instruction.store_offset != 0 {
+                        // If `a` is an immediate and wasn't materialized into a register, load it
+                        // now, adding the offset, before applying SP adjustments.
+                        if ctx.a.is_constant && !ctx.a.is_saved {
+                            *code += &format!(
+                                "\tmov {}, 0x{:x} {}\n",
+                                reg_address,
+                                ctx.a.constant_value + instruction.store_offset as u64,
+                                ctx.comment_str("a = imm + offset)")
+                            );
+                        } else if instruction.store_offset != 0 {
                             *code += &format!(
                                 "\tadd {}, 0x{:x} {}\n",
                                 reg_address,
