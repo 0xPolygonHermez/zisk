@@ -39,7 +39,7 @@ pub(crate) struct ZiskEmbeddedProve {
     /// # Supported Schemes
     /// - `file://path/to/file`   → File-based stream
     /// - `unix://path/to/socket` → Unix domain socket stream
-    #[arg(long, conflicts_with = "inputs")]
+    #[arg(long)]
     hints: Option<String>,
 
     /// Use the ASM emulator instead of the default Rust emulator
