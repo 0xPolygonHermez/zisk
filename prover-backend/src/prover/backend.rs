@@ -124,9 +124,9 @@ impl ProverBackend {
         }
     }
 
-    pub(crate) fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+    pub(crate) fn set_active_services(&self, is_first_process: bool) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
-            asm.set_active_services(is_first_partition)?;
+            asm.set_active_services(is_first_process)?;
         }
         Ok(())
     }

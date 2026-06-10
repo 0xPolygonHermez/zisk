@@ -12,20 +12,21 @@ while true; do
     echo " 1) Edit environment variables"
     echo " 2) Build ZisK from source"
     echo " 3) Build setup from source"
-    echo " 4) Package setup outcome"
-    echo " 5) Install ZisK from binaries"
-    echo " 6) Test sha_hasher"
-    echo " 7) Test Ethereum block"
-    echo " 8) Test EthProofs"
-    echo " 9) Test ELF diagnostic"
-    echo "10) Install setup from public packages"
-    echo "11) Install setup from local packages"
-    echo "12) Shell"
-    echo "13) Exit"
+    echo " 4) Build zec-reth ELF"
+    echo " 5) Package setup outcome"
+    echo " 6) Install ZisK from binaries"
+    echo " 7) Test sha_hasher"
+    echo " 8) Test Ethereum block"
+    echo " 9) Test EthProofs"
+    echo "10) Test ELF diagnostic"
+    echo "11) Install setup from public packages"
+    echo "12) Install setup from local packages"
+    echo "13) Shell"
+    echo "14) Exit"
     echo
 
     # Prompt for user selection
-    read -p "Select an option [1-13]: " option
+    read -p "Select an option [1-14]: " option
     echo
 
     case $option in
@@ -39,39 +40,42 @@ while true; do
             run_timed "./build_setup.sh"
             ;;
         4)
-            run_timed "./package_setup.sh"
+            run_timed "./build_zec_reth.sh"
             ;;
         5)
-            run_timed "./install_zisk_bin.sh"
+            run_timed "./package_setup.sh"
             ;;
         6)
-            run_timed "./test_sha_hasher.sh"
+            run_timed "./install_zisk_bin.sh"
             ;;
         7)
-            run_timed "./test_eth_block.sh"
+            run_timed "./test_sha_hasher.sh"
             ;;
         8)
-            run_timed "./test_ethproofs.sh"
+            run_timed "./test_eth_block.sh"
             ;;
         9)
-            run_timed "./test_diagnostic.sh"
+            run_timed "./test_ethproofs.sh"
             ;;
         10)
-            run_timed "./install_setup_public.sh"
+            run_timed "./test_diagnostic.sh"
             ;;
         11)
-            run_timed "./install_setup_local.sh"
+            run_timed "./install_setup_public.sh"
             ;;
         12)
+            run_timed "./install_setup_local.sh"
+            ;;
+        13)
             info "Open shell"
             bash -i
             ;;
-        13)
+        14)
             info "Exiting ZisK Release Kit. Goodbye!"
             exit
             ;;
         *)
-            info "Invalid selection. Please enter a number between 1 and 13."
+            info "Invalid selection. Please enter a number between 1 and 14."
             ;;
     esac
 

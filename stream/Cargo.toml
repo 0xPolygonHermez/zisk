@@ -1,0 +1,32 @@
+[package]
+name = "zisk-stream"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[lib]
+name = "zisk_stream"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Enabled by the `quic` feature.
+quinn = { version = "0.11", optional = true }
+rustls = { version = "0.23", features = ["ring"], optional = true }
+rcgen = { version = "0.14", optional = true }
+tokio = { workspace = true, optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[features]
+default = []
+# QUIC transport (pulls in quinn + tokio + rustls). Off by default so guest-side
+# consumers (ziskos) stay free of the async/networking stack.
+quic = ["dep:quinn", "dep:tokio", "dep:rustls", "dep:rcgen"]

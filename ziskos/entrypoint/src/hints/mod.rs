@@ -32,7 +32,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::oneshot;
-use zisk_common::io::{StreamWrite, UnixSocketStreamWriter};
+use zisk_stream::{StreamWrite, UnixSocketStreamWriter};
 
 #[cfg(zisk_hints_single_thread)]
 use std::sync::Mutex;
@@ -317,7 +317,7 @@ pub(crate) fn check_main_thread() -> bool {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use zisk_common::{CTRL_END, CTRL_START};
+    use zisk_definitions::{CTRL_END, CTRL_START};
 
     fn header_code(bytes: &[u8]) -> u32 {
         let header = u64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -384,7 +384,7 @@ mod tests {
     /// Walk the frame and return the body of the first HINT_INPUT hint, with the
     /// 8-byte inner length prefix and any padding stripped.
     fn find_input_payload(bytes: &[u8]) -> Option<Vec<u8>> {
-        use zisk_common::HINT_INPUT;
+        use zisk_definitions::HINT_INPUT;
         let mut pos = 0usize;
         while pos + 8 <= bytes.len() {
             let code = header_code(&bytes[pos..]);

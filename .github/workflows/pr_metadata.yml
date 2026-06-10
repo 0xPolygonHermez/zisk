@@ -1,0 +1,70 @@
+name: Check PR metadata
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - assigned
+      - unassigned
+      - milestoned
+      - demilestoned
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-pr-metadata:
+    name: Check PR metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify assignee is set
+        run: |
+          assignees=$(jq -r '(.pull_request.assignees // []) | map(.login) | join(", ")' "$GITHUB_EVENT_PATH")
+          echo "Assignees: ${assignees:-<none>}"
+
+          if [ -z "$assignees" ]; then
+            echo "::error::PR #${{ github.event.pull_request.number }} has no assignee set"
+            {
+              echo "### Assignees"
+              echo ""
+              echo "❌ No assignee set"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          {
+            echo "### Assignees"
+            echo ""
+            echo "✅ ${assignees}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify milestone is set
+        # Run even if a previous check failed so all missing fields are reported at once
+        if: always()
+        run: |
+          milestone=$(jq -r '.pull_request.milestone.title // empty' "$GITHUB_EVENT_PATH")
+          echo "Milestone: ${milestone:-<none>}"
+
+          if [ -z "$milestone" ]; then
+            echo "::error::PR #${{ github.event.pull_request.number }} has no milestone set"
+            {
+              echo "### Milestone"
+              echo ""
+              echo "❌ No milestone set"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          {
+            echo "### Milestone"
+            echo ""
+            echo "✅ ${milestone}"
+          } >> "$GITHUB_STEP_SUMMARY"
