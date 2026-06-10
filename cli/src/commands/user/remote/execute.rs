@@ -32,7 +32,7 @@ pub(crate) struct ZiskRemoteExecute {
     ///
     /// `file://path` or a plain path is read and sent inline. `quic://` is not
     /// supported from the CLI.
-    #[arg(long, conflicts_with = "inputs")]
+    #[arg(long)]
     hints: Option<String>,
 
     /// Execute timeout in seconds (0 = no timeout)
