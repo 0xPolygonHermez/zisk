@@ -433,11 +433,11 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // These are handled with the Memory Align component
 
     const expr mem_op = wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP;
-    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * bytes, step, bytes, ...value], sel: sel);
+    permutation_proves(MEMORY_ID, expressions: [mem_op, addr * bytes, step, bytes, ...value], sel: sel, sel_is_binary: 1);
 
     if (dual_mem) {
         // dual mem memory, send to bus always a READ operation, with same address, and value, only change de step.
-        permutation_proves(MEMORY_ID, expressions: [MEMORY_LOAD_OP, addr * bytes, step_dual, bytes, ...value], sel: sel_dual);
+        permutation_proves(MEMORY_ID, expressions: [MEMORY_LOAD_OP, addr * bytes, step_dual, bytes, ...value], sel: sel_dual, sel_is_binary: 1);
     }
 }
 
@@ -521,12 +521,12 @@ function main_step_to_special_mem_step(const expr step):expr {
     return RESERVED_MEM_STEPS + MAX_MEM_STEPS_PER_MAIN_STEP * step + MAX_MEM_STEPS_PER_MAIN_STEP - 1;
 }
 
-private function mem_assumes(int id, expr mem_op, expr addr, expr mem_step, expr bytes, expr value[], expr sel, int name = PIOP_NAME_DEFAULT) {
+private function mem_assumes(int id, expr mem_op, expr addr, expr mem_step, expr bytes, expr value[], expr sel, int name = PIOP_NAME_DEFAULT, int sel_is_binary = 0) {
     // adding 1 at step for first continuation
-    permutation_assumes(id, [mem_op, addr, mem_step, bytes, ...value], sel: sel, name: name);
+    permutation_assumes(id, [mem_op, addr, mem_step, bytes, ...value], sel: sel, sel_is_binary: sel_is_binary, name: name);
 }
 
-private function mem_proves(int id, expr mem_op, expr addr, expr mem_step, expr value[], expr sel, int name = PIOP_NAME_DEFAULT) {
+private function mem_proves(int id, expr mem_op, expr addr, expr mem_step, expr value[], expr sel, int name = PIOP_NAME_DEFAULT, int sel_is_binary = 0) {
     // adding 1 at step for first continuation
-    permutation_proves(id, [mem_op, addr, mem_step, 8, ...value], sel: sel, name: name);
+    permutation_proves(id, [mem_op, addr, mem_step, 8, ...value], sel: sel, sel_is_binary: sel_is_binary, name: name);
 }

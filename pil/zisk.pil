@@ -59,8 +59,8 @@ enable_dma_unaligned * (1 - enable_dma_unaligned);
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
-function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1) {
-    lookup_assumes(DUAL_RANGE_BYTE_ID, expressions: [byte_a, byte_b], sel: sel);
+function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1, int sel_is_binary = 0) {
+    lookup_assumes(DUAL_RANGE_BYTE_ID, expressions: [byte_a, byte_b], sel: sel, sel_is_binary: sel_is_binary);
 }
 
 airgroup Zisk {

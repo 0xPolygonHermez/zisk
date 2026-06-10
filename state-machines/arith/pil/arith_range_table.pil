@@ -74,6 +74,7 @@ airtemplate ArithRangeTable(const int N = 2**22) {
     lookup_proves(ARITH_RANGE_TABLE_ID, [RANGE_ID, RANGE_VALUES], multiplicity);
 }
 
-function arith_range_table_assumes(const expr range_type, const expr value, const expr sel = 1) {
-    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:sel);
+function arith_range_table_assumes(const expr range_type, const expr value, const expr sel = 1, const int sel_is_binary = 0) {
+    lookup_assumes(ARITH_RANGE_TABLE_ID, [range_type, value], sel:, sel_is_binary:);
 }
+

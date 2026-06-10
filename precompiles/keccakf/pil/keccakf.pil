@@ -168,7 +168,7 @@ airtemplate Keccakf(const int N = 2**17) {
             lookup_cols[j + 1] = 0;
         }
 
-        lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active);
+        lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active, sel_is_binary: 1);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
