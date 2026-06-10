@@ -1020,7 +1020,7 @@ impl Riscv2ZiskContext<'_> {
             let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let jump_pc = (i.rom_address as i64
-                + ((i.imm as i64)/* already shifted << 12 at decoding time */)
+                + (i.imm as i64) // already shifted << 12 at decoding time
                 + next_instructions[0].imm as i64) as u64
                 & JALR_MASK;
 
@@ -2614,12 +2614,12 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // :0034 -> read input[128M]
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
-    zib.src_a("imm", INPUT_ADDR + 1 * 128 * 1024 * 1024, false);
+    zib.src_a("imm", INPUT_ADDR + 128 * 1024 * 1024, false);
     zib.src_b("ind", 0, false);
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[128M]"));
+    zib.verbose("Read input[128M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2630,7 +2630,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[256M]"));
+    zib.verbose("Read input[256M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2641,7 +2641,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[384M]"));
+    zib.verbose("Read input[384M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2652,7 +2652,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[512M]"));
+    zib.verbose("Read input[512M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2663,7 +2663,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[640M]"));
+    zib.verbose("Read input[640M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2674,7 +2674,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[768M]"));
+    zib.verbose("Read input[768M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
@@ -2685,7 +2685,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.ind_width(8);
     zib.op("copyb").unwrap();
     zib.j(4, 4);
-    zib.verbose(&format!("Read input[896M]"));
+    zib.verbose("Read input[896M]");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 

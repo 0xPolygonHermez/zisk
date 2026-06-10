@@ -1,5 +1,3 @@
-#![cfg(gpu)]
-
 use std::os::raw::c_void;
 use std::sync::Arc;
 
@@ -35,7 +33,6 @@ pub fn save_gpu_metas(metas: &[GpuInstanceMeta], path: &str) -> bool {
 ///   3. `add_chunk(...)`   — feed memops, one chunk at a time
 ///   4. `run()`            — drains streams, returns borrowed metas
 ///   5. `reset()`          — reused across blocks; never recreated
-///                           (recreation is ~240 ms of CUDA churn)
 ///   6. drop               — destroys the GPU class
 pub struct GpuCountAndPlan {
     inner: *mut gpu_bindings::CountAndPlanHandle,
@@ -59,7 +56,17 @@ impl GpuCountAndPlan {
 
     /// Pass `d_buf = null, bytes = 0` to let the GPU class allocate internally.
     /// n_worker = 1 and worker_id = 0 to get all the instances metas otherwise distributed per worker_id using round-robin.
-    pub fn setup(&self, d_buf: *mut c_void, bytes: usize, n_workers: u32, worker_id: u32) -> bool {
+    ///
+    /// # Safety
+    /// `d_buf` must be null (internal allocation) or a valid device buffer of at
+    /// least `bytes` bytes that outlives this planner's use of it.
+    pub unsafe fn setup(
+        &self,
+        d_buf: *mut c_void,
+        bytes: usize,
+        n_workers: u32,
+        worker_id: u32,
+    ) -> bool {
         unsafe {
             gpu_bindings::count_and_plan_setup(self.inner, d_buf, bytes, n_workers, worker_id)
         }

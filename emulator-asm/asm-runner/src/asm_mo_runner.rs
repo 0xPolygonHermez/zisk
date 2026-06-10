@@ -17,6 +17,7 @@ use crate::{
 #[cfg(gpu)]
 use mem_planner_cpp::GpuCountAndPlan;
 use mem_planner_cpp::MemPlanner;
+#[cfg(gpu)]
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 
 use anyhow::{Context, Result};
@@ -63,7 +64,9 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
     };
 
     let gpu_count_and_plan = GpuCountAndPlan::new();
-    if !gpu_count_and_plan.setup(d_buf, bytes, 1, 0) {
+    // SAFETY: `d_buf` is either null (self-allocated) or a device buffer of
+    // `bytes` bytes borrowed from the prover, which outlives this planner.
+    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0) } {
         tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
         return None;
     }

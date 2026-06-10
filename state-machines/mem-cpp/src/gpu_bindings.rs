@@ -1,5 +1,3 @@
-#![cfg(gpu)]
-
 use std::os::raw::c_void;
 
 #[repr(C, align(8))]
