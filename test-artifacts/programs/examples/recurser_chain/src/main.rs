@@ -14,6 +14,6 @@ ziskos::entrypoint!(main);
 fn main() {
     let old: u32 = ziskos::io::read();
     let new: u32 = ziskos::io::read();
-    ziskos::io::commit(&old);
-    ziskos::io::commit(&new);
+    ziskos::io::commit_slice(&old.to_le_bytes());
+    ziskos::io::commit_slice(&new.to_le_bytes());
 }
