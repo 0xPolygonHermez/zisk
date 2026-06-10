@@ -21,14 +21,8 @@
     "lastLevelVerification": 1,
     "powBits": 20
   },
-  "Poseidon2": {
-    "blowupFactor": 2
-  },
   "Rom": {
     "powBits": 20
-  },
-  "DmaPrePost": {
-    "hasCompressor": true
   },
   "Blake2br": {
     "hasCompressor": true

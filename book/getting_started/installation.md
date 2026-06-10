@@ -230,7 +230,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
     Additionally, to generate the snark wrapper:
 
     ```bash
-    node  ../pil2-proofman-js/src/main_setup_snark.js -b build -t ../pil2-proofman/pil2-components/lib/std/pil -f -w ../powersOfTau28_hez_final_27.ptau -p ./state-machines/publics.json -n plonk
+    node  ../pil2-proofman-js/src/main_setup_snark.js -b build -t ../pil2-proofman/pil2-components/lib/std/pil -f -w powersOfTau28_hez_final_24.ptau -p ./state-machines/publics.json -n plonk
     ```
 
     It is stored under the `build/provingKeySnark` directory.
