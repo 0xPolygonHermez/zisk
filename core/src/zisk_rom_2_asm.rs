@@ -1060,67 +1060,54 @@ impl ZiskRom2Asm {
         /**********************/
         /* READ_ONLY ROM DATA */
         /**********************/
-        /*
+
         *code += "\n";
-        *code += ".global write_ro_data\n";
-        *code += "write_ro_data:\n";
+        *code += ".global write_ro_init_data\n";
+        *code += "write_ro_init_data:\n";
 
         Self::push_external_registers(&mut ctx, code);
 
-        // Create a new read section for every RO data entry of the rom
-        //let mut total_ro_data_len: usize = 0;
-        for i in 0..rom.ro_data.len() {
-            let mut address = rom.ro_data[i].from;
-            let ro_data_len = rom.ro_data[i].data.len();
-            //total_ro_data_len += ro_data_len;
-            // println!(
-            //     "ZiskRom2Asm::save_to_asm() ro_data[{}] len={} total_len={} address={:x}",
-            //     i, ro_data_len, total_ro_data_len, address
-            // );
-            let mut written_bytes = 0;
-            while written_bytes + 8 <= ro_data_len {
-                let value = u64::from_le_bytes(
-                    rom.ro_data[i].data[written_bytes..written_bytes + 8].try_into().unwrap(),
+        // Initialize ROM data from rom.ro_data
+        for i in 0..rom.ro_data_64.len() {
+            for (j, value) in rom.ro_data_64[i].data.iter().enumerate() {
+                *code += &format!(
+                    "\tmov {}, 0x{:x}\n",
+                    REG_ADDRESS,
+                    rom.ro_data_64[i].addr + (j as u64) * 8
                 );
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
                 *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
                 *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
-                address += 8;
-                written_bytes += 8;
-            }
-            while written_bytes + 4 <= ro_data_len {
-                let value = u32::from_le_bytes(
-                    rom.ro_data[i].data[written_bytes..written_bytes + 4].try_into().unwrap(),
-                );
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov dword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_W);
-                address += 4;
-                written_bytes += 4;
-            }
-            while written_bytes + 2 <= ro_data_len {
-                let value = u16::from_le_bytes(
-                    rom.ro_data[i].data[written_bytes..written_bytes + 2].try_into().unwrap(),
-                );
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov word {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_H);
-                address += 2;
-                written_bytes += 2;
-            }
-            while written_bytes < ro_data_len {
-                let value = rom.ro_data[i].data[written_bytes];
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_ADDRESS, address);
-                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
-                *code += &format!("\tmov byte {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE_B);
-                address += 1;
-                written_bytes += 1;
             }
         }
 
         Self::pop_external_registers(&mut ctx, code);
         *code += "\tret\n\n";
-        */
+
+        /***********************/
+        /* READ-WRITE ROM DATA */
+        /***********************/
+
+        *code += "\n";
+        *code += ".global write_rw_init_data\n";
+        *code += "write_rw_init_data:\n";
+
+        Self::push_external_registers(&mut ctx, code);
+
+        // Initialize ROM data from rom.rw_data_64
+        for i in 0..rom.rw_data_64.len() {
+            for (j, value) in rom.rw_data_64[i].data.iter().enumerate() {
+                *code += &format!(
+                    "\tmov {}, 0x{:x}\n",
+                    REG_ADDRESS,
+                    rom.rw_data_64[i].addr + (j as u64) * 8
+                );
+                *code += &format!("\tmov {}, 0x{:x}\n", REG_VALUE, value);
+                *code += &format!("\tmov qword {}[{}], {}\n", ctx.ptr, REG_ADDRESS, REG_VALUE);
+            }
+        }
+
+        Self::pop_external_registers(&mut ctx, code);
+        *code += "\tret\n\n";
 
         /*****************/
         /* BRANCH TABLES */
@@ -1321,6 +1308,11 @@ impl ZiskRom2Asm {
         // *s += &format!("\tlea rsi, pc_{}_log\n", ctx.pc);
         // *s += &format!("\tmov rdx, pc_{}_log_len\n", ctx.pc);
         // *s += "\tsyscall\n\n";
+
+        // Trace the ROM and RAM memory initialization operations
+        if ctx.mem_op() && ctx.pc == ROM_ENTRY {
+            Self::mem_op_rom_init_data(ctx, code, rom);
+        }
 
         // Update the rom histogram
         if ctx.rom_histogram() {
@@ -8365,6 +8357,53 @@ impl ZiskRom2Asm {
         // Increment chunk.steps.mem_reads_size
         *code +=
             &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size += 1"));
+    }
+
+    fn mem_op_rom_init_data(ctx: &mut ZiskAsmContext, code: &mut String, rom: &ZiskRom) {
+        *code += &ctx
+            .full_line_comment("Trace ROM and RAM memory initialization operations".to_string());
+
+        // Skip if there is no data to load
+        let sections_count = rom.ro_data_64.len() + rom.rw_data_64.len();
+        if sections_count == 0 {
+            return;
+        }
+
+        for (i, section) in rom.ro_data_64.iter().chain(rom.rw_data_64.iter()).enumerate() {
+            let address = section.addr;
+            let length = section.data.len() as u64;
+            let write = true;
+
+            let mops_mask: u64 = if length > 1 {
+                // compress operation in one single block
+                (if write { F_MOPS_BLOCK_WRITE } else { F_MOPS_BLOCK_READ })
+                    | (length << F_MOPS_BLOCK_LENGTH_SHIFT)
+            } else if write {
+                F_MOPS_WRITE_8
+            } else {
+                F_MOPS_READ_8
+            };
+
+            // Load mask the mask
+            *code += &format!(
+                "\tmov {REG_VALUE}, 0x{:x} {}\n",
+                mops_mask + address,
+                ctx.comment_str("value = mem op mask + address")
+            );
+
+            // Copy read data into mem_reads_address and increment it
+            *code += &format!(
+                "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8 + {i}*8], {REG_VALUE} {}\n",
+                ctx.comment_str("mem_reads[@+size*8] = mem op")
+            );
+        }
+
+        // Increment mem_reads_size
+        *code += &format!(
+            "\tadd {REG_MEM_READS_SIZE}, {} {}\n",
+            sections_count,
+            ctx.comment_str(&format!("mem_reads_size += {}", sections_count))
+        );
     }
 
     fn internal_mem_op_precompiled_read(

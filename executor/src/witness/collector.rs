@@ -247,6 +247,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let global_ids_map: HashMap<usize, usize> =
             global_ids.iter().enumerate().map(|(idx, &id)| (id, idx)).collect();
 
+        let zisk_rom = state.get_rom()?;
+
         // Build one data bus per chunk in parallel. Empty chunks
         // (no instances need them) get `None` directly without
         // running the per-chunk bundle scan.
@@ -262,6 +264,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                         &secn_instances,
                         ChunkId(chunk_id),
                         global_idxs,
+                        zisk_rom.as_ref(),
                     )
                     .map(Some)
                 }

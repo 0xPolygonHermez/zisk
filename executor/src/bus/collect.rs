@@ -92,9 +92,11 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         instances: &HashMap<usize, &dyn Instance<F>>,
         chunk_id: ChunkId,
         global_idxs: &[usize],
+        zisk_rom: &zisk_core::ZiskRom,
     ) -> ExecutorResult<Self> {
         let mut builtins = BuiltinCollectors::<F>::new();
         let mut precompiles = PrecompileCollectors::<F>::new();
+        let mem_sections = zisk_rom as &dyn zisk_core::MemDataSection;
 
         for global_idx in global_idxs {
             let global_id = *global_idx;
@@ -104,8 +106,14 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                 .dctx_get_instance_info(global_id)
                 .map_err(|source| ExecutorError::InstanceInfo { global_id, source })?;
 
-            let pushed = builtins.try_push_collector(air_id, *instance, chunk_id, global_id)?
-                || precompiles.try_push_collector(air_id, *instance, chunk_id, global_id)?;
+            let pushed = builtins.try_push_collector(
+                air_id,
+                *instance,
+                chunk_id,
+                global_id,
+                mem_sections,
+            )? || precompiles
+                .try_push_collector(air_id, *instance, chunk_id, global_id)?;
 
             if !pushed {
                 return Err(ExecutorError::StateMachineNotFound { airgroup_id, air_id });

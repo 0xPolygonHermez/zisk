@@ -1,5 +1,5 @@
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::{MemHelpers, MemModuleCheckPoint, MEM_BYTES, MEM_BYTES_BITS};
+use mem_common::{MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -467,6 +467,21 @@ impl MemModuleCollector {
         }
     }
 
+    fn aligned_init_data_to_input(&mut self, addr: u32, value: u64) {
+        // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
+        // write or read.
+
+        let addr_w = MemHelpers::get_addr_w(addr);
+        if self.discard_align_addr(addr_w) {
+            return;
+        }
+
+        let action = self.action_addr(addr_w, true);
+        if action != InputAction::Discard {
+            self.process_addr_action(addr_w, MEMORY_INIT_STEP, value, true, action);
+        }
+    }
+
     pub fn skip_addr(&self, addr: u32) -> bool {
         if addr > self.filter_max_addr || addr < self.filter_min_addr {
             return true;
@@ -491,6 +506,34 @@ impl MemModuleCollector {
             self.bus_data_to_input(addr, data);
         }
         true
+    }
+    pub fn init_with_mem_sections(&mut self, mem_sections: &dyn zisk_core::MemDataSection) {
+        let sections = mem_sections.ro_sections().iter().chain(mem_sections.rw_sections().iter());
+        for section in sections {
+            if section.data.is_empty() {
+                continue;
+            }
+            let addr_from = section.addr as u32;
+            let addr_to = addr_from + section.data.len() as u32 * 8 - 8;
+            if addr_to < self.filter_min_addr || addr_from > self.filter_max_addr {
+                continue;
+            }
+            let from_index = if self.filter_min_addr > addr_from {
+                ((self.filter_min_addr - addr_from) / 8) as usize
+            } else {
+                0
+            };
+            let to_index = if self.filter_max_addr < addr_to {
+                ((self.filter_max_addr - addr_from) / 8 + 1) as usize
+            } else {
+                section.data.len()
+            };
+            let addr_from = addr_from + 8 * from_index as u32;
+            for (index, value) in section.data[from_index..to_index].iter().enumerate() {
+                let addr = addr_from + (index as u32) * 8;
+                self.aligned_init_data_to_input(addr, *value);
+            }
+        }
     }
 }
 

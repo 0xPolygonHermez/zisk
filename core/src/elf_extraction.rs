@@ -127,7 +127,7 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
     Ok(out)
 }
 
-/// Helper function to merge adjacent read-only sections
+/// Helper function to merge adjacent data sections
 ///
 ///   Example: If you have:
 ///  - Section A: addr=0x1000, data=[1,2,3,4] (ends at 0x1004)
@@ -135,7 +135,7 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 ///
 ///  They merge into:
 ///  - Single section: addr=0x1000, data=[1,2,3,4,5,6,7,8]
-pub fn merge_adjacent_ro_sections(sections: &[DataSection]) -> Vec<DataSection> {
+pub fn merge_adjacent_data_sections(sections: &[DataSection]) -> Vec<DataSection> {
     if sections.is_empty() {
         return Vec::new();
     }
@@ -203,14 +203,14 @@ mod tests {
     #[test]
     fn test_merge_adjacent_empty() {
         let sections = vec![];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 0);
     }
 
     #[test]
     fn test_merge_adjacent_single_section() {
         let sections = vec![DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] }];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4]);
@@ -222,7 +222,7 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
             DataSection { addr: 0x1004, data: vec![5, 6, 7, 8] },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -234,7 +234,7 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
             DataSection { addr: 0x2000, data: vec![5, 6, 7, 8] },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4]);
@@ -249,7 +249,7 @@ mod tests {
             DataSection { addr: 0x1002, data: vec![3, 4] },
             DataSection { addr: 0x1004, data: vec![5, 6] },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6]);
@@ -262,7 +262,7 @@ mod tests {
             DataSection { addr: 0x1004, data: vec![5, 6, 7, 8] },
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
@@ -277,7 +277,7 @@ mod tests {
             DataSection { addr: 0x2002, data: vec![7, 8] },
             DataSection { addr: 0x3000, data: vec![9, 10] },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 3);
         // First merged group
         assert_eq!(result[0].addr, 0x1000);
@@ -300,7 +300,7 @@ mod tests {
                 data: vec![5, 6, 7, 8],
             },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4]);
@@ -320,7 +320,7 @@ mod tests {
                 data: vec![5, 6, 7, 8],
             },
         ];
-        let result = merge_adjacent_ro_sections(&sections);
+        let result = merge_adjacent_data_sections(&sections);
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data, vec![1, 2, 3, 4]);

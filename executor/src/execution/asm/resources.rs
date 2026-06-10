@@ -350,27 +350,14 @@ impl AsmResources {
 
 impl Drop for AsmResources {
     fn drop(&mut self) {
-        // Shut down ASM microservices
+        // Unbind this process's semaphores. Shutting down the ASM microservices
+        // and unlinking their /dev/shm segments is handled by the `asm_services`
+        // field's own `Drop` (see `Drop for AsmServicesInner`).
         self.shared.shmem_inputs.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
             if let Ok(g) = hints_stream.lock() {
                 g.get_processor().hints_sink().unbind_semaphores();
             }
         }
-
-        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.local_rank);
-        if let Err(e) = self.asm_services.stop_asm_services() {
-            tracing::error!(
-                ">>> [{}] Failed to stop ASM microservices: {}",
-                self.shared.config.local_rank,
-                e
-            );
-        }
-        // The ASM service children don't unlink shmem on exit (the
-        // `delete_*_shm` flags aren't set for them), so the parent must
-        // unlink the `/dev/shm/{shm_prefix}*` and `sem.{sem_prefix}*`
-        // entries here. Otherwise GBs of `_input`, `_ram`, `_rom` files
-        // leak until the next worker startup runs `cleanup_stale_shmem`.
-        self.asm_services.cleanup_my_shmem();
     }
 }
