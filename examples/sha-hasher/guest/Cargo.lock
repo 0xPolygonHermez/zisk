@@ -974,7 +974,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#e2f4d6fee20042557788ed69699631583c7b5831"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#dcf50cd3a2b7310e7e589db051b0869a20f5895b"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -1630,7 +1630,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#e2f4d6fee20042557788ed69699631583c7b5831"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#dcf50cd3a2b7310e7e589db051b0869a20f5895b"
 dependencies = [
  "fields",
  "num-traits",

@@ -98,7 +98,7 @@ CACHE_ENTRY=""
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH="Poseidon2"
+HASH="Poseidon1"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 
@@ -308,6 +308,11 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   if [ "$MODE" = "build" ]; then
     echo "==> proofman-setup setup --recursive"
     setup_recursive_flag=(--recursive)
+    # The recursive setup compiles the recursion-circuit PILs with pil2com, so
+    # it needs node_modules/PIL2C_EXEC even when --skip-compile-pil short-circuits
+    # run_compile_pil (which is the only other caller of ensure_node_deps). The
+    # NODE_DEPS_READY guard makes this a no-op if compile-pil already ran it.
+    ensure_node_deps
   else
     echo "==> proofman-setup setup (no aggregation)"
     setup_recursive_flag=()
