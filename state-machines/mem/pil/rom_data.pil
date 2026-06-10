@@ -123,7 +123,7 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     // PADDING
     // 
     // The padding, number of assumes, is limited only to the last segment (is_last_segment = 1) and 
-    // must be a positive number less than 2**24, and therefore less than N.
+    // must be a positive number less than 2**24.
     //
     // Security limitations:
     // • The memory operation is fixed (MEMORY_LOAD_OP): does not allow to start a new cycle
@@ -137,5 +137,5 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
     (1 - is_last_segment) * padding_size === 0;
 
     assert(N <= 2**24);
-    range_check(expression: padding_size, min: 0, max: 2**24, sel: is_last_segment);
+    range_check(expression: padding_size, min: 0, max: 2**24 - 1, sel: is_last_segment);
 }

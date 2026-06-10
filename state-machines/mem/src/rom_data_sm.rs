@@ -131,8 +131,9 @@ impl<F: PrimeField64> RomDataSM<F> {
             num_rows
         );
 
-        // Fill the remaining rows
-        let mut last_addr: u32 = previous_segment.addr;
+        // Force previous_segment_addr = 0 for first instance
+        let previous_segment_addr: u32 = if segment_id == 0 { 0 } else { previous_segment.addr };
+        let mut last_addr: u32 = previous_segment_addr;
         let mut i = 0;
 
         for mem_op in mem_ops.iter() {
@@ -175,7 +176,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
         air_values.segment_last_addr = F::from_u32(last_addr);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);

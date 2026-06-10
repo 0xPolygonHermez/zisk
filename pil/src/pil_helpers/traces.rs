@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "2182877084fb5320cc27c5de027c392f3ff904319bd9de988abab03a3fd9e0bd";
+pub const PILOUT_HASH: &str = "80ab0d4c8f85928b1c5ed1c5ebaa379bee296603a6df4bca0641bd61293c75ac";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -489,12 +489,12 @@ trace_row!(Blake2brTraceRow<F> {
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 31], column: [F; 72], __L1__: F,
+ UID: [F; 23], column: [F; 64], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 31],
+ multiplicity:[F; 23],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
