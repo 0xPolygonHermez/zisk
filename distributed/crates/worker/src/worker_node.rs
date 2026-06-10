@@ -1183,18 +1183,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         Self::handle_setup_recurser_aggregator(setup)
                     }));
-                    let (success, error_message, vk) = match outcome {
-                        Ok(Ok(vk)) => (true, String::new(), vk),
+                    let (success, error_message, vk, hash_mode) = match outcome {
+                        Ok(Ok((vk, hash_mode))) => (true, String::new(), vk, hash_mode),
                         Ok(Err(e)) => {
                             error!(
                                 "[Recurser] job_id {} Failed aggregator setup for recurser_id {}: {}",
                                 job_id_str, recurser_id, e
                             );
-                            (false, e.to_string(), Vec::new())
+                            (false, e.to_string(), Vec::new(), String::new())
                         }
                         Err(_) => {
                             error!("[Recurser] job_id {job_id_str} aggregator setup panicked");
-                            (false, "aggregator setup panicked".to_string(), Vec::new())
+                            (
+                                false,
+                                "aggregator setup panicked".to_string(),
+                                Vec::new(),
+                                String::new(),
+                            )
                         }
                     };
                     let ack = WorkerMessage {
@@ -1206,6 +1211,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                                 success,
                                 error_message,
                                 vk,
+                                hash_mode,
                             },
                         )),
                     };
@@ -1310,7 +1316,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// Runs the recurser-aggregator setup in a scoped 64 MB-stack rayon pool
     /// (proofman setup overflows the default ~2 MB worker stack). Idempotent:
     /// returns the existing verkey if setup has already run for this `recurser_id`.
-    fn handle_setup_recurser_aggregator(setup: SetupRecurserAggregator) -> Result<Vec<u8>> {
+    fn handle_setup_recurser_aggregator(
+        setup: SetupRecurserAggregator,
+    ) -> Result<(Vec<u8>, String)> {
         use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
 
         info!(
@@ -1394,11 +1402,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             anyhow!("failed to read recurser verkey at {}: {}", verkey_path.display(), e)
         })?;
 
+        // The hash family is a property of the proving key the recurser was set
+        // up against; read it from the same globalInfo.json the setup used so it
+        // travels with the verkey for verify-time matching. Reading from disk
+        // (not the setup return) also covers the cache-hit branch above.
+        let setup_dir = ZiskPaths::global()
+            .home
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
+        let hash_mode = recurser::setup::read_proving_key_hash(setup_dir)
+            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
+
         info!(
             "[Recurser] job_id {} Completed aggregator setup for recurser_id {}",
             setup.job_id, setup.recurser_id
         );
-        Ok(vk)
+        Ok((vk, hash_mode))
     }
 
     /// Handles a `RunRecurserAggregator` message from the coordinator.
@@ -1479,8 +1498,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             zisk_vk.push(u64::from_le_bytes(chunk));
         }
 
-        let proof =
-            Proof::new_from_vadcop_proof(&vfp.proof_with_publics(), vfp.compressed, zisk_vk)?;
+        // The proof's hash family travels on the VadcopFinalProof (stamped by
+        // proofman from the aggregator's proving key); carry it onto the Proof.
+        let proof = Proof::new_from_vadcop_proof(
+            &vfp.proof_with_publics(),
+            vfp.compressed,
+            zisk_vk,
+            vfp.hash.clone(),
+        )?;
         let bytes = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
             .map_err(|e| anyhow!("failed to serialize aggregator proof: {e}"))?;
 

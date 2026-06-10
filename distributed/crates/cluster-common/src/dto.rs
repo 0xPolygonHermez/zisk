@@ -131,6 +131,7 @@ pub struct SetupRecurserAggregatorAckDto {
     pub success: bool,
     pub error_message: Option<String>,
     pub vk: Vec<u8>,
+    pub hash_mode: String,
 }
 
 #[derive(Debug, Clone)]

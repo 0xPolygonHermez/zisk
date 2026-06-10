@@ -44,7 +44,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     }
     let global_info: Value = serde_json::from_str(&fs::read_to_string(&global_info_path)?)?;
     let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout").to_string();
-    let hash = global_info.get("hash").and_then(|v| v.as_str()).unwrap_or("Poseidon1").to_string();
+    let hash = hash_from_global_info(&global_info);
 
     let vadcop_final_dir =
         PathBuf::from(setup_dir).join("provingKey").join(&name).join("vadcop_final");
@@ -165,6 +165,19 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
 
     tracing::info!("Recurser-aggregator setup complete");
     Ok(())
+}
+
+fn hash_from_global_info(global_info: &Value) -> String {
+    global_info.get("hash").and_then(|v| v.as_str()).unwrap_or("Poseidon1").to_string()
+}
+
+pub fn read_proving_key_hash(setup_dir: &str) -> Result<String> {
+    let path = PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
+    let global_info: Value = serde_json::from_str(
+        &fs::read_to_string(&path).with_context(|| format!("Failed to read {:?}", path))?,
+    )
+    .with_context(|| format!("Failed to parse {:?}", path))?;
+    Ok(hash_from_global_info(&global_info))
 }
 
 fn parse_verkey_4(path: &std::path::Path) -> Result<[String; 4]> {

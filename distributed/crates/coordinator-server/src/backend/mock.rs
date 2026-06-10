@@ -600,9 +600,11 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
             proof.proof_kind = req.proof_dest.clone();
             DomainJobKindResponse::Wrap(proof)
         }
-        DomainJobKind::SetupAggregator(_) => {
-            DomainJobKindResponse::SetupAggregator { vk: vec![0u8; 32] }
-        }
+        DomainJobKind::SetupAggregator(_) => DomainJobKindResponse::SetupAggregator {
+            vk: vec![0u8; 32],
+            // Clients parse hash_mode into HashMode; an empty string fails.
+            hash_mode: HashMode::default().as_str().to_string(),
+        },
         DomainJobKind::Aggregate(_) => DomainJobKindResponse::Aggregate(DomainProof {
             proof_id: Uuid::new_v4(),
             hash_id: String::new(),

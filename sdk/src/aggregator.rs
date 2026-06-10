@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock};
 use anyhow::{anyhow, bail, Context, Result};
 use recurser::manifest::RecurserManifestInputs;
 use serde_json::Value;
-use zisk_common::{ProgramVK, ZiskPaths};
+use zisk_common::{HashMode, ProgramVK, ZiskPaths};
 use zisk_prover_backend::GuestProgram;
 
 use crate::Client;
@@ -51,7 +51,11 @@ impl RecurserAggregator {
                 stem.with_extension("verkey.bin").display()
             )
         })?;
-        let vk = ProgramVK { vk: limbs.to_vec() };
+        // The hash family is a property of the proving key the recurser was set
+        // up against; read it from the same globalInfo.json the setup did so the
+        // verkey's mode matches the proofs it will be verified against.
+        let hash_mode = read_setup_hash_mode(&self.setup_dir)?;
+        let vk = ProgramVK { vk: limbs.to_vec(), hash_mode };
         let _ = self.vk_cache.set(vk.clone());
         Ok(vk)
     }
@@ -59,6 +63,12 @@ impl RecurserAggregator {
 
 pub(crate) fn recurser_setup_dir(output_dir: &str, recurser_id: &str) -> PathBuf {
     PathBuf::from(output_dir).join("provingKey").join("recurser").join(recurser_id)
+}
+
+/// Read the recurser's hash family from the proving key's `globalInfo.json`,
+/// the same source `run_setup_recurser_aggregator` uses.
+fn read_setup_hash_mode(setup_dir: &str) -> Result<HashMode> {
+    recurser::setup::read_proving_key_hash(setup_dir)?.parse::<HashMode>()
 }
 
 fn read_verkey_bin_4(stem: &std::path::Path) -> Result<[u64; 4]> {
@@ -215,42 +225,6 @@ impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn dummy_agg() -> RecurserAggregator {
-        RecurserAggregator {
-            recurser_id: "rid".into(),
-            program_vks: vec![],
-            n_private_inputs: 0,
-            prepare_publics_template: None,
-            check_publics_template: None,
-            aggregate_publics_template: "// body".into(),
-            setup_dir: "/tmp/zisk-test-setup".into(),
-            output_dir: "/tmp/zisk-test-output".into(),
-            vk_cache: Arc::new(OnceLock::new()),
-        }
-    }
-
-    /// `vk_cache` must be shared across clones — the remote `setup.rs` hook
-    /// writes the cache via a cloned handle; the user's original must observe it.
-    #[test]
-    fn vk_cache_is_shared_across_clones() {
-        let agg = dummy_agg();
-        let agg_clone = agg.clone();
-
-        let _ = agg_clone.vk_cache.set(ProgramVK { vk: vec![1, 2, 3, 4] });
-
-        assert_eq!(agg.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
-        assert_eq!(agg_clone.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
-
-        // OnceLock: second set is rejected.
-        assert!(agg.vk_cache.set(ProgramVK { vk: vec![9, 9, 9, 9] }).is_err());
-        assert_eq!(agg.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
-    }
-}
-
 /// Reads the vadcop_final verkey as 4 decimal-string limbs.
 fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
     let global_info_path =
@@ -283,4 +257,43 @@ fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
         }
     };
     Ok([to_str(0, &v[0])?, to_str(1, &v[1])?, to_str(2, &v[2])?, to_str(3, &v[3])?])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_agg() -> RecurserAggregator {
+        RecurserAggregator {
+            recurser_id: "rid".into(),
+            program_vks: vec![],
+            n_private_inputs: 0,
+            prepare_publics_template: None,
+            check_publics_template: None,
+            aggregate_publics_template: "// body".into(),
+            setup_dir: "/tmp/zisk-test-setup".into(),
+            output_dir: "/tmp/zisk-test-output".into(),
+            vk_cache: Arc::new(OnceLock::new()),
+        }
+    }
+
+    /// `vk_cache` must be shared across clones — the remote `setup.rs` hook
+    /// writes the cache via a cloned handle; the user's original must observe it.
+    #[test]
+    fn vk_cache_is_shared_across_clones() {
+        let agg = dummy_agg();
+        let agg_clone = agg.clone();
+
+        let _ = agg_clone.vk_cache.set(ProgramVK { vk: vec![1, 2, 3, 4], ..Default::default() });
+
+        assert_eq!(agg.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
+        assert_eq!(agg_clone.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
+
+        // OnceLock: second set is rejected.
+        assert!(agg
+            .vk_cache
+            .set(ProgramVK { vk: vec![9, 9, 9, 9], ..Default::default() })
+            .is_err());
+        assert_eq!(agg.vk_cache.get().map(|v| v.vk.clone()), Some(vec![1, 2, 3, 4]));
+    }
 }

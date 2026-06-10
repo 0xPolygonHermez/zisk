@@ -124,6 +124,7 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                 handle.set_pre_process(move |status: &TerminalStatus| {
                     if let TerminalStatus::Completed(DomainJobKindResponse::SetupAggregator {
                         vk,
+                        hash_mode,
                     }) = status
                     {
                         if vk.len() != 32 {
@@ -132,13 +133,18 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                                 vk.len()
                             ));
                         }
+                        // The hash mode is dictated by the worker's proving key;
+                        // it must travel with the verkey so a later verify can
+                        // match it against the proof's hash family.
+                        let hash_mode = hash_mode.parse::<HashMode>()?;
                         let mut limbs = [0u64; 4];
                         for i in 0..4 {
                             let chunk: [u8; 8] = vk[i * 8..(i + 1) * 8].try_into().unwrap();
                             limbs[i] = u64::from_le_bytes(chunk);
                         }
-                        let _ =
-                            agg_clone.vk_cache.set(zisk_common::ProgramVK { vk: limbs.to_vec() });
+                        let _ = agg_clone
+                            .vk_cache
+                            .set(zisk_common::ProgramVK { vk: limbs.to_vec(), hash_mode });
                     }
                     Ok(())
                 });

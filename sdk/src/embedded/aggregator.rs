@@ -154,7 +154,14 @@ fn run_aggregate_proof_blocking(
 
     // Aggregator's own verkey → output Proof's zisk_vk.
     let zisk_vk = agg.vk()?.vk;
-    let proof = Proof::new_from_vadcop_proof(&vfp.proof_with_publics(), vfp.compressed, zisk_vk)?;
+    // The proof's hash family travels on the VadcopFinalProof (stamped by
+    // proofman from the aggregator's proving key); carry it onto the Proof.
+    let proof = Proof::new_from_vadcop_proof(
+        &vfp.proof_with_publics(),
+        vfp.compressed,
+        zisk_vk,
+        vfp.hash.clone(),
+    )?;
 
     Ok(ProveResult::from(ProveOutput::from_remote(
         proof,

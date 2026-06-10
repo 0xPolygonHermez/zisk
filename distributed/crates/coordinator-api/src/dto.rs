@@ -186,7 +186,7 @@ pub enum DomainJobKindResponse {
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
-    SetupAggregator { vk: Vec<u8> },
+    SetupAggregator { vk: Vec<u8>, hash_mode: String },
     Aggregate(DomainProof),
 }
 

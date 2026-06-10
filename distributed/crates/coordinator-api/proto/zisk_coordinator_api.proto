@@ -258,6 +258,7 @@ message SetupAggregatorRequest {
 
 message SetupAggregatorResponse {
   bytes vk = 1; // 32 bytes — 4 u64 little-endian limbs
+  string hash_mode = 2;
 }
 
 message AggregateRequest {

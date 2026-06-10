@@ -218,6 +218,7 @@ impl CoordinatorGrpc {
                                     Some(ack.error_message)
                                 },
                                 vk: ack.vk,
+                                hash_mode: ack.hash_mode,
                             },
                         )
                         .await

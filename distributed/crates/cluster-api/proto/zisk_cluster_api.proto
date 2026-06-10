@@ -107,6 +107,7 @@ message SetupRecurserAggregatorAck {
   bool   success       = 4;
   string error_message = 5;
   bytes  vk            = 6; // 32 bytes = 4 u64 LE
+  string hash_mode     = 7;
 }
 
 message RunRecurserAggregator {

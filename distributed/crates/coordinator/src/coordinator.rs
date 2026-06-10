@@ -82,7 +82,7 @@ pub(crate) struct ActiveSetup {
 /// Aggregator analog of `SetupPendingState`: pending acks + accumulated VKs.
 struct AggregatorSetupPendingState {
     pending: HashSet<WorkerId>,
-    vks: Vec<(WorkerId, Vec<u8>)>,
+    vks: Vec<(WorkerId, Vec<u8>, String)>,
     recurser_id: String,
 }
 
@@ -3005,6 +3005,7 @@ mod tests {
                     success: true,
                     error_message: None,
                     vk: vec![1, 2, 3, 4],
+                    hash_mode: "Poseidon1".to_string(),
                 },
             )
             .await
@@ -3541,6 +3542,7 @@ mod tests {
             success: true,
             error_message: None,
             vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
         };
         coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
 
@@ -3575,6 +3577,7 @@ mod tests {
             success: true,
             error_message: None,
             vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
         };
         coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
 
@@ -3608,6 +3611,7 @@ mod tests {
             success: true,
             error_message: None,
             vk: vec![0u8; 32],
+            hash_mode: "Poseidon1".to_string(),
         };
         let ack1 = SetupRecurserAggregatorAckDto {
             job_id: job_id.as_string(),
@@ -3616,6 +3620,7 @@ mod tests {
             success: true,
             error_message: None,
             vk: vec![1u8; 32], // different
+            hash_mode: "Poseidon1".to_string(),
         };
         coordinator.handle_stream_setup_recurser_aggregator_ack(ack0).await.unwrap();
         coordinator.handle_stream_setup_recurser_aggregator_ack(ack1).await.unwrap();
@@ -3744,6 +3749,7 @@ mod tests {
             success: true,
             error_message: None,
             vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
         };
         coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
 

@@ -188,14 +188,14 @@ impl Coordinator {
     async fn finalize_aggregator_setup(
         &self,
         job_id: &JobId,
-        vks: Vec<(WorkerId, Vec<u8>)>,
+        vks: Vec<(WorkerId, Vec<u8>, String)>,
         recurser_id: String,
     ) {
         let event = match validate_setup_vks(job_id.as_str(), vks) {
-            Ok(vk) => {
+            Ok((vk, hash_mode)) => {
                 self.active_aggregator_setups.write().await.insert(recurser_id);
                 CoordinatorJobEvent::Completed(
-                    crate::job_events::CoordinatorJobResult::SetupAggregator { vk },
+                    crate::job_events::CoordinatorJobResult::SetupAggregator { vk, hash_mode },
                 )
             }
             Err(e) => {
@@ -270,7 +270,7 @@ impl Coordinator {
             if let Some(state) = pending.get_mut(&job_id) {
                 state.pending.remove(&ack.worker_id);
                 if ack.success {
-                    state.vks.push((ack.worker_id.clone(), ack.vk));
+                    state.vks.push((ack.worker_id.clone(), ack.vk, ack.hash_mode));
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);

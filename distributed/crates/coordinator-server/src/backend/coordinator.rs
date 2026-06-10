@@ -87,8 +87,8 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Wrap { proof_bytes } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
         }
-        CoordinatorJobResult::SetupAggregator { vk } => {
-            DomainJobKindResponse::SetupAggregator { vk }
+        CoordinatorJobResult::SetupAggregator { vk, hash_mode } => {
+            DomainJobKindResponse::SetupAggregator { vk, hash_mode }
         }
         CoordinatorJobResult::Aggregate { proof_bytes } => {
             DomainJobKindResponse::Aggregate(make_proof(hash_id.to_string(), proof_bytes))

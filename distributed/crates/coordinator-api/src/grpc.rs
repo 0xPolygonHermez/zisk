@@ -427,8 +427,8 @@ impl From<DomainJobKindResponse> for JobKindResponse {
             DomainJobKindResponse::Execute { stats, public_outputs } => {
                 Kind::Execute(ExecuteResponse { stats: Some(stats.into()), public_outputs })
             }
-            DomainJobKindResponse::SetupAggregator { vk } => {
-                Kind::SetupAggregator(SetupAggregatorResponse { vk })
+            DomainJobKindResponse::SetupAggregator { vk, hash_mode } => {
+                Kind::SetupAggregator(SetupAggregatorResponse { vk, hash_mode })
             }
             DomainJobKindResponse::Aggregate(proof) => {
                 Kind::Aggregate(AggregateResponse { proof: Some(proof.into()) })
@@ -653,7 +653,9 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
                 let stats = r.stats.map(DomainExecutionStats::from).unwrap_or_default();
                 Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs })
             }
-            Kind::SetupAggregator(r) => Ok(DomainJobKindResponse::SetupAggregator { vk: r.vk }),
+            Kind::SetupAggregator(r) => {
+                Ok(DomainJobKindResponse::SetupAggregator { vk: r.vk, hash_mode: r.hash_mode })
+            }
             Kind::Aggregate(r) => {
                 let proof =
                     r.proof.ok_or_else(|| "aggregate.proof must be set".to_string())?.try_into()?;

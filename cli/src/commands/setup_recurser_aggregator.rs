@@ -5,7 +5,8 @@ use anyhow::{bail, Context, Result};
 use fields::Goldilocks;
 use proofman_common::{MpiCtx, ProofCtx};
 use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
-use rom_setup::rom_merkle_setup;
+use rom_setup::{rom_merkle_setup, HashMode};
+use std::str::FromStr;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::ZiskPaths;
 use zisk_prover_backend::{setup_logger, GuestProgram};
@@ -98,6 +99,15 @@ impl ZiskSetupRecurserAggregator {
             false,
         )?;
 
+        // Program VKs must be derived under the same hash family the recurser
+        // (and its proving key) uses, so they match at membership-check time.
+        let hash_mode = HashMode::from_str(&pctx.global_info.hash).map_err(|e| {
+            anyhow::anyhow!(
+                "proving key global_info.hash {:?} is not a recognized HashMode: {e}",
+                pctx.global_info.hash
+            )
+        })?;
+
         let mut vks: Vec<[String; 4]> = Vec::with_capacity(self.program_elfs.len());
         for elf_path in &self.program_elfs {
             tracing::info!("Deriving program VK from ELF: {}", elf_path.display());
@@ -106,11 +116,14 @@ impl ZiskSetupRecurserAggregator {
                     .to_str()
                     .with_context(|| format!("Non-UTF-8 ELF path: {}", elf_path.display()))?,
             )?;
-            let program_vk =
-                rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.cache_dir, false)
-                    .with_context(|| {
-                        format!("rom_merkle_setup failed for {}", elf_path.display())
-                    })?;
+            let program_vk = rom_merkle_setup::<Goldilocks>(
+                &pctx,
+                guest_program.elf(),
+                &self.cache_dir,
+                false,
+                hash_mode,
+            )
+            .with_context(|| format!("rom_merkle_setup failed for {}", elf_path.display()))?;
             let limbs: [String; 4] = <[u64; 4]>::try_from(program_vk.vk.as_slice())
                 .with_context(|| {
                     format!("VK from {} did not decode into 4 u64 limbs", elf_path.display())
